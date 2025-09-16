@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 FiniexTestingIDE Contributors
+Copyright (c) 2025 Frank Krätzig
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,95 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## FINIEX™ TRADEMARK NOTICE
+
+**CRITICAL**: This MIT License covers the SOFTWARE CODE ONLY. The following 
+trademarks and product names are NOT covered by this license and remain the 
+exclusive property of Frank Krätzig:
+
+### Protected Finiex™ Brand Family
+
+1. **"Finiex"** and **"Finiex™"** - Master brand and trademark
+2. **"Finiex Testing IDE"** and **"Finiex™ Testing IDE"** - Strategy development platform
+3. **"Finiex AutoTrader"** and **"Finiex™ AutoTrader"** - Automated trading system  
+4. **"Finiex BlackBox Framework"** and **"Finiex™ BlackBox Framework"** - IP protection system
+5. All Finiex-related branding, logos, and visual identity elements
+6. Any derivatives, variations, or combinations of the Finiex brand name
+
+### Complete Product Ecosystem Protection
+
+The entire **Finiex™** ecosystem and all its components are trademark-protected:
+
+- **Core Brand**: Finiex™
+- **Development Platform**: Finiex™ Testing IDE (this repository)
+- **Trading System**: Finiex™ AutoTrader (planned release)
+- **IP Framework**: Finiex™ BlackBox Framework (in development)
+
+## TRADEMARK USAGE RESTRICTIONS
+
+### ✅ PERMITTED USES (No Permission Required)
+- Using this software code under MIT License terms
+- Academic/educational reference to Finiex™ products
+- Technical documentation citing Finiex™ functionality
+- Fair use commentary and reviews
+
+### ❌ PROHIBITED USES (Written Permission Required)
+- Commercial products or services using "Finiex" in any form
+- Software distributions, forks, or derivatives with Finiex branding
+- Creating competing products with Finiex-similar names including:
+  - Trading platforms named "Finiex[anything]"
+  - Software tools with "Finiex" variations
+  - Financial services using Finiex branding
+- Domain names containing "Finiex" or similar variations
+- Social media handles, business names, or marketing materials
+- Mobile apps, web applications, or SaaS products using Finiex naming
+
+## ECOSYSTEM INTEGRATION GUIDELINES
+
+If you create software that integrates with the **Finiex™** ecosystem:
+- You may reference compatibility (e.g., "Compatible with Finiex™ Testing IDE")
+- You may NOT use Finiex in your product name
+- You may NOT imply official endorsement without written permission
+- You must clearly distinguish your product from official Finiex™ products
+
+## PERMISSIONS FOR FINIEX™ TRADEMARKS
+
+For any commercial use, integration partnerships, or trademark licensing 
+regarding the **Finiex™** brand family, contact Frank Krätzig through the 
+project repository.
+
+### Business Partnership Opportunities
+- Official Finiex™ integrations and plugins
+- Finiex™ ecosystem partnerships
+- Commercial licensing arrangements
+- Enterprise deployment solutions
+
+## FIRST USE IN COMMERCE
+
+The complete **Finiex™** trademark family was first used in commerce by 
+Frank Krätzig on September 17, 2025, in connection with:
+
+- Trading strategy development software services
+- Automated trading system platforms  
+- Financial technology IP protection frameworks
+- Algorithmic trading ecosystem solutions
+
+## ENFORCEMENT POLICY
+
+Frank Krätzig actively monitors and enforces **Finiex™** trademark rights.
+Unauthorized use may result in:
+- Cease and desist notifications
+- Legal action for trademark infringement
+- Domain name disputes and recovery actions
+- Damages claims for commercial misuse
+
+---
+
+**License Version**: 1.0  
+**Last Updated**: September 17, 2025  
+**Trademark Owner**: Frank Krätzig  
+**Project**: Finiex™ Testing IDE (https://github.com/dc-deal/FiniexTestingIDE)  
+**Ecosystem**: Complete Finiex™ Trading Platform

@@ -1,4 +1,4 @@
-# FinexTestingIDE - Blackbox Framework
+# FiniexTestingIDE - Blackbox Framework
 # ====================================
 # Vollständiges MVP-Framework für Trading-Strategien als Blackboxes
 # Autor: Claude/Anthropic
