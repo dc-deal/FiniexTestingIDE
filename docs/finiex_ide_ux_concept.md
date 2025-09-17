@@ -665,7 +665,114 @@ PUT  /api/blackboxes/{id}/parameters
 
 ## Fazit
 
-Die FiniexTestingIDE bietet eine **intuitive, performante Entwicklungsumgebung** für Trading-Strategy-Testing. Durch **non-blocking Visualization**, **intelligent Parameter-Management** und **real-time Performance-Feedback** ermöglicht sie effiziente Strategie-Entwicklung ohne Kompromisse bei der Test-Performance.
+---
+
+## Advanced Features (Post-MVP)
+
+### Missed-Opportunity-Analyzer: Intelligent Parameter-Fehlerdiagnose
+
+**Problem:** Manuelle Chart-Analyse um herauszufinden warum profitable Moves verpasst wurden kostet Stunden.
+
+**Lösung:** Automated Root-Cause-Analysis mit One-Click-Parameter-Fixes.
+
+#### Erweiterte Blackbox-API
+
+```python
+# Minimale Erweiterung der bestehenden Blackbox-Base-Class
+class EnhancedBlackboxBase(BlackboxBase):
+    def on_market_evaluation(self, tick, decision) -> EvaluationResult:
+        """Called for every tick - reports what strategy considered doing"""
+        return EvaluationResult(
+            would_trade=False,
+            blocking_reason="volatility_too_low",
+            blocking_parameter="volatility_threshold", 
+            market_value=0.028,     # Was der Markt hatte
+            required_value=0.015,  # Was Parameter verlangt
+            confidence=0.85         # Wie sicher die Strategy war
+        )
+```
+
+#### UI-Integration: Smart Opportunity-Panel
+
+```
+┌─ Current Parameters ─┬─ Missed Opportunity Analysis ──────────┐
+│ volatility_threshold │ 🔴 23 Missed Opportunities             │
+│ [0.015] ████████░░   │                                        │
+│                      │ Top Blocker: volatility_threshold      │
+│ risk_per_trade       │ ├─ 12 ops missed (avg +1.8% each)     │
+│ [0.020] ████████░░   │ ├─ Market avg: 0.028                   │
+│                      │ └─ Current: 0.015 (too strict)        │
+│ trend_confirmation   │                                        │
+│ [0.800] ████████░░   │ 💡 Suggested Fix:                     │
+│                      │    Lower volatility_threshold to 0.022 │
+│                      │    Expected +15 additional trades      │
+│                      │                                        │
+│                      │ [🧪 Test Fix] [📊 Details] [❌ Ignore] │
+└──────────────────────┴─────────────────────────────────────────┘
+```
+
+#### Automated Pattern Recognition
+
+**Backend Intelligence:**
+```python
+class MissedOpportunityTracker:
+    def analyze_patterns(self, evaluation_history):
+        """Findet Parameter-Patterns bei verpassten Opportunities"""
+        missed_profits = []
+        
+        for evaluation in evaluation_history:
+            if evaluation.would_trade and not evaluation.actual_trade:
+                missed_profits.append({
+                    'parameter': evaluation.blocking_parameter,
+                    'gap': evaluation.market_value - evaluation.required_value,
+                    'potential_profit': calculate_profit_if_traded(evaluation)
+                })
+        
+        return generate_fix_suggestions(missed_profits)
+```
+
+#### One-Click-Parameter-Testing
+
+**Workflow:**
+1. User klickt "Test Fix" 
+2. IDE öffnet neuen Tab mit angepasstem Parameter
+3. Gleiche Datenkollektion, nur Parameter geändert
+4. Side-by-Side-Vergleich der Performance
+
+```
+┌─ Original ─┬─ With Fix ─┐
+│ Sharpe:1.2 │ Sharpe:1.8 │
+│ Trades: 45 │ Trades: 62 │
+│ Missed:23  │ Missed: 8  │
+└────────────┴────────────┘
+```
+
+#### Implementation-Aufwand
+
+**Minimale Code-Änderungen:**
+- Blackbox-API: +1 Methode (~10 Zeilen)
+- Backend-Service: +1 Klasse (~200 Zeilen)  
+- Frontend-Panel: +1 Komponente (~100 Zeilen)
+- WebSocket-Events: (~50 Zeilen)
+
+**Total: ~360 Zeilen für revolutionäres Feature**
+
+#### Warum Post-MVP
+
+**Komplexität:**
+- Requires sophisticated pattern recognition
+- Statistical analysis of market vs parameter correlation
+- Advanced UI for opportunity visualization
+
+**Abhängigkeiten:**
+- Stabile Multi-Tab-System muss first laufen
+- Parameter-System muss robust funktionieren
+- Ausreichend historische Daten für Pattern-Learning
+
+**Impact:**
+Verkürzt Parameter-Optimierung von Stunden auf Minuten. Eliminiert Rätselraten bei der Fehlersuche. Macht die IDE selbstlernend und proaktiv bei der Strategieoptimierung.
+
+Dieses Feature transformiert die IDE von einem passiven Testing-Tool zu einem aktiven Strategy-Optimization-Assistant.
 
 **Kernvorteile:**
 - **IDE-artige UX:** Vertraute Entwicklungsumgebung für Trader
