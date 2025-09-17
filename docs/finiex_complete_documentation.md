@@ -10,9 +10,9 @@
 6. [Fazit](#fazit)
 
 **Detailierte Dokumentationen:**
-- **[UI/UX-Konzept](./finiex-ide-ux-concept.md)** - Komplettes Interface-Design und Workflows
-- **[Daten-Pipeline](./mql5-data-pipeline.md)** - Data Quality Framework und Pipeline-Architektur  
-- **[Tech-Stack](./finiex-tech-stack.md)** - Vollständige Technologie-Architektur
+- **[UI/UX-Konzept](./finiex_ide_ux_concept.md)** - Komplettes Interface-Design und Workflows
+- **[Daten-Pipeline](./finiex_mql5_data_pipeline.md)** - Data Quality Framework und Pipeline-Architektur  
+- **[Tech-Stack](./finiex_tech_stack.md)** - Vollständige Technologie-Architektur
 
 *⭐ = Implementiert/Produktionsreif*
 
@@ -69,7 +69,7 @@ flowchart TB
     Execution --> IDE
 ```
 
-**Siehe [Tech-Stack Dokumentation](./finiex-tech-stack.md) für vollständige Architektur-Details.**
+**Siehe [Tech-Stack Dokumentation](./finiex_tech_stack.md) für vollständige Architektur-Details.**
 
 ---
 
@@ -86,7 +86,7 @@ flowchart TB
 
 **Quality Scores:** Automatic calculation von Overall/Integrity/Reliability-Scores pro Dataset.
 
-**Details:** [→ Vollständige Daten-Pipeline Dokumentation](./mql5-data-pipeline.md)
+**Details:** [→ Vollständige Daten-Pipeline Dokumentation](./finiex_mql5_data_pipeline.md)
 
 ### 2. Multi-Tab Testing IDE
 **Status:** UI-Konzept definiert, Implementation geplant
@@ -97,7 +97,7 @@ flowchart TB
 - **Smart Parameter-Panel:** Synergie-Detection und Auto-Suggestions
 - **Timeline-Scrubber:** Frame-by-Frame Strategy-Analysis mit Debug-Overlays
 
-**Details:** [→ Vollständiges UI/UX-Konzept](./finiex-ide-ux-concept.md)
+**Details:** [→ Vollständiges UI/UX-Konzept](./finiex_ide_ux_concept.md)
 
 ### 3. Blackbox-Framework mit Parameter-Intelligence
 **Status:** Konzeptionell definiert, Prototyping
@@ -204,9 +204,9 @@ Die **FiniexTestingIDE** revolutioniert Trading-Strategy-Development durch:
 **Nächstes Milestone:** MVP Phase 1 Completion
 
 **Detailierte technische Dokumentation:**
-- [UI/UX-Konzept](./finiex-ide-ux-concept.md) - Interface-Design und Workflows
-- [Daten-Pipeline](./mql5-data-pipeline.md) - Quality-Framework und Pipeline-Details  
-- [Tech-Stack](./finiex-tech-stack.md) - Vollständige Technologie-Architektur
+- [UI/UX-Konzept](./finiex_ide_ux_concept.md) - Interface-Design und Workflows
+- [Daten-Pipeline](./finiex_mql5_data_pipeline.md) - Quality-Framework und Pipeline-Details  
+- [Tech-Stack](./finiex_tech_stack.md) - Vollständige Technologie-Architektur
 
 Die FiniexTestingIDE wird der neue Standard für professionelle Trading-Strategy-Entwicklung.ung
 - Nahtloser Übergang von Development zu Live-Trading
@@ -228,3 +228,4 @@ Die FiniexTestingIDE wird der neue Standard für professionelle Trading-Strategy
 **🔴 Geplant:** Web-Interface, Visual-Debug, Advanced Features  
 
 Die FiniexTestingIDE ist auf dem besten Weg, der neue Standard für professionelle Trading-Strategy-Entwicklung zu werden.
+
