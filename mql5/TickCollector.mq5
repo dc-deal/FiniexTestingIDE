@@ -1,8 +1,8 @@
 //+------------------------------------------------------------------+
-//| FinexTestingIDE Tick Data Collector - Enhanced Error Version    |
+//| FiniexTestingIDE Tick Data Collector - Enhanced Error Version    |
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
 //+------------------------------------------------------------------+
-#property copyright "FinexTestingIDE"
+#property copyright "FiniexTestingIDE"
 #property version   "1.03"
 #property strict
 
