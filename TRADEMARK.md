@@ -46,7 +46,7 @@ The following marks and their variations are the exclusive property of Frank Kr√
 - **Finiex Framework‚Ñ¢**
 
 ### ‚ö° Protected Variations & Combinations
-- Any phonetically similar variations (Finex, Finix, etc.)
+- Any phonetically similar variations
 - Any combination with trading/financial terms
 - Any software-related Finiex derivatives
 - Any domain or social media variations
@@ -88,7 +88,7 @@ The following marks and their variations are the exclusive property of Frank Kr√
    - Training courses titled with Finiex branding
 
 3. **Digital Presence**
-   - Domain registration: finiex.*, *finiex*, finex.*, etc.
+   - Domain registration: finiex.*, *finiex*, etc.
    - Social media handles: @finiex, @finiextrading, etc.
    - App store submissions with Finiex naming
    - Website titles or headers using Finiex branding
