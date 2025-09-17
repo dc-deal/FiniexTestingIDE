@@ -1,5 +1,9 @@
 # FiniexTestingIDE
 
+Finiex™ Testing IDE
+© 2024 Frank Krätzig. All rights reserved.
+Finiex™ is a trademark of Frank Krätzig.
+
 **Professional Trading Strategy Testing & Development Environment**
 
 > Revolutionary IDE-like platform for testing trading strategies with **IP protection**, **massive parallelization**, and **reproducible results**.
