@@ -1,7 +1,7 @@
 # FiniexTestingIDE
 
 Finiex™ Testing IDE
-© 2024 Frank Krätzig. All rights reserved.
+© 2025 Frank Krätzig. All rights reserved.
 Finiex™ is a trademark of Frank Krätzig.
 
 **Professional Trading Strategy Testing & Development Environment**
