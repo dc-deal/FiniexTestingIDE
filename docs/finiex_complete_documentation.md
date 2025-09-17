@@ -140,6 +140,10 @@ flowchart TB
 - **Standard-Indikatoren-Library** (RSI, MACD, Bollinger)
 
 ### 🚀 Advanced Features (Post-MVP)
+
+**Siehe auch:** [AI Integration Roadmap](./ai_integration_roadmap.md) – Detailliert geplante KI‑Ausbaustufen für die Post‑MVP‑Phase (Parameter‑Intelligence, Market‑Regime‑Detection, generative Strategie‑Entwicklung, Risk‑/Performance‑Prognosen) inkl. Architektur‑Skizzen, Zeitplan und API‑Beispielen.
+
+
 - **Missed-Opportunity-Analyzer** mit One-Click-Parameter-Fixes
 - **ML-basierte Parameter-Suggestions** 
 - **Advanced Visual-Debug-System**
