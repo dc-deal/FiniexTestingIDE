@@ -192,7 +192,7 @@ class TickDataImporter:
 # Hauptfunktion
 if __name__ == "__main__":
     # Konfiguration
-    SOURCE_DIR = "C:/FinexData/"          # MQL5 Export-Ordner
+    SOURCE_DIR = "C:/FiniexData/"          # MQL5 Export-Ordner
     TARGET_DIR = "./data/processed/"       # Parquet-Ziel
     
     logger.info("FiniexTestingIDE Tick Data Importer gestartet")
