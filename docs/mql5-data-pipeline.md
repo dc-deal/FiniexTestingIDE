@@ -21,53 +21,6 @@ Live-Tick-Daten von MetaTrader 5 in JSON-Format exportieren.
 - **JSON-Größe:** 300-900 MB (roh)
 - **Nach Kompression:** 30-90 MB
 
-### 1.1 MQL5 Expert Advisor Code
-
-### 1.2 Installation & Setup
-
-#### Schritt 1: Code kompilieren
-1. MetaTrader 5 öffnen
-2. **F4** drücken (MetaEditor öffnen)
-3. Neuen Expert Advisor erstellen: **File → New → Expert Advisor**
-4. Obigen Code einfügen
-5. **F7** drücken (kompilieren)
-6. Auf Fehler prüfen
-
-#### Schritt 2: Expert Advisor anwenden
-1. **EURUSD** Chart öffnen (beliebiger Timeframe)
-2. Expert Advisor auf Chart ziehen
-3. **Input-Parameter prüfen:**
-   - ExportPath: `C:\FinexData\`
-   - MaxTicksPerFile: `50000`
-   - CollectTicks: `true`
-4. **OK** klicken
-5. AutoTrading aktivieren (grüner Button)
-
-#### Schritt 3: Monitoring
-- **Expert-Tab** im Terminal prüfen
-- Erfolgsmeldungen sollten erscheinen
-- Export-Ordner checken auf neue JSON-Files
-
-### 1.3 Quick-Checklist für 2-Tage-Run
-
-**Vor dem Start:**
-- [ ] Export-Ordner `C:\FinexData\` existiert
-- [ ] Expert Advisor kompiliert ohne Fehler
-- [ ] Auf EURUSD-Chart angehängt
-- [ ] AutoTrading ist aktiv (grüner Button)
-- [ ] Expert-Tab zeigt "TickCollector erfolgreich gestartet"
-
-**Während dem Run:**
-- [ ] Laptop läuft durchgehend (Energiesparmodus deaktivieren)
-- [ ] MetaTrader bleibt geöffnet
-- [ ] Internetverbindung stabil
-- [ ] Gelegentlich Expert-Tab checken auf Fehler
-
-**Nach 2 Tagen:**
-- [ ] JSON-Files im Export-Ordner prüfen
-- [ ] Dateigrößen validieren (sollten 300-900MB sein)
-- [ ] Bereit für Phase 2!
-
 ---
 
 ## Phase 2: Python Daten-Konverter (1 Woche)
@@ -502,4 +455,5 @@ def main():
             if 'error' not in info:
                 print(f"\n{symbol}:")
                 print(f"  📊 {info['total_ticks']:,}
+
 
