@@ -26,7 +26,7 @@ nur, dass die Blackbox einen **kleinen, stabilen Vertrag** erfüllt. Dadurch kan
 - **Fairer Vergleich:** Tests, Metriken und Reports sind identisch—Blackbox vs. „offene“ Strategien.
 - **Debug optional:** Die Blackbox **kann** Diagnose-Metadaten liefern (Parameter, Indikatorstände), **muss** es aber
   nicht. Ein **Prod-Modus** unterbindet jegliche Meta-Ausgabe.
-- **Nahtlose Übergabe:** Dieselbe Blackbox kann später **unverändert** an den **FINEXautotrader** übergeben werden, der
+- **Nahtlose Übergabe:** Dieselbe Blackbox kann später **unverändert** an den **Finiexautotrader** übergeben werden, der
   dann handelt (siehe *Handover*).
 
 ### Minimaler Vertrag (I/O)
@@ -101,9 +101,9 @@ Die Testing-IDE garantiert nur diese Schnittstellen—keine Reflexion/Inspektion
 - **Debug an (IDE-Tests):** `meta.indicators` & `meta.params` gefüllt.
 - **Prod an (Handover):** `meta` leer; nur `signal/qty/price/risk`.
 
-### Handover zu **FINEXautotrader**
+### Handover zu **Finiexautotrader**
 
-- **Gleicher Vertrag**: FINEXautotrader konsumiert dieselben `signal`-Events (BUY/SELL/FLAT, qty, optional price, risk).
+- **Gleicher Vertrag**: Finiexautotrader konsumiert dieselben `signal`-Events (BUY/SELL/FLAT, qty, optional price, risk).
 - **Adapter-Layer**: nur Transport/Execution ändert sich (z. B. REST/WS → Broker-API).
 - **Konfig-Wiederverwendung**: `config.json`/`params.json` der IDE-Runs werden 1:1 im Autotrader referenziert.
 - **Betriebsmodi**:
@@ -120,13 +120,13 @@ Die Testing-IDE garantiert nur diese Schnittstellen—keine Reflexion/Inspektion
 - **Standardisierte Schnittstellen:** Die **Blackbox-API** ist minimal, stabil, sprach-agnostisch (Python, MQL5-Bridge,
   andere Sprachen via gRPC/WS/STDIO möglich).
 - **Sichere Betriebsmodi:** Debug-Infos zwecks Diagnose **an** (Test), **aus** (Prod/Live).
-- **Nahtloses Deployment:** Identische Artefakte und Parameter ermöglichen die **spätere Übergabe an FINEXautotrader**
+- **Nahtloses Deployment:** Identische Artefakte und Parameter ermöglichen die **spätere Übergabe an Finiexautotrader**
   ohne Code-Änderung an der Strategie.
 
 ## Nicht-Ziele (Abgrenzung)
 
 - Kein offener Zugriff auf Blackbox-Interna (keine Pflicht zur Offenlegung, keine erzwungene Telemetrie).
-- Kein Auto-Trading „out of the box“ in der IDE—der Live-Handel ist Aufgabe des **FINEXautotraders**.
+- Kein Auto-Trading „out of the box“ in der IDE—der Live-Handel ist Aufgabe des **Finiexautotraders**.
 - Kein HFT/Ultra-Low-Latency im MVP (spätere Optimierungen möglich).
 
 ## Messbare Kriterien (Auszug)
@@ -134,7 +134,7 @@ Die Testing-IDE garantiert nur diese Schnittstellen—keine Reflexion/Inspektion
 - **Time-to-First-Backtest** (Blackbox): < **30 min** inkl. Daten, Run, Report.
 - **Determinismusquote**: ≥ **99 %** identische Ergebnisse bei Wiederholung mit gleichem Seed.
 - **„Leak-Free Prod“**: In Prod-Runs ist `meta` garantiert **leer** bzw. nicht vorhanden.
-- **Handover-Fähigkeit**: Ein Blackbox-Artefakt, das IDE-Tests besteht, ist **ohne Änderung** im FINEXautotrader
+- **Handover-Fähigkeit**: Ein Blackbox-Artefakt, das IDE-Tests besteht, ist **ohne Änderung** im Finiexautotrader
   lauffähig (Paper-/Live-Modus über Adapter).
 
 
@@ -231,7 +231,7 @@ io:
 
 Die **Strategie-Blackbox-API** bleibt unverändert: Jeder Run instanziiert eine Blackbox-Instanz mit **deriviertem Seed
 **. Debug-Metadaten sind **konfigurierbar** (an/aus). So können **proprietäre** Strategien in **tausenden parallelen
-Runs** getestet werden, ohne Interna offenzulegen; späterer **Handover** an **FINEXautotrader** ist 1:1 möglich.
+Runs** getestet werden, ohne Interna offenzulegen; späterer **Handover** an **Finiexautotrader** ist 1:1 möglich.
 
 ---
 
@@ -327,11 +327,11 @@ hist = ctx.data.history(
 - **Resume/Retry:** Gleicher Snapshot/Offsets, keine Doppel-Trades/Dateien.
 - **Extend & Reschedule:** Bei unvollständigen Snapshots automatische Erweiterung mit Audit-Trail.
 
-### Bezug zur Strategie-Blackbox-API & FINEXautotrader
+### Bezug zur Strategie-Blackbox-API & Finiexautotrader
 
 - **Gleicher Event-Vertrag** in IDE und Autotrader (Signals: `BUY|SELL|FLAT`, `qty`, optional `price`, `risk`).
 - **Prod-Modus:** Keine `meta`-Leaks; Debug-Infos nur in Tests.
-- **Handover 1:1:** Identische Blackbox kann nach bestandenem IDE-Test im **FINEXautotrader** (Paper/Live) ohne
+- **Handover 1:1:** Identische Blackbox kann nach bestandenem IDE-Test im **Finiexautotrader** (Paper/Live) ohne
   Code-Änderung laufen; lediglich der Data-Provider wechselt von Snapshot/History auf Live-Feed mit Rolling-Cache.
 
 ### Beispiel-Konfiguration
@@ -371,16 +371,16 @@ determinism:
 - **Auto-Warm-up/Reschedule** für verlässliche Indikator-Initialisierung.
 - **Data Locality + Prozess-Parallelität** für 1000+ Szenarien.
 - **Strenger Determinismus** (Hash/Seeds/Zeitzonen) für reproduzierbare Ergebnisse und **sauberen Handover** an den
-  FINEXautotrader.
+  Finiexautotrader.
 
 
 ---
 
 # 01 04 saas integration
 
-# Cloud & SaaS‑Vision — **FINEXplatform**
+# Cloud & SaaS‑Vision — **Finiexplatform**
 
-> **Zielbild:** Die FINEXplatform stellt **FiniexTestingIDE** als **Multi‑Tenant SaaS** bereit. Nutzer:innen buchen **Rechenleistung für Tests** on‑demand. Abgerechnet wird über ein **leistungsbasiertes Token‑System** (tägliche Token‑Budgets, Pay‑as‑you‑go, Reservierungen). Der Service ist **sicher**, **reproduzierbar**, **skalierbar** und **compliant** (EU‑Datenhaltung, DSGVO).
+> **Zielbild:** Die Finiexplatform stellt **FiniexTestingIDE** als **Multi‑Tenant SaaS** bereit. Nutzer:innen buchen **Rechenleistung für Tests** on‑demand. Abgerechnet wird über ein **leistungsbasiertes Token‑System** (tägliche Token‑Budgets, Pay‑as‑you‑go, Reservierungen). Der Service ist **sicher**, **reproduzierbar**, **skalierbar** und **compliant** (EU‑Datenhaltung, DSGVO).
 
 ---
 
@@ -571,7 +571,7 @@ data:
 ---
 
 ## 12) Zusammenfassung
-Die FINEXplatform als SaaS liefert **elastische Compute‑Kapazität** für FiniexTestingIDE, **abrechenbar über Tokens**, mit **harter Kostenkontrolle**, **strikter Reproduzierbarkeit** und **Enterprise‑tauglicher Sicherheit/Compliance**. Der Token‑Ansatz erlaubt **feine Fairness** (CPU/RAM/IO/GPU‑Gewichte), während Preemptible‑Jobs und Reservierungen **signifikant sparen** – ohne die wissenschaftliche Qualität (Determinismus, Artefakte, Auditierbarkeit) zu kompromittieren.
+Die Finiexplatform als SaaS liefert **elastische Compute‑Kapazität** für FiniexTestingIDE, **abrechenbar über Tokens**, mit **harter Kostenkontrolle**, **strikter Reproduzierbarkeit** und **Enterprise‑tauglicher Sicherheit/Compliance**. Der Token‑Ansatz erlaubt **feine Fairness** (CPU/RAM/IO/GPU‑Gewichte), während Preemptible‑Jobs und Reservierungen **signifikant sparen** – ohne die wissenschaftliche Qualität (Determinismus, Artefakte, Auditierbarkeit) zu kompromittieren.
 
 
 ---
