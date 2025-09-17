@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 FiniexTestingIDE Contributors
+Copyright (c) 2024 Frank Krätzig
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,42 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## TRADEMARK NOTICE
+
+**IMPORTANT**: This MIT License covers the SOFTWARE CODE ONLY. The following 
+trademarks and names are NOT covered by this license and remain the exclusive 
+property of Frank Krätzig:
+
+1. **"Finiex"** and **"Finiex™"** - Trademark of Frank Krätzig
+2. All Finiex-related branding, logos, and visual identity elements
+3. The name "Finiex Testing IDE" as a product name
+4. Any derivatives of the Finiex brand name
+
+## TRADEMARK USAGE RESTRICTIONS
+
+- You may use this software code under the MIT License terms above
+- You may NOT use the name "Finiex" or any similar variations for:
+  - Commercial products or services
+  - Software distributions or forks
+  - Marketing or branding purposes
+  - Domain names, social media handles, or business names
+
+## PERMISSIONS FOR FINIEX TRADEMARK
+
+If you wish to use the Finiex™ trademark, you must obtain written permission 
+from Frank Krätzig. Contact information is available in the project README.
+
+## FIRST USE IN COMMERCE
+
+The Finiex™ trademark was first used in commerce by Frank Krätzig in 
+September 2024 in connection with trading strategy testing and development 
+software services.
+
+---
+
+This license was last updated: December 2024
+Trademark Owner: Frank Krätzig
+Project: FiniexTestingIDE (https://github.com/dc-deal/FiniexTestingIDE)
