@@ -1,4 +1,4 @@
-# FinexTestingIDE - Technologie-Stack
+# FiniexTestingIDE - Technologie-Stack
 
 ## Übersicht
 
@@ -47,6 +47,48 @@ datasets/
 **Verwendung:** Shared Memory zwischen Worker-Prozessen
 
 **Vorteil:** 100+ parallele Blackboxes können auf dieselben Daten zugreifen ohne RAM-Vervielfachung
+
+---
+
+## Data Quality Framework
+
+### **Apache Arrow + Enhanced Validation Pipeline**
+**Verwendung:** Tick-Daten Storage mit integrierter Qualitätsbewertung
+
+**Erweiterte Funktionen:**
+- ✅ **Gestuftes Error-Tracking** - 3-Level Fehlerklassifizierung
+- ✅ **Market Authenticity Detection** - Unterscheidung echte vs. technische Anomalien
+- ✅ **Quality Score Calculation** - Automatische Datenqualitätsbewertung
+- ✅ **Pre-Import Health Checks** - Validierung vor Datenintegration
+
+**Error-Classification-Pipeline:**
+```
+JSON Import → Error Analysis → Authenticity Classification → Quality Scoring → Parquet + Metadata
+```
+
+### **Quality-Aware Data Loading**
+**Verwendung:** Intelligente Datenfilterung für Testing-Engine
+
+**Komponenten:**
+- **Threshold-based Loading** - Nur Daten über Qualitätsschwelle laden
+- **Adaptive Error Handling** - Markt-Anomalien behalten, System-Errors filtern
+- **Robustness Testing Support** - Parallel-Tests mit clean vs. realistic Daten
+- **Quality Metadata Propagation** - Qualitätsinformationen durch gesamte Pipeline
+
+### **Enhanced MQL5 Integration**
+**Verwendung:** TickCollector v1.03 mit atomarer Fehlererfassung
+
+**Neue Features:**
+- **Real-time Error Classification** - Sofortige Kategorisierung während Sammlung
+- **Configurable Validation Thresholds** - Symbol-spezifische Toleranzen
+- **Stream Health Monitoring** - Automatische Korruptions-Erkennung
+- **Intelligent Recommendations** - Context-aware Handlungsempfehlungen
+
+**Integration-Benefits:**
+- Reduzierte False-Positives bei Qualitätsprüfungen
+- Realistische Testbedingungen durch authentische Markt-Anomalien
+- Automatisierte Quality Assurance für Produktions-Pipelines
+- Transparente Datenqualitäts-Scores für Strategy-Entwickler
 
 ---
 
