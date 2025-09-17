@@ -4,7 +4,7 @@
 
 ## Vision
 
-**FinexTestingIDE** ist eine IDE-artige Forschungs- und Testumgebung, die **Strategie-Code**, **Marktdaten** und *
+**FiniexTestingIDE** ist eine IDE-artige Forschungs- und Testumgebung, die **Strategie-Code**, **Marktdaten** und *
 *Metriken** in einem sauber orchestrierten Flow zusammenführt. Ziel ist es, Handelsforschung **reproduzierbar**, *
 *ehrlich vergleichbar** und **operativ verwertbar** zu machen—vom ersten Prototyp bis zum robusten, dokumentierten
 Ergebnis.  
@@ -145,7 +145,7 @@ Die Testing-IDE garantiert nur diese Schnittstellen—keine Reflexion/Inspektion
 
 # Skalierung & Parallelisierung (1000+ Szenarien / mehrere Währungspaare)
 
-**Zielbild:** FinexTestingIDE kann **>1000 Szenarien gleichzeitig** ausführen—über **mehrere Währungspaare**,
+**Zielbild:** FiniexTestingIDE kann **>1000 Szenarien gleichzeitig** ausführen—über **mehrere Währungspaare**,
 Zeitfenster und Parameterkombinationen hinweg—unter Ausnutzung von **Multi-Core/Multiprocessing** (lokal) und optional *
 *verteilten Workern** (Cluster). Die Ergebnisse bleiben **deterministisch** und **vergleichbar**, egal in welcher
 Reihenfolge oder auf wie vielen Cores/Nodes die Runs gelaufen sind.
@@ -195,7 +195,7 @@ runner:
   distributed:
     enabled: false
     broker: redis://localhost:6379/0
-    topic: finex.runs
+    topic: finiex.runs
 
 matrix:
   instruments: [ EURUSD, GBPUSD, USDJPY, AUDUSD, USDCHF, USDCAD, NZDUSD, BTCUSD ]
@@ -217,7 +217,7 @@ io:
   dataset_cache: .cache/datasets
   mmap: true
   prefetch: 2
-  artifacts_store: s3://finex-artifacts/{run_id}/
+  artifacts_store: s3://finiex-artifacts/{run_id}/
 ```
 
 ## Qualitätsgarantien
@@ -235,7 +235,7 @@ Runs** getestet werden, ohne Interna offenzulegen; späterer **Handover** an **F
 
 ---
 
-**Kurzfassung:** Ja—FinexTestingIDE unterstützt **gleichzeitiges Testen von 1000+ Szenarien** über **mehrere
+**Kurzfassung:** Ja—FiniexTestingIDE unterstützt **gleichzeitiges Testen von 1000+ Szenarien** über **mehrere
 Währungspaare** hinweg durch **Multi-Core-Parallelität** (lokal) und optional **verteilte Worker**—bei **voller
 Reproduzierbarkeit**.
 
@@ -247,7 +247,7 @@ Reproduzierbarkeit**.
 ## Blackbox-Integration: Startdaten & High-Performance-Zuführung
 
 > **Kernaussage:** Die Blackbox muss **vor** dem ersten Event (Start-Tick/-Bar) eine ausreichende **Historie**
-> besitzen (Warm-up), um Indikatoren/Features korrekt zu berechnen. Die FinexTestingIDE stellt diese Startdaten *
+> besitzen (Warm-up), um Indikatoren/Features korrekt zu berechnen. Die FiniexTestingIDE stellt diese Startdaten *
 *deterministisch**, **schnell** und **ressourcenschonend** bereit—für **1000+ parallele Szenarien** über mehrere
 > Währungspaare hinweg.
 
@@ -380,7 +380,7 @@ determinism:
 
 # Cloud & SaaS‑Vision — **FINEXplatform**
 
-> **Zielbild:** Die FINEXplatform stellt **FinexTestingIDE** als **Multi‑Tenant SaaS** bereit. Nutzer:innen buchen **Rechenleistung für Tests** on‑demand. Abgerechnet wird über ein **leistungsbasiertes Token‑System** (tägliche Token‑Budgets, Pay‑as‑you‑go, Reservierungen). Der Service ist **sicher**, **reproduzierbar**, **skalierbar** und **compliant** (EU‑Datenhaltung, DSGVO).
+> **Zielbild:** Die FINEXplatform stellt **FiniexTestingIDE** als **Multi‑Tenant SaaS** bereit. Nutzer:innen buchen **Rechenleistung für Tests** on‑demand. Abgerechnet wird über ein **leistungsbasiertes Token‑System** (tägliche Token‑Budgets, Pay‑as‑you‑go, Reservierungen). Der Service ist **sicher**, **reproduzierbar**, **skalierbar** und **compliant** (EU‑Datenhaltung, DSGVO).
 
 ---
 
@@ -571,7 +571,7 @@ data:
 ---
 
 ## 12) Zusammenfassung
-Die FINEXplatform als SaaS liefert **elastische Compute‑Kapazität** für FinexTestingIDE, **abrechenbar über Tokens**, mit **harter Kostenkontrolle**, **strikter Reproduzierbarkeit** und **Enterprise‑tauglicher Sicherheit/Compliance**. Der Token‑Ansatz erlaubt **feine Fairness** (CPU/RAM/IO/GPU‑Gewichte), während Preemptible‑Jobs und Reservierungen **signifikant sparen** – ohne die wissenschaftliche Qualität (Determinismus, Artefakte, Auditierbarkeit) zu kompromittieren.
+Die FINEXplatform als SaaS liefert **elastische Compute‑Kapazität** für FiniexTestingIDE, **abrechenbar über Tokens**, mit **harter Kostenkontrolle**, **strikter Reproduzierbarkeit** und **Enterprise‑tauglicher Sicherheit/Compliance**. Der Token‑Ansatz erlaubt **feine Fairness** (CPU/RAM/IO/GPU‑Gewichte), während Preemptible‑Jobs und Reservierungen **signifikant sparen** – ohne die wissenschaftliche Qualität (Determinismus, Artefakte, Auditierbarkeit) zu kompromittieren.
 
 
 ---
