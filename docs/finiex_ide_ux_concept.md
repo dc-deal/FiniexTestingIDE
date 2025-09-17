@@ -51,7 +51,7 @@
 - **Batch-Creation:** 1-1000+ Situationen aus Pattern-Erkennung
 
 ### 3. Multi-Tab Test-Runner
-**Funktion:** Parallel-Execution mehrerer Test-Runs
+**Funktion:** Parallel-Execution mehrerer isolierter Test-Runs
 
 ```
 ┌─ Tab 1: MACD-Fast ─┬─ Tab 2: MACD-Slow ─┬─ Tab 3: Envelope ─┐
@@ -61,11 +61,25 @@
 └────────────────────┴────────────────────┴──────────────────┘
 ```
 
+**Tab-Isolation-Prinzip:**
+- **Eine Blackbox pro Tab:** Jeder Tab läuft eine spezifische Blackbox-Instanz
+- **Eigene Parameter-Sets:** Tab-Namen spiegeln die Parameter-Variation wider
+- **Unabhängige Ressourcen:** Separate CPU/RAM-Budgets pro Tab
+- **Isolierte Test-Läufe:** Kein Cross-Tab-State, vollständige Parallelisierung
+
+**Tab-Naming-Convention:**
+```
+"MACD-Fast" = MACDStrategy mit {fast: 8, slow: 21, signal: 9}
+"MACD-Slow" = MACDStrategy mit {fast: 15, slow: 30, signal: 12}
+"Envelope"  = EnvelopeStrategy mit {dev: 1.5, length: 20}
+```
+
 **Real-time Feedback:**
 - Live Performance-Indikatoren (Profit, Sharpe-Trend)
 - Resource-Usage (CPU/RAM) pro Tab
 - ETA basierend auf aktueller Performance
 - Quick-Stop bei negativer Tendenz-Erkennung
+- Cross-Tab-Performance-Comparison (optional sidebar)
 
 ### 4. Parameter-Panel mit Dependency-Management
 **Funktion:** Intelligente Parameter-Eingabe mit Blackbox-Constraints
