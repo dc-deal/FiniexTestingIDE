@@ -7,7 +7,7 @@
 ## 🏛️ Trademark Ownership
 
 **Trademark Owner**: Frank Krätzig  
-**First Use in Commerce**: September 17, 2024  
+**First Use in Commerce**: September 17, 2025  
 **Jurisdiction**: Germany / European Union  
 **Registration Status**: Common Law Trademark (Registration Pending)
 
