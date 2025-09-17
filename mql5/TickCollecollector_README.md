@@ -42,7 +42,7 @@ Professioneller Tick-Daten-Sammler für MetaTrader 5 mit gestuftem Error-Trackin
 1. Kopiere `TickCollector.mq5` in deinen MetaTrader 5 Experts Ordner
 2. Kompiliere in MetaEditor (F7)
 3. Hänge an beliebigen Chart an (EURUSD, GBPUSD, USDJPY, AUDUSD empfohlen)
-4. Konfiguriere Export-Pfad: `C:\FinexData\`
+4. Konfiguriere Export-Pfad: `C:\FiniexData\`
 
 ### Konfiguration
 
@@ -273,3 +273,4 @@ Für Issues, Feature-Requests und Contributions nutze bitte GitHub Issues.
 - **IMPROVED**: JSON-Struktur mit Error-Kategorisierung
 - **IMPROVED**: Performance-optimierte Validierung
 - **IMPROVED**: Erweiterte Session-Classification
+
