@@ -380,6 +380,7 @@ flowchart LR
 │ Status: Running    │ Status: Completed  │ Status: Queued   │
 │ Progress: ████░░░  │ Sharpe: 1.42      │ Est. Start: 2min │
 │ 📈 +2.3% (trend↗) │ MaxDD: -8.5%      │                  │
+│ ⚡ Perf: 2.1ms     │ 🟢 Ready: 96/100  │ 🟡 Pending      │
 └────────────────────┴────────────────────┴──────────────────┘
 ```
 
@@ -388,6 +389,16 @@ flowchart LR
 - **Eigene Parameter-Sets:** Tab-Namen spiegeln die Parameter-Variation wider
 - **Unabhängige Ressourcen:** Separate CPU/RAM-Budgets pro Tab
 - **Isolierte Test-Läufe:** Kein Cross-Tab-State, vollständige Parallelisierung
+- **Performance-Tracking:** Individuelle Overload-Monitoring pro Tab
+
+**Real-time Feedback:**
+- Live Performance-Indikatoren (Profit, Sharpe-Trend)
+- **Performance-Metrics** (Avg Processing-Time, Timeout-Rate)
+- **Production-Readiness-Score** (🟢/🟡/🔴 Ampel-System)
+- Resource-Usage (CPU/RAM) pro Tab
+- ETA basierend auf aktueller Performance
+- Quick-Stop bei negativer Tendenz-Erkennung
+- Cross-Tab-Performance-Comparison (optional sidebar)
 
 **Tab-Naming-Convention:**
 ```

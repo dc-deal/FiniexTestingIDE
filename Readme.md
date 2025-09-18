@@ -1,362 +1,194 @@
 # FiniexTestingIDE
 
-**© 2025 Frank Krätzung. Alle Rechte vorbehalten.**  
-**FiniexTestingIDE** ist eine Marke von Frank Krätzung.
+**© 2025 Frank Krätzung. Alle Rechte vorbehalten.**
 
 ---
 
-## Professionelle Trading-Strategy-Testing & Entwicklungsumgebung
+## Trading-Strategy-Testing IDE - Proof of Concept
 
-Revolutionäre IDE-artige Plattform für das Testen von Trading-Strategien mit IP-Schutz, massiver Parallelisierung und reproduzierbaren Ergebnissen.
+**Current Status:** Data Collection Phase - Building Foundation
 
-**FiniexTestingIDE** löst das fundamentale Problem der Trading-Strategy-Entwicklung:
-*"Wie testet man Strategien schnell, fair und reproduzierbar - ohne das geistige Eigentum preiszugeben?"*
+Parameter-zentrierte Trading-Strategy-Testing-Platform mit fokus auf reproduzierbare Ergebnisse und IP-Schutz.
 
-### Kernfeatures
+---
 
-**Intelligente Datenqualitätssicherung** - Unterscheidung zwischen markt-authentischen Anomalien und system-bedingten Fehlern  
-**Multi-Tab-Testing-IDE** - Parameter-zentrierte Entwicklungsumgebung mit Live-Feedback  
-**Blackbox-API** - Strategien bleiben geheim, Testing bleibt transparent  
-**Massive Parallelisierung** - 1000+ Szenarien gleichzeitig  
-**Reproduzierbare Ergebnisse** - Deterministische Seeds & unveränderliche Snapshots  
-**Production-Ready** - Nahtloser Handover zu Live-Trading-Systemen
+## Was aktuell läuft
 
-### Technische Architektur
+### ✅ Live-Tick-Datensammlung (Produktiv)
+
+**MQL5 TickCollector v1.03** sammelt seit mehreren Tagen kontinuierlich Live-Tick-Daten:
+- 4 Märkte: EURUSD, AUDUSD, GBPUSD, EURCHF
+- Hochwertige JSON-Ausgabe mit Error-Tracking
+- Quality-Metrics und Session-Detection
+- Beispiel-Output: [AUDUSD Sample](./data/samples/AUDUSD_20250916_223859_ticks.json)
+
+**Data Quality Features:**
+- 3-Level Error-Classification (Negligible/Serious/Fatal)
+- Spread-Monitoring und Price-Jump-Detection
+- Session-Awareness (Sydney/Tokyo/London/NY)
+- Automatic Quality-Score-Calculation
+
+```json
+"quality_metrics": {
+  "overall_quality_score": 1.000000,
+  "data_integrity_score": 1.000000,
+  "data_reliability_score": 1.000000
+}
+```
+
+---
+
+## In Entwicklung
+
+### 🔄 Python Data Pipeline
+
+**Nächster Schritt:** JSON → Parquet Conversion Pipeline
+- Quality-Aware Processing basierend auf Metadata
+- Apache Arrow für Zero-Copy Performance
+- Multi-Symbol Data-Loading
+
+### 🔄 Blackbox Framework
+
+**Core-Komponente:** Parameter-Contract-System für Strategy-Testing
+- IP-geschützte Strategy-Integration
+- Parameter-Schema-Definition
+- Signal-Output-Standardisierung
+
+---
+
+## Geplanter Workflow
 
 ```
-MQL5 TickCollector → JSON Export → Python Pipeline → Parquet Database → FiniexTestingIDE
-                                                                         ↓
-                    BlackBox Framework ← Strategy Validation ← Multi-Tab Testing Engine
+Live Trading Data (MQL5) → JSON Export → Python Pipeline → Parquet Storage → Strategy Testing
 ```
 
-**Warum dieser Stack:**
-- **MQL5**: Live-Tick-Daten von jedem Forex-Broker
-- **Apache Arrow/Parquet**: Zero-Copy-Performance für große Datasets  
-- **Python Multiprocessing**: Echte Parallelität (umgeht GIL)
-- **Blackbox-Framework**: IP-Schutz + standardisierte Schnittstelle
+**Vision:** Parameter-zentrierte IDE wo Strategien als Blackboxes gemountet werden und über verschiedene Market-Situationen getestet werden können.
 
 ---
 
-## Aktueller Implementierungsstand
+## Quick Start - Datensammlung
 
-### Vollständig implementiert
-- **MQL5 TickCollector v1.03** mit gestuftem Error-Tracking
-- **JSON → Parquet Pipeline** mit Quality-Metadata-Integration
-- **Quality-Aware Data Loader** mit Multi-Mode-Support
-- **3-Level Error-Classification-System** (Negligible/Serious/Fatal)
-- **Market-Authenticity-Detection** (echte vs. technische Anomalien)
-
-### In Entwicklung  
-- **Blackbox Base-Framework** mit Parameter-Schema-System
-- **Multi-Process Test-Engine** mit Shared-Memory-Access
-- **Basic Parameter-UI** für Development-Mode
-
-### Geplant (MVP)
-- **Multi-Tab Web-Interface** mit Real-time-Updates
-- **Chart-System** mit Timeline-Scrubber und Debug-Overlays
-- **Standard-Indikatoren-Library** (RSI, MACD, Bollinger)
-
----
-
-## Quick Start
-
-### Schritt 1: Datensammlung (Erledigt)
-
+### MQL5 Setup
 ```bash
-# 1. MQL5 TickCollector in MetaTrader 5 installieren
+# 1. TickCollector in MetaTrader 5 installieren
 cp mql5/TickCollector.mq5 [MetaTrader]/MQL5/Experts/
 
-# 2. Auf EURUSD Chart für 48 Stunden laufen lassen
-# → Generiert JSON Tick-Daten in C:/FiniexData/
-
-# 3. Erwarteter Output: 300-900MB rohe Tick-Daten
+# 2. Auf gewünschtem Chart starten
+# → Generiert JSON-Files in C:/FiniexData/
 ```
 
-### Schritt 2: FiniexTestingIDE Setup
+### Sample Data Structure
+Siehe [Beispiel-Output](./data/samples/AUDUSD_20250916_223859_ticks.json) für vollständige JSON-Struktur.
+
+**Key Features der gesammelten Daten:**
+- Millisekunden-Timestamps
+- Bid/Ask/Spread-Tracking  
+- Tick-Flags (BID/ASK/VOLUME)
+- Session-Detection
+- Real-Volume wenn verfügbar
+- Comprehensive Error-Tracking
+
+---
+
+## Project Structure
+
+```
+FiniexTestingIDE/
+├── mql5/
+│   ├── TickCollector.mq5    # ✅ Live Data Collection
+│   └── README.md
+├── data/
+│   └── samples/             # ✅ Example JSON Output
+├── python/                  # 🔄 In Development
+│   ├── data_pipeline/
+│   └── blackbox_framework/
+└── docs/                    # 📋 Architecture Documentation
+```
+
+---
+
+## Development Roadmap
+
+### Phase 1: Data Foundation (Current)
+- [x] **MQL5 TickCollector** - Live data collection system
+- [x] **Quality-Aware JSON Output** - Error tracking and metadata
+- [ ] **Python Data Pipeline** - JSON → Parquet conversion
+- [ ] **Basic Data Loader** - Quality-aware tick streaming
+
+### Phase 2: Core Framework (Next 4-6 weeks)
+- [ ] **Blackbox Base API** - Strategy integration interface
+- [ ] **Parameter Contract System** - IP-protected parameter management
+- [ ] **Single-Process Testing** - First strategy tests with real data
+- [ ] **Console Interface** - Basic CLI for testing
+
+### Phase 3: Multi-Processing (6-8 weeks)
+- [ ] **Parallel Testing Engine** - Multiple strategy tests simultaneously
+- [ ] **Performance Monitoring** - Real-time test progress and metrics
+- [ ] **Results Management** - Performance comparison and ranking
+
+---
+
+## Current Data Collection Stats
+
+**Running since:** September 16, 2025  
+**Symbols tracked:** EURUSD, AUDUSD, GBPUSD, EURCHF  
+**Data quality:** 95-100% (excellent)  
+**Average ticks/minute:** 15-50 depending on session  
+**Storage format:** JSON with comprehensive metadata
+
+---
+
+## Installation & Setup
 
 ```bash
-# 1. Environment einrichten
-pip install -r requirements.txt
-
-# 2. JSON zu Parquet konvertieren  
-python python/tick_importer.py
-
-# 3. Data Loading testen
-python python/data_loader.py
-```
-
-### Schritt 3: Ihre erste Strategy erstellen
-
-```python
-from finiex.blackbox_framework import BlackboxBase, Signal
-
-class MeineStrategy(BlackboxBase):
-    def get_parameter_schema(self):
-        return {
-            'rsi_period': {'type': 'int', 'default': 14, 'description': 'RSI Periode'},
-            'profit_target': {'type': 'float', 'default': 0.002, 'description': 'Gewinnziel %'}
-        }
-    
-    def on_tick(self, tick):
-        # Ihre geheime Trading-Logik hier
-        rsi = self.indicators.rsi(self.price_history, self.parameters['rsi_period'])
-        
-        # Visual Debug (nur in Development-Mode)
-        self.add_line_point("rsi", rsi, tick.timestamp)
-        
-        if rsi < 30:
-            return Signal("BUY", price=tick.ask)
-        elif rsi > 70:
-            return Signal("SELL", price=tick.bid)
-        
-        return Signal("FLAT")
-```
-
----
-
-## MVP Roadmap & TODO-Liste
-
-### Phase 1: Core Framework (4-6 Wochen) - **IN PROGRESS**
-
-#### 1.1 Blackbox-Framework Grundlagen
-- [ ] **BlackboxBase Klasse implementieren**
-  - [ ] Parameter-Schema-System
-  - [ ] Signal-Output-Format definieren  
-  - [ ] Debug-Mode vs. Production-Mode
-  - [ ] Basic Indicator-Library (RSI, MACD, SMA)
-- [ ] **Parameter-Validierung**
-  - [ ] Type-Checking (int, float, bool, string)
-  - [ ] Range-Validierung (min/max)
-  - [ ] Dependency-Rules zwischen Parametern
-- [ ] **Testing-Framework Integration**
-  - [ ] Blackbox-Instanziierung pro Test-Run
-  - [ ] Parameter-Injection-System
-  - [ ] Signal-Collection und -Verarbeitung
-
-#### 1.2 Single-Process Test-Engine  
-- [ ] **Basic Test-Runner**
-  - [ ] Tick-by-Tick Strategy-Execution
-  - [ ] Signal-zu-Trade-Konvertierung
-  - [ ] P&L-Berechnung mit Spread/Slippage
-  - [ ] Basic Performance-Metriken (Sharpe, MaxDD)
-- [ ] **Data-Pipeline-Integration**
-  - [ ] Quality-Aware Parquet-Loading
-  - [ ] Multi-Mode Data-Access (Clean/Realistic/Raw)
-  - [ ] Memory-efficient Tick-Streaming
-- [ ] **Result-Storage**
-  - [ ] Test-Run-Metadaten (Parameter, Timestamps)
-  - [ ] Performance-Metriken als JSON
-  - [ ] Trade-Liste als CSV Export
-
-#### 1.3 Basic Web-Interface
-- [ ] **Single-Tab Testing-UI**
-  - [ ] Parameter-Input-Panel (automatisch generiert aus Schema)
-  - [ ] Start/Stop Test-Controls
-  - [ ] Basic Progress-Anzeige
-  - [ ] Simple Results-Display
-- [ ] **Backend-API (FastAPI)**
-  - [ ] POST /api/test/start - Test starten
-  - [ ] GET /api/test/{id}/status - Status abfragen  
-  - [ ] GET /api/test/{id}/results - Ergebnisse abrufen
-  - [ ] WebSocket für Live-Updates
-- [ ] **Basic Chart-Rendering**
-  - [ ] Candlestick-Chart mit Plotly.js
-  - [ ] Signal-Marker (Buy/Sell-Arrows)
-  - [ ] Basic Zoom/Pan-Funktionalität
-
-### Phase 2: Multi-Tab IDE (6-8 Wochen)
-
-#### 2.1 Multi-Process Test-Engine
-- [ ] **Process-Pool-Management**
-  - [ ] Worker-Process-Spawning
-  - [ ] Shared-Memory für Tick-Daten (Arrow-Buffers)
-  - [ ] Inter-Process-Communication für Results
-  - [ ] Resource-Management (CPU/RAM-Limits)
-- [ ] **Tab-Isolation-System**
-  - [ ] Eine Blackbox-Instanz pro Tab
-  - [ ] Separate Parameter-Sets pro Tab
-  - [ ] Independent Resource-Allocation
-  - [ ] Cross-Tab-Performance-Comparison
-
-#### 2.2 Advanced Parameter-UI
-- [ ] **Smart Parameter-Panel**
-  - [ ] Parameter-Dependency-Visualization
-  - [ ] Auto-Suggestion basierend auf Performance
-  - [ ] Parameter-Synergy-Detection
-  - [ ] Quick-Preset-Management
-- [ ] **Multi-Tab-Interface**
-  - [ ] Tab-Creation/Deletion-Management
-  - [ ] Tab-Naming (basierend auf Parameter-Variation)
-  - [ ] Tab-Status-Monitoring (Running/Completed/Failed)
-  - [ ] Cross-Tab-Result-Comparison
-
-#### 2.3 Real-time Performance-Monitoring
-- [ ] **Live-Statistics-Dashboard**
-  - [ ] Real-time P&L-Updates
-  - [ ] Live Sharpe-Ratio-Berechnung
-  - [ ] Risk-Monitoring (Drawdown-Alerts)
-  - [ ] Trade-Count und Win-Rate-Tracking
-- [ ] **Performance-Trend-Prediction**
-  - [ ] Statistical Trend-Analysis
-  - [ ] Early-Stop-Recommendations
-  - [ ] Performance-Forecasting
-
-### Phase 3: Advanced Features (4-6 Wochen)
-
-#### 3.1 Timeline-Scrubber & Visual-Debug
-- [ ] **Interactive Chart-Navigation**
-  - [ ] Frame-by-Frame-Scrubbing
-  - [ ] Jump-to-Timestamp-Funktion
-  - [ ] Playback-Speed-Controls
-  - [ ] Zoom-to-Signal-Events
-- [ ] **Debug-Overlay-System**
-  - [ ] Indicator-Value-Display per Tick
-  - [ ] Decision-Logic-Visualization
-  - [ ] Parameter-Impact-Highlighting
-  - [ ] Strategy-State-Inspection
-
-#### 3.2 Collection-Management-System  
-- [ ] **Datenkollektion-Manager**
-  - [ ] Timeline-basierte Situation-Selection
-  - [ ] Preset-Market-Scenarios (News-Events, Sessions)
-  - [ ] Quality-Score-Filtering
-  - [ ] Batch-Situation-Creation
-- [ ] **Results-Explorer**
-  - [ ] Performance-Ranking (Best-to-Worst)
-  - [ ] Multi-Criteria-Sorting
-  - [ ] Failed-Run-Analysis
-  - [ ] Export-Functionality (CSV/PDF-Reports)
-
-#### 3.3 Production-Ready Features
-- [ ] **Parameter-Einbrennung-System**
-  - [ ] Development → Production Mode Conversion
-  - [ ] Optimal-Parameter-Identification
-  - [ ] Production-Blackbox-Generation
-  - [ ] Abstract-Parameter-Layer für Live-Tuning
-
-
-### ✅ Abgeschlossene Komponenten
-
-#### Data Collection & Pipeline
-- [x] **MQL5 TickCollector v1.03** - Live Tick-Daten von jedem Forex-Broker
-  - [x] Gestuftes Error-Tracking-System
-  - [x] JSON Export-Format mit Metadaten
-  - [x] 48h+ Datensammlung (300-900MB Output)
-- [x] **JSON → Parquet Pipeline** - Zero-Copy Performance für große Datasets
-  - [x] Quality-Metadata-Integration
-  - [x] 10:1 Daten-Kompression erreicht
-- [x] **Quality-Aware Data Loader** - Multi-Mode Data-Access
-  - [x] 3-Level Error-Classification (Negligible/Serious/Fatal)
-  - [x] Market-Authenticity-Detection
-  - [x] Clean/Realistic/Raw Data-Modi
-
----
-
-## Performance-Ziele
-
-| Metrik | Ziel | Status |
-|--------|------|--------|
-| Time-to-First-Backtest | < 30 min | 🔄 In Arbeit |
-| Parallele Szenarien | 100+ | 📋 Geplant |
-| Determinismus-Rate | ≥ 99% | 📋 Geplant |
-| Daten-Kompression | 10:1 | ✅ Erreicht |
-| UI-Response-Zeit | < 200ms | 📋 Geplant |
-
----
-
-## Projektstruktur
-
-```
-docs/                    # Vollständige Dokumentation
-├── finiex-complete-documentation.md
-├── mql5-data-pipeline.md
-├── finiex-tech-stack.md
-└── finiex-ide-ux-concept.md
-
-mql5/                    # MetaTrader 5 Data Collectors
-├── TickCollector.mq5    # v1.03 mit Error-Tracking ✅
-└── README.md
-
-finiex/
-├── testing_ide/         # Core FiniexTestingIDE
-├── blackbox_framework/  # Blackbox-API & Framework
-├── data_pipeline/       # Quality-Aware Data Processing ✅
-└── core/               # Shared Components
-
-data/                    # Tick-Daten-Storage (gitignored)
-examples/
-├── strategies/          # Beispiel-Strategien
-└── testing_scenarios/   # Test-Szenarien
-
-scripts/                 # Utility-Scripts
-```
-
----
-
-## Prioritäten für MVP
-
-### Woche 1-2: Foundation
-**Ziel:** Lauffähige Single-Tab-Testumgebung
-1. Blackbox-Framework Core
-2. Basic Test-Engine mit Data-Pipeline-Integration  
-3. Simple Web-UI für einen Test-Run
-
-### Woche 3-4: Multi-Tab-System
-**Ziel:** Parallele Parameter-Tests
-1. Multi-Process-Test-Engine
-2. Tab-Management-System
-3. Real-time Performance-Updates
-
-### Woche 5-6: User-Experience  
-**Ziel:** Professionelle IDE-Erfahrung
-1. Timeline-Scrubber für Chart-Navigation
-2. Advanced Parameter-UI mit Synergien
-3. Collection-Management für Markt-Situationen
-
----
-
-## Installation & Development
-
-```bash
-# Repository klonen
+# Clone repository
 git clone https://github.com/dc-deal/FiniexTestingIDE.git
 cd FiniexTestingIDE
 
-# Python-Environment einrichten
-pip install -r requirements.txt
+# Setup MQL5 data collection
+# See mql5/README.md for MetaTrader setup instructions
 
-# Development-Server starten
-python -m finiex.testing_ide.server --dev
+# Python environment (when ready)
+pip install -r requirements.txt  # Coming soon
 ```
-
-### Development-Guidelines
-- Alle Strategien müssen mit dem Blackbox-Framework kompatibel sein
-- Parameter-Schema-Standards einhalten
-- Multi-Tab-Isolation beachten
-- Quality-Aware Data-Loading verwenden
 
 ---
 
 ## Contributing
 
-Wir begrüßen Beiträge zur **FiniexTestingIDE**! Bitte siehe [CONTRIBUTING.md](docs/contributing.md) für Guidelines.
+This is currently a proof-of-concept in active development. The focus is on building a solid data foundation before expanding to the full IDE features.
+
+**Current priorities:**
+1. Reliable data collection pipeline
+2. Quality-aware data processing
+3. Basic strategy testing framework
 
 ---
 
-## Lizenz
+## Why This Approach
 
-Dieses Projekt ist unter der MIT License lizenziert - siehe [LICENSE](LICENSE) für Details.
+**Problem:** Trading strategy development is code-centric, but 80% of time is spent on parameter tuning.
 
-**Wichtig**: Alle **FiniexTestingIDE**-Marken bleiben ausschließliches Eigentum von Frank Krätzung.
+**Solution:** Parameter-centric IDE where strategies are blackboxes with exposed parameters that can be tested across multiple market situations.
 
----
-
-## Kontakt & Support
-
-**Projekt-Maintainer**: Frank Krätzung ([dc-deal](https://github.com/dc-deal))  
-**Issues**: [GitHub Issues](https://github.com/dc-deal/FiniexTestingIDE/issues)  
-**Erste Veröffentlichung**: 17. September 2025
+**Foundation:** High-quality tick data with proper error classification and metadata - without this, no strategy testing platform can deliver reliable results.
 
 ---
 
-**FiniexTestingIDE - Revolutionäre Trading-Strategy-Entwicklung**
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+**Trademarks:** All FiniexTestingIDE marks remain exclusive property of Frank Krätzung.
+
+---
+
+## Status & Contact
+
+**Current Phase:** Data Collection & Pipeline Development  
+**Maintainer:** Frank Krätzung ([dc-deal](https://github.com/dc-deal))  
+**Issues:** [GitHub Issues](https://github.com/dc-deal/FiniexTestingIDE/issues)
+
+---
+
+*Building the foundation for parameter-centric trading strategy development.*

@@ -1,4 +1,4 @@
-# FiniexTestingIDE - Komplette Dokumentation v2.1
+# FiniexTestingIDE - Komplette Dokumentation v2.2
 
 ## Inhaltsverzeichnis
 
@@ -13,6 +13,8 @@
 - **[UI/UX-Konzept](./finiex_ide_ux_concept.md)** - Komplettes Interface-Design und Workflows
 - **[Daten-Pipeline](./finiex_mql5_data_pipeline.md)** - Data Quality Framework und Pipeline-Architektur  
 - **[Tech-Stack](./finiex_tech_stack.md)** - Vollständige Technologie-Architektur
+- **[Overload-Simulation](./overload_simulation_monitoring.md)** - Performance-Stress-Testing-System ⭐
+- **[FiniexAutoTrader](./FiniexAutoTrader/finiex_autotrader_architecture.md)** - Live-Trading-Integration
 
 *⭐ = Implementiert/Produktionsreif*
 
@@ -36,7 +38,7 @@
 
 **Multi-Tab-Testing-IDE:** Parallel-Testing verschiedener Parameter-Kombinationen mit Live-Performance-Feedback.
 
-**Smart Parameter-Optimization:** Automated Missed-Opportunity-Analysis mit One-Click-Parameter-Fixes.
+**Overload-Simulation:** Realistische Performance-Constraints während Backtesting für echte Production-Readiness.
 
 ---
 
@@ -62,6 +64,7 @@ flowchart TB
         Engine[Multi-Process Test Engine]
         Blackboxes[Isolated Blackbox Instances]
         Workers[Worker Pool Management]
+        OverloadSim[Overload Simulation ⭐]
     end
     
     IDE --> DataPipeline
@@ -119,6 +122,29 @@ flowchart TB
 
 **Robustness-Testing:** Dual-Condition Strategy Validation für echte Performance-Vorhersagen.
 
+### 5. Overload-Simulation-System ⭐
+**Status:** Konzeptionell definiert, kritisches Alleinstellungsmerkmal
+
+**Revolutionary Feature:** Simulation realistischer Performance-Constraints während Backtesting.
+- **Asynchrone Tick-Delivery** mit echten Timing-Limits
+- **Real-time Performance-Monitoring** mit Overload-Event-Detection
+- **Production-Readiness-Score** (0-100) für objektive Deployment-Entscheidungen
+- **Stress-Testing-Szenarien** für News-Events und High-Frequency-Perioden
+
+**Löst kritische Lücke:** Strategies müssen beweisen, dass sie auch bei 500+ Hz Tick-Frequenz performant bleiben.
+
+**Details:** [→ Vollständiges Overload-Simulation-System](./overload-simulation-monitoring.md)
+
+### 6. FiniexAutoTrader-Integration
+**Status:** Konzeptionelle Architektur definiert
+
+**Nahtloser Handover:** Zero-Code-Change-Transfer von TestingIDE zu Live-Trading.
+- **Identische Blackbox-API** in beiden Umgebungen
+- **Seamless Data-Continuity** von Historical zu Live-Feeds
+- **Performance-optimierte Execution** mit Sub-Millisekunden-Latenz
+
+**Details:** [→ Vollständige FiniexAutoTrader-Architektur](./finiex-autotrader-architecture.md)
+
 ---
 
 ## Implementierungsstand
@@ -138,10 +164,11 @@ flowchart TB
 - **Multi-Tab Web-Interface** mit Real-time-Updates
 - **Chart-System** mit Timeline-Scrubber und Debug-Overlays
 - **Standard-Indikatoren-Library** (RSI, MACD, Bollinger)
+- **Overload-Simulation-Integration** für realistische Performance-Tests
 
 ### 🚀 Advanced Features (Post-MVP)
 
-**Siehe auch:** [AI Integration Roadmap](./ai_integration_roadmap.md) – Detailliert geplante KI‑Ausbaustufen für die Post‑MVP‑Phase (Parameter‑Intelligence, Market‑Regime‑Detection, generative Strategie‑Entwicklung, Risk‑/Performance‑Prognosen) inkl. Architektur‑Skizzen, Zeitplan und API‑Beispielen.
+**Siehe auch:** [AI Integration Roadmap](./post-mvp/ai_integration_roadmap.md) – Detailliert geplante KI‑Ausbaustufen für die Post‑MVP‑Phase (Parameter‑Intelligence, Market‑Regime‑Detection, generative Strategie‑Entwicklung, Risk‑/Performance‑Prognosen) inkl. Architektur‑Skizzen, Zeitplan und API‑Beispielen.
 
 
 - **Missed-Opportunity-Analyzer** mit One-Click-Parameter-Fixes
@@ -160,6 +187,7 @@ flowchart TB
 - 🔄 Basic Blackbox-Framework  
 - 📋 Simple Web-UI mit einem Tab
 - 📋 Chart-Rendering mit Basic-Controls
+- 📋 **Overload-Simulation-Integration** für realistische Performance-Tests
 
 ### Phase 2: Multi-Tab IDE (6-8 Wochen)
 **Ziel:** Vollständige IDE-Erfahrung
@@ -168,13 +196,14 @@ flowchart TB
 - Advanced Parameter-UI mit Synergie-Detection
 - Real-time Performance-Updates via WebSocket
 - Timeline-Scrubber für detaillierte Analysis
+- **Production-Readiness-Scoring** basierend auf Overload-Tests
 
 ### Phase 3: Intelligence-Layer (4-6 Wochen)
 **Ziel:** Self-Learning Parameter-Optimization
 
 - Missed-Opportunity-Analyzer Implementation
 - Smart Parameter-Suggestions basierend auf Performance-Patterns
-- Production-Mode Blackbox-Generation
+- **FiniexAutoTrader-Handover-System** für seamless Live-Deployment
 - Advanced Robustness-Testing
 
 ### Phase 4: Scale & SaaS (8-10 Wochen)
@@ -193,7 +222,7 @@ Die **FiniexTestingIDE** revolutioniert Trading-Strategy-Development durch:
 
 **🎯 Problem gelöst:** Parameter-Tuning dauert 80% der Entwicklungszeit, aber Tools sind code-zentriert gebaut.
 
-**🚀 Innovation:** Parameter-zentrierte IDE mit intelligenter Market-Data-Quality-Assurance.
+**🚀 Innovation:** Parameter-zentrierte IDE mit intelligenter Market-Data-Quality-Assurance und realistischer Performance-Simulation.
 
 **⚡ Impact:** Verkürzt Parameter-Optimierung von Stunden auf Minuten durch automated Root-Cause-Analysis.
 
@@ -201,35 +230,19 @@ Die **FiniexTestingIDE** revolutioniert Trading-Strategy-Development durch:
 
 **📈 Skalierung:** Von MVP (Single-Tab) bis Enterprise (1000+ parallel Tests) ohne Architektur-Rewrites.
 
+**🎖️ Alleinstellungsmerkmal:** Overload-Simulation schließt kritische Lücke zwischen Backtest-Performance und Live-Trading-Realität.
+
 ---
 
-**Dokumentation Version:** 2.1  
-**Status:** Data-Pipeline produktionsreif, Core-Framework in Entwicklung  
-**Nächstes Milestone:** MVP Phase 1 Completion
+**Dokumentation Version:** 2.2  
+**Status:** Data-Pipeline produktionsreif, Overload-System konzeptioniert, AutoTrader-Integration geplant  
+**Nächstes Milestone:** MVP Phase 1 mit Overload-Simulation
 
 **Detailierte technische Dokumentation:**
 - [UI/UX-Konzept](./finiex_ide_ux_concept.md) - Interface-Design und Workflows
 - [Daten-Pipeline](./finiex_mql5_data_pipeline.md) - Quality-Framework und Pipeline-Details  
 - [Tech-Stack](./finiex_tech_stack.md) - Vollständige Technologie-Architektur
+- [Overload-Simulation](./overload_simulation_monitoring.md) - Performance-Stress-Testing-System ⭐
+- [FiniexAutoTrader](./FiniexAutoTrader/finiex_autotrader_architecture.md) - Live-Trading-Integration
 
-Die FiniexTestingIDE wird der neue Standard für professionelle Trading-Strategy-Entwicklung.ung
-- Nahtloser Übergang von Development zu Live-Trading
-- Industriestandard für professionelle Strategy-Validation
-
----
-
-**Dokumentation Version:** 2.1  
-**Letztes Update:** Januar 2025  
-**Status:** MVP Data-Pipeline implementiert, Core-Framework in Entwicklung  
-**Nächste Review:** Nach Phase 1 Completion
-
----
-
-### Aktueller Entwicklungsstand
-
-**🟢 Produktionsreif:** Daten-Pipeline, Quality-Framework  
-**🟡 In Entwicklung:** Blackbox-Framework, Testing-Engine  
-**🔴 Geplant:** Web-Interface, Visual-Debug, Advanced Features  
-
-Die FiniexTestingIDE ist auf dem besten Weg, der neue Standard für professionelle Trading-Strategy-Entwicklung zu werden.
-
+Die FiniexTestingIDE wird der neue Standard für professionelle Trading-Strategy-Entwicklung.
