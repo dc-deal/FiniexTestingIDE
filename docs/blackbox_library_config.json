@@ -1,0 +1,46 @@
+{
+  "blackbox_library": {
+    "name": "20TradingSnippets",
+    "version": "1.2.0",
+    "description": "Production-ready trading strategies collection",
+    "base_path": "./libraries/20TradingSnippets/",
+    "strategies": [
+      {
+        "class": "MACDStrategy",
+        "file": "macd_strategy.py",
+        "version": "1.0",
+        "description": "Classic MACD crossover with adaptive risk management",
+        "parameter_count": 6,
+        "complexity": "MEDIUM",
+        "recommended_warmup_bars": 500,
+        "typical_processing_time_ms": 2.5,
+        "memory_footprint_mb": 15,
+        "supported_timeframes": ["1m", "5m", "15m", "1h"]
+      },
+      {
+        "class": "RSIMeanReversionStrategy", 
+        "file": "rsi_mean_reversion.py",
+        "version": "2.1",
+        "description": "RSI-based mean reversion with dynamic thresholds",
+        "parameter_count": 8,
+        "complexity": "HIGH",
+        "recommended_warmup_bars": 200,
+        "typical_processing_time_ms": 4.2,
+        "memory_footprint_mb": 22,
+        "supported_timeframes": ["1m", "5m", "15m"]
+      },
+      {
+        "class": "BollingerBreakoutStrategy",
+        "file": "bollinger_breakout.py", 
+        "version": "1.5",
+        "description": "Bollinger Band breakout with volume confirmation",
+        "parameter_count": 7,
+        "complexity": "MEDIUM", 
+        "recommended_warmup_bars": 300,
+        "typical_processing_time_ms": 3.8,
+        "memory_footprint_mb": 18,
+        "supported_timeframes": ["5m", "15m", "1h"]
+      }
+    ]
+  }
+}

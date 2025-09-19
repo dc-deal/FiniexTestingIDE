@@ -1,0 +1,30 @@
+{
+  "test_run": {
+    "name": "MACD-Conservative",
+    "description": "Conservative MACD strategy testing across volatility scenarios",
+    "library": "20TradingSnippets",
+    "blackbox": {
+      "class": "MACDStrategy",
+      "version": "1.0",
+      "parameters": {
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9,
+        "risk_per_trade": 0.02,
+        "use_adaptive_stops": true,
+        "market_session_filter": "london_ny_overlap"
+      }
+    },
+    "data_collection": "volatility_scenarios_q3_2025",
+    "execution": {
+      "mode": "batch_test",
+      "parallel_processes": 12,
+      "timeout_per_situation": 300
+    },
+    "output": {
+      "detailed_logs": true,
+      "export_trades": true,
+      "performance_metrics": ["sharpe", "max_drawdown", "win_rate", "profit_factor"]
+    }
+  }
+}

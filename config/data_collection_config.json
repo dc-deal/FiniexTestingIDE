@@ -1,0 +1,86 @@
+{
+  "data_collection": {
+    "id": "volatility_scenarios_q3_2025",
+    "name": "Q3 2025 Volatility Scenarios",
+    "description": "Mixed volatility situations for robust strategy testing",
+    "created": "2025-01-15T10:30:00Z",
+    "warmup_bars": 500,
+    "situations": [
+      {
+        "id": "situation_001",
+        "name": "EURUSD Full Day Standard",
+        "symbol": "EURUSD",
+        "date_from": "2025-09-18T00:00:00Z",
+        "date_to": "2025-09-18T23:59:59Z",
+        "comment": "Standard trading day, mixed conditions",
+        "data_quality": 0.967,
+        "estimated_ticks": 45000,
+        "data_file": "./data/EURUSD_20250918_ticks.parquet"
+      },
+      {
+        "id": "situation_002", 
+        "name": "AUDUSD Full Day Calm",
+        "symbol": "AUDUSD",
+        "date_from": "2025-09-17T00:00:00Z", 
+        "date_to": "2025-09-17T23:59:59Z",
+        "comment": "Low volatility Asian session dominant",
+        "data_quality": 0.982,
+        "estimated_ticks": 23000,
+        "data_file": "./data/AUDUSD_20250917_ticks.parquet"
+      },
+      {
+        "id": "situation_003",
+        "name": "EURUSD US Market Entry High Vol",
+        "symbol": "EURUSD", 
+        "date_from": "2025-08-16T15:00:00Z",
+        "date_to": "2025-08-16T17:00:00Z", 
+        "comment": "US market entry, extreme volatility spike, possible NFP",
+        "data_quality": 0.891,
+        "estimated_ticks": 12500,
+        "volatility_category": "HIGH",
+        "special_events": ["nfp_release", "fomc_minutes"],
+        "data_file": "./data/EURUSD_20250816_1500_1700_ticks.parquet"
+      },
+      {
+        "id": "situation_004",
+        "name": "EURCHF Low Vol Close", 
+        "symbol": "EURCHF",
+        "date_from": "2025-08-12T17:00:00Z",
+        "date_to": "2025-08-12T22:00:00Z",
+        "comment": "Low volatility end of day, thin liquidity",
+        "data_quality": 0.945,
+        "estimated_ticks": 8500,
+        "volatility_category": "LOW",
+        "liquidity_category": "THIN",
+        "data_file": "./data/EURCHF_20250812_1700_2200_ticks.parquet"
+      },
+      {
+        "id": "situation_005",
+        "name": "GBPUSD Brexit Spike",
+        "symbol": "GBPUSD",
+        "date_from": "2025-07-22T08:30:00Z",
+        "date_to": "2025-07-22T10:30:00Z", 
+        "comment": "Political news spike, gap risk scenario",
+        "data_quality": 0.876,
+        "estimated_ticks": 15500,
+        "volatility_category": "EXTREME",
+        "special_events": ["political_announcement"],
+        "risk_warnings": ["gap_risk", "low_liquidity_spikes"],
+        "data_file": "./data/GBPUSD_20250722_0830_1030_ticks.parquet"
+      }
+    ],
+    "statistics": {
+      "total_situations": 5,
+      "total_estimated_ticks": 104500,
+      "avg_data_quality": 0.932,
+      "volatility_distribution": {
+        "low": 1,
+        "standard": 2, 
+        "high": 1,
+        "extreme": 1
+      },
+      "symbols_covered": ["EURUSD", "AUDUSD", "EURCHF", "GBPUSD"],
+      "time_coverage_hours": 43.5
+    }
+  }
+}
