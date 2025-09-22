@@ -131,6 +131,7 @@ dmypy.json
 # FiniexTestingIDE specific
 data/raw/*.json
 data/processed/*.parquet
+data/finished/*.json 
 data/cache/
 *.log
 .DS_Store
@@ -140,7 +141,6 @@ Thumbs.db
 *.ex5
 
 # IDE files
-.vscode/
 .idea/
 *.swp
 *.swo

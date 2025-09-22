@@ -13,6 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import logging
 from typing import List, Dict, Optional
+from config import MOVE_PROCESSED_FILES, DEV_MODE, DEBUG_LOGGING
 
 # Logging Setup
 logging.basicConfig(level=logging.INFO,
@@ -116,9 +117,28 @@ class TickDataImporter:
         try:
             table = pa.Table.from_pandas(df)
             table = table.replace_schema_metadata(parquet_metadata)
-
             pq.write_table(table, parquet_path, compression='snappy')
+            
+            # Statistiken HIER berechnen (bevor File moved wird)
+            json_size = json_file.stat().st_size
+            parquet_size = parquet_path.stat().st_size
+            compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
+            
+            # DANN erst das File moven
+            if MOVE_PROCESSED_FILES:
+                finished_dir = Path("./data/finished/")
+                finished_dir.mkdir(exist_ok=True)
+                finished_file = finished_dir / json_file.name
+                json_file.rename(finished_file)
+                logger.info(f"→ Moved {json_file.name} to finished/")
+            else:
+                logger.info(f"→ DEV_MODE: File bleibt in raw/ (MOVE_PROCESSED_FILES=false)")
 
+            # Logging
+            logger.info(f"✓ {parquet_name}: {len(df):,} Ticks, "
+                        f"Kompression {compression_ratio:.1f}:1 "
+                        f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)")
+            logger.info(f"→ Moved {json_file.name} to finished/")
         except Exception as e:
             logger.error(f"FEHLER beim Schreiben von {parquet_path}")
             logger.error(f"Original Error: {str(e)}")
@@ -128,18 +148,6 @@ class TickDataImporter:
             for key, value in parquet_metadata.items():
                 logger.error(f"  {key}: {value} (Type: {type(value)})")
             raise  # Re-raise den Original-Error
-
-        # Statistiken aktualisieren
-        self.total_ticks += len(df)
-
-        # Kompressionsrate berechnen
-        json_size = json_file.stat().st_size
-        parquet_size = parquet_path.stat().st_size
-        compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
-
-        logger.info(f"✓ {parquet_name}: {len(df):,} Ticks, "
-                    f"Kompression {compression_ratio:.1f}:1 "
-                    f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)")
 
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Optimiert Datentypen für bessere Performance und Speichernutzung"""
