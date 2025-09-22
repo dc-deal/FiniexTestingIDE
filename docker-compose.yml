@@ -1,0 +1,15 @@
+services:
+  finiex-dev:
+    build: .
+    container_name: finiex-testing-ide
+    ports:
+      - "8888:8888" # Jupyter
+    volumes:
+      - .:/app # Dein Code
+      - ./data:/app/data # Daten-Ordner
+      - ./notebooks:/app/notebooks # Jupyter Notebooks
+    environment:
+      - PYTHONPATH=/app
+    stdin_open: true # Für interaktive Shell
+    tty: true # Für interaktive Shell
+    command: [ "tail", "-f", "/dev/null" ] # Hält Container am Leben

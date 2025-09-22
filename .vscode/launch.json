@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Importer (DEV - No Move)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/tick_importer.py",
+            "env": {
+                "FINIEX_DEV_MODE": "true",
+                "FINIEX_MOVE_FILES": "false",
+                "FINIEX_DEBUG": "true"
+            }
+        },
+        {
+            "name": "Run Importer (PROD)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/tick_importer.py",
+            "env": {
+                "FINIEX_MOVE_FILES": "true"
+            }
+        }
+    ]
+}
