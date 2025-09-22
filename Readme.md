@@ -154,6 +154,50 @@ pip install -r requirements.txt  # Coming soon
 
 ---
 
+# docker setup
+
+## Schritt 1: Container bauen
+
+```sh
+# In deinem Projektordner
+docker-compose build
+
+# Das dauert ein paar Minuten beim ersten Mal
+```
+
+## Schritt 2: Container starten
+
+```sh
+# Container im Hintergrund starten
+docker-compose up -d
+
+# In den Container "einsteigen" (-i = interaktiv)
+docker-compose exec finiex-dev bash -i
+
+# Sollte sowas zeigen: root@containerid:/app#
+```
+Im Container:
+
+```sh
+python --version
+# Sollte zeigen: Python 3.12.x
+
+pip list | grep pandas
+# Sollte pandas anzeigen
+
+# Python REPL testen, mit ein paar befehlen in der PYTHON REPL (-i = interaktiv)
+python -i
+>>> import pandas as pd
+>>> import pyarrow as pa
+>>> print("Setup erfolgreich!")
+>>> exit()
+```
+
+
+# DB monitoring tools
+
+Jupyter Notebooks - Das sind interaktive Web-basierte "Notizbücher" wo du Python-Code in Zellen ausführen kannst, mit sofortiger Ausgabe von Graphiken, Datenframes etc. Für Datenanalyse sind sie Industriestandard. Ja, definitiv vorrichten - bei Tick-Data-Exploration sind sie sehr wertvoll (visualisieren, experimentieren, schnelle Datenqualitäts-Checks).
+
 ## Contributing
 
 This is currently a proof-of-concept in active development. The focus is on building a solid data foundation before expanding to the full IDE features.
