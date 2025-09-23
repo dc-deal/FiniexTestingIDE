@@ -6,10 +6,19 @@ services:
       - "8888:8888" # Jupyter
     volumes:
       - .:/app # Dein Code
-      - ./data:/app/data # Daten-Ordner
+      - ./data:/app/data # Daten-Ordner  
       - ./notebooks:/app/notebooks # Jupyter Notebooks
+      # Git Konfiguration vom Host übernehmen
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro # SSH Keys für Git
     environment:
       - PYTHONPATH=/app
     stdin_open: true # Für interaktive Shell
     tty: true # Für interaktive Shell
-    command: [ "tail", "-f", "/dev/null" ] # Hält Container am Leben
+    command: |
+      bash -c "
+        # Jupyter im Hintergrund starten
+        jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' &
+        # Container am Leben halten
+        tail -f /dev/null
+      "
