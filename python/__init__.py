@@ -8,7 +8,7 @@ __author__ = "dc-deal"
 __description__ = "Professional Trading Strategy Testing & Development Environment"
 
 # Core imports
-from .blackbox_framework import BlackboxBase, Signal, Tick, Parameter
+# from .blackbox_framework import BlackboxBase, Signal, Tick, Parameter
 from .data_loader import TickDataLoader
 from .tick_importer import TickDataImporter
 
