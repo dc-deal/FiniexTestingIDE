@@ -11,26 +11,8 @@ from typing import List, Dict, Any, Optional, Tuple, Iterator
 import logging
 
 # Import your existing data loader
+from python.blackbox import TickData
 from python.data_loader import TickDataLoader
-
-# Import the new blackbox types
-from dataclasses import dataclass
-
-
-@dataclass
-class TickData:
-    """Tick data structure for blackbox system"""
-
-    timestamp: str
-    symbol: str
-    bid: float
-    ask: float
-    volume: float = 0.0
-
-    @property
-    def mid(self) -> float:
-        return (self.bid + self.ask) / 2.0
-
 
 logger = logging.getLogger(__name__)
 

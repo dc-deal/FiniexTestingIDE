@@ -8,18 +8,13 @@ import time
 from typing import Dict, Any, List
 from pathlib import Path
 
-# Your existing imports
-from python.data_loader import TickDataLoader
-
-# New blackbox imports
-from python.blackbox.multiprocess_architecture import (
-    RSIWorker,
-    EnvelopeWorker,
-    DecisionOrchestrator,
-    BlackboxAdapter,
-    TickData,
-)
 from python.blackbox.tick_data_preparator import TickDataPreparator
+from python.data_loader import TickDataLoader
+from python.blackbox.decision_orchestrator import DecisionOrchestrator
+from python.blackbox.blackbox_adapter import BlackboxAdapter
+from python.blackbox.workers.envelope_worker import EnvelopeWorker
+from python.blackbox.workers.rsi_worker import RSIWorker
+
 
 # Setup logging for debugging
 logging.basicConfig(
