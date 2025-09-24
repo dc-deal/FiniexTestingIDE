@@ -13,13 +13,11 @@ from .multiprocess_architecture import (
     AbstractBlackboxWorker,
     DecisionOrchestrator,
     BlackboxAdapter,
-    
     # Data structures
     TickData,
     WorkerResult,
     WorkerContract,
     WorkerState,
-    
     # Concrete worker implementations
     RSIWorker,
     EnvelopeWorker,
@@ -35,23 +33,19 @@ from .tick_data_preparator import (
 __all__ = [
     # Core Framework
     "AbstractBlackboxWorker",
-    "DecisionOrchestrator", 
+    "DecisionOrchestrator",
     "BlackboxAdapter",
-    
     # Data Structures
     "TickData",
-    "WorkerResult", 
+    "WorkerResult",
     "WorkerContract",
     "WorkerState",
-    
     # Pre-built Workers
     "RSIWorker",
     "EnvelopeWorker",
-    
     # Data Preparation
     "TickDataPreparator",
     "quick_prepare_for_testing",
-    
     # Module Info
     "__version__",
     "__description__",

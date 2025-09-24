@@ -14,9 +14,9 @@ from .tick_importer import TickDataImporter
 
 __all__ = [
     "BlackboxBase",
-    "Signal", 
+    "Signal",
     "Tick",
     "Parameter",
     "TickDataLoader",
-    "TickDataImporter"
+    "TickDataImporter",
 ]
