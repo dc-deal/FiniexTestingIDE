@@ -31,14 +31,14 @@
             }
         },
         {
-            "name": "🔬 Framework: Blackbox Test",
+            "name": "🚀 Strategy Runner - Full Test (DEV)",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/python/blackbox_framework.py",
+            "program": "${workspaceFolder}/python/blackbox/strategy_runner.py",
+            "console": "integratedTerminal",
             "env": {
-                "FINIEX_MOVE_FILES": "false",
                 "FINIEX_DEV_MODE": "true"
-            },
-        }
+            }
+        },
     ]
 }
