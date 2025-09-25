@@ -1,36 +1,35 @@
-# Core architecture imports
-from .decision_orchestrator import (
-    DecisionOrchestrator,
-)
-from .blackbox_adapter import (
-    BlackboxAdapter,
-)
+"""
+FiniexTestingIDE Blackbox Framework
+Complete blackbox trading system
+"""
 
-# Data structures
-from .types import (
+from python.blackbox.types import (
     TickData,
+    Bar,
     WorkerResult,
     WorkerContract,
+    TestScenario,
+    GlobalContract,
+    TimeframeConfig,
     WorkerState,
 )
 
-# Data preparation imports
-from .tick_data_preparator import (
-    TickDataPreparator,
-    quick_prepare_for_testing,
-)
+from python.blackbox.decision_orchestrator import DecisionOrchestrator
+from python.blackbox.blackbox_adapter import BlackboxAdapter
+from python.blackbox.batch_orchestrator import BatchOrchestrator
 
-# Clean export list
 __all__ = [
-    # Core Framework
-    "DecisionOrchestrator",
-    "BlackboxAdapter",
-    # Data Structures
+    # Core Types
     "TickData",
+    "Bar",
     "WorkerResult",
     "WorkerContract",
+    "TestScenario",
+    "GlobalContract",
+    "TimeframeConfig",
     "WorkerState",
-    # Data Preparation
-    "TickDataPreparator",
-    "quick_prepare_for_testing",
+    # Orchestration
+    "DecisionOrchestrator",
+    "BlackboxAdapter",
+    "BatchOrchestrator",
 ]

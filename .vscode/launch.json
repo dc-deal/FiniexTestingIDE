@@ -31,14 +31,50 @@
             }
         },
         {
-            "name": "🚀 Strategy Runner - Full Test (DEV)",
+            "name": "🔬 Strategy Runner - Entry",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/python/blackbox/strategy_runner.py",
+            "program": "${workspaceFolder}/python/blackbox/strategy_runner_enhanced.py",
             "console": "integratedTerminal",
-            "env": {
-                "FINIEX_DEV_MODE": "true"
-            }
+            "justMyCode": false
         },
+        {
+            "name": "🧪 Batch Orchestrator - Direct",
+            "type": "python",
+            "request": "launch",
+            "module": "python.blackbox.batch_orchestrator",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Data Loader - Check Symbols",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/data_loader.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "🎯 Single Worker Test - RSI",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/blackbox/rsi_worker.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "🐛 Debug with Breakpoints",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_test.py",
+            "args": [
+                "--symbol",
+                "EURUSD",
+                "--max-ticks",
+                "10",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "stopOnEntry": false
+        }
     ]
 }
