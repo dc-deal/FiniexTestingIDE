@@ -61,13 +61,8 @@ class AbstractBlackboxWorker(ABC):
         Returns:
             Dict[timeframe, bars_needed]
         """
-        contract = self.get_contract()
-        requirements = {}
 
-        for tf in self.get_required_timeframes():
-            requirements[tf] = contract.min_warmup_bars
-
-        return requirements
+        return {}# Default
 
     @abstractmethod
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:

@@ -13,6 +13,9 @@ from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.workers.rsi_worker import RSIWorker
 from python.blackbox.workers.envelope_worker import EnvelopeWorker
 from python.blackbox.decision_orchestrator import DecisionOrchestrator
+from python.blackbox.tick_data_preparator import TickDataPreparator
+from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
+
 
 logger = logging.getLogger(__name__)
 
@@ -173,8 +176,6 @@ class BatchOrchestrator:
         This is the core execution logic that works the same for
         1 scenario or 1000+ scenarios
         """
-        from python.data_preparator import TickDataPreparator
-        from python.bar_rendering import BarRenderingOrchestrator
 
         # 1. Create strategy adapter
         adapter = self._create_adapter(scenario)

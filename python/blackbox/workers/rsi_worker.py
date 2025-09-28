@@ -13,7 +13,9 @@ class RSIWorker(AbstractBlackboxWorker):
         self.timeframe = timeframe
         super().__init__("RSI", kwargs)
 
+
     def get_contract(self) -> WorkerContract:
+
         return WorkerContract(
             min_warmup_bars=self.period + 10,
             parameters={"rsi_period": self.period, "rsi_timeframe": self.timeframe},
@@ -22,6 +24,13 @@ class RSIWorker(AbstractBlackboxWorker):
             required_timeframes=self.get_required_timeframes(),
             warmup_requirements=self.get_warmup_requirements(),
         )
+    
+    def get_warmup_requirements(self):
+        requirements = {}
+        min_warmup_bars=self.period + 10
+        for tf in self.get_required_timeframes():
+            requirements[tf] = min_warmup_bars
+        return requirements
 
     def get_required_timeframes(self) -> List[str]:
         """Define timeframes needed"""

@@ -17,6 +17,11 @@ from python.blackbox.types import (
 from python.blackbox.decision_orchestrator import DecisionOrchestrator
 from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.batch_orchestrator import BatchOrchestrator
+from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
+from python.blackbox.bar_renderer import BarRenderer
+from python.blackbox.warmup_manager import WarmupManager
+from python.blackbox.tick_data_preparator import TickDataPreparator
+
 
 __all__ = [
     # Core Types
@@ -32,4 +37,9 @@ __all__ = [
     "DecisionOrchestrator",
     "BlackboxAdapter",
     "BatchOrchestrator",
+    # bar rendering system
+    "BarRenderingOrchestrator",
+    "BarRenderer",
+    "WarmupManager",
+    "TickDataPreparator"
 ]
