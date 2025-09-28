@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    // Core Python Development (Essential)
+    "ms-python.python",
+    "ms-python.black-formatter",
+    
+    // Testing (Essential for Strategy Development)
+    "ms-python.pytest",
+    
+    // MQL5 Support (Essential for Data Collection)
+    "mql5.mql5-vscode",
+    
+    // Docker (Essential for Environment)
+    "ms-vscode-remote.remote-containers"
+  ]
+}
