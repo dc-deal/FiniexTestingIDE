@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "📊 Data Pipeline: Import Ticks (DEV)",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/tick_importer.py",
             "env": {
@@ -13,7 +13,7 @@
         },
         {
             "name": "📊 Data Pipeline: Import Ticks (PROD)",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/tick_importer.py",
             "env": {
@@ -21,24 +21,22 @@
             }
         },
         {
-            "name": "📊 Data Pipeline: Load Data (TEST)",
-            "type": "python",
+            "name": "📊 Data Pipeline: Test Data Report",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/data_loader.py",
+            "program": "${workspaceFolder}/python/data_loader/reports.py",
             "env": {
                 "FINIEX_MOVE_FILES": "false",
                 "FINIEX_DEV_MODE": "true"
             }
         },
         {
-            "name": "🚀 Strategy Runner - Full Test (DEV)",
-            "type": "python",
+            "name": "🔬 Strategy Runner - Batch - Entry",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/blackbox/strategy_runner.py",
+            "program": "${workspaceFolder}/python/blackbox/strategy_runner_enhanced.py",
             "console": "integratedTerminal",
-            "env": {
-                "FINIEX_DEV_MODE": "true"
-            }
+            "justMyCode": false
         },
     ]
 }

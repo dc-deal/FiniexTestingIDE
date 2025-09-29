@@ -145,11 +145,6 @@ FiniexTestingIDE/
 git clone https://github.com/dc-deal/FiniexTestingIDE.git
 cd FiniexTestingIDE
 
-# Setup MQL5 data collection
-# See mql5/README.md for MetaTrader setup instructions
-
-# Python environment (when ready)
-pip install -r requirements.txt  # Coming soon
 ```
 
 ---
@@ -162,7 +157,11 @@ pip install -r requirements.txt  # Coming soon
 # In deinem Projektordner
 docker-compose build
 
-# Das dauert ein paar Minuten beim ersten Mal
+# Das dauert ein paar Minuten beim ersten Mal!
+
+# Python dependencies werden mit-Installiert - s. 
+# COPY requirements.txt .
+
 ```
 
 ## Schritt 2: Container starten
@@ -185,6 +184,9 @@ python --version
 pip list | grep pandas
 # Sollte pandas anzeigen
 
+# ev. via PIP packages Installieren
+pip install -e .
+
 # Python REPL testen, mit ein paar befehlen in der PYTHON REPL (-i = interaktiv)
 python -i
 >>> import pandas as pd
@@ -193,10 +195,24 @@ python -i
 >>> exit()
 ```
 
+# VsCode
+
+Dev Containters installieren
+
+In VsCode strg + shift + p (run command..)
+- Dev Containers: ReOpen in Container
+
+Zurück in den Lokalen Container:
+- Dev Containers: ReOpen Folder Locally
+
+s. Config file .devcontainer/devcontainer.json
+
 
 # DB monitoring tools
 
 Jupyter Notebooks - Das sind interaktive Web-basierte "Notizbücher" wo du Python-Code in Zellen ausführen kannst, mit sofortiger Ausgabe von Graphiken, Datenframes etc. Für Datenanalyse sind sie Industriestandard. Ja, definitiv vorrichten - bei Tick-Data-Exploration sind sie sehr wertvoll (visualisieren, experimentieren, schnelle Datenqualitäts-Checks).
+
+Port: 8888
 
 ## Contributing
 

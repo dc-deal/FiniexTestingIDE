@@ -1,52 +1,70 @@
 import numpy as np
+from typing import List, Dict
 
-from python.blackbox import WorkerContract, TickData, WorkerResult
+from python.blackbox.types import WorkerContract, TickData, WorkerResult, Bar
 from python.blackbox.abstract import AbstractBlackboxWorker
 
 
 class RSIWorker(AbstractBlackboxWorker):
-    """RSI computation worker"""
+    """RSI computation worker - Bar-based computation"""
 
-    def __init__(self, period: int = 14, **kwargs):
-        super().__init__("RSI", kwargs)
+    def __init__(self, period: int = 14, timeframe: str = "M5", **kwargs):
         self.period = period
+        self.timeframe = timeframe
+        super().__init__("RSI", kwargs)
 
     def get_contract(self) -> WorkerContract:
+
         return WorkerContract(
-            min_warmup_bars=self.period + 10,  # Extra for stability
-            parameters={"rsi_period": self.period},
+            parameters={"rsi_period": self.period, "rsi_timeframe": self.timeframe},
             price_change_sensitivity=0.0001,
             max_computation_time_ms=50.0,
+            required_timeframes=self.get_required_timeframes(),
+            warmup_requirements=self.get_warmup_requirements(),
         )
 
-    def should_recompute(self, tick: TickData, history_length: int) -> bool:
-        """RSI recomputes on any meaningful price change"""
-        if history_length < self.period:
-            return False  # Not enough data
+    def get_warmup_requirements(self):
+        requirements = {}
+        minimum_warmup_bars = self.period + 10
+        for tf in self.get_required_timeframes():
+            requirements[tf] = minimum_warmup_bars
+        return requirements
 
-        price_change = abs(tick.mid - self.last_processed_price)
-        return price_change >= 0.0001  # 1 pip for forex
+    def get_required_timeframes(self) -> List[str]:
+        """Define timeframes needed"""
+        return [self.timeframe]
 
-    def compute(self, tick: TickData, price_history: np.ndarray) -> WorkerResult:
-        """Fast RSI computation using numpy"""
+    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+        """RSI recomputes when bar updated"""
+        return bar_updated
 
-        if len(price_history) < self.period + 1:
+    def compute(
+        self,
+        tick: TickData,
+        bar_history: Dict[str, List[Bar]],
+        current_bars: Dict[str, Bar],
+    ) -> WorkerResult:
+        """RSI computation using bar close prices"""
+
+        # Get bar history for our timeframe
+        bars = bar_history.get(self.timeframe, [])
+
+        if len(bars) < self.period + 1:
             return WorkerResult(
                 worker_name=self.name,
-                value=50.0,  # Neutral RSI
+                value=50.0,
                 confidence=0.0,
-                metadata={"insufficient_data": True},
+                metadata={"insufficient_bars": True, "bars_available": len(bars)},
             )
 
-        # Get last period+1 prices for RSI calculation
-        prices = price_history[-(self.period + 1) :]
+        # Extract close prices from bars
+        close_prices = np.array([bar.close for bar in bars[-(self.period + 1) :]])
 
-        # Calculate price changes
-        deltas = np.diff(prices)
+        # Calculate RSI
+        deltas = np.diff(close_prices)
         gains = np.where(deltas > 0, deltas, 0)
         losses = np.where(deltas < 0, -deltas, 0)
 
-        # Calculate averages
         avg_gain = np.mean(gains)
         avg_loss = np.mean(losses)
 
@@ -56,8 +74,8 @@ class RSIWorker(AbstractBlackboxWorker):
             rs = avg_gain / avg_loss
             rsi = 100.0 - (100.0 / (1.0 + rs))
 
-        # Confidence based on data quality
-        confidence = min(1.0, len(price_history) / (self.period * 2))
+        # Confidence based on bar quality
+        confidence = min(1.0, len(bars) / (self.period * 2))
 
         return WorkerResult(
             worker_name=self.name,
@@ -65,8 +83,9 @@ class RSIWorker(AbstractBlackboxWorker):
             confidence=confidence,
             metadata={
                 "period": self.period,
+                "timeframe": self.timeframe,
                 "avg_gain": float(avg_gain),
                 "avg_loss": float(avg_loss),
-                "data_points": len(prices),
+                "bars_used": len(close_prices),
             },
         )

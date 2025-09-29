@@ -1,0 +1,18 @@
+{
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/*.egg-info": true,
+        "**/htmlcov": true,
+        "**/.coverage": true,
+        "**/node_modules": true,
+        "**/.DS_Store": true
+    },
+    "search.exclude": {
+        "**/data/raw": true,
+        "**/data/processed": true,
+        "**/data/cache": true
+    }
+}

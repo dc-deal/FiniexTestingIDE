@@ -1,272 +1,175 @@
 """
-FiniexTestingIDE - Multi-Process Blackbox Architecture
-Production-ready implementation with true parallelization
+FiniexTestingIDE - Decision Orchestrator
+Coordinates multiple workers and generates trading decisions
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field
-from multiprocessing import Process, Queue, Event, shared_memory, Manager
-from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
-import numpy as np
-import time
 import logging
-import threading
-from enum import Enum
-import pickle
+from typing import Dict, List, Any, Optional
+import time
 
+from python.blackbox.types import TickData, Bar, WorkerState
 from python.blackbox.abstract import AbstractBlackboxWorker
-from python.blackbox.types import WorkerContract, WorkerState, WorkerResult, TickData
 
 logger = logging.getLogger(__name__)
 
 
 class DecisionOrchestrator:
     """
-    Orchestrates multiple workers and makes final trading decision
-    This is the main "brain" - the actual blackbox logic
+    Orchestrates multiple workers to generate trading decisions
     """
 
-    def __init__(self, workers: List[AbstractBlackboxWorker], max_workers: int = None):
-        self.workers = {worker.name: worker for worker in workers}
-        self.max_workers = max_workers or len(workers)
+    def __init__(self, workers: List[AbstractBlackboxWorker]):
+        """
+        Initialize orchestrator with workers
 
-        # Shared memory for price history
-        self.price_history_shm: Optional[shared_memory.SharedMemory] = None
-        self.price_array: Optional[np.ndarray] = None
-        self.max_history = 1000
-        self.current_history_length = 0
-
-        # Process pool for workers
-        self.executor: Optional[ProcessPoolExecutor] = None
+        Args:
+            workers: List of worker instances
+        """
+        self.workers: Dict[str, AbstractBlackboxWorker] = {
+            worker.name: worker for worker in workers
+        }
         self.is_initialized = False
-
-        # Decision parameters (this is the secret sauce)
-        self.rsi_oversold = 30.0
-        self.rsi_overbought = 70.0
-        self.confidence_threshold = 0.7
-
-    def initialize(self) -> Dict[str, Any]:
-        """Initialize shared memory and worker processes"""
-
-        # Aggregate contracts from all workers
-        aggregated_contract = self._aggregate_contracts()
-
-        # Create shared memory for price history
-        self._create_shared_memory()
-
-        # Initialize process pool
-        self.executor = ProcessPoolExecutor(
-            max_workers=self.max_workers,
-            initializer=self._worker_initializer,
-            initargs=(self.price_history_shm.name, self.max_history),
-        )
-
-        # Attach workers to shared memory in main process too
-        for worker in self.workers.values():
-            worker.attach_shared_memory(self.price_history_shm.name, self.max_history)
-
-        self.is_initialized = True
-        logger.info(
-            f"Decision orchestrator initialized with {len(self.workers)} workers"
-        )
-
-        return aggregated_contract
-
-    def _aggregate_contracts(self) -> Dict[str, Any]:
-        """Aggregate worker contracts - this is the 'lifting' you mentioned"""
-
-        max_warmup = 0
-        all_parameters = {}
-
-        for worker in self.workers.values():
-            contract = worker.get_contract()
-            max_warmup = max(max_warmup, contract.min_warmup_bars)
-            all_parameters.update(contract.parameters)
-
-        # Add decision-level parameters
-        all_parameters.update(
-            {
-                "decision_rsi_oversold": self.rsi_oversold,
-                "decision_rsi_overbought": self.rsi_overbought,
-                "decision_confidence_threshold": self.confidence_threshold,
-            }
-        )
-
-        return {
-            "min_warmup_bars": max_warmup,
-            "parameters": all_parameters,
-            "worker_count": len(self.workers),
+        self._worker_results = {}
+        self._statistics = {
+            "ticks_processed": 0,
+            "decisions_made": 0,
+            "worker_calls": 0,
         }
 
-    def _create_shared_memory(self):
-        """Create shared memory for price history"""
-        try:
-            # Create shared memory buffer
-            shm_size = self.max_history * 8  # 8 bytes per float64
-            self.price_history_shm = shared_memory.SharedMemory(
-                create=True, size=shm_size, name=f"price_history_{id(self)}"
-            )
+    def initialize(self):
+        """Initialize orchestrator and all workers"""
+        logger.info(
+            f"🔧 Initializing DecisionOrchestrator with {len(self.workers)} workers"
+        )
 
-            # Create numpy array view
-            self.price_array = np.ndarray(
-                (self.max_history,), dtype=np.float64, buffer=self.price_history_shm.buf
-            )
-            self.price_array.fill(0.0)  # Initialize
+        for name, worker in self.workers.items():
+            worker.set_state(WorkerState.READY)
+            logger.debug(f"  ✓ Worker '{name}' ready")
 
-            logger.debug(f"Created shared memory: {self.price_history_shm.name}")
-
-        except Exception as e:
-            logger.error(f"Failed to create shared memory: {e}")
-            raise
-
-    @staticmethod
-    def _worker_initializer(shm_name: str, history_length: int):
-        """Initialize worker process with shared memory"""
-        # This runs in each worker process
-        pass
-
-    def update_price_history(self, tick: TickData):
-        """Update shared price history"""
-        if self.price_array is not None:
-            # Shift array and add new price
-            if self.current_history_length < self.max_history:
-                # Still filling initial buffer
-                self.price_array[self.current_history_length] = tick.mid
-                self.current_history_length += 1
-            else:
-                # Circular buffer - shift left and add new price
-                self.price_array[:-1] = self.price_array[1:]
-                self.price_array[-1] = tick.mid
+        self.is_initialized = True
+        logger.info("✅ DecisionOrchestrator initialized")
 
     def process_tick(
-        self, tick: TickData, timeout: float = 0.1
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Process tick through all workers in parallel
-        Returns trading decision or None
-        """
-
-        if not self.is_initialized:
-            logger.error("Orchestrator not initialized")
-            return None
-
-        # Update price history first
-        self.update_price_history(tick)
-
-        # Submit work to all workers in parallel
-        future_to_worker = {}
-        for worker_name, worker in self.workers.items():
-            future = self.executor.submit(self._execute_worker, worker, tick)
-            future_to_worker[future] = worker_name
-
-        # Collect results with timeout
-        worker_results = {}
-        completed_count = 0
-
-        try:
-            for future in as_completed(future_to_worker, timeout=timeout):
-                worker_name = future_to_worker[future]
-                try:
-                    result = future.result()
-                    worker_results[worker_name] = result
-                    completed_count += 1
-                except Exception as e:
-                    logger.error(f"Worker {worker_name} failed: {e}")
-                    # Continue with other workers
-
-        except TimeoutError:
-            logger.warning(
-                f"Timeout: Only {completed_count}/{len(self.workers)} workers completed"
-            )
-
-        # Make decision with available results
-        return self._make_trading_decision(tick, worker_results)
-
-    @staticmethod
-    def _execute_worker(worker: AbstractBlackboxWorker, tick: TickData) -> WorkerResult:
-        """Execute single worker - runs in separate process"""
-        return worker.process_tick_request(tick)
-
-    def _make_trading_decision(
-        self, tick: TickData, worker_results: Dict[str, WorkerResult]
+        self,
+        tick: TickData,
+        current_bars: Dict[str, Bar],
+        bar_history: Dict[str, List[Bar]] = None,
     ) -> Dict[str, Any]:
         """
-        Core trading decision logic - THE ACTUAL BLACKBOX SECRET SAUCE
-        This is where your proprietary algorithm goes
+        Process tick through all workers and generate decision
+
+        Args:
+            tick: Current tick data
+            current_bars: Current bars per timeframe
+            bar_history: Historical bars per timeframe
+
+        Returns:
+            Decision dict with action/confidence/reason
+        """
+        if not self.is_initialized:
+            raise RuntimeError("Orchestrator not initialized")
+
+        self._statistics["ticks_processed"] += 1
+        bar_history = bar_history or {}
+
+        # Determine if any bars were updated
+        bar_updated = len(current_bars) > 0
+
+        # Update all workers that need recomputation
+        for name, worker in self.workers.items():
+            if worker.should_recompute(tick, bar_updated):
+                start_time = time.perf_counter()
+
+                try:
+                    worker.set_state(WorkerState.WORKING)
+                    result = worker.compute(tick, bar_history, current_bars)
+                    result.computation_time_ms = (
+                        time.perf_counter() - start_time
+                    ) * 1000
+
+                    self._worker_results[name] = result
+                    worker.set_state(WorkerState.READY)
+                    self._statistics["worker_calls"] += 1
+
+                except Exception as e:
+                    logger.error(f"❌ Worker '{name}' failed: {e}")
+                    worker.set_state(WorkerState.ERROR)
+
+        # Generate decision based on worker results
+        decision = self._generate_decision(tick)
+
+        if decision and decision["action"] != "FLAT":
+            self._statistics["decisions_made"] += 1
+
+        return decision
+
+    def _generate_decision(self, tick: TickData) -> Dict[str, Any]:
+        """
+        Generate trading decision based on worker results
+
+        Simple RSI + Envelope strategy logic:
+        - RSI < 30 + Price near lower envelope = BUY
+        - RSI > 70 + Price near upper envelope = SELL
         """
 
         # Get worker results
-        rsi_result = worker_results.get("RSI")
-        envelope_result = worker_results.get("Envelope")
+        rsi_result = self._worker_results.get("RSI")
+        envelope_result = self._worker_results.get("Envelope")
 
-        # Default to no action if workers failed
+        # Need both workers
         if not rsi_result or not envelope_result:
-            return {
-                "action": "FLAT",
-                "confidence": 0.0,
-                "reason": "insufficient_worker_data",
-                "worker_results": worker_results,
-            }
+            return {"action": "FLAT", "reason": "Insufficient worker data"}
+
+        if rsi_result.confidence < 0.5 or envelope_result.confidence < 0.5:
+            return {"action": "FLAT", "reason": "Low confidence"}
 
         # Extract values
-        rsi_value = rsi_result.value
-        envelope_data = envelope_result.value
+        rsi = rsi_result.value
+        envelope = envelope_result.value
 
-        # DECISION LOGIC (This is your secret algorithm)
-        signal = "FLAT"
+        # Trading logic
+        action = "FLAT"
+        reason = "No clear signal"
         confidence = 0.5
-        reason = "neutral"
 
-        # Base confidence from worker confidence
-        base_confidence = min(rsi_result.confidence, envelope_result.confidence)
+        # BUY signal: RSI oversold + price near lower band
+        if rsi <= 30 and envelope["position"] < 0.3:
+            action = "BUY"
+            reason = f"RSI oversold ({rsi:.1f}) + price near lower band"
+            confidence = min(rsi_result.confidence, envelope_result.confidence)
 
-        if rsi_value < self.rsi_oversold and envelope_data["position"] == "below":
-            # Oversold + below envelope = Strong BUY signal
-            signal = "BUY"
-            rsi_strength = (self.rsi_oversold - rsi_value) / self.rsi_oversold
-            envelope_strength = min(envelope_data["distance"], 0.1)  # Cap at 10%
-            confidence = base_confidence * (0.7 + rsi_strength + envelope_strength)
-            reason = f"oversold_below_envelope_rsi_{rsi_value:.1f}"
-
-        elif rsi_value > self.rsi_overbought and envelope_data["position"] == "above":
-            # Overbought + above envelope = Strong SELL signal
-            signal = "SELL"
-            rsi_strength = (rsi_value - self.rsi_overbought) / (
-                100 - self.rsi_overbought
-            )
-            envelope_strength = min(envelope_data["distance"], 0.1)
-            confidence = base_confidence * (0.7 + rsi_strength + envelope_strength)
-            reason = f"overbought_above_envelope_rsi_{rsi_value:.1f}"
-
-        # Apply confidence threshold
-        if confidence < self.confidence_threshold:
-            signal = "FLAT"
-            reason += "_low_confidence"
+        # SELL signal: RSI overbought + price near upper band
+        elif rsi >= 70 and envelope["position"] > 0.7:
+            action = "SELL"
+            reason = f"RSI overbought ({rsi:.1f}) + price near upper band"
+            confidence = min(rsi_result.confidence, envelope_result.confidence)
 
         return {
-            "action": signal,
-            "confidence": min(confidence, 1.0),
+            "action": action,
+            "price": tick.mid,
+            "timestamp": tick.timestamp,
+            "confidence": confidence,
             "reason": reason,
             "metadata": {
-                "rsi": rsi_value,
-                "envelope_position": envelope_data["position"],
-                "envelope_distance": envelope_data["distance"],
-                "rsi_confidence": rsi_result.confidence,
-                "envelope_confidence": envelope_result.confidence,
-                "worker_computation_times": {
-                    name: result.computation_time_ms
-                    for name, result in worker_results.items()
-                },
+                "rsi": rsi,
+                "envelope_position": envelope["position"],
+                "envelope_upper": envelope["upper"],
+                "envelope_lower": envelope["lower"],
             },
         }
 
+    def get_worker_results(self) -> Dict[str, Any]:
+        """Get all current worker results"""
+        return self._worker_results.copy()
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get orchestrator statistics"""
+        return self._statistics.copy()
+
     def cleanup(self):
-        """Clean up resources"""
-        if self.executor:
-            self.executor.shutdown(wait=True)
-
-        if self.price_history_shm:
-            self.price_history_shm.close()
-            self.price_history_shm.unlink()
-
-        logger.info("Decision orchestrator cleaned up")
+        """Cleanup resources"""
+        logger.info("🧹 Cleaning up DecisionOrchestrator...")
+        for worker in self.workers.values():
+            worker.set_state(WorkerState.IDLE)
+        self._worker_results.clear()
+        self.is_initialized = False
