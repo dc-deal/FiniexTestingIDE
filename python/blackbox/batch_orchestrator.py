@@ -200,11 +200,18 @@ class BatchOrchestrator:
         bar_orchestrator.register_workers(workers)
 
         # Prepare bar warmup
-        if warmup_ticks:
-            import pandas as pd
+        import pandas as pd
 
-            first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
-            bar_orchestrator.prepare_warmup(scenario.symbol, first_test_time)
+        first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
+        bar_orchestrator.prepare_warmup(scenario.symbol, first_test_time)
+        # FIX: Initialize bar_history with warmup bars BEFORE test loop
+        initial_bar_history = {
+            tf: bar_orchestrator.get_warmup_bars(tf)  # ← Diese Methode existiert
+            for tf in self.global_contract.all_timeframes
+        }
+        # Set initial warmup in adapter
+        adapter.set_bar_data({}, initial_bar_history)  # ← Warmup bars als Start
+        # bar_orchestrator.set_bar_history(initial_bar_history) TOD <------------
 
         # 4. Execute test
         signals = []

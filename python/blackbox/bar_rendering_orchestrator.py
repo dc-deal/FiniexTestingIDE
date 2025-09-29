@@ -1,4 +1,3 @@
-
 import logging
 from typing import Dict, List, Set, Optional
 from collections import defaultdict, deque
@@ -10,7 +9,6 @@ from python.blackbox.bar_renderer import BarRenderer
 from python.blackbox.warmup_manager import WarmupManager
 
 logger = logging.getLogger(__name__)
-
 
 
 class BarRenderingOrchestrator:
@@ -44,6 +42,8 @@ class BarRenderingOrchestrator:
             warmup_requirements=warmup_requirements,
         )
 
+        # self.bar_renderer.current_bars = self._warmup_data
+
         logger.info(
             f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars"
         )
@@ -63,6 +63,10 @@ class BarRenderingOrchestrator:
     ) -> List[Bar]:
         """Get bar history (completed bars)"""
         return self.bar_renderer.get_bar_history(symbol, timeframe, count)
+
+    def set_bar_history(self, input: List[Bar]):
+        """set bars"""
+        self.bar_renderer.current_bars = input
 
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar"""

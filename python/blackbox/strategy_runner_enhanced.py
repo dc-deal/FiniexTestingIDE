@@ -54,7 +54,7 @@ def run_strategy_test() -> dict:
             symbol="EURUSD",
             start_date="2025-09-25",
             end_date="2025-09-26",
-            max_ticks=2000,
+            max_ticks=5000,
             data_mode="realistic",
             strategy_config={
                 "rsi_period": 14,
