@@ -9,6 +9,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional
 import logging
+from datetime import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class TickDataLoader:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         use_cache: bool = True,
+        drop_duplicates: bool = True,
     ) -> pd.DataFrame:
         """
         Load tick data for a symbol with optional date filtering
@@ -116,11 +118,23 @@ class TickDataLoader:
         combined_df = combined_df.sort_values("timestamp").reset_index(drop=True)
 
         # Remove duplicates (keep latest)
-        initial_count = len(combined_df)
-        combined_df = combined_df.drop_duplicates(subset=["timestamp"], keep="last")
+        # trigger: Miliseconds.
+        if drop_duplicates:
+            initial_count = len(combined_df)
+            combined_df = combined_df.drop_duplicates(
+                subset=["time_msc", "bid", "ask"], keep="last"
+            )
+            duplicates_removed = initial_count - len(combined_df)
 
-        if len(combined_df) < initial_count:
-            logger.info(f"Removed {initial_count - len(combined_df)} duplicates")
+            if duplicates_removed > 0:
+                duplicate_percentage = (duplicates_removed / initial_count) * 100
+                logger.info(
+                    f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
+                    f"({duplicate_percentage:.2f}% of data)"
+                )
+                logger.info(f"Remaining: {len(combined_df):,} unique ticks")
+            else:
+                logger.info(f"No duplicates found in {initial_count:,} ticks")
 
         # Apply date filters
         combined_df = self._apply_date_filters(combined_df, start_date, end_date)
@@ -135,34 +149,51 @@ class TickDataLoader:
     def _apply_date_filters(
         self, df: pd.DataFrame, start_date: Optional[str], end_date: Optional[str]
     ) -> pd.DataFrame:
-        """Apply date range filters to DataFrame"""
-        if start_date:
-            start_dt = pd.to_datetime(start_date).tz_localize("UTC")
-            count_before = len(df)
-            df = df[df["timestamp"] >= start_dt]
-            count_after = len(df)
+        """Apply date filters with intelligent timezone handling"""
 
+        if start_date:
+            # Convert to pandas datetime
+            start_dt = pd.to_datetime(start_date)
+
+            # Smart timezone handling: nur localize wenn noch keine TZ vorhanden
+            if start_dt.tz is None:
+                # Naive timestamp -> localize to UTC
+                start_dt = start_dt.tz_localize("UTC")
+            elif start_dt.tz != timezone.utc:
+                # Hat andere Zeitzone -> convert to UTC
+                start_dt = start_dt.tz_convert("UTC")
+            # Wenn bereits UTC: nichts tun, perfekt!
+
+            initial = len(df)
+            df = df[df["timestamp"] >= start_dt]
+            retained_pct = (len(df) / initial * 100) if initial > 0 else 0
             logger.info(
-                f"Start date filter: {count_before:,} -> {count_after:,} ticks "
-                f"({count_after/count_before*100:.1f}% retained)"
+                f"Start date filter: {initial:,} -> {len(df):,} ticks "
+                f"({retained_pct:.1f}% retained)"
             )
 
         if end_date:
-            end_dt = pd.to_datetime(end_date).tz_localize("UTC")
-            count_before = len(df)
-            df = df[df["timestamp"] <= end_dt]
-            count_after = len(df)
+            # Gleiche Logik für end_date
+            end_dt = pd.to_datetime(end_date)
 
+            if end_dt.tz is None:
+                end_dt = end_dt.tz_localize("UTC")
+            elif end_dt.tz != timezone.utc:
+                end_dt = end_dt.tz_convert("UTC")
+
+            initial = len(df)
+            df = df[df["timestamp"] <= end_dt]
+            retained_pct = (len(df) / initial * 100) if initial > 0 else 0
             logger.info(
-                f"End date filter: {count_before:,} -> {count_after:,} ticks "
-                f"({count_after/count_before*100:.1f}% retained)"
+                f"End date filter: {initial:,} -> {len(df):,} ticks "
+                f"({retained_pct:.1f}% retained)"
             )
 
-        if len(df) == 0:
-            logger.warning(f"⚠️ No data remaining after filtering!")
-            logger.warning(f"Requested range: {start_date} to {end_date}")
+            if len(df) == 0:
+                logger.warning(f"⚠️ No data remaining after filtering!")
+                logger.warning(f"Requested range: {start_date} to {end_date}")
 
-        return df
+            return df
 
     def _get_symbol_files(self, symbol: str) -> List[Path]:
         """Find all parquet files for a symbol"""
