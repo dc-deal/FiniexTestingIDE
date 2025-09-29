@@ -54,10 +54,10 @@ def run_strategy_test(
         loader = TickDataLoader("./data/processed/")
 
         # 2. Create test scenario
-        scenario = TestScenario(
-            symbol=symbol,
-            start_date=start_date or "2025-09-17",
-            end_date=end_date or "2025-09-18",
+        scenario01 = TestScenario(
+            symbol="EURUSD",
+            start_date="2025-09-25",
+            end_date="2025-09-26",
             max_ticks=max_ticks,
             data_mode=data_mode,
             strategy_config={
@@ -65,11 +65,24 @@ def run_strategy_test(
                 "envelope_period": 20,
                 "envelope_deviation": 0.02,
             },
-            name=f"{symbol}_test",
+            name=f"EURUSD_01_test",
+        )
+        scenario02 = TestScenario(
+            symbol="USDJPY",
+            start_date="2025-09-25",
+            end_date="2025-09-26",
+            max_ticks=max_ticks,
+            data_mode=data_mode,
+            strategy_config={
+                "rsi_period": 14,
+                "envelope_period": 20,
+                "envelope_deviation": 0.02,
+            },
+            name=f"USDJPY_02_test",
         )
 
         # 3. Create BatchOrchestrator (universal entry point)
-        orchestrator = BatchOrchestrator([scenario], loader)
+        orchestrator = BatchOrchestrator([scenario01, scenario02], loader)
 
         # 4. Run (works for 1 or 1000 scenarios)
         results = orchestrator.run()

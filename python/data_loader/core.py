@@ -9,6 +9,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional
 import logging
+from datetime import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -135,34 +136,51 @@ class TickDataLoader:
     def _apply_date_filters(
         self, df: pd.DataFrame, start_date: Optional[str], end_date: Optional[str]
     ) -> pd.DataFrame:
-        """Apply date range filters to DataFrame"""
-        if start_date:
-            start_dt = pd.to_datetime(start_date).tz_localize("UTC")
-            count_before = len(df)
-            df = df[df["timestamp"] >= start_dt]
-            count_after = len(df)
+        """Apply date filters with intelligent timezone handling"""
 
+        if start_date:
+            # Convert to pandas datetime
+            start_dt = pd.to_datetime(start_date)
+
+            # Smart timezone handling: nur localize wenn noch keine TZ vorhanden
+            if start_dt.tz is None:
+                # Naive timestamp -> localize to UTC
+                start_dt = start_dt.tz_localize("UTC")
+            elif start_dt.tz != timezone.utc:
+                # Hat andere Zeitzone -> convert to UTC
+                start_dt = start_dt.tz_convert("UTC")
+            # Wenn bereits UTC: nichts tun, perfekt!
+
+            initial = len(df)
+            df = df[df["timestamp"] >= start_dt]
+            retained_pct = (len(df) / initial * 100) if initial > 0 else 0
             logger.info(
-                f"Start date filter: {count_before:,} -> {count_after:,} ticks "
-                f"({count_after/count_before*100:.1f}% retained)"
+                f"Start date filter: {initial:,} -> {len(df):,} ticks "
+                f"({retained_pct:.1f}% retained)"
             )
 
         if end_date:
-            end_dt = pd.to_datetime(end_date).tz_localize("UTC")
-            count_before = len(df)
-            df = df[df["timestamp"] <= end_dt]
-            count_after = len(df)
+            # Gleiche Logik für end_date
+            end_dt = pd.to_datetime(end_date)
 
+            if end_dt.tz is None:
+                end_dt = end_dt.tz_localize("UTC")
+            elif end_dt.tz != timezone.utc:
+                end_dt = end_dt.tz_convert("UTC")
+
+            initial = len(df)
+            df = df[df["timestamp"] <= end_dt]
+            retained_pct = (len(df) / initial * 100) if initial > 0 else 0
             logger.info(
-                f"End date filter: {count_before:,} -> {count_after:,} ticks "
-                f"({count_after/count_before*100:.1f}% retained)"
+                f"End date filter: {initial:,} -> {len(df):,} ticks "
+                f"({retained_pct:.1f}% retained)"
             )
 
-        if len(df) == 0:
-            logger.warning(f"⚠️ No data remaining after filtering!")
-            logger.warning(f"Requested range: {start_date} to {end_date}")
+            if len(df) == 0:
+                logger.warning(f"⚠️ No data remaining after filtering!")
+                logger.warning(f"Requested range: {start_date} to {end_date}")
 
-        return df
+            return df
 
     def _get_symbol_files(self, symbol: str) -> List[Path]:
         """Find all parquet files for a symbol"""
