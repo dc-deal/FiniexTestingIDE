@@ -69,6 +69,7 @@ class TickDataLoader:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         use_cache: bool = True,
+        drop_duplicates: bool = True,
     ) -> pd.DataFrame:
         """
         Load tick data for a symbol with optional date filtering
@@ -117,11 +118,23 @@ class TickDataLoader:
         combined_df = combined_df.sort_values("timestamp").reset_index(drop=True)
 
         # Remove duplicates (keep latest)
-        initial_count = len(combined_df)
-        combined_df = combined_df.drop_duplicates(subset=["timestamp"], keep="last")
+        # trigger: Miliseconds.
+        if drop_duplicates:
+            initial_count = len(combined_df)
+            combined_df = combined_df.drop_duplicates(
+                subset=["time_msc", "bid", "ask"], keep="last"
+            )
+            duplicates_removed = initial_count - len(combined_df)
 
-        if len(combined_df) < initial_count:
-            logger.info(f"Removed {initial_count - len(combined_df)} duplicates")
+            if duplicates_removed > 0:
+                duplicate_percentage = (duplicates_removed / initial_count) * 100
+                logger.info(
+                    f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
+                    f"({duplicate_percentage:.2f}% of data)"
+                )
+                logger.info(f"Remaining: {len(combined_df):,} unique ticks")
+            else:
+                logger.info(f"No duplicates found in {initial_count:,} ticks")
 
         # Apply date filters
         combined_df = self._apply_date_filters(combined_df, start_date, end_date)
