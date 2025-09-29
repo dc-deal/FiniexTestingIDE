@@ -19,7 +19,7 @@ from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
 from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.workers import RSIWorker, EnvelopeWorker
 from python.blackbox.types import TestScenario, TickData, Bar, TimeframeConfig
-from python.data_loader import TickDataLoader
+from python.data_loader.core import TickDataLoader
 
 # Setup logging
 logging.basicConfig(

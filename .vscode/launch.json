@@ -24,7 +24,7 @@
             "name": "📊 Data Pipeline: Load Data (TEST)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/data_loader.py",
+            "program": "${workspaceFolder}/python/data_loader/reports.py",
             "env": {
                 "FINIEX_MOVE_FILES": "false",
                 "FINIEX_DEV_MODE": "true"

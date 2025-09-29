@@ -13,7 +13,7 @@ from datetime import datetime
 
 from python.blackbox.batch_orchestrator import BatchOrchestrator
 from python.blackbox.types import TestScenario
-from python.data_loader import TickDataLoader
+from python.data_loader.core import TickDataLoader
 
 # Setup logging
 logging.basicConfig(

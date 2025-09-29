@@ -8,7 +8,7 @@ from typing import List, Tuple, Iterator
 import pandas as pd
 
 from python.blackbox.types import TickData
-from python.data_loader import TickDataLoader
+from python.data_loader.core import TickDataLoader
 
 logger = logging.getLogger(__name__)
 
