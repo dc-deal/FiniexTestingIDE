@@ -86,7 +86,6 @@ class WorkerResult:
 class WorkerContract:
     """Contract defining worker requirements"""
 
-    min_warmup_bars: int = 0
     parameters: Dict[str, Any] = field(default_factory=dict)
     price_change_sensitivity: float = 0.0001
     max_computation_time_ms: float = 100.0

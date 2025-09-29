@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional, Tuple,Set  
+from typing import Dict, List, Any, Optional, Tuple, Set
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import pandas as pd
@@ -17,8 +17,8 @@ from python.blackbox.decision_orchestrator import DecisionOrchestrator
 from python.blackbox.tick_data_preparator import TickDataPreparator
 from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
 from python.blackbox.blackbox_adapter import BlackboxAdapter
-from python.blackbox.workers import RSIWorker,EnvelopeWorker
-from python.blackbox.types import TestScenario,TickData,Bar, TimeframeConfig
+from python.blackbox.workers import RSIWorker, EnvelopeWorker
+from python.blackbox.types import TestScenario, TickData, Bar, TimeframeConfig
 from python.data_loader import TickDataLoader
 
 # Setup logging
@@ -238,7 +238,8 @@ def run_strategy_test(
         # === STEP 3: DATA PREPARATION ===
         # 🔍 DEBUG POINT: Warmup data preparation
         logger.info("Step 4: Preparing data...")
-        warmup_bars_needed = contract.get("min_warmup_bars", 50)
+        contract_info = adapter.get_contract_info()  # Dict mit aggregierten Infos
+        warmup_bars_needed = contract_info["max_warmup_bars"]
 
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=symbol,

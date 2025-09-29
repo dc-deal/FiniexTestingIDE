@@ -64,14 +64,13 @@ class BlackboxAdapter:
                 contracts.append(
                     {
                         "worker_name": worker_name,
-                        "min_warmup_bars": contract.min_warmup_bars,
                         "required_timeframes": contract.required_timeframes,
                         "parameters": contract.parameters,
                     }
                 )
 
         # Aggregate
-        max_warmup = max([c["min_warmup_bars"] for c in contracts], default=50)
+        max_warmup = max(contract.warmup_requirements.values())
         all_timeframes = list(
             set(tf for c in contracts for tf in c["required_timeframes"])
         )

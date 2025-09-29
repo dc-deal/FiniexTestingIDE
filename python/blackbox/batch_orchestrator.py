@@ -102,8 +102,10 @@ class BatchOrchestrator:
             if hasattr(worker, "get_contract"):
                 contracts.append(worker.get_contract())
 
-        # Aggregate
-        max_warmup = max([c.min_warmup_bars for c in contracts], default=50)
+        # Aggregate all Contracts
+        max_warmup = max(
+            [max(c.warmup_requirements.values()) for c in contracts], default=50
+        )
         all_timeframes = list(
             set(tf for c in contracts for tf in c.required_timeframes)
         )

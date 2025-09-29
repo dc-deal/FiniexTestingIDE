@@ -26,9 +26,7 @@ class EnvelopeWorker(AbstractBlackboxWorker):
     def get_contract(self) -> WorkerContract:
         """Define worker contract"""
 
-
         return WorkerContract(
-            min_warmup_bars=self.period + 10,
             parameters={
                 "envelope_period": self.period,
                 "envelope_deviation": self.deviation,
@@ -39,12 +37,12 @@ class EnvelopeWorker(AbstractBlackboxWorker):
             required_timeframes=self.get_required_timeframes(),
             warmup_requirements=self.get_warmup_requirements(),
         )
-    
+
     def get_warmup_requirements(self):
         requirements = {}
-        min_warmup_bars=self.period + 10
+        minimum_warmup_bars = self.period + 10
         for tf in self.get_required_timeframes():
-            requirements[tf] = min_warmup_bars
+            requirements[tf] = minimum_warmup_bars
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
