@@ -56,8 +56,8 @@ def run_strategy_test(
         # 2. Create test scenario
         scenario = TestScenario(
             symbol=symbol,
-            start_date=start_date or "2024-01-01",
-            end_date=end_date or "2024-12-31",
+            start_date=start_date or "2025-09-17",
+            end_date=end_date or "2025-09-18",
             max_ticks=max_ticks,
             data_mode=data_mode,
             strategy_config={
@@ -102,33 +102,6 @@ def debug_data_availability():
         return False
 
 
-if __name__ == "__main__":
-    """Main entry point"""
-
-    print("🚀 FiniexTestingIDE Strategy Runner")
-    print("=" * 60)
-
-    # Check data
-    if not debug_data_availability():
-        print("❌ Fix data issues first")
-        exit(1)
-
-    # Run test via BatchOrchestrator
-    results = run_strategy_test(symbol="EURUSD", max_ticks=100, data_mode="realistic")
-
-    # Display results
-    print("\n" + "=" * 60)
-    print("🎉 RESULTS:")
-    print(f"Success: {results.get('success', True)}")
-    print(f"Scenarios: {results.get('scenarios_count', 0)}")
-    print(f"Execution time: {results.get('execution_time', 0):.2f}s")
-
-    if "error" in results:
-        print(f"❌ Error: {results['error']}")
-
-    print("=" * 60)
-
-
 def create_rsi_envelope_strategy(
     rsi_period: int = 14, envelope_period: int = 20, envelope_deviation: float = 0.02
 ) -> BlackboxAdapter:
@@ -162,33 +135,28 @@ def create_rsi_envelope_strategy(
     return adapter
 
 
-def debug_data_availability():
-    """
-    Debug helper: Check what data is available
+if __name__ == "__main__":
+    """Main entry point"""
 
-    🔍 DEBUG HELPER: Call this first to check your data setup
-    """
+    print("🚀 FiniexTestingIDE Strategy Runner")
+    print("=" * 60)
 
-    logger.info("🔍 Debugging data availability...")
+    # Check data
+    if not debug_data_availability():
+        print("❌ Fix data issues first")
+        exit(1)
 
-    try:
-        loader = TickDataLoader("./data/processed/")
-        symbols = loader.list_available_symbols()
+    # Run test via BatchOrchestrator
+    results = run_strategy_test(symbol="USDJPY", max_ticks=100, data_mode="realistic")
 
-        if not symbols:
-            logger.error("❌ No symbols found in ./data/processed/")
-            logger.info("💡 Run: python python/tick_importer.py")
-            return False
+    # Display results
+    print("\n" + "=" * 60)
+    print("🎉 RESULTS:")
+    print(f"Success: {results.get('success', True)}")
+    print(f"Scenarios: {results.get('scenarios_count', 0)}")
+    print(f"Execution time: {results.get('execution_time', 0):.2f}s")
 
-        logger.info(f"✅ Found {len(symbols)} symbols: {symbols}")
+    if "error" in results:
+        print(f"❌ Error: {results['error']}")
 
-        # Check first symbol
-        test_symbol = symbols[0]
-        info = loader.get_symbol_info(test_symbol)
-        logger.info(f"📊 {test_symbol} info: {info}")
-
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Data availability check failed: {e}")
-        return False
+    print("=" * 60)

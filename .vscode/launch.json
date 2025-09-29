@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "📊 Data Pipeline: Import Ticks (DEV)",
-            "type": "pytdebugpyhon",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/tick_importer.py",
             "env": {
@@ -21,7 +21,7 @@
             }
         },
         {
-            "name": "📊 Data Pipeline: Load Data (TEST)",
+            "name": "📊 Data Pipeline: Test Data Report",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/data_loader/reports.py",
