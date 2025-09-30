@@ -112,6 +112,36 @@ class BarRenderer:
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar for symbol/timeframe"""
         return self.current_bars[timeframe].get(symbol)
+    
+    def initialize_historical_bars(
+    self, symbol: str, timeframe: str, bars: List[Bar]
+    ) -> None:
+        """
+        Initialize the completed_bars history with warmup bars.
+        
+        This method populates the historical bar storage with pre-rendered
+        warmup bars, making them available for get_bar_history() calls.
+        
+        Args:
+            symbol: The trading symbol (e.g., "EURUSD")
+            timeframe: The timeframe (e.g., "M5")
+            bars: List of completed warmup bars to initialize with
+        """
+        # Ensure the nested structure exists for this timeframe/symbol
+        if timeframe not in self.completed_bars:
+            self.completed_bars[timeframe] = defaultdict(deque)
+        
+        if symbol not in self.completed_bars[timeframe]:
+            self.completed_bars[timeframe][symbol] = deque(maxlen=1000)
+        
+        # Add all warmup bars to the history
+        # These are already complete bars from the warmup phase
+        for bar in bars:
+            self.completed_bars[timeframe][symbol].append(bar)
+        
+        logger.debug(
+            f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
+        )
 
 
 

@@ -42,12 +42,15 @@ class BarRenderingOrchestrator:
             warmup_requirements=warmup_requirements,
         )
 
-        # self.bar_renderer.current_bars = self._warmup_data
+        # NEU: Füge die Warmup-Bars direkt in die completed_bars Historie
+        # des BarRenderers ein, damit get_bar_history() sie findet
+        for timeframe, bars in self._warmup_data.items():
+            self.bar_renderer.initialize_historical_bars(symbol, timeframe, bars)
 
         logger.info(
             f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars"
         )
-
+        
     def process_tick(self, tick_data: TickData) -> Dict[str, Bar]:
         """Process tick and update all current bars"""
         return self.bar_renderer.update_current_bars(
@@ -63,10 +66,6 @@ class BarRenderingOrchestrator:
     ) -> List[Bar]:
         """Get bar history (completed bars)"""
         return self.bar_renderer.get_bar_history(symbol, timeframe, count)
-
-    def set_bar_history(self, input: List[Bar]):
-        """set bars"""
-        self.bar_renderer.current_bars = input
 
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar"""

@@ -211,7 +211,6 @@ class BatchOrchestrator:
         }
         # Set initial warmup in adapter
         adapter.set_bar_data({}, initial_bar_history)  # ← Warmup bars als Start
-        # bar_orchestrator.set_bar_history(initial_bar_history) TOD <------------
 
         # 4. Execute test
         signals = []
