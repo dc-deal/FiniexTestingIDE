@@ -15,7 +15,6 @@ from python.blackbox.types import (
 )
 
 from python.blackbox.decision_orchestrator import DecisionOrchestrator
-from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.batch_orchestrator import BatchOrchestrator
 from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
 from python.blackbox.bar_renderer import BarRenderer
@@ -35,7 +34,6 @@ __all__ = [
     "WorkerState",
     # Orchestration
     "DecisionOrchestrator",
-    "BlackboxAdapter",
     "BatchOrchestrator",
     # bar rendering system
     "BarRenderingOrchestrator",

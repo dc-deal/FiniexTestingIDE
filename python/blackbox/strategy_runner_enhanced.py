@@ -18,7 +18,6 @@ from python.blackbox.batch_orchestrator import BatchOrchestrator
 from python.blackbox.decision_orchestrator import DecisionOrchestrator
 from python.blackbox.tick_data_preparator import TickDataPreparator
 from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
-from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.workers import RSIWorker, EnvelopeWorker
 from python.blackbox.types import TestScenario, TickData, Bar, TimeframeConfig
 from python.data_loader.core import TickDataLoader
@@ -115,39 +114,6 @@ def debug_data_availability():
     except Exception as e:
         logger.error(f"❌ Check failed: {e}")
         return False
-
-
-def create_rsi_envelope_strategy(
-    rsi_period: int = 14, envelope_period: int = 20, envelope_deviation: float = 0.02
-) -> BlackboxAdapter:
-    """
-    Factory function to create RSI+Envelope strategy
-
-    🔍 DEBUG POINT: Set breakpoint here to inspect strategy creation
-    """
-    logger.info(
-        f"Creating RSI+Envelope strategy (RSI: {rsi_period}, Envelope: {envelope_period})"
-    )
-
-    # 🔍 DEBUG POINT: Check worker configuration
-    rsi_worker = RSIWorker(period=rsi_period)
-    envelope_worker = EnvelopeWorker(
-        period=envelope_period, deviation=envelope_deviation
-    )
-
-    # 🔍 DEBUG POINT: Inspect worker contracts
-    rsi_contract = rsi_worker.get_contract()
-    envelope_contract = envelope_worker.get_contract()
-    logger.debug(f"RSI contract: {rsi_contract}")
-    logger.debug(f"Envelope contract: {envelope_contract}")
-
-    # Create orchestrator
-    orchestrator = DecisionOrchestrator([rsi_worker, envelope_worker])
-
-    # Create adapter
-    adapter = BlackboxAdapter(orchestrator)
-
-    return adapter
 
 
 def clear_terminal():

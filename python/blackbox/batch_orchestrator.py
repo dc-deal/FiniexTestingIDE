@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Batch Orchestrator
+FiniexTestingIDE - Batch Orchestrator (Refactored)
 Universal entry point for 1-1000+ test scenarios
 """
 
@@ -10,7 +10,6 @@ import time
 from datetime import datetime, timezone
 
 from python.blackbox.types import TestScenario, GlobalContract, TickData
-from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.workers.rsi_worker import RSIWorker
 from python.blackbox.workers.envelope_worker import EnvelopeWorker
 from python.blackbox.decision_orchestrator import DecisionOrchestrator
@@ -25,6 +24,8 @@ class BatchOrchestrator:
     """
     Universal orchestrator for batch strategy testing
     Handles 1 to 1000+ scenarios with same code path
+    
+    REFACTORED: Direct DecisionOrchestrator usage, no adapter layer
     """
 
     def __init__(self, scenarios: List[TestScenario], data_loader):
@@ -92,14 +93,16 @@ class BatchOrchestrator:
         """
         Aggregate requirements from all scenarios/workers
         Creates unified warmup and timeframe requirements
+        
+        REFACTORED: Creates orchestrator directly instead of adapter
         """
         # Create sample strategy to extract worker contracts
         sample_scenario = self.scenarios[0]
-        adapter = self._create_adapter(sample_scenario)
+        orchestrator = self._create_orchestrator(sample_scenario)
 
-        # Get worker contracts
+        # Get worker contracts directly from orchestrator
         contracts = []
-        for worker in adapter.orchestrator.workers.values():
+        for worker in orchestrator.workers.values():
             if hasattr(worker, "get_contract"):
                 contracts.append(worker.get_contract())
 
@@ -176,12 +179,16 @@ class BatchOrchestrator:
         """
         Execute single test scenario
 
-        This is the core execution logic that works the same for
-        1 scenario or 1000+ scenarios
+        REFACTORED: Works directly with DecisionOrchestrator, no adapter
         """
 
-        # 1. Create strategy adapter
-        adapter = self._create_adapter(scenario)
+        # 1. Create DecisionOrchestrator directly (no adapter!)
+        orchestrator = self._create_orchestrator(scenario)
+        orchestrator.initialize()
+        
+        logger.info(
+            f"✅ Orchestrator initialized with {len(orchestrator.workers)} workers"
+        )
 
         # 2. Prepare data
         preparator = TickDataPreparator(self.data_loader)
@@ -197,29 +204,28 @@ class BatchOrchestrator:
 
         # 3. Setup bar rendering
         bar_orchestrator = BarRenderingOrchestrator(self.data_loader)
-        workers = list(adapter.orchestrator.workers.values())
+        
+        # Get workers directly from orchestrator (no adapter.orchestrator!)
+        workers = list(orchestrator.workers.values())
         bar_orchestrator.register_workers(workers)
 
-        # Prepare bar warmup
+        # Prepare bar warmup from pre-loaded ticks
         import pandas as pd
 
         first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
         bar_orchestrator.prepare_warmup_from_ticks(
             symbol=scenario.symbol,
-            warmup_ticks=warmup_ticks,  # ← Übergebe die bereits geladenen Ticks
+            warmup_ticks=warmup_ticks,
             test_start_time=first_test_time
         )
-        # FIX: Initialize bar_history with warmup bars BEFORE test loop
-        initial_bar_history = {
-            tf: bar_orchestrator.get_warmup_bars(tf)  # ← Diese Methode existiert
-            for tf in self.global_contract.all_timeframes
-        }
-        # Set initial warmup in adapter
-        adapter.set_bar_data({}, initial_bar_history)  # ← Warmup bars als Start
 
-        # 4. Execute test
+        # 4. Execute test loop
         signals = []
         tick_count = 0
+        
+        # Statistics tracking (previously in adapter)
+        ticks_processed = 0
+        signals_generated = 0
 
         for tick in test_iterator:
             # Bar rendering
@@ -229,15 +235,19 @@ class BatchOrchestrator:
                 for tf in self.global_contract.all_timeframes
             }
 
-            # Set bar data in adapter
-            adapter.set_bar_data(current_bars, bar_history)
-
-            # Process decision
-            decision = adapter.process_tick(tick, current_bars)
+            # Process decision DIRECTLY through orchestrator (no adapter!)
+            decision = orchestrator.process_tick(
+                tick=tick,
+                current_bars=current_bars,
+                bar_history=bar_history
+            )
+            
+            ticks_processed += 1
             tick_count += 1
 
             if decision and decision["action"] != "FLAT":
                 signals.append(decision)
+                signals_generated += 1
 
         # 5. Return results
         return {
@@ -250,11 +260,11 @@ class BatchOrchestrator:
             "success": True,
         }
 
-    def _create_adapter(self, scenario: TestScenario) -> BlackboxAdapter:
+    def _create_orchestrator(self, scenario: TestScenario) -> DecisionOrchestrator:
         """
-        Create strategy adapter based on scenario config
-
-        TODO: Make this configurable via scenario.strategy_config
+        Create DecisionOrchestrator with workers based on scenario config
+        
+        REFACTORED: Returns orchestrator directly, not wrapped in adapter
         """
         config = scenario.strategy_config
 
@@ -270,13 +280,7 @@ class BatchOrchestrator:
             timeframe=config.get("envelope_timeframe", "M5"),
         )
 
-        # Create orchestrator
+        # Create and return orchestrator directly
         orchestrator = DecisionOrchestrator([rsi_worker, envelope_worker])
-
-        # Create adapter
-        adapter = BlackboxAdapter(orchestrator)
-        adapter.initialize()
-
-        return adapter
-
-    
+        
+        return orchestrator
