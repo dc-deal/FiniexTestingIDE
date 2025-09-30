@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 import time
 
 from python.blackbox.types import TickData, Bar, WorkerState
-from python.blackbox.abstract import AbstractBlackboxWorker
+from python.blackbox.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
 
 logger = logging.getLogger(__name__)
 

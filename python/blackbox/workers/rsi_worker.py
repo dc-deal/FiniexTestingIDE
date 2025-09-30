@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Dict
 
 from python.blackbox.types import WorkerContract, TickData, WorkerResult, Bar
-from python.blackbox.abstract import AbstractBlackboxWorker
+from python.blackbox.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
 
 
 class RSIWorker(AbstractBlackboxWorker):

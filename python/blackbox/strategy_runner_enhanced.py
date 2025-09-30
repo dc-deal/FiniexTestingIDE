@@ -1,25 +1,15 @@
-from typing import Dict, List, Any, Optional, Tuple, Set
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
-import pandas as pd
-import time
-import os
-import platform
-
 """
 FiniexTestingIDE - Strategy Runner
 Universal entry point using BatchOrchestrator for all tests
+
 """
 
 import logging
-from pathlib import Path
+import os
+import platform
 
 from python.blackbox.batch_orchestrator import BatchOrchestrator
-from python.blackbox.decision_orchestrator import DecisionOrchestrator
-from python.blackbox.tick_data_preparator import TickDataPreparator
-from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
-from python.blackbox.workers import RSIWorker, EnvelopeWorker
-from python.blackbox.types import TestScenario, TickData, Bar, TimeframeConfig
+from python.blackbox.types import TestScenario
 from python.data_loader.core import TickDataLoader
 
 # Setup logging
@@ -53,7 +43,7 @@ def run_strategy_test() -> dict:
             symbol="EURUSD",
             start_date="2025-09-25",
             end_date="2025-09-26",
-            max_ticks=5000,
+            max_ticks=1000,
             data_mode="realistic",
             strategy_config={
                 "rsi_period": 14,
