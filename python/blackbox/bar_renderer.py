@@ -144,5 +144,64 @@ class BarRenderer:
         )
 
 
+    def render_bars_from_ticks(
+        self, ticks: List[TickData], symbol: str, timeframe: str
+    ) -> List[Bar]:
+        """
+        Render a list of bars from a sequence of ticks.
+        
+        This is the core bar-building logic extracted so it can be reused
+        for both warmup rendering and live tick processing. It takes raw
+        ticks and converts them into completed bars.
+        
+        Args:
+            ticks: List of TickData objects to process
+            symbol: The trading symbol
+            timeframe: The timeframe to render (e.g., "M5")
+        
+        Returns:
+            List of completed Bar objects
+        """
+        bars = []
+        current_bar = None
+        
+        for tick in ticks:
+            timestamp = pd.to_datetime(tick.timestamp)
+            mid_price = tick.mid
+            volume = tick.volume
+            
+            bar_start_time = TimeframeConfig.get_bar_start_time(timestamp, timeframe)
+            
+            # Check if we need to start a new bar
+            if (
+                current_bar is None
+                or pd.to_datetime(current_bar.timestamp) != bar_start_time
+            ):
+                # Complete and archive the previous bar
+                if current_bar is not None:
+                    current_bar.is_complete = True
+                    bars.append(current_bar)
+                
+                # Create a new bar
+                current_bar = Bar(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    timestamp=bar_start_time.isoformat(),
+                    open=0,
+                    high=0,
+                    low=0,
+                    close=0,
+                    volume=0,
+                )
+            
+            # Update the current bar with this tick
+            current_bar.update_with_tick(mid_price, volume)
+        
+        # Don't forget to add the last bar if it exists
+        if current_bar is not None:
+            current_bar.is_complete = True
+            bars.append(current_bar)
+        
+        return bars
 
 

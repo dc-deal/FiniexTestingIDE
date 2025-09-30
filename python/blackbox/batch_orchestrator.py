@@ -7,8 +7,9 @@ import logging
 from typing import List, Dict, Any
 from concurrent.futures import ProcessPoolExecutor
 import time
+from datetime import datetime, timezone
 
-from python.blackbox.types import TestScenario, GlobalContract
+from python.blackbox.types import TestScenario, GlobalContract, TickData
 from python.blackbox.blackbox_adapter import BlackboxAdapter
 from python.blackbox.workers.rsi_worker import RSIWorker
 from python.blackbox.workers.envelope_worker import EnvelopeWorker
@@ -203,7 +204,11 @@ class BatchOrchestrator:
         import pandas as pd
 
         first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
-        bar_orchestrator.prepare_warmup(scenario.symbol, first_test_time)
+        bar_orchestrator.prepare_warmup_from_ticks(
+            symbol=scenario.symbol,
+            warmup_ticks=warmup_ticks,  # ← Übergebe die bereits geladenen Ticks
+            test_start_time=first_test_time
+        )
         # FIX: Initialize bar_history with warmup bars BEFORE test loop
         initial_bar_history = {
             tf: bar_orchestrator.get_warmup_bars(tf)  # ← Diese Methode existiert
@@ -273,3 +278,5 @@ class BatchOrchestrator:
         adapter.initialize()
 
         return adapter
+
+    

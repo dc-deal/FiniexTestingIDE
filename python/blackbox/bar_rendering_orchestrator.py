@@ -70,3 +70,40 @@ class BarRenderingOrchestrator:
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar"""
         return self.bar_renderer.get_current_bar(symbol, timeframe)
+
+    def prepare_warmup_from_ticks(
+            self, 
+            symbol: str, 
+            warmup_ticks: List[TickData],
+            test_start_time: datetime
+        ):
+            """
+            Prepare warmup data from already-loaded ticks (avoids redundant data loading).
+            
+            This method is more efficient than prepare_warmup() because it works with
+            ticks that have already been loaded by TickDataPreparator, avoiding a
+            second trip to the data loader.
+            
+            Args:
+                symbol: Trading symbol (e.g., "EURUSD")
+                warmup_ticks: Pre-loaded warmup ticks from TickDataPreparator
+                test_start_time: When the actual test begins
+            """
+            warmup_requirements = self.warmup_manager.calculate_required_warmup(
+                self._workers
+            )
+            
+            # Use the new method that works with pre-loaded ticks
+            self._warmup_data = self.warmup_manager.prepare_warmup_from_ticks(
+                symbol=symbol,
+                warmup_ticks=warmup_ticks,
+                warmup_requirements=warmup_requirements,
+            )
+            
+            # Initialize the bar renderer's history with these warmup bars
+            for timeframe, bars in self._warmup_data.items():
+                self.bar_renderer.initialize_historical_bars(symbol, timeframe, bars)
+            
+            logger.info(
+            f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars (from pre-loaded ticks)"
+        )
