@@ -3,6 +3,8 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import pandas as pd
 import time
+import os
+import platform
 
 """
 FiniexTestingIDE - Strategy Runner
@@ -29,13 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_strategy_test(
-    symbol: str = "EURUSD",
-    max_ticks: int = 1000,
-    data_mode: str = "realistic",
-    start_date: str = None,
-    end_date: str = None,
-) -> dict:
+def run_strategy_test() -> dict:
     """
     Main strategy testing function - ALWAYS uses BatchOrchestrator
 
@@ -47,7 +43,7 @@ def run_strategy_test(
         end_date: End date (optional)
     """
 
-    logger.info(f"🚀 Starting [BatchOrchestrator] strategy test for {symbol}")
+    logger.info(f"🚀 Starting [BatchOrchestrator] strategy test")
 
     try:
         # 1. Setup data loader
@@ -58,8 +54,8 @@ def run_strategy_test(
             symbol="EURUSD",
             start_date="2025-09-25",
             end_date="2025-09-26",
-            max_ticks=max_ticks,
-            data_mode=data_mode,
+            max_ticks=5000,
+            data_mode="realistic",
             strategy_config={
                 "rsi_period": 14,
                 "envelope_period": 20,
@@ -67,22 +63,28 @@ def run_strategy_test(
             },
             name=f"EURUSD_01_test",
         )
-        scenario02 = TestScenario(
-            symbol="USDJPY",
-            start_date="2025-09-25",
-            end_date="2025-09-26",
-            max_ticks=max_ticks,
-            data_mode=data_mode,
-            strategy_config={
-                "rsi_period": 14,
-                "envelope_period": 20,
-                "envelope_deviation": 0.02,
-            },
-            name=f"USDJPY_02_test",
-        )
+        # scenario02 = TestScenario(
+        #     symbol="USDJPY",
+        #     start_date="2025-09-25",
+        #     end_date="2025-09-26",
+        #     max_ticks=max_ticks,
+        #     data_mode=data_mode,
+        #     strategy_config={
+        #         "rsi_period": 14,
+        #         "envelope_period": 20,
+        #         "envelope_deviation": 0.02,
+        #     },
+        #     name=f"USDJPY_02_test",
+        # )
 
         # 3. Create BatchOrchestrator (universal entry point)
-        orchestrator = BatchOrchestrator([scenario01, scenario02], loader)
+        orchestrator = BatchOrchestrator(
+            [
+                scenario01,
+                # scenario02
+            ],
+            loader,
+        )
 
         # 4. Run (works for 1 or 1000 scenarios)
         results = orchestrator.run()
@@ -148,9 +150,15 @@ def create_rsi_envelope_strategy(
     return adapter
 
 
+def clear_terminal():
+    """Löscht das Terminal (plattformunabhängig)"""
+    os.system("cls" if platform.system() == "Windows" else "clear")
+
+
 if __name__ == "__main__":
     """Main entry point"""
 
+    clear_terminal()
     print("🚀 FiniexTestingIDE Strategy Runner")
     print("=" * 60)
 
@@ -160,7 +168,7 @@ if __name__ == "__main__":
         exit(1)
 
     # Run test via BatchOrchestrator
-    results = run_strategy_test(symbol="USDJPY", max_ticks=100, data_mode="realistic")
+    results = run_strategy_test()
 
     # Display results
     print("\n" + "=" * 60)

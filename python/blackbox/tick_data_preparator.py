@@ -89,12 +89,12 @@ class TickDataPreparator:
         )
 
         # Convert to TickData objects
-        warmup_ticks = self._df_to_ticks(warmup_df)
-        test_iterator = self._df_to_tick_iterator(test_df)
+        warmup_ticks = self._df_to_ticks(warmup_df, symbol)
+        test_iterator = self._df_to_tick_iterator(test_df, symbol)
 
         return warmup_ticks, test_iterator
 
-    def _df_to_ticks(self, df: pd.DataFrame) -> List[TickData]:
+    def _df_to_ticks(self, df: pd.DataFrame, symbol) -> List[TickData]:
         """Convert DataFrame to list of TickData objects"""
         ticks = []
 
@@ -105,7 +105,7 @@ class TickDataPreparator:
                     if hasattr(row["timestamp"], "isoformat")
                     else str(row["timestamp"])
                 ),
-                symbol=row.get("symbol", "UNKNOWN"),
+                symbol=symbol,
                 bid=float(row["bid"]),
                 ask=float(row["ask"]),
                 volume=float(row.get("volume", 0)),
@@ -114,7 +114,7 @@ class TickDataPreparator:
 
         return ticks
 
-    def _df_to_tick_iterator(self, df: pd.DataFrame) -> Iterator[TickData]:
+    def _df_to_tick_iterator(self, df: pd.DataFrame, symbol) -> Iterator[TickData]:
         """Convert DataFrame to tick iterator (memory efficient)"""
         for _, row in df.iterrows():
             yield TickData(
@@ -123,7 +123,7 @@ class TickDataPreparator:
                     if hasattr(row["timestamp"], "isoformat")
                     else str(row["timestamp"])
                 ),
-                symbol=row.get("symbol", "UNKNOWN"),
+                symbol=symbol,
                 bid=float(row["bid"]),
                 ask=float(row["ask"]),
                 volume=float(row.get("volume", 0)),

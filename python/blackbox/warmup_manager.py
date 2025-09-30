@@ -9,7 +9,6 @@ from python.blackbox.types import TickData, Bar, TimeframeConfig
 logger = logging.getLogger(__name__)
 
 
-
 class WarmupManager:
     """Manages historical data warmup for workers"""
 
