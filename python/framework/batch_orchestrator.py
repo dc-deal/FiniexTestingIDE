@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 
 from python.framework.types import TestScenario, GlobalContract, TickData
+from python.framework.workers.preset_workers.heavy_workers import HeavyEnvelopeWorker, HeavyMACDWorker, HeavyRSIWorker
 from python.framework.workers.preset_workers.rsi_worker import RSIWorker
 from python.framework.workers.preset_workers.envelope_worker import EnvelopeWorker
 from python.framework.workers.worker_coordinator import WorkerCoordinator
@@ -39,6 +40,7 @@ class BatchOrchestrator:
         self.scenarios = scenarios
         self.data_worker = data_worker
         self.global_contract = None
+        self._last_orchestrator = None 
 
         logger.info(
             f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
@@ -185,6 +187,8 @@ class BatchOrchestrator:
         # 1. Create WorkerCoordinator directly (no adapter!)
         orchestrator = self._create_orchestrator(scenario)
         orchestrator.initialize()
+
+        self._last_orchestrator = orchestrator
         
         logger.info(
             f"✅ Orchestrator initialized with {len(orchestrator.workers)} workers"
@@ -250,6 +254,8 @@ class BatchOrchestrator:
                 signals_generated += 1
 
         # 5. Return results
+        worker_stats = orchestrator.get_statistics() if hasattr(orchestrator, 'get_statistics') else {}
+
         return {
             "scenario_name": scenario.name,
             "symbol": scenario.symbol,
@@ -258,29 +264,87 @@ class BatchOrchestrator:
             "signal_rate": len(signals) / tick_count if tick_count > 0 else 0,
             "signals": signals[:10],  # First 10 for inspection
             "success": True,
+            "worker_statistics": worker_stats,
         }
 
-    def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
-        """
-        Create WorkerCoordinator with workers based on scenario config
+    # def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
+    #     """
+    #     Create WorkerCoordinator with workers based on scenario config
+    #     NOW: Reads execution config from strategy_config!
+    #     """
+    #     config = scenario.strategy_config
         
-        REFACTORED: Returns orchestrator directly, not wrapped in adapter
-        """
+    #     # Extract execution configuration
+    #     exec_config = config.get("execution", {})
+        
+    #     parallel_workers = exec_config.get("parallel_workers", False)
+    #     parallel_threshold = exec_config.get("worker_parallel_threshold_ms", 1.0)
+    #     log_stats = exec_config.get("log_performance_stats", False)
+
+    #     # Create workers (strategy-specific)
+    #     rsi_worker = RSIWorker(
+    #         period=config.get("rsi_period", 14),
+    #         timeframe=config.get("rsi_timeframe", "M5"),
+    #     )
+
+    #     envelope_worker = EnvelopeWorker(
+    #         period=config.get("envelope_period", 20),
+    #         deviation=config.get("envelope_deviation", 0.02),
+    #         timeframe=config.get("envelope_timeframe", "M5"),
+    #     )
+
+    #     # Create orchestrator with config-based settings
+    #     orchestrator = WorkerCoordinator(
+    #         workers=[rsi_worker, envelope_worker],
+    #         parallel_workers=parallel_workers,  # ← FROM CONFIG!
+    #         parallel_threshold_ms=parallel_threshold,  # ← FROM CONFIG!
+    #     )
+        
+    #     # Store config for later reference
+    #     orchestrator._execution_config = exec_config
+        
+    #     return orchestrator
+    
+    def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
         config = scenario.strategy_config
 
-        # Create workers
-        rsi_worker = RSIWorker(
+        exec_config = config.get("execution", {})
+        parallel_workers = exec_config.get("parallel_workers", False)
+        parallel_threshold = exec_config.get("worker_parallel_threshold_ms", 1.0)
+        log_stats = exec_config.get("log_performance_stats", False)
+        
+        # Künstliche Last aus Config
+        load_ms = config.get("artificial_load_ms", 5.0)
+        
+        # Heavy Workers statt normale Workers
+        rsi_worker = HeavyRSIWorker(
             period=config.get("rsi_period", 14),
             timeframe=config.get("rsi_timeframe", "M5"),
+            artificial_load_ms=load_ms,  # ← LAST!
         )
 
-        envelope_worker = EnvelopeWorker(
+        envelope_worker = HeavyEnvelopeWorker(
             period=config.get("envelope_period", 20),
             deviation=config.get("envelope_deviation", 0.02),
             timeframe=config.get("envelope_timeframe", "M5"),
+            artificial_load_ms=load_ms * 1.5,  # ← MEHR LAST!
+        )
+        
+        macd_worker = HeavyMACDWorker(
+            fast=12,
+            slow=26,
+            signal=9,
+            timeframe="M5",
+            artificial_load_ms=load_ms * 1.2,  # ← MITTLERE LAST
         )
 
-        # Create and return orchestrator directly
-        orchestrator = WorkerCoordinator([rsi_worker, envelope_worker])
+        # WorkerCoordinator mit allen 3 Workers
+        orchestrator = WorkerCoordinator(
+            [rsi_worker, envelope_worker, macd_worker],
+             parallel_workers=parallel_workers,  # ← FROM CONFIG!
+             parallel_threshold_ms=parallel_threshold,  # ← FROM CONFIG!
+        )
+
+        orchestrator._execution_config = exec_config
         
         return orchestrator
