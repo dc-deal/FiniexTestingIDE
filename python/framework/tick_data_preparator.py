@@ -7,8 +7,8 @@ import logging
 from typing import List, Tuple, Iterator
 import pandas as pd
 
-from python.blackbox.types import TickData
-from python.data_loader.core import TickDataLoader
+from python.framework.types import TickData
+from python.data_worker.data_loader.core import TickDataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +19,18 @@ class TickDataPreparator:
     Handles warmup/test splits and data quality
     """
 
-    def __init__(self, data_loader: TickDataLoader):
+    def __init__(self, data_worker: TickDataLoader):
         """
         Initialize preparator
 
         Args:
-            data_loader: TickDataLoader instance
+            data_worker: TickDataLoader instance
         """
-        self.data_loader = data_loader
+        self.data_worker = data_worker
 
     def get_symbol_info(self, symbol: str) -> dict:
         """Get symbol information"""
-        return self.data_loader.get_symbol_info(symbol)
+        return self.data_worker.get_symbol_info(symbol)
 
     def prepare_test_and_warmup_split(
         self,
@@ -61,7 +61,7 @@ class TickDataPreparator:
         logger.info(f"  Data mode: {data_mode}")
 
         # Load data
-        df = self.data_loader.load_symbol_data(
+        df = self.data_worker.load_symbol_data(
             symbol=symbol, start_date=start_date, end_date=end_date, use_cache=True
         )
 

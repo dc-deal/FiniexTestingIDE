@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import pandas as pd
 
-from python.blackbox.types import TickData, Bar, TimeframeConfig
+from python.framework.types import TickData, Bar, TimeframeConfig
 
 logger = logging.getLogger(__name__)
 

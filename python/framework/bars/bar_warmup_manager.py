@@ -4,16 +4,16 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import pandas as pd
 
-from python.blackbox.types import TickData, Bar, TimeframeConfig
+from python.framework.types import TickData, Bar, TimeframeConfig
 
 logger = logging.getLogger(__name__)
 
 
-class WarmupManager:
+class BarWarmupManager:
     """Manages historical data warmup for workers"""
 
-    def __init__(self, data_loader):
-        self.data_loader = data_loader
+    def __init__(self, data_worker):
+        self.data_worker = data_worker
 
     def calculate_required_warmup(self, workers) -> Dict[str, int]:
         """Calculate maximum warmup time per timeframe"""
@@ -50,7 +50,7 @@ class WarmupManager:
         logger.info(f"Preparing warmup from {warmup_start_time} to {test_start_time}")
 
         # Load tick data for warmup period
-        tick_data = self.data_loader.load_symbol_data(
+        tick_data = self.data_worker.load_symbol_data(
             symbol=symbol,
             start_date=warmup_start_time.isoformat(),
             end_date=test_start_time.isoformat(),

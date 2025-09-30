@@ -2,14 +2,14 @@
 FiniexTestingIDE Data Loader - Reports Module
 Summary reports, formatted output, and developer convenience tools
 
-Location: python/data_loader/reports.py
+Location: python/data_worker/reports.py
 """
 
 from typing import Dict
 import logging
 
-from python.data_loader.core import TickDataLoader
-from python.data_loader.analytics import TickDataAnalyzer
+from python.data_worker.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.analytics import TickDataAnalyzer
 
 logger = logging.getLogger(__name__)
 

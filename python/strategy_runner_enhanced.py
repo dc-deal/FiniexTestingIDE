@@ -8,9 +8,9 @@ import logging
 import os
 import platform
 
-from python.blackbox.batch_orchestrator import BatchOrchestrator
-from python.blackbox.types import TestScenario
-from python.data_loader.core import TickDataLoader
+from python.framework.batch_orchestrator import BatchOrchestrator
+from python.framework.types import TestScenario
+from python.data_worker.data_loader.core import TickDataLoader
 
 # Setup logging
 logging.basicConfig(

@@ -6,7 +6,7 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any
 
-from python.blackbox.types import (
+from python.framework.types import (
     WorkerContract,
     TickData,
     WorkerResult,

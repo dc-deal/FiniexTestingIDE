@@ -4,19 +4,19 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import pandas as pd
 
-from python.blackbox.types import TickData, Bar, TimeframeConfig
-from python.blackbox.bar_renderer import BarRenderer
-from python.blackbox.warmup_manager import WarmupManager
+from python.framework.types import TickData, Bar, TimeframeConfig
+from python.framework.bars.bar_renderer import BarRenderer
+from python.framework.bars.bar_warmup_manager import BarWarmupManager
 
 logger = logging.getLogger(__name__)
 
 
-class BarRenderingOrchestrator:
+class BarRenderingController:
     """Main orchestrator for bar rendering system"""
 
-    def __init__(self, data_loader):
+    def __init__(self, data_worker):
         self.bar_renderer = BarRenderer()
-        self.warmup_manager = WarmupManager(data_loader)
+        self.warmup_manager = BarWarmupManager(data_worker)
         self._workers = []
         self._required_timeframes = set()
         self._warmup_data = {}

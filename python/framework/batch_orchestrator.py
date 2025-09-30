@@ -9,12 +9,12 @@ from concurrent.futures import ProcessPoolExecutor
 import time
 from datetime import datetime, timezone
 
-from python.blackbox.types import TestScenario, GlobalContract, TickData
-from python.blackbox.workers.rsi_worker import RSIWorker
-from python.blackbox.workers.envelope_worker import EnvelopeWorker
-from python.blackbox.decision_orchestrator import DecisionOrchestrator
-from python.blackbox.tick_data_preparator import TickDataPreparator
-from python.blackbox.bar_rendering_orchestrator import BarRenderingOrchestrator
+from python.framework.types import TestScenario, GlobalContract, TickData
+from python.framework.workers.preset_workers.rsi_worker import RSIWorker
+from python.framework.workers.preset_workers.envelope_worker import EnvelopeWorker
+from python.framework.workers.worker_coordinator import WorkerCoordinator
+from python.framework.tick_data_preparator import TickDataPreparator
+from python.framework.bars.bar_rendering_controller import BarRenderingController
 
 
 logger = logging.getLogger(__name__)
@@ -25,19 +25,19 @@ class BatchOrchestrator:
     Universal orchestrator for batch strategy testing
     Handles 1 to 1000+ scenarios with same code path
     
-    REFACTORED: Direct DecisionOrchestrator usage, no adapter layer
+    REFACTORED: Direct WorkerCoordinator usage, no adapter layer
     """
 
-    def __init__(self, scenarios: List[TestScenario], data_loader):
+    def __init__(self, scenarios: List[TestScenario], data_worker):
         """
         Initialize batch orchestrator
 
         Args:
             scenarios: List of test scenarios (can be 1 or 1000+)
-            data_loader: TickDataLoader instance
+            data_worker: TickDataLoader instance
         """
         self.scenarios = scenarios
-        self.data_loader = data_loader
+        self.data_worker = data_worker
         self.global_contract = None
 
         logger.info(
@@ -179,10 +179,10 @@ class BatchOrchestrator:
         """
         Execute single test scenario
 
-        REFACTORED: Works directly with DecisionOrchestrator, no adapter
+        REFACTORED: Works directly with WorkerCoordinator, no adapter
         """
 
-        # 1. Create DecisionOrchestrator directly (no adapter!)
+        # 1. Create WorkerCoordinator directly (no adapter!)
         orchestrator = self._create_orchestrator(scenario)
         orchestrator.initialize()
         
@@ -191,7 +191,7 @@ class BatchOrchestrator:
         )
 
         # 2. Prepare data
-        preparator = TickDataPreparator(self.data_loader)
+        preparator = TickDataPreparator(self.data_worker)
 
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
@@ -203,7 +203,7 @@ class BatchOrchestrator:
         )
 
         # 3. Setup bar rendering
-        bar_orchestrator = BarRenderingOrchestrator(self.data_loader)
+        bar_orchestrator = BarRenderingController(self.data_worker)
         
         # Get workers directly from orchestrator (no adapter.orchestrator!)
         workers = list(orchestrator.workers.values())
@@ -260,9 +260,9 @@ class BatchOrchestrator:
             "success": True,
         }
 
-    def _create_orchestrator(self, scenario: TestScenario) -> DecisionOrchestrator:
+    def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
         """
-        Create DecisionOrchestrator with workers based on scenario config
+        Create WorkerCoordinator with workers based on scenario config
         
         REFACTORED: Returns orchestrator directly, not wrapped in adapter
         """
@@ -281,6 +281,6 @@ class BatchOrchestrator:
         )
 
         # Create and return orchestrator directly
-        orchestrator = DecisionOrchestrator([rsi_worker, envelope_worker])
+        orchestrator = WorkerCoordinator([rsi_worker, envelope_worker])
         
         return orchestrator

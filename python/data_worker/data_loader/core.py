@@ -2,7 +2,7 @@
 FiniexTestingIDE Data Loader - Core Module
 Pure loading logic: Fast, focused, zero dependencies on analysis
 
-Location: python/data_loader/core.py
+Location: python/data_worker/core.py
 """
 
 import pandas as pd

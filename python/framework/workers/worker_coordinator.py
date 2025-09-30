@@ -7,13 +7,13 @@ import logging
 from typing import Dict, List, Any, Optional
 import time
 
-from python.blackbox.types import TickData, Bar, WorkerState
-from python.blackbox.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
+from python.framework.types import TickData, Bar, WorkerState
+from python.framework.workers.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
 
 logger = logging.getLogger(__name__)
 
 
-class DecisionOrchestrator:
+class WorkerCoordinator:
     """
     Orchestrates multiple workers to generate trading decisions
     """
@@ -39,7 +39,7 @@ class DecisionOrchestrator:
     def initialize(self):
         """Initialize orchestrator and all workers"""
         logger.info(
-            f"🔧 Initializing DecisionOrchestrator with {len(self.workers)} workers"
+            f"🔧 Initializing WorkerCoordinator with {len(self.workers)} workers"
         )
 
         for name, worker in self.workers.items():
@@ -47,7 +47,7 @@ class DecisionOrchestrator:
             logger.debug(f"  ✓ Worker '{name}' ready")
 
         self.is_initialized = True
-        logger.info("✅ DecisionOrchestrator initialized")
+        logger.info("✅ WorkerCoordinator initialized")
 
     def process_tick(
         self,
@@ -168,7 +168,7 @@ class DecisionOrchestrator:
 
     def cleanup(self):
         """Cleanup resources"""
-        logger.info("🧹 Cleaning up DecisionOrchestrator...")
+        logger.info("🧹 Cleaning up WorkerCoordinator...")
         for worker in self.workers.values():
             worker.set_state(WorkerState.IDLE)
         self._worker_results.clear()

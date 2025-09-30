@@ -2,7 +2,7 @@
 FiniexTestingIDE Data Loader - Analytics Module
 Symbol analysis, metadata extraction, and statistics
 
-Location: python/data_loader/analytics.py
+Location: python/data_worker/analytics.py
 """
 
 import pandas as pd
@@ -12,7 +12,7 @@ from typing import Dict, Tuple
 from datetime import datetime, timedelta
 import logging
 
-from python.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.core import TickDataLoader
 
 logger = logging.getLogger(__name__)
 
