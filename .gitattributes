@@ -1,21 +1,13 @@
-*           text=auto eol=lf
-
-# Quellcode
-*.py        text eol=lf
-*.sh        text eol=lf
-*.md        text eol=lf
-*.yml       text eol=lf
-*.yaml      text eol=lf
-*.json      text eol=lf
-*.txt       text eol=lf
-
-# Windows-Batches dürfen CRLF behalten (falls du welche hast)
-*.bat       text eol=crlf
-
-# Binärdateien niemals anfassen
-*.png       binary
-*.jpg       binary
-*.jpeg      binary
-*.gif       binary
-*.pdf       binary
-*.parquet   binary
+* text=auto eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
