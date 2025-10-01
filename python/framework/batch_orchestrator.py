@@ -319,27 +319,35 @@ class BatchOrchestrator:
         return orchestrator
 
     # def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
-    #     config = scenario.strategy_config
+    #     """
+    #     Create WorkerCoordinator with workers based on scenario config
+    #     FIXED: Uses execution_config separation
+    #     """
+    #     # Strategy-Config → Workers
+    #     strategy_config = scenario.strategy_config
 
-    #     exec_config = config.get("execution", {})
-    #     parallel_workers = exec_config.get("parallel_workers", False)
-    #     parallel_threshold = exec_config.get("worker_parallel_threshold_ms", 1.0)
+    #     # Execution-Config → Framework Optimization
+    #     exec_config = scenario.execution_config
+
+    #     parallel_workers = exec_config.get("parallel_workers")
+    #     parallel_threshold = exec_config.get(
+    #         "worker_parallel_threshold_ms", 1.0)
     #     log_stats = exec_config.get("log_performance_stats", False)
 
-    #     # Künstliche Last aus Config
-    #     load_ms = config.get("artificial_load_ms", 5.0)
+    #     # Künstliche Last aus Execution Config
+    #     load_ms = exec_config.get("artificial_load_ms", 5.0)
 
-    #     # Heavy Workers statt normale Workers
+    #     # Heavy Workers mit künstlicher Last
     #     rsi_worker = HeavyRSIWorker(
-    #         period=config.get("rsi_period", 14),
-    #         timeframe=config.get("rsi_timeframe", "M5"),
-    #         artificial_load_ms=load_ms,  # ← LAST!
+    #         period=strategy_config.get("rsi_period", 14),
+    #         timeframe=strategy_config.get("rsi_timeframe", "M5"),
+    #         artificial_load_ms=load_ms,  # ← LAST aus exec_config!
     #     )
 
     #     envelope_worker = HeavyEnvelopeWorker(
-    #         period=config.get("envelope_period", 20),
-    #         deviation=config.get("envelope_deviation", 0.02),
-    #         timeframe=config.get("envelope_timeframe", "M5"),
+    #         period=strategy_config.get("envelope_period", 20),
+    #         deviation=strategy_config.get("envelope_deviation", 0.02),
+    #         timeframe=strategy_config.get("envelope_timeframe", "M5"),
     #         artificial_load_ms=load_ms * 1.5,  # ← MEHR LAST!
     #     )
 
@@ -351,13 +359,14 @@ class BatchOrchestrator:
     #         artificial_load_ms=load_ms * 1.2,  # ← MITTLERE LAST
     #     )
 
-    #     # WorkerCoordinator mit allen 3 Workers
+    #     # WorkerCoordinator mit allen 3 Heavy Workers
     #     orchestrator = WorkerCoordinator(
-    #         [rsi_worker, envelope_worker, macd_worker],
-    #          parallel_workers=parallel_workers,  # ← FROM CONFIG!
-    #          parallel_threshold_ms=parallel_threshold,  # ← FROM CONFIG!
+    #         workers=[rsi_worker, envelope_worker, macd_worker],
+    #         parallel_workers=parallel_workers,  # ← FROM EXECUTION CONFIG!
+    #         parallel_threshold_ms=parallel_threshold,  # ← FROM EXECUTION CONFIG!
     #     )
 
+    #     # Store config for later reference
     #     orchestrator._execution_config = exec_config
 
     #     return orchestrator

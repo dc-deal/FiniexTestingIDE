@@ -19,6 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+parallel_mode = False
+max_workers = 4
+
 
 def run_strategy_test() -> dict:
     """
@@ -31,7 +34,7 @@ def run_strategy_test() -> dict:
         # 1. Setup data loader
         loader = TickDataLoader()
 
-        # ============================================================
+       # ============================================================
         # Config-Based Scenario loading
         # ============================================================
 
@@ -48,13 +51,9 @@ def run_strategy_test() -> dict:
         orchestrator = BatchOrchestrator(scenarios, loader)
 
         # Determine execution mode from first scenario's execution_config
-        parallel_mode = False
-        max_workers = 4
-
         if scenarios and scenarios[0].execution_config:
             exec_config = scenarios[0].execution_config
             max_parallel = exec_config.get("max_parallel_scenarios", 4)
-            parallel_mode = len(scenarios) > 1 and max_parallel > 1
             max_workers = max_parallel
 
             logger.info(
@@ -64,48 +63,14 @@ def run_strategy_test() -> dict:
         results = orchestrator.run(parallel_mode, max_workers)
 
         # ============================================================
-        # STATISTICS EXTRACTION
+        # RESULTS SUMMARY & STATISTICS
         # ============================================================
 
-        # Get orchestrator statistics (if available)
-        if hasattr(orchestrator, '_last_orchestrator'):
-            worker_coordinator = orchestrator._last_orchestrator
-            if hasattr(worker_coordinator, 'get_statistics'):
-                stats = worker_coordinator.get_statistics()
+        # Extract worker statistics if available
+        worker_stats = extract_worker_statistics(orchestrator)
 
-                logger.info("=" * 60)
-                logger.info("📊 WORKER COORDINATOR STATISTICS")
-                logger.info("=" * 60)
-                logger.info(
-                    f"Ticks processed:       {stats.get('ticks_processed', 0):,}")
-                logger.info(
-                    f"Worker calls:          {stats.get('worker_calls', 0):,}")
-                logger.info(
-                    f"Decisions made:        {stats.get('decisions_made', 0):,}")
-
-                # Parallel-specific stats
-                if 'parallel_execution_time_saved_ms' in stats:
-                    time_saved = stats['parallel_execution_time_saved_ms']
-                    avg_saved = stats.get('avg_time_saved_per_tick_ms', 0)
-
-                    logger.info("-" * 60)
-                    logger.info("⚡ PARALLELIZATION METRICS")
-                    logger.info(f"Total time saved:      {time_saved:.2f}ms")
-                    logger.info(f"Avg saved per tick:    {avg_saved:.3f}ms")
-
-                    if time_saved > 0:
-                        logger.info("✅ Parallel was FASTER than sequential")
-                    elif time_saved < 0:
-                        logger.info(
-                            "⚠️  Sequential was FASTER (overhead > gains)")
-
-                logger.info("=" * 60)
-
-        # ============================================================
-        # RESULTS SUMMARY (using old print function format)
-        # ============================================================
-
-        print_detailed_results(results)
+        # Print detailed results with worker stats
+        print_detailed_results(results, worker_stats)
 
         return results
 
@@ -114,7 +79,58 @@ def run_strategy_test() -> dict:
         raise
 
 
-def print_detailed_results(results: dict):
+def extract_worker_statistics(orchestrator) -> dict:
+    """
+    Extract worker statistics from orchestrator
+
+    Returns:
+        Dictionary with worker stats or empty dict if not available
+    """
+    if not hasattr(orchestrator, '_last_orchestrator'):
+        return {}
+
+    worker_coordinator = orchestrator._last_orchestrator
+    if not hasattr(worker_coordinator, 'get_statistics'):
+        return {}
+
+    return worker_coordinator.get_statistics()
+
+
+def print_worker_statistics(stats: dict):
+    """
+    Print worker coordinator statistics
+
+    Args:
+        stats: Statistics dictionary from WorkerCoordinator
+    """
+    if not stats:
+        return
+
+    print("\n" + "-" * 60)
+    print("📊 WORKER COORDINATOR STATISTICS")
+    print("-" * 60)
+    print(f"  Ticks processed:       {stats.get('ticks_processed', 0):,}")
+    print(f"  Worker calls:          {stats.get('worker_calls', 0):,}")
+    print(f"  Decisions made:        {stats.get('decisions_made', 0):,}")
+
+    # Parallel-specific stats
+    if 'parallel_execution_time_saved_ms' in stats:
+        time_saved = stats['parallel_execution_time_saved_ms']
+        avg_saved = stats.get('avg_time_saved_per_tick_ms', 0)
+
+        print("\n" + "  " + "⚡ PARALLELIZATION METRICS")
+        print(f"  Total time saved:      {time_saved:.2f}ms")
+        print(f"  Avg saved per tick:    {avg_saved:.3f}ms")
+
+        if time_saved > 0:
+            print(f"  Status:                ✅ Parallel was FASTER")
+        elif time_saved < 0:
+            print(f"  Status:                ⚠️  Sequential was FASTER (overhead)")
+        else:
+            print(f"  Status:                ≈ No difference")
+
+
+def print_detailed_results(results: dict, worker_stats: dict = None):
     """
     Print detailed results with statistics
     Compatible with BatchOrchestrator output format
@@ -127,6 +143,8 @@ def print_detailed_results(results: dict):
     print(f"✅ Success:            {results.get('success', True)}")
     print(f"📊 Scenarios:          {results.get('scenarios_count', 0)}")
     print(f"⏱️  Execution time:     {results.get('execution_time', 0):.2f}s")
+    print(f"⚙️  Parallel Mode:     {parallel_mode}")
+    print(f"⚙️  Max. Workers:      {max_workers}")
 
     if "error" in results:
         print(f"❌ Error:              {results['error']}")
@@ -139,8 +157,8 @@ def print_detailed_results(results: dict):
         print("-" * 60)
 
         for i, scenario_result in enumerate(results["results"], 1):
-            print(
-                f"\nScenario {i}: {scenario_result.get('scenario_name', 'Unknown')}")
+            scenario_name = scenario_result.get('scenario_name', 'Unknown')
+            print(f"\n📋 Scenario {i}: {scenario_name}")
             print(
                 f"  Symbol:             {scenario_result.get('symbol', 'N/A')}")
             print(
@@ -150,7 +168,7 @@ def print_detailed_results(results: dict):
             print(
                 f"  Signal rate:        {scenario_result.get('signal_rate', 0):.1%}")
 
-            # Worker statistics (if available)
+            # Worker statistics per scenario (if available)
             if 'worker_statistics' in scenario_result:
                 stats = scenario_result['worker_statistics']
                 print(
@@ -158,10 +176,8 @@ def print_detailed_results(results: dict):
                 print(
                     f"  Decisions made:     {stats.get('decisions_made', 0)}")
 
-                # Parallel stats
-                if 'parallel_execution_time_saved_ms' in stats:
-                    time_saved = stats['parallel_execution_time_saved_ms']
-                    print(f"  ⚡ Time saved:       {time_saved:.2f}ms")
+    # Global worker statistics
+    print_worker_statistics(worker_stats)
 
     # Global contract info
     if "global_contract" in results:

@@ -110,6 +110,8 @@ class ScenarioConfigLoader:
 
         config = {
             "version": "1.0",
+            # Filename as scenario_name
+            "scenario_name": "scn_"+config_file.replace('.json', ''),
             "created": datetime.now().isoformat(),
             "global": {
                 "data_mode": "realistic",

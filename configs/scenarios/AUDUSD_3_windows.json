@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T07:55:20.806763",
+  "scenario_name": "scn_AUDUSD_3_windows",
+  "created": "2025-10-01T08:22:16.211138",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {

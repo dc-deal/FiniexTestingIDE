@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T07:55:20.339633",
+  "scenario_name": "scn_GBPUSD_3_windows",
+  "created": "2025-10-01T08:22:15.541290",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {

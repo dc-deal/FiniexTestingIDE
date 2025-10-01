@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T07:55:19.028590",
+  "scenario_name": "scn_quick_test",
+  "created": "2025-10-01T08:22:12.510783",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {

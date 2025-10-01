@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T07:55:19.589685",
+  "scenario_name": "scn_EURUSD_3_windows",
+  "created": "2025-10-01T08:22:14.662547",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
