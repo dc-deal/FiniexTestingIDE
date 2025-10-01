@@ -1,8 +1,10 @@
-import numpy as np
-from typing import List, Dict
+from typing import Dict, List
 
-from python.framework.types import WorkerContract, TickData, WorkerResult, Bar
-from python.framework.workers.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
+import numpy as np
+
+from python.framework.types import Bar, TickData, WorkerContract, WorkerResult
+from python.framework.workers.abstract.abstract_blackbox_worker import \
+    AbstractBlackboxWorker
 
 
 class RSIWorker(AbstractBlackboxWorker):
@@ -16,7 +18,8 @@ class RSIWorker(AbstractBlackboxWorker):
     def get_contract(self) -> WorkerContract:
 
         return WorkerContract(
-            parameters={"rsi_period": self.period, "rsi_timeframe": self.timeframe},
+            parameters={"rsi_period": self.period,
+                        "rsi_timeframe": self.timeframe},
             price_change_sensitivity=0.0001,
             max_computation_time_ms=50.0,
             required_timeframes=self.get_required_timeframes(),
@@ -54,11 +57,13 @@ class RSIWorker(AbstractBlackboxWorker):
                 worker_name=self.name,
                 value=50.0,
                 confidence=0.0,
-                metadata={"insufficient_bars": True, "bars_available": len(bars)},
+                metadata={"insufficient_bars": True,
+                          "bars_available": len(bars)},
             )
 
         # Extract close prices from bars
-        close_prices = np.array([bar.close for bar in bars[-(self.period + 1) :]])
+        close_prices = np.array(
+            [bar.close for bar in bars[-(self.period + 1):]])
 
         # Calculate RSI
         deltas = np.diff(close_prices)

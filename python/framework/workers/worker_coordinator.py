@@ -4,14 +4,13 @@ Coordinates multiple workers and generates trading decisions
 """
 
 import logging
-from typing import Dict, List, Any, Optional
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
 
-from python.framework.types import TickData, Bar, WorkerState
-from python.framework.workers.abstract.abstract_blackbox_worker import (
-    AbstractBlackboxWorker,
-)
+from python.framework.types import Bar, TickData, WorkerState
+from python.framework.workers.abstract.abstract_blackbox_worker import \
+    AbstractBlackboxWorker
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,9 @@ import logging
 import os
 import platform
 
+from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.framework.types import TestScenario
-from python.data_worker.data_loader.core import TickDataLoader
 from python.scenario.config_loader import ScenarioConfigLoader
 
 # Setup logging

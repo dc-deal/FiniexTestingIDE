@@ -5,12 +5,13 @@ Symbol analysis, metadata extraction, and statistics
 Location: python/data_worker/analytics.py
 """
 
-import pandas as pd
-import pyarrow.parquet as pq
+import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
-from datetime import datetime, timedelta
-import logging
+
+import pandas as pd
+import pyarrow.parquet as pq
 
 from python.data_worker.data_loader.core import TickDataLoader
 

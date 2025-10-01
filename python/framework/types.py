@@ -3,10 +3,10 @@ FiniexTestingIDE - Core Domain Types
 Complete type system for blackbox framework
 """
 
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class WorkerState(Enum):

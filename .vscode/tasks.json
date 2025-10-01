@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "format:python:autopep8",
+            "type": "shell",
+            "command": "autopep8 -r -i . && isort .",
+            "problemMatcher": []
+        }
+    ]
+}

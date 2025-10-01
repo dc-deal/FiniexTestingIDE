@@ -3,11 +3,13 @@ FiniexTestingIDE - Envelope Worker
 Bar-based envelope/bollinger band computation
 """
 
-import numpy as np
-from typing import List, Dict
+from typing import Dict, List
 
-from python.framework.types import WorkerContract, TickData, WorkerResult, Bar
-from python.framework.workers.abstract.abstract_blackbox_worker import AbstractBlackboxWorker
+import numpy as np
+
+from python.framework.types import Bar, TickData, WorkerContract, WorkerResult
+from python.framework.workers.abstract.abstract_blackbox_worker import \
+    AbstractBlackboxWorker
 
 
 class EnvelopeWorker(AbstractBlackboxWorker):
@@ -87,7 +89,7 @@ class EnvelopeWorker(AbstractBlackboxWorker):
             )
 
         # Extract close prices from bars
-        close_prices = np.array([bar.close for bar in bars[-self.period :]])
+        close_prices = np.array([bar.close for bar in bars[-self.period:]])
 
         # Calculate envelope/bollinger bands
         middle = np.mean(close_prices)

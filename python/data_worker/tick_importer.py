@@ -10,16 +10,18 @@ Version: 1.0
 """
 
 import json
-import pandas as pd
-import numpy as np
+import logging
 import os
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import logging
-from typing import List, Dict, Optional
-from config import MOVE_PROCESSED_FILES, DEV_MODE, DEBUG_LOGGING
+
+from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
 
 # Logging Setup
 logging.basicConfig(
@@ -116,7 +118,8 @@ class TickDataImporter:
 
         # TickCollector-Struktur prüfen: {metadata: {...}, ticks: [...]}
         if "ticks" not in data or "metadata" not in data:
-            raise ValueError("Ungültige JSON-Struktur - 'ticks' oder 'metadata' fehlt")
+            raise ValueError(
+                "Ungültige JSON-Struktur - 'ticks' oder 'metadata' fehlt")
 
         ticks = data["ticks"]
         metadata = data["metadata"]
@@ -302,7 +305,8 @@ class TickDataImporter:
         # Logging für entfernte Ticks
         removed = initial_count - len(df)
         if removed > 0:
-            logger.warning(f"Qualitäts-Check: {removed} invalide Ticks entfernt")
+            logger.warning(
+                f"Qualitäts-Check: {removed} invalide Ticks entfernt")
 
         return df
 

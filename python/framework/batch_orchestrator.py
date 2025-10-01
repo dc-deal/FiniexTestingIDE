@@ -4,23 +4,21 @@ Universal entry point for 1-1000+ test scenarios
 """
 
 import logging
-from typing import List, Dict, Any
-from concurrent.futures import ProcessPoolExecutor
 import time
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 
-from python.framework.types import TestScenario, GlobalContract, TickData
-from python.framework.workers.preset_workers.heavy_workers import (
-    HeavyEnvelopeWorker,
-    HeavyMACDWorker,
-    HeavyRSIWorker,
-)
-from python.framework.workers.preset_workers.rsi_worker import RSIWorker
-from python.framework.workers.preset_workers.envelope_worker import EnvelopeWorker
-from python.framework.workers.worker_coordinator import WorkerCoordinator
+from python.framework.bars.bar_rendering_controller import \
+    BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
-from python.framework.bars.bar_rendering_controller import BarRenderingController
-
+from python.framework.types import GlobalContract, TestScenario, TickData
+from python.framework.workers.preset_workers.envelope_worker import \
+    EnvelopeWorker
+from python.framework.workers.preset_workers.heavy_workers import (
+    HeavyEnvelopeWorker, HeavyMACDWorker, HeavyRSIWorker)
+from python.framework.workers.preset_workers.rsi_worker import RSIWorker
+from python.framework.workers.worker_coordinator import WorkerCoordinator
 
 logger = logging.getLogger(__name__)
 

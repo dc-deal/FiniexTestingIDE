@@ -4,12 +4,13 @@ Converts ticks to bars for all timeframes
 """
 
 import logging
-from typing import Dict, List, Set, Optional
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Set
+
 import pandas as pd
 
-from python.framework.types import TickData, Bar, TimeframeConfig
+from python.framework.types import Bar, TickData, TimeframeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ class BarRenderer:
         updated_bars = {}
 
         for timeframe in required_timeframes:
-            bar_start_time = TimeframeConfig.get_bar_start_time(timestamp, timeframe)
+            bar_start_time = TimeframeConfig.get_bar_start_time(
+                timestamp, timeframe)
 
             # Check if we need a new bar
             current_bar = self.current_bars[timeframe].get(symbol)
@@ -112,16 +114,16 @@ class BarRenderer:
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar for symbol/timeframe"""
         return self.current_bars[timeframe].get(symbol)
-    
+
     def initialize_historical_bars(
-    self, symbol: str, timeframe: str, bars: List[Bar]
+        self, symbol: str, timeframe: str, bars: List[Bar]
     ) -> None:
         """
         Initialize the completed_bars history with warmup bars.
-        
+
         This method populates the historical bar storage with pre-rendered
         warmup bars, making them available for get_bar_history() calls.
-        
+
         Args:
             symbol: The trading symbol (e.g., "EURUSD")
             timeframe: The timeframe (e.g., "M5")
@@ -130,48 +132,48 @@ class BarRenderer:
         # Ensure the nested structure exists for this timeframe/symbol
         if timeframe not in self.completed_bars:
             self.completed_bars[timeframe] = defaultdict(deque)
-        
+
         if symbol not in self.completed_bars[timeframe]:
             self.completed_bars[timeframe][symbol] = deque(maxlen=1000)
-        
+
         # Add all warmup bars to the history
         # These are already complete bars from the warmup phase
         for bar in bars:
             self.completed_bars[timeframe][symbol].append(bar)
-        
+
         logger.debug(
             f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
         )
-
 
     def render_bars_from_ticks(
         self, ticks: List[TickData], symbol: str, timeframe: str
     ) -> List[Bar]:
         """
         Render a list of bars from a sequence of ticks.
-        
+
         This is the core bar-building logic extracted so it can be reused
         for both warmup rendering and live tick processing. It takes raw
         ticks and converts them into completed bars.
-        
+
         Args:
             ticks: List of TickData objects to process
             symbol: The trading symbol
             timeframe: The timeframe to render (e.g., "M5")
-        
+
         Returns:
             List of completed Bar objects
         """
         bars = []
         current_bar = None
-        
+
         for tick in ticks:
             timestamp = pd.to_datetime(tick.timestamp)
             mid_price = tick.mid
             volume = tick.volume
-            
-            bar_start_time = TimeframeConfig.get_bar_start_time(timestamp, timeframe)
-            
+
+            bar_start_time = TimeframeConfig.get_bar_start_time(
+                timestamp, timeframe)
+
             # Check if we need to start a new bar
             if (
                 current_bar is None
@@ -181,7 +183,7 @@ class BarRenderer:
                 if current_bar is not None:
                     current_bar.is_complete = True
                     bars.append(current_bar)
-                
+
                 # Create a new bar
                 current_bar = Bar(
                     symbol=symbol,
@@ -193,15 +195,13 @@ class BarRenderer:
                     close=0,
                     volume=0,
                 )
-            
+
             # Update the current bar with this tick
             current_bar.update_with_tick(mid_price, volume)
-        
+
         # Don't forget to add the last bar if it exists
         if current_bar is not None:
             current_bar.is_complete = True
             bars.append(current_bar)
-        
+
         return bars
-
-

@@ -5,13 +5,14 @@ Config Loader
 
 import json
 import logging
-from pathlib import Path
-from typing import List, Dict, Any
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List
+
 import pandas as pd
 
-from python.framework.types import TestScenario
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.types import TestScenario
 
 logger = logging.getLogger(__name__)
 

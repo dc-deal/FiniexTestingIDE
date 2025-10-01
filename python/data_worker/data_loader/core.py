@@ -5,11 +5,12 @@ Pure loading logic: Fast, focused, zero dependencies on analysis
 Location: python/data_worker/core.py
 """
 
-import pandas as pd
-from pathlib import Path
-from typing import List, Optional
 import logging
 from datetime import timezone
+from pathlib import Path
+from typing import List, Optional
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,8 @@ class TickDataLoader:
 
         # Combine and sort
         combined_df = pd.concat(dataframes, ignore_index=True)
-        combined_df = combined_df.sort_values("timestamp").reset_index(drop=True)
+        combined_df = combined_df.sort_values(
+            "timestamp").reset_index(drop=True)
 
         # Remove duplicates (keep latest)
         # trigger: Miliseconds.
@@ -127,7 +129,8 @@ class TickDataLoader:
             duplicates_removed = initial_count - len(combined_df)
 
             if duplicates_removed > 0:
-                duplicate_percentage = (duplicates_removed / initial_count) * 100
+                duplicate_percentage = (
+                    duplicates_removed / initial_count) * 100
                 logger.info(
                     f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
                     f"({duplicate_percentage:.2f}% of data)"
@@ -137,7 +140,8 @@ class TickDataLoader:
                 logger.info(f"No duplicates found in {initial_count:,} ticks")
 
         # Apply date filters
-        combined_df = self._apply_date_filters(combined_df, start_date, end_date)
+        combined_df = self._apply_date_filters(
+            combined_df, start_date, end_date)
 
         # Update cache
         if use_cache:

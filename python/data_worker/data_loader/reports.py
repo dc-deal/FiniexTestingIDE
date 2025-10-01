@@ -5,11 +5,11 @@ Summary reports, formatted output, and developer convenience tools
 Location: python/data_worker/reports.py
 """
 
-from typing import Dict
 import logging
+from typing import Dict
 
-from python.data_worker.data_loader.core import TickDataLoader
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
+from python.data_worker.data_loader.core import TickDataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,8 @@ class TickDataReporter:
         )
 
         if info.get("sessions"):
-            sessions_str = ", ".join([f"{k}: {v}" for k, v in info["sessions"].items()])
+            sessions_str = ", ".join(
+                [f"{k}: {v}" for k, v in info["sessions"].items()])
             print(f"      Sessions:     {sessions_str}")
 
     def print_all_symbols(self):
@@ -98,7 +99,8 @@ class TickDataReporter:
         )
 
         print(f"✓ Loaded:      {len(df):,} ticks")
-        print(f"✓ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
+        print(
+            f"✓ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
         print(
             f"✓ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
         )
