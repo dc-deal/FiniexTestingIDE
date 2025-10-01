@@ -10,7 +10,11 @@ import time
 from datetime import datetime, timezone
 
 from python.framework.types import TestScenario, GlobalContract, TickData
-from python.framework.workers.preset_workers.heavy_workers import HeavyEnvelopeWorker, HeavyMACDWorker, HeavyRSIWorker
+from python.framework.workers.preset_workers.heavy_workers import (
+    HeavyEnvelopeWorker,
+    HeavyMACDWorker,
+    HeavyRSIWorker,
+)
 from python.framework.workers.preset_workers.rsi_worker import RSIWorker
 from python.framework.workers.preset_workers.envelope_worker import EnvelopeWorker
 from python.framework.workers.worker_coordinator import WorkerCoordinator
@@ -25,8 +29,6 @@ class BatchOrchestrator:
     """
     Universal orchestrator for batch strategy testing
     Handles 1 to 1000+ scenarios with same code path
-
-    REFACTORED: Direct WorkerCoordinator usage, no adapter layer
     """
 
     def __init__(self, scenarios: List[TestScenario], data_worker):
@@ -52,7 +54,7 @@ class BatchOrchestrator:
 
         Args:
             parallel: Run scenarios in parallel (default: False for debugging)
-            max_workers: Max parallel workers if parallel=True
+            max_workers: Max parallel workers if parallel=True (can be overridden by execution_config)
 
         Returns:
             Aggregated results from all scenarios
@@ -61,14 +63,21 @@ class BatchOrchestrator:
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)")
         start_time = time.time()
 
-        # 1. Aggregate global contract from all scenarios
+        # 1. Aggregate global contract
         self.global_contract = self._aggregate_global_contract()
-        logger.info(
-            f"✅ Global contract: {self.global_contract.max_warmup_bars} bars, "
-            f"{len(self.global_contract.all_timeframes)} timeframes"
-        )
 
-        # 2. Execute scenarios
+        # 2. Check if execution_config overrides max_workers
+        if self.scenarios and self.scenarios[0].execution_config:
+            config_max_scenarios = self.scenarios[0].execution_config.get(
+                "max_parallel_scenarios"
+            )
+            if config_max_scenarios is not None:
+                max_workers = config_max_scenarios
+                logger.info(
+                    f"📝 Using max_parallel_scenarios from config: {max_workers}"
+                )
+
+        # 3. Execute scenarios
         if parallel and len(self.scenarios) > 1:
             results = self._run_parallel(max_workers)
         else:
@@ -222,7 +231,7 @@ class BatchOrchestrator:
         bar_orchestrator.prepare_warmup_from_ticks(
             symbol=scenario.symbol,
             warmup_ticks=warmup_ticks,
-            test_start_time=first_test_time
+            test_start_time=first_test_time,
         )
 
         # 4. Execute test loop
@@ -243,9 +252,7 @@ class BatchOrchestrator:
 
             # Process decision DIRECTLY through orchestrator (no adapter!)
             decision = orchestrator.process_tick(
-                tick=tick,
-                current_bars=current_bars,
-                bar_history=bar_history
+                tick=tick, current_bars=current_bars, bar_history=bar_history
             )
 
             ticks_processed += 1
@@ -256,8 +263,11 @@ class BatchOrchestrator:
                 signals_generated += 1
 
         # 5. Return results
-        worker_stats = orchestrator.get_statistics() if hasattr(
-            orchestrator, 'get_statistics') else {}
+        worker_stats = (
+            orchestrator.get_statistics()
+            if hasattr(orchestrator, "get_statistics")
+            else {}
+        )
 
         return {
             "scenario_name": scenario.name,
@@ -273,35 +283,36 @@ class BatchOrchestrator:
     def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
         """
         Create WorkerCoordinator with workers based on scenario config
-        NOW: Reads execution config from strategy_config!
+        NOW: Reads execution config from execution_config (not strategy_config!)
         """
-        config = scenario.strategy_config
+        # Strategy-Config → Workers
+        strategy_config = scenario.strategy_config
 
-        # Extract execution configuration
-        exec_config = config.get("execution", {})
+        # Execution-Config → Framework Optimization
+        exec_config = scenario.execution_config
 
-        parallel_workers = exec_config.get("parallel_workers", False)
+        parallel_workers = exec_config.get("parallel_workers")
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0)
         log_stats = exec_config.get("log_performance_stats", False)
 
         # Create workers (strategy-specific)
         rsi_worker = RSIWorker(
-            period=config.get("rsi_period", 14),
-            timeframe=config.get("rsi_timeframe", "M5"),
+            period=strategy_config.get("rsi_period", 14),
+            timeframe=strategy_config.get("rsi_timeframe", "M5"),
         )
 
         envelope_worker = EnvelopeWorker(
-            period=config.get("envelope_period", 20),
-            deviation=config.get("envelope_deviation", 0.02),
-            timeframe=config.get("envelope_timeframe", "M5"),
+            period=strategy_config.get("envelope_period", 20),
+            deviation=strategy_config.get("envelope_deviation", 0.02),
+            timeframe=strategy_config.get("envelope_timeframe", "M5"),
         )
 
         # Create orchestrator with config-based settings
         orchestrator = WorkerCoordinator(
             workers=[rsi_worker, envelope_worker],
-            parallel_workers=parallel_workers,  # ← FROM CONFIG!
-            parallel_threshold_ms=parallel_threshold,  # ← FROM CONFIG!
+            parallel_workers=parallel_workers,  # ← FROM EXECUTION CONFIG!
+            parallel_threshold_ms=parallel_threshold,  # ← FROM EXECUTION CONFIG!
         )
 
         # Store config for later reference

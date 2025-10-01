@@ -38,33 +38,19 @@ def run_strategy_test() -> dict:
             end_date="2025-09-26",
             max_ticks=1000,
             data_mode="realistic",
+            # Strategy-Logic (→ Workers)
             strategy_config={
-                # ============================================
-                # STRATEGY PARAMETERS
-                # ============================================
                 "rsi_period": 14,
                 "envelope_period": 20,
                 "envelope_deviation": 0.02,
-
-                # ============================================
-                # EXECUTION CONFIGURATION
-                # ============================================
-                "execution": {
-                    # Worker-Level Parallelization
-                    # True = Workers parallel (gut bei 4+ workers)
-                    "parallel_workers": True,
-                    "worker_parallel_threshold_ms": 1.0,  # Nur parallel wenn Worker >1ms
-
-                    # ← NEU: Künstliche Last
-                    "artificial_load_ms": 5.0,  # 5ms pro Worker
-
-                    # Scenario-Level Parallelization (handled by BatchOrchestrator)
-                    "max_parallel_scenarios": 4,  # Max concurrent scenarios
-
-                    # Performance Tuning
-                    "adaptive_parallelization": True,  # Auto-detect optimal mode
-                    "log_performance_stats": True,  # Log timing statistics
-                }
+            },
+            # Execution-Optimization (→ Framework)
+            execution_config={
+                "parallel_workers": True,
+                "worker_parallel_threshold_ms": 1.0,
+                "max_parallel_scenarios": 4,
+                "adaptive_parallelization": True,
+                "log_performance_stats": True,
             },
             name=f"EURUSD_01_test",
         )
@@ -87,25 +73,27 @@ def run_strategy_test() -> dict:
         # ============================================================
 
         # Get orchestrator statistics (if available)
-        if hasattr(orchestrator, '_last_orchestrator'):
+        if hasattr(orchestrator, "_last_orchestrator"):
             worker_coordinator = orchestrator._last_orchestrator
-            if hasattr(worker_coordinator, 'get_statistics'):
+            if hasattr(worker_coordinator, "get_statistics"):
                 stats = worker_coordinator.get_statistics()
 
                 logger.info("=" * 60)
                 logger.info("📊 WORKER COORDINATOR STATISTICS")
                 logger.info("=" * 60)
                 logger.info(
-                    f"Ticks processed:       {stats.get('ticks_processed', 0):,}")
+                    f"Ticks processed:       {stats.get('ticks_processed', 0):,}"
+                )
                 logger.info(
                     f"Worker calls:          {stats.get('worker_calls', 0):,}")
                 logger.info(
-                    f"Decisions made:        {stats.get('decisions_made', 0):,}")
+                    f"Decisions made:        {stats.get('decisions_made', 0):,}"
+                )
 
                 # Parallel-specific stats
-                if 'parallel_execution_time_saved_ms' in stats:
-                    time_saved = stats['parallel_execution_time_saved_ms']
-                    avg_saved = stats.get('avg_time_saved_per_tick_ms', 0)
+                if "parallel_execution_time_saved_ms" in stats:
+                    time_saved = stats["parallel_execution_time_saved_ms"]
+                    avg_saved = stats.get("avg_time_saved_per_tick_ms", 0)
 
                     logger.info("-" * 60)
                     logger.info("⚡ PARALLELIZATION METRICS")
@@ -186,9 +174,11 @@ def print_detailed_results(results: dict):
             print(
                 f"  Symbol:             {scenario_result.get('symbol', 'N/A')}")
             print(
-                f"  Ticks processed:    {scenario_result.get('ticks_processed', 0):,}")
+                f"  Ticks processed:    {scenario_result.get('ticks_processed', 0):,}"
+            )
             print(
-                f"  Signals generated:  {scenario_result.get('signals_generated', 0)}")
+                f"  Signals generated:  {scenario_result.get('signals_generated', 0)}"
+            )
             print(
                 f"  Signal rate:        {scenario_result.get('signal_rate', 0):.1%}")
 

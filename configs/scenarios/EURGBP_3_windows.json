@@ -1,17 +1,12 @@
 {
   "version": "1.0",
-  "created": "2025-09-30T17:47:55.581550",
+  "created": "2025-10-01T06:19:50.266569",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
       "rsi_period": 14,
       "envelope_period": 20,
-      "envelope_deviation": 0.02,
-      "execution": {
-        "parallel_workers": true,
-        "artificial_load_ms": 5.0,
-        "max_parallel_scenarios": 4
-      }
+      "envelope_deviation": 0.02
     }
   },
   "scenarios": [
@@ -24,11 +19,7 @@
       "strategy_config": {
         "rsi_period": 14,
         "envelope_period": 20,
-        "envelope_deviation": 0.02,
-        "execution": {
-          "parallel_workers": true,
-          "artificial_load_ms": 5.0
-        }
+        "envelope_deviation": 0.02
       }
     },
     {
@@ -40,11 +31,7 @@
       "strategy_config": {
         "rsi_period": 14,
         "envelope_period": 20,
-        "envelope_deviation": 0.02,
-        "execution": {
-          "parallel_workers": true,
-          "artificial_load_ms": 5.0
-        }
+        "envelope_deviation": 0.02
       }
     }
   ]

@@ -1,4 +1,8 @@
 {
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8"
+    },
     "files.exclude": {
         "**/__pycache__": true,
         "**/*.pyc": true,

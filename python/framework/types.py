@@ -103,12 +103,41 @@ class TestScenario:
     end_date: str
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
+
+    # ============================================
+    # STRATEGY PARAMETERS
+    # ============================================
+    # Strategy-Logic (→ WorkerCoordinator sammelt Contracts & dessen Parameter)
     strategy_config: Dict[str, Any] = field(default_factory=dict)
+
+    # NEW: Execution-Optimization (→ Framework)
+    execution_config: Optional[Dict[str, Any]] = None
+
     name: Optional[str] = None
 
     def __post_init__(self):
         if self.name is None:
             self.name = f"{self.symbol}_{self.start_date}_{self.end_date}"
+
+        # Smart Defaults für Execution Config
+        if self.execution_config is None:
+            self.execution_config = {
+                # ============================================
+                # EXECUTION CONFIGURATION STANDARD
+                # ============================================
+                # Worker-Level Parallelization
+                # True = Workers parallel (gut bei 4+ workers)
+                "parallel_workers": None,  # Auto-detect
+                "worker_parallel_threshold_ms": 1.0,  # Nur parallel wenn Worker >1ms
+                # ← NEU: Künstliche Last - NUR für Heavy workers
+                # Ist eher für self-testing szenarios und stress tests gedacht.
+                "artificial_load_ms": 5.0,  # 5ms pro Worker
+                # Scenario-Level Parallelization (handled by BatchOrchestrator)
+                "max_parallel_scenarios": 4,  # Max concurrent scenarios
+                # Performance Tuning
+                "adaptive_parallelization": True,  # Auto-detect optimal mode
+                "log_performance_stats": True,  # Log timing statistics
+            }
 
 
 @dataclass
