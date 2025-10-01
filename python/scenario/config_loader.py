@@ -1,17 +1,14 @@
 """
 FiniexTestingIDE - Scenario Config System
-Config Loader
+Config Loader (FIXED: execution_config separation)
 """
 
 import json
 import logging
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import List, Dict, Any
+from datetime import datetime
 
-import pandas as pd
-
-from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.types import TestScenario
 
 logger = logging.getLogger(__name__)
@@ -20,6 +17,7 @@ logger = logging.getLogger(__name__)
 class ScenarioConfigLoader:
     """
     Loads test scenarios from JSON config files
+    NOW WITH: execution_config separation!
     """
 
     def __init__(self, config_path: str = "./configs/scenarios/"):
@@ -35,7 +33,7 @@ class ScenarioConfigLoader:
         Load scenarios from JSON config file
 
         Args:
-            config_file: Config filename (e.g., "heavy_workers_test.json")
+            config_file: Config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
             List of TestScenario objects
@@ -45,34 +43,44 @@ class ScenarioConfigLoader:
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
-        logger.info(f"Loading scenarios from: {config_path}")
+        logger.info(f"📂 Loading scenarios from: {config_path}")
 
         with open(config_path, 'r') as f:
             config = json.load(f)
 
         scenarios = []
 
-        # Global defaults
-        global_config = config.get("global", {})
+        # Global defaults (separate strategy + execution)
+        global_strategy = config.get("global", {}).get("strategy_config", {})
+        global_execution = config.get("global", {}).get("execution_config", {})
 
         # Load each scenario
         for scenario_config in config.get("scenarios", []):
-            # Merge global + scenario specific config
-            merged_config = {**global_config, **scenario_config}
+            # Merge global + scenario specific configs
+            strategy_config = {**global_strategy, **
+                               scenario_config.get("strategy_config", {})}
+            execution_config = {**global_execution, **
+                                scenario_config.get("execution_config", {})}
 
             scenario = TestScenario(
-                symbol=merged_config["symbol"],
-                start_date=merged_config["start_date"],
-                end_date=merged_config["end_date"],
-                max_ticks=merged_config.get("max_ticks", 1000),
-                data_mode=merged_config.get("data_mode", "realistic"),
-                strategy_config=merged_config.get("strategy_config", {}),
-                name=merged_config.get(
-                    "name", f"{merged_config['symbol']}_test")
+                symbol=scenario_config["symbol"],
+                start_date=scenario_config["start_date"],
+                end_date=scenario_config["end_date"],
+                max_ticks=scenario_config.get("max_ticks", 1000),
+                data_mode=scenario_config.get("data_mode", "realistic"),
+
+                # ✅ Strategy-Logic
+                strategy_config=strategy_config,
+
+                # ✅ Execution-Optimization (NEW!)
+                execution_config=execution_config if execution_config else None,
+
+                name=scenario_config.get(
+                    "name", f"{scenario_config['symbol']}_test")
             )
             scenarios.append(scenario)
 
-        logger.info(f"Loaded {len(scenarios)} scenarios")
+        logger.info(f"✅ Loaded {len(scenarios)} scenarios")
         return scenarios
 
     def save_config(self, scenarios: List[TestScenario], config_file: str):
@@ -85,21 +93,28 @@ class ScenarioConfigLoader:
         """
         config_path = self.config_path / config_file
 
+        # Default global configs
+        default_strategy = {
+            "rsi_period": 14,
+            "envelope_period": 20,
+            "envelope_deviation": 0.02,
+        }
+
+        default_execution = {
+            "parallel_workers": True,
+            "worker_parallel_threshold_ms": 1.0,
+            "max_parallel_scenarios": 4,
+            "adaptive_parallelization": True,
+            "log_performance_stats": True,
+        }
+
         config = {
             "version": "1.0",
             "created": datetime.now().isoformat(),
             "global": {
                 "data_mode": "realistic",
-                "strategy_config": {
-                    "rsi_period": 14,
-                    "envelope_period": 20,
-                    "envelope_deviation": 0.02,
-                    "execution": {
-                        "parallel_workers": True,
-                        "artificial_load_ms": 5.0,
-                        "max_parallel_scenarios": 4
-                    }
-                }
+                "strategy_config": default_strategy,  # ✅ Separated!
+                "execution_config": default_execution,  # ✅ Separated!
             },
             "scenarios": []
         }
@@ -111,11 +126,15 @@ class ScenarioConfigLoader:
                 "start_date": scenario.start_date,
                 "end_date": scenario.end_date,
                 "max_ticks": scenario.max_ticks,
-                "strategy_config": scenario.strategy_config
+                "data_mode": scenario.data_mode,
+
+                # ✅ Only save if different from global
+                "strategy_config": scenario.strategy_config if scenario.strategy_config != default_strategy else {},
+                "execution_config": scenario.execution_config if scenario.execution_config != default_execution else {},
             }
             config["scenarios"].append(scenario_dict)
 
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
 
-        print(f"Saved {len(scenarios)} scenarios to: {config_path}")
+        logger.info(f"💾 Saved {len(scenarios)} scenarios to: {config_path}")

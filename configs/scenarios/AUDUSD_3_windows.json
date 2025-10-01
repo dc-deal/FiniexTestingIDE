@@ -1,12 +1,19 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T06:19:49.934367",
+  "created": "2025-10-01T07:55:20.806763",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
       "rsi_period": 14,
       "envelope_period": 20,
       "envelope_deviation": 0.02
+    },
+    "execution_config": {
+      "parallel_workers": true,
+      "worker_parallel_threshold_ms": 1.0,
+      "max_parallel_scenarios": 4,
+      "adaptive_parallelization": true,
+      "log_performance_stats": true
     }
   },
   "scenarios": [
@@ -16,35 +23,29 @@
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
       "max_ticks": 1000,
-      "strategy_config": {
-        "rsi_period": 14,
-        "envelope_period": 20,
-        "envelope_deviation": 0.02
-      }
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
     },
     {
       "name": "AUDUSD_window_02",
       "symbol": "AUDUSD",
-      "start_date": "2025-09-20",
-      "end_date": "2025-09-22",
+      "start_date": "2025-09-19",
+      "end_date": "2025-09-21",
       "max_ticks": 1000,
-      "strategy_config": {
-        "rsi_period": 14,
-        "envelope_period": 20,
-        "envelope_deviation": 0.02
-      }
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
     },
     {
       "name": "AUDUSD_window_03",
       "symbol": "AUDUSD",
-      "start_date": "2025-09-23",
-      "end_date": "2025-09-25",
+      "start_date": "2025-09-21",
+      "end_date": "2025-09-23",
       "max_ticks": 1000,
-      "strategy_config": {
-        "rsi_period": 14,
-        "envelope_period": 20,
-        "envelope_deviation": 0.02
-      }
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
     }
   ]
 }

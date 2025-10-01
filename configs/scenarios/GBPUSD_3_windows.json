@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "created": "2025-10-01T07:55:19.589685",
+  "created": "2025-10-01T07:55:20.339633",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -18,8 +18,8 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_window_01",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_01",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
       "max_ticks": 1000,
@@ -28,8 +28,8 @@
       "execution_config": {}
     },
     {
-      "name": "EURUSD_window_02",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_02",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-19",
       "end_date": "2025-09-21",
       "max_ticks": 1000,
@@ -38,8 +38,8 @@
       "execution_config": {}
     },
     {
-      "name": "EURUSD_window_03",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_03",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-21",
       "end_date": "2025-09-23",
       "max_ticks": 1000,

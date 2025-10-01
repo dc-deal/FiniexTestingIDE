@@ -1,19 +1,16 @@
 """
 FiniexTestingIDE - Scenario Config System
-Auto-Generator aus Datenmenge
+Auto-Generator (FIXED: execution_config separation)
 """
 
-import json
 import logging
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Dict, List
-
+from typing import List, Dict, Any, Optional
+from datetime import timedelta
 import pandas as pd
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
-from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.types import TestScenario
+from python.data_worker.data_loader.core import TickDataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +18,7 @@ logger = logging.getLogger(__name__)
 class ScenarioGenerator:
     """
     Generates test scenarios automatically from available data
+    NOW WITH: execution_config separation!
     """
 
     def __init__(self, data_loader: TickDataLoader):
@@ -35,6 +33,8 @@ class ScenarioGenerator:
         self,
         symbol: str,
         strategy: str = "time_windows",
+        strategy_config: Optional[Dict[str, Any]] = None,
+        execution_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> List[TestScenario]:
         """
@@ -46,17 +46,34 @@ class ScenarioGenerator:
                 - "time_windows": Split into time windows
                 - "volatility": High/low volatility periods
                 - "sessions": Trading sessions (London, NY, etc.)
+            strategy_config: Strategy-specific config (overrides defaults)
+            execution_config: Execution-specific config (overrides defaults)
             **kwargs: Strategy-specific parameters
 
         Returns:
             List of generated TestScenario objects
         """
         if strategy == "time_windows":
-            return self._generate_time_windows(symbol, **kwargs)
+            return self._generate_time_windows(
+                symbol,
+                strategy_config=strategy_config,
+                execution_config=execution_config,
+                **kwargs
+            )
         elif strategy == "volatility":
-            return self._generate_volatility_based(symbol, **kwargs)
+            return self._generate_volatility_based(
+                symbol,
+                strategy_config=strategy_config,
+                execution_config=execution_config,
+                **kwargs
+            )
         elif strategy == "sessions":
-            return self._generate_session_based(symbol, **kwargs)
+            return self._generate_session_based(
+                symbol,
+                strategy_config=strategy_config,
+                execution_config=execution_config,
+                **kwargs
+            )
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -64,6 +81,8 @@ class ScenarioGenerator:
         self,
         symbols: List[str] = None,
         scenarios_per_symbol: int = 3,
+        strategy_config: Optional[Dict[str, Any]] = None,
+        execution_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> List[TestScenario]:
         """
@@ -72,6 +91,8 @@ class ScenarioGenerator:
         Args:
             symbols: List of symbols (None = all available)
             scenarios_per_symbol: Number of scenarios per symbol
+            strategy_config: Strategy-specific config
+            execution_config: Execution-specific config
             **kwargs: Passed to generation strategy
 
         Returns:
@@ -85,15 +106,17 @@ class ScenarioGenerator:
 
         for symbol in symbols:
             logger.info(
-                f"Generating {scenarios_per_symbol} scenarios for {symbol}")
+                f"🔨 Generating {scenarios_per_symbol} scenarios for {symbol}")
             scenarios = self._generate_time_windows(
                 symbol,
                 num_windows=scenarios_per_symbol,
+                strategy_config=strategy_config,
+                execution_config=execution_config,
                 **kwargs
             )
             all_scenarios.extend(scenarios)
 
-        logger.info(f"Generated {len(all_scenarios)} scenarios total")
+        logger.info(f"✅ Generated {len(all_scenarios)} scenarios total")
         return all_scenarios
 
     def _generate_time_windows(
@@ -101,17 +124,27 @@ class ScenarioGenerator:
         symbol: str,
         num_windows: int = 5,
         window_days: int = 2,
-        ticks_per_window: int = 1000
+        ticks_per_window: int = 1000,
+        strategy_config: Optional[Dict[str, Any]] = None,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
         Generate scenarios by splitting data into time windows
+
+        Args:
+            symbol: Trading symbol
+            num_windows: Number of time windows
+            window_days: Days per window
+            ticks_per_window: Max ticks per window
+            strategy_config: Strategy parameters (NEW!)
+            execution_config: Execution parameters (NEW!)
         """
         # Get available date range
         symbol_info = self.analyzer.get_symbol_info(symbol)
 
         if "error" in symbol_info:
             logger.error(
-                f"Cannot generate for {symbol}: {symbol_info['error']}")
+                f"❌ Cannot generate for {symbol}: {symbol_info['error']}")
             return []
 
         start_date = pd.to_datetime(symbol_info["date_range"]["start"])
@@ -121,21 +154,37 @@ class ScenarioGenerator:
 
         if total_days < window_days * num_windows:
             logger.warning(
-                f"Not enough data for {num_windows} windows of {window_days} days. "
+                f"⚠️  Not enough data for {num_windows} windows of {window_days} days. "
                 f"Reducing to {total_days // window_days} windows."
             )
             num_windows = max(1, total_days // window_days)
 
         scenarios = []
+        window_duration = timedelta(days=window_days)
 
-        # Split into equal windows
-        step = total_days // num_windows
+        # ✅ Use provided configs or defaults
+        default_strategy = {
+            "rsi_period": 14,
+            "envelope_period": 20,
+            "envelope_deviation": 0.02,
+        }
+
+        default_execution = {
+            "parallel_workers": None,  # Auto-detect
+            "worker_parallel_threshold_ms": 1.0,
+            "max_parallel_scenarios": 4,
+            "adaptive_parallelization": True,
+            "log_performance_stats": True,
+        }
+
+        final_strategy_config = {**default_strategy, **(strategy_config or {})}
+        final_execution_config = {
+            **default_execution, **(execution_config or {})}
 
         for i in range(num_windows):
-            window_start = start_date + timedelta(days=i * step)
-            window_end = window_start + timedelta(days=window_days)
+            window_start = start_date + (i * window_duration)
+            window_end = window_start + window_duration
 
-            # Don't exceed available data
             if window_end > end_date:
                 window_end = end_date
 
@@ -145,97 +194,60 @@ class ScenarioGenerator:
                 end_date=window_end.strftime("%Y-%m-%d"),
                 max_ticks=ticks_per_window,
                 data_mode="realistic",
-                strategy_config={
-                    "rsi_period": 14,
-                    "envelope_period": 20,
-                    "envelope_deviation": 0.02,
-                    "execution": {
-                        "parallel_workers": True,
-                        "artificial_load_ms": 5.0,
-                    }
-                },
+
+                # ✅ Separate configs!
+                strategy_config=final_strategy_config.copy(),
+                execution_config=final_execution_config.copy(),
+
                 name=f"{symbol}_window_{i+1:02d}"
             )
             scenarios.append(scenario)
 
         logger.info(
-            f"Generated {len(scenarios)} time window scenarios for {symbol}")
+            f"✅ Generated {len(scenarios)} time window scenarios for {symbol}")
         return scenarios
 
     def _generate_volatility_based(
         self,
         symbol: str,
         high_vol_threshold: float = 0.02,
-        low_vol_threshold: float = 0.005,
-        max_scenarios: int = 10
+        max_scenarios: int = 10,
+        strategy_config: Optional[Dict[str, Any]] = None,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
         Generate scenarios based on volatility periods
 
-        Requires loading and analyzing data - more expensive!
+        TODO: Implement volatility detection
+        For now, falls back to time_windows
         """
-        logger.info(f"Analyzing volatility for {symbol}...")
-
-        # Load all data
-        df = self.data_loader.load_symbol_data(symbol)
-
-        if df.empty:
-            logger.error(f"No data for {symbol}")
-            return []
-
-        # Calculate rolling volatility (simplified)
-        df['returns'] = df['mid'].pct_change()
-        df['volatility'] = df['returns'].rolling(window=100).std()
-
-        scenarios = []
-
-        # Find high volatility periods
-        high_vol_mask = df['volatility'] > high_vol_threshold
-        high_vol_periods = self._find_continuous_periods(df[high_vol_mask])
-
-        for period_df in high_vol_periods[:max_scenarios // 2]:
-            start_date = period_df['timestamp'].min()
-            end_date = period_df['timestamp'].max()
-
-            scenario = TestScenario(
-                symbol=symbol,
-                start_date=start_date.strftime("%Y-%m-%d"),
-                end_date=end_date.strftime("%Y-%m-%d"),
-                max_ticks=1000,
-                data_mode="realistic",
-                strategy_config={},
-                name=f"{symbol}_high_vol_{len(scenarios)+1}"
-            )
-            scenarios.append(scenario)
-
-        logger.info(f"Generated {len(scenarios)} volatility-based scenarios")
-        return scenarios
+        logger.warning(
+            f"⚠️  Volatility-based generation not yet implemented. Using time_windows.")
+        return self._generate_time_windows(
+            symbol,
+            num_windows=max_scenarios,
+            strategy_config=strategy_config,
+            execution_config=execution_config,
+        )
 
     def _generate_session_based(
         self,
         symbol: str,
-        sessions: List[str] = None
+        sessions: List[str] = None,
+        strategy_config: Optional[Dict[str, Any]] = None,
+        execution_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
-        Generate scenarios for specific trading sessions
+        Generate scenarios based on trading sessions
+
+        TODO: Implement session-based generation
+        For now, falls back to time_windows
         """
-        if sessions is None:
-            sessions = ["London", "NewYork", "Tokyo", "Sydney"]
-
-        # This would require session detection in data
-        # Simplified implementation
-        logger.warning("Session-based generation not fully implemented yet")
-        return []
-
-    def _find_continuous_periods(self, df: pd.DataFrame, min_size: int = 500):
-        """Helper to find continuous data periods"""
-        # Simplified - just return chunks
-        periods = []
-        chunk_size = min_size
-
-        for i in range(0, len(df), chunk_size):
-            chunk = df.iloc[i:i+chunk_size]
-            if len(chunk) >= min_size:
-                periods.append(chunk)
-
-        return periods
+        logger.warning(
+            f"⚠️  Session-based generation not yet implemented. Using time_windows.")
+        return self._generate_time_windows(
+            symbol,
+            num_windows=3,
+            strategy_config=strategy_config,
+            execution_config=execution_config,
+        )
