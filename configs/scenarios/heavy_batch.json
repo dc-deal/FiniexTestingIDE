@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "scenario_name": "scn_heavy_batch",
+  "created": "2025-10-01T08:22:16.772421",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "rsi_period": 14,
+      "envelope_period": 20,
+      "envelope_deviation": 0.02
+    },
+    "execution_config": {
+      "parallel_workers": true,
+      "worker_parallel_threshold_ms": 1.0,
+      "max_parallel_scenarios": 4,
+      "adaptive_parallelization": true,
+      "log_performance_stats": true
+    }
+  },
+  "scenarios": [
+    {
+      "name": "EURUSD_window_01",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-17",
+      "end_date": "2025-09-19",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": true,
+        "worker_parallel_threshold_ms": 1.0,
+        "max_parallel_scenarios": 8,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      }
+    },
+    {
+      "name": "EURUSD_window_02",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-19",
+      "end_date": "2025-09-21",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": true,
+        "worker_parallel_threshold_ms": 1.0,
+        "max_parallel_scenarios": 8,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      }
+    },
+    {
+      "name": "EURUSD_window_03",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-21",
+      "end_date": "2025-09-23",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": true,
+        "worker_parallel_threshold_ms": 1.0,
+        "max_parallel_scenarios": 8,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      }
+    },
+    {
+      "name": "EURUSD_window_04",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-25",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": true,
+        "worker_parallel_threshold_ms": 1.0,
+        "max_parallel_scenarios": 8,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      }
+    }
+  ]
+}

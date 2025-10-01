@@ -4,11 +4,12 @@ Prepares tick data for testing with warmup/test split
 """
 
 import logging
-from typing import List, Tuple, Iterator
+from typing import Iterator, List, Tuple
+
 import pandas as pd
 
-from python.framework.types import TickData
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.types import TickData
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,14 @@ class TickDataPreparator:
         total_needed = warmup_ticks_estimate + test_ticks_count
 
         if len(df) < total_needed:
-            logger.warning(f"⚠️ Limited data: {len(df)} < {total_needed} needed")
+            logger.warning(
+                f"⚠️ Limited data: {len(df)} < {total_needed} needed")
             warmup_ticks_estimate = max(0, len(df) - test_ticks_count)
 
         # Split data
         warmup_df = df.iloc[:warmup_ticks_estimate]
         test_df = df.iloc[
-            warmup_ticks_estimate : warmup_ticks_estimate + test_ticks_count
+            warmup_ticks_estimate: warmup_ticks_estimate + test_ticks_count
         ]
 
         logger.info(

@@ -42,7 +42,7 @@
             "name": "📝 Scenario Generator - Run",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/scenario/example_routines.py",
+            "program": "${workspaceFolder}/python/scenario/generate_scenarios.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },

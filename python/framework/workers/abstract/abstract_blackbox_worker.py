@@ -4,15 +4,10 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from python.framework.types import (
-    WorkerContract,
-    TickData,
-    WorkerResult,
-    Bar,
-    WorkerState,
-)
+from python.framework.types import (Bar, TickData, WorkerContract,
+                                    WorkerResult, WorkerState)
 
 
 class AbstractBlackboxWorker(ABC):
@@ -62,7 +57,7 @@ class AbstractBlackboxWorker(ABC):
             Dict[timeframe, bars_needed]
         """
 
-        return {}# Default
+        return {}  # Default
 
     @abstractmethod
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:

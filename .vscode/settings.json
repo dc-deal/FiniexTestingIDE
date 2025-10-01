@@ -1,4 +1,12 @@
 {
+    // globales Autosave-Format
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    // Python: autopep8 als Formatter
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8"
+    },
+    // aus der exporer view ausschliessen
     "files.exclude": {
         "**/__pycache__": true,
         "**/*.pyc": true,
@@ -10,6 +18,7 @@
         "**/node_modules": true,
         "**/.DS_Store": true
     },
+    // aus der suche ausschliessen
     "search.exclude": {
         "**/data/raw": true,
         "**/data/processed": true,

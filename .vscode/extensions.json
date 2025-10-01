@@ -2,15 +2,16 @@
   "recommendations": [
     // Core Python Development (Essential)
     "ms-python.python",
-    "ms-python.black-formatter",
-    
-    // Testing (Essential for Strategy Development)
+    "ms-python.vscode-pylance",
+    "ms-python.autopep8",
+    "ms-python.isort",
+    // Testing
     "ms-python.pytest",
-    
-    // MQL5 Support (Essential for Data Collection)
+    // MQL5 Support (falls gebraucht)
     "mql5.mql5-vscode",
-    
-    // Docker (Essential for Environment)
-    "ms-vscode-remote.remote-containers"
+    // Docker / Dev Containers
+    "ms-vscode-remote.remote-containers",
+    // Jupyter support
+    "ms-toolsai.jupyter"
   ]
 }
