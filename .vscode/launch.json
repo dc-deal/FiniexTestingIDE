@@ -31,10 +31,10 @@
             }
         },
         {
-            "name": "🔬 Strategy Runner - Batch - Entry",
+            "name": "🔬 Strategy Runner",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/strategy_runner_enhanced.py",
+            "program": "${workspaceFolder}/python/strategy_runner.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },

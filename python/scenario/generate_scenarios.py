@@ -12,12 +12,9 @@ from pathlib import Path
 from python.data_worker.data_loader.core import TickDataLoader
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.scenario.generator import ScenarioGenerator
+from python.components.logger.bootstrap_logger import setup_logging
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging(name="StrategyRunner")
 logger = logging.getLogger(__name__)
 
 
@@ -181,39 +178,34 @@ if __name__ == "__main__":
     """
     Main entry point - generates various scenario configs
     """
-    print("=" * 70)
-    print("🚀 FiniexTestingIDE - Scenario Generator")
-    print("=" * 70)
-    print()
+    logger.info("=" * 70)
+    logger.info("🚀 FiniexTestingIDE - Scenario Generator")
+    logger.info("=" * 70)
 
     # Ensure output directory exists
     Path("./configs/scenarios").mkdir(parents=True, exist_ok=True)
 
     # Generate different types of configs
     try:
-        print("📝 Generating quick test config...")
+        logger.info("📝 Generating quick test config...")
         generate_quick_test()
-        print()
 
-        print("📝 Generating single symbol configs...")
+        logger.info("📝 Generating single symbol configs...")
         generate_single_symbol("EURUSD")
         generate_single_symbol("GBPUSD")
         generate_single_symbol("AUDUSD")
-        print()
 
-        print("📝 Generating heavy batch config...")
+        logger.info("📝 Generating heavy batch config...")
         generate_heavy_batch()
-        print()
 
         # Uncomment to generate multi-symbol batch:
-        # print("📝 Generating multi-symbol batch...")
+        # logger.info("📝 Generating multi-symbol batch...")
         # generate_multi_symbol()
-        # print()
 
-        print("=" * 70)
-        print("✅ All scenario configs generated successfully!")
-        print("📂 Check ./configs/scenarios/ for output files")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("✅ All scenario configs generated successfully!")
+        logger.info("📂 Check ./configs/scenarios/ for output files")
+        logger.info("=" * 70)
 
     except Exception as e:
         logger.error(f"❌ Generation failed: {e}", exc_info=True)

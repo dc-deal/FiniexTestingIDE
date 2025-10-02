@@ -139,13 +139,60 @@ Scenario Config → Factory → Worker-Instanzen → DecisionCoordinator → Dec
 
 ## 🚀 Quick Start
 
-### Data Collection (MQL5)
-```bash
-# 1. TickCollector installieren
-cp mql5/TickCollector.mq5 [MetaTrader]/MQL5/Experts/
+### Mit Starter-Daten direkt loslegen
 
-# 2. Auf Chart starten → Generiert JSON in C:/FiniexData/
+Du möchtest sofort mit FiniexTestingIDE experimentieren? Nutze unser Sample-Datenpaket!
+
+**1. Sample-Daten herunterladen**
+   - Lade [`tick_starter_package.zip`](https://github.com/dc-deal/FiniexTestingIDE/releases/download/V0.6/tick_starter_package.zip) aus dem **v0.6 Pre-Alpha Stable Release** herunter
+   - Enthält 2 Wochen Tick-Daten (60 MB komprimiert) für EURUSD, AUDUSD, GBPUSD, EURCHF
+
+**2. Daten entpacken**
+   ```bash
+   # Entpacke das ZIP in den data/raw Ordner deines Projekts
+   unzip tick_starter_package.zip -d data/raw/
+   ```
+
+**3. Docker Container starten**
+   ```bash
+   docker-compose up -d
+   docker-compose exec finiex-dev bash -i
+   ```
+
+**4. Tick-Daten importieren**
+   - **In VS Code:** Starte die Launch-Configuration **"📊 Data Pipeline: Import Ticks (PROD)"**
+   - **Oder per Command Line:**
+     ```bash
+     python python/data_worker/tick_importer.py
+     ```
+   - Die JSON-Daten werden automatisch nach Parquet konvertiert und mit Quality-Scores versehen
+
+**5. Trading-Strategie ausführen**
+   - **In VS Code:** Starte die Launch-Configuration **"🔬 Strategy Runner - Batch - Entry"**
+   - **Oder per Command Line:**
+     ```bash
+     python python/strategy_runner_enhanced.py
+     ```
+
+**Das war's!** Die Strategie läuft nun mit realen Markt-Daten. 
+
+### Erwarteter Output
 ```
+✅ Success:            True
+📊 Scenarios:          3
+⏱️  Execution time:     ~40s
+📋 Scenario 1: EURUSD_window_01
+  Ticks processed:    1,000
+  Signals generated:  0
+  Worker calls:       3,000
+```
+
+### Nächste Schritte
+- Eigene Szenarien erstellen in `configs/scenarios/`
+- Mit dem **"📝 Scenario Generator"** automatisch Szenarien aus deinen Daten generieren
+- Parameter in den Scenario-Configs anpassen (RSI, Envelope, etc.)
+
+---
 
 ### Python Environment
 ```bash

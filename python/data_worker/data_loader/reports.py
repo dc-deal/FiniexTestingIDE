@@ -10,7 +10,9 @@ from typing import Dict
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
 from python.data_worker.data_loader.core import TickDataLoader
+from python.components.logger.bootstrap_logger import setup_logging
 
+setup_logging(name="StrategyRunner")
 logger = logging.getLogger(__name__)
 
 
@@ -23,41 +25,42 @@ class TickDataReporter:
         self.analyzer = analyzer
 
     def print_symbol_info(self, info: Dict):
-        """Print formatted symbol information to console"""
+        """logger.info formatted symbol information to console"""
         if "error" in info:
-            print(f"\n❌ {info.get('symbol', 'UNKNOWN')}: {info['error']}")
+            logger.info(
+                f"\n❌ {info.get('symbol', 'UNKNOWN')}: {info['error']}")
             return
 
         weekends = info["date_range"]["duration"]["weekends"]
 
-        print(f"\n📊 {info['symbol']}")
-        print(
+        logger.info(f"\n📊 {info['symbol']}")
+        logger.info(
             f"   ├─ Time Range:    {info['date_range']['start_formatted']} to "
             f"{info['date_range']['end_formatted']}"
         )
-        print(
+        logger.info(
             f"   ├─ Duration:      {info['date_range']['duration']['days']} days "
             f"({info['date_range']['duration']['hours']:.1f} hours)"
         )
-        print(
+        logger.info(
             f"   ├─ Trading Days:  {info['date_range']['duration']['trading_days']} "
             f"(excluding {weekends['full_weekends']} weekends)"
         )
-        print(
+        logger.info(
             f"   │  └─ Weekends:   {weekends['full_weekends']}x complete "
             f"({weekends['saturdays']} Sat, {weekends['sundays']} Sun)"
         )
-        print(f"   ├─ Ticks:         {info['total_ticks']:,}")
-        print(f"   ├─ Files:         {info['files']}")
-        print(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
+        logger.info(f"   ├─ Ticks:         {info['total_ticks']:,}")
+        logger.info(f"   ├─ Files:         {info['files']}")
+        logger.info(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
 
         if info["statistics"]["avg_spread_points"]:
-            print(
+            logger.info(
                 f"   ├─ Ø Spread:      {info['statistics']['avg_spread_points']:.1f} Points "
                 f"({info['statistics']['avg_spread_pct']:.4f}%)"
             )
 
-        print(
+        logger.info(
             f"   └─ Frequency:     {info['statistics']['tick_frequency_per_second']:.2f} "
             f"Ticks/Second"
         )
@@ -65,31 +68,31 @@ class TickDataReporter:
         if info.get("sessions"):
             sessions_str = ", ".join(
                 [f"{k}: {v}" for k, v in info["sessions"].items()])
-            print(f"      Sessions:     {sessions_str}")
+            logger.info(f"      Sessions:     {sessions_str}")
 
     def print_all_symbols(self):
-        """Print summary for all available symbols"""
+        """logger.info summary for all available symbols"""
         symbols = self.loader.list_available_symbols()
 
-        print("\n" + "=" * 100)
-        print("SYMBOL OVERVIEW WITH TIME RANGES")
-        print("=" * 100)
+        logger.info("\n" + "=" * 100)
+        logger.info("SYMBOL OVERVIEW WITH TIME RANGES")
+        logger.info("=" * 100)
 
         for symbol in symbols:
             info = self.analyzer.get_symbol_info(symbol)
             self.print_symbol_info(info)
 
-        print("\n" + "=" * 100)
+        logger.info("\n" + "=" * 100)
 
     def test_load_symbol(self, symbol: str):
         """Test loading data for a symbol and display sample"""
-        print(f"\n🧪 TEST LOAD: {symbol}")
-        print("=" * 100)
+        logger.info(f"\n🧪 TEST LOAD: {symbol}")
+        logger.info("=" * 100)
 
         info = self.analyzer.get_symbol_info(symbol)
 
         if "error" in info:
-            print(f"❌ Cannot load {symbol}: {info['error']}")
+            logger.info(f"❌ Cannot load {symbol}: {info['error']}")
             return
 
         df = self.loader.load_symbol_data(
@@ -98,14 +101,14 @@ class TickDataReporter:
             end_date=info["date_range"]["end_formatted"].split()[0],
         )
 
-        print(f"✓ Loaded:      {len(df):,} ticks")
-        print(
+        logger.info(f"✓ Loaded:      {len(df):,} ticks")
+        logger.info(
             f"✓ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
-        print(
+        logger.info(
             f"✓ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
         )
-        print(f"\n📋 Sample Data (first 3 ticks):")
-        print(df.head(3).to_string())
+        logger.info(f"\n📋 Sample Data (first 3 ticks):")
+        logger.info(df.head(3).to_string())
 
 
 def run_summary_report():
@@ -128,24 +131,24 @@ def run_summary_report():
 
         if not symbols:
             logger.error("❌ No data found!")
-            print("\n" + "=" * 100)
-            print("NO DATA FOUND")
-            print("=" * 100)
-            print("\nSteps to collect data:")
-            print("1. Copy TickCollector.mq5 to MetaTrader 5")
-            print("2. Run data collection for 48+ hours")
-            print("3. Execute: python python/tick_importer.py")
-            print("4. Run this report again")
+            logger.info("\n" + "=" * 100)
+            logger.info("NO DATA FOUND")
+            logger.info("=" * 100)
+            logger.info("\nSteps to collect data:")
+            logger.info("1. Copy TickCollector.mq5 to MetaTrader 5")
+            logger.info("2. Run data collection for 48+ hours")
+            logger.info("3. Execute: python python/tick_importer.py")
+            logger.info("4. Run this report again")
             return
 
-        # Print all symbols
+        # logger.info all symbols
         reporter.print_all_symbols()
 
         # Test load first symbol
         if symbols:
             reporter.test_load_symbol(symbols[0])
 
-        print("\n✅ Summary report completed successfully!")
+        logger.info("\n✅ Summary report completed successfully!")
 
     except Exception as e:
         logger.error(f"Error generating report: {e}", exc_info=True)
@@ -153,9 +156,6 @@ def run_summary_report():
 
 def main():
     """Main entry point for command-line execution"""
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
     run_summary_report()
 
 
