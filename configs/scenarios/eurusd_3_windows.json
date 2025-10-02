@@ -1,14 +1,35 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "scenario_name": "scn_EURUSD_3_windows",
-  "created": "2025-10-01T08:22:14.662547",
+  "created": "2025-10-02T00:00:00.000000",
   "global": {
     "data_mode": "realistic",
+    
     "strategy_config": {
-      "rsi_period": 14,
-      "envelope_period": 20,
-      "envelope_deviation": 0.02
+      "decision_logic_type": "simple_consensus",
+      
+      "worker_types": ["rsi", "envelope"],
+      
+      "workers": {
+        "rsi": {
+          "period": 14,
+          "timeframe": "M5",
+          "overbought": 70,
+          "oversold": 30
+        },
+        "envelope": {
+          "period": 20,
+          "deviation": 0.02,
+          "timeframe": "M5"
+        }
+      },
+      
+      "decision_logic_config": {
+        "min_worker_agreement": 2,
+        "confidence_threshold": 0.6
+      }
     },
+    
     "execution_config": {
       "parallel_workers": true,
       "worker_parallel_threshold_ms": 1.0,
@@ -17,6 +38,7 @@
       "log_performance_stats": true
     }
   },
+  
   "scenarios": [
     {
       "name": "EURUSD_window_01",
@@ -45,7 +67,13 @@
       "end_date": "2025-09-23",
       "max_ticks": 1000,
       "data_mode": "realistic",
-      "strategy_config": {},
+      "strategy_config": {
+        "workers": {
+          "rsi": {
+            "period": 21
+          }
+        }
+      },
       "execution_config": {}
     }
   ]
