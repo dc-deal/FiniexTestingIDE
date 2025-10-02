@@ -57,9 +57,9 @@ class TickDataPreparator:
             Tuple of (warmup_ticks, test_iterator)
         """
         logger.info(f"📊 Preparing data for {symbol}")
-        logger.info(f"  Warmup bars: {warmup_bars_needed}")
-        logger.info(f"  Test ticks: {test_ticks_count}")
-        logger.info(f"  Data mode: {data_mode}")
+        logger.info(f"└─Warmup bars: {warmup_bars_needed}")
+        logger.info(f"└─Test ticks: {test_ticks_count}")
+        logger.info(f"└─Data mode: {data_mode}")
 
         # Load data
         df = self.data_worker.load_symbol_data(

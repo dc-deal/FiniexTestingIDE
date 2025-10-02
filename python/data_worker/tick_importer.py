@@ -22,11 +22,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
+from python.components.logger.bootstrap_logger import setup_logging
 
-# Logging Setup
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+setup_logging(name="StrategyRunner")
 logger = logging.getLogger(__name__)
 
 
