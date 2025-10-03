@@ -7,6 +7,7 @@ import logging
 import sys
 from datetime import datetime
 from typing import Optional
+from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
 
 
 class ColorCodes:
@@ -71,6 +72,8 @@ class VisualConsoleLogger:
 
     def debug(self, message: str, logger_name: Optional[str] = None):
         """Log DEBUG message"""
+        if not DEBUG_LOGGING:
+            return
         logger = logging.getLogger(logger_name or self.name)
         logger.debug(message)
 

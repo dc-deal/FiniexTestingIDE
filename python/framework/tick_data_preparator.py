@@ -69,7 +69,7 @@ class TickDataPreparator:
         if df.empty:
             raise ValueError(f"No data available for {symbol}")
 
-        logger.info(f"✅ Loaded {len(df):,} ticks for {symbol}")
+        logger.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
 
         # Estimate warmup ticks needed (rough: 1 bar = ~50 ticks for M1)
         warmup_ticks_estimate = warmup_bars_needed * 50

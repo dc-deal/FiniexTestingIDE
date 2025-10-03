@@ -100,7 +100,7 @@ class TickDataLoader:
         if not files:
             raise ValueError(f"No data found for symbol {symbol}")
 
-        logger.info(f"Loading {len(files)} files for {symbol}")
+        logger.debug(f"Loading {len(files)} files for {symbol}")
 
         # Load and combine all files
         dataframes = []
@@ -135,9 +135,9 @@ class TickDataLoader:
                     f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
                     f"({duplicate_percentage:.2f}% of data)"
                 )
-                logger.info(f"Remaining: {len(combined_df):,} unique ticks")
+                logger.debug(f"Remaining: {len(combined_df):,} unique ticks")
             else:
-                logger.info(f"No duplicates found in {initial_count:,} ticks")
+                logger.debug(f"No duplicates found in {initial_count:,} ticks")
 
         # Apply date filters
         combined_df = self._apply_date_filters(
@@ -147,7 +147,7 @@ class TickDataLoader:
         if use_cache:
             self._symbol_cache[cache_key] = combined_df.copy()
 
-        logger.info(f"✓ Loaded: {len(combined_df):,} ticks for {symbol}")
+        logger.debug(f"✓ Loaded: {len(combined_df):,} ticks for {symbol}")
         return combined_df
 
     def _apply_date_filters(

@@ -1,6 +1,16 @@
 """
-FiniexTestingIDE - Decision Orchestrator (PARALLEL VERSION)
-Coordinates multiple workers and generates trading decisions
+FiniexTestingIDE - Worker Coordinator (REFACTORED)
+Coordinates multiple workers and delegates decision-making to DecisionLogic
+
+ARCHITECTURE CHANGE (Issue 2):
+- Workers are now injected (created by Factory)
+- DecisionLogic is now injected (no hardcoded strategy)
+- Coordinator only coordinates, doesn't decide
+
+Philosophy:
+- Workers are atomic units (compute indicators)
+- DecisionLogic orchestrates results (makes trading decisions)
+- Coordinator manages the tick-by-tick flow
 """
 
 import logging
@@ -8,7 +18,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
-from python.framework.types import Bar, TickData, WorkerState
+from python.framework.decision_logic.abstract_decision_logic import \
+    AbstractDecisionLogic
+from python.framework.types import Bar, Decision, TickData, WorkerState
 from python.framework.workers.abstract.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -17,26 +29,42 @@ logger = logging.getLogger(__name__)
 
 class WorkerCoordinator:
     """
-    Orchestrates multiple workers to generate trading decisions
+    Orchestrates multiple workers and delegates decision-making to DecisionLogic.
+
+    This class is the central coordination point for tick-by-tick processing.
+    It manages worker execution (sequential or parallel) and collects their
+    results, then passes those results to the DecisionLogic for decision-making.
+
+    The Coordinator has NO knowledge of specific indicators (RSI, Envelope, etc.)
+    or trading strategies - that's all delegated to Workers and DecisionLogic.
     """
 
     def __init__(
         self,
         workers: List[AbstractBlackboxWorker],
-        parallel_workers: bool = None,  # ← None = Auto-detect
+        decision_logic: AbstractDecisionLogic,
+        parallel_workers: bool = None,
         parallel_threshold_ms: float = 1.0,
     ):
         """
-        Initialize orchestrator with workers
+        Initialize coordinator with injected workers and decision logic.
 
         Args:
-            workers: List of worker instances
+            workers: List of worker instances (created by Factory)
+            decision_logic: Decision logic instance (e.g., SimpleConsensus)
             parallel_workers: Enable parallel worker execution (None = auto-detect)
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
         """
+        # ============================================
+        # NEW (Issue 2): Injected dependencies
+        # ============================================
         self.workers: Dict[str, AbstractBlackboxWorker] = {
             worker.name: worker for worker in workers
         }
+        self.decision_logic = decision_logic
+
+        # Validate that decision logic has all required workers
+        self._validate_decision_logic_requirements()
 
         self.is_initialized = False
         self._worker_results = {}
@@ -48,12 +76,9 @@ class WorkerCoordinator:
         }
 
         # Parallelization configuration
-        # Auto-detect parallel mode if not specified
         if parallel_workers is None:
-            # Smart defaults für unerfahrene User
             self.parallel_workers = self._auto_detect_parallel_mode(workers)
         else:
-            # Explicit override vom Scenario
             self.parallel_workers = parallel_workers
 
         self.parallel_threshold_ms = parallel_threshold_ms
@@ -64,24 +89,49 @@ class WorkerCoordinator:
         self._thread_pool = (
             ThreadPoolExecutor(max_workers=len(workers),
                                thread_name_prefix="Worker")
-            if parallel_workers
+            if self.parallel_workers
             else None
         )
 
         # Log configuration
         logger.debug(
             f"WorkerCoordinator config: "
-            f"parallel={parallel_workers}, "
-            f"threshold={parallel_threshold_ms}ms"
+            f"workers={len(self.workers)}, "
+            f"decision_logic={decision_logic.name}, "
+            f"parallel={self.parallel_workers}"
+        )
+
+    def _validate_decision_logic_requirements(self):
+        """
+        Validate that all required workers are available.
+
+        This prevents runtime errors from missing workers.
+        Called during initialization.
+        """
+        required_workers = self.decision_logic.get_required_workers()
+        available_workers = set(self.workers.keys())
+
+        missing = [w for w in required_workers if w not in available_workers]
+
+        if missing:
+            raise ValueError(
+                f"DecisionLogic '{self.decision_logic.name}' requires workers "
+                f"that are not available: {missing}. "
+                f"Available workers: {list(available_workers)}"
+            )
+
+        logger.debug(
+            f"✓ DecisionLogic '{self.decision_logic.name}' requirements satisfied: "
+            f"{required_workers}"
         )
 
     def _auto_detect_parallel_mode(self, workers):
-        # Heuristik: 4+ workers → parallel
+        """Auto-detect parallel mode based on worker count"""
         return len(workers) >= 4
 
     def initialize(self):
-        """Initialize orchestrator and all workers"""
-        logger.info(
+        """Initialize coordinator and all workers"""
+        logger.debug(
             f"🔧 Initializing WorkerCoordinator with {len(self.workers)} workers "
             f"(parallel: {self.parallel_workers})"
         )
@@ -91,16 +141,21 @@ class WorkerCoordinator:
             logger.debug(f"  ✓ Worker '{name}' ready")
 
         self.is_initialized = True
-        logger.info("✅ WorkerCoordinator initialized")
+        logger.debug(
+            f"✅ WorkerCoordinator initialized with DecisionLogic: {self.decision_logic.name}")
 
     def process_tick(
         self,
         tick: TickData,
         current_bars: Dict[str, Bar],
         bar_history: Dict[str, List[Bar]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Decision:
         """
-        Process tick through all workers and generate decision
+        Process tick through all workers and generate decision.
+
+        ARCHITECTURE CHANGE (Issue 2):
+        - Workers compute their indicators (unchanged)
+        - DecisionLogic generates the trading decision (NEW!)
 
         Args:
             tick: Current tick data
@@ -108,10 +163,10 @@ class WorkerCoordinator:
             bar_history: Historical bars per timeframe
 
         Returns:
-            Decision dict with action/confidence/reason
+            Decision object (from DecisionLogic)
         """
         if not self.is_initialized:
-            raise RuntimeError("Orchestrator not initialized")
+            raise RuntimeError("Coordinator not initialized")
 
         self._statistics["ticks_processed"] += 1
         bar_history = bar_history or {}
@@ -128,10 +183,19 @@ class WorkerCoordinator:
                 tick, bar_updated, bar_history, current_bars
             )
 
-        # Generate decision based on worker results
-        decision = self._generate_decision(tick)
+        # ============================================
+        # NEW (Issue 2): Delegate to DecisionLogic
+        # ============================================
+        # Generate decision using injected logic
+        decision = self.decision_logic.compute(
+            tick=tick,
+            worker_results=self._worker_results,
+            current_bars=current_bars,
+            bar_history=bar_history
+        )
 
-        if decision and decision["action"] != "FLAT":
+        # Update statistics
+        if decision and decision.action != "FLAT":
             self._statistics["decisions_made"] += 1
 
         return decision
@@ -144,7 +208,9 @@ class WorkerCoordinator:
         current_bars: Dict[str, Bar],
     ):
         """
-        Process workers sequentially (original behavior)
+        Process workers sequentially (original behavior).
+
+        UNCHANGED - This method works exactly as before.
         """
         for name, worker in self.workers.items():
             if worker.should_recompute(tick, bar_updated):
@@ -173,9 +239,10 @@ class WorkerCoordinator:
         current_bars: Dict[str, Bar],
     ):
         """
-        Process workers in parallel using ThreadPoolExecutor
+        Process workers in parallel using ThreadPoolExecutor.
 
-        PERFORMANCE BOOST: Workers compute simultaneously!
+        UNCHANGED - Parallelization logic works exactly as before.
+        Performance boost: Workers compute simultaneously!
         """
         overall_start = time.perf_counter()
 
@@ -233,7 +300,9 @@ class WorkerCoordinator:
         current_bars: Dict[str, Bar],
     ) -> tuple:
         """
-        Compute worker result (thread-safe helper method)
+        Compute worker result (thread-safe helper method).
+
+        UNCHANGED - Worker computation works exactly as before.
 
         Returns:
             Tuple of (result, computation_time_ms)
@@ -248,71 +317,23 @@ class WorkerCoordinator:
             return result, computation_time_ms
 
         except Exception as e:
-            # Re-raise to be handled by caller
             raise RuntimeError(
                 f"Worker {worker.name} computation failed: {e}") from e
 
-    def _generate_decision(self, tick: TickData) -> Dict[str, Any]:
-        """
-        Generate trading decision based on worker results
-
-        Simple RSI + Envelope strategy logic:
-        - RSI < 30 + Price near lower envelope = BUY
-        - RSI > 70 + Price near upper envelope = SELL
-        """
-
-        # Get worker results
-        rsi_result = self._worker_results.get("RSI")
-        envelope_result = self._worker_results.get("Envelope")
-
-        # Need both workers
-        if not rsi_result or not envelope_result:
-            return {"action": "FLAT", "reason": "Insufficient worker data"}
-
-        if rsi_result.confidence < 0.5 or envelope_result.confidence < 0.5:
-            return {"action": "FLAT", "reason": "Low confidence"}
-
-        # Extract values
-        rsi = rsi_result.value
-        envelope = envelope_result.value
-
-        # Trading logic
-        action = "FLAT"
-        reason = "No clear signal"
-        confidence = 0.5
-
-        # BUY signal: RSI oversold + price near lower band
-        if rsi <= 30 and envelope["position"] < 0.3:
-            action = "BUY"
-            reason = f"RSI oversold ({rsi:.1f}) + price near lower band"
-            confidence = min(rsi_result.confidence, envelope_result.confidence)
-
-        # SELL signal: RSI overbought + price near upper band
-        elif rsi >= 70 and envelope["position"] > 0.7:
-            action = "SELL"
-            reason = f"RSI overbought ({rsi:.1f}) + price near upper band"
-            confidence = min(rsi_result.confidence, envelope_result.confidence)
-
-        return {
-            "action": action,
-            "price": tick.mid,
-            "timestamp": tick.timestamp,
-            "confidence": confidence,
-            "reason": reason,
-            "metadata": {
-                "rsi": rsi,
-                "envelope_position": envelope["position"],
-                "envelope_upper": envelope["upper"],
-                "envelope_lower": envelope["lower"],
-            },
-        }
-
     def get_worker_results(self) -> Dict[str, Any]:
-        """Get all current worker results"""
+        """
+        Get all current worker results.
+
+        UNCHANGED - This method works exactly as before.
+        """
         return self._worker_results.copy()
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get orchestrator statistics"""
+        """
+        Get coordinator statistics.
+
+        ENHANCED (Issue 2): Now includes decision logic statistics.
+        """
         stats = self._statistics.copy()
 
         # Add parallel efficiency metrics
@@ -322,10 +343,17 @@ class WorkerCoordinator:
                 stats["ticks_processed"]
             )
 
+        # Add decision logic statistics
+        stats["decision_logic"] = self.decision_logic.get_statistics()
+
         return stats
 
     def cleanup(self):
-        """Cleanup resources"""
+        """
+        Cleanup resources.
+
+        UNCHANGED - Cleanup works exactly as before.
+        """
         logger.info("🧹 Cleaning up WorkerCoordinator...")
 
         # Shutdown thread pool

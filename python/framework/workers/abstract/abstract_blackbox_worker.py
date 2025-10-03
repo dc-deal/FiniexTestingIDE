@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from python.framework.types import (Bar, TickData, WorkerContract,
-                                    WorkerResult, WorkerState)
+                                    WorkerResult, WorkerState, WorkerType)
 
 
 class AbstractBlackboxWorker(ABC):
@@ -100,3 +100,47 @@ class AbstractBlackboxWorker(ABC):
     def set_state(self, state: WorkerState):
         """Update worker state"""
         self.state = state
+
+    # ============================================
+    # Factory Support Methods
+    # ============================================
+
+    def get_worker_type(self) -> WorkerType:
+        """
+        Get worker type classification for monitoring.
+
+        Override in subclass if needed. Default: COMPUTE
+        """
+        return WorkerType.COMPUTE
+
+    def validate_parameters(self, provided_params: Dict[str, Any]) -> bool:
+        """
+        Validate that all required parameters are provided.
+
+        Called by Factory before instantiation.
+        Override in subclass for custom validation logic.
+
+        Args:
+            provided_params: Parameters from config
+
+        Returns:
+            True if valid, raises ValueError if invalid
+        """
+        contract = self.get_contract()
+
+        # Check required parameters
+        for param_name, param_type in contract.required_parameters.items():
+            if param_name not in provided_params:
+                raise ValueError(
+                    f"Worker '{self.name}': Missing required parameter '{param_name}'"
+                )
+
+            # Type checking (optional, but helpful)
+            provided_value = provided_params[param_name]
+            if not isinstance(provided_value, param_type):
+                raise ValueError(
+                    f"Worker '{self.name}': Parameter '{param_name}' must be "
+                    f"{param_type.__name__}, got {type(provided_value).__name__}"
+                )
+
+        return True

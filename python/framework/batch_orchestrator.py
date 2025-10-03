@@ -1,6 +1,22 @@
 """
-FiniexTestingIDE - Batch Orchestrator (Refactored)
+FiniexTestingIDE - Batch Orchestrator (REFACTORED)
 Universal entry point for 1-1000+ test scenarios
+
+ARCHITECTURE CHANGE (Issue 2):
+- Uses Worker Factory to create workers from config
+- Uses DecisionLogic Factory to create strategy from config
+- No more hardcoded workers or decision logic!
+- Complete config-driven architecture
+- Per-scenario requirements (no global contract)
+
+This is the final integration point where all pieces come together:
+Config → Factories → Workers + DecisionLogic → WorkerCoordinator → Results
+
+ARCHITECTURE CHANGE (Parameter Inheritance Bug Fix):
+- Removed global contract - each scenario calculates its own requirements
+- This allows scenarios to have completely different worker configurations
+- Scenario 1 can use M1 with period 10, while Scenario 2 uses M5 with period 14
+- No more cross-contamination of requirements between scenarios
 """
 
 import logging
@@ -12,26 +28,30 @@ from typing import Any, Dict, List
 from python.framework.bars.bar_rendering_controller import \
     BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
-from python.framework.types import GlobalContract, TestScenario, TickData
-from python.framework.workers.preset_workers.envelope_worker import \
-    EnvelopeWorker
-from python.framework.workers.preset_workers.heavy_workers import (
-    HeavyEnvelopeWorker, HeavyMACDWorker, HeavyRSIWorker)
-from python.framework.workers.preset_workers.rsi_worker import RSIWorker
+from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
+
+# ============================================
+# NEW (Issue 2): Factory Imports
+# ============================================
+from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 
 logger = logging.getLogger(__name__)
 
 
 class BatchOrchestrator:
     """
-    Universal orchestrator for batch strategy testing
-    Handles 1 to 1000+ scenarios with same code path
+    Universal orchestrator for batch strategy testing.
+    Handles 1 to 1000+ scenarios with same code path.
+
+    Now fully config-driven thanks to Worker and DecisionLogic factories.
+    Each scenario is completely independent with its own requirements.
     """
 
     def __init__(self, scenarios: List[TestScenario], data_worker):
         """
-        Initialize batch orchestrator
+        Initialize batch orchestrator.
 
         Args:
             scenarios: List of test scenarios (can be 1 or 1000+)
@@ -39,16 +59,28 @@ class BatchOrchestrator:
         """
         self.scenarios = scenarios
         self.data_worker = data_worker
-        self.global_contract = None
+        # REMOVED: self.global_contract - no longer needed with per-scenario requirements
         self._last_orchestrator = None
 
-        logger.info(
+        # ============================================
+        # NEW (Issue 2): Initialize Factories
+        # ============================================
+        self.worker_factory = WorkerFactory()
+        self.decision_logic_factory = DecisionLogicFactory()
+
+        logger.debug(
             f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
+        )
+        logger.debug(
+            f"Available workers: {self.worker_factory.get_registered_workers()}"
+        )
+        logger.debug(
+            f"Available decision logics: {self.decision_logic_factory.get_registered_logics()}"
         )
 
     def run(self, parallel: bool = False, max_workers: int = 4) -> Dict[str, Any]:
         """
-        Execute all scenarios
+        Execute all scenarios.
 
         Args:
             parallel: Run scenarios in parallel (default: False for debugging)
@@ -61,10 +93,10 @@ class BatchOrchestrator:
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)")
         start_time = time.time()
 
-        # 1. Aggregate global contract
-        self.global_contract = self._aggregate_global_contract()
+        # REMOVED: Global contract aggregation
+        # Each scenario now calculates its own requirements in _execute_single_scenario()
 
-        # 2. Check if execution_config overrides max_workers
+        # Check if execution_config overrides max_workers
         if self.scenarios and self.scenarios[0].execution_config:
             config_max_scenarios = self.scenarios[0].execution_config.get(
                 "max_parallel_scenarios"
@@ -75,13 +107,13 @@ class BatchOrchestrator:
                     f"📝 Using max_parallel_scenarios from config: {max_workers}"
                 )
 
-        # 3. Execute scenarios
+        # Execute scenarios
         if parallel and len(self.scenarios) > 1:
             results = self._run_parallel(max_workers)
         else:
             results = self._run_sequential()
 
-        # 3. Aggregate results
+        # Aggregate results
         execution_time = time.time() - start_time
 
         summary = {
@@ -89,57 +121,11 @@ class BatchOrchestrator:
             "scenarios_count": len(self.scenarios),
             "execution_time": execution_time,
             "results": results,
-            "global_contract": {
-                "max_warmup_bars": self.global_contract.max_warmup_bars,
-                "timeframes": self.global_contract.all_timeframes,
-                "total_workers": self.global_contract.total_workers,
-            },
+            # REMOVED: global_contract - each scenario has its own requirements now
         }
 
         logger.info(f"✅ Batch execution completed in {execution_time:.2f}s")
         return summary
-
-    def _aggregate_global_contract(self) -> GlobalContract:
-        """
-        Aggregate requirements from all scenarios/workers
-        Creates unified warmup and timeframe requirements
-
-        REFACTORED: Creates orchestrator directly instead of adapter
-        """
-        # Create sample strategy to extract worker contracts
-        sample_scenario = self.scenarios[0]
-        orchestrator = self._create_orchestrator(sample_scenario)
-
-        # Get worker contracts directly from orchestrator
-        contracts = []
-        for worker in orchestrator.workers.values():
-            if hasattr(worker, "get_contract"):
-                contracts.append(worker.get_contract())
-
-        # Aggregate all Contracts
-        max_warmup = max(
-            [max(c.warmup_requirements.values()) for c in contracts], default=50
-        )
-        all_timeframes = list(
-            set(tf for c in contracts for tf in c.required_timeframes)
-        )
-
-        warmup_by_tf = {}
-        for contract in contracts:
-            for tf, bars in contract.warmup_requirements.items():
-                warmup_by_tf[tf] = max(warmup_by_tf.get(tf, 0), bars)
-
-        all_params = {}
-        for contract in contracts:
-            all_params.update(contract.parameters)
-
-        return GlobalContract(
-            max_warmup_bars=max_warmup,
-            all_timeframes=all_timeframes,
-            warmup_by_timeframe=warmup_by_tf,
-            total_workers=len(contracts),
-            all_parameters=all_params,
-        )
 
     def _run_sequential(self) -> List[Dict[str, Any]]:
         """Execute scenarios sequentially (easier debugging)"""
@@ -188,43 +174,83 @@ class BatchOrchestrator:
 
     def _execute_single_scenario(self, scenario: TestScenario) -> Dict[str, Any]:
         """
-        Execute single test scenario
+        Execute single test scenario.
 
-        REFACTORED: Works directly with WorkerCoordinator, no adapter
+        REFACTORED (Issue 2): Now uses both factories to create components.
+        REFACTORED (Parameter Inheritance Fix): Each scenario calculates its own requirements.
         """
+        # ============================================
+        # NEW (Issue 2): Factory-driven component creation
+        # ============================================
 
-        # 1. Create WorkerCoordinator directly (no adapter!)
-        orchestrator = self._create_orchestrator(scenario)
+        # 1. Create Workers using Worker Factory
+        strategy_config = scenario.strategy_config
+
+        try:
+            workers_dict = self.worker_factory.create_workers_from_config(
+                strategy_config)
+            workers = list(workers_dict.values())
+            logger.info(f"✓ Created {len(workers)} workers from config")
+        except Exception as e:
+            logger.error(f"Failed to create workers: {e}")
+            raise ValueError(f"Worker creation failed: {e}")
+
+        # 2. Create DecisionLogic using DecisionLogic Factory
+        try:
+            decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
+                strategy_config
+            )
+            logger.info(f"✓ Created decision logic: {decision_logic.name}")
+        except Exception as e:
+            logger.error(f"Failed to create decision logic: {e}")
+            raise ValueError(f"Decision logic creation failed: {e}")
+
+        # ============================================
+        # NEW (Parameter Inheritance Fix): Calculate per-scenario requirements
+        # ============================================
+        # 3. Calculate THIS scenario's specific requirements
+        # No longer uses a global contract - each scenario is independent
+        scenario_contract = self._calculate_scenario_requirements(workers)
+
+        # 4. Extract execution config
+        exec_config = scenario.execution_config or {}
+        parallel_workers = exec_config.get("parallel_workers")
+        parallel_threshold = exec_config.get(
+            "worker_parallel_threshold_ms", 1.0)
+
+        # 5. Create WorkerCoordinator with injected dependencies
+        orchestrator = WorkerCoordinator(
+            workers=workers,
+            decision_logic=decision_logic,
+            parallel_workers=parallel_workers,
+            parallel_threshold_ms=parallel_threshold,
+        )
         orchestrator.initialize()
 
         self._last_orchestrator = orchestrator
 
         logger.info(
-            f"✅ Orchestrator initialized with {len(orchestrator.workers)} workers"
+            f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 2. Prepare data
+        # 6. Prepare data using THIS scenario's requirements
         preparator = TickDataPreparator(self.data_worker)
 
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
-            warmup_bars_needed=self.global_contract.max_warmup_bars,
+            # Use scenario's own requirements!
+            warmup_bars_needed=scenario_contract["max_warmup_bars"],
             test_ticks_count=scenario.max_ticks or 1000,
             data_mode=scenario.data_mode,
             start_date=scenario.start_date,
             end_date=scenario.end_date,
         )
 
-        # 3. Setup bar rendering
+        # 7. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
-
-        # Get workers directly from orchestrator (no adapter.orchestrator!)
-        workers = list(orchestrator.workers.values())
         bar_orchestrator.register_workers(workers)
 
-        # Prepare bar warmup from pre-loaded ticks
         import pandas as pd
-
         first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
         bar_orchestrator.prepare_warmup_from_ticks(
             symbol=scenario.symbol,
@@ -232,11 +258,9 @@ class BatchOrchestrator:
             test_start_time=first_test_time,
         )
 
-        # 4. Execute test loop
+        # 8. Execute test loop
         signals = []
         tick_count = 0
-
-        # Statistics tracking (previously in adapter)
         ticks_processed = 0
         signals_generated = 0
 
@@ -245,10 +269,11 @@ class BatchOrchestrator:
             current_bars = bar_orchestrator.process_tick(tick)
             bar_history = {
                 tf: bar_orchestrator.get_bar_history(scenario.symbol, tf, 100)
-                for tf in self.global_contract.all_timeframes
+                # Use scenario's timeframes!
+                for tf in scenario_contract["all_timeframes"]
             }
 
-            # Process decision DIRECTLY through orchestrator (no adapter!)
+            # Process decision through orchestrator
             decision = orchestrator.process_tick(
                 tick=tick, current_bars=current_bars, bar_history=bar_history
             )
@@ -256,16 +281,12 @@ class BatchOrchestrator:
             ticks_processed += 1
             tick_count += 1
 
-            if decision and decision["action"] != "FLAT":
-                signals.append(decision)
+            if decision and decision.action != "FLAT":
+                signals.append(decision.to_dict())  # Convert Decision to dict
                 signals_generated += 1
 
-        # 5. Return results
-        worker_stats = (
-            orchestrator.get_statistics()
-            if hasattr(orchestrator, "get_statistics")
-            else {}
-        )
+        # 9. Return results (enhanced with scenario-specific contract info)
+        worker_stats = orchestrator.get_statistics()
 
         return {
             "scenario_name": scenario.name,
@@ -276,97 +297,55 @@ class BatchOrchestrator:
             "signals": signals[:10],  # First 10 for inspection
             "success": True,
             "worker_statistics": worker_stats,
+            "decision_logic": decision_logic.name,  # Track which logic was used
+            # NEW: Include scenario's own requirements
+            "scenario_contract": scenario_contract,
         }
 
-    def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
+    def _calculate_scenario_requirements(self, workers: List) -> Dict[str, Any]:
         """
-        Create WorkerCoordinator with workers based on scenario config
-        NOW: Reads execution config from execution_config (not strategy_config!)
+        Calculate requirements for a single scenario based on its workers.
+
+        NEW (Parameter Inheritance Fix): This replaces the global contract approach.
+        Each scenario calculates its own requirements independently, preventing
+        cross-contamination between scenarios with different worker configurations.
+
+        For example:
+        - Scenario 1 with M1/period=10 will have M1 requirements
+        - Scenario 2 with M5/period=14 will have M5 requirements
+        - They don't interfere with each other
+
+        Args:
+            workers: List of worker instances for this specific scenario
+
+        Returns:
+            Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe, total_workers
         """
-        # Strategy-Config → Workers
-        strategy_config = scenario.strategy_config
+        contracts = []
+        for worker in workers:
+            if hasattr(worker, "get_contract"):
+                contracts.append(worker.get_contract())
 
-        # Execution-Config → Framework Optimization
-        exec_config = scenario.execution_config
-
-        parallel_workers = exec_config.get("parallel_workers")
-        parallel_threshold = exec_config.get(
-            "worker_parallel_threshold_ms", 1.0)
-        log_stats = exec_config.get("log_performance_stats", False)
-
-        # Create workers (strategy-specific)
-        rsi_worker = RSIWorker(
-            period=strategy_config.get("rsi_period", 14),
-            timeframe=strategy_config.get("rsi_timeframe", "M5"),
+        # Calculate maximum warmup bars needed for this scenario
+        max_warmup = max(
+            [max(c.warmup_requirements.values()) for c in contracts],
+            default=50
         )
 
-        envelope_worker = EnvelopeWorker(
-            period=strategy_config.get("envelope_period", 20),
-            deviation=strategy_config.get("envelope_deviation", 0.02),
-            timeframe=strategy_config.get("envelope_timeframe", "M5"),
+        # Collect all timeframes needed for this scenario
+        all_timeframes = list(
+            set(tf for c in contracts for tf in c.required_timeframes)
         )
 
-        # Create orchestrator with config-based settings
-        orchestrator = WorkerCoordinator(
-            workers=[rsi_worker, envelope_worker],
-            parallel_workers=parallel_workers,  # ← FROM EXECUTION CONFIG!
-            parallel_threshold_ms=parallel_threshold,  # ← FROM EXECUTION CONFIG!
-        )
+        # Calculate warmup requirements per timeframe for this scenario
+        warmup_by_tf = {}
+        for contract in contracts:
+            for tf, bars in contract.warmup_requirements.items():
+                warmup_by_tf[tf] = max(warmup_by_tf.get(tf, 0), bars)
 
-        # Store config for later reference
-        orchestrator._execution_config = exec_config
-
-        return orchestrator
-
-    # def _create_orchestrator(self, scenario: TestScenario) -> WorkerCoordinator:
-    #     """
-    #     Create WorkerCoordinator with workers based on scenario config
-    #     FIXED: Uses execution_config separation
-    #     """
-    #     # Strategy-Config → Workers
-    #     strategy_config = scenario.strategy_config
-
-    #     # Execution-Config → Framework Optimization
-    #     exec_config = scenario.execution_config
-
-    #     parallel_workers = exec_config.get("parallel_workers")
-    #     parallel_threshold = exec_config.get(
-    #         "worker_parallel_threshold_ms", 1.0)
-    #     log_stats = exec_config.get("log_performance_stats", False)
-
-    #     # Künstliche Last aus Execution Config
-    #     load_ms = exec_config.get("artificial_load_ms", 5.0)
-
-    #     # Heavy Workers mit künstlicher Last
-    #     rsi_worker = HeavyRSIWorker(
-    #         period=strategy_config.get("rsi_period", 14),
-    #         timeframe=strategy_config.get("rsi_timeframe", "M5"),
-    #         artificial_load_ms=load_ms,  # ← LAST aus exec_config!
-    #     )
-
-    #     envelope_worker = HeavyEnvelopeWorker(
-    #         period=strategy_config.get("envelope_period", 20),
-    #         deviation=strategy_config.get("envelope_deviation", 0.02),
-    #         timeframe=strategy_config.get("envelope_timeframe", "M5"),
-    #         artificial_load_ms=load_ms * 1.5,  # ← MEHR LAST!
-    #     )
-
-    #     macd_worker = HeavyMACDWorker(
-    #         fast=12,
-    #         slow=26,
-    #         signal=9,
-    #         timeframe="M5",
-    #         artificial_load_ms=load_ms * 1.2,  # ← MITTLERE LAST
-    #     )
-
-    #     # WorkerCoordinator mit allen 3 Heavy Workers
-    #     orchestrator = WorkerCoordinator(
-    #         workers=[rsi_worker, envelope_worker, macd_worker],
-    #         parallel_workers=parallel_workers,  # ← FROM EXECUTION CONFIG!
-    #         parallel_threshold_ms=parallel_threshold,  # ← FROM EXECUTION CONFIG!
-    #     )
-
-    #     # Store config for later reference
-    #     orchestrator._execution_config = exec_config
-
-    #     return orchestrator
+        return {
+            "max_warmup_bars": max_warmup,
+            "all_timeframes": all_timeframes,
+            "warmup_by_timeframe": warmup_by_tf,
+            "total_workers": len(workers),
+        }

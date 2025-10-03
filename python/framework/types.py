@@ -19,6 +19,21 @@ class WorkerState(Enum):
     ASYNC_WORKING = "async_working"
 
 
+# ============================================
+# NEW (Issue 2): Worker Type Classification
+# ============================================
+class WorkerType(Enum):
+    """
+    Worker type classification for monitoring and performance tracking.
+
+    MVP (Issue 2): Only COMPUTE implemented
+    Post-MVP: API and EVENT for live trading integration
+    """
+    COMPUTE = "compute"  # Synchronous calculations (RSI, SMA, etc.)
+    API = "api"          # HTTP requests (News API, Sentiment) - Post-MVP
+    EVENT = "event"      # Live connections (WebSocket, AI alerts) - Post-MVP
+
+
 @dataclass
 class TickData:
     """Tick data structure"""
@@ -82,6 +97,36 @@ class WorkerResult:
     is_stale: bool = False
 
 
+# ============================================
+# NEW (Issue 2): Trading Decision Structure
+# ============================================
+@dataclass
+class Decision:
+    """
+    Trading decision output from DecisionLogic.
+
+    Replaces dict-based decision format for type safety.
+    DecisionLogic returns this structured output to orchestrator.
+    """
+    action: str  # "BUY", "SELL", "FLAT", "DEFENSIVE", etc.
+    confidence: float  # 0.0 - 1.0
+    reason: str = ""
+    price: float = 0.0
+    timestamp: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for backwards compatibility"""
+        return {
+            "action": self.action,
+            "confidence": self.confidence,
+            "reason": self.reason,
+            "price": self.price,
+            "timestamp": self.timestamp,
+            **self.metadata
+        }
+
+
 @dataclass
 class WorkerContract:
     """Contract defining worker requirements"""
@@ -92,6 +137,16 @@ class WorkerContract:
     can_work_async: bool = False
     required_timeframes: List[str] = field(default_factory=lambda: ["M1"])
     warmup_requirements: Dict[str, int] = field(default_factory=dict)
+
+    # ============================================
+    # NEW (Issue 2): Factory-Compatible Contract
+    # ============================================
+    # Worker type for monitoring/handling
+    worker_type: WorkerType = WorkerType.COMPUTE
+
+    # Split parameters into required vs optional for factory validation
+    required_parameters: Dict[str, type] = field(default_factory=dict)
+    optional_parameters: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,6 +204,12 @@ class GlobalContract:
     warmup_by_timeframe: Dict[str, int]
     total_workers: int
     all_parameters: Dict[str, Any]
+
+    # ============================================
+    # NEW (Issue 2): Worker Type Distribution
+    # ============================================
+    # Track worker types for monitoring (e.g., {COMPUTE: 3, API: 1})
+    worker_types: Dict[WorkerType, int] = field(default_factory=dict)
 
 
 class TimeframeConfig:
