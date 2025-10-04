@@ -251,15 +251,28 @@ class DecisionLogicFactory:
             Decision logic class
 
         Raises:
+            NotImplementedError: If BLACKBOX namespace (Post-MVP feature)
             ValueError: If logic cannot be loaded
         """
         namespace, logic_name = logic_type.split("/", 1)
 
-        # Construct module path
+        # ============================================
+        # BLACKBOX: Post-MVP Feature Gate
+        # ============================================
+        if namespace == "BLACKBOX":
+            raise NotImplementedError(
+                f"BlackBox decision logics are a Post-MVP feature.\n"
+                f"'{logic_type}' cannot be loaded yet.\n"
+                f"BlackBox loading will support encrypted/compiled decision logics "
+                f"in future releases.\n"
+                f"For now, use CORE/ or USER/ namespace decision logics."
+            )
+
+        # ============================================
+        # USER: Active Loading
+        # ============================================
         if namespace == "USER":
             module_path = f"python.decision_logic.user.{logic_name}"
-        elif namespace == "BLACKBOX":
-            module_path = f"python.decision_logic.blackbox.{logic_name}"
         else:
             raise ValueError(f"Unknown namespace: {namespace}")
 

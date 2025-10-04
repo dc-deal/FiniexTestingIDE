@@ -34,7 +34,7 @@ import json
 from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List, Type
 
-from python.framework.workers.abstract.abstract_blackbox_worker import \
+from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
 vLog = setup_logging(name="StrategyRunner")
@@ -288,15 +288,28 @@ class WorkerFactory:
             Worker class
 
         Raises:
+            NotImplementedError: If BLACKBOX namespace (Post-MVP feature)
             ValueError: If worker cannot be loaded
         """
         namespace, worker_name = worker_type.split("/", 1)
 
-        # Construct module path
+        # ============================================
+        # BLACKBOX: Post-MVP Feature Gate
+        # ============================================
+        if namespace == "BLACKBOX":
+            raise NotImplementedError(
+                f"BlackBox workers are a Post-MVP feature.\n"
+                f"'{worker_type}' cannot be loaded yet.\n"
+                f"BlackBox loading will support encrypted/compiled workers "
+                f"in future releases.\n"
+                f"For now, use CORE/ or USER/ namespace workers."
+            )
+
+        # ============================================
+        # USER: Active Loading
+        # ============================================
         if namespace == "USER":
             module_path = f"python.workers.user.{worker_name}"
-        elif namespace == "BLACKBOX":
-            module_path = f"python.workers.blackbox.{worker_name}"
         else:
             raise ValueError(f"Unknown namespace: {namespace}")
 

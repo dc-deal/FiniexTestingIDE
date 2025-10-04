@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerState
-from python.framework.workers.abstract.abstract_blackbox_worker import \
+from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
 vLog = setup_logging(name="StrategyRunner")
