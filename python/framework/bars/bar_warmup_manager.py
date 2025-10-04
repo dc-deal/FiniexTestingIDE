@@ -1,4 +1,4 @@
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
@@ -7,7 +7,7 @@ import pandas as pd
 
 from python.framework.types import Bar, TickData, TimeframeConfig
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class BarWarmupManager:
@@ -49,7 +49,7 @@ class BarWarmupManager:
         warmup_start_time = test_start_time - \
             timedelta(minutes=max_warmup_minutes)
 
-        logger.info(
+        vLog.debug(
             f"Preparing warmup from {warmup_start_time} to {test_start_time}")
 
         # Load tick data for warmup period
@@ -60,7 +60,7 @@ class BarWarmupManager:
         )
 
         if tick_data.empty:
-            logger.warning(f"No warmup data found for {symbol}")
+            vLog.warning(f"No warmup data found for {symbol}")
             return {}
 
         # Render historical bars for each timeframe
@@ -73,7 +73,7 @@ class BarWarmupManager:
                 else []
             )
 
-            logger.info(
+            vLog.debug(
                 f"Prepared {len(historical_bars[timeframe])} {timeframe} bars for warmup"
             )
 
@@ -144,7 +144,7 @@ class BarWarmupManager:
         """
         historical_bars = {}
 
-        logger.info(
+        vLog.info(
             f"Preparing warmup from {len(warmup_ticks)} pre-loaded ticks"
         )
 
@@ -160,7 +160,7 @@ class BarWarmupManager:
                 timeframe)
             historical_bars[timeframe] = bars[-bars_needed:] if bars else []
 
-            logger.info(
+            vLog.info(
                 f"Prepared {len(historical_bars[timeframe])} {timeframe} bars for warmup"
             )
 

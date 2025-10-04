@@ -7,6 +7,7 @@ import logging
 import sys
 from datetime import datetime
 from typing import Optional
+from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
 
 
 class ColorCodes:
@@ -71,6 +72,8 @@ class VisualConsoleLogger:
 
     def debug(self, message: str, logger_name: Optional[str] = None):
         """Log DEBUG message"""
+        if not DEBUG_LOGGING:
+            return
         logger = logging.getLogger(logger_name or self.name)
         logger.debug(message)
 
@@ -149,7 +152,8 @@ class VisualConsoleLogger:
             lines = [[] for _ in range(8)]
 
             for scenario in row_scenarios:
-                scenario_name = scenario.get('scenario_name', 'Unknown')[:28]
+                scenario_set_name = scenario.get(
+                    'scenario_set_name', 'Unknown')[:28]
                 symbol = scenario.get('symbol', 'N/A')
                 ticks = scenario.get('ticks_processed', 0)
                 signals = scenario.get('signals_generated', 0)
@@ -171,7 +175,7 @@ class VisualConsoleLogger:
                     return text + ' ' * (width - len(text))
 
                 # Zeilen erstellen (exakte Breite)
-                line1_text = f"📋 {scenario_name}"
+                line1_text = f"📋 {scenario_set_name}"
                 line2_text = f"Symbol: {symbol}"
                 line3_text = f"Ticks: {ticks:,}"
                 line4_text = f"Signals: {signals} ({rate:.1%})"

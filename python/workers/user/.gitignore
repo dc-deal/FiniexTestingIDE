@@ -1,0 +1,4 @@
+# User workers are tracked by default
+# Add specific files here if needed
+__pycache__/
+*.pyc

@@ -1,6 +1,9 @@
 """
 FiniexTestingIDE - Heavy Workers für Parallelisierungs-Tests
 Workers mit künstlicher CPU-Last zum Testen von Parallel-Performance
+
+REFACTORED (Issue 2): Updated contracts with required_parameters
+and factory-compatible structure.
 """
 
 import time
@@ -8,32 +11,67 @@ from typing import Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult
-from python.framework.workers.abstract.abstract_blackbox_worker import \
+from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
 
 class HeavyRSIWorker(AbstractBlackboxWorker):
     """
-    RSI Worker mit künstlicher CPU-Last
+    RSI Worker mit künstlicher CPU-Last.
     Simuliert komplexe Berechnungen (z.B. ML-Model, FFT, etc.)
     """
 
-    def __init__(self, period: int = 14, timeframe: str = "M5",
-                 artificial_load_ms: float = 5.0, **kwargs):
+    def __init__(self, name: str = "HeavyRSI", parameters: Dict = None, **kwargs):
         """
         Args:
-            period: RSI period
-            timeframe: Timeframe to use
-            artificial_load_ms: Künstliche CPU-Last in Millisekunden
+            name: Worker name
+            parameters: Factory-style parameters dict
+            **kwargs: Legacy constructor support
+
+        Required parameters:
+            - period: RSI calculation period
+            - timeframe: Timeframe to use
+
+        Optional parameters:
+            - artificial_load_ms: CPU load duration (default: 5.0ms)
         """
-        self.period = period
-        self.timeframe = timeframe
-        self.artificial_load_ms = artificial_load_ms
-        super().__init__("HeavyRSI", kwargs)
+        super().__init__(name, parameters)
+
+        # Extract parameters
+        params = parameters or {}
+        self.period = params.get('period') or kwargs.get('period', 14)
+        self.timeframe = params.get(
+            'timeframe') or kwargs.get('timeframe', 'M5')
+        self.artificial_load_ms = params.get(
+            'artificial_load_ms') or kwargs.get('artificial_load_ms', 5.0)
 
     def get_contract(self) -> WorkerContract:
+        """
+        Define Heavy RSI worker contract.
+
+        REFACTORED (Issue 2): Split into required/optional parameters.
+        """
         return WorkerContract(
+            # ============================================
+            # NEW (Issue 2): Factory-Compatible Contract
+            # ============================================
+            worker_type=WorkerType.COMPUTE,
+
+            # Required parameters - MUST be provided
+            required_parameters={
+                'period': int,      # RSI period
+                'timeframe': str,   # Timeframe
+            },
+
+            # Optional parameters - have defaults
+            optional_parameters={
+                'artificial_load_ms': 5.0,  # CPU load duration
+            },
+
+            # ============================================
+            # Existing contract fields (unchanged)
+            # ============================================
             parameters={
                 "rsi_period": self.period,
                 "rsi_timeframe": self.timeframe,
@@ -64,9 +102,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
     ) -> WorkerResult:
-        """
-        RSI computation mit künstlicher CPU-Last
-        """
+        """RSI computation mit künstlicher CPU-Last"""
 
         # === KÜNSTLICHE LAST (CPU-intensive) ===
         self._simulate_heavy_computation()
@@ -110,53 +146,75 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         )
 
     def _simulate_heavy_computation(self):
-        """
-        Simuliert CPU-intensive Berechnungen
-
-        Verwendet verschiedene Strategien für realistische CPU-Last:
-        1. Matrix-Multiplikationen (simuliert ML-Inference)
-        2. Trigonometrische Berechnungen (simuliert FFT)
-        3. Pseudo-random number generation (simuliert Monte-Carlo)
-        """
+        """Simuliert CPU-intensive Berechnungen (Matrix ops)"""
         start = time.perf_counter()
-        target_duration = self.artificial_load_ms / 1000.0  # Convert to seconds
+        target_duration = self.artificial_load_ms / 1000.0
 
-        # Strategy 1: Matrix multiplications (CPU-bound)
-        size = 50  # 50x50 matrix
+        size = 50
         while (time.perf_counter() - start) < target_duration:
             matrix_a = np.random.rand(size, size)
             matrix_b = np.random.rand(size, size)
             result = np.dot(matrix_a, matrix_b)
-
-            # Add some trigonometric operations
             result = np.sin(result) + np.cos(result)
-
-            # Prevent compiler optimization
             _ = result.sum()
 
 
 class HeavyEnvelopeWorker(AbstractBlackboxWorker):
     """
-    Envelope Worker mit künstlicher CPU-Last
-    Simuliert komplexe Band-Berechnungen
+    Envelope Worker mit künstlicher CPU-Last.
+    Simuliert komplexe Band-Berechnungen.
     """
 
-    def __init__(
-        self,
-        period: int = 20,
-        deviation: float = 0.02,
-        timeframe: str = "M5",
-        artificial_load_ms: float = 8.0,
-        **kwargs
-    ):
-        self.period = period
-        self.deviation = deviation
-        self.timeframe = timeframe
-        self.artificial_load_ms = artificial_load_ms
-        super().__init__("HeavyEnvelope", kwargs)
+    def __init__(self, name: str = "HeavyEnvelope", parameters: Dict = None, **kwargs):
+        """
+        Args:
+            name: Worker name
+            parameters: Factory-style parameters dict
+            **kwargs: Legacy constructor support
+
+        Optional parameters (all have defaults):
+            - period: MA period (default: 20)
+            - deviation: Band deviation (default: 0.02)
+            - timeframe: Timeframe (default: "M5")
+            - artificial_load_ms: CPU load (default: 8.0ms)
+        """
+        super().__init__(name, parameters)
+
+        params = parameters or {}
+        self.period = params.get('period') or kwargs.get('period', 20)
+        self.deviation = params.get(
+            'deviation') or kwargs.get('deviation', 0.02)
+        self.timeframe = params.get(
+            'timeframe') or kwargs.get('timeframe', 'M5')
+        self.artificial_load_ms = params.get(
+            'artificial_load_ms') or kwargs.get('artificial_load_ms', 8.0)
 
     def get_contract(self) -> WorkerContract:
+        """
+        Define Heavy Envelope worker contract.
+
+        REFACTORED (Issue 2): All parameters optional with defaults.
+        """
         return WorkerContract(
+            # ============================================
+            # NEW (Issue 2): Factory-Compatible Contract
+            # ============================================
+            worker_type=WorkerType.COMPUTE,
+
+            # Required parameters - NONE (all have defaults)
+            required_parameters={},
+
+            # Optional parameters - all configurable
+            optional_parameters={
+                'period': 20,
+                'deviation': 0.02,
+                'timeframe': 'M5',
+                'artificial_load_ms': 8.0,  # Higher load than RSI
+            },
+
+            # ============================================
+            # Existing contract fields (unchanged)
+            # ============================================
             parameters={
                 "envelope_period": self.period,
                 "envelope_deviation": self.deviation,
@@ -188,11 +246,9 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
     ) -> WorkerResult:
-        """
-        Envelope computation mit künstlicher CPU-Last
-        """
+        """Envelope computation mit künstlicher CPU-Last"""
 
-        # === KÜNSTLICHE LAST (anders als RSI für Varietät) ===
+        # === KÜNSTLICHE LAST (FFT-like) ===
         self._simulate_heavy_computation()
 
         # === NORMALE ENVELOPE BERECHNUNG ===
@@ -237,55 +293,78 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
         )
 
     def _simulate_heavy_computation(self):
-        """
-        Simuliert CPU-intensive Berechnungen (andere Methode als RSI)
-
-        Verwendet Fourier-Transform-ähnliche Operationen
-        """
+        """Simuliert FFT-like computations"""
         start = time.perf_counter()
         target_duration = self.artificial_load_ms / 1000.0
 
-        # Strategy 2: FFT-like computations
         size = 1000
         while (time.perf_counter() - start) < target_duration:
             data = np.random.rand(size)
-
-            # Simulate FFT
             fft_result = np.fft.fft(data)
             inverse = np.fft.ifft(fft_result)
-
-            # Add convolution
             kernel = np.random.rand(10)
             conv_result = np.convolve(data[:100], kernel, mode='same')
-
-            # Prevent compiler optimization
             _ = conv_result.sum() + inverse.real.sum()
 
 
 class HeavyMACDWorker(AbstractBlackboxWorker):
     """
-    MACD Worker mit künstlicher CPU-Last
-    Zusätzlicher Worker für bessere Parallelisierungs-Tests
+    MACD Worker mit künstlicher CPU-Last.
+    Zusätzlicher Worker für bessere Parallelisierungs-Tests.
     """
 
-    def __init__(
-        self,
-        fast: int = 12,
-        slow: int = 26,
-        signal: int = 9,
-        timeframe: str = "M5",
-        artificial_load_ms: float = 6.0,
-        **kwargs
-    ):
-        self.fast = fast
-        self.slow = slow
-        self.signal = signal
-        self.timeframe = timeframe
-        self.artificial_load_ms = artificial_load_ms
-        super().__init__("HeavyMACD", kwargs)
+    def __init__(self, name: str = "HeavyMACD", parameters: Dict = None, **kwargs):
+        """
+        Args:
+            name: Worker name
+            parameters: Factory-style parameters dict
+            **kwargs: Legacy constructor support
+
+        Optional parameters:
+            - fast: Fast EMA period (default: 12)
+            - slow: Slow EMA period (default: 26)
+            - signal: Signal line period (default: 9)
+            - timeframe: Timeframe (default: "M5")
+            - artificial_load_ms: CPU load (default: 6.0ms)
+        """
+        super().__init__(name, parameters)
+
+        params = parameters or {}
+        self.fast = params.get('fast') or kwargs.get('fast', 12)
+        self.slow = params.get('slow') or kwargs.get('slow', 26)
+        self.signal = params.get('signal') or kwargs.get('signal', 9)
+        self.timeframe = params.get(
+            'timeframe') or kwargs.get('timeframe', 'M5')
+        self.artificial_load_ms = params.get(
+            'artificial_load_ms') or kwargs.get('artificial_load_ms', 6.0)
 
     def get_contract(self) -> WorkerContract:
+        """
+        Define Heavy MACD worker contract.
+
+        REFACTORED (Issue 2): All parameters optional.
+        """
         return WorkerContract(
+            # ============================================
+            # NEW (Issue 2): Factory-Compatible Contract
+            # ============================================
+            worker_type=WorkerType.COMPUTE,
+
+            # Required parameters - NONE
+            required_parameters={},
+
+            # Optional parameters
+            optional_parameters={
+                'fast': 12,
+                'slow': 26,
+                'signal': 9,
+                'timeframe': 'M5',
+                'artificial_load_ms': 6.0,
+            },
+
+            # ============================================
+            # Existing contract fields (unchanged)
+            # ============================================
             parameters={
                 "macd_fast": self.fast,
                 "macd_slow": self.slow,
@@ -336,7 +415,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
         macd_line = ema_fast[-1] - ema_slow[-1]
 
         # Signal line (simplified)
-        signal_value = macd_line * 0.9  # Simplified
+        signal_value = macd_line * 0.9
         histogram = macd_line - signal_value
 
         return WorkerResult(
@@ -360,26 +439,19 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
         return ema
 
     def _simulate_heavy_computation(self):
-        """Simuliert heavy computation (ML-ähnlich)"""
+        """Simuliert ML-ähnliche Berechnungen"""
         start = time.perf_counter()
         target_duration = self.artificial_load_ms / 1000.0
 
-        # Strategy 3: Pseudo-ML inference
         input_size = 100
         hidden_size = 50
 
         while (time.perf_counter() - start) < target_duration:
-            # Simulate neural network layers
             inputs = np.random.rand(input_size)
             weights1 = np.random.rand(input_size, hidden_size)
             hidden = np.tanh(np.dot(inputs, weights1))
-
             weights2 = np.random.rand(hidden_size, 10)
             output = np.dot(hidden, weights2)
-
-            # Softmax
             exp_output = np.exp(output - np.max(output))
             result = exp_output / exp_output.sum()
-
-            # Prevent optimization
             _ = result.sum()

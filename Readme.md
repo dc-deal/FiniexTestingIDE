@@ -188,7 +188,7 @@ Du möchtest sofort mit FiniexTestingIDE experimentieren? Nutze unser Sample-Dat
 ```
 
 ### Nächste Schritte
-- Eigene Szenarien erstellen in `configs/scenarios/`
+- Eigene Szenarien erstellen in `configs/scenario_sets/`
 - Mit dem **"📝 Scenario Generator"** automatisch Szenarien aus deinen Daten generieren
 - Parameter in den Scenario-Configs anpassen (RSI, Envelope, etc.)
 
@@ -268,7 +268,7 @@ FiniexTestingIDE/
 │   │   └── generator.py           # Scenario-Generation
 │   └── strategy_runner_enhanced.py # Main Entry Point
 ├── configs/
-│   └── scenarios/                 # JSON-Scenario-Configs
+│   └── scenario_sets/                 # JSON-Scenario-Configs
 ├── data/
 │   ├── raw/                       # MQL5 JSON-Output
 │   └── parquet/                   # Processed Tick-Data

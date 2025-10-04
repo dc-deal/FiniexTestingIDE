@@ -1,0 +1,6 @@
+# Ignore all Python files by default (IP protection)
+*.py
+
+# Except init and templates
+!__init__.py
+!*_template.py

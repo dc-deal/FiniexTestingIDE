@@ -7,32 +7,67 @@ from typing import Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult
-from python.framework.workers.abstract.abstract_blackbox_worker import \
+from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
 
 class EnvelopeWorker(AbstractBlackboxWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
-    def __init__(
-        self, period: int = 20, deviation: float = 0.02, timeframe: str = "M5", **kwargs
-    ):
-        # FIX: Set instance variables BEFORE super().__init__
-        self.period = period
-        self.deviation = deviation
-        self.timeframe = timeframe
+    def __init__(self, name: str = "Envelope", parameters: Dict = None, **kwargs):
+        """
+        Initialize Envelope worker.
 
-        super().__init__("Envelope", kwargs)
+        Parameters can be provided via:
+        - parameters dict (factory-style)
+        - kwargs (legacy constructor-style)
+
+        Optional parameters (all have defaults):
+        - period: Moving average period (default: 20)
+        - deviation: Band deviation multiplier (default: 0.02)
+        - timeframe: Timeframe to use (default: "M5")
+        """
+        super().__init__(name, parameters)
+
+        # Extract parameters from dict or kwargs
+        params = parameters or {}
+        self.period = params.get('period') or kwargs.get('period', 20)
+        self.deviation = params.get(
+            'deviation') or kwargs.get('deviation', 0.02)
+        self.timeframe = params.get(
+            'timeframe') or kwargs.get('timeframe', 'M5')
 
     def get_contract(self) -> WorkerContract:
-        """Define worker contract"""
+        """
+        Define Envelope worker contract.
 
+        NEW (Issue 2): All parameters are optional with defaults.
+        This shows a different pattern than RSI (which has required params).
+        """
         return WorkerContract(
+            # ============================================
+            # NEW (Issue 2): Factory-Compatible Contract
+            # ============================================
+            worker_type=WorkerType.COMPUTE,
+
+            # Required parameters - NONE for Envelope (all have defaults)
+            required_parameters={},
+
+            # Optional parameters - all have defaults, fully configurable
+            optional_parameters={
+                'period': 20,         # Moving average period
+                'deviation': 0.02,    # Band deviation (2%)
+                'timeframe': 'M5',    # Default timeframe
+            },
+
+            # ============================================
+            # Existing contract fields (unchanged)
+            # ============================================
             parameters={
-                "envelope_period": self.period,
-                "envelope_deviation": self.deviation,
-                "envelope_timeframe": self.timeframe,
+                'envelope_period': self.period,
+                'envelope_deviation': self.deviation,
+                'envelope_timeframe': self.timeframe,
             },
             price_change_sensitivity=0.0001,
             max_computation_time_ms=50.0,

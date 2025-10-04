@@ -2,24 +2,66 @@ from typing import Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult
-from python.framework.workers.abstract.abstract_blackbox_worker import \
+from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
 
 class RSIWorker(AbstractBlackboxWorker):
     """RSI computation worker - Bar-based computation"""
 
-    def __init__(self, period: int = 14, timeframe: str = "M5", **kwargs):
-        self.period = period
-        self.timeframe = timeframe
-        super().__init__("RSI", kwargs)
+    def __init__(self, name: str = "RSI", parameters: Dict = None, **kwargs):
+        """
+        Initialize RSI worker.
+
+        Parameters can be provided via:
+        - parameters dict (factory-style)
+        - kwargs (legacy constructor-style)
+
+        Required parameters:
+        - period: RSI calculation period
+        - timeframe: Timeframe to use
+        """
+        super().__init__(name, parameters)
+
+        # Extract parameters from dict or kwargs
+        params = parameters or {}
+        self.period = params.get('period') or kwargs.get('period', 14)
+        self.timeframe = params.get(
+            'timeframe') or kwargs.get('timeframe', 'M5')
 
     def get_contract(self) -> WorkerContract:
+        """
+        Define RSI worker contract.
 
+        NEW (Issue 2): Split into required and optional parameters
+        for factory validation.
+        """
         return WorkerContract(
-            parameters={"rsi_period": self.period,
-                        "rsi_timeframe": self.timeframe},
+            # ============================================
+            # NEW (Issue 2): Factory-Compatible Contract
+            # ============================================
+            worker_type=WorkerType.COMPUTE,
+
+            # Required parameters - MUST be provided by user
+            required_parameters={
+                'period': int,      # RSI period (e.g., 14)
+                'timeframe': str,   # Timeframe (e.g., "M5")
+            },
+
+            # Optional parameters - have defaults, can be overridden
+            optional_parameters={
+                # Currently none, but could add:
+                # 'smoothing': 'exponential',
+                # 'overbought': 70,
+                # 'oversold': 30
+            },
+
+            # ============================================
+            # Existing contract fields (unchanged)
+            # ============================================
+            parameters={'rsi_period': self.period,
+                        'rsi_timeframe': self.timeframe},
             price_change_sensitivity=0.0001,
             max_computation_time_ms=50.0,
             required_timeframes=self.get_required_timeframes(),

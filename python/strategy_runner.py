@@ -5,7 +5,6 @@ Kompakte, farbige Logging-Ausgabe
 
 import os
 import platform
-import logging
 
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
@@ -14,7 +13,7 @@ from python.components.logger.bootstrap_logger import setup_logging
 
 vLog = setup_logging(name="StrategyRunner")
 
-parallel_mode = False
+parallel_mode = True
 max_workers = 4
 
 

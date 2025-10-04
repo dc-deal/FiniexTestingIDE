@@ -3,7 +3,7 @@ FiniexTestingIDE - Bar Rendering System
 Converts ticks to bars for all timeframes
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
@@ -12,7 +12,7 @@ import pandas as pd
 
 from python.framework.types import Bar, TickData, TimeframeConfig
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class BarRenderer:
@@ -141,7 +141,7 @@ class BarRenderer:
         for bar in bars:
             self.completed_bars[timeframe][symbol].append(bar)
 
-        logger.debug(
+        vLog.debug(
             f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
         )
 
