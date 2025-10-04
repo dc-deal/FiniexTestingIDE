@@ -317,7 +317,6 @@ FiniexTestingIDE/
   
   "execution_config": {
     "parallel_workers": true,
-    "max_parallel_scenarios": 4,
     "worker_parallel_threshold_ms": 1.0
   }
 }

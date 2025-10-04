@@ -30,7 +30,6 @@
     "execution_config": {
       "parallel_workers": true,
       "worker_parallel_threshold_ms": 1.0,
-      "max_parallel_scenarios": 4,
       "adaptive_parallelization": true,
       "log_performance_stats": true
     }
@@ -76,11 +75,43 @@
           }
         }
       },
-      "execution_config": {}
+      "execution_config": {
+        "parallel_workers": false
+      }
     },
     {
       "name": "EURUSD_window_03",
       "symbol": "EURUSD",
+      "start_date": "2025-09-21",
+      "end_date": "2025-09-23",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
+    },
+    {
+      "name": "AUDUSD_window_01",
+      "symbol": "AUDUSD",
+      "start_date": "2025-09-17",
+      "end_date": "2025-09-19",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
+    },
+    {
+      "name": "AUDUSD_window_02",
+      "symbol": "AUDUSD",
+      "start_date": "2025-09-19",
+      "end_date": "2025-09-21",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "strategy_config": {},
+      "execution_config": {}
+    },
+    {
+      "name": "AUDUSD_window_03",
+      "symbol": "AUDUSD",
       "start_date": "2025-09-21",
       "end_date": "2025-09-23",
       "max_ticks": 1000,
