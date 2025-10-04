@@ -187,8 +187,6 @@ class TestScenario:
                 # ← NEU: Künstliche Last - NUR für Heavy workers
                 # Ist eher für self-testing szenarios und stress tests gedacht.
                 "artificial_load_ms": 5.0,  # 5ms pro Worker
-                # Scenario-Level Parallelization (handled by BatchOrchestrator)
-                "max_parallel_scenarios": 4,  # Max concurrent scenarios
                 # Performance Tuning
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
                 "log_performance_stats": True,  # Log timing statistics

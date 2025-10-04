@@ -29,7 +29,6 @@
     "execution_config": {
       "parallel_workers": true,
       "worker_parallel_threshold_ms": 1.0,
-      "max_parallel_scenarios": 4,
       "adaptive_parallelization": true,
       "log_performance_stats": true
     }
@@ -46,7 +45,6 @@
       "execution_config": {
         "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }
@@ -62,7 +60,6 @@
       "execution_config": {
         "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }
@@ -78,7 +75,6 @@
       "execution_config": {
         "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }

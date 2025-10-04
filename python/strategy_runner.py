@@ -49,43 +49,27 @@ def run_strategy_test() -> dict:
         # Config-Based Scenario loading
         # ============================================================
 
-        vLog.info("📂 Loading scenarios from config file...", "StrategyRunner")
+        vLog.info("📂 Loading scenario_set from config file...", "StrategyRunner")
         config_loader = ScenarioConfigLoader()
-        scenarios = config_loader.load_config("eurusd_3_windows.json")
+        scenario_set = config_loader.load_config("eurusd_3_windows.json")
         vLog.info(
-            f"✅ Loaded {len(scenarios)} scenarios from config", "StrategyRunner")
+            f"✅ Loaded {len(scenario_set)} scenario_set from config", "StrategyRunner")
 
         # ============================================================
         # RUN BATCH TEST
         # ============================================================
 
-        # Create BatchOrchestrator with loaded scenarios
-        orchestrator = BatchOrchestrator(scenarios, loader)
-
-        # Determine execution mode - use scenario config or app defaults
-        parallel_mode = default_parallel_scenarios
-        max_workers = default_max_parallel_scenarios
-
-        if scenarios and scenarios[0].execution_config:
-            exec_config = scenarios[0].execution_config
-            # Scenario config overrides app defaults
-            parallel_mode = exec_config.get(
-                "parallel_workers", default_parallel_workers)
-            max_workers = exec_config.get(
-                "max_parallel_scenarios", default_max_parallel_scenarios)
-
-        vLog.info(
-            f"⚙️  Execution Config: parallel={parallel_mode}, max_workers={max_workers}",
-            "StrategyRunner"
-        )
+        # Create BatchOrchestrator with loaded scenario_set
+        orchestrator = BatchOrchestrator(
+            scenario_set, loader, app_config_loader)
 
         # Run test
-        results = orchestrator.run(parallel_mode, max_workers)
+        results = orchestrator.run()
 
         # ============================================================
         # RESULTS OUTPUT (via VisualConsoleLogger)
         # ============================================================
-        vLog.print_results_table(results)
+        vLog.print_results_table(results, app_config_loader)
 
         return results
 

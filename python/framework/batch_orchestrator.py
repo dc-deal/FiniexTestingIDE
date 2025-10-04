@@ -25,11 +25,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from python.components.logger.bootstrap_logger import setup_logging
+from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.bars.bar_rendering_controller import \
     BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
+from python.config import AppConfigLoader
 
 # ============================================
 # NEW (Issue 2): Factory Imports
@@ -49,7 +51,7 @@ class BatchOrchestrator:
     Each scenario is completely independent with its own requirements.
     """
 
-    def __init__(self, scenarios: List[TestScenario], data_worker):
+    def __init__(self, scenarios: List[TestScenario], data_worker: TickDataLoader, app_config: AppConfigLoader):
         """
         Initialize batch orchestrator.
 
@@ -61,6 +63,7 @@ class BatchOrchestrator:
         self.data_worker = data_worker
         # REMOVED: self.global_contract - no longer needed with per-scenario requirements
         self._last_orchestrator = None
+        self.appConfig = app_config
 
         # ============================================
         # NEW (Issue 2): Initialize Factories
@@ -78,7 +81,7 @@ class BatchOrchestrator:
             f"Available decision logics: {self.decision_logic_factory.get_registered_logics()}"
         )
 
-    def run(self, parallel: bool = False, max_workers: int = 4) -> Dict[str, Any]:
+    def run(self) -> Dict[str, Any]:
         """
         Execute all scenarios.
 
@@ -93,23 +96,14 @@ class BatchOrchestrator:
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)")
         start_time = time.time()
 
-        # REMOVED: Global contract aggregation
         # Each scenario now calculates its own requirements in _execute_single_scenario()
-
-        # Check if execution_config overrides max_workers
-        if self.scenarios and self.scenarios[0].execution_config:
-            config_max_scenarios = self.scenarios[0].execution_config.get(
-                "max_parallel_scenarios"
-            )
-            if config_max_scenarios is not None:
-                max_workers = config_max_scenarios
-                vLog.info(
-                    f"📝 Using max_parallel_scenarios from config: {max_workers}"
-                )
+        # FIXED (V0.7): Get batch mode from app_config.json!+
+        # parallel
+        run_parallel = self.appConfig.get_default_parallel_scenarios()
 
         # Execute scenarios
-        if parallel and len(self.scenarios) > 1:
-            results = self._run_parallel(max_workers)
+        if run_parallel and len(self.scenarios) > 1:
+            results = self._run_parallel()
         else:
             results = self._run_sequential()
 
@@ -120,8 +114,7 @@ class BatchOrchestrator:
             "success": True,
             "scenarios_count": len(self.scenarios),
             "execution_time": execution_time,
-            "results": results,
-            # REMOVED: global_contract - each scenario has its own requirements now
+            "scenario_results": results,
         }
 
         vLog.info(f"✅ Batch execution completed in {execution_time:.2f}s")
@@ -149,13 +142,15 @@ class BatchOrchestrator:
 
         return results
 
-    def _run_parallel(self, max_workers: int) -> List[Dict[str, Any]]:
+    def _run_parallel(self) -> List[Dict[str, Any]]:
         """Execute scenarios in parallel"""
+        max_parallel_scenarios = self.appConfig.get_default_max_parallel_scenarios()
+
         vLog.info(
-            f"🔀 Running {len(self.scenarios)} scenarios in parallel (max {max_workers} workers)"
+            f"🔀 Running {len(self.scenarios)} scenarios in parallel (max {max_parallel_scenarios} workers)"
         )
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=max_parallel_scenarios) as executor:
             futures = [
                 executor.submit(self._execute_single_scenario, scenario)
                 for scenario in self.scenarios

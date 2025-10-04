@@ -207,7 +207,6 @@ class ScenarioConfigLoader:
         default_execution = {
             "parallel_workers": True,
             "worker_parallel_threshold_ms": 1.0,
-            "max_parallel_scenarios": 4,
             "adaptive_parallelization": True,
             "log_performance_stats": True,
         }

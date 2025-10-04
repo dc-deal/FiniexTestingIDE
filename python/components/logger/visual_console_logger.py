@@ -99,7 +99,7 @@ class VisualConsoleLogger:
         """Output section separator"""
         print(f"{char * width}")
 
-    def print_results_table(self, results: dict):
+    def print_results_table(self, scenario_set_summary: dict, app_config: AppConfigLoader):
         """
         Output final results table with color formatting
         Compact with scenarios side-by-side (grid layout)
@@ -112,33 +112,17 @@ class VisualConsoleLogger:
 
         # Main statistics (compact in 2 columns)
         # FIXED: Correct keys from BatchOrchestrator
-        success = results.get('success', False)
-        scenarios_count = results.get('scenarios_count', 0)
-        exec_time = results.get('execution_time', 0)
+        success = scenario_set_summary.get('success', False)
+        scenarios_count = scenario_set_summary.get('scenarios_count', 0)
+        exec_time = scenario_set_summary.get('execution_time', 0)
 
-        # FIXED (V0.7): Get batch mode from app_config.json!
-        default_parallel_scenarios = self.app_config.get_default_parallel_scenarios()
-        max_parallel_scenarios = self.app_config.get_default_max_parallel_scenarios()
-
-        # Determine actual batch mode (app default or scenario override)
-        batch_parallel_mode = default_parallel_scenarios
-
-        # Check if first scenario overrides batch parallelism
-        if 'results' in results and len(results['results']) > 0:
-            first_scenario = results['results'][0]
-            # Check for execution_config override in results
-            if 'execution_config' in first_scenario:
-                exec_cfg = first_scenario['execution_config']
-                if 'max_parallel_scenarios' in exec_cfg:
-                    max_parallel_scenarios = exec_cfg['max_parallel_scenarios']
-                # If max_parallel_scenarios = 1, force sequential
-                if max_parallel_scenarios <= 1:
-                    batch_parallel_mode = False
+        batch_parallel_mode = app_config.get_default_parallel_scenarios()
+        batch_max_parallel_scenarios = app_config.get_default_max_parallel_scenarios()
 
         # Additional heuristic: Check if actual execution was parallel
         if scenarios_count > 1:
             individual_times = sum(r.get('execution_time', 0)
-                                   for r in results.get('results', []))
+                                   for r in scenario_set_summary.get('scenario_results', []))
             if individual_times > 0 and exec_time < individual_times * 0.9:
                 batch_parallel_mode = True
 
@@ -147,31 +131,31 @@ class VisualConsoleLogger:
               f"{ColorCodes.BLUE}⏱️  Time: {exec_time:.2f}s{ColorCodes.RESET}")
 
         # NEW (V0.7): Show batch-level execution mode from app_config
-        batch_mode_str = f"{ColorCodes.GREEN}Parallel{ColorCodes.RESET}" if batch_parallel_mode else "Sequential"
+        batch_mode_str = f"{ColorCodes.GREEN}Parallel{ColorCodes.RESET}" if batch_parallel_mode else f"{ColorCodes.YELLOW}Sequential{ColorCodes.RESET}"
         print(
             f"{ColorCodes.BOLD}⚙️  Batch Mode:{ColorCodes.RESET} {batch_mode_str}", end="")
         if batch_parallel_mode and scenarios_count > 1:
             print(
-                f" ({min(max_parallel_scenarios, scenarios_count)} scenarios concurrent)")
+                f" ({min(batch_max_parallel_scenarios, scenarios_count)} scenarios concurrent)")
         else:
             print()
 
         # Scenario Details (as Grid)
-        if "results" in results and len(results["results"]) > 0:
+        if "results" in scenario_set_summary and len(scenario_set_summary["results"]) > 0:
             self.section_separator()
             print(f"{ColorCodes.BOLD}SCENARIO DETAILS{ColorCodes.RESET}")
             self.section_separator()
 
-            self._print_scenario_grid(results["results"])
+            self._print_scenario_grid(scenario_set_summary["results"])
 
         # FIXED (V0.7): Show performance for ALL scenarios, not just last one
-        if 'results' in results and len(results['results']) > 0:
+        if 'scenario_results' in scenario_set_summary and len(scenario_set_summary['scenario_results']) > 0:
             self.section_separator(width=120)
             print(
                 f"{ColorCodes.BOLD}📊 PERFORMANCE DETAILS (PER SCENARIO){ColorCodes.RESET}")
             self.section_separator(width=120)
 
-            for idx, scenario_result in enumerate(results['results'], 1):
+            for idx, scenario_result in enumerate(scenario_set_summary['scenario_results'], 1):
                 if 'worker_statistics' in scenario_result:
                     scenario_name = scenario_result.get(
                         'scenario_set_name', f'Scenario_{idx}')
@@ -188,12 +172,14 @@ class VisualConsoleLogger:
                     )
 
         # NEW (V0.7): Aggregated summary across all scenarios
-        if 'results' in results and len(results['results']) > 1:
-            self._print_aggregated_summary(results['results'])
+        if 'scenario_results' in scenario_set_summary and len(scenario_set_summary['scenario_results']) > 1:
+            self._print_aggregated_summary(
+                scenario_set_summary['scenario_results'])
 
         # NEW (V0.7): Bottleneck analysis - worst performers
-        if 'results' in results and len(results['results']) > 0:
-            self._print_bottleneck_analysis(results['results'])
+        if 'scenario_results' in scenario_set_summary and len(scenario_set_summary['scenario_results']) > 0:
+            self._print_bottleneck_analysis(
+                scenario_set_summary['scenario_results'])
 
         print("=" * 120)
 
@@ -285,7 +271,7 @@ class VisualConsoleLogger:
         decisions_made = decision_stats.get('decision_count', 0)
 
         # Header line
-        mode_str = f"({ColorCodes.GREEN}Parallel{ColorCodes.RESET})" if parallel_mode else "(Sequential)"
+        mode_str = f"({ColorCodes.GREEN}Parallel{ColorCodes.RESET})" if parallel_mode else f"({ColorCodes.YELLOW}Sequential{ColorCodes.RESET})"
         print(
             f"{ColorCodes.BOLD}📊 SCENARIO PERFORMANCE:{ColorCodes.RESET} {scenario_name}")
         print(f"{ColorCodes.BOLD}   Workers:{ColorCodes.RESET} {total_workers} workers {mode_str}  |  "
