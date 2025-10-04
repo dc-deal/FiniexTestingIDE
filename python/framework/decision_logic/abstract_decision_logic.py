@@ -8,7 +8,7 @@ on decision-making strategy, not on worker management.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
@@ -56,6 +56,9 @@ class AbstractDecisionLogic(ABC):
             "sell_signals": 0,
             "flat_signals": 0,
         }
+
+        # NEW: Performance logging (set by WorkerCoordinator)
+        self.performance_logger: Optional['PerformanceLogDecisionLogic'] = None
 
     @abstractmethod
     def get_required_workers(self) -> List[str]:
@@ -156,3 +159,14 @@ class AbstractDecisionLogic(ABC):
             Config value or default
         """
         return self.config.get(key, default)
+
+    def set_performance_logger(self, logger: 'PerformanceLogDecisionLogic'):
+        """
+        Set performance logger for this decision logic.
+
+        Called by WorkerCoordinator during initialization.
+
+        Args:
+            logger: PerformanceLogDecisionLogic instance
+        """
+        self.performance_logger = logger

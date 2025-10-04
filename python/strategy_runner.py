@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Strategy Runner mit VisualConsoleLogger
-Kompakte, farbige Logging-Ausgabe
+FiniexTestingIDE - Strategy Runner with VisualConsoleLogger
+Compact, colorful logging output
 """
 
 import os
@@ -10,11 +10,9 @@ from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
+from python.config import AppConfigLoader
 
 vLog = setup_logging(name="StrategyRunner")
-
-parallel_mode = True
-max_workers = 4
 
 
 def run_strategy_test() -> dict:
@@ -25,7 +23,26 @@ def run_strategy_test() -> dict:
     vLog.info("🚀 Starting [BatchOrchestrator] strategy test", "StrategyRunner")
 
     try:
-        # 1. Setup data loader
+        # ============================================================
+        # Load Application Configuration
+        # ============================================================
+        app_config_loader = AppConfigLoader()
+
+        # Extract execution defaults
+        default_parallel_scenarios = app_config_loader.get_default_parallel_scenarios()
+        default_max_parallel_scenarios = app_config_loader.get_default_max_parallel_scenarios()
+        default_parallel_workers = app_config_loader.get_default_parallel_workers()
+
+        vLog.info(
+            f"⚙️  App defaults: parallel_scenarios={default_parallel_scenarios}, "
+            f"max_scenarios={default_max_parallel_scenarios}, "
+            f"parallel_workers={default_parallel_workers}",
+            "StrategyRunner"
+        )
+
+        # ============================================================
+        # Setup data loader
+        # ============================================================
         loader = TickDataLoader()
 
         # ============================================================
@@ -45,16 +62,22 @@ def run_strategy_test() -> dict:
         # Create BatchOrchestrator with loaded scenarios
         orchestrator = BatchOrchestrator(scenarios, loader)
 
-        # Determine execution mode from first scenario's execution_config
+        # Determine execution mode - use scenario config or app defaults
+        parallel_mode = default_parallel_scenarios
+        max_workers = default_max_parallel_scenarios
+
         if scenarios and scenarios[0].execution_config:
             exec_config = scenarios[0].execution_config
-            max_parallel = exec_config.get("max_parallel_scenarios", 4)
-            max_workers = max_parallel
+            # Scenario config overrides app defaults
+            parallel_mode = exec_config.get(
+                "parallel_workers", default_parallel_workers)
+            max_workers = exec_config.get(
+                "max_parallel_scenarios", default_max_parallel_scenarios)
 
-            vLog.info(
-                f"⚙️  Execution Config: parallel={parallel_mode}, max_workers={max_workers}",
-                "StrategyRunner"
-            )
+        vLog.info(
+            f"⚙️  Execution Config: parallel={parallel_mode}, max_workers={max_workers}",
+            "StrategyRunner"
+        )
 
         # Run test
         results = orchestrator.run(parallel_mode, max_workers)

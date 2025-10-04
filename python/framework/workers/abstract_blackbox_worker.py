@@ -4,7 +4,7 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.types import (Bar, TickData, WorkerContract,
                                     WorkerResult, WorkerState, WorkerType)
@@ -29,6 +29,9 @@ class AbstractBlackboxWorker(ABC):
         self.parameters = parameters or {}
         self.state = WorkerState.IDLE
         self._last_result = None
+
+        # NEW: Performance logging (set by WorkerCoordinator)
+        self.performance_logger: Optional['PerformanceLogWorker'] = None
 
     @abstractmethod
     def get_contract(self) -> WorkerContract:
@@ -101,6 +104,17 @@ class AbstractBlackboxWorker(ABC):
         """Update worker state"""
         self.state = state
 
+    def set_performance_logger(self, logger: 'PerformanceLogWorker'):
+        """
+        Set performance logger for this worker.
+
+        Called by WorkerCoordinator during initialization.
+
+        Args:
+            logger: PerformanceLogWorker instance
+        """
+        self.performance_logger = logger
+
     # ============================================
     # Factory Support Methods
     # ============================================
@@ -109,38 +123,22 @@ class AbstractBlackboxWorker(ABC):
         """
         Get worker type classification for monitoring.
 
-        Override in subclass if needed. Default: COMPUTE
+        Override in subclass if needed.
+
+        Returns:
+            WorkerType enum value
         """
         return WorkerType.COMPUTE
 
-    def validate_parameters(self, provided_params: Dict[str, Any]) -> bool:
+    @classmethod
+    def get_default_parameters(cls) -> Dict[str, Any]:
         """
-        Validate that all required parameters are provided.
+        Get default parameter values.
 
-        Called by Factory before instantiation.
-        Override in subclass for custom validation logic.
-
-        Args:
-            provided_params: Parameters from config
+        Used by factory for validation and defaults.
+        Override in subclass to provide defaults.
 
         Returns:
-            True if valid, raises ValueError if invalid
+            Dict of default parameter values
         """
-        contract = self.get_contract()
-
-        # Check required parameters
-        for param_name, param_type in contract.required_parameters.items():
-            if param_name not in provided_params:
-                raise ValueError(
-                    f"Worker '{self.name}': Missing required parameter '{param_name}'"
-                )
-
-            # Type checking (optional, but helpful)
-            provided_value = provided_params[param_name]
-            if not isinstance(provided_value, param_type):
-                raise ValueError(
-                    f"Worker '{self.name}': Parameter '{param_name}' must be "
-                    f"{param_type.__name__}, got {type(provided_value).__name__}"
-                )
-
-        return True
+        return {}

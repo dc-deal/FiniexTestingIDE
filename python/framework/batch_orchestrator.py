@@ -225,6 +225,7 @@ class BatchOrchestrator:
             decision_logic=decision_logic,
             parallel_workers=parallel_workers,
             parallel_threshold_ms=parallel_threshold,
+            scenario_name=scenario.name,  # NEW: Pass scenario name for performance logging
         )
         orchestrator.initialize()
 

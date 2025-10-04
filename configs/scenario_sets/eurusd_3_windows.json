@@ -41,7 +41,7 @@
       "symbol": "EURUSD",
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
-      "max_ticks": 1000,
+      "max_ticks": 2000,
       "data_mode": "realistic",
       "strategy_config": {
         "workers": {
