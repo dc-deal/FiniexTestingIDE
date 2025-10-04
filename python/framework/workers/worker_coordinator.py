@@ -7,10 +7,10 @@ ARCHITECTURE CHANGE (Issue 2):
 - DecisionLogic is now injected (no hardcoded strategy)
 - Coordinator only coordinates, doesn't decide
 
-Philosophy:
-- Workers are atomic units (compute indicators)
-- DecisionLogic orchestrates results (makes trading decisions)
-- Coordinator manages the tick-by-tick flow
+ARCHITECTURE CHANGE (Performance Logging V0.7):
+- Integrated PerformanceLogCoordinator for comprehensive metrics
+- Automatic performance tracking for workers and decision logic
+- No changes needed in concrete worker/logic classes
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -23,6 +23,8 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types import Bar, Decision, TickData, WorkerState
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
+from python.framework.performance.performance_log_coordinator import \
+    PerformanceLogCoordinator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -45,6 +47,7 @@ class WorkerCoordinator:
         decision_logic: AbstractDecisionLogic,
         parallel_workers: bool = None,
         parallel_threshold_ms: float = 1.0,
+        scenario_name: str = "unknown_scenario",
     ):
         """
         Initialize coordinator with injected workers and decision logic.
@@ -54,6 +57,7 @@ class WorkerCoordinator:
             decision_logic: Decision logic instance (e.g., SimpleConsensus)
             parallel_workers: Enable parallel worker execution (None = auto-detect)
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
+            scenario_name: Name of the scenario being executed
         """
         # ============================================
         # NEW (Issue 2): Injected dependencies
@@ -93,6 +97,32 @@ class WorkerCoordinator:
             else None
         )
 
+        # ============================================
+        # NEW (V0.7): Performance Logging Integration
+        # ============================================
+        self.performance_log = PerformanceLogCoordinator(
+            scenario_name=scenario_name,
+            parallel_workers=self.parallel_workers
+        )
+
+        # Create performance loggers for each worker
+        for worker_name, worker in self.workers.items():
+            # Extract worker type from worker parameters or name
+            worker_type = self._extract_worker_type(worker)
+            perf_logger = self.performance_log.create_worker_log(
+                worker_type=worker_type,
+                worker_name=worker_name
+            )
+            worker.set_performance_logger(perf_logger)
+
+        # Create performance logger for decision logic
+        decision_logic_type = self._extract_decision_logic_type(decision_logic)
+        decision_perf_logger = self.performance_log.create_decision_logic_log(
+            decision_logic_type=decision_logic_type,
+            decision_logic_name=decision_logic.name
+        )
+        decision_logic.set_performance_logger(decision_perf_logger)
+
         # Log configuration
         vLog.debug(
             f"WorkerCoordinator config: "
@@ -100,6 +130,51 @@ class WorkerCoordinator:
             f"decision_logic={decision_logic.name}, "
             f"parallel={self.parallel_workers}"
         )
+
+    def _extract_worker_type(self, worker: AbstractBlackboxWorker) -> str:
+        """
+        Extract worker type from worker instance.
+
+        Tries to get it from parameters or falls back to class name.
+
+        Args:
+            worker: Worker instance
+
+        Returns:
+            Worker type string (e.g., "CORE/rsi")
+        """
+        # Try to get from parameters
+        if hasattr(worker, 'parameters') and isinstance(worker.parameters, dict):
+            if 'worker_type' in worker.parameters:
+                return worker.parameters['worker_type']
+
+        # Fallback: Use class name
+        class_name = worker.__class__.__name__.replace("Worker", "").lower()
+        return f"CORE/{class_name}"
+
+    def _extract_decision_logic_type(self, decision_logic: AbstractDecisionLogic) -> str:
+        """
+        Extract decision logic type from instance.
+
+        Tries to get it from config or falls back to class name.
+
+        Args:
+            decision_logic: Decision logic instance
+
+        Returns:
+            Decision logic type string (e.g., "CORE/simple_consensus")
+        """
+        # Try to get from config
+        if hasattr(decision_logic, 'config') and isinstance(decision_logic.config, dict):
+            if 'decision_logic_type' in decision_logic.config:
+                return decision_logic.config['decision_logic_type']
+
+        # Fallback: Use class name
+        class_name = decision_logic.__class__.__name__
+        # Convert CamelCase to snake_case
+        import re
+        snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
+        return f"CORE/{snake_case}"
 
     def _validate_decision_logic_requirements(self):
         """
@@ -157,6 +232,9 @@ class WorkerCoordinator:
         - Workers compute their indicators (unchanged)
         - DecisionLogic generates the trading decision (NEW!)
 
+        ARCHITECTURE CHANGE (V0.7):
+        - Performance metrics automatically tracked
+
         Args:
             tick: Current tick data
             current_bars: Current bars per timeframe
@@ -169,6 +247,7 @@ class WorkerCoordinator:
             raise RuntimeError("Coordinator not initialized")
 
         self._statistics["ticks_processed"] += 1
+        self.performance_log.increment_ticks()
         bar_history = bar_history or {}
 
         # Determine if any bars were updated
@@ -186,13 +265,21 @@ class WorkerCoordinator:
         # ============================================
         # NEW (Issue 2): Delegate to DecisionLogic
         # ============================================
-        # Generate decision using injected logic
+        # Time decision logic execution
+        decision_start = time.perf_counter()
+
         decision = self.decision_logic.compute(
             tick=tick,
             worker_results=self._worker_results,
             current_bars=current_bars,
             bar_history=bar_history
         )
+
+        decision_time_ms = (time.perf_counter() - decision_start) * 1000
+
+        # Record decision logic performance
+        if self.decision_logic.performance_logger:
+            self.decision_logic.performance_logger.record(decision_time_ms)
 
         # Update statistics
         if decision and decision.action != "FLAT":
@@ -219,13 +306,18 @@ class WorkerCoordinator:
                 try:
                     worker.set_state(WorkerState.WORKING)
                     result = worker.compute(tick, bar_history, current_bars)
-                    result.computation_time_ms = (
+                    computation_time_ms = (
                         time.perf_counter() - start_time
                     ) * 1000
+                    result.computation_time_ms = computation_time_ms
 
                     self._worker_results[name] = result
                     worker.set_state(WorkerState.READY)
                     self._statistics["worker_calls"] += 1
+
+                    # NEW (V0.7): Record worker performance
+                    if worker.performance_logger:
+                        worker.performance_logger.record(computation_time_ms)
 
                 except Exception as e:
                     vLog.error(f"❌ Worker '{name}' failed: {e}")
@@ -281,6 +373,10 @@ class WorkerCoordinator:
                 # Track sequential time for comparison
                 sequential_time_estimate += computation_time_ms
 
+                # NEW (V0.7): Record worker performance
+                if worker.performance_logger:
+                    worker.performance_logger.record(computation_time_ms)
+
             except Exception as e:
                 vLog.error(f"❌ Worker '{name}' failed: {e}", exc_info=True)
                 worker.set_state(WorkerState.ERROR)
@@ -291,6 +387,8 @@ class WorkerCoordinator:
 
         if time_saved > 0:
             self._statistics["parallel_execution_time_saved_ms"] += time_saved
+            # NEW (V0.7): Record parallel performance
+            self.performance_log.record_parallel_time_saved(time_saved)
 
     def _compute_worker(
         self,
@@ -332,21 +430,23 @@ class WorkerCoordinator:
         """
         Get coordinator statistics.
 
-        ENHANCED (Issue 2): Now includes decision logic statistics.
+        ENHANCED (V0.7): Now returns comprehensive performance metrics
+        from PerformanceLogCoordinator.
         """
-        stats = self._statistics.copy()
+        # Get the full performance snapshot
+        return self.performance_log.get_snapshot()
 
-        # Add parallel efficiency metrics
-        if self.parallel_workers and stats["ticks_processed"] > 0:
-            stats["avg_time_saved_per_tick_ms"] = (
-                stats["parallel_execution_time_saved_ms"] /
-                stats["ticks_processed"]
-            )
+    def get_performance_snapshot(self) -> Dict[str, Any]:
+        """
+        Get live performance snapshot.
 
-        # Add decision logic statistics
-        stats["decision_logic"] = self.decision_logic.get_statistics()
+        NEW (V0.7): Optimized for frequent polling (TUI updates).
+        Minimal overhead, designed for 300ms refresh rates.
 
-        return stats
+        Returns:
+            Dict with current performance metrics
+        """
+        return self.performance_log.get_snapshot()
 
     def cleanup(self):
         """

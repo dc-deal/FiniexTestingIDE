@@ -21,7 +21,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
+from python.config import AppConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="StrategyRunner")
@@ -59,6 +59,7 @@ class TickDataImporter:
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
+        self.appConfig = AppConfigLoader()
 
     def process_all_mql5_exports(self):
         """
@@ -187,7 +188,7 @@ class TickDataImporter:
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
             # Optional: Source-File nach finished/ verschieben
-            if MOVE_PROCESSED_FILES:
+            if self.appConfig.get_move_processed_files:
                 finished_dir = Path("./data/finished/")
                 finished_dir.mkdir(exist_ok=True)
                 finished_file = finished_dir / json_file.name

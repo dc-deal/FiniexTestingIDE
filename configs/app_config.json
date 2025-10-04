@@ -1,0 +1,36 @@
+{
+    "version": "1.0",
+    "description": "FiniexTestingIDE - Application Configuration",
+    "development": {
+        "dev_mode": false,
+        "debug_logging": false
+    },
+    "execution": {
+        "default_parallel_scenarios": true,
+        "default_max_parallel_scenarios": 4,
+        "default_parallel_workers": true,
+        "default_worker_parallel_threshold_ms": 1.0
+    },
+    "logging": {
+        "performance_tracking": true,
+        "show_worker_details": true,
+        "show_decision_logic_details": true,
+        "warn_on_parameter_override": true,
+        "log_level": "INFO"
+    },
+    "importer": {
+        "move_processed_files": true,
+        "delete_on_error": false
+    },
+    "paths": {
+        "scenario_sets": "configs/scenario_sets",
+        "data_raw": "data/raw",
+        "data_processed": "data/processed",
+        "data_finished": "data/finished",
+        "data_parquet": "data/parquet"
+    },
+    "monitoring": {
+        "tui_refresh_rate_ms": 300,
+        "enable_live_stats": false
+    }
+}

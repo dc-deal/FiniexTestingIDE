@@ -80,7 +80,6 @@ def generate_single_symbol(
         execution_config={
             "parallel_workers": True,
             "worker_parallel_threshold_ms": 1.0,
-            "max_parallel_scenarios": 4,
             "adaptive_parallelization": True,
             "log_performance_stats": True,
         }
@@ -120,7 +119,6 @@ def generate_multi_symbol(symbols: list = None):
 
         execution_config={
             "parallel_workers": True,
-            "max_parallel_scenarios": 8,
         }
     )
 
@@ -161,7 +159,6 @@ def generate_quick_test():
 
         execution_config={
             "parallel_workers": False,  # Sequential for debugging
-            "max_parallel_scenarios": 1,
             "log_performance_stats": True,
         }
     )
@@ -231,7 +228,6 @@ def generate_heavy_batch():
         execution_config={
             "parallel_workers": True,  # Enable parallel workers
             "worker_parallel_threshold_ms": 1.0,
-            "max_parallel_scenarios": 8,  # High parallelization
             "adaptive_parallelization": True,
             "log_performance_stats": True,  # Track performance metrics
         }

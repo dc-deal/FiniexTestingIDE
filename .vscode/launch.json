@@ -2,39 +2,30 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "📊 Data Pipeline: Import Ticks (DEV)",
+            "name": "📊 Data Pipeline: Import Ticks",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/data_worker/tick_importer.py",
-            "env": {
-                "FINIEX_MOVE_FILES": "false",
-                "FINIEX_DEV_MODE": "true"
-            }
-        },
-        {
-            "name": "📊 Data Pipeline: Import Ticks (PROD)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/data_worker/tick_importer.py",
-            "env": {
-                "FINIEX_MOVE_FILES": "true"
-            }
         },
         {
             "name": "📊 Data Pipeline: Test Data Report",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/data_worker/data_loader/reports.py",
-            "env": {
-                "FINIEX_MOVE_FILES": "false",
-                "FINIEX_DEV_MODE": "true"
-            }
         },
         {
-            "name": "🔬 Strategy Runner",
+            "name": "🔬 Strategy Runner- Default Log",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/strategy_runner.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🚀 Strategy Runner-Live Demo",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/demos/tui_live_monitor_demo.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },
