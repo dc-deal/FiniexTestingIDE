@@ -199,6 +199,8 @@ class TickDataLoader:
 
             return df
 
+        return df  # ← EINZIGE ÄNDERUNG: Diese Zeile wurde hinzugefügt
+
     def _get_symbol_files(self, symbol: str) -> List[Path]:
         """Find all parquet files for a symbol"""
         pattern = f"{symbol}_*.parquet"
