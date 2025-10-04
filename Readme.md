@@ -12,7 +12,7 @@
 
 ---
 
-## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.7)
+## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.7.1)
 
 ### ✅ Data Pipeline (Production-Ready)
 - **MQL5 TickCollector v1.03** - Live tick collection with error classification
@@ -42,6 +42,13 @@
 - **Worker Type Classification** - COMPUTE/API/EVENT (MVP: only COMPUTE)
 - **Per-Scenario Requirements** - Each scenario calculates its own warmup requirements
 - **Dynamic Loading** - Hot-loading of USER/ workers without restart
+
+### ✅ Enhanced Performance Logging (NEW in V0.7.1) 📊
+- **Comprehensive Metrics** - Per-worker, per-scenario, and aggregated performance stats
+- **Parallel Efficiency Tracking** - Real-time measurement of parallelization benefits
+- **Bottleneck Analysis** - Automatic detection of slowest components
+- **Decision Logic Metrics** - Separate tracking for strategy decision time
+- **Batch Mode Clarity** - Clear indication of batch vs. scenario parallelization
 
 ### ⚠️ Blackbox Support (Prepared, Post-MVP)
 - **Folder Structure** - `python/workers/blackbox/` and `python/decision_logic/blackbox/`
@@ -109,14 +116,48 @@
 
 ---
 
+### 📋 Issue 5: IP-Protected Blackbox System (OPTIONAL MVP) 🔒
+**Goal:** Enable deployment of compiled workers for IP protection
+
+**MVP Critical (2-3 days):**
+
+**A) Blackbox Loader**
+- [ ] `BlackboxLoader` class for .pyc loading
+- [ ] Update feature gate in `WorkerFactory` and `DecisionLogicFactory`
+- [ ] Replace `NotImplementedError` with actual loading
+
+**B) Deployment Tooling**
+- [ ] `scripts/deploy_blackbox.py` - Compile .py → .pyc
+- [ ] Documentation with usage examples
+
+**C) Testing**
+- [ ] Test blackbox worker loading
+- [ ] Verify parameters still configurable
+- [ ] Example blackbox worker in docs
+
+**Status:** OPTIONAL - Will attempt if time permits after Issue #3  
+**Fallback:** Can defer to Post-MVP without breaking anything  
+**Effort:** 2-3 days  
+**Priority:** Optional (Important for vision, not blocking MVP)
+
+---
+
+
+
 ## 📊 MVP Timeline
 
-**Total:** ~10-12 days (2-3 weeks)
+**Core Path (Critical):** ~6-7 days
 
-1. **Issue 3** (4-5 days) → **NEXT** - Trade simulation
-2. **Issue 1** (1-2 days) → Optional, polish
+1. **Issue 3** (4-5 days) → **NEXT** - Trade simulation ⚠️ HIGH PRIORITY
+2. **Issue 1** (1-2 days) - Logging & TUI (Low priority polish)
 
-**Milestone:** Working end-to-end system with realistic trade simulation
+**Optional Path (If time permits):** +2-3 days
+
+3. **Issue 5** (2-3 days) - Blackbox system 🔒 OPTIONAL
+
+**Total Estimated:** 6-10 days (1.5-2.5 weeks) depending on optional features
+
+**Decision Point:** Assess schedule after Issue #3 completion
 
 ---
 
@@ -161,7 +202,7 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
 
 ### Next Steps
 - Create your own scenarios in `configs/scenario_sets/`
-- Use the **"📝 Scenario Generator"** to automatically generate scenarios from your data
+- Use the **"🔍 Scenario Generator"** to automatically generate scenarios from your data
 - Adjust parameters in scenario configs (RSI, Envelope, etc.)
 - Create your own workers/decision logics under `USER/` namespace
 
@@ -177,37 +218,152 @@ docker-compose exec finiex-dev bash -i
 python python/strategy_runner_enhanced.py
 ```
 
-### Current Test Output (V0.7)
+### Current Test Output (V0.7.1)
 ```
 ============================================================
                     🎉 EXECUTION RESULTS                     
 ============================================================
-✅ Success: True  |  📊 Scenarios: 3  |  ⏱️  Time: 3.95s
-⚙️  Parallel: False  |  ⚙️  Workers: 0
-------------------------------------------------------------
-SCENARIO DETAILS
-------------------------------------------------------------
-┌────────────────────────────────────  ┌────────────────────────────────────  ┌────────────────────────────────────
-│ 📋 EURUSD_window_01                   │  │ 📋 EURUSD_window_02                   │  │ 📋 EURUSD_window_03                   │
-│ Symbol: EURUSD                       │  │ Symbol: EURUSD                       │  │ Symbol: EURUSD                       │
-│ Ticks: 1,000                         │  │ Ticks: 1,000                         │  │ Ticks: 1,000                         │
-│ Signals: 0 (0.0%)                    │  │ Signals: 305 (30.5%)                 │  │ Signals: 342 (34.2%)                 │
-│ Calls: 2,000                         │  │ Calls: 2,000                         │  │ Calls: 2,000                         │
-│ Decisions: 0                         │  │ Decisions: 305                       │  │ Decisions: 342                       │
-└────────────────────────────────────  └────────────────────────────────────  └────────────────────────────────────
+✅ Success: True  |  📊 Scenarios: 6  |  ⏱️  Time: 5.87s
+⚙️  Batch Mode: Parallel (4 scenarios concurrent)
+------------------------------------------------------------------------------------------------------------------------
+📊 PERFORMANCE DETAILS (PER SCENARIO)
+------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
+📊 SCENARIO PERFORMANCE: EURUSD_window_01
+   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.025ms  |  Range:  0.003- 0.169ms  |  Total:    25.02ms
+      Envelope         Calls:  1000  |  Avg:  0.003ms  |  Range:  0.002- 0.007ms  |  Total:     2.98ms
+
+   ⚡ PARALLEL EFFICIENCY:
+      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.131ms  |  Total:     6.04ms
+
+
+························································································································
 
 ------------------------------------------------------------------------------------------------------------------------
-📊 WORKER STATS   |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 342
-  ⚡ PARALLEL  |  Saved: 0.00ms  |  Avg/tick: 0.000ms  |  Status: ≈ Equal
+📊 SCENARIO PERFORMANCE: EURUSD_window_02
+   Workers: 2 workers (Sequential)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.043ms  |  Range:  0.032- 0.181ms  |  Total:    42.60ms
+      Envelope         Calls:  1000  |  Avg:  0.026ms  |  Range:  0.021- 0.095ms  |  Total:    26.40ms
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.003- 0.035ms  |  Total:     6.33ms
+
+
+························································································································
+
+------------------------------------------------------------------------------------------------------------------------
+📊 SCENARIO PERFORMANCE: EURUSD_window_03
+   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.057ms  |  Range:  0.038- 0.221ms  |  Total:    57.43ms
+      Envelope         Calls:  1000  |  Avg:  0.035ms  |  Range:  0.002- 0.133ms  |  Total:    35.21ms
+
+   ⚡ PARALLEL EFFICIENCY:
+      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.009ms  |  Range:  0.004- 0.056ms  |  Total:     9.42ms
+
+
+························································································································
+
+------------------------------------------------------------------------------------------------------------------------
+📊 SCENARIO PERFORMANCE: AUDUSD_window_01
+   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.004ms  |  Range:  0.002- 0.039ms  |  Total:     4.27ms
+      Envelope         Calls:  1000  |  Avg:  0.003ms  |  Range:  0.002- 0.042ms  |  Total:     3.16ms
+
+   ⚡ PARALLEL EFFICIENCY:
+      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.027ms  |  Total:     6.06ms
+
+
+························································································································
+
+------------------------------------------------------------------------------------------------------------------------
+📊 SCENARIO PERFORMANCE: AUDUSD_window_02
+   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.049ms  |  Range:  0.036- 0.144ms  |  Total:    49.14ms
+      Envelope         Calls:  1000  |  Avg:  0.041ms  |  Range:  0.028- 0.188ms  |  Total:    40.71ms
+
+   ⚡ PARALLEL EFFICIENCY:
+      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.005ms  |  Range:  0.004- 0.019ms  |  Total:     5.47ms
+
+
+························································································································
+
+------------------------------------------------------------------------------------------------------------------------
+📊 SCENARIO PERFORMANCE: AUDUSD_window_03
+   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+
+   📊 WORKER DETAILS:
+      RSI              Calls:  1000  |  Avg:  0.049ms  |  Range:  0.037- 0.173ms  |  Total:    49.34ms
+      Envelope         Calls:  1000  |  Avg:  0.041ms  |  Range:  0.027- 0.282ms  |  Total:    40.75ms
+
+   ⚡ PARALLEL EFFICIENCY:
+      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
+
+   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
+      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.039ms  |  Total:     6.48ms
+
+
+------------------------------------------------------------------------------------------------------------------------
+📊 AGGREGATED SUMMARY (ALL SCENARIOS)
+------------------------------------------------------------------------------------------------------------------------
+
+   📈 OVERALL:
+      Total Ticks: 6,000  |  Total Signals: 779  |  Total Decisions: 6,000
+
+   👷 WORKERS (AGGREGATED):
+      RSI              Total Calls:   6000  |  Total Time:   227.80ms  |  Avg:  0.038ms  |  Scenario Avg:  0.038ms
+      Envelope         Total Calls:   6000  |  Total Time:   149.21ms  |  Avg:  0.025ms  |  Scenario Avg:  0.025ms
+
+   🧠 DECISION LOGIC (AGGREGATED):
+      Total Decisions: 6000  |  Total Time:    39.80ms  |  Avg:  0.007ms  |  Scenario Avg:  0.006ms
+
+
+------------------------------------------------------------------------------------------------------------------------
+⚠️  BOTTLENECK ANALYSIS (Worst Performers)
+------------------------------------------------------------------------------------------------------------------------
+
+   🐌 SLOWEST SCENARIO:
+      EURUSD_window_03  |  Avg/tick: 0.102ms  |  Total: 102.06ms
+      → This scenario took the longest time per tick
+
+   🐌 SLOWEST WORKER:
+      RSI  |  Avg: 0.038ms (across all scenarios)
+      → Worst in scenario 'EURUSD_window_03': 0.057ms
+
+   💡 RECOMMENDATIONS:
+      ✅ All components performing well! No major bottlenecks detected.
+
 ========================================================================================================================
-  4s 191ms - StrategyRunner            - INFO    - ✅ All tests passed!
+  6s 222ms - StrategyRunner            - INFO    - ✅ All tests passed!
 ```
 
 ---
 
-## 🗏️ Architecture Overview
+## 🗃️ Architecture Overview
 
-### Current System (V0.7)
+### Current System (V0.7.1)
 ```
 MQL5 TickCollector → JSON → Parquet (Quality-Aware)
                                 ↓
@@ -240,7 +396,7 @@ Decision Logic → Trade Simulator (Portfolio/Risk/Orders)
 
 ---
 
-## 📁 Project Structure (Pre-Alpha V0.7)
+## 📁 Project Structure (Pre-Alpha V0.7.1)
 
 ```
 FiniexTestingIDE/
@@ -281,7 +437,7 @@ FiniexTestingIDE/
 
 ---
 
-## 🔧 Configuration Example (V0.7)
+## 🔧 Configuration Example (V0.7.1)
 
 ### New Factory-Compatible Config Structure
 
@@ -340,18 +496,18 @@ FiniexTestingIDE/
 #### Two Fixed Layers:
 
 ```
-┌─────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────┐
 │  WORKER LAYER (Parallel Execution)              │
 │  ├── RSI Worker (Compute)                       │
 │  ├── Envelope Worker (Compute)                  │
 │  ├── News API Worker (API, Long-Running)        │
 │  └── AI Panic Detector (Event, Always-On)       │
-└─────────────────────────────────────────────────┘
+└───────────────────────────────────────────────┘
                     ↓
-┌─────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────┐
 │  DECISION LAYER (Orchestration)                 │
 │  └── DecisionLogic (aggregates all results)     │
-└─────────────────────────────────────────────────┘
+└───────────────────────────────────────────────┘
 ```
 
 **Key Principles:**
@@ -381,7 +537,7 @@ FiniexTestingIDE/
 - **Plan:** Encrypted/compiled workers + decision logics
 - **Usage:** `"worker_types": ["BLACKBOX/my_secret_strategy"]`
 
-### Worker Type Classification (V0.7)
+### Worker Type Classification (V0.7.1)
 **Three worker types for different use-cases:**
 
 1. **COMPUTE Workers** (✅ MVP)
@@ -476,4 +632,4 @@ Thank you to everyone supporting this project!
 
 *Building the foundation for parameter-centric trading strategy development - one issue at a time.*
 
-**Latest:** Pre-Alpha V0.7 - Factory Architecture Complete ✅
+**Latest:** Pre-Alpha V0.7.1 - Enhanced Performance Logging ✅
