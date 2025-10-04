@@ -131,7 +131,7 @@ class TickDataLoader:
             if duplicates_removed > 0:
                 duplicate_percentage = (
                     duplicates_removed / initial_count) * 100
-                vLog.info(
+                vLog.debug(
                     f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
                     f"({duplicate_percentage:.2f}% of data)"
                 )
@@ -171,7 +171,7 @@ class TickDataLoader:
             initial = len(df)
             df = df[df["timestamp"] >= start_dt]
             retained_pct = (len(df) / initial * 100) if initial > 0 else 0
-            vLog.info(
+            vLog.debug(
                 f"Start date filter: {initial:,} -> {len(df):,} ticks "
                 f"({retained_pct:.1f}% retained)"
             )
@@ -188,7 +188,7 @@ class TickDataLoader:
             initial = len(df)
             df = df[df["timestamp"] <= end_dt]
             retained_pct = (len(df) / initial * 100) if initial > 0 else 0
-            vLog.info(
+            vLog.debug(
                 f"End date filter: {initial:,} -> {len(df):,} ticks "
                 f"({retained_pct:.1f}% retained)"
             )

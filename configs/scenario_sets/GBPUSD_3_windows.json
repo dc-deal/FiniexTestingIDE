@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_name": "scn_GBPUSD_custom_strategy",
-  "created": "2025-10-04T05:47:20.206193",
+  "scenario_set_name": "scn_GBPUSD_3_windows",
+  "created": "2025-10-04T05:47:19.310058",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -12,18 +12,19 @@
       ],
       "workers": {
         "CORE/rsi": {
-          "period": 21,
+          "period": 14,
           "timeframe": "M5"
         },
         "CORE/envelope": {
-          "period": 30,
-          "deviation": 0.03,
+          "period": 20,
+          "deviation": 0.02,
           "timeframe": "M5"
         }
       },
       "decision_logic_config": {
-        "rsi_oversold": 25,
-        "rsi_overbought": 75
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confidence": 0.6
       }
     },
     "execution_config": {
@@ -43,13 +44,7 @@
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
-      "execution_config": {
-        "parallel_workers": null,
-        "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
-        "adaptive_parallelization": true,
-        "log_performance_stats": true
-      }
+      "execution_config": {}
     },
     {
       "name": "GBPUSD_window_02",
@@ -59,13 +54,7 @@
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
-      "execution_config": {
-        "parallel_workers": null,
-        "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
-        "adaptive_parallelization": true,
-        "log_performance_stats": true
-      }
+      "execution_config": {}
     },
     {
       "name": "GBPUSD_window_03",
@@ -75,13 +64,7 @@
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
-      "execution_config": {
-        "parallel_workers": null,
-        "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 4,
-        "adaptive_parallelization": true,
-        "log_performance_stats": true
-      }
+      "execution_config": {}
     }
   ]
 }

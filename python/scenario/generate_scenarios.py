@@ -301,7 +301,7 @@ if __name__ == "__main__":
     vLog.info("=" * 70)
 
     # Ensure output directory exists
-    Path("./configs/scenarios").mkdir(parents=True, exist_ok=True)
+    Path("./configs/scenario_sets").mkdir(parents=True, exist_ok=True)
 
     # Generate different types of configs
     try:
@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
         vLog.info("=" * 70)
         vLog.info("✅ All scenario configs generated successfully!")
-        vLog.info("📂 Check ./configs/scenarios/ for output files")
+        vLog.info("📂 Check ./configs/scenario_sets/ for output files")
         vLog.info("=" * 70)
 
     except Exception as e:

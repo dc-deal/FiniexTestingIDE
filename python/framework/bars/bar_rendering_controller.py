@@ -28,7 +28,7 @@ class BarRenderingController:
         self._required_timeframes = self.bar_renderer.get_required_timeframes(
             workers)
 
-        vLog.info(
+        vLog.debug(
             f"Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}"
         )
 

@@ -1,35 +1,29 @@
 {
   "version": "1.0",
-  "scenario_name": "scn_heavy_batch",
-  "created": "2025-10-04T05:47:19.834639",
+  "scenario_set_name": "scn_GBPUSD_custom_strategy",
+  "created": "2025-10-04T05:47:20.206193",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/simple_consensus",
       "worker_types": [
-        "CORE/heavy_rsi",
-        "CORE/heavy_envelope",
-        "CORE/heavy_macd"
+        "CORE/rsi",
+        "CORE/envelope"
       ],
       "workers": {
-        "CORE/heavy_rsi": {
-          "period": 14,
-          "timeframe": "M5",
-          "artificial_load_ms": 5.0
+        "CORE/rsi": {
+          "period": 21,
+          "timeframe": "M5"
         },
-        "CORE/heavy_envelope": {
-          "period": 20,
-          "deviation": 0.02,
-          "timeframe": "M5",
-          "artificial_load_ms": 8.0
-        },
-        "CORE/heavy_macd": {
-          "fast": 12,
-          "slow": 26,
-          "signal": 9,
-          "timeframe": "M5",
-          "artificial_load_ms": 6.0
+        "CORE/envelope": {
+          "period": 30,
+          "deviation": 0.03,
+          "timeframe": "M5"
         }
+      },
+      "decision_logic_config": {
+        "rsi_oversold": 25,
+        "rsi_overbought": 75
       }
     },
     "execution_config": {
@@ -42,65 +36,49 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_window_01",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_01",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
       "execution_config": {
-        "parallel_workers": true,
+        "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 8,
+        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }
     },
     {
-      "name": "EURUSD_window_02",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_02",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-19",
       "end_date": "2025-09-21",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
       "execution_config": {
-        "parallel_workers": true,
+        "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 8,
+        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }
     },
     {
-      "name": "EURUSD_window_03",
-      "symbol": "EURUSD",
+      "name": "GBPUSD_window_03",
+      "symbol": "GBPUSD",
       "start_date": "2025-09-21",
       "end_date": "2025-09-23",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "strategy_config": {},
       "execution_config": {
-        "parallel_workers": true,
+        "parallel_workers": null,
         "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 8,
-        "adaptive_parallelization": true,
-        "log_performance_stats": true
-      }
-    },
-    {
-      "name": "EURUSD_window_04",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-23",
-      "end_date": "2025-09-25",
-      "max_ticks": 1000,
-      "data_mode": "realistic",
-      "strategy_config": {},
-      "execution_config": {
-        "parallel_workers": true,
-        "worker_parallel_threshold_ms": 1.0,
-        "max_parallel_scenarios": 8,
+        "max_parallel_scenarios": 4,
         "adaptive_parallelization": true,
         "log_performance_stats": true
       }

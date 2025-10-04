@@ -13,7 +13,7 @@ from python.components.logger.bootstrap_logger import setup_logging
 
 vLog = setup_logging(name="StrategyRunner")
 
-parallel_mode = False
+parallel_mode = True
 max_workers = 4
 
 

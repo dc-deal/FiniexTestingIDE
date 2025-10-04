@@ -290,7 +290,7 @@ class BatchOrchestrator:
         worker_stats = orchestrator.get_statistics()
 
         return {
-            "scenario_name": scenario.name,
+            "scenario_set_name": scenario.name,
             "symbol": scenario.symbol,
             "ticks_processed": tick_count,
             "signals_generated": len(signals),

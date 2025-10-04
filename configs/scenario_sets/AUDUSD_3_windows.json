@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_name": "scn_EURUSD_3_windows",
-  "created": "2025-10-04T05:47:18.892371",
+  "scenario_set_name": "scn_AUDUSD_3_windows",
+  "created": "2025-10-04T05:47:19.562614",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -37,8 +37,8 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_window_01",
-      "symbol": "EURUSD",
+      "name": "AUDUSD_window_01",
+      "symbol": "AUDUSD",
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
       "max_ticks": 1000,
@@ -47,29 +47,18 @@
       "execution_config": {}
     },
     {
-      "name": "EURUSD_window_02",
-      "symbol": "EURUSD",
+      "name": "AUDUSD_window_02",
+      "symbol": "AUDUSD",
       "start_date": "2025-09-19",
       "end_date": "2025-09-21",
       "max_ticks": 1000,
       "data_mode": "realistic",
-      "strategy_config": {
-        "workers": {
-          "CORE/rsi": {
-            "period": 5,
-            "timeframe": "M1"
-          },
-          "CORE/envelope": {
-            "period": 5,
-            "timeframe": "M1"
-          }
-        }
-      },
+      "strategy_config": {},
       "execution_config": {}
     },
     {
-      "name": "EURUSD_window_03",
-      "symbol": "EURUSD",
+      "name": "AUDUSD_window_03",
+      "symbol": "AUDUSD",
       "start_date": "2025-09-21",
       "end_date": "2025-09-23",
       "max_ticks": 1000,

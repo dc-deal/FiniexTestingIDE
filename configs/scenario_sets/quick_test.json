@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "scenario_name": "scn_quick_test",
+  "scenario_set_name": "scn_quick_test",
   "created": "2025-10-04T05:47:18.615940",
   "global": {
     "data_mode": "realistic",

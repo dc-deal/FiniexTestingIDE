@@ -23,7 +23,7 @@ class ScenarioConfigLoader:
     Uses deep copy to prevent config mutation across scenarios
     """
 
-    def __init__(self, config_path: str = "./configs/scenarios/"):
+    def __init__(self, config_path: str = "./configs/scenario_sets/"):
         """
         Args:
             config_path: Directory containing scenario config files
@@ -214,7 +214,7 @@ class ScenarioConfigLoader:
 
         config = {
             "version": "1.0",
-            "scenario_name": "scn_"+config_file.replace('.json', ''),
+            "scenario_set_name": "scn_"+config_file.replace('.json', ''),
             "created": datetime.now().isoformat(),
             "global": {
                 "data_mode": "realistic",
