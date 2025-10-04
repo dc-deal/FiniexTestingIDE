@@ -13,7 +13,7 @@ Philosophy:
 - Coordinator manages the tick-by-tick flow
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
@@ -24,7 +24,7 @@ from python.framework.types import Bar, Decision, TickData, WorkerState
 from python.framework.workers.abstract.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class WorkerCoordinator:
@@ -94,7 +94,7 @@ class WorkerCoordinator:
         )
 
         # Log configuration
-        logger.debug(
+        vLog.debug(
             f"WorkerCoordinator config: "
             f"workers={len(self.workers)}, "
             f"decision_logic={decision_logic.name}, "
@@ -120,7 +120,7 @@ class WorkerCoordinator:
                 f"Available workers: {list(available_workers)}"
             )
 
-        logger.debug(
+        vLog.debug(
             f"✓ DecisionLogic '{self.decision_logic.name}' requirements satisfied: "
             f"{required_workers}"
         )
@@ -131,17 +131,17 @@ class WorkerCoordinator:
 
     def initialize(self):
         """Initialize coordinator and all workers"""
-        logger.debug(
+        vLog.debug(
             f"🔧 Initializing WorkerCoordinator with {len(self.workers)} workers "
             f"(parallel: {self.parallel_workers})"
         )
 
         for name, worker in self.workers.items():
             worker.set_state(WorkerState.READY)
-            logger.debug(f"  ✓ Worker '{name}' ready")
+            vLog.debug(f"  ✓ Worker '{name}' ready")
 
         self.is_initialized = True
-        logger.debug(
+        vLog.debug(
             f"✅ WorkerCoordinator initialized with DecisionLogic: {self.decision_logic.name}")
 
     def process_tick(
@@ -228,7 +228,7 @@ class WorkerCoordinator:
                     self._statistics["worker_calls"] += 1
 
                 except Exception as e:
-                    logger.error(f"❌ Worker '{name}' failed: {e}")
+                    vLog.error(f"❌ Worker '{name}' failed: {e}")
                     worker.set_state(WorkerState.ERROR)
 
     def _process_workers_parallel(
@@ -282,7 +282,7 @@ class WorkerCoordinator:
                 sequential_time_estimate += computation_time_ms
 
             except Exception as e:
-                logger.error(f"❌ Worker '{name}' failed: {e}", exc_info=True)
+                vLog.error(f"❌ Worker '{name}' failed: {e}", exc_info=True)
                 worker.set_state(WorkerState.ERROR)
 
         # Calculate time saved by parallelization
@@ -354,12 +354,12 @@ class WorkerCoordinator:
 
         UNCHANGED - Cleanup works exactly as before.
         """
-        logger.info("🧹 Cleaning up WorkerCoordinator...")
+        vLog.info("🧹 Cleaning up WorkerCoordinator...")
 
         # Shutdown thread pool
         if self._thread_pool:
             self._thread_pool.shutdown(wait=True)
-            logger.debug("  ✓ Thread pool shutdown")
+            vLog.debug("  ✓ Thread pool shutdown")
 
         for worker in self.workers.values():
             worker.set_state(WorkerState.IDLE)
@@ -370,5 +370,5 @@ class WorkerCoordinator:
         # Log final statistics
         if self.parallel_workers:
             total_saved = self._statistics["parallel_execution_time_saved_ms"]
-            logger.info(
+            vLog.info(
                 f"📊 Total time saved by parallelization: {total_saved:.2f}ms")

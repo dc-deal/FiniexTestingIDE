@@ -5,7 +5,6 @@ Kompakte, farbige Logging-Ausgabe
 
 import os
 import platform
-import logging
 
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader

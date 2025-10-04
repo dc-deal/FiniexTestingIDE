@@ -14,7 +14,7 @@ FIXED (Config Structure):
 - Only workers dict gets saved on scenario level (if different from global)
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 import pandas as pd
@@ -25,7 +25,7 @@ from python.data_worker.data_loader.core import TickDataLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="ScenarioGenerator")
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class ScenarioGenerator:
@@ -207,7 +207,7 @@ class ScenarioGenerator:
                 }
             else:
                 # Unknown worker - leave empty, let factory validation catch it
-                logger.warning(
+                vLog.warning(
                     f"No default config for worker '{worker_name}', "
                     f"you may need to provide explicit config"
                 )
@@ -250,7 +250,7 @@ class ScenarioGenerator:
         all_scenarios = []
 
         for symbol in symbols:
-            logger.info(
+            vLog.info(
                 f"Generating {scenarios_per_symbol} scenarios for {symbol}")
             scenarios = self.generate_from_symbol(
                 symbol,
@@ -265,7 +265,7 @@ class ScenarioGenerator:
             )
             all_scenarios.extend(scenarios)
 
-        logger.info(f"Generated {len(all_scenarios)} scenarios total")
+        vLog.info(f"Generated {len(all_scenarios)} scenarios total")
         return all_scenarios
 
     def _generate_time_windows(
@@ -294,7 +294,7 @@ class ScenarioGenerator:
         symbol_info = self.analyzer.get_symbol_info(symbol)
 
         if "error" in symbol_info:
-            logger.error(
+            vLog.error(
                 f"Cannot generate for {symbol}: {symbol_info['error']}")
             return []
 
@@ -304,7 +304,7 @@ class ScenarioGenerator:
         total_days = (end_date - start_date).days
 
         if total_days < window_days * num_windows:
-            logger.warning(
+            vLog.warning(
                 f"Not enough data for {num_windows} windows of {window_days} days. "
                 f"Reducing to {total_days // window_days} windows."
             )
@@ -359,7 +359,7 @@ class ScenarioGenerator:
             )
             scenarios.append(scenario)
 
-        logger.info(
+        vLog.info(
             f"Generated {len(scenarios)} time window scenarios for {symbol}")
         return scenarios
 
@@ -377,7 +377,7 @@ class ScenarioGenerator:
         TODO: Implement volatility detection.
         For now, falls back to time_windows.
         """
-        logger.warning(
+        vLog.warning(
             f"Volatility-based generation not yet implemented. Using time_windows.")
         return self._generate_time_windows(
             symbol,
@@ -399,7 +399,7 @@ class ScenarioGenerator:
         TODO: Implement session-based generation.
         For now, falls back to time_windows.
         """
-        logger.warning(
+        vLog.warning(
             f"Session-based generation not yet implemented. Using time_windows.")
         return self._generate_time_windows(
             symbol,

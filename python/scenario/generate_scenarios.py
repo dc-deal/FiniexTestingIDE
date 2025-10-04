@@ -9,7 +9,7 @@ Usage:
     python python/scenario/generate_scenarios.py
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 
 from python.data_worker.data_loader.core import TickDataLoader
@@ -18,7 +18,7 @@ from python.scenario.generator import ScenarioGenerator
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="StrategyRunner")
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 def generate_single_symbol(
@@ -91,7 +91,7 @@ def generate_single_symbol(
     output_file = f"{symbol}_3_windows.json"
     config_loader.save_config(scenarios, output_file)
 
-    logger.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
+    vLog.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
 
 
 def generate_multi_symbol(symbols: list = None):
@@ -129,7 +129,7 @@ def generate_multi_symbol(symbols: list = None):
     output_file = "all_symbols_batch.json"
     config_loader.save_config(scenarios, output_file)
 
-    logger.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
+    vLog.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
 
 
 def generate_quick_test():
@@ -170,7 +170,7 @@ def generate_quick_test():
     output_file = "quick_test.json"
     config_loader.save_config(scenarios, output_file)
 
-    logger.info(f"✅ Generated quick test → {output_file}")
+    vLog.info(f"✅ Generated quick test → {output_file}")
 
 
 def generate_heavy_batch():
@@ -241,7 +241,7 @@ def generate_heavy_batch():
     output_file = "heavy_batch.json"
     config_loader.save_config(scenarios, output_file)
 
-    logger.info(f"✅ Generated heavy batch (3 heavy workers) → {output_file}")
+    vLog.info(f"✅ Generated heavy batch (3 heavy workers) → {output_file}")
 
 
 def generate_custom_strategy_example():
@@ -286,7 +286,7 @@ def generate_custom_strategy_example():
     output_file = "GBPUSD_custom_strategy.json"
     config_loader.save_config(scenarios, output_file)
 
-    logger.info(f"✅ Generated custom strategy → {output_file}")
+    vLog.info(f"✅ Generated custom strategy → {output_file}")
 
 
 if __name__ == "__main__":
@@ -296,37 +296,37 @@ if __name__ == "__main__":
     REFACTORED (Issue 2): All generators now use factory-compatible
     config structure with explicit decision logic and worker types.
     """
-    logger.info("=" * 70)
-    logger.info("🚀 FiniexTestingIDE - Scenario Generator (Issue 2)")
-    logger.info("=" * 70)
+    vLog.info("=" * 70)
+    vLog.info("🚀 FiniexTestingIDE - Scenario Generator (Issue 2)")
+    vLog.info("=" * 70)
 
     # Ensure output directory exists
     Path("./configs/scenarios").mkdir(parents=True, exist_ok=True)
 
     # Generate different types of configs
     try:
-        logger.info("📝 Generating quick test config...")
+        vLog.info("📝 Generating quick test config...")
         generate_quick_test()
 
-        logger.info("📝 Generating single symbol configs...")
+        vLog.info("📝 Generating single symbol configs...")
         generate_single_symbol("EURUSD")
         generate_single_symbol("GBPUSD")
         generate_single_symbol("AUDUSD")
 
-        logger.info("📝 Generating heavy batch config (performance test)...")
+        vLog.info("📝 Generating heavy batch config (performance test)...")
         generate_heavy_batch()
 
-        logger.info("📝 Generating custom strategy example...")
+        vLog.info("📝 Generating custom strategy example...")
         generate_custom_strategy_example()
 
         # Uncomment to generate multi-symbol batch:
-        # logger.info("📝 Generating multi-symbol batch...")
+        # vLog.info("📝 Generating multi-symbol batch...")
         # generate_multi_symbol()
 
-        logger.info("=" * 70)
-        logger.info("✅ All scenario configs generated successfully!")
-        logger.info("📂 Check ./configs/scenarios/ for output files")
-        logger.info("=" * 70)
+        vLog.info("=" * 70)
+        vLog.info("✅ All scenario configs generated successfully!")
+        vLog.info("📂 Check ./configs/scenarios/ for output files")
+        vLog.info("=" * 70)
 
     except Exception as e:
-        logger.error(f"❌ Generation failed: {e}", exc_info=True)
+        vLog.error(f"❌ Generation failed: {e}", exc_info=True)

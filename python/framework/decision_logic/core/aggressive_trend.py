@@ -16,14 +16,14 @@ This demonstrates how different DecisionLogic implementations
 can use the same workers but with completely different strategies.
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class AggressiveTrend(AbstractDecisionLogic):
@@ -59,7 +59,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_extremes", 0.25)
         self.min_confidence = self.get_config_value("min_confidence", 0.4)
 
-        logger.debug(
+        vLog.debug(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
             f"Envelope extremes({self.envelope_extremes})"
@@ -203,7 +203,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # Log aggressive signals
         if action != "FLAT":
-            logger.info(
+            vLog.info(
                 f"⚡ AGGRESSIVE {action}: {reason} "
                 f"(confidence: {confidence:.2f})"
             )

@@ -16,14 +16,14 @@ This logic requires two workers:
 - Envelope: Price envelope/bollinger bands
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class SimpleConsensus(AbstractDecisionLogic):
@@ -60,7 +60,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             "envelope_upper_threshold", 0.7)
         self.min_confidence = self.get_config_value("min_confidence", 0.5)
 
-        logger.debug(
+        vLog.debug(
             f"SimpleConsensus initialized: "
             f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
             f"Envelope({self.envelope_lower}/{self.envelope_upper})"
@@ -188,7 +188,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         # Log significant signals (not FLAT)
         if action != "FLAT":
-            logger.debug(
+            vLog.debug(
                 f"🎯 {action} signal: {reason} (confidence: {confidence:.2f})"
             )
 

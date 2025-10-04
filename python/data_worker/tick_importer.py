@@ -10,7 +10,7 @@ Version: 1.0
 """
 
 import json
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +25,7 @@ from config import DEBUG_LOGGING, DEV_MODE, MOVE_PROCESSED_FILES
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="StrategyRunner")
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class TickDataImporter:
@@ -70,20 +70,20 @@ class TickDataImporter:
         json_files = list(self.source_dir.glob("*_ticks.json"))
 
         if not json_files:
-            logger.warning(f"Keine JSON-Files gefunden in {self.source_dir}")
+            vLog.warning(f"Keine JSON-Files gefunden in {self.source_dir}")
             return
 
-        logger.info(f"Gefunden: {len(json_files)} JSON-Files")
+        vLog.info(f"Gefunden: {len(json_files)} JSON-Files")
 
         # Sequenzielle Verarbeitung mit Error-Recovery
         for json_file in json_files:
-            logger.info(f"Verarbeite: {json_file.name}")
+            vLog.info(f"Verarbeite: {json_file.name}")
             try:
                 self.convert_json_to_parquet(json_file)
                 self.processed_files += 1
             except Exception as e:
                 error_msg = f"FEHLER bei {json_file.name}: {str(e)}"
-                logger.error(error_msg)
+                vLog.error(error_msg)
                 self.errors.append(error_msg)
 
         self._print_summary()
@@ -124,7 +124,7 @@ class TickDataImporter:
 
         # Early exit bei leeren Tick-Arrays
         if not ticks:
-            logger.warning(f"Keine Ticks in {json_file.name}")
+            vLog.warning(f"Keine Ticks in {json_file.name}")
             return
 
         # ===========================================
@@ -192,16 +192,16 @@ class TickDataImporter:
                 finished_dir.mkdir(exist_ok=True)
                 finished_file = finished_dir / json_file.name
                 json_file.rename(finished_file)
-                logger.info(f"→ Moved {json_file.name} to finished/")
+                vLog.info(f"→ Moved {json_file.name} to finished/")
             else:
-                logger.info(
+                vLog.info(
                     f"→ DEV_MODE: File bleibt in raw/ (MOVE_PROCESSED_FILES=false)"
                 )
 
             self.total_ticks += len(df)
 
             # Success-Logging mit Statistiken
-            logger.info(
+            vLog.info(
                 f"✓ {parquet_name}: {len(df):,} Ticks, "
                 f"Kompression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
@@ -209,13 +209,13 @@ class TickDataImporter:
 
         except Exception as e:
             # Detailliertes Error-Logging für Debugging
-            logger.error(f"FEHLER beim Schreiben von {parquet_path}")
-            logger.error(f"Original Error: {str(e)}")
-            logger.error(f"Error Type: {type(e)}")
-            logger.error(f"Metadaten waren: {parquet_metadata}")
+            vLog.error(f"FEHLER beim Schreiben von {parquet_path}")
+            vLog.error(f"Original Error: {str(e)}")
+            vLog.error(f"Error Type: {type(e)}")
+            vLog.error(f"Metadaten waren: {parquet_metadata}")
             # Metadaten-Typ-Debugging
             for key, value in parquet_metadata.items():
-                logger.error(f"  {key}: {value} (Type: {type(value)})")
+                vLog.error(f"  {key}: {value} (Type: {type(value)})")
             raise  # Re-raise für Caller-Error-Handling
 
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -303,7 +303,7 @@ class TickDataImporter:
         # Logging für entfernte Ticks
         removed = initial_count - len(df)
         if removed > 0:
-            logger.warning(
+            vLog.warning(
                 f"Qualitäts-Check: {removed} invalide Ticks entfernt")
 
         return df
@@ -317,18 +317,18 @@ class TickDataImporter:
         - Gesamtzahl konvertierter Ticks
         - Aufgetretene Fehler (falls vorhanden)
         """
-        logger.info("=" * 50)
-        logger.info("VERARBEITUNGS-ZUSAMMENFASSUNG")
-        logger.info("=" * 50)
-        logger.info(f"Verarbeitete Dateien: {self.processed_files}")
-        logger.info(f"Gesamte Ticks: {self.total_ticks:,}")
-        logger.info(f"Fehler: {len(self.errors)}")
+        vLog.info("=" * 50)
+        vLog.info("VERARBEITUNGS-ZUSAMMENFASSUNG")
+        vLog.info("=" * 50)
+        vLog.info(f"Verarbeitete Dateien: {self.processed_files}")
+        vLog.info(f"Gesamte Ticks: {self.total_ticks:,}")
+        vLog.info(f"Fehler: {len(self.errors)}")
 
         # Detaillierte Fehler-Liste
         if self.errors:
-            logger.error("FEHLER-LISTE:")
+            vLog.error("FEHLER-LISTE:")
             for error in self.errors:
-                logger.error(f"  - {error}")
+                vLog.error(f"  - {error}")
 
 
 # ===========================================
@@ -346,10 +346,10 @@ if __name__ == "__main__":
     SOURCE_DIR = "./data/raw/"  # MQL5 Export-Ordner
     TARGET_DIR = "./data/processed/"  # Parquet-Ziel
 
-    logger.info("FiniexTestingIDE Tick Data Importer gestartet")
+    vLog.info("FiniexTestingIDE Tick Data Importer gestartet")
 
     # Batch-Processing ausführen
     importer = TickDataImporter(SOURCE_DIR, TARGET_DIR)
     importer.process_all_mql5_exports()
 
-    logger.info("Import abgeschlossen!")
+    vLog.info("Import abgeschlossen!")

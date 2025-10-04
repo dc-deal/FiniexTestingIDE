@@ -19,12 +19,12 @@ ARCHITECTURE CHANGE (Parameter Inheritance Bug Fix):
 - No more cross-contamination of requirements between scenarios
 """
 
-import logging
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from python.components.logger.bootstrap_logger import setup_logging
 from python.framework.bars.bar_rendering_controller import \
     BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
@@ -37,7 +37,7 @@ from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class BatchOrchestrator:
@@ -68,13 +68,13 @@ class BatchOrchestrator:
         self.worker_factory = WorkerFactory()
         self.decision_logic_factory = DecisionLogicFactory()
 
-        logger.debug(
+        vLog.debug(
             f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
         )
-        logger.debug(
+        vLog.debug(
             f"Available workers: {self.worker_factory.get_registered_workers()}"
         )
-        logger.debug(
+        vLog.debug(
             f"Available decision logics: {self.decision_logic_factory.get_registered_logics()}"
         )
 
@@ -89,7 +89,7 @@ class BatchOrchestrator:
         Returns:
             Aggregated results from all scenarios
         """
-        logger.info(
+        vLog.info(
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)")
         start_time = time.time()
 
@@ -103,7 +103,7 @@ class BatchOrchestrator:
             )
             if config_max_scenarios is not None:
                 max_workers = config_max_scenarios
-                logger.info(
+                vLog.info(
                     f"📝 Using max_parallel_scenarios from config: {max_workers}"
                 )
 
@@ -124,7 +124,7 @@ class BatchOrchestrator:
             # REMOVED: global_contract - each scenario has its own requirements now
         }
 
-        logger.info(f"✅ Batch execution completed in {execution_time:.2f}s")
+        vLog.info(f"✅ Batch execution completed in {execution_time:.2f}s")
         return summary
 
     def _run_sequential(self) -> List[Dict[str, Any]]:
@@ -132,25 +132,26 @@ class BatchOrchestrator:
         results = []
 
         for i, scenario in enumerate(self.scenarios, 1):
-            logger.info(
+            vLog.section_separator()
+            vLog.info(
                 f"📊 Running scenario {i}/{len(self.scenarios)}: {scenario.name}"
             )
 
             try:
                 result = self._execute_single_scenario(scenario)
                 results.append(result)
-                logger.info(
+                vLog.info(
                     f"✅ Scenario {i} completed: {result.get('signals_generated', 0)} signals"
                 )
             except Exception as e:
-                logger.error(f"❌ Scenario {i} failed: {e}", exc_info=True)
+                vLog.error(f"❌ Scenario {i} failed: {e}", exc_info=True)
                 results.append({"error": str(e), "scenario": scenario.name})
 
         return results
 
     def _run_parallel(self, max_workers: int) -> List[Dict[str, Any]]:
         """Execute scenarios in parallel"""
-        logger.info(
+        vLog.info(
             f"🔀 Running {len(self.scenarios)} scenarios in parallel (max {max_workers} workers)"
         )
 
@@ -167,7 +168,7 @@ class BatchOrchestrator:
                     result = future.result(timeout=300)
                     results.append(result)
                 except Exception as e:
-                    logger.error(f"❌ Parallel scenario failed: {e}")
+                    vLog.error(f"❌ Parallel scenario failed: {e}")
                     results.append({"error": str(e)})
 
         return results
@@ -190,9 +191,9 @@ class BatchOrchestrator:
             workers_dict = self.worker_factory.create_workers_from_config(
                 strategy_config)
             workers = list(workers_dict.values())
-            logger.info(f"✓ Created {len(workers)} workers from config")
+            vLog.info(f"✓ Created {len(workers)} workers from config")
         except Exception as e:
-            logger.error(f"Failed to create workers: {e}")
+            vLog.error(f"Failed to create workers: {e}")
             raise ValueError(f"Worker creation failed: {e}")
 
         # 2. Create DecisionLogic using DecisionLogic Factory
@@ -200,9 +201,9 @@ class BatchOrchestrator:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
                 strategy_config
             )
-            logger.info(f"✓ Created decision logic: {decision_logic.name}")
+            vLog.info(f"✓ Created decision logic: {decision_logic.name}")
         except Exception as e:
-            logger.error(f"Failed to create decision logic: {e}")
+            vLog.error(f"Failed to create decision logic: {e}")
             raise ValueError(f"Decision logic creation failed: {e}")
 
         # ============================================
@@ -229,7 +230,7 @@ class BatchOrchestrator:
 
         self._last_orchestrator = orchestrator
 
-        logger.info(
+        vLog.info(
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 

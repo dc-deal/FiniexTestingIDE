@@ -31,13 +31,13 @@ Example Config:
 
 import importlib
 import json
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List, Type
 
 from python.framework.workers.abstract.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class WorkerFactory:
@@ -78,11 +78,11 @@ class WorkerFactory:
             self._registry["CORE/rsi"] = RSIWorker
             self._registry["CORE/envelope"] = EnvelopeWorker
 
-            logger.debug(
+            vLog.debug(
                 f"Core workers registered: {list(self._registry.keys())}"
             )
         except ImportError as e:
-            logger.warning(f"Failed to load core workers: {e}")
+            vLog.warning(f"Failed to load core workers: {e}")
 
     def register_worker(
         self,
@@ -109,7 +109,7 @@ class WorkerFactory:
             )
 
         self._registry[worker_type] = worker_class
-        logger.debug(
+        vLog.debug(
             f"Registered worker: {worker_type} → {worker_class.__name__}")
 
     def create_worker(
@@ -170,7 +170,7 @@ class WorkerFactory:
             parameters=merged_params
         )
 
-        logger.debug(
+        vLog.debug(
             f"✓ Created worker: {worker_type} with {len(merged_params)} parameters"
         )
 
@@ -228,11 +228,11 @@ class WorkerFactory:
                 created_workers[worker_name] = worker_instance
 
             except Exception as e:
-                logger.error(f"Failed to create worker {worker_type}: {e}")
+                vLog.error(f"Failed to create worker {worker_type}: {e}")
                 raise ValueError(
                     f"Worker creation failed for {worker_type}: {e}")
 
-        logger.debug(
+        vLog.debug(
             f"✓ Created {len(created_workers)} workers: "
             f"{list(created_workers.keys())}"
         )
@@ -315,7 +315,7 @@ class WorkerFactory:
             # Register for future use
             self._registry[worker_type] = worker_class
 
-            logger.info(f"Dynamically loaded worker: {worker_type}")
+            vLog.info(f"Dynamically loaded worker: {worker_type}")
             return worker_class
 
         except (ImportError, AttributeError) as e:

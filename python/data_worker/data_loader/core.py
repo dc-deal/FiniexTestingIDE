@@ -5,14 +5,14 @@ Pure loading logic: Fast, focused, zero dependencies on analysis
 Location: python/data_worker/core.py
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from datetime import timezone
 from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class TickDataLoader:
@@ -60,7 +60,7 @@ class TickDataLoader:
                 symbol = file.name.split("_")[0]
                 symbols.add(symbol)
             except IndexError:
-                logger.warning(f"Unexpected filename format: {file.name}")
+                vLog.warning(f"Unexpected filename format: {file.name}")
 
         return sorted(list(symbols))
 
@@ -91,7 +91,7 @@ class TickDataLoader:
 
         # Check cache
         if use_cache and cache_key in self._symbol_cache:
-            logger.info(f"Using cached data for {symbol}")
+            vLog.info(f"Using cached data for {symbol}")
             return self._symbol_cache[cache_key].copy()
 
         # Find files for symbol
@@ -100,7 +100,7 @@ class TickDataLoader:
         if not files:
             raise ValueError(f"No data found for symbol {symbol}")
 
-        logger.debug(f"Loading {len(files)} files for {symbol}")
+        vLog.debug(f"Loading {len(files)} files for {symbol}")
 
         # Load and combine all files
         dataframes = []
@@ -109,7 +109,7 @@ class TickDataLoader:
                 df = pd.read_parquet(file)
                 dataframes.append(df)
             except Exception as e:
-                logger.warning(f"Error reading {file}: {e}")
+                vLog.warning(f"Error reading {file}: {e}")
 
         if not dataframes:
             raise ValueError(f"No valid data found for {symbol}")
@@ -131,13 +131,13 @@ class TickDataLoader:
             if duplicates_removed > 0:
                 duplicate_percentage = (
                     duplicates_removed / initial_count) * 100
-                logger.info(
+                vLog.info(
                     f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
                     f"({duplicate_percentage:.2f}% of data)"
                 )
-                logger.debug(f"Remaining: {len(combined_df):,} unique ticks")
+                vLog.debug(f"Remaining: {len(combined_df):,} unique ticks")
             else:
-                logger.debug(f"No duplicates found in {initial_count:,} ticks")
+                vLog.debug(f"No duplicates found in {initial_count:,} ticks")
 
         # Apply date filters
         combined_df = self._apply_date_filters(
@@ -147,7 +147,7 @@ class TickDataLoader:
         if use_cache:
             self._symbol_cache[cache_key] = combined_df.copy()
 
-        logger.debug(f"✓ Loaded: {len(combined_df):,} ticks for {symbol}")
+        vLog.debug(f"✓ Loaded: {len(combined_df):,} ticks for {symbol}")
         return combined_df
 
     def _apply_date_filters(
@@ -171,7 +171,7 @@ class TickDataLoader:
             initial = len(df)
             df = df[df["timestamp"] >= start_dt]
             retained_pct = (len(df) / initial * 100) if initial > 0 else 0
-            logger.info(
+            vLog.info(
                 f"Start date filter: {initial:,} -> {len(df):,} ticks "
                 f"({retained_pct:.1f}% retained)"
             )
@@ -188,14 +188,14 @@ class TickDataLoader:
             initial = len(df)
             df = df[df["timestamp"] <= end_dt]
             retained_pct = (len(df) / initial * 100) if initial > 0 else 0
-            logger.info(
+            vLog.info(
                 f"End date filter: {initial:,} -> {len(df):,} ticks "
                 f"({retained_pct:.1f}% retained)"
             )
 
             if len(df) == 0:
-                logger.warning(f"⚠️ No data remaining after filtering!")
-                logger.warning(f"Requested range: {start_date} to {end_date}")
+                vLog.warning(f"⚠️ No data remaining after filtering!")
+                vLog.warning(f"Requested range: {start_date} to {end_date}")
 
             return df
 
@@ -208,4 +208,4 @@ class TickDataLoader:
     def clear_cache(self):
         """Clear the data cache to free memory"""
         self._symbol_cache.clear()
-        logger.info("Data cache cleared")
+        vLog.info("Data cache cleared")

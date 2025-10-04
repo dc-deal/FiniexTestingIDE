@@ -5,7 +5,7 @@ Summary reports, formatted output, and developer convenience tools
 Location: python/data_worker/reports.py
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Dict
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
@@ -13,7 +13,7 @@ from python.data_worker.data_loader.core import TickDataLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="StrategyRunner")
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class TickDataReporter:
@@ -25,42 +25,42 @@ class TickDataReporter:
         self.analyzer = analyzer
 
     def print_symbol_info(self, info: Dict):
-        """logger.info formatted symbol information to console"""
+        """vLog.info formatted symbol information to console"""
         if "error" in info:
-            logger.info(
+            vLog.info(
                 f"\n❌ {info.get('symbol', 'UNKNOWN')}: {info['error']}")
             return
 
         weekends = info["date_range"]["duration"]["weekends"]
 
-        logger.info(f"\n📊 {info['symbol']}")
-        logger.info(
+        vLog.info(f"\n📊 {info['symbol']}")
+        vLog.info(
             f"   ├─ Time Range:    {info['date_range']['start_formatted']} to "
             f"{info['date_range']['end_formatted']}"
         )
-        logger.info(
+        vLog.info(
             f"   ├─ Duration:      {info['date_range']['duration']['days']} days "
             f"({info['date_range']['duration']['hours']:.1f} hours)"
         )
-        logger.info(
+        vLog.info(
             f"   ├─ Trading Days:  {info['date_range']['duration']['trading_days']} "
             f"(excluding {weekends['full_weekends']} weekends)"
         )
-        logger.info(
+        vLog.info(
             f"   │  └─ Weekends:   {weekends['full_weekends']}x complete "
             f"({weekends['saturdays']} Sat, {weekends['sundays']} Sun)"
         )
-        logger.info(f"   ├─ Ticks:         {info['total_ticks']:,}")
-        logger.info(f"   ├─ Files:         {info['files']}")
-        logger.info(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
+        vLog.info(f"   ├─ Ticks:         {info['total_ticks']:,}")
+        vLog.info(f"   ├─ Files:         {info['files']}")
+        vLog.info(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
 
         if info["statistics"]["avg_spread_points"]:
-            logger.info(
+            vLog.info(
                 f"   ├─ Ø Spread:      {info['statistics']['avg_spread_points']:.1f} Points "
                 f"({info['statistics']['avg_spread_pct']:.4f}%)"
             )
 
-        logger.info(
+        vLog.info(
             f"   └─ Frequency:     {info['statistics']['tick_frequency_per_second']:.2f} "
             f"Ticks/Second"
         )
@@ -68,31 +68,31 @@ class TickDataReporter:
         if info.get("sessions"):
             sessions_str = ", ".join(
                 [f"{k}: {v}" for k, v in info["sessions"].items()])
-            logger.info(f"      Sessions:     {sessions_str}")
+            vLog.info(f"      Sessions:     {sessions_str}")
 
     def print_all_symbols(self):
-        """logger.info summary for all available symbols"""
+        """vLog.info summary for all available symbols"""
         symbols = self.loader.list_available_symbols()
 
-        logger.info("\n" + "=" * 100)
-        logger.info("SYMBOL OVERVIEW WITH TIME RANGES")
-        logger.info("=" * 100)
+        vLog.info("\n" + "=" * 100)
+        vLog.info("SYMBOL OVERVIEW WITH TIME RANGES")
+        vLog.info("=" * 100)
 
         for symbol in symbols:
             info = self.analyzer.get_symbol_info(symbol)
             self.print_symbol_info(info)
 
-        logger.info("\n" + "=" * 100)
+        vLog.info("\n" + "=" * 100)
 
     def test_load_symbol(self, symbol: str):
         """Test loading data for a symbol and display sample"""
-        logger.info(f"\n🧪 TEST LOAD: {symbol}")
-        logger.info("=" * 100)
+        vLog.info(f"\n🧪 TEST LOAD: {symbol}")
+        vLog.info("=" * 100)
 
         info = self.analyzer.get_symbol_info(symbol)
 
         if "error" in info:
-            logger.info(f"❌ Cannot load {symbol}: {info['error']}")
+            vLog.info(f"❌ Cannot load {symbol}: {info['error']}")
             return
 
         df = self.loader.load_symbol_data(
@@ -101,14 +101,14 @@ class TickDataReporter:
             end_date=info["date_range"]["end_formatted"].split()[0],
         )
 
-        logger.info(f"✓ Loaded:      {len(df):,} ticks")
-        logger.info(
+        vLog.info(f"✓ Loaded:      {len(df):,} ticks")
+        vLog.info(
             f"✓ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
-        logger.info(
+        vLog.info(
             f"✓ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
         )
-        logger.info(f"\n📋 Sample Data (first 3 ticks):")
-        logger.info(df.head(3).to_string())
+        vLog.info(f"\n📋 Sample Data (first 3 ticks):")
+        vLog.info(df.head(3).to_string())
 
 
 def run_summary_report():
@@ -117,7 +117,7 @@ def run_summary_report():
 
     Main entry point for developers to inspect their data.
     """
-    logger.info("=== FiniexTestingIDE Data Loader Summary Report ===")
+    vLog.info("=== FiniexTestingIDE Data Loader Summary Report ===")
 
     try:
         # Initialize components
@@ -127,31 +127,31 @@ def run_summary_report():
 
         # Check if data exists
         symbols = loader.list_available_symbols()
-        logger.info(f"Available symbols: {symbols}")
+        vLog.info(f"Available symbols: {symbols}")
 
         if not symbols:
-            logger.error("❌ No data found!")
-            logger.info("\n" + "=" * 100)
-            logger.info("NO DATA FOUND")
-            logger.info("=" * 100)
-            logger.info("\nSteps to collect data:")
-            logger.info("1. Copy TickCollector.mq5 to MetaTrader 5")
-            logger.info("2. Run data collection for 48+ hours")
-            logger.info("3. Execute: python python/tick_importer.py")
-            logger.info("4. Run this report again")
+            vLog.error("❌ No data found!")
+            vLog.info("\n" + "=" * 100)
+            vLog.info("NO DATA FOUND")
+            vLog.info("=" * 100)
+            vLog.info("\nSteps to collect data:")
+            vLog.info("1. Copy TickCollector.mq5 to MetaTrader 5")
+            vLog.info("2. Run data collection for 48+ hours")
+            vLog.info("3. Execute: python python/tick_importer.py")
+            vLog.info("4. Run this report again")
             return
 
-        # logger.info all symbols
+        # vLog.info all symbols
         reporter.print_all_symbols()
 
         # Test load first symbol
         if symbols:
             reporter.test_load_symbol(symbols[0])
 
-        logger.info("\n✅ Summary report completed successfully!")
+        vLog.info("\n✅ Summary report completed successfully!")
 
     except Exception as e:
-        logger.error(f"Error generating report: {e}", exc_info=True)
+        vLog.error(f"Error generating report: {e}", exc_info=True)
 
 
 def main():

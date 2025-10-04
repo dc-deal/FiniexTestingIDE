@@ -1,4 +1,4 @@
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
@@ -9,7 +9,7 @@ from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.bars.bar_warmup_manager import BarWarmupManager
 from python.framework.types import Bar, TickData, TimeframeConfig
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class BarRenderingController:
@@ -28,7 +28,7 @@ class BarRenderingController:
         self._required_timeframes = self.bar_renderer.get_required_timeframes(
             workers)
 
-        logger.info(
+        vLog.info(
             f"Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}"
         )
 
@@ -50,7 +50,7 @@ class BarRenderingController:
             self.bar_renderer.initialize_historical_bars(
                 symbol, timeframe, bars)
 
-        logger.info(
+        vLog.info(
             f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars"
         )
 
@@ -108,6 +108,6 @@ class BarRenderingController:
             self.bar_renderer.initialize_historical_bars(
                 symbol, timeframe, bars)
 
-        logger.info(
+        vLog.info(
             f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars (from pre-loaded ticks)"
         )

@@ -5,14 +5,14 @@ Config Loader (FIXED: Deep copy prevents config mutation)
 
 import copy  # CRITICAL: For deep copying nested structures
 import json
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
 from python.framework.types import TestScenario
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class ScenarioConfigLoader:
@@ -46,7 +46,7 @@ class ScenarioConfigLoader:
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
-        logger.info(f"📂 Loading scenarios from: {config_path}")
+        vLog.info(f"📂 Loading scenarios from: {config_path}")
 
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -93,7 +93,7 @@ class ScenarioConfigLoader:
             )
             scenarios.append(scenario)
 
-        logger.debug(f"✅ Loaded {len(scenarios)} scenarios")
+        vLog.debug(f"✅ Loaded {len(scenarios)} scenarios")
         return scenarios
 
     def _deep_merge_strategy_configs(
@@ -274,4 +274,4 @@ class ScenarioConfigLoader:
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
 
-        logger.info(f"💾 Saved {len(scenarios)} scenarios to: {config_path}")
+        vLog.info(f"💾 Saved {len(scenarios)} scenarios to: {config_path}")

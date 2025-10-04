@@ -3,7 +3,7 @@ FiniexTestingIDE - Data Preparator
 Prepares tick data for testing with warmup/test split
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Iterator, List, Tuple
 
 import pandas as pd
@@ -11,7 +11,7 @@ import pandas as pd
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.types import TickData
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class TickDataPreparator:
@@ -56,10 +56,10 @@ class TickDataPreparator:
         Returns:
             Tuple of (warmup_ticks, test_iterator)
         """
-        logger.info(f"📊 Preparing data for {symbol}")
-        logger.info(f"└─Warmup bars: {warmup_bars_needed}")
-        logger.info(f"└─Test ticks: {test_ticks_count}")
-        logger.info(f"└─Data mode: {data_mode}")
+        vLog.info(f"📊 Preparing data for {symbol}")
+        vLog.info(f"└─Warmup bars: {warmup_bars_needed}")
+        vLog.info(f"└─Test ticks: {test_ticks_count}")
+        vLog.info(f"└─Data mode: {data_mode}")
 
         # Load data
         df = self.data_worker.load_symbol_data(
@@ -69,14 +69,14 @@ class TickDataPreparator:
         if df.empty:
             raise ValueError(f"No data available for {symbol}")
 
-        logger.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
+        vLog.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
 
         # Estimate warmup ticks needed (rough: 1 bar = ~50 ticks for M1)
         warmup_ticks_estimate = warmup_bars_needed * 50
         total_needed = warmup_ticks_estimate + test_ticks_count
 
         if len(df) < total_needed:
-            logger.warning(
+            vLog.warning(
                 f"⚠️ Limited data: {len(df)} < {total_needed} needed")
             warmup_ticks_estimate = max(0, len(df) - test_ticks_count)
 
@@ -86,7 +86,7 @@ class TickDataPreparator:
             warmup_ticks_estimate: warmup_ticks_estimate + test_ticks_count
         ]
 
-        logger.info(
+        vLog.info(
             f"📦 Split: {len(warmup_df)} warmup ticks, {len(test_df)} test ticks"
         )
 

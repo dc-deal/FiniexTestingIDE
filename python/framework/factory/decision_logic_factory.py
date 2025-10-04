@@ -22,13 +22,13 @@ Example Config:
 """
 
 import importlib
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, Type
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class DecisionLogicFactory:
@@ -75,11 +75,11 @@ class DecisionLogicFactory:
             self._registry["CORE/simple_consensus"] = SimpleConsensus
             self._registry["CORE/aggressive_trend"] = AggressiveTrend
 
-            logger.debug(
+            vLog.debug(
                 f"Core decision logics registered: {list(self._registry.keys())}"
             )
         except ImportError as e:
-            logger.warning(f"Failed to load core decision logics: {e}")
+            vLog.warning(f"Failed to load core decision logics: {e}")
 
     def register_logic(
         self,
@@ -106,7 +106,7 @@ class DecisionLogicFactory:
             )
 
         self._registry[logic_type] = logic_class
-        logger.debug(
+        vLog.debug(
             f"Registered decision logic: {logic_type} → {logic_class.__name__}")
 
     def create_logic(
@@ -146,7 +146,7 @@ class DecisionLogicFactory:
             config=logic_config
         )
 
-        logger.debug(
+        vLog.debug(
             f"✓ Created decision logic: {logic_type} with {len(logic_config)} config values"
         )
 
@@ -198,7 +198,7 @@ class DecisionLogicFactory:
             return logic_instance
 
         except Exception as e:
-            logger.error(f"Failed to create decision logic {logic_type}: {e}")
+            vLog.error(f"Failed to create decision logic {logic_type}: {e}")
             raise ValueError(
                 f"Decision logic creation failed for {logic_type}: {e}")
 
@@ -276,7 +276,7 @@ class DecisionLogicFactory:
             # Register for future use
             self._registry[logic_type] = logic_class
 
-            logger.info(f"Dynamically loaded decision logic: {logic_type}")
+            vLog.info(f"Dynamically loaded decision logic: {logic_type}")
             return logic_class
 
         except (ImportError, AttributeError) as e:

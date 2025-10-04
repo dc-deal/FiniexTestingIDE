@@ -5,7 +5,7 @@ Symbol analysis, metadata extraction, and statistics
 Location: python/data_worker/analytics.py
 """
 
-import logging
+from python.components.logger.bootstrap_logger import setup_logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 
 from python.data_worker.data_loader.core import TickDataLoader
 
-logger = logging.getLogger(__name__)
+vLog = setup_logging(name="StrategyRunner")
 
 
 class TickDataAnalyzer:
@@ -111,7 +111,7 @@ class TickDataAnalyzer:
             }
 
         except Exception as e:
-            logger.error(f"Error loading symbol info for {symbol}: {e}")
+            vLog.error(f"Error loading symbol info for {symbol}: {e}")
             return {"error": f"Error loading {symbol}: {str(e)}"}
 
     def get_data_summary(self) -> Dict[str, Dict]:
@@ -119,7 +119,7 @@ class TickDataAnalyzer:
         symbols = self.loader.list_available_symbols()
         summary = {}
 
-        logger.info(f"Creating summary for {len(symbols)} symbols...")
+        vLog.info(f"Creating summary for {len(symbols)} symbols...")
 
         for symbol in symbols:
             summary[symbol] = self.get_symbol_info(symbol)
