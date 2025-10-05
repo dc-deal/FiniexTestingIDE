@@ -627,9 +627,48 @@ FiniexTestingIDE/
 ---
 
 ### Parameter-Centric Development
-**Problem:** 80% of time is spent on parameter tuning, but tools are code-centric.
+**Problem:** 80% of development time is spent on parameter tuning, but existing tools are code-centric.
 
-**Solution:** Parameters are first-class citizens. Strategies define parameter requirements, IDE orchestrates testing.
+**Solution:** Parameters are first-class citizens. The IDE orchestrates testing; strategies define their parameter requirements through worker contracts.
+
+**How it works:**
+- **Hierarchical Parameters:** Root-level ratios (M30 vs H1 trend weight) control nested worker configs (envelope periods, MA settings)
+- **Worker Contracts:** Workers declare their parameter interface - IDE handles the rest
+- **No Code Changes:** Test 1000 market scenarios by varying parameters, not rewriting logic
+- **Synergy-Ready:** Parameters can influence each other (spread affects trade frequency, which affects envelope sensitivity)
+
+**Example Trading Strategy:**
+```
+Root Parameters (UX Sliders):
+  ├─ m30_trend_weight: 0.7
+  ├─ h1_trend_weight: 0.3
+  └─ spread_threshold: 2.0 pips
+  
+Worker Parameters:
+  ├─ M1_Envelope: {period: 20, deviation: 0.02}
+  ├─ M30_Trend: {ma_period: 50}
+  └─ Volatility: {window: 14}
+```
+
+Trade logic runs on M1, but trend filters from M30/H1 influence decisions through root-level weight ratios. Change the strategy? Adjust parameters. Don't touch code.
+
+**Unique Advantage:** Competitors require code modifications for strategy variations. Finiex enables systematic parameter space exploration through pure configuration.
+
+**Post-MVP: Parameter Intelligence (C#008-A)** - Planned diagnostic system that validates algo fundamentals, identifies failure points (missed trades, false signals), and recommends which hardcoded values should become tunable parameters. See [Issue C#008-A](link-to-issue) for detailed diagnostics framework.
+
+---
+
+### Performance-First Architecture
+**Problem:** Backtesting tools are either fast but unrealistic (MT5) or realistic but slow (institutional platforms).
+
+**Solution:** Multi-layer performance optimization from the ground up:
+- **CPU Scaling:** Linear performance gains with cores (4 cores = 4x faster)
+- **Memory Efficiency:** Apache Arrow + lazy loading for minimal footprint
+- **Smart Parallelization:** Only when beneficial (automated threshold detection)
+
+**Validation:** Core Issue C#004 establishes benchmarks proving Finiex beats MT5 in speed while maintaining 80-90% realism of institutional tools. Quality-Aware Data adds a unique edge competitors lack.
+
+---
 
 ### Quality-Aware Data
 **Problem:** Backtests with bad data → unrealistic results.
