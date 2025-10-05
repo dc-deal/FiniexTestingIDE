@@ -59,20 +59,22 @@
 
 ## 🚧 MVP Roadmap - What's Coming
 
-### 📋 Issue 1: Logging & TUI (Low Priority)
-**Goal:** Static TUI dashboard with live metrics
+### 📋 Core Issue C#001: Logging & TUI (Low Priority)
+**Goal:** Structured logging and live TUI dashboard
 
 - [ ] Logging module (Print → Logger migration)
 - [ ] TUI dashboard with `rich` (Scenarios + Performance + Logs)
 - [ ] Error pinning (persistent warnings/errors display)
-- [ ] Log file output
+- [ ] Log file output with rotation
+- [ ] CLI scripting foundation (headless mode, programmatic access)
 
 **Effort:** 1-2 days  
-**Priority:** Low (Nice-to-have, polish)
+**Priority:** Low (Nice-to-have, polish)  
+**Related:** Issue #27 (Performance Logging parameter hierarchy)
 
 ---
 
-### 📋 Issue 3: Trade Simulation (NEXT - HIGH Priority) ⚠️
+### 📋 Core Issue C#003: Trade Simulation (NEXT - HIGH Priority) ⚠️
 **Goal:** Realistic trade execution with portfolio management
 
 **Phase 1: Core Trade Simulator (4-5 days)**
@@ -116,7 +118,45 @@
 
 ---
 
-### 📋 Issue 5: IP-Protected Blackbox System (OPTIONAL MVP) 🔒
+### 📋 Core Issue C#004: Performance Validation & Benchmarking (HIGH Priority) 🚀
+**Goal:** Validate performance-first architecture and establish production readiness
+
+**POC for Scalability (3-4 days, parallel to C#003):**
+
+**A) Benchmarking Suite**
+- [ ] Batch testing: 10 scenarios @ 1,000 ticks in <60s (8 cores)
+- [ ] Stress testing: 100k ticks @ 500 Hz simulation
+- [ ] Memory profiling: <8GB for 100k ticks, no leaks
+- [ ] Linear scaling validation: 16 cores → 2x faster
+
+**B) Performance Profiling**
+- [ ] Integrate `cProfile` (optional activation)
+- [ ] Hotspot detection (functions using >10% time)
+- [ ] Memory profiler integration
+- [ ] Auto-generate bottleneck reports
+
+**C) Regression Testing**
+- [ ] Baseline performance metrics (JSON)
+- [ ] Automatic comparison on every run
+- [ ] Alert if performance degrades >20%
+
+**D) Documentation**
+- [ ] Performance guide (cores, memory, best practices)
+- [ ] Benchmark results in README (vs MT5 comparison)
+- [ ] Scalability charts
+
+**Why Critical:**
+- **Proof-of-Concept** for production readiness
+- **User confidence**: "Is this tool fast enough?"
+- **Marketing**: Finiex MVP beats MT5, reaches 70-80% of institutional tools
+- **Quality-Aware Data** is unique competitive advantage
+
+**Effort:** 3-4 days (can run parallel to C#003 Phase 1)  
+**Priority:** **HIGH** - Critical for MVP validation
+
+---
+
+### 📋 Core Issue C#005: IP-Protected Blackbox System (OPTIONAL MVP) 🔒
 **Goal:** Enable deployment of compiled workers for IP protection
 
 **MVP Critical (2-3 days):**
@@ -135,29 +175,95 @@
 - [ ] Verify parameters still configurable
 - [ ] Example blackbox worker in docs
 
-**Status:** OPTIONAL - Will attempt if time permits after Issue #3  
+**Status:** OPTIONAL - Will attempt if time permits after C#003 & C#004  
 **Fallback:** Can defer to Post-MVP without breaking anything  
 **Effort:** 2-3 days  
 **Priority:** Optional (Important for vision, not blocking MVP)
 
 ---
 
+### 📋 Core Issue C#006: Code Guidelines & CI Pipeline 📏
+**Goal:** Establish code quality standards and automated enforcement
 
+**Foundation for Post-MVP (2-3 days + 1-2 days refactor):**
+
+**A) Code Guidelines Documentation**
+- [ ] Create `CODE_GUIDELINES.md` (English-only, PEP 8, type hints)
+- [ ] Define naming conventions, import order, comment style
+- [ ] VSCode settings for local development (autopep8, flake8, mypy)
+
+**B) GitHub Actions CI Pipeline**
+- [ ] Linting checks (Black, Flake8, pylint)
+- [ ] Type checking (mypy)
+- [ ] Language enforcement (detect non-English comments)
+- [ ] Build verification (pip install, Docker build)
+
+**C) Mandatory Refactor**
+- [ ] Translate German comments to English
+- [ ] Add missing type hints
+- [ ] Apply consistent formatting
+- [ ] Fix guideline violations
+
+**Status:** Foundation for Post-MVP - Prevents technical debt  
+**Timing:** After C#005, BEFORE Post-MVP Phase 4  
+**Effort:** 2-3 days setup + 1-2 days refactor  
+**Priority:** Foundation (Critical for clean Post-MVP development)
+
+---
+
+### 📋 Core Issue C#007: Automated Test System 🧪
+**Goal:** Regression protection and confident refactoring
+
+**Foundation for Post-MVP (2-3 days):**
+
+**A) Unit Tests**
+- [ ] Workers: RSI/Envelope computation logic
+- [ ] Orchestrator: Decision coordinator contract-lifting
+- [ ] Data Import: `tick_hash` uniqueness, `warning_count` accuracy
+
+**B) Integration Tests (E2E Slices)**
+- [ ] Warmup + test slice → strategy runner → signal validation
+- [ ] Performance metrics assertions (computation time, parallel efficiency)
+
+**C) CI Integration**
+- [ ] pytest job in GitHub Actions (extends C#006 pipeline)
+- [ ] Coverage reporting and artifacts
+- [ ] PR blocking on test failures
+
+**D) Test Infrastructure**
+- [ ] Fixtures: Deterministic Parquet/JSON test data (100 ticks)
+- [ ] Generator script for reproducible test data
+- [ ] Test structure: `tests/unit/`, `tests/integration/`, `tests/fixtures/`
+
+**Status:** Foundation for Post-MVP - Builds on C#006 CI  
+**Timing:** After C#006, completes foundation before Post-MVP Phase 4  
+**Effort:** 2-3 days  
+**Priority:** Foundation (Critical for regression protection)
+
+---
 
 ## 📊 MVP Timeline
 
-**Core Path (Critical):** ~6-7 days
+**Core Path (Critical):** ~9-12 days
 
-1. **Issue 3** (4-5 days) → **NEXT** - Trade simulation ⚠️ HIGH PRIORITY
-2. **Issue 1** (1-2 days) - Logging & TUI (Low priority polish)
+1. **C#003** (4-5 days) → **NEXT** - Trade simulation ⚠️ HIGH PRIORITY
+2. **C#004** (3-4 days) → **Parallel to C#003** - Performance validation 🚀 POC
+3. **C#001** (1-2 days) - Logging & TUI (Low priority polish)
 
 **Optional Path (If time permits):** +2-3 days
 
-3. **Issue 5** (2-3 days) - Blackbox system 🔒 OPTIONAL
+4. **C#005** (2-3 days) - Blackbox system 🔒 OPTIONAL
 
-**Total Estimated:** 6-10 days (1.5-2.5 weeks) depending on optional features
+**Foundation Path (Pre-Post-MVP):** +5-8 days
 
-**Decision Point:** Assess schedule after Issue #3 completion
+5. **C#006** (2-3 days + 1-2 days refactor) - Code Guidelines & CI 📏 FOUNDATION
+6. **C#007** (2-3 days) - Automated Test System 🧪 FOUNDATION
+
+**Total Estimated:** 9-25 days (2-5 weeks) depending on optional features
+
+**Critical for MVP Release:** C#003 + C#004 (Trade Simulation + Performance Validation)
+
+**Decision Point:** Assess schedule after C#003 & C#004 completion
 
 ---
 
@@ -387,7 +493,7 @@ MQL5 TickCollector → JSON → Parquet (Quality-Aware)
                     Decision Output
 ```
 
-### Post-MVP (Issue 3+)
+### Post-MVP (Issue #003+)
 ```
 Decision Logic → Trade Simulator (Portfolio/Risk/Orders)
                         ↓
@@ -404,6 +510,7 @@ FiniexTestingIDE/
 │   └── TickCollector.mq5          # Live tick collection
 ├── python/
 │   ├── data_worker/               # Data pipeline
+│   │   ├── tick_importer.py       # JSON → Parquet conversion
 │   │   └── data_loader/           # Parquet loading
 │   ├── framework/
 │   │   ├── factory/               # NEW: Worker + DecisionLogic Factories
@@ -592,11 +699,15 @@ FiniexTestingIDE/
 
 **Current Status:** Manual testing only
 
+**MVP Foundation (Core Issues C#006 & C#007):**
+- **C#006**: Code guidelines (English-only, PEP 8, type hints), CI pipeline (linting, type checking), VSCode integration (autopep8, flake8, mypy)
+- **C#007**: Automated test system (pytest), unit tests (workers, orchestrator, data import), integration tests (E2E slices), CI test job with coverage reporting
+
 **Post-MVP:**
-- Unit tests for core components (pytest)
-- Integration tests for end-to-end flows
-- GitHub Actions CI/CD pipeline
+- Expand test coverage to new features
 - Performance benchmarks
+- Load testing for batch scenarios
+- Mutation testing for critical paths
 
 ---
 
@@ -612,7 +723,7 @@ FiniexTestingIDE/
 
 **Maintainer:** Frank Krätzig ([dc-deal](https://github.com/dc-deal))
 
-**Status:** Active MVP development - Issue 2 completed, Issue 3 next
+**Status:** Active MVP development - Core Issue C#002 completed, C#003 next
 
 **Contributing:**
 - ✅ Custom workers: Add to `python/workers/user/`
