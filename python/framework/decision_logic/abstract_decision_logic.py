@@ -8,13 +8,13 @@ on decision-making strategy, not on worker management.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional
 
+from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
-# NEW (C#003): Avoid circular import with TradeSimulator
-if TYPE_CHECKING:
-    from python.framework.trading_env.trade_simulator import TradeSimulator
+
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
 class AbstractDecisionLogic(ABC):
@@ -32,7 +32,7 @@ class AbstractDecisionLogic(ABC):
     Example:
         class SimpleConsensus(AbstractDecisionLogic):
             def get_required_workers(self):
-                return ["RSI", "envelope"]
+                return ["RSI", "Envelope"]
 
             def compute(self, tick, worker_results, bars, history):
                 rsi = worker_results["RSI"].value
@@ -48,7 +48,7 @@ class AbstractDecisionLogic(ABC):
         self,
         name: str,
         config: Dict[str, Any] = None,
-        trading_env: Optional['TradeSimulator'] = None  # NEW (C#003)
+        trading_env: TradeSimulator = None  # NEW (C#003)
     ):
         """
         Initialize decision logic.
@@ -69,7 +69,7 @@ class AbstractDecisionLogic(ABC):
         }
 
         # NEW: Performance logging (set by WorkerCoordinator)
-        self.performance_logger: Optional['PerformanceLogDecisionLogic'] = None
+        self.performance_logger: PerformanceLogDecisionLogic = None
 
     @abstractmethod
     def get_required_workers(self) -> List[str]:

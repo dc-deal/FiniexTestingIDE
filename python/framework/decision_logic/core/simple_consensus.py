@@ -17,15 +17,13 @@ This logic requires two workers:
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
-# Avoid circular import
-if TYPE_CHECKING:
-    from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -49,7 +47,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self,
         name: str = "simple_consensus",
         config: Dict[str, Any] = None,
-        trading_env: Optional['TradeSimulator'] = None
+        trading_env: TradeSimulator = None
     ):
         """
         Initialize Simple Consensus logic.
@@ -111,7 +109,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         # Extract worker results
         rsi_result = worker_results.get("RSI")
-        envelope_result = worker_results.get("envelope")
+        envelope_result = worker_results.get("Envelope")
 
         if not rsi_result or not envelope_result:
             return Decision(

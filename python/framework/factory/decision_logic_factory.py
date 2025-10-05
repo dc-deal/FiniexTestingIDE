@@ -27,14 +27,12 @@ EXTENDED (C#003 - Trade Simulation):
 
 import importlib
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, Optional, Type, TYPE_CHECKING
+from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 
-# NEW (C#003): Avoid circular import with TradeSimulator
-if TYPE_CHECKING:
-    from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -121,7 +119,7 @@ class DecisionLogicFactory:
         self,
         logic_type: str,
         logic_config: Dict[str, Any] = None,
-        trading_env: Optional['TradeSimulator'] = None  # NEW (C#003)
+        trading_env: TradeSimulator = None  # NEW (C#003)
     ) -> AbstractDecisionLogic:
         """
         Create a decision logic instance from configuration.
@@ -167,7 +165,7 @@ class DecisionLogicFactory:
     def create_logic_from_strategy_config(
         self,
         strategy_config: Dict[str, Any],
-        trading_env: Optional['TradeSimulator'] = None  # NEW (C#003)
+        trading_env: TradeSimulator = None  # NEW (C#003)
     ) -> AbstractDecisionLogic:
         """
         Create decision logic from complete strategy configuration.
@@ -212,7 +210,7 @@ class DecisionLogicFactory:
             logic_instance = self.create_logic(
                 logic_type,
                 logic_config,
-                trading_env=trading_env  # NEW (C#003)
+                trading_env  # NEW (C#003)
             )
             return logic_instance
 

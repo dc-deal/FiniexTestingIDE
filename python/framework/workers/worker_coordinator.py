@@ -16,7 +16,7 @@ ARCHITECTURE CHANGE (Performance Logging V0.7):
 from python.components.logger.bootstrap_logger import setup_logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic

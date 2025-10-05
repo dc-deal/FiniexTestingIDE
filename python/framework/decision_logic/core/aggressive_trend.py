@@ -17,15 +17,13 @@ can use the same workers but with completely different strategies.
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
-# Avoid circular import
-if TYPE_CHECKING:
-    from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -50,7 +48,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         self,
         name: str = "aggressive_trend",
         config: Dict[str, Any] = None,
-        trading_env: Optional['TradeSimulator'] = None
+        trading_env: TradeSimulator = None
     ):
         """
         Initialize Aggressive Trend logic.
@@ -69,7 +67,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_extremes", 0.25)
         self.min_confidence = self.get_config_value("min_confidence", 0.4)
 
-        vLog.debug(
+        vLog.info(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
             f"Envelope extremes({self.envelope_extremes})"
@@ -111,7 +109,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         # Extract worker results
         rsi_result = worker_results.get("RSI")
-        envelope_result = worker_results.get("envelope")
+        envelope_result = worker_results.get("Envelope")
 
         if not rsi_result or not envelope_result:
             return Decision(
