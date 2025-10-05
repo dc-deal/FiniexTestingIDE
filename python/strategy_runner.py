@@ -5,12 +5,13 @@ Compact, colorful logging output
 
 import os
 import platform
+import traceback
 
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
-from python.config import AppConfigLoader
+from python.configuration import AppConfigLoader
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -77,7 +78,8 @@ def run_strategy_test() -> dict:
         vLog.error(f"❌ Config file not found: {e}", "StrategyRunner")
         return {"success": False, "error": str(e), "results": []}
     except Exception as e:
-        vLog.error(f"❌ Unexpected error: {e}", "StrategyRunner")
+        vLog.error(
+            f"❌ Unexpected error:\n{traceback.format_exc()}", "StrategyRunner")
         return {"success": False, "error": str(e), "results": []}
 
 

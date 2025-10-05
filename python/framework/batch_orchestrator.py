@@ -17,6 +17,12 @@ ARCHITECTURE CHANGE (Parameter Inheritance Bug Fix):
 - This allows scenarios to have completely different worker configurations
 - Scenario 1 can use M1 with period 10, while Scenario 2 uses M5 with period 14
 - No more cross-contamination of requirements between scenarios
+
+EXTENDED (C#003 - Trade Simulation):
+- Creates TradeSimulator from broker config
+- Injects TradeSimulator into DecisionLogic via factory
+- Updates prices on each tick for realistic spread calculation
+- Collects trading statistics (portfolio, execution, costs)
 """
 
 import time
@@ -31,13 +37,19 @@ from python.framework.bars.bar_rendering_controller import \
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
-from python.config import AppConfigLoader
+from python.configuration import AppConfigLoader
 
 # ============================================
 # NEW (Issue 2): Factory Imports
 # ============================================
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+
+# ============================================
+# NEW (C#003): Trade Simulation Imports
+# ============================================
+from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -51,19 +63,29 @@ class BatchOrchestrator:
     Each scenario is completely independent with its own requirements.
     """
 
-    def __init__(self, scenarios: List[TestScenario], data_worker: TickDataLoader, app_config: AppConfigLoader):
+    def __init__(
+        self,
+        scenarios: List[TestScenario],
+        data_worker: TickDataLoader,
+        app_config: AppConfigLoader,
+        # NEW (C#003)
+        broker_config_path: str = "./configs/brokers/mt5/ic_markets_demo.json"
+    ):
         """
         Initialize batch orchestrator.
 
         Args:
             scenarios: List of test scenarios (can be 1 or 1000+)
             data_worker: TickDataLoader instance
+            app_config: Application configuration5
+            broker_config_path: Path to broker config JSON (NEW C#003)
         """
         self.scenarios = scenarios
         self.data_worker = data_worker
         # REMOVED: self.global_contract - no longer needed with per-scenario requirements
         self._last_orchestrator = None
         self.appConfig = app_config
+        self.broker_config_path = broker_config_path  # NEW (C#003)
 
         # ============================================
         # NEW (Issue 2): Initialize Factories
@@ -191,10 +213,29 @@ class BatchOrchestrator:
             vLog.error(f"Failed to create workers: {e}")
             raise ValueError(f"Worker creation failed: {e}")
 
-        # 2. Create DecisionLogic using DecisionLogic Factory
+        # ============================================
+        # NEW (C#003): Create TradeSimulator
+        # ============================================
+        # 2. Load broker config and create TradeSimulator
+        try:
+            broker_config = BrokerConfig.from_json(self.broker_config_path)
+            trade_simulator = TradeSimulator(
+                broker_config=broker_config,
+                initial_balance=10000.0,
+                currency="EUR"
+            )
+            vLog.info(
+                f"✓ Created TradeSimulator: {broker_config.get_broker_name()}")
+        except Exception as e:
+            vLog.error(f"Failed to create TradeSimulator: {e}")
+            raise ValueError(f"TradeSimulator creation failed: {e}")
+
+        # 3. Create DecisionLogic using DecisionLogic Factory
+        # NEW (C#003): Pass trade_simulator to factory for injection
         try:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
-                strategy_config
+                strategy_config,
+                trading_env=trade_simulator  # NEW (C#003)
             )
             vLog.info(f"✓ Created decision logic: {decision_logic.name}")
         except Exception as e:
@@ -204,17 +245,17 @@ class BatchOrchestrator:
         # ============================================
         # NEW (Parameter Inheritance Fix): Calculate per-scenario requirements
         # ============================================
-        # 3. Calculate THIS scenario's specific requirements
+        # 4. Calculate THIS scenario's specific requirements
         # No longer uses a global contract - each scenario is independent
         scenario_contract = self._calculate_scenario_requirements(workers)
 
-        # 4. Extract execution config
+        # 5. Extract execution config
         exec_config = scenario.execution_config or {}
         parallel_workers = exec_config.get("parallel_workers")
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0)
 
-        # 5. Create WorkerCoordinator with injected dependencies
+        # 6. Create WorkerCoordinator with injected dependencies
         orchestrator = WorkerCoordinator(
             workers=workers,
             decision_logic=decision_logic,
@@ -230,7 +271,7 @@ class BatchOrchestrator:
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 6. Prepare data using THIS scenario's requirements
+        # 7. Prepare data using THIS scenario's requirements
         preparator = TickDataPreparator(self.data_worker)
 
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
@@ -243,7 +284,7 @@ class BatchOrchestrator:
             end_date=scenario.end_date,
         )
 
-        # 7. Setup bar rendering
+        # 8. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
 
@@ -255,13 +296,23 @@ class BatchOrchestrator:
             test_start_time=first_test_time,
         )
 
-        # 8. Execute test loop
+        # 9. Execute test loop
         signals = []
         tick_count = 0
         ticks_processed = 0
         signals_generated = 0
 
         for tick in test_iterator:
+            # ============================================
+            # NEW (C#003): Update TradeSimulator with current tick prices
+            # This enables realistic spread calculation from LIVE data
+            # ============================================
+            trade_simulator.update_prices(
+                symbol=tick.symbol,
+                bid=tick.bid,
+                ask=tick.ask
+            )
+
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)
             bar_history = {
@@ -282,8 +333,14 @@ class BatchOrchestrator:
                 signals.append(decision.to_dict())  # Convert Decision to dict
                 signals_generated += 1
 
-        # 9. Return results (enhanced with scenario-specific contract info)
+        # ============================================
+        # NEW (C#003): Collect trading statistics from TradeSimulator
+        # ============================================
+        # 10. Return results (enhanced with scenario-specific contract info)
         worker_stats = orchestrator.get_statistics()
+        portfolio_stats = trade_simulator.get_portfolio_stats()
+        execution_stats = trade_simulator.get_execution_stats()
+        cost_breakdown = trade_simulator.get_cost_breakdown()
 
         return {
             "scenario_set_name": scenario.name,
@@ -297,6 +354,10 @@ class BatchOrchestrator:
             "decision_logic": decision_logic.name,  # Track which logic was used
             # NEW: Include scenario's own requirements
             "scenario_contract": scenario_contract,
+            # NEW (C#003): Trading statistics
+            "portfolio_statistics": portfolio_stats,
+            "execution_statistics": execution_stats,
+            "cost_breakdown": cost_breakdown,
         }
 
     def _calculate_scenario_requirements(self, workers: List) -> Dict[str, Any]:
@@ -304,28 +365,22 @@ class BatchOrchestrator:
         Calculate requirements for a single scenario based on its workers.
 
         NEW (Parameter Inheritance Fix): This replaces the global contract approach.
-        Each scenario calculates its own requirements independently, preventing
-        cross-contamination between scenarios with different worker configurations.
-
-        For example:
-        - Scenario 1 with M1/period=10 will have M1 requirements
-        - Scenario 2 with M5/period=14 will have M5 requirements
-        - They don't interfere with each other
+        Each scenario now calculates its own requirements independently, allowing
+        different scenarios to use completely different worker configurations.
 
         Args:
-            workers: List of worker instances for this specific scenario
+            workers: List of worker instances for THIS scenario
 
         Returns:
-            Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe, total_workers
+            Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe
         """
-        contracts = []
-        for worker in workers:
-            if hasattr(worker, "get_contract"):
-                contracts.append(worker.get_contract())
+        # Get contracts from all workers
+        contracts = [worker.get_contract() for worker in workers]
 
         # Calculate maximum warmup bars needed for this scenario
         max_warmup = max(
-            [max(c.warmup_requirements.values()) for c in contracts],
+            [max(c.warmup_requirements.values())
+             for c in contracts if c.warmup_requirements],
             default=50
         )
 
@@ -346,3 +401,7 @@ class BatchOrchestrator:
             "warmup_by_timeframe": warmup_by_tf,
             "total_workers": len(workers),
         }
+
+    def get_last_orchestrator(self):
+        """Get last created orchestrator for debugging"""
+        return self._last_orchestrator

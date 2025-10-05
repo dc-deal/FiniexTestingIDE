@@ -8,9 +8,13 @@ on decision-making strategy, not on worker management.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from python.framework.types import Bar, Decision, TickData, WorkerResult
+
+# NEW (C#003): Avoid circular import with TradeSimulator
+if TYPE_CHECKING:
+    from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
 class AbstractDecisionLogic(ABC):
@@ -28,10 +32,10 @@ class AbstractDecisionLogic(ABC):
     Example:
         class SimpleConsensus(AbstractDecisionLogic):
             def get_required_workers(self):
-                return ["rsi", "envelope"]
+                return ["RSI", "envelope"]
 
             def compute(self, tick, worker_results, bars, history):
-                rsi = worker_results["rsi"].value
+                rsi = worker_results["RSI"].value
                 envelope = worker_results["envelope"].value
 
                 if rsi < 30 and envelope["position"] < 0.3:
@@ -40,16 +44,23 @@ class AbstractDecisionLogic(ABC):
                 return Decision(action="FLAT", confidence=0.5)
     """
 
-    def __init__(self, name: str, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        name: str,
+        config: Dict[str, Any] = None,
+        trading_env: Optional['TradeSimulator'] = None  # NEW (C#003)
+    ):
         """
         Initialize decision logic.
 
         Args:
             name: Logic identifier (e.g., "simple_consensus")
             config: Logic-specific configuration
+            trading_env: TradeSimulator for order execution (NEW C#003)
         """
         self.name = name
         self.config = config or {}
+        self.trading_env = trading_env  # NEW (C#003)
         self._statistics = {
             "decisions_made": 0,
             "buy_signals": 0,
@@ -69,7 +80,7 @@ class AbstractDecisionLogic(ABC):
         Worker names must match the worker_types in scenario config.
 
         Returns:
-            List of worker names (e.g., ["rsi", "envelope", "macd"])
+            List of worker names (e.g., ["RSI", "envelope", "macd"])
         """
         pass
 

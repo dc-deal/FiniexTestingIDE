@@ -15,7 +15,7 @@ import logging
 import sys
 from datetime import datetime
 from typing import Optional
-from python.config import AppConfigLoader
+from python.configuration import AppConfigLoader
 
 
 class ColorCodes:

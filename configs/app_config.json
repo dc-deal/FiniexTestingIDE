@@ -6,7 +6,7 @@
         "debug_logging": false
     },
     "execution": {
-        "default_parallel_scenarios": true,
+        "default_parallel_scenarios": false,
         "default_max_parallel_scenarios": 4,
         "default_parallel_workers": true,
         "default_worker_parallel_threshold_ms": 1.0

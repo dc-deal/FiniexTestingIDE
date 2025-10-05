@@ -42,7 +42,7 @@ class AppConfigLoader:
         """
         # Set project root (same as old config.py)
         if AppConfigLoader._project_root is None:
-            # Assuming we're in python/config/app_config_loader.py
+            # Assuming we're in python/configuration/app_config_loader.py
             # Go up 2 levels to reach project root
             AppConfigLoader._project_root = Path(__file__).parent.parent.parent
 
