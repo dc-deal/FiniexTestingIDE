@@ -168,6 +168,10 @@ class TestScenario:
     # NEW: Execution-Optimization (→ Framework)
     execution_config: Optional[Dict[str, Any]] = None
 
+    # NEW: TradeSimulator configuration (per scenario)
+    # Allows each scenario to have different balance/currency/leverage
+    trade_simulator_config: Optional[Dict[str, Any]] = None
+
     name: Optional[str] = None
 
     def __post_init__(self):

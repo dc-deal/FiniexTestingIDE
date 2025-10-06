@@ -50,6 +50,12 @@ class ScenarioPerformanceStats:
     # Optional: First 10 signals for inspection
     sample_signals: List[Dict] = field(default_factory=list)
 
+    # NEW (C#003 Refactor): Portfolio & Trading Stats (per scenario)
+    # Each scenario gets its own TradeSimulator, stats stored here
+    portfolio_stats: Dict[str, Any] = field(default_factory=dict)
+    execution_stats: Dict[str, Any] = field(default_factory=dict)
+    cost_breakdown: Dict[str, Any] = field(default_factory=dict)
+
 
 class PerformanceSummaryLog:
     """
@@ -102,25 +108,16 @@ class PerformanceSummaryLog:
         decision_logic_name: str,
         scenario_contract: Dict[str, Any],
         sample_signals: List[Dict] = None,
-        success: bool = True
+        success: bool = True,
+        # NEW: Portfolio stats from scenario-specific TradeSimulator
+        portfolio_stats: Dict[str, Any] = None,
+        execution_stats: Dict[str, Any] = None,
+        cost_breakdown: Dict[str, Any] = None
     ):
         """
         Add performance stats for a scenario.
 
         Thread-safe - can be called from parallel workers.
-
-        Args:
-            scenario_index: Original position in scenario array (critical for ordering!)
-            scenario_name: Scenario name
-            symbol: Trading symbol
-            ticks_processed: Number of ticks processed
-            signals_generated: Number of signals generated
-            signal_rate: Signal generation rate
-            worker_statistics: Worker performance stats
-            decision_logic_name: Name of decision logic used
-            scenario_contract: Scenario contract details
-            sample_signals: First 10 signals for inspection
-            success: Scenario execution success
         """
         stats = ScenarioPerformanceStats(
             scenario_index=scenario_index,
@@ -133,7 +130,11 @@ class PerformanceSummaryLog:
             worker_statistics=worker_statistics,
             decision_logic_name=decision_logic_name,
             scenario_contract=scenario_contract,
-            sample_signals=sample_signals or []
+            sample_signals=sample_signals or [],
+            # NEW: Store portfolio stats
+            portfolio_stats=portfolio_stats or {},
+            execution_stats=execution_stats or {},
+            cost_breakdown=cost_breakdown or {}
         )
 
         with self._lock:

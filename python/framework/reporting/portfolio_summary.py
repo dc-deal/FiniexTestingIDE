@@ -1,14 +1,17 @@
+# Lines 1-15 - Update imports and docstring
 """
 FiniexTestingIDE - Portfolio Summary
 Trading and portfolio statistics rendering
 
 REFACTORED (C#003):
-- Uses TradeSimulator directly instead of batch_results dict
-- Accesses portfolio stats, execution stats, cost breakdown from TradeSimulator
+- Uses PerformanceSummaryLog instead of TradeSimulator
+- Reads portfolio stats from ScenarioPerformanceStats
+- Supports per-scenario AND aggregated portfolio display
 
 Rendered in BOX format matching scenario details.
 """
 
+from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
 from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
@@ -17,65 +20,88 @@ class PortfolioSummary:
     Portfolio and trading statistics summary.
 
     REFACTORED (C#003):
-    - Uses TradeSimulator directly for portfolio data
+    - Uses PerformanceSummaryLog for portfolio data (per scenario + aggregated)
     """
 
-    def __init__(self, trade_simulator: TradeSimulator):
+    def __init__(self, performance_log: PerformanceSummaryLog):
         """
         Initialize portfolio summary.
 
         Args:
-            trade_simulator: TradeSimulator instance
+            performance_log: PerformanceSummaryLog instance with portfolio stats
         """
-        self.trade_simulator = trade_simulator
+        self.performance_log = performance_log
 
     def render_per_scenario(self, renderer):
         """
         Render portfolio stats per scenario in BOX format.
 
-        NOTE: Currently shows aggregated stats from TradeSimulator.
-        Per-scenario stats would require scenario-specific TradeSimulator instances.
+        Now reads from ScenarioPerformanceStats (each has own portfolio_stats).
 
         Args:
             renderer: ConsoleRenderer instance
         """
-        # Get aggregated portfolio stats from TradeSimulator
-        portfolio_stats = self.trade_simulator.get_portfolio_stats()
-        execution_stats = self.trade_simulator.get_execution_stats()
-        cost_breakdown = self.trade_simulator.get_cost_breakdown()
+        scenarios = self.performance_log.get_all_scenarios()
 
-        total_trades = portfolio_stats.get('total_trades', 0)
+        if not scenarios:
+            print()
+            print("   No scenarios available")
+            print()
+            return
 
-        if total_trades == 0:
+        # Check if ANY scenario has trades
+        any_trades = any(
+            scenario.portfolio_stats.get('total_trades', 0) > 0
+            for scenario in scenarios
+        )
+
+        if not any_trades:
             print()
             print("   No trades executed across all scenarios")
             print()
             return
 
-        # Render single aggregated box
+        # Render each scenario's portfolio in BOX format
         print()
-        self._render_aggregated_box(
-            portfolio_stats,
-            execution_stats,
-            cost_breakdown,
-            renderer
-        )
-        print()
+        for scenario in scenarios:
+            portfolio_stats = scenario.portfolio_stats
+            execution_stats = scenario.execution_stats
+            cost_breakdown = scenario.cost_breakdown
+
+            # Skip scenarios with no trades
+            if portfolio_stats.get('total_trades', 0) == 0:
+                continue
+
+            self._render_scenario_box(
+                scenario.scenario_name,
+                portfolio_stats,
+                execution_stats,
+                cost_breakdown,
+                renderer
+            )
+            print()
 
     def render_aggregated(self, renderer):
         """
-        Render aggregated portfolio stats.
+        Render aggregated portfolio stats across ALL scenarios.
+
+        Aggregates portfolio_stats from all ScenarioPerformanceStats.
 
         Args:
             renderer: ConsoleRenderer instance
         """
-        portfolio_stats = self.trade_simulator.get_portfolio_stats()
+        scenarios = self.performance_log.get_all_scenarios()
 
-        if portfolio_stats.get('total_trades', 0) == 0:
+        if not scenarios:
             return
 
-        execution_stats = self.trade_simulator.get_execution_stats()
-        cost_breakdown = self.trade_simulator.get_cost_breakdown()
+        # Aggregate portfolio stats from all scenarios
+        aggregated_portfolio = self._aggregate_portfolio_stats(scenarios)
+        aggregated_execution = self._aggregate_execution_stats(scenarios)
+        aggregated_costs = self._aggregate_cost_breakdown(scenarios)
+
+        if aggregated_portfolio.get('total_trades', 0) == 0:
+            return
 
         print()
         renderer.section_separator(width=120)
@@ -83,9 +109,9 @@ class PortfolioSummary:
         renderer.section_separator(width=120)
 
         self._render_aggregated_details(
-            portfolio_stats,
-            execution_stats,
-            cost_breakdown,
+            aggregated_portfolio,
+            aggregated_execution,
+            aggregated_costs,
             renderer
         )
         print()
@@ -182,3 +208,103 @@ class PortfolioSummary:
               f"Commission: ${commission:.2f}  |  "
               f"Swap: ${swap:.2f}")
         print(f"      Total Costs: ${total_costs:.2f}")
+
+    def _render_scenario_box(self, scenario_name, portfolio_stats, execution_stats, cost_breakdown, renderer):
+        """Render portfolio box for single scenario."""
+        total_trades = portfolio_stats.get('total_trades', 0)
+        winning = portfolio_stats.get('winning_trades', 0)
+        losing = portfolio_stats.get('losing_trades', 0)
+        win_rate = portfolio_stats.get('win_rate', 0.0)
+
+        total_profit = portfolio_stats.get('total_profit', 0.0)
+        total_loss = portfolio_stats.get('total_loss', 0.0)
+        total_pnl = total_profit - total_loss
+
+        spread_cost = cost_breakdown.get('total_spread_cost', 0.0)
+        orders_executed = execution_stats.get('orders_executed', 0)
+
+        # Format P&L with color
+        if total_pnl >= 0:
+            pnl_str = renderer.green(f"+${total_pnl:.2f}")
+        else:
+            pnl_str = renderer.red(f"${total_pnl:.2f}")
+
+        # Create box
+        lines = [
+            f"💰 {scenario_name[:26]}",
+            f"Trades: {total_trades} ({winning}W/{losing}L)",
+            f"Win Rate: {win_rate:.1%}",
+            f"P&L: {pnl_str}",
+            f"Spread: ${spread_cost:.2f}",
+            f"Orders: {orders_executed}"
+        ]
+
+        box_lines = renderer.render_box(lines, box_width=38)
+        for line in box_lines:
+            print(line)
+
+    def _aggregate_portfolio_stats(self, scenarios) -> dict:
+        """Aggregate portfolio stats from all scenarios."""
+        total_trades = 0
+        winning_trades = 0
+        losing_trades = 0
+        total_profit = 0.0
+        total_loss = 0.0
+
+        for scenario in scenarios:
+            stats = scenario.portfolio_stats
+            total_trades += stats.get('total_trades', 0)
+            winning_trades += stats.get('winning_trades', 0)
+            losing_trades += stats.get('losing_trades', 0)
+            total_profit += stats.get('total_profit', 0.0)
+            total_loss += stats.get('total_loss', 0.0)
+
+        win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
+        profit_factor = total_profit / total_loss if total_loss > 0 else 0.0
+
+        return {
+            'total_trades': total_trades,
+            'winning_trades': winning_trades,
+            'losing_trades': losing_trades,
+            'win_rate': win_rate,
+            'total_profit': total_profit,
+            'total_loss': total_loss,
+            'profit_factor': profit_factor
+        }
+
+    def _aggregate_execution_stats(self, scenarios) -> dict:
+        """Aggregate execution stats from all scenarios."""
+        orders_sent = 0
+        orders_executed = 0
+        orders_rejected = 0
+
+        for scenario in scenarios:
+            stats = scenario.execution_stats
+            orders_sent += stats.get('orders_sent', 0)
+            orders_executed += stats.get('orders_executed', 0)
+            orders_rejected += stats.get('orders_rejected', 0)
+
+        return {
+            'orders_sent': orders_sent,
+            'orders_executed': orders_executed,
+            'orders_rejected': orders_rejected
+        }
+
+    def _aggregate_cost_breakdown(self, scenarios) -> dict:
+        """Aggregate cost breakdown from all scenarios."""
+        total_spread_cost = 0.0
+        total_commission = 0.0
+        total_swap = 0.0
+
+        for scenario in scenarios:
+            costs = scenario.cost_breakdown
+            total_spread_cost += costs.get('total_spread_cost', 0.0)
+            total_commission += costs.get('total_commission', 0.0)
+            total_swap += costs.get('total_swap', 0.0)
+
+        return {
+            'total_spread_cost': total_spread_cost,
+            'total_commission': total_commission,
+            'total_swap': total_swap,
+            'total_fees': total_spread_cost + total_commission + total_swap
+        }

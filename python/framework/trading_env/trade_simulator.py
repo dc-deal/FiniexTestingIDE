@@ -220,7 +220,7 @@ class TradeSimulator:
         free_margin = self.portfolio.get_free_margin()
 
         if margin_required > free_margin:
-            self._execution_st6ats["orders_rejected"] += 1
+            self._execution_stats["orders_rejected"] += 1
             return create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.INSUFFICIENT_MARGIN,

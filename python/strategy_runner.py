@@ -57,25 +57,7 @@ def run_strategy_test() -> dict:
             f"✅ Loaded {len(scenario_set)} scenario_set from config", "StrategyRunner")
 
         # ============================================
-        # NEW (C#003): Create TradeSimulator
-        # ============================================
-        broker_config_path = "./configs/brokers/mt5/ic_markets_demo.json"
-
-        try:
-            broker_config = BrokerConfig.from_json(broker_config_path)
-            trade_simulator = TradeSimulator(
-                broker_config=broker_config,
-                initial_balance=10000.0,
-                currency="EUR"
-            )
-            vLog.info(
-                f"✅ Created TradeSimulator: {broker_config.get_broker_name()}")
-        except Exception as e:
-            vLog.error(f"❌ Failed to create TradeSimulator: {e}")
-            sys.exit(1)
-
-        # ============================================
-        # NEW (C#003): Create PerformanceSummaryLog
+        # Create PerformanceSummaryLog
         # ============================================
         performance_log = PerformanceSummaryLog()
         vLog.info("✅ Created PerformanceSummaryLog")
@@ -95,7 +77,6 @@ def run_strategy_test() -> dict:
             scenario_set,
             data_worker,
             app_config_loader,
-            trade_simulator,
             performance_log
         )
 
@@ -108,7 +89,6 @@ def run_strategy_test() -> dict:
         try:
             summary = BatchSummary(
                 performance_log=performance_log,
-                trade_simulator=trade_simulator,
                 app_config=app_config_loader
             )
             summary.render_all()

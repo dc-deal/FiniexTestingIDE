@@ -71,8 +71,8 @@ class BatchOrchestrator:
         scenarios: List[TestScenario],
         data_worker: TickDataLoader,
         app_config: AppConfigLoader,
-        trade_simulator: TradeSimulator,           # NEW (C#003)
-        performance_log: PerformanceSummaryLog     # NEW (C#003)
+        # REMOVED: trade_simulator parameter (now created per scenario)
+        performance_log: PerformanceSummaryLog
     ):
         """
         Initialize batch orchestrator.
@@ -81,32 +81,20 @@ class BatchOrchestrator:
             scenarios: List of test scenarios
             data_worker: TickDataLoader instance
             app_config: Application configuration
-            trade_simulator: Shared TradeSimulator instance (NEW C#003)
             performance_log: Statistics collection container (NEW C#003)
         """
         self.scenarios = scenarios
         self.data_worker = data_worker
-        # REMOVED: self.global_contract - no longer needed with per-scenario requirements
         self._last_orchestrator = None
         self.appConfig = app_config
-        self.trade_simulator = trade_simulator      # NEW (C#003)
-        self.performance_log = performance_log      # NEW (C#003)
+        self.performance_log = performance_log
 
-        # ============================================
-        # NEW (Issue 2): Initialize Factories
-        # ============================================
+        # Initialize Factories
         self.worker_factory = WorkerFactory()
         self.decision_logic_factory = DecisionLogicFactory()
 
         vLog.debug(
-            f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
-        )
-        vLog.debug(
-            f"Available workers: {self.worker_factory.get_registered_workers()}"
-        )
-        vLog.debug(
-            f"Available decision logics: {self.decision_logic_factory.get_registered_logics()}"
-        )
+            f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)")
 
     def run(self) -> Dict[str, Any]:
         """
@@ -203,28 +191,18 @@ class BatchOrchestrator:
     def _execute_single_scenario(
         self,
         scenario: TestScenario,
-        scenario_index: int  # NEW: Critical for maintaining order!
+        scenario_index: int
     ) -> Dict[str, Any]:
         """
         Execute single test scenario.
 
         REFACTORED (C#003):
-        - Uses shared TradeSimulator (with reset)
-        - Writes stats to PerformanceSummaryLog
-        - Returns minimal dict
-
-        Args:
-            scenario: TestScenario to execute
-            scenario_index: Original position in scenario array
-
-        Returns:
-            Minimal result dict
+        - Creates scenario-specific TradeSimulator (thread-safe)
+        - Writes stats to PerformanceSummaryLog including portfolio data
         """
-        # Reset TradeSimulator for this scenario
-        self.trade_simulator.reset()
-        # ============================================
-        # NEW (Issue 2): Factory-driven component creation
-        # ============================================
+        # NEW: Create isolated TradeSimulator for THIS scenario
+        scenario_simulator = self._create_trade_simulator_for_scenario(
+            scenario)
 
         # 1. Create Workers using Worker Factory
         strategy_config = scenario.strategy_config
@@ -238,12 +216,11 @@ class BatchOrchestrator:
             vLog.error(f"Failed to create workers: {e}")
             raise ValueError(f"Worker creation failed: {e}")
 
-        # 2. Create DecisionLogic (with TradeSimulator)
-        # NEW (C#003): Pass trade_simulator to factory for injection
+        # 2. Create DecisionLogic (inject scenario-specific TradeSimulator)
         try:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
                 strategy_config,
-                trading_env=self.trade_simulator  # NEW (C#003)
+                trading_env=scenario_simulator  # NEW: Inject scenario-specific simulator
             )
             vLog.info(f"✓ Created decision logic: {decision_logic.name}")
         except Exception as e:
@@ -311,11 +288,8 @@ class BatchOrchestrator:
         signals_generated = 0
 
         for tick in test_iterator:
-            # ============================================
-            # NEW (C#003): Update TradeSimulator with current tick prices
-            # This enables realistic spread calculation from LIVE data
-            # ============================================
-            self.trade_simulator.update_prices(
+            # Update scenario-specific TradeSimulator with current tick prices
+            scenario_simulator.update_prices(
                 symbol=tick.symbol,
                 bid=tick.bid,
                 ask=tick.ask
@@ -346,7 +320,7 @@ class BatchOrchestrator:
                 lot_size = 0.1
 
                 # Send order
-                order_result = self.trade_simulator.send_order(
+                order_result = scenario_simulator.send_order(
                     symbol=tick.symbol,
                     order_type=OrderType.MARKET,
                     direction=direction,
@@ -367,14 +341,17 @@ class BatchOrchestrator:
                     signals_generated += 1
 
         # ============================================
-        # NEW (C#003): Collect trading statistics from TradeSimulator
+        # Collect trading statistics
         # ============================================
-        # 10. Return results (enhanced with scenario-specific contract info)
         worker_stats = orchestrator.get_statistics()
+        # 10. Collect portfolio stats from scenario-specific TradeSimulator
+        portfolio_stats = scenario_simulator.get_portfolio_stats()
+        execution_stats = scenario_simulator.get_execution_stats()
+        cost_breakdown = scenario_simulator.get_cost_breakdown()
 
-        # Write to PerformanceSummaryLog
+        # Write to PerformanceSummaryLog (now includes portfolio stats)
         self.performance_log.add_scenario_stats(
-            scenario_index=scenario_index,  # Critical for order!
+            scenario_index=scenario_index,
             scenario_name=scenario.name,
             symbol=scenario.symbol,
             ticks_processed=tick_count,
@@ -384,7 +361,11 @@ class BatchOrchestrator:
             decision_logic_name=decision_logic.name,
             scenario_contract=scenario_contract,
             sample_signals=signals[:10],
-            success=True
+            success=True,
+            # NEW: Portfolio stats from scenario-specific TradeSimulator
+            portfolio_stats=portfolio_stats,
+            execution_stats=execution_stats,
+            cost_breakdown=cost_breakdown
         )
 
         # Return minimal dict
@@ -438,3 +419,49 @@ class BatchOrchestrator:
     def get_last_orchestrator(self):
         """Get last created orchestrator for debugging"""
         return self._last_orchestrator
+
+    # Creacte TradeSimulator instance for a scenario
+    def _create_trade_simulator_for_scenario(
+        self,
+        scenario: TestScenario
+    ) -> TradeSimulator:
+        """
+        Create isolated TradeSimulator for this scenario.
+
+        Each scenario gets its own TradeSimulator instance for:
+        - Thread-safety in parallel execution
+        - Independent balance/equity tracking
+        - Clean statistics per scenario
+
+        Merges global + scenario-specific trade_simulator_config.
+
+        Args:
+            scenario: TestScenario with optional trade_simulator_config
+
+        Returns:
+            TradeSimulator instance for this scenario
+        """
+        # Get global trade_simulator_config from scenario_set (if exists)
+        # NOTE: This requires scenario_set to be passed to BatchOrchestrator
+        # For now, use defaults (can be extended later)
+
+        # Get scenario-specific config (can override global)
+        ts_config = scenario.trade_simulator_config or {}
+
+        # Defaults
+        broker_config_path = ts_config.get(
+            "broker_config_path",
+            "./configs/brokers/mt5/ic_markets_demo.json"
+        )
+        initial_balance = ts_config.get("initial_balance", 10000.0)
+        currency = ts_config.get("currency", "EUR")
+
+        # Create broker config
+        broker_config = BrokerConfig.from_json(broker_config_path)
+
+        # Create NEW TradeSimulator for this scenario
+        return TradeSimulator(
+            broker_config=broker_config,
+            initial_balance=initial_balance,
+            currency=currency
+        )
