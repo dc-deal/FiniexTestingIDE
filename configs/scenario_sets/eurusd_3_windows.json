@@ -34,9 +34,9 @@
       "log_performance_stats": true
     },
     "trade_simulator_config": {
-        "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-        "initial_balance": 10000.0,
-        "currency": "EUR"
+      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+      "initial_balance": 10000.0,
+      "currency": "EUR"
     }
   },
   "scenarios": [
@@ -47,9 +47,21 @@
       "end_date": "2025-09-23",
       "max_ticks": 1000,
       "data_mode": "realistic",
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
+    },
+    {
+      "name": "GBPUSD_window_01",
+      "symbol": "GBPUSD",
+      "start_date": "2025-09-17",
+      "end_date": "2025-09-19",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {}
     }
   ]
 }

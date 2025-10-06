@@ -60,7 +60,16 @@ class ScenarioConfigLoader:
             'trade_simulator_config', {})
 
         scenarios = []
+        disabled_count = 0
         for scenario_data in config.get('scenarios', []):
+            # Filters out disabled scenarios during load
+            is_enabled = scenario_data.get('enabled', True)  # Default: True
+            if not is_enabled:
+                disabled_count += 1
+                vLog.debug(
+                    f"⊗ Skipping disabled scenario: {scenario_data['name']}")
+                continue  # Skip disabled
+
             # Merge strategy config
             scenario_strategy = {**global_strategy}
             if scenario_data.get('strategy_config'):
@@ -91,6 +100,8 @@ class ScenarioConfigLoader:
             )
             scenarios.append(scenario)
 
+        if disabled_count > 0:
+            vLog.info(f"⊗ Filtered out {disabled_count} disabled scenario(s)")
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
         return scenarios
 
@@ -272,6 +283,7 @@ class ScenarioConfigLoader:
                 "end_date": scenario.end_date,
                 "max_ticks": scenario.max_ticks,
                 "data_mode": scenario.data_mode,
+                "enabled": scenario.enabled if not scenario.enabled else True,
                 "strategy_config": scenario_strategy_override,
                 "execution_config": scenario.execution_config if scenario.execution_config != default_execution else {},
                 # NEW: Add trade_simulator_config overrides (only if different from global)

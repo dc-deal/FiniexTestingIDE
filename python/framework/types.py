@@ -158,6 +158,7 @@ class TestScenario:
     end_date: str
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
+    enabled: bool = True  # Default: enabled
 
     # ============================================
     # STRATEGY PARAMETERS
