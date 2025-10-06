@@ -1,34 +1,24 @@
 {
   "version": "1.0",
-  "scenario_set_name": "scn_heavy_batch",
-  "created": "2025-10-06T07:33:59.156041",
+  "scenario_set_name": "scn_eurusd_multi_balance",
+  "created": "2025-10-06T07:34:00.813866",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/simple_consensus",
       "worker_types": [
-        "CORE/heavy_rsi",
-        "CORE/heavy_envelope",
-        "CORE/heavy_macd"
+        "CORE/rsi",
+        "CORE/envelope"
       ],
       "workers": {
-        "CORE/heavy_rsi": {
+        "CORE/rsi": {
           "period": 14,
-          "timeframe": "M5",
-          "artificial_load_ms": 5.0
+          "timeframe": "M5"
         },
-        "CORE/heavy_envelope": {
+        "CORE/envelope": {
           "period": 20,
           "deviation": 0.02,
-          "timeframe": "M5",
-          "artificial_load_ms": 8.0
-        },
-        "CORE/heavy_macd": {
-          "fast": 12,
-          "slow": 26,
-          "signal": 9,
-          "timeframe": "M5",
-          "artificial_load_ms": 6.0
+          "timeframe": "M5"
         }
       }
     },
@@ -40,13 +30,13 @@
     },
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-      "initial_balance": 10000,
+      "initial_balance": 1000.0,
       "currency": "EUR"
     }
   },
   "scenarios": [
     {
-      "name": "EURUSD_window_01",
+      "name": "EURUSD_balance_1000",
       "symbol": "EURUSD",
       "start_date": "2025-09-17",
       "end_date": "2025-09-19",
@@ -54,11 +44,16 @@
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
-      "execution_config": {},
+      "execution_config": {
+        "parallel_workers": null,
+        "worker_parallel_threshold_ms": 1.0,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      },
       "trade_simulator_config": {}
     },
     {
-      "name": "EURUSD_window_02",
+      "name": "EURUSD_balance_5000",
       "symbol": "EURUSD",
       "start_date": "2025-09-19",
       "end_date": "2025-09-21",
@@ -66,11 +61,18 @@
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
+      "execution_config": {
+        "parallel_workers": null,
+        "worker_parallel_threshold_ms": 1.0,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      },
+      "trade_simulator_config": {
+        "initial_balance": 5000.0
+      }
     },
     {
-      "name": "EURUSD_window_03",
+      "name": "EURUSD_balance_10000",
       "symbol": "EURUSD",
       "start_date": "2025-09-21",
       "end_date": "2025-09-23",
@@ -78,11 +80,18 @@
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
+      "execution_config": {
+        "parallel_workers": null,
+        "worker_parallel_threshold_ms": 1.0,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      },
+      "trade_simulator_config": {
+        "initial_balance": 10000.0
+      }
     },
     {
-      "name": "EURUSD_window_04",
+      "name": "EURUSD_balance_50000",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-25",
@@ -90,8 +99,15 @@
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
+      "execution_config": {
+        "parallel_workers": null,
+        "worker_parallel_threshold_ms": 1.0,
+        "adaptive_parallelization": true,
+        "log_performance_stats": true
+      },
+      "trade_simulator_config": {
+        "initial_balance": 50000.0
+      }
     }
   ]
 }
