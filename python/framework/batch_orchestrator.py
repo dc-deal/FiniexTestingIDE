@@ -449,10 +449,14 @@ class BatchOrchestrator:
         ts_config = scenario.trade_simulator_config or {}
 
         # Defaults
-        broker_config_path = ts_config.get(
-            "broker_config_path",
-            "./configs/brokers/mt5/ic_markets_demo.json"
-        )
+        broker_config_path = ts_config.get("broker_config_path")
+        if broker_config_path is None:
+            raise ValueError(
+                "No broker_config_path specified in strategy_config. "
+                "Example: 'global.trade_simulator_config.broker_config_path': "
+                "'./configs/brokers/mt5/ic_markets_demo.json'"
+            )
+
         initial_balance = ts_config.get("initial_balance", 10000.0)
         currency = ts_config.get("currency", "EUR")
 
