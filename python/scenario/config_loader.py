@@ -51,49 +51,58 @@ class ScenarioConfigLoader:
         with open(config_path, 'r') as f:
             config = json.load(f)
 
+        # Parse global defaults
+        global_config = config.get('global', {})
+        global_strategy = global_config.get('strategy_config', {})
+        global_execution = global_config.get('execution_config', {})
+        # NEW: Parse global trade_simulator_config
+        global_trade_simulator = global_config.get(
+            'trade_simulator_config', {})
+
         scenarios = []
+        disabled_count = 0
+        for scenario_data in config.get('scenarios', []):
+            # Filters out disabled scenarios during load
+            is_enabled = scenario_data.get('enabled', True)  # Default: True
+            if not is_enabled:
+                disabled_count += 1
+                vLog.debug(
+                    f"⊗ Skipping disabled scenario: {scenario_data['name']}")
+                continue  # Skip disabled
 
-        # Global defaults (separate strategy + execution)
-        global_strategy = config.get("global", {}).get("strategy_config", {})
-        global_execution = config.get("global", {}).get("execution_config", {})
+            # Merge strategy config
+            scenario_strategy = {**global_strategy}
+            if scenario_data.get('strategy_config'):
+                scenario_strategy.update(scenario_data['strategy_config'])
 
-        # Load each scenario
-        for scenario_config in config.get("scenarios", []):
-            # ============================================
-            # FIXED (Issue 2 - Parameter Inheritance):
-            # Deep merge strategy config (handles nested workers dict)
-            # ============================================
-            scenario_strategy = scenario_config.get("strategy_config", {})
+            # Merge execution config
+            scenario_execution = {**global_execution}
+            if scenario_data.get('execution_config'):
+                scenario_execution.update(scenario_data['execution_config'])
 
-            # Deep merge strategy config (handles nested workers dict)
-            strategy_config = self._deep_merge_strategy_configs(
-                global_strategy,
-                scenario_strategy
-            )
-
-            # Execution config stays shallow (no nested structures)
-            execution_config = {**global_execution, **
-                                scenario_config.get("execution_config", {})}
+            # NEW: Merge trade_simulator_config (global + scenario-specific)
+            scenario_trade_simulator = {**global_trade_simulator}
+            if scenario_data.get('trade_simulator_config'):
+                scenario_trade_simulator.update(
+                    scenario_data['trade_simulator_config'])
 
             scenario = TestScenario(
-                symbol=scenario_config["symbol"],
-                start_date=scenario_config["start_date"],
-                end_date=scenario_config["end_date"],
-                max_ticks=scenario_config.get("max_ticks", 1000),
-                data_mode=scenario_config.get("data_mode", "realistic"),
-
-                # Strategy-Logic
-                strategy_config=strategy_config,
-
-                # Execution-Optimization
-                execution_config=execution_config if execution_config else None,
-
-                name=scenario_config.get(
-                    "name", f"{scenario_config['symbol']}_test")
+                name=scenario_data['name'],
+                symbol=scenario_data['symbol'],
+                start_date=scenario_data['start_date'],
+                end_date=scenario_data['end_date'],
+                data_mode=scenario_data.get('data_mode', 'realistic'),
+                max_ticks=scenario_data.get('max_ticks'),
+                strategy_config=scenario_strategy,
+                execution_config=scenario_execution,
+                # NEW: Add trade_simulator_config to TestScenario
+                trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None
             )
             scenarios.append(scenario)
 
-        vLog.debug(f"✅ Loaded {len(scenarios)} scenarios")
+        if disabled_count > 0:
+            vLog.info(f"⊗ Filtered out {disabled_count} disabled scenario(s)")
+        vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
         return scenarios
 
     def _deep_merge_strategy_configs(
@@ -211,14 +220,20 @@ class ScenarioConfigLoader:
             "log_performance_stats": True,
         }
 
+        global_trade_simulator = {}
+        if scenarios and scenarios[0].trade_simulator_config:
+            global_trade_simulator = scenarios[0].trade_simulator_config.copy()
+
         config = {
             "version": "1.0",
-            "scenario_set_name": "scn_"+config_file.replace('.json', ''),
+            "scenario_set_name": "scn_" + filename.replace('.json', ''),
             "created": datetime.now().isoformat(),
             "global": {
                 "data_mode": "realistic",
-                "strategy_config": global_strategy,  # Full strategy config in global
+                "strategy_config": global_strategy,
                 "execution_config": default_execution,
+                # NEW: Add global trade_simulator_config
+                "trade_simulator_config": global_trade_simulator,
             },
             "scenarios": []
         }
@@ -254,6 +269,13 @@ class ScenarioConfigLoader:
                 if worker_overrides:
                     scenario_strategy_override["workers"] = worker_overrides
 
+           # NEW: Calculate trade_simulator_config overrides
+            ts_override = {}
+            if scenario.trade_simulator_config:
+                for key, value in scenario.trade_simulator_config.items():
+                    if global_trade_simulator.get(key) != value:
+                        ts_override[key] = value
+
             scenario_dict = {
                 "name": scenario.name,
                 "symbol": scenario.symbol,
@@ -261,12 +283,11 @@ class ScenarioConfigLoader:
                 "end_date": scenario.end_date,
                 "max_ticks": scenario.max_ticks,
                 "data_mode": scenario.data_mode,
-
-                # Only worker overrides (or empty dict if none)
+                "enabled": scenario.enabled if not scenario.enabled else True,
                 "strategy_config": scenario_strategy_override,
-
-                # Execution overrides (only if different from global)
                 "execution_config": scenario.execution_config if scenario.execution_config != default_execution else {},
+                # NEW: Add trade_simulator_config overrides (only if different from global)
+                "trade_simulator_config": ts_override if ts_override else {},
             }
             config["scenarios"].append(scenario_dict)
 
