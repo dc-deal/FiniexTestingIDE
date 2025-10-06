@@ -23,6 +23,8 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
+from python.framework.trading_env.trade_simulator import TradeSimulator
+
 vLog = setup_logging(name="StrategyRunner")
 
 
@@ -42,15 +44,21 @@ class AggressiveTrend(AbstractDecisionLogic):
     - min_confidence: Minimum confidence required (default: 0.4)
     """
 
-    def __init__(self, name: str = "aggressive_trend", config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        name: str = "aggressive_trend",
+        config: Dict[str, Any] = None,
+        trading_env: TradeSimulator = None
+    ):
         """
         Initialize Aggressive Trend logic.
 
         Args:
             name: Logic identifier
             config: Configuration dict with thresholds
+            trading_env: TradeSimulator instance (NEW in C#003)
         """
-        super().__init__(name, config)
+        super().__init__(name, config, trading_env)
 
         # Configuration with aggressive defaults
         self.rsi_buy = self.get_config_value("rsi_buy_threshold", 35)
@@ -59,7 +67,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_extremes", 0.25)
         self.min_confidence = self.get_config_value("min_confidence", 0.4)
 
-        vLog.debug(
+        vLog.info(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
             f"Envelope extremes({self.envelope_extremes})"
@@ -73,7 +81,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         This shows the power of DecisionLogic abstraction.
 
         Returns:
-            List of worker names
+            List of worker names required
         """
         return ["RSI", "Envelope"]
 
@@ -85,127 +93,169 @@ class AggressiveTrend(AbstractDecisionLogic):
         bar_history: Dict[str, List[Bar]],
     ) -> Decision:
         """
-        Generate aggressive trading decision with OR logic.
+        Generate trading decision using OR logic (aggressive).
 
-        Logic flow:
-        1. Check worker confidence (lower threshold than conservative)
-        2. Extract RSI and envelope values
-        3. Apply aggressive rules:
-           - BUY if RSI < 35 OR position < 0.25 (lower band)
-           - SELL if RSI > 65 OR position > 0.75 (upper band)
-           - Use highest confidence from triggered indicator
+        Unlike SimpleConsensus, this strategy triggers on ANY single
+        indicator showing an extreme value - no consensus required.
 
         Args:
             tick: Current tick data
-            worker_results: Dict with RSI and Envelope results
-            current_bars: Current bars (unused)
-            bar_history: Historical bars (unused)
+            worker_results: Results from rsi and envelope workers
+            current_bars: Current bars (not used)
+            bar_history: Historical bars (not used)
 
         Returns:
-            Decision object with action and reasoning
+            Decision object with action, confidence, and reason
         """
-        # Validate workers
-        self.validate_worker_results(worker_results)
-
-        # Extract results
+        # Extract worker results
         rsi_result = worker_results.get("RSI")
         envelope_result = worker_results.get("Envelope")
 
-        # Early exit if both confidences too low
-        if (rsi_result.confidence < self.min_confidence and
-                envelope_result.confidence < self.min_confidence):
-            decision = Decision(
+        if not rsi_result or not envelope_result:
+            return Decision(
                 action="FLAT",
                 confidence=0.0,
-                reason="Both indicators have low confidence",
+                reason="Missing worker results",
                 price=tick.mid,
                 timestamp=tick.timestamp,
             )
-            self._update_statistics(decision)
-            return decision
 
-        # Extract values
-        rsi = rsi_result.value
-        envelope = envelope_result.value
-        envelope_position = envelope["position"]
+        # Extract indicator values
+        rsi_value = rsi_result.value
+        envelope_data = envelope_result.value
+        envelope_position = envelope_data.get("position", 0.5)
 
-        # Track which indicators triggered
-        rsi_triggered = False
-        envelope_triggered = False
-        action = "FLAT"
-        reason_parts = []
+        # Check for BUY signal (OR logic - either indicator is enough)
+        buy_signal_rsi = rsi_value < self.rsi_buy
+        buy_signal_envelope = envelope_position < self.envelope_extremes
 
-        # BUY CONDITIONS (OR logic)
-        if rsi < self.rsi_buy:
-            action = "BUY"
-            reason_parts.append(f"RSI bullish ({rsi:.1f} < {self.rsi_buy})")
-            rsi_triggered = True
-
-        if envelope_position < self.envelope_extremes:
-            if action != "BUY":  # Don't override RSI signal
-                action = "BUY"
-            reason_parts.append(
-                f"price at lower extreme (pos: {envelope_position:.2f})"
+        if buy_signal_rsi or buy_signal_envelope:
+            confidence = self._calculate_buy_confidence(
+                rsi_value, envelope_position, buy_signal_rsi, buy_signal_envelope
             )
-            envelope_triggered = True
 
-        # SELL CONDITIONS (OR logic) - only if no buy signal
-        if action != "BUY":
-            if rsi > self.rsi_sell:
-                action = "SELL"
-                reason_parts.append(
-                    f"RSI bearish ({rsi:.1f} > {self.rsi_sell})")
-                rsi_triggered = True
-
-            if envelope_position > (1.0 - self.envelope_extremes):
-                if action != "SELL":
-                    action = "SELL"
-                reason_parts.append(
-                    f"price at upper extreme (pos: {envelope_position:.2f})"
+            if confidence >= self.min_confidence:
+                reason = self._build_buy_reason(
+                    rsi_value, envelope_position, buy_signal_rsi, buy_signal_envelope
                 )
-                envelope_triggered = True
 
-        # Calculate confidence based on which indicators triggered
-        if action == "FLAT":
-            confidence = 0.3
-            reason = "No clear trend signal"
-        else:
-            # Use max confidence from triggered indicators
-            triggered_confidences = []
-            if rsi_triggered:
-                triggered_confidences.append(rsi_result.confidence)
-            if envelope_triggered:
-                triggered_confidences.append(envelope_result.confidence)
+                return Decision(
+                    action="BUY",
+                    confidence=confidence,
+                    reason=reason,
+                    price=tick.mid,
+                    timestamp=tick.timestamp,
+                )
 
-            confidence = max(
-                triggered_confidences) if triggered_confidences else 0.5
-            reason = " OR ".join(reason_parts)
+        # Check for SELL signal (OR logic - either indicator is enough)
+        sell_signal_rsi = rsi_value > self.rsi_sell
+        sell_signal_envelope = envelope_position > (
+            1.0 - self.envelope_extremes)
 
-        # Create decision
-        decision = Decision(
-            action=action,
-            confidence=confidence,
-            reason=reason,
+        if sell_signal_rsi or sell_signal_envelope:
+            confidence = self._calculate_sell_confidence(
+                rsi_value, envelope_position, sell_signal_rsi, sell_signal_envelope
+            )
+
+            if confidence >= self.min_confidence:
+                reason = self._build_sell_reason(
+                    rsi_value, envelope_position, sell_signal_rsi, sell_signal_envelope
+                )
+
+                return Decision(
+                    action="SELL",
+                    confidence=confidence,
+                    reason=reason,
+                    price=tick.mid,
+                    timestamp=tick.timestamp,
+                )
+
+        # No signal
+        return Decision(
+            action="FLAT",
+            confidence=0.5,
+            reason="No extreme indicator values",
             price=tick.mid,
             timestamp=tick.timestamp,
-            metadata={
-                "strategy": "aggressive_trend",
-                "rsi": rsi,
-                "rsi_triggered": rsi_triggered,
-                "envelope_position": envelope_position,
-                "envelope_triggered": envelope_triggered,
-                "indicators_triggered": len(reason_parts),
-            },
         )
 
-        # Update statistics
-        self._update_statistics(decision)
+    def _calculate_buy_confidence(
+        self,
+        rsi_value: float,
+        envelope_position: float,
+        rsi_triggered: bool,
+        envelope_triggered: bool,
+    ) -> float:
+        """Calculate buy signal confidence (OR logic allows partial confidence)"""
+        confidence = 0.4  # Base confidence for aggressive strategy
 
-        # Log aggressive signals
-        if action != "FLAT":
-            vLog.info(
-                f"⚡ AGGRESSIVE {action}: {reason} "
-                f"(confidence: {confidence:.2f})"
-            )
+        if rsi_triggered:
+            # More extreme RSI = higher confidence
+            rsi_strength = (self.rsi_buy - rsi_value) / self.rsi_buy
+            confidence += rsi_strength * 0.3
 
-        return decision
+        if envelope_triggered:
+            # More extreme envelope = higher confidence
+            env_strength = (self.envelope_extremes -
+                            envelope_position) / self.envelope_extremes
+            confidence += env_strength * 0.3
+
+        return min(1.0, confidence)
+
+    def _calculate_sell_confidence(
+        self,
+        rsi_value: float,
+        envelope_position: float,
+        rsi_triggered: bool,
+        envelope_triggered: bool,
+    ) -> float:
+        """Calculate sell signal confidence (OR logic allows partial confidence)"""
+        confidence = 0.4  # Base confidence
+
+        if rsi_triggered:
+            rsi_strength = (rsi_value - self.rsi_sell) / (100 - self.rsi_sell)
+            confidence += rsi_strength * 0.3
+
+        if envelope_triggered:
+            env_threshold = 1.0 - self.envelope_extremes
+            env_strength = (envelope_position - env_threshold) / \
+                self.envelope_extremes
+            confidence += env_strength * 0.3
+
+        return min(1.0, confidence)
+
+    def _build_buy_reason(
+        self,
+        rsi_value: float,
+        envelope_position: float,
+        rsi_triggered: bool,
+        envelope_triggered: bool,
+    ) -> str:
+        """Build explanation for buy signal"""
+        reasons = []
+
+        if rsi_triggered:
+            reasons.append(f"RSI={rsi_value:.1f}")
+
+        if envelope_triggered:
+            reasons.append(f"Envelope={envelope_position:.2f}")
+
+        return " OR ".join(reasons) + " (aggressive)"
+
+    def _build_sell_reason(
+        self,
+        rsi_value: float,
+        envelope_position: float,
+        rsi_triggered: bool,
+        envelope_triggered: bool,
+    ) -> str:
+        """Build explanation for sell signal"""
+        reasons = []
+
+        if rsi_triggered:
+            reasons.append(f"RSI={rsi_value:.1f}")
+
+        if envelope_triggered:
+            reasons.append(f"Envelope={envelope_position:.2f}")
+
+        return " OR ".join(reasons) + " (aggressive)"

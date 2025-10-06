@@ -19,14 +19,20 @@ Example Config:
         "min_confidence": 0.7
     }
 }
+
+EXTENDED (C#003 - Trade Simulation):
+- create_logic() accepts optional trading_env parameter for TradeSimulator injection
+- create_logic_from_strategy_config() passes trading_env to decision logic instances
 """
 
 import importlib
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
+
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -112,7 +118,8 @@ class DecisionLogicFactory:
     def create_logic(
         self,
         logic_type: str,
-        logic_config: Dict[str, Any] = None
+        logic_config: Dict[str, Any] = None,
+        trading_env: TradeSimulator = None  # NEW (C#003)
     ) -> AbstractDecisionLogic:
         """
         Create a decision logic instance from configuration.
@@ -125,6 +132,7 @@ class DecisionLogicFactory:
         Args:
             logic_type: Logic type with namespace (e.g., "CORE/simple_consensus")
             logic_config: Configuration dict for the logic
+            trading_env: TradeSimulator instance for order execution (NEW C#003)
 
         Returns:
             Instantiated decision logic ready for use
@@ -141,9 +149,11 @@ class DecisionLogicFactory:
         logic_name = self._extract_logic_name(logic_type)
 
         # Step 3: Instantiate logic with config
+        # NEW (C#003): Pass trading_env to logic constructor
         logic_instance = logic_class(
             name=logic_name,
-            config=logic_config
+            config=logic_config,
+            trading_env=trading_env  # NEW (C#003)
         )
 
         vLog.debug(
@@ -154,7 +164,8 @@ class DecisionLogicFactory:
 
     def create_logic_from_strategy_config(
         self,
-        strategy_config: Dict[str, Any]
+        strategy_config: Dict[str, Any],
+        trading_env: TradeSimulator = None  # NEW (C#003)
     ) -> AbstractDecisionLogic:
         """
         Create decision logic from complete strategy configuration.
@@ -173,6 +184,7 @@ class DecisionLogicFactory:
 
         Args:
             strategy_config: Strategy configuration dict
+            trading_env: TradeSimulator instance (NEW C#003)
 
         Returns:
             Instantiated decision logic
@@ -193,8 +205,13 @@ class DecisionLogicFactory:
         logic_config = strategy_config.get("decision_logic_config", {})
 
         # Create logic instance
+        # NEW (C#003): Pass trading_env to create_logic
         try:
-            logic_instance = self.create_logic(logic_type, logic_config)
+            logic_instance = self.create_logic(
+                logic_type,
+                logic_config,
+                trading_env  # NEW (C#003)
+            )
             return logic_instance
 
         except Exception as e:

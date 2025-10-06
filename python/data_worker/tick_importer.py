@@ -21,7 +21,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.config import AppConfigLoader
+from python.configuration import AppConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
 setup_logging(name="StrategyRunner")

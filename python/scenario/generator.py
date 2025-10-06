@@ -173,12 +173,12 @@ class ScenarioGenerator:
             _, worker_name = worker_type.split("/", 1)
 
             # Set defaults based on worker name
-            if worker_name == "rsi":
+            if worker_name == "RSI":
                 default_configs[worker_type] = {
                     "period": 14,
                     "timeframe": "M5"
                 }
-            elif worker_name == "envelope":
+            elif worker_name == "Envelope":
                 default_configs[worker_type] = {
                     "period": 20,
                     "deviation": 0.02,

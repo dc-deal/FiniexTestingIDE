@@ -23,6 +23,8 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 
+from python.framework.trading_env.trade_simulator import TradeSimulator
+
 vLog = setup_logging(name="StrategyRunner")
 
 
@@ -41,15 +43,21 @@ class SimpleConsensus(AbstractDecisionLogic):
     - min_confidence: Minimum confidence to generate signal (default: 0.5)
     """
 
-    def __init__(self, name: str = "simple_consensus", config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        name: str = "simple_consensus",
+        config: Dict[str, Any] = None,
+        trading_env: TradeSimulator = None
+    ):
         """
         Initialize Simple Consensus logic.
 
         Args:
             name: Logic identifier
             config: Configuration dict with thresholds
+            trading_env: TradeSimulator instance (NEW in C#003)
         """
-        super().__init__(name, config)
+        super().__init__(name, config, trading_env)
 
         # Configuration with defaults
         self.rsi_oversold = self.get_config_value("rsi_oversold", 30)
@@ -70,12 +78,10 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         Declare required workers for this strategy.
 
-        Simple Consensus needs:
-        - RSI: For overbought/oversold detection
-        - Envelope: For price position relative to bands
+        SimpleConsensus needs both RSI and Envelope for consensus.
 
         Returns:
-            List of worker names
+            List of worker names required
         """
         return ["RSI", "Envelope"]
 
@@ -87,109 +93,135 @@ class SimpleConsensus(AbstractDecisionLogic):
         bar_history: Dict[str, List[Bar]],
     ) -> Decision:
         """
-        Generate trading decision based on RSI + Envelope consensus.
+        Generate trading decision based on consensus between RSI and Envelope.
 
-        Logic flow:
-        1. Check if both workers have sufficient confidence
-        2. Extract RSI value and envelope position
-        3. Apply consensus rules:
-           - BUY: RSI oversold AND price near lower band
-           - SELL: RSI overbought AND price near upper band
-           - FLAT: No consensus or insufficient confidence
+        This is a conservative strategy - BOTH indicators must agree before
+        generating a buy/sell signal.
 
         Args:
             tick: Current tick data
-            worker_results: Dict with RSI and Envelope results
-            current_bars: Current bars (not used in this logic)
-            bar_history: Historical bars (not used in this logic)
+            worker_results: Results from rsi and envelope workers
+            current_bars: Current bars (not used in simple strategy)
+            bar_history: Historical bars (not used in simple strategy)
 
         Returns:
-            Decision object with action, confidence, and reasoning
+            Decision object with action, confidence, and reason
         """
-        # Validate that we have all required workers
-        # (This is done by orchestrator, but we double-check)
-        self.validate_worker_results(worker_results)
-
         # Extract worker results
         rsi_result = worker_results.get("RSI")
         envelope_result = worker_results.get("Envelope")
 
-        # Check confidence levels
-        if rsi_result.confidence < self.min_confidence:
-            decision = Decision(
+        if not rsi_result or not envelope_result:
+            return Decision(
                 action="FLAT",
                 confidence=0.0,
-                reason="RSI confidence too low",
+                reason="Missing worker results",
                 price=tick.mid,
                 timestamp=tick.timestamp,
             )
-            self._update_statistics(decision)
-            return decision
-
-        if envelope_result.confidence < self.min_confidence:
-            decision = Decision(
-                action="FLAT",
-                confidence=0.0,
-                reason="Envelope confidence too low",
-                price=tick.mid,
-                timestamp=tick.timestamp,
-            )
-            self._update_statistics(decision)
-            return decision
 
         # Extract indicator values
-        rsi = rsi_result.value
-        envelope = envelope_result.value
-        envelope_position = envelope["position"]
+        rsi_value = rsi_result.value
+        envelope_data = envelope_result.value
 
-        # Initialize decision variables
-        action = "FLAT"
-        reason = "No clear signal"
-        confidence = 0.5
+        # Envelope provides position (0.0 = lower band, 1.0 = upper band)
+        envelope_position = envelope_data.get("position", 0.5)
 
-        # BUY SIGNAL: RSI oversold + price near lower band
-        if rsi <= self.rsi_oversold and envelope_position <= self.envelope_lower:
-            action = "BUY"
-            reason = (
-                f"RSI oversold ({rsi:.1f} ≤ {self.rsi_oversold}) + "
-                f"price near lower band (position: {envelope_position:.2f})"
-            )
-            # Confidence: Average of both worker confidences
-            confidence = min(rsi_result.confidence, envelope_result.confidence)
+        # Check for BUY signal (consensus required)
+        if (
+            rsi_value <= self.rsi_oversold
+            and envelope_position <= self.envelope_lower
+        ):
+            confidence = self._calculate_buy_confidence(
+                rsi_value, envelope_position)
 
-        # SELL SIGNAL: RSI overbought + price near upper band
-        elif rsi >= self.rsi_overbought and envelope_position >= self.envelope_upper:
-            action = "SELL"
-            reason = (
-                f"RSI overbought ({rsi:.1f} ≥ {self.rsi_overbought}) + "
-                f"price near upper band (position: {envelope_position:.2f})"
-            )
-            # Confidence: Average of both worker confidences
-            confidence = min(rsi_result.confidence, envelope_result.confidence)
+            if confidence >= self.min_confidence:
+                return Decision(
+                    action="BUY",
+                    confidence=confidence,
+                    reason=f"RSI={rsi_value:.1f} (oversold) + Envelope={envelope_position:.2f} (lower)",
+                    price=tick.mid,
+                    timestamp=tick.timestamp,
+                )
 
-        # Create decision object
-        decision = Decision(
-            action=action,
-            confidence=confidence,
-            reason=reason,
+        # Check for SELL signal (consensus required)
+        if (
+            rsi_value >= self.rsi_overbought
+            and envelope_position >= self.envelope_upper
+        ):
+            confidence = self._calculate_sell_confidence(
+                rsi_value, envelope_position)
+
+            if confidence >= self.min_confidence:
+                return Decision(
+                    action="SELL",
+                    confidence=confidence,
+                    reason=f"RSI={rsi_value:.1f} (overbought) + Envelope={envelope_position:.2f} (upper)",
+                    price=tick.mid,
+                    timestamp=tick.timestamp,
+                )
+
+        # No clear signal - stay flat
+        return Decision(
+            action="FLAT",
+            confidence=0.5,
+            reason="No consensus signal",
             price=tick.mid,
             timestamp=tick.timestamp,
-            metadata={
-                "rsi": rsi,
-                "envelope_position": envelope_position,
-                "envelope_upper": envelope["upper"],
-                "envelope_lower": envelope["lower"],
-                "envelope_middle": envelope["middle"],
-            },
         )
 
-        # Update statistics
-        self._update_statistics(decision)
+    def _calculate_buy_confidence(
+        self, rsi_value: float, envelope_position: float
+    ) -> float:
+        """
+        Calculate buy signal confidence based on indicator extremes.
 
-        # Log significant signals (not FLAT)
-        if action != "FLAT":
-            vLog.debug(
-                f"🎯 {action} signal: {reason} (confidence: {confidence:.2f})"
-            )
+        More extreme values = higher confidence.
 
-        return decision
+        Args:
+            rsi_value: Current RSI value
+            envelope_position: Current envelope position
+
+        Returns:
+            Confidence score (0.0 - 1.0)
+        """
+        # How far below oversold threshold (more extreme = higher confidence)
+        rsi_strength = max(0, (self.rsi_oversold - rsi_value) / 30.0)
+
+        # How far below envelope threshold (more extreme = higher confidence)
+        envelope_strength = max(
+            0, (self.envelope_lower - envelope_position) / 0.3)
+
+        # Average the two strengths
+        confidence = (rsi_strength + envelope_strength) / 2.0
+
+        # Ensure within [0.5, 1.0] range for valid buy signals
+        return max(0.5, min(1.0, 0.5 + confidence * 0.5))
+
+    def _calculate_sell_confidence(
+        self, rsi_value: float, envelope_position: float
+    ) -> float:
+        """
+        Calculate sell signal confidence based on indicator extremes.
+
+        More extreme values = higher confidence.
+
+        Args:
+            rsi_value: Current RSI value
+            envelope_position: Current envelope position
+
+        Returns:
+            Confidence score (0.0 - 1.0)
+        """
+        # How far above overbought threshold
+        rsi_strength = max(0, (rsi_value - self.rsi_overbought) / 30.0)
+
+        # How far above envelope threshold
+        envelope_strength = max(
+            0, (envelope_position - self.envelope_upper) / 0.3)
+
+        # Average the two strengths
+        confidence = (rsi_strength + envelope_strength) / 2.0
+
+        # Ensure within [0.5, 1.0] range for valid sell signals
+        return max(0.5, min(1.0, 0.5 + confidence * 0.5))

@@ -23,5 +23,12 @@
         "**/data/raw": true,
         "**/data/processed": true,
         "**/data/cache": true
-    }
+    },
+    // Schriftart ändern, damit Emojis die richtige länge haben (wichtig für boxen)
+    // Terminal
+    "terminal.integrated.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace",
+    // Debug Console
+    "debug.console.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace",
+    // Editor & Output
+    "editor.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace"
 }

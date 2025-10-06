@@ -17,11 +17,18 @@ ARCHITECTURE CHANGE (Parameter Inheritance Bug Fix):
 - This allows scenarios to have completely different worker configurations
 - Scenario 1 can use M1 with period 10, while Scenario 2 uses M5 with period 14
 - No more cross-contamination of requirements between scenarios
+
+EXTENDED (C#003 - Trade Simulation):
+- Creates TradeSimulator from broker config
+- Injects TradeSimulator into DecisionLogic via factory
+- Updates prices on each tick for realistic spread calculation
+- Collects trading statistics (portfolio, execution, costs)
 """
 
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
+import traceback
 from typing import Any, Dict, List
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -31,13 +38,21 @@ from python.framework.bars.bar_rendering_controller import \
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
-from python.config import AppConfigLoader
+from python.configuration import AppConfigLoader
+from python.framework.trading_env.order_types import OrderType, OrderDirection
 
 # ============================================
 # NEW (Issue 2): Factory Imports
 # ============================================
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+
+# ============================================
+# NEW (C#003): Trade Simulation Imports
+# ============================================
+from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -51,19 +66,31 @@ class BatchOrchestrator:
     Each scenario is completely independent with its own requirements.
     """
 
-    def __init__(self, scenarios: List[TestScenario], data_worker: TickDataLoader, app_config: AppConfigLoader):
+    def __init__(
+        self,
+        scenarios: List[TestScenario],
+        data_worker: TickDataLoader,
+        app_config: AppConfigLoader,
+        trade_simulator: TradeSimulator,           # NEW (C#003)
+        performance_log: PerformanceSummaryLog     # NEW (C#003)
+    ):
         """
         Initialize batch orchestrator.
 
         Args:
-            scenarios: List of test scenarios (can be 1 or 1000+)
+            scenarios: List of test scenarios
             data_worker: TickDataLoader instance
+            app_config: Application configuration
+            trade_simulator: Shared TradeSimulator instance (NEW C#003)
+            performance_log: Statistics collection container (NEW C#003)
         """
         self.scenarios = scenarios
         self.data_worker = data_worker
         # REMOVED: self.global_contract - no longer needed with per-scenario requirements
         self._last_orchestrator = None
         self.appConfig = app_config
+        self.trade_simulator = trade_simulator      # NEW (C#003)
+        self.performance_log = performance_log      # NEW (C#003)
 
         # ============================================
         # NEW (Issue 2): Initialize Factories
@@ -124,57 +151,77 @@ class BatchOrchestrator:
         """Execute scenarios sequentially (easier debugging)"""
         results = []
 
-        for i, scenario in enumerate(self.scenarios, 1):
+        for scenario_index, scenario in enumerate(self.scenarios):
             vLog.section_separator()
             vLog.info(
-                f"📊 Running scenario {i}/{len(self.scenarios)}: {scenario.name}"
+                f"📊 Running scenario {scenario_index}/{len(self.scenarios)}: {scenario.name}"
             )
 
             try:
-                result = self._execute_single_scenario(scenario)
+                result = self._execute_single_scenario(
+                    scenario, scenario_index)
                 results.append(result)
                 vLog.info(
-                    f"✅ Scenario {i} completed: {result.get('signals_generated', 0)} signals"
+                    f"✅ Scenario {scenario_index} completed"
                 )
             except Exception as e:
-                vLog.error(f"❌ Scenario {i} failed: {e}", exc_info=True)
+                vLog.error(
+                    f"❌ Scenario {scenario_index} failed: {e}", exc_info=True)
                 results.append({"error": str(e), "scenario": scenario.name})
 
         return results
 
     def _run_parallel(self) -> List[Dict[str, Any]]:
-        """Execute scenarios in parallel"""
+        """Execute scenarios in parallel using threads (not processes)."""
         max_parallel_scenarios = self.appConfig.get_default_max_parallel_scenarios()
 
         vLog.info(
-            f"🔀 Running {len(self.scenarios)} scenarios in parallel (max {max_parallel_scenarios} workers)"
+            f"🔀 Running {len(self.scenarios)} scenarios in parallel "
+            f"(max {max_parallel_scenarios} workers)"
         )
 
-        with ProcessPoolExecutor(max_workers=max_parallel_scenarios) as executor:
+        # CHANGED (C#003): ThreadPoolExecutor instead of ProcessPoolExecutor
+        # Reason: Shared state (TradeSimulator, PerformanceSummaryLog) with threading.Lock
+        with ThreadPoolExecutor(max_workers=max_parallel_scenarios) as executor:
+            # Submit with scenario_index to maintain order
             futures = [
-                executor.submit(self._execute_single_scenario, scenario)
-                for scenario in self.scenarios
+                executor.submit(self._execute_single_scenario, scenario, idx)
+                for idx, scenario in enumerate(self.scenarios)
             ]
 
             results = []
             for future in futures:
                 try:
-                    # 5min timeout per scenario
                     result = future.result(timeout=300)
                     results.append(result)
                 except Exception as e:
                     vLog.error(f"❌ Parallel scenario failed: {e}")
-                    results.append({"error": str(e)})
+                    results.append({"error": str(e), "success": False})
 
         return results
 
-    def _execute_single_scenario(self, scenario: TestScenario) -> Dict[str, Any]:
+    def _execute_single_scenario(
+        self,
+        scenario: TestScenario,
+        scenario_index: int  # NEW: Critical for maintaining order!
+    ) -> Dict[str, Any]:
         """
         Execute single test scenario.
 
-        REFACTORED (Issue 2): Now uses both factories to create components.
-        REFACTORED (Parameter Inheritance Fix): Each scenario calculates its own requirements.
+        REFACTORED (C#003):
+        - Uses shared TradeSimulator (with reset)
+        - Writes stats to PerformanceSummaryLog
+        - Returns minimal dict
+
+        Args:
+            scenario: TestScenario to execute
+            scenario_index: Original position in scenario array
+
+        Returns:
+            Minimal result dict
         """
+        # Reset TradeSimulator for this scenario
+        self.trade_simulator.reset()
         # ============================================
         # NEW (Issue 2): Factory-driven component creation
         # ============================================
@@ -191,10 +238,12 @@ class BatchOrchestrator:
             vLog.error(f"Failed to create workers: {e}")
             raise ValueError(f"Worker creation failed: {e}")
 
-        # 2. Create DecisionLogic using DecisionLogic Factory
+        # 2. Create DecisionLogic (with TradeSimulator)
+        # NEW (C#003): Pass trade_simulator to factory for injection
         try:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
-                strategy_config
+                strategy_config,
+                trading_env=self.trade_simulator  # NEW (C#003)
             )
             vLog.info(f"✓ Created decision logic: {decision_logic.name}")
         except Exception as e:
@@ -262,6 +311,16 @@ class BatchOrchestrator:
         signals_generated = 0
 
         for tick in test_iterator:
+            # ============================================
+            # NEW (C#003): Update TradeSimulator with current tick prices
+            # This enables realistic spread calculation from LIVE data
+            # ============================================
+            self.trade_simulator.update_prices(
+                symbol=tick.symbol,
+                bid=tick.bid,
+                ask=tick.ask
+            )
+
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)
             bar_history = {
@@ -278,25 +337,60 @@ class BatchOrchestrator:
             ticks_processed += 1
             tick_count += 1
 
+            # NEW: Execute orders based on decision
             if decision and decision.action != "FLAT":
-                signals.append(decision.to_dict())  # Convert Decision to dict
-                signals_generated += 1
+                # Convert decision to order
+                direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
 
-        # 9. Return results (enhanced with scenario-specific contract info)
+                # TODO: Position sizing logic (currently hardcoded)
+                lot_size = 0.1
+
+                # Send order
+                order_result = self.trade_simulator.send_order(
+                    symbol=tick.symbol,
+                    order_type=OrderType.MARKET,
+                    direction=direction,
+                    lots=lot_size,
+                    stop_loss=None,  # TODO: Get from decision or risk management
+                    take_profit=None,
+                    comment=f"Signal: {decision.reason}"
+                )
+
+                # Track only successful orders as signals
+                if order_result.is_success:
+                    signals.append({
+                        **decision.to_dict(),
+                        'order_id': order_result.order_id,
+                        'executed_price': order_result.executed_price,
+                        'lot_size': lot_size
+                    })
+                    signals_generated += 1
+
+        # ============================================
+        # NEW (C#003): Collect trading statistics from TradeSimulator
+        # ============================================
+        # 10. Return results (enhanced with scenario-specific contract info)
         worker_stats = orchestrator.get_statistics()
 
+        # Write to PerformanceSummaryLog
+        self.performance_log.add_scenario_stats(
+            scenario_index=scenario_index,  # Critical for order!
+            scenario_name=scenario.name,
+            symbol=scenario.symbol,
+            ticks_processed=tick_count,
+            signals_generated=len(signals),
+            signal_rate=len(signals) / tick_count if tick_count > 0 else 0,
+            worker_statistics=worker_stats,
+            decision_logic_name=decision_logic.name,
+            scenario_contract=scenario_contract,
+            sample_signals=signals[:10],
+            success=True
+        )
+
+        # Return minimal dict
         return {
-            "scenario_set_name": scenario.name,
-            "symbol": scenario.symbol,
-            "ticks_processed": tick_count,
-            "signals_generated": len(signals),
-            "signal_rate": len(signals) / tick_count if tick_count > 0 else 0,
-            "signals": signals[:10],  # First 10 for inspection
             "success": True,
-            "worker_statistics": worker_stats,
-            "decision_logic": decision_logic.name,  # Track which logic was used
-            # NEW: Include scenario's own requirements
-            "scenario_contract": scenario_contract,
+            "scenario_name": scenario.name
         }
 
     def _calculate_scenario_requirements(self, workers: List) -> Dict[str, Any]:
@@ -304,28 +398,22 @@ class BatchOrchestrator:
         Calculate requirements for a single scenario based on its workers.
 
         NEW (Parameter Inheritance Fix): This replaces the global contract approach.
-        Each scenario calculates its own requirements independently, preventing
-        cross-contamination between scenarios with different worker configurations.
-
-        For example:
-        - Scenario 1 with M1/period=10 will have M1 requirements
-        - Scenario 2 with M5/period=14 will have M5 requirements
-        - They don't interfere with each other
+        Each scenario now calculates its own requirements independently, allowing
+        different scenarios to use completely different worker configurations.
 
         Args:
-            workers: List of worker instances for this specific scenario
+            workers: List of worker instances for THIS scenario
 
         Returns:
-            Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe, total_workers
+            Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe
         """
-        contracts = []
-        for worker in workers:
-            if hasattr(worker, "get_contract"):
-                contracts.append(worker.get_contract())
+        # Get contracts from all workers
+        contracts = [worker.get_contract() for worker in workers]
 
         # Calculate maximum warmup bars needed for this scenario
         max_warmup = max(
-            [max(c.warmup_requirements.values()) for c in contracts],
+            [max(c.warmup_requirements.values())
+             for c in contracts if c.warmup_requirements],
             default=50
         )
 
@@ -346,3 +434,7 @@ class BatchOrchestrator:
             "warmup_by_timeframe": warmup_by_tf,
             "total_workers": len(workers),
         }
+
+    def get_last_orchestrator(self):
+        """Get last created orchestrator for debugging"""
+        return self._last_orchestrator
