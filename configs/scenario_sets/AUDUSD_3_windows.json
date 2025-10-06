@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "scn_AUDUSD_3_windows",
-  "created": "2025-10-04T05:47:19.562614",
+  "created": "2025-10-06T07:33:58.620192",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -32,6 +32,11 @@
       "worker_parallel_threshold_ms": 1.0,
       "adaptive_parallelization": true,
       "log_performance_stats": true
+    },
+    "trade_simulator_config": {
+      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+      "initial_balance": 10000,
+      "currency": "EUR"
     }
   },
   "scenarios": [
@@ -42,8 +47,10 @@
       "end_date": "2025-09-19",
       "max_ticks": 1000,
       "data_mode": "realistic",
+      "enabled": true,
       "strategy_config": {},
-      "execution_config": {}
+      "execution_config": {},
+      "trade_simulator_config": {}
     },
     {
       "name": "AUDUSD_window_02",
@@ -52,8 +59,10 @@
       "end_date": "2025-09-21",
       "max_ticks": 1000,
       "data_mode": "realistic",
+      "enabled": true,
       "strategy_config": {},
-      "execution_config": {}
+      "execution_config": {},
+      "trade_simulator_config": {}
     },
     {
       "name": "AUDUSD_window_03",
@@ -62,8 +71,10 @@
       "end_date": "2025-09-23",
       "max_ticks": 1000,
       "data_mode": "realistic",
+      "enabled": true,
       "strategy_config": {},
-      "execution_config": {}
+      "execution_config": {},
+      "trade_simulator_config": {}
     }
   ]
 }
