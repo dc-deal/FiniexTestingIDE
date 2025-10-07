@@ -232,9 +232,13 @@ class ConsoleRenderer:
         # Worker stats
         worker_calls = 0
         decisions = 0
+        total_workers = 0
         if scenario.worker_statistics:
             stats = scenario.worker_statistics
-            worker_calls = stats.get('total_calls', 0)
+            worker_statistics = scenario.worker_statistics.get(
+                'worker_statistics')
+            worker_calls = worker_statistics.get('worker_calls', 0)
+            total_workers = worker_statistics.get('total_workers', 0)
             decisions = stats.get('decision_logic_statistics', {}).get(
                 'decision_count', 0)
 
@@ -244,7 +248,7 @@ class ConsoleRenderer:
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
             f"Signals: {signals} ({rate:.1%})",
-            f"Calls: {worker_calls:,}",
+            f"Worker/Calls: {total_workers}/{worker_calls:,}",
             f"Decisions: {decisions}"
         ]
 

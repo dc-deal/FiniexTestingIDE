@@ -41,7 +41,7 @@ from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
-from python.framework.trading_env.order_types import OrderType, OrderDirection
+from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
 
 # ============================================
 # NEW (Issue 2): Factory Imports
@@ -345,7 +345,7 @@ class BatchOrchestrator:
                         decision, tick)
 
                     # Track successful orders as signals
-                    if order_result and order_result.is_success:
+                    if order_result and order_result.status == OrderStatus.PENDING:
                         signals.append({
                             **decision.to_dict(),
                             'order_id': order_result.order_id,
