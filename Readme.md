@@ -50,6 +50,51 @@
 - **Decision Logic Metrics** - Separate tracking for strategy decision time
 - **Batch Mode Clarity** - Clear indication of batch vs. scenario parallelization
 
+### ✅ Order Execution System (NEW in V0.7.1 - Issue #003 COMPLETED) 🎯
+**Deterministic order execution with realistic broker delays**
+
+**Seeded Randomness:**
+- **API Latency Simulation** - Network and API processing delays (1-3 ticks)
+- **Market Execution Delays** - Broker-side order matching time (2-5 ticks)
+- **Reproducible Testing** - Seeds ensure identical execution across runs
+- **Config-Based Seeds** - `trade_simulator_seeds` in scenario JSON files
+
+**Order Lifecycle:**
+```
+Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUTED
+```
+
+**MVP Implementation:**
+- **Tick-Based Delays** - Simple, deterministic delays measured in ticks
+- **Always Fill** - Orders always execute (no rejections except margin)
+- **Order Status Tracking** - PENDING → EXECUTED lifecycle
+- **Execution Statistics** - Track submitted/filled/rejected orders
+
+**Configuration Example:**
+```json
+{
+  "trade_simulator_seeds": {
+    "api_latency_seed": 42,
+    "market_execution_seed": 123
+  }
+}
+```
+
+**Post-MVP Roadmap:**
+- **MS-Based Delays** - Realistic millisecond timing with tick timestamp mapping
+- **OrderBook Simulation** - Liquidity-aware order matching with partial fills
+- **Extended Order Types** - FOK (Fill-Or-Kill), IOC (Immediate-Or-Cancel)
+- **Market Impact** - Price slippage based on order size and liquidity
+- **Partial Fills** - Large orders filled incrementally based on available liquidity
+- **Dynamic OrderBook** - Seeded liquidity generation from tick volatility patterns
+- **Broker-Specific OrderBooks** - AbstractOrderBook with MT5/Kraken implementations
+- **FiniexAutoTrader Integration** - Live trading via same DecisionTradingAPI interface
+
+**Architecture Notes:**
+- **OrderExecutionEngine** - Manages pending orders with seeded delays
+- **DecisionTradingAPI** - Public interface for decision logics (simulator + live-ready)
+- **Minimal Code Changes** - Live trading requires ~50 lines (replace simulator with live executor)
+
 ### ⚠️ Blackbox Support (Prepared, Post-MVP)
 - **Folder Structure** - `python/workers/blackbox/` and `python/decision_logic/blackbox/`
 - **Git-Ignored** - All `.py` files automatically excluded (IP protection)
@@ -74,47 +119,34 @@
 
 ---
 
-### 📋 Core Issue C#003: Trade Simulation (NEXT - HIGH Priority) ⚠️
+### ✅ Core Issue C#003: Trade Simulation (COMPLETED) ✅
 **Goal:** Realistic trade execution with portfolio management
 
-**Phase 1: Core Trade Simulator (4-5 days)**
+**COMPLETED Features:**
+- ✅ **OrderExecutionEngine** - Deterministic delay simulation with seeds
+- ✅ **Seeded Randomness** - Reproducible API and execution delays
+- ✅ **Order Lifecycle** - PENDING → EXECUTED status tracking
+- ✅ **PortfolioManager** - Balance/equity tracking, open positions
+- ✅ **BrokerConfig System** - MT5/Kraken adapter architecture
+- ✅ **DecisionTradingAPI** - Public interface for decision logics
+- ✅ **Trading Fees** - SpreadFee from live tick data
+- ✅ **Risk Management** - Margin checks, position tracking
+- ✅ **Market Orders** - Fully functional with realistic delays
 
-**A) BrokerConfig Importer (MQL5)**
-- [ ] New MQL5 tool: `TraderDefaultsImporter`
-- [ ] Import: Order types, commission, lot sizes, margin requirements
-- [ ] Export as JSON
+**Post-MVP Extensions (Planned):**
+- [ ] **MS-Based Timing** - Convert from tick-based to millisecond-based delays
+- [ ] **OrderBook Simulation** - Liquidity-aware matching with partial fills
+- [ ] **Extended Orders** - FOK, IOC, Stop-Limit with time-in-force
+- [ ] **Market Impact** - Order size affects execution price
+- [ ] **Dynamic Liquidity** - Seeded orderbook generation from tick volatility
+- [ ] **Broker-Specific Books** - AbstractOrderBook with MT5/Kraken variants
+- [ ] **FiniexAutoTrader** - Live trading integration via DecisionTradingAPI
+- [ ] **EventBus Integration** - TradeExecuted, OrderRejected, MarginWarning events
+- [ ] **Swap/Rollover** - Overnight interest calculations
+- [ ] **Advanced Slippage** - Non-linear slippage based on market conditions
 
-**B) TradeSimulator - Core Components**
-- [ ] **PortfolioManager**: Balance/equity tracking, open positions
-- [ ] **OrderManager**: Active trades, trade history
-- [ ] **RiskManager**: Max positions (default: 1), max drawdown (default: 30%)
-- [ ] **ExecutionEngine**: 
-  - Fixed latency (100ms)
-  - Fixed slippage (0.5 pips)
-  - Market + limit orders only
-  - Order fully filled or rejected (no partial fills)
-- [ ] **EventBus**: Events to DecisionLogic (TradeExecuted, OrderRejected, MarginWarning)
-
-**C) DecisionLogic Integration**
-- [ ] Query: `get_account_info()`, `get_open_positions()`, `get_trade_history()`
-- [ ] Send orders: `TradeSimulator.send_order()`
-- [ ] Receive events via EventBus
-
-**D) Realism Features**
-- [ ] Spread dynamics from demo data
-- [ ] Commission consideration
-- [ ] Basic margin checks
-
-**Simplifications (Postponed to Post-MVP):**
-- ❌ ECN market simulation → Standard broker sufficient
-- ❌ Partial fills → Order fully filled or rejected
-- ❌ Connection-lost events → Unrealistic for backtest
-- ❌ Swap/rollover → Config option (default: 0)
-- ❌ Adaptive tick processing → Process every tick
-- ❌ Liquidity simulation → Assume infinite liquidity
-
-**Effort:** 4-5 days (instead of 7-10 through simplifications)  
-**Priority:** **HIGH** - Critical for realistic tests
+**Status:** ✅ **COMPLETED** - MVP features fully functional  
+**Effort:** 4-5 days (completed as planned)
 
 ---
 
@@ -246,8 +278,8 @@
 
 **Core Path (Critical):** ~9-12 days
 
-1. **C#003** (4-5 days) → **NEXT** - Trade simulation ⚠️ HIGH PRIORITY
-2. **C#004** (3-4 days) → **Parallel to C#003** - Performance validation 🚀 POC
+1. ✅ **C#003** (4-5 days) → **COMPLETED** - Trade simulation ✅
+2. **C#004** (3-4 days) → **NEXT** - Performance validation 🚀 POC
 3. **C#001** (1-2 days) - Logging & TUI (Low priority polish)
 
 **Optional Path (If time permits):** +2-3 days
@@ -261,9 +293,9 @@
 
 **Total Estimated:** 9-25 days (2-5 weeks) depending on optional features
 
-**Critical for MVP Release:** C#003 + C#004 (Trade Simulation + Performance Validation)
+**Critical for MVP Release:** C#003 ✅ + C#004 (Trade Simulation + Performance Validation)
 
-**Decision Point:** Assess schedule after C#003 & C#004 completion
+**Decision Point:** Assess schedule after C#004 completion
 
 ---
 
@@ -308,7 +340,7 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
 
 ### Next Steps
 - Create your own scenarios in `configs/scenario_sets/`
-- Use the **"🔍 Scenario Generator"** to automatically generate scenarios from your data
+- Use the **"📝 Scenario Generator"** to automatically generate scenarios from your data
 - Adjust parameters in scenario configs (RSI, Envelope, etc.)
 - Create your own workers/decision logics under `USER/` namespace
 
@@ -450,11 +482,11 @@ python python/strategy_runner_enhanced.py
 ⚠️  BOTTLENECK ANALYSIS (Worst Performers)
 ------------------------------------------------------------------------------------------------------------------------
 
-   🐌 SLOWEST SCENARIO:
+   🌐 SLOWEST SCENARIO:
       EURUSD_window_03  |  Avg/tick: 0.102ms  |  Total: 102.06ms
       → This scenario took the longest time per tick
 
-   🐌 SLOWEST WORKER:
+   🌐 SLOWEST WORKER:
       RSI  |  Avg: 0.038ms (across all scenarios)
       → Worst in scenario 'EURUSD_window_03': 0.057ms
 
@@ -762,7 +794,7 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 
 **Maintainer:** Frank Krätzig ([dc-deal](https://github.com/dc-deal))
 
-**Status:** Active MVP development - Core Issue C#002 completed, C#003 next
+**Status:** Active MVP development - Core Issue C#003 completed ✅, C#004 next
 
 **Contributing:**
 - ✅ Custom workers: Add to `python/workers/user/`

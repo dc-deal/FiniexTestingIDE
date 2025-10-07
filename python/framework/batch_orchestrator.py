@@ -318,11 +318,7 @@ class BatchOrchestrator:
 
         for tick in test_iterator:
             # Update scenario-specific TradeSimulator with current tick prices
-            scenario_simulator.update_prices(
-                symbol=tick.symbol,
-                bid=tick.bid,
-                ask=tick.ask
-            )
+            scenario_simulator.update_prices(tick)
 
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)

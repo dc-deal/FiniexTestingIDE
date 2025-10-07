@@ -18,6 +18,8 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
+from python.framework.types import TickData
+
 
 class FeeType(Enum):
     """Trading fee type classification"""
@@ -440,8 +442,7 @@ class MakerTakerFee(AbstractTradingFee):
 # ============================================
 
 def create_spread_fee_from_tick(
-    bid: float,
-    ask: float,
+    tick: TickData,
     lots: float,
     tick_value: float,
     digits: int = 5
@@ -462,8 +463,8 @@ def create_spread_fee_from_tick(
         SpreadFee instance with calculated cost
     """
     return SpreadFee(
-        bid=bid,
-        ask=ask,
+        bid=tick.bid,
+        ask=tick.ask,
         lots=lots,
         tick_value=tick_value,
         digits=digits

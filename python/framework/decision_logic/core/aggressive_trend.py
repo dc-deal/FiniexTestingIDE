@@ -35,6 +35,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 from python.framework.trading_env.order_types import (
+    OrderStatus,
     OrderType,
     OrderDirection,
     OrderResult
@@ -169,12 +170,13 @@ class AggressiveTrend(AbstractDecisionLogic):
                 comment=f"AggressiveTrend: {decision.reason[:50]}"
             )
 
-            if order_result.is_success:
+            # Check order submission status
+            if order_result.status == OrderStatus.PENDING:
                 vLog.debug(
-                    f"✓ Order executed: {direction.value} {self.lot_size} lots "
-                    f"@ {order_result.executed_price:.5f} (ID: {order_result.order_id})"
+                    f"⏳ Order submitted: {direction.value} {self.lot_size} lots "
+                    f"(ID: {order_result.order_id}) - PENDING execution"
                 )
-            else:
+            elif order_result.is_rejected:
                 vLog.warning(
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"
