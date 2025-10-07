@@ -11,7 +11,7 @@ REFACTORED (C#003):
 Rendered in BOX format matching scenario details.
 """
 
-from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
+from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
 from python.framework.trading_env.trade_simulator import TradeSimulator
 
 

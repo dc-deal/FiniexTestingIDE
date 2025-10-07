@@ -11,7 +11,7 @@ import traceback
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.reporting.batch_summary import BatchSummary
-from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
+from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.scenario.config_loader import ScenarioConfigLoader
@@ -94,7 +94,8 @@ def run_strategy_test() -> dict:
             summary.render_all()
 
         except Exception as e:
-            vLog.error(f"❌ Failed to render summary: {e}", exc_info=True)
+            vLog.error(
+                f"❌ Failed to render summary: \n{traceback.format_exc()}")
 
         return results
 

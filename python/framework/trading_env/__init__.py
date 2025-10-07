@@ -4,10 +4,14 @@ Trade simulation, broker adapters, and portfolio management
 
 This package provides the trading execution layer that bridges
 decision logic with simulated (or live) broker execution.
+
+REFACTORED:
+- Added DecisionTradingAPI as public interface for Decision Logics
 """
 
 from .broker_config import BrokerConfig, BrokerType
 from .trade_simulator import TradeSimulator
+from .decision_trading_api import DecisionTradingAPI
 from .portfolio_manager import PortfolioManager, Position, AccountInfo
 from .order_types import (
     OrderType,
@@ -36,6 +40,7 @@ __all__ = [
     'BrokerConfig',
     'BrokerType',
     'TradeSimulator',
+    'DecisionTradingAPI',  # NEW
     'PortfolioManager',
     'Position',
     'AccountInfo',

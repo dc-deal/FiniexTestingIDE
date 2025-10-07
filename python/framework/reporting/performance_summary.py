@@ -13,7 +13,7 @@ Renders:
 - Bottleneck analysis (worst performers)
 """
 
-from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
+from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
 from typing import Any, Dict, List
 
 

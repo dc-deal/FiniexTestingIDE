@@ -25,10 +25,11 @@
         "**/data/cache": true
     },
     // Schriftart ändern, damit Emojis die richtige länge haben (wichtig für boxen)
+    // ev. herunterladen falls nciht vorhanden https://github.com/microsoft/cascadia-code/releases
     // Terminal
-    "terminal.integrated.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace",
+    "terminal.integrated.fontFamily": "Cascadia Code PL",
     // Debug Console
-    "debug.console.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace",
+    "debug.console.fontFamily": "Cascadia Code PL",
     // Editor & Output
-    "editor.fontFamily": "Cascadia Code PL, Noto Color Emoji, monospace"
+    "editor.fontFamily": "Cascadia Code PL",
 }

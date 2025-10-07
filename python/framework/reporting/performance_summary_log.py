@@ -13,6 +13,13 @@ Architecture:
 - Passed to BatchOrchestrator
 - Filled by BatchOrchestrator._execute_single_scenario()
 - Read by reporting classes
+
+REFACTORED:
+- Removed _total_scenarios (auto-calculated from len(_scenarios))
+- set_metadata() no longer requires total_scenarios parameter
+- get_metadata() calculates total_scenarios automatically
+- Removed is_complete() (was never used)
+- add_scenario_stats() simplified to 2 parameters (index + stats object)
 """
 
 import threading
@@ -50,7 +57,7 @@ class ScenarioPerformanceStats:
     # Optional: First 10 signals for inspection
     sample_signals: List[Dict] = field(default_factory=list)
 
-    # NEW (C#003 Refactor): Portfolio & Trading Stats (per scenario)
+    # Portfolio & Trading Stats (per scenario)
     # Each scenario gets its own TradeSimulator, stats stored here
     portfolio_stats: Dict[str, Any] = field(default_factory=dict)
     execution_stats: Dict[str, Any] = field(default_factory=dict)
@@ -66,10 +73,15 @@ class PerformanceSummaryLog:
         perf_log = PerformanceSummaryLog()
 
         # In BatchOrchestrator
-        perf_log.add_scenario_stats(scenario_index=0, stats=...)
+        stats = ScenarioPerformanceStats(...)
+        perf_log.add_scenario_stats(scenario_index=0, stats=stats)
+
+        # After batch execution
+        perf_log.set_metadata(execution_time=10.5, success=True)
 
         # In reporting
         all_stats = perf_log.get_all_scenarios()
+        metadata = perf_log.get_metadata()
     """
 
     def __init__(self):
@@ -78,65 +90,37 @@ class PerformanceSummaryLog:
         self._lock = threading.Lock()
 
         # Metadata
-        self._total_scenarios = 0
         self._execution_time = 0.0
         self._success = True
 
-    def set_metadata(self, total_scenarios: int, execution_time: float, success: bool):
+    def set_metadata(self, execution_time: float, success: bool):
         """
         Set batch-level metadata.
 
         Args:
-            total_scenarios: Total number of scenarios
             execution_time: Total execution time
             success: Overall success status
         """
         with self._lock:
-            self._total_scenarios = total_scenarios
             self._execution_time = execution_time
             self._success = success
 
     def add_scenario_stats(
         self,
         scenario_index: int,
-        scenario_name: str,
-        symbol: str,
-        ticks_processed: int,
-        signals_generated: int,
-        signal_rate: float,
-        worker_statistics: Dict[str, Any],
-        decision_logic_name: str,
-        scenario_contract: Dict[str, Any],
-        sample_signals: List[Dict] = None,
-        success: bool = True,
-        # NEW: Portfolio stats from scenario-specific TradeSimulator
-        portfolio_stats: Dict[str, Any] = None,
-        execution_stats: Dict[str, Any] = None,
-        cost_breakdown: Dict[str, Any] = None
+        stats: ScenarioPerformanceStats
     ):
         """
-        Add performance stats for a scenario.
+        Add pre-built scenario stats.
 
         Thread-safe - can be called from parallel workers.
-        """
-        stats = ScenarioPerformanceStats(
-            scenario_index=scenario_index,
-            scenario_name=scenario_name,
-            symbol=symbol,
-            ticks_processed=ticks_processed,
-            signals_generated=signals_generated,
-            signal_rate=signal_rate,
-            success=success,
-            worker_statistics=worker_statistics,
-            decision_logic_name=decision_logic_name,
-            scenario_contract=scenario_contract,
-            sample_signals=sample_signals or [],
-            # NEW: Store portfolio stats
-            portfolio_stats=portfolio_stats or {},
-            execution_stats=execution_stats or {},
-            cost_breakdown=cost_breakdown or {}
-        )
+        The stats object is built outside the lock for better performance,
+        only the dict write is inside the lock.
 
+        Args:
+            scenario_index: Original scenario array index
+            stats: Complete ScenarioPerformanceStats object
+        """
         with self._lock:
             self._scenarios[scenario_index] = stats
 
@@ -176,11 +160,11 @@ class PerformanceSummaryLog:
         Get batch-level metadata.
 
         Returns:
-            Dict with total_scenarios, execution_time, success
+            Dict with total_scenarios (auto-calculated), execution_time, success
         """
         with self._lock:
             return {
-                'total_scenarios': self._total_scenarios,
+                'total_scenarios': len(self._scenarios),
                 'execution_time': self._execution_time,
                 'success': self._success
             }
@@ -190,20 +174,9 @@ class PerformanceSummaryLog:
         with self._lock:
             return len(self._scenarios)
 
-    def is_complete(self) -> bool:
-        """
-        Check if all scenarios have reported.
-
-        Returns:
-            True if all scenarios recorded
-        """
-        with self._lock:
-            return len(self._scenarios) == self._total_scenarios
-
     def clear(self):
         """Clear all recorded statistics."""
         with self._lock:
             self._scenarios.clear()
-            self._total_scenarios = 0
             self._execution_time = 0.0
             self._success = True

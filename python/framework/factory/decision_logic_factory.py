@@ -1,6 +1,11 @@
 """
-FiniexTestingIDE - Decision Logic Factory
+FiniexTestingIDE - Decision Logic Factory (REFACTORED)
 Config-driven decision logic instantiation with namespace support
+
+REFACTORED:
+- create_logic() no longer accepts trading_env parameter
+- create_logic_from_strategy_config() no longer accepts trading_env
+- DecisionTradingAPI is injected later via set_trading_api()
 
 The DecisionLogic Factory mirrors the Worker Factory pattern.
 It resolves decision logic types from config strings and instantiates
@@ -19,10 +24,6 @@ Example Config:
         "min_confidence": 0.7
     }
 }
-
-EXTENDED (C#003 - Trade Simulation):
-- create_logic() accepts optional trading_env parameter for TradeSimulator injection
-- create_logic_from_strategy_config() passes trading_env to decision logic instances
 """
 
 import importlib
@@ -31,8 +32,6 @@ from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-
-from python.framework.trading_env.trade_simulator import TradeSimulator
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -118,11 +117,13 @@ class DecisionLogicFactory:
     def create_logic(
         self,
         logic_type: str,
-        logic_config: Dict[str, Any] = None,
-        trading_env: TradeSimulator = None  # NEW (C#003)
+        logic_config: Dict[str, Any] = None
     ) -> AbstractDecisionLogic:
         """
         Create a decision logic instance from configuration.
+
+        REFACTORED: No longer accepts trading_env parameter.
+        DecisionTradingAPI is injected later via set_trading_api().
 
         This is the main entry point for decision logic creation. It:
         1. Resolves the logic type to a logic class
@@ -132,7 +133,6 @@ class DecisionLogicFactory:
         Args:
             logic_type: Logic type with namespace (e.g., "CORE/simple_consensus")
             logic_config: Configuration dict for the logic
-            trading_env: TradeSimulator instance for order execution (NEW C#003)
 
         Returns:
             Instantiated decision logic ready for use
@@ -148,12 +148,11 @@ class DecisionLogicFactory:
         # Step 2: Extract simple name for instance
         logic_name = self._extract_logic_name(logic_type)
 
-        # Step 3: Instantiate logic with config
-        # NEW (C#003): Pass trading_env to logic constructor
+        # Step 3: Instantiate logic with config only
+        # REFACTORED: No trading_env parameter
         logic_instance = logic_class(
             name=logic_name,
-            config=logic_config,
-            trading_env=trading_env  # NEW (C#003)
+            config=logic_config
         )
 
         vLog.debug(
@@ -164,11 +163,13 @@ class DecisionLogicFactory:
 
     def create_logic_from_strategy_config(
         self,
-        strategy_config: Dict[str, Any],
-        trading_env: TradeSimulator = None  # NEW (C#003)
+        strategy_config: Dict[str, Any]
     ) -> AbstractDecisionLogic:
         """
         Create decision logic from complete strategy configuration.
+
+        REFACTORED: No longer accepts trading_env parameter.
+        DecisionTradingAPI is injected later via set_trading_api().
 
         This is the batch creation method used by orchestrator.
         It extracts the decision logic type and config from strategy_config.
@@ -184,7 +185,6 @@ class DecisionLogicFactory:
 
         Args:
             strategy_config: Strategy configuration dict
-            trading_env: TradeSimulator instance (NEW C#003)
 
         Returns:
             Instantiated decision logic
@@ -204,85 +204,68 @@ class DecisionLogicFactory:
         # Extract decision logic config (optional)
         logic_config = strategy_config.get("decision_logic_config", {})
 
-        # Create logic instance
-        # NEW (C#003): Pass trading_env to create_logic
-        try:
-            logic_instance = self.create_logic(
-                logic_type,
-                logic_config,
-                trading_env  # NEW (C#003)
-            )
-            return logic_instance
+        # Create decision logic
+        return self.create_logic(
+            logic_type=logic_type,
+            logic_config=logic_config
+        )
 
-        except Exception as e:
-            vLog.error(f"Failed to create decision logic {logic_type}: {e}")
-            raise ValueError(
-                f"Decision logic creation failed for {logic_type}: {e}")
-
-    def _resolve_logic_class(
-        self,
-        logic_type: str
-    ) -> Type[AbstractDecisionLogic]:
+    def _resolve_logic_class(self, logic_type: str) -> Type[AbstractDecisionLogic]:
         """
         Resolve logic type string to logic class.
 
-        This method handles the namespace-to-class mapping.
-        If logic is not in registry, attempts to load it dynamically.
+        Supports:
+        - CORE/simple_consensus → framework/decision_logic/core/simple_consensus.py
+        - USER/my_strategy → decision_logic/user/my_strategy.py
+        - BLACKBOX/secret → decision_logic/blackbox/secret.pyc (Post-MVP)
 
         Args:
-            logic_type: Full logic type (e.g., "CORE/simple_consensus")
+            logic_type: Full logic type with namespace
 
         Returns:
-            Decision logic class
+            Logic class ready for instantiation
 
         Raises:
             ValueError: If logic type not found or invalid
         """
-        # Check if already registered
+        # Check registry first (CORE logics pre-loaded)
         if logic_type in self._registry:
             return self._registry[logic_type]
 
-        # Attempt dynamic loading for USER/BLACKBOX logics
-        if logic_type.startswith("USER/") or logic_type.startswith("BLACKBOX/"):
-            return self._load_custom_logic(logic_type)
+        # Not in registry - try dynamic loading
+        return self._load_custom_logic(logic_type)
 
-        # Logic not found
-        raise ValueError(
-            f"Unknown decision logic type: {logic_type}. "
-            f"Available logics: {list(self._registry.keys())}"
-        )
-
-    def _load_custom_logic(
-        self,
-        logic_type: str
-    ) -> Type[AbstractDecisionLogic]:
+    def _load_custom_logic(self, logic_type: str) -> Type[AbstractDecisionLogic]:
         """
-        Dynamically load custom decision logic from USER or BLACKBOX namespace.
+        Dynamically load custom decision logic from USER namespace.
 
-        This enables hot-loading of custom strategies without pre-registration.
+        BLACKBOX namespace is prepared but feature-gated for Post-MVP.
 
         Args:
-            logic_type: Logic type (e.g., "USER/my_custom_strategy")
+            logic_type: Full logic type (e.g., "USER/my_strategy")
 
         Returns:
-            Decision logic class
+            Logic class
 
         Raises:
-            NotImplementedError: If BLACKBOX namespace (Post-MVP feature)
             ValueError: If logic cannot be loaded
         """
+        # Parse namespace
+        if "/" not in logic_type:
+            raise ValueError(
+                f"Invalid logic type format: {logic_type}. "
+                f"Expected 'NAMESPACE/logic_name' (e.g., 'USER/my_strategy')"
+            )
+
         namespace, logic_name = logic_type.split("/", 1)
 
         # ============================================
-        # BLACKBOX: Post-MVP Feature Gate
+        # BLACKBOX: Feature-gated for Post-MVP
         # ============================================
         if namespace == "BLACKBOX":
             raise NotImplementedError(
-                f"BlackBox decision logics are a Post-MVP feature.\n"
-                f"'{logic_type}' cannot be loaded yet.\n"
-                f"BlackBox loading will support encrypted/compiled decision logics "
-                f"in future releases.\n"
-                f"For now, use CORE/ or USER/ namespace decision logics."
+                f"BLACKBOX decision logics are not yet implemented (Post-MVP). "
+                f"Requested: {logic_type}"
             )
 
         # ============================================

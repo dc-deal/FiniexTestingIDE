@@ -16,7 +16,7 @@ from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
 
-from python.components.logger.scenario_performance_stats import PerformanceSummaryLog
+from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.configuration import AppConfigLoader
 

@@ -5,6 +5,7 @@ Summary reports, formatted output, and developer convenience tools
 Location: python/data_worker/reports.py
 """
 
+import traceback
 from python.components.logger.bootstrap_logger import setup_logging
 from typing import Dict
 
@@ -151,7 +152,7 @@ def run_summary_report():
         vLog.info("\n✅ Summary report completed successfully!")
 
     except Exception as e:
-        vLog.error(f"Error generating report: {e}", exc_info=True)
+        vLog.error(f"Error generating report: \n{traceback.format_exc()}")
 
 
 def main():
