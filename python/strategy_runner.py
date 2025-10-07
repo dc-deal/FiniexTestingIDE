@@ -11,7 +11,7 @@ import traceback
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.reporting.batch_summary import BatchSummary
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.scenario.config_loader import ScenarioConfigLoader
@@ -57,10 +57,10 @@ def run_strategy_test() -> dict:
             f"✅ Loaded {len(scenario_set)} scenario_set from config", "StrategyRunner")
 
         # ============================================
-        # Create PerformanceSummaryLog
+        # Create ScenarioSetPerformanceManager
         # ============================================
-        performance_log = PerformanceSummaryLog()
-        vLog.info("✅ Created PerformanceSummaryLog")
+        performance_log = ScenarioSetPerformanceManager()
+        vLog.info("✅ Created ScenarioSetPerformanceManager")
 
         # ============================================
         # Initialize Components
@@ -72,7 +72,7 @@ def run_strategy_test() -> dict:
         # RUN BATCH TEST
         # ============================================================
 
-        # Batch orchestrator (NEW: with TradeSimulator and PerformanceSummaryLog)
+        # Batch orchestrator (NEW: with TradeSimulator and ScenarioSetPerformanceManager)
         orchestrator = BatchOrchestrator(
             scenario_set,
             data_worker,

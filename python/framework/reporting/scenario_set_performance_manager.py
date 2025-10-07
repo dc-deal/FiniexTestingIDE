@@ -64,13 +64,13 @@ class ScenarioPerformanceStats:
     cost_breakdown: Dict[str, Any] = field(default_factory=dict)
 
 
-class PerformanceSummaryLog:
+class ScenarioSetPerformanceManager:
     """
     Thread-safe container for performance statistics across all scenarios.
 
     Usage:
         # In strategy_runner.py
-        perf_log = PerformanceSummaryLog()
+        perf_log = ScenarioSetPerformanceManager()
 
         # In BatchOrchestrator
         stats = ScenarioPerformanceStats(...)

@@ -55,7 +55,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog, ScenarioPerformanceStats
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager, ScenarioPerformanceStats
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -74,7 +74,7 @@ class BatchOrchestrator:
         scenarios: List[TestScenario],
         data_worker: TickDataLoader,
         app_config: AppConfigLoader,
-        performance_log: PerformanceSummaryLog
+        performance_log: ScenarioSetPerformanceManager
     ):
         """
         Initialize batch orchestrator.
@@ -126,7 +126,7 @@ class BatchOrchestrator:
         execution_time = time.time() - start_time
 
         # ============================================
-        # NEU: Set metadata in PerformanceSummaryLog
+        # NEU: Set metadata in ScenarioSetPerformanceManager
         # ============================================
         self.performance_log.set_metadata(
             execution_time=execution_time,
@@ -177,7 +177,7 @@ class BatchOrchestrator:
         )
 
         # ThreadPoolExecutor instead of ProcessPoolExecutor
-        # Reason: Shared state (TradeSimulator, PerformanceSummaryLog) with threading.Lock
+        # Reason: Shared state (TradeSimulator, ScenarioSetPerformanceManager) with threading.Lock
         with ThreadPoolExecutor(max_workers=max_parallel_scenarios) as executor:
             # Submit with scenario_index to maintain order
             futures = [
@@ -209,7 +209,7 @@ class BatchOrchestrator:
         - Creates DecisionTradingAPI with order-type validation
         - Injects API into DecisionLogic after validation
         - Decision Logic executes orders via API
-        - Writes stats to PerformanceSummaryLog including portfolio data
+        - Writes stats to ScenarioSetPerformanceManager including portfolio data
         """
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_simulator = self._create_trade_simulator_for_scenario(
@@ -390,7 +390,7 @@ class BatchOrchestrator:
             cost_breakdown=cost_breakdown
         )
 
-        # Write to PerformanceSummaryLog (thread-safe)
+        # Write to ScenarioSetPerformanceManager (thread-safe)
         self.performance_log.add_scenario_stats(scenario_index, stats)
 
         # Return minimal dict

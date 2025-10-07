@@ -11,14 +11,14 @@ Exports:
 
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.reporting.portfolio_summary import PortfolioSummary
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
 
 __all__ = [
     'BatchSummary',
     'PortfolioSummary',
-    'PerformanceSummaryLog',
+    'ScenarioSetPerformanceManager',
     'PerformanceSummary',
     'ConsoleRenderer',
 ]

@@ -3,7 +3,7 @@ FiniexTestingIDE - Batch Summary
 Main orchestrator for all batch execution summaries
 
 REFACTORED (C#003):
-- Uses PerformanceSummaryLog for all stats (including portfolio)
+- Uses ScenarioSetPerformanceManager for all stats (including portfolio)
 - No longer requires TradeSimulator reference
 
 Architecture:
@@ -16,7 +16,7 @@ from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
 
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.configuration import AppConfigLoader
 
@@ -26,13 +26,13 @@ class BatchSummary:
     Main summary orchestrator for batch execution results.
 
     REFACTORED (C#003):
-    - Receives PerformanceSummaryLog + TradeSimulator
+    - Receives ScenarioSetPerformanceManager + TradeSimulator
     - No longer uses batch_results dict
     """
 
     def __init__(
         self,
-        performance_log: PerformanceSummaryLog,
+        performance_log: ScenarioSetPerformanceManager,
         app_config: AppConfigLoader
     ):
         """
