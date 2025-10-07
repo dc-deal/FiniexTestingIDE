@@ -49,7 +49,7 @@ class BarWarmupManager:
         warmup_start_time = test_start_time - \
             timedelta(minutes=max_warmup_minutes)
 
-        vLog.debug(
+        vLog.info(
             f"Preparing warmup from {warmup_start_time} to {test_start_time}")
 
         # Load tick data for warmup period
@@ -144,7 +144,7 @@ class BarWarmupManager:
         """
         historical_bars = {}
 
-        vLog.info(
+        vLog.debug(
             f"Preparing warmup from {len(warmup_ticks)} pre-loaded ticks"
         )
 
@@ -160,7 +160,7 @@ class BarWarmupManager:
                 timeframe)
             historical_bars[timeframe] = bars[-bars_needed:] if bars else []
 
-            vLog.info(
+            vLog.debug(
                 f"Prepared {len(historical_bars[timeframe])} {timeframe} bars for warmup"
             )
 

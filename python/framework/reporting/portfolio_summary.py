@@ -4,14 +4,14 @@ FiniexTestingIDE - Portfolio Summary
 Trading and portfolio statistics rendering
 
 REFACTORED (C#003):
-- Uses PerformanceSummaryLog instead of TradeSimulator
+- Uses ScenarioSetPerformanceManager instead of TradeSimulator
 - Reads portfolio stats from ScenarioPerformanceStats
 - Supports per-scenario AND aggregated portfolio display
 
 Rendered in BOX format matching scenario details.
 """
 
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
@@ -20,15 +20,15 @@ class PortfolioSummary:
     Portfolio and trading statistics summary.
 
     REFACTORED (C#003):
-    - Uses PerformanceSummaryLog for portfolio data (per scenario + aggregated)
+    - Uses ScenarioSetPerformanceManager for portfolio data (per scenario + aggregated)
     """
 
-    def __init__(self, performance_log: PerformanceSummaryLog):
+    def __init__(self, performance_log: ScenarioSetPerformanceManager):
         """
         Initialize portfolio summary.
 
         Args:
-            performance_log: PerformanceSummaryLog instance with portfolio stats
+            performance_log: ScenarioSetPerformanceManager instance with portfolio stats
         """
         self.performance_log = performance_log
 

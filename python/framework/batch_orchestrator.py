@@ -55,7 +55,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog, ScenarioPerformanceStats
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager, ScenarioPerformanceStats
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -74,7 +74,7 @@ class BatchOrchestrator:
         scenarios: List[TestScenario],
         data_worker: TickDataLoader,
         app_config: AppConfigLoader,
-        performance_log: PerformanceSummaryLog
+        performance_log: ScenarioSetPerformanceManager
     ):
         """
         Initialize batch orchestrator.
@@ -126,7 +126,7 @@ class BatchOrchestrator:
         execution_time = time.time() - start_time
 
         # ============================================
-        # NEU: Set metadata in PerformanceSummaryLog
+        # NEU: Set metadata in ScenarioSetPerformanceManager
         # ============================================
         self.performance_log.set_metadata(
             execution_time=execution_time,
@@ -140,7 +140,7 @@ class BatchOrchestrator:
             "scenario_results": results,
         }
 
-        vLog.info(f"✅ Batch execution completed in {execution_time:.2f}s")
+        vLog.debug(f"✅ Batch execution completed in {execution_time:.2f}s")
         return summary
 
     def _run_sequential(self) -> List[Dict[str, Any]]:
@@ -149,8 +149,9 @@ class BatchOrchestrator:
 
         for scenario_index, scenario in enumerate(self.scenarios):
             vLog.section_separator()
+            readable_index = scenario_index+1
             vLog.info(
-                f"📊 Running scenario {scenario_index}/{len(self.scenarios)}: {scenario.name}"
+                f"📊 Running scenario {readable_index}/{len(self.scenarios)}: {scenario.name}"
             )
 
             try:
@@ -158,11 +159,11 @@ class BatchOrchestrator:
                     scenario, scenario_index)
                 results.append(result)
                 vLog.info(
-                    f"✅ Scenario {scenario_index} completed"
+                    f"✅ Scenario {readable_index} completed"
                 )
             except Exception as e:
                 vLog.error(
-                    f"❌ Scenario {scenario_index} failed: \n{traceback.format_exc()}")
+                    f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
                 results.append({"error": str(e), "scenario": scenario.name})
 
         return results
@@ -177,7 +178,7 @@ class BatchOrchestrator:
         )
 
         # ThreadPoolExecutor instead of ProcessPoolExecutor
-        # Reason: Shared state (TradeSimulator, PerformanceSummaryLog) with threading.Lock
+        # Reason: Shared state (TradeSimulator, ScenarioSetPerformanceManager) with threading.Lock
         with ThreadPoolExecutor(max_workers=max_parallel_scenarios) as executor:
             # Submit with scenario_index to maintain order
             futures = [
@@ -209,7 +210,7 @@ class BatchOrchestrator:
         - Creates DecisionTradingAPI with order-type validation
         - Injects API into DecisionLogic after validation
         - Decision Logic executes orders via API
-        - Writes stats to PerformanceSummaryLog including portfolio data
+        - Writes stats to ScenarioSetPerformanceManager including portfolio data
         """
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_simulator = self._create_trade_simulator_for_scenario(
@@ -222,7 +223,7 @@ class BatchOrchestrator:
             workers_dict = self.worker_factory.create_workers_from_config(
                 strategy_config)
             workers = list(workers_dict.values())
-            vLog.info(f"✓ Created {len(workers)} workers from config")
+            vLog.debug(f"✓ Created {len(workers)} workers from config")
         except Exception as e:
             vLog.error(f"Failed to create workers: {e}")
             raise ValueError(f"Worker creation failed: {e}")
@@ -233,7 +234,7 @@ class BatchOrchestrator:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
                 strategy_config
             )
-            vLog.info(f"✓ Created decision logic: {decision_logic.name}")
+            vLog.debug(f"✓ Created decision logic: {decision_logic.name}")
         except Exception as e:
             vLog.error(f"Failed to create decision logic: {e}")
             raise ValueError(f"Decision logic creation failed: {e}")
@@ -246,7 +247,7 @@ class BatchOrchestrator:
                 trade_simulator=scenario_simulator,
                 required_order_types=required_order_types
             )
-            vLog.info(
+            vLog.debug(
                 f"✓ DecisionTradingAPI validated for order types: "
                 f"{[t.value for t in required_order_types]}"
             )
@@ -257,7 +258,7 @@ class BatchOrchestrator:
 
         # 5. Inject DecisionTradingAPI into Decision Logic
         decision_logic.set_trading_api(trading_api)
-        vLog.info("✓ DecisionTradingAPI injected into Decision Logic")
+        vLog.debug("✓ DecisionTradingAPI injected into Decision Logic")
 
         # 6. Calculate per-scenario requirements
         scenario_contract = self._calculate_scenario_requirements(workers)
@@ -390,7 +391,7 @@ class BatchOrchestrator:
             cost_breakdown=cost_breakdown
         )
 
-        # Write to PerformanceSummaryLog (thread-safe)
+        # Write to ScenarioSetPerformanceManager (thread-safe)
         self.performance_log.add_scenario_stats(scenario_index, stats)
 
         # Return minimal dict

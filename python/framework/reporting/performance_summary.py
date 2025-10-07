@@ -3,7 +3,7 @@ FiniexTestingIDE - Performance Summary
 Worker and decision logic performance rendering
 
 REFACTORED (C#003):
-- Uses PerformanceSummaryLog instead of batch_results dict
+- Uses ScenarioSetPerformanceManager instead of batch_results dict
 - Reads ScenarioPerformanceStats objects
 
 Renders:
@@ -13,7 +13,7 @@ Renders:
 - Bottleneck analysis (worst performers)
 """
 
-from python.framework.reporting.performance_summary_log import PerformanceSummaryLog
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from typing import Any, Dict, List
 
 
@@ -22,10 +22,10 @@ class PerformanceSummary:
     Worker and decision logic performance summary.
 
     REFACTORED (C#003):
-    - Uses PerformanceSummaryLog for data access
+    - Uses ScenarioSetPerformanceManager for data access
     """
 
-    def __init__(self, performance_log: PerformanceSummaryLog):
+    def __init__(self, performance_log: ScenarioSetPerformanceManager):
         """
         Initialize performance summary.
 

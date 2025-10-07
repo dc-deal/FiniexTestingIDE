@@ -73,7 +73,9 @@
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
-      "execution_config": {},
+      "execution_config": {
+        "parallel_workers": false
+      },
       "trade_simulator_config": {}
     }
   ]
