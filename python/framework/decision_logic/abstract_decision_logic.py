@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
+from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 from python.framework.trading_env.order_types import OrderType, OrderResult
 
@@ -228,7 +229,7 @@ class AbstractDecisionLogic(ABC):
     # REFACTORED: API Injection
     # ============================================
 
-    def set_trading_api(self, trading_api: 'DecisionTradingAPI'):
+    def set_trading_api(self, trading_api: DecisionTradingAPI):
         """
         Inject DecisionTradingAPI after validation.
 

@@ -60,7 +60,7 @@ def run_strategy_test() -> dict:
         # Create ScenarioSetPerformanceManager
         # ============================================
         performance_log = ScenarioSetPerformanceManager()
-        vLog.info("✅ Created ScenarioSetPerformanceManager")
+        vLog.debug("✅ Created ScenarioSetPerformanceManager")
 
         # ============================================
         # Initialize Components

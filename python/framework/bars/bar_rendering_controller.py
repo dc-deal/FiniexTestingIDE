@@ -32,28 +32,6 @@ class BarRenderingController:
             f"Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}"
         )
 
-    def prepare_warmup(self, symbol: str, test_start_time: datetime):
-        """Prepare warmup data for all workers"""
-        warmup_requirements = self.warmup_manager.calculate_required_warmup(
-            self._workers
-        )
-
-        self._warmup_data = self.warmup_manager.prepare_historical_bars(
-            symbol=symbol,
-            test_start_time=test_start_time,
-            warmup_requirements=warmup_requirements,
-        )
-
-        # NEU: Füge die Warmup-Bars direkt in die completed_bars Historie
-        # des BarRenderers ein, damit get_bar_history() sie findet
-        for timeframe, bars in self._warmup_data.items():
-            self.bar_renderer.initialize_historical_bars(
-                symbol, timeframe, bars)
-
-        vLog.info(
-            f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars"
-        )
-
     def process_tick(self, tick_data: TickData) -> Dict[str, Bar]:
         """Process tick and update all current bars"""
         return self.bar_renderer.update_current_bars(
@@ -82,11 +60,6 @@ class BarRenderingController:
     ):
         """
         Prepare warmup data from already-loaded ticks (avoids redundant data loading).
-
-        This method is more efficient than prepare_warmup() because it works with
-        ticks that have already been loaded by TickDataPreparator, avoiding a
-        second trip to the data loader.
-
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             warmup_ticks: Pre-loaded warmup ticks from TickDataPreparator
@@ -109,5 +82,5 @@ class BarRenderingController:
                 symbol, timeframe, bars)
 
         vLog.info(
-            f"Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars (from pre-loaded ticks)"
+            f"🔥 Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars (from pre-loaded ticks)"
         )
