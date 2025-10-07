@@ -1,6 +1,11 @@
 """
-FiniexTestingIDE - Aggressive Trend Decision Logic
+FiniexTestingIDE - Aggressive Trend Decision Logic (REFACTORED)
 Alternative implementation demonstrating different trading philosophy
+
+REFACTORED:
+- Implements get_required_order_types() → [OrderType.MARKET]
+- Implements execute_decision() → Market orders with margin checks
+- Uses DecisionTradingAPI instead of TradeSimulator directly
 
 This logic is more aggressive than SimpleConsensus:
 - Acts on single indicator signals (no consensus needed)
@@ -12,18 +17,28 @@ Strategy Rules:
 - SELL when RSI > 65 OR price above upper envelope
 - Uses OR logic instead of AND (more aggressive)
 
+Trading Rules (NEW):
+- Market orders only (MVP)
+- Check free margin before trading (min 1000 EUR)
+- Fixed lot size 0.1 (TODO: Position sizing logic)
+- No SL/TP for MVP (TODO: Risk management)
+
 This demonstrates how different DecisionLogic implementations
 can use the same workers but with completely different strategies.
 """
 
+import traceback
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
-
-from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.order_types import (
+    OrderType,
+    OrderDirection,
+    OrderResult
+)
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -42,23 +57,25 @@ class AggressiveTrend(AbstractDecisionLogic):
     - rsi_sell_threshold: RSI level for sell signal (default: 65)
     - envelope_extremes: How far from center to trigger (default: 0.25)
     - min_confidence: Minimum confidence required (default: 0.4)
+    - min_free_margin: Minimum free margin required for trades (default: 1000)
+    - lot_size: Fixed lot size for orders (default: 0.1)
     """
 
     def __init__(
         self,
         name: str = "aggressive_trend",
-        config: Dict[str, Any] = None,
-        trading_env: TradeSimulator = None
+        config: Dict[str, Any] = None
     ):
         """
         Initialize Aggressive Trend logic.
 
+        REFACTORED: No longer accepts trading_env parameter.
+
         Args:
             name: Logic identifier
             config: Configuration dict with thresholds
-            trading_env: TradeSimulator instance (NEW in C#003)
         """
-        super().__init__(name, config, trading_env)
+        super().__init__(name, config)
 
         # Configuration with aggressive defaults
         self.rsi_buy = self.get_config_value("rsi_buy_threshold", 35)
@@ -67,11 +84,111 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_extremes", 0.25)
         self.min_confidence = self.get_config_value("min_confidence", 0.4)
 
+        # Trading configuration
+        self.min_free_margin = self.get_config_value("min_free_margin", 1000)
+        self.lot_size = self.get_config_value("lot_size", 0.1)
+
         vLog.info(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
-            f"Envelope extremes({self.envelope_extremes})"
+            f"Envelope extremes({self.envelope_extremes}), "
+            f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
         )
+
+    # ============================================
+    # REFACTORED: New abstractmethods
+    # ============================================
+
+    def get_required_order_types(self) -> List[OrderType]:
+        """
+        Declare required order types for this strategy.
+
+        AggressiveTrend uses only Market orders for MVP.
+        Same as SimpleConsensus - demonstrates standardization.
+
+        Returns:
+            List containing OrderType.MARKET
+        """
+        return [OrderType.MARKET]
+
+    def _execute_decision_impl(
+        self,
+        decision: Decision,
+        tick: TickData
+    ) -> Optional[OrderResult]:
+        """
+        Implementation: Execute trading decision via DecisionTradingAPI.
+
+        Called by execute_decision() template method.
+        Statistics are updated automatically after this returns.
+
+        Same execution logic as SimpleConsensus:
+        - Check free margin
+        - Send market order
+        - Log results
+
+        This shows how execution logic can be standardized
+        across different decision strategies.
+
+        Args:
+            decision: Decision object from compute()
+            tick: Current tick data
+
+        Returns:
+            OrderResult if order was sent, None if no trade
+        """
+        # Only trade on BUY/SELL signals
+        if decision.action == "FLAT":
+            return None
+
+        # Check if trading API is available
+        if not self.trading_api:
+            vLog.warning("Trading API not available - cannot execute decision")
+            return None
+
+        # Check account state
+        account = self.trading_api.get_account_info()
+
+        if account.free_margin < self.min_free_margin:
+            vLog.debug(
+                f"Insufficient free margin: {account.free_margin:.2f} "
+                f"< {self.min_free_margin} - skipping trade"
+            )
+            return None
+
+        # Determine order direction
+        direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+
+        # Send market order
+        try:
+            order_result = self.trading_api.send_order(
+                symbol=tick.symbol,
+                order_type=OrderType.MARKET,
+                direction=direction,
+                lots=self.lot_size,
+                comment=f"AggressiveTrend: {decision.reason[:50]}"
+            )
+
+            if order_result.is_success:
+                vLog.debug(
+                    f"✓ Order executed: {direction.value} {self.lot_size} lots "
+                    f"@ {order_result.executed_price:.5f} (ID: {order_result.order_id})"
+                )
+            else:
+                vLog.warning(
+                    f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
+                    f"{order_result.rejection_message}"
+                )
+
+            return order_result
+
+        except Exception as e:
+            vLog.error(f"❌ Order execution failed: \n{traceback.format_exc()}")
+            return None
+
+    # ============================================
+    # Existing methods (unchanged)
+    # ============================================
 
     def get_required_workers(self) -> List[str]:
         """

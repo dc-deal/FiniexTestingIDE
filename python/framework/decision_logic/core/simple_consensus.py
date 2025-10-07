@@ -1,29 +1,44 @@
 """
-FiniexTestingIDE - Simple Consensus Decision Logic
+FiniexTestingIDE - Simple Consensus Decision Logic (REFACTORED)
 Reference implementation of RSI + Envelope consensus strategy
+
+REFACTORED:
+- Implements get_required_order_types() → [OrderType.MARKET]
+- Implements execute_decision() → Market orders with margin checks
+- Uses DecisionTradingAPI instead of TradeSimulator directly
 
 This is the default decision logic provided by the framework.
 It demonstrates the separation between worker coordination and
-decision-making strategy.
+decision-making strategy AND trade execution.
 
 Strategy Rules:
 - BUY when RSI oversold (≤30) AND price near lower envelope (≤30%)
 - SELL when RSI overbought (≥70) AND price near upper envelope (≥70%)
 - FLAT otherwise (no clear signal)
 
+Trading Rules (NEW):
+- Market orders only (MVP)
+- Check free margin before trading (min 1000 EUR)
+- Fixed lot size 0.1 (TODO: Position sizing logic)
+- No SL/TP for MVP (TODO: Risk management)
+
 This logic requires two workers:
 - RSI: Relative Strength Index indicator
 - Envelope: Price envelope/bollinger bands
 """
 
+import traceback
 from python.components.logger.bootstrap_logger import setup_logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
-
-from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.order_types import (
+    OrderType,
+    OrderDirection,
+    OrderResult
+)
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -41,23 +56,25 @@ class SimpleConsensus(AbstractDecisionLogic):
     - envelope_lower_threshold: Price position threshold for buy (default: 0.3)
     - envelope_upper_threshold: Price position threshold for sell (default: 0.7)
     - min_confidence: Minimum confidence to generate signal (default: 0.5)
+    - min_free_margin: Minimum free margin required for trades (default: 1000)
+    - lot_size: Fixed lot size for orders (default: 0.1)
     """
 
     def __init__(
         self,
         name: str = "simple_consensus",
-        config: Dict[str, Any] = None,
-        trading_env: TradeSimulator = None
+        config: Dict[str, Any] = None
     ):
         """
         Initialize Simple Consensus logic.
 
+        REFACTORED: No longer accepts trading_env parameter.
+
         Args:
             name: Logic identifier
             config: Configuration dict with thresholds
-            trading_env: TradeSimulator instance (NEW in C#003)
         """
-        super().__init__(name, config, trading_env)
+        super().__init__(name, config)
 
         # Configuration with defaults
         self.rsi_oversold = self.get_config_value("rsi_oversold", 30)
@@ -68,11 +85,111 @@ class SimpleConsensus(AbstractDecisionLogic):
             "envelope_upper_threshold", 0.7)
         self.min_confidence = self.get_config_value("min_confidence", 0.5)
 
+        # Trading configuration
+        self.min_free_margin = self.get_config_value("min_free_margin", 1000)
+        self.lot_size = self.get_config_value("lot_size", 0.1)
+
         vLog.debug(
             f"SimpleConsensus initialized: "
             f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
-            f"Envelope({self.envelope_lower}/{self.envelope_upper})"
+            f"Envelope({self.envelope_lower}/{self.envelope_upper}), "
+            f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
         )
+
+    # ============================================
+    # REFACTORED: New abstractmethods
+    # ============================================
+
+    def get_required_order_types(self) -> List[OrderType]:
+        """
+        Declare required order types for this strategy.
+
+        SimpleConsensus uses only Market orders for MVP.
+        Post-MVP: Could use Limit orders for better entry prices.
+
+        Returns:
+            List containing OrderType.MARKET
+        """
+        return [OrderType.MARKET]
+
+    def _execute_decision_impl(
+        self,
+        decision: Decision,
+        tick: TickData
+    ) -> Optional[OrderResult]:
+        """
+        Implementation: Execute trading decision via DecisionTradingAPI.
+
+        Called by execute_decision() template method.
+        Statistics are updated automatically after this returns.
+
+        Checks account state before placing orders:
+        - Free margin must be >= min_free_margin
+        - Only executes BUY/SELL decisions (ignores FLAT)
+
+        MVP: Fixed lot size, no SL/TP, no position sizing.
+        Post-MVP: Position sizing, risk management, SL/TP.
+
+        Args:
+            decision: Decision object from compute()
+            tick: Current tick data
+
+        Returns:
+            OrderResult if order was sent, None if no trade
+        """
+        # Only trade on BUY/SELL signals
+        if decision.action == "FLAT":
+            return None
+
+        # Check if trading API is available
+        if not self.trading_api:
+            vLog.warning("Trading API not available - cannot execute decision")
+            return None
+
+        # Check account state
+        account = self.trading_api.get_account_info()
+
+        if account.free_margin < self.min_free_margin:
+            vLog.debug(
+                f"Insufficient free margin: {account.free_margin:.2f} "
+                f"< {self.min_free_margin} - skipping trade"
+            )
+            return None
+
+        # Determine order direction
+        direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+
+        # Send market order
+        try:
+            order_result = self.trading_api.send_order(
+                symbol=tick.symbol,
+                order_type=OrderType.MARKET,
+                direction=direction,
+                lots=self.lot_size,
+                # Truncate reason
+                comment=f"SimpleConsensus: {decision.reason[:50]}"
+            )
+
+            if order_result.is_success:
+                vLog.debug(
+                    f"✓ Order executed: {direction.value} {self.lot_size} lots "
+                    f"@ {order_result.executed_price:.5f} (ID: {order_result.order_id})"
+                )
+            else:
+                vLog.warning(
+                    f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
+                    f"{order_result.rejection_message}"
+                )
+
+            return order_result
+
+        except Exception as e:
+            vLog.error(f"❌ Order execution failed: \n{traceback.format_exc()}")
+            return None
+
+    # ============================================
+    # Existing methods (unchanged)
+    # ============================================
 
     def get_required_workers(self) -> List[str]:
         """

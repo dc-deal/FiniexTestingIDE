@@ -27,9 +27,9 @@
     // Schriftart ändern, damit Emojis die richtige länge haben (wichtig für boxen)
     // ev. herunterladen falls nciht vorhanden https://github.com/microsoft/cascadia-code/releases
     // Terminal
-    "terminal.integrated.fontFamily": "Cascadia Mono, monospace",
+    "terminal.integrated.fontFamily": "Cascadia Code PL",
     // Debug Console
-    "debug.console.fontFamily": "Cascadia Mono, monospace",
+    "debug.console.fontFamily": "Cascadia Code PL",
     // Editor & Output
-    "editor.fontFamily": "Cascadia Mono, monospace",
+    "editor.fontFamily": "Cascadia Code PL",
 }

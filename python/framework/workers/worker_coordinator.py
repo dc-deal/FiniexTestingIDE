@@ -13,6 +13,7 @@ ARCHITECTURE CHANGE (Performance Logging V0.7):
 - No changes needed in concrete worker/logic classes
 """
 
+import traceback
 from python.components.logger.bootstrap_logger import setup_logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -378,7 +379,8 @@ class WorkerCoordinator:
                     worker.performance_logger.record(computation_time_ms)
 
             except Exception as e:
-                vLog.error(f"❌ Worker '{name}' failed: {e}", exc_info=True)
+                vLog.error(
+                    f"❌ Worker '{name}' failed: \n{traceback.format_exc()}")
                 worker.set_state(WorkerState.ERROR)
 
         # Calculate time saved by parallelization

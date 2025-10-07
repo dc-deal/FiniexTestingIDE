@@ -14,6 +14,7 @@ Usage:
     python python/scenario/generate_scenarios.py
 """
 
+import traceback
 from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 
@@ -465,4 +466,4 @@ if __name__ == "__main__":
         vLog.info("=" * 70)
 
     except Exception as e:
-        vLog.error(f"❌ Generation failed: {e}", exc_info=True)
+        vLog.error(f"❌ Generation failed: \n{traceback.format_exc()}")
