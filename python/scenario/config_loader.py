@@ -228,6 +228,10 @@ class ScenarioConfigLoader:
             "version": "1.0",
             "scenario_set_name": "scn_" + config_file.replace('.json', ''),
             "created": datetime.now().isoformat(),
+            "trade_simulator_seeds": {
+                "api_latency_seed": 42,
+                "market_execution_seed": 123
+            },
             "global": {
                 "data_mode": "realistic",
                 "strategy_config": global_strategy,
