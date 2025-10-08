@@ -43,43 +43,30 @@ class PortfolioSummary:
         """
         scenarios = self.performance_log.get_all_scenarios()
 
-        if not scenarios:
-            print()
-            print("   No scenarios available")
-            print()
-            return
-
-        # Check if ANY scenario has trades
-        any_trades = any(
-            scenario.portfolio_stats.get('total_trades', 0) > 0
-            for scenario in scenarios
-        )
-
-        if not any_trades:
-            print()
-            print("   No trades executed across all scenarios")
-            print()
-            return
-
         # Render each scenario's portfolio in BOX format
-        print()
+        # ==========================================
+        # CRITICAL: Convert to dict format!
+        # ==========================================
+        # Der renderer.render_portfolio_grid() erwartet Dicts!
+        scenario_dicts = []
         for scenario in scenarios:
-            portfolio_stats = scenario.portfolio_stats
-            execution_stats = scenario.execution_stats
-            cost_breakdown = scenario.cost_breakdown
+            scenario_dict = {
+                'scenario_set_name': scenario.scenario_name,
+                'portfolio_statistics': scenario.portfolio_stats,
+                'execution_statistics': scenario.execution_stats,
+                'cost_breakdown': scenario.cost_breakdown
+            }
+            scenario_dicts.append(scenario_dict)
 
-            # Skip scenarios with no trades
-            if portfolio_stats.get('total_trades', 0) == 0:
-                continue
-
-            self._render_scenario_box(
-                scenario.scenario_name,
-                portfolio_stats,
-                execution_stats,
-                cost_breakdown,
-                renderer
-            )
-            print()
+        # ==========================================
+        # USE GRID RENDERER! (same as scenario details)
+        # ==========================================
+        print()
+        renderer.render_portfolio_grid(
+            scenarios=scenario_dicts,
+            columns=3,      # 3 boxes per row
+            box_width=38    # Same width as scenario boxes
+        )
 
     def render_aggregated(self, renderer):
         """
@@ -115,41 +102,6 @@ class PortfolioSummary:
             renderer
         )
         print()
-
-    def _render_aggregated_box(self, portfolio_stats, execution_stats, cost_breakdown, renderer):
-        """Render aggregated portfolio in BOX format."""
-        total_trades = portfolio_stats.get('total_trades', 0)
-        winning = portfolio_stats.get('winning_trades', 0)
-        losing = portfolio_stats.get('losing_trades', 0)
-        win_rate = portfolio_stats.get('win_rate', 0.0)
-
-        total_profit = portfolio_stats.get('total_profit', 0.0)
-        total_loss = portfolio_stats.get('total_loss', 0.0)
-        total_pnl = total_profit - total_loss
-
-        spread_cost = cost_breakdown.get('total_spread_cost', 0.0)
-        orders_executed = execution_stats.get('orders_executed', 0)
-        orders_sent = execution_stats.get('orders_sent', 0)
-
-        # Format P&L with color
-        if total_pnl >= 0:
-            pnl_str = renderer.green(f"+${total_pnl:.2f}")
-        else:
-            pnl_str = renderer.red(f"${total_pnl:.2f}")
-
-        # Create box
-        lines = [
-            "💰 All Scenarios",
-            f"Trades: {total_trades} ({winning}W/{losing}L)",
-            f"Win Rate: {win_rate:.1%}",
-            f"P&L: {pnl_str}",
-            f"Spread: ${spread_cost:.2f}",
-            f"Orders: {orders_executed}/{orders_sent}"
-        ]
-
-        box_lines = renderer.render_box(lines, box_width=38)
-        for line in box_lines:
-            print(line)
 
     def _render_aggregated_details(self, portfolio_stats, execution_stats, cost_breakdown, renderer):
         """Render detailed aggregated portfolio stats."""
@@ -208,40 +160,6 @@ class PortfolioSummary:
               f"Commission: ${commission:.2f}  |  "
               f"Swap: ${swap:.2f}")
         print(f"      Total Costs: ${total_costs:.2f}")
-
-    def _render_scenario_box(self, scenario_name, portfolio_stats, execution_stats, cost_breakdown, renderer):
-        """Render portfolio box for single scenario."""
-        total_trades = portfolio_stats.get('total_trades', 0)
-        winning = portfolio_stats.get('winning_trades', 0)
-        losing = portfolio_stats.get('losing_trades', 0)
-        win_rate = portfolio_stats.get('win_rate', 0.0)
-
-        total_profit = portfolio_stats.get('total_profit', 0.0)
-        total_loss = portfolio_stats.get('total_loss', 0.0)
-        total_pnl = total_profit - total_loss
-
-        spread_cost = cost_breakdown.get('total_spread_cost', 0.0)
-        orders_executed = execution_stats.get('orders_executed', 0)
-
-        # Format P&L with color
-        if total_pnl >= 0:
-            pnl_str = renderer.green(f"+${total_pnl:.2f}")
-        else:
-            pnl_str = renderer.red(f"${total_pnl:.2f}")
-
-        # Create box
-        lines = [
-            f"💰 {scenario_name[:26]}",
-            f"Trades: {total_trades} ({winning}W/{losing}L)",
-            f"Win Rate: {win_rate:.1%}",
-            f"P&L: {pnl_str}",
-            f"Spread: ${spread_cost:.2f}",
-            f"Orders: {orders_executed}"
-        ]
-
-        box_lines = renderer.render_box(lines, box_width=38)
-        for line in box_lines:
-            print(line)
 
     def _aggregate_portfolio_stats(self, scenarios) -> dict:
         """Aggregate portfolio stats from all scenarios."""

@@ -198,7 +198,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 position = open_positions[0]
                 position_dir_str = self._normalize_direction(
                     position.direction)
-                vLog.debug(
+                vLog.info(
                     f"📍 FLAT signal - closing {position_dir_str} position "
                     f"(ID: {position.position_id})"
                 )
@@ -226,10 +226,10 @@ class SimpleConsensus(AbstractDecisionLogic):
                 return None
 
             # Opposite direction? Close old position (signal reversal)
-            vLog.debug(
+            vLog.info(
                 f"🔄 Signal reversal detected: {current_dir_str} → {new_direction_str}"
             )
-            vLog.debug(
+            vLog.info(
                 f"   Closing {current_dir_str} position "
                 f"(ID: {current_position.position_id})"
             )
