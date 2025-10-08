@@ -19,7 +19,7 @@ from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 
 from python.data_worker.data_loader.core import TickDataLoader
-from python.scenario.config_loader import ScenarioConfigLoader
+from python.scenario.config_saver import ScenarioConfigSaver
 from python.scenario.generator import ScenarioGenerator
 
 vLog = setup_logging(name="ScenarioGenerator")
@@ -107,9 +107,9 @@ def generate_single_symbol(
     )
 
     # Save to config file
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = f"{symbol}_3_windows.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
 
@@ -153,9 +153,9 @@ def generate_multi_symbol(
     )
 
     # Save
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "all_symbols_batch.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated {len(scenarios)} scenarios → {output_file}")
 
@@ -194,9 +194,9 @@ def generate_quick_test():
         trade_simulator_config=ts_config_global
     )
 
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "quick_test.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated quick test → {output_file}")
 
@@ -264,9 +264,9 @@ def generate_heavy_batch():
         trade_simulator_config=ts_config_global
     )
 
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "heavy_batch.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated heavy batch (3 heavy workers) → {output_file}")
 
@@ -311,9 +311,9 @@ def generate_custom_strategy_example():
         trade_simulator_config=ts_config_global
     )
 
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "GBPUSD_custom_strategy.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated custom strategy → {output_file}")
 
@@ -355,9 +355,9 @@ def generate_with_custom_balance():
         trade_simulator_config=ts_config_global
     )
 
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "eurusd_custom_balance.json"
-    config_loader.save_config(scenarios, output_file)
+    config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated scenarios with $5k USD balance → {output_file}")
 
@@ -405,17 +405,17 @@ def generate_per_scenario_balance():
         # Update scenario name to reflect balance
         scenario.name = f"EURUSD_balance_{int(balances[i])}"
 
-    config_loader = ScenarioConfigLoader()
+    config_saver = ScenarioConfigSaver()
     output_file = "eurusd_multi_balance.json"
-    config_loader.save_config(base_scenarios, output_file)
+    config_saver.save_config(base_scenarios, output_file)
 
     vLog.info(
         f"✅ Generated scenarios with varied balances (1k-50k) → {output_file}")
 
-
 # ============================================
 # Main Entry Point
 # ============================================
+
 
 if __name__ == "__main__":
     """
