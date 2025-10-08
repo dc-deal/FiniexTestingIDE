@@ -154,7 +154,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         3. Opposite direction signal → Close old, open new (reversal)
         4. New signal with no position → Open position (entry)
 
-        This keeps trading simple and predictable with maximum one position.
+        CRITICAL FIX: Now checks BOTH open positions AND pending orders
+        to prevent duplicate order submissions during execution delays!
 
         Args:
             decision: Decision object from compute()
@@ -168,8 +169,26 @@ class SimpleConsensus(AbstractDecisionLogic):
             vLog.warning("Trading API not available - cannot execute decision")
             return None
 
-        # Get current open positions
+        # ============================================
+        # NEW: Get BOTH positions AND pending orders
+        # ============================================
         open_positions = self.trading_api.get_open_positions()
+        pending_orders = self.trading_api.get_pending_orders()
+
+        # CRITICAL: Check if we have pending orders for same direction
+        # This prevents duplicate submissions during execution delay!
+        new_direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+        new_direction_str = self._normalize_direction(new_direction)
+
+        # Check if we already have a pending order for this direction
+        for pending in pending_orders:
+            pending_dir = self._normalize_direction(pending["direction"])
+            if pending_dir == new_direction_str:
+                vLog.debug(
+                    f"⏳ Already have pending {new_direction_str} order "
+                    f"(ID: {pending['order_id']}, {pending['ticks_remaining']} ticks remaining) - skipping"
+                )
+                return None
 
         # ============================================
         # STEP 1: Handle FLAT signal (exit strategy)

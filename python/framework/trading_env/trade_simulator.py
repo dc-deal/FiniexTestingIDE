@@ -464,6 +464,53 @@ class TradeSimulator:
         """Get all open positions"""
         return self.portfolio.get_open_positions()
 
+    def get_pending_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get list of pending orders waiting for execution.
+
+        Returns orders that are submitted but not yet filled.
+        This is CRITICAL for preventing duplicate order submissions.
+
+        Args:
+            symbol: Filter by symbol (None = all pending orders)
+
+        Returns:
+            List of pending order info dicts with:
+            - order_id: Unique identifier
+            - symbol: Trading symbol
+            - direction: "BUY" or "SELL"
+            - lots: Position size
+            - placed_at_tick: When order was submitted
+            - fill_at_tick: When order will be executed
+            - ticks_remaining: Ticks until execution
+
+        Example:
+            pending = self.get_pending_orders("EURUSD")
+            if len(pending) >= 5:
+                return None  # Too many pending orders
+        """
+        pending_list = []
+
+        for order_id, pending_order in self.execution_engine.pending_orders.items():
+            # Filter by symbol if specified
+            if symbol and pending_order.symbol != symbol:
+                continue
+
+            # Calculate remaining ticks
+            ticks_remaining = pending_order.fill_at_tick - self._tick_counter
+
+            pending_list.append({
+                "order_id": order_id,
+                "symbol": pending_order.symbol,
+                "direction": pending_order.direction,
+                "lots": pending_order.lots,
+                "placed_at_tick": pending_order.placed_at_tick,
+                "fill_at_tick": pending_order.fill_at_tick,
+                "ticks_remaining": max(0, ticks_remaining)
+            })
+
+        return pending_list
+
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""
         return self.portfolio.get_position(position_id)
