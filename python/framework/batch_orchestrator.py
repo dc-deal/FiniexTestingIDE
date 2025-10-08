@@ -27,6 +27,7 @@ REFACTORED (Trade Simulation):
 - Collects trading statistics (portfolio, execution, costs)
 """
 
+import pandas as pd
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -38,7 +39,7 @@ from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.bars.bar_rendering_controller import \
     BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
-from python.framework.types import TestScenario, TickData
+from python.framework.types import TestScenario, TickData, TimeframeConfig
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
 from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
@@ -286,13 +287,24 @@ class BatchOrchestrator:
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 6. Prepare data using THIS scenario's requirements
+        # 6.1 Calculate per-scenario requirements
+        scenario_contract = self._calculate_scenario_requirements(workers)
+
+        # 6.2 Prepare data using timeframe-aware warmup calculation
         preparator = TickDataPreparator(self.data_worker)
+
+        # 6.3 Convert bar requirements to minute requirements for accurate tick estimation
+        warmup_minutes_by_tf = {}
+        for timeframe, bars_needed in scenario_contract["warmup_by_timeframe"].items():
+            minutes_needed = TimeframeConfig.get_minutes(
+                timeframe) * bars_needed
+            warmup_minutes_by_tf[timeframe] = minutes_needed
+
+        vLog.debug(f"📊 Scenario warmup requirements: {warmup_minutes_by_tf}")
 
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
-            # Use scenario's own requirements!
-            warmup_bars_needed=scenario_contract["max_warmup_bars"],
+            warmup_requirements=warmup_minutes_by_tf,
             test_ticks_count=scenario.max_ticks or 1000,
             data_mode=scenario.data_mode,
             start_date=scenario.start_date,
@@ -303,7 +315,6 @@ class BatchOrchestrator:
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
 
-        import pandas as pd
         first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
         bar_orchestrator.prepare_warmup_from_ticks(
             symbol=scenario.symbol,
