@@ -1,7 +1,11 @@
 {
   "version": "1.0",
   "scenario_set_name": "scn_eurusd_custom_balance",
-  "created": "2025-10-06T07:34:00.338562",
+  "created": "2025-10-08T08:42:38.334530",
+  "trade_simulator_seeds": {
+    "api_latency_seed": 42,
+    "market_execution_seed": 123
+  },
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
