@@ -9,7 +9,7 @@
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
-      "decision_logic_type": "CORE/simple_consensus",
+      "decision_logic_type": "CORE/aggressive_trend",
       "worker_types": [
         "CORE/rsi",
         "CORE/envelope"
@@ -28,7 +28,7 @@
       "decision_logic_config": {
         "rsi_oversold": 30,
         "rsi_overbought": 70,
-        "min_confidence": 0.6
+        "min_confidence": 0.8
       }
     },
     "execution_config": {

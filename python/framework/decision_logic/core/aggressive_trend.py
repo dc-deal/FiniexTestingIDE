@@ -1,5 +1,8 @@
+# ============================================
+# python/framework/decision_logic/core/aggressive_trend.py
+# ============================================
 """
-FiniexTestingIDE - Aggressive Trend Decision Logic (REFACTORED)
+FiniexTestingIDE - Aggressive Trend Decision Logic (REFACTORED + FIXED)
 Alternative implementation demonstrating different trading philosophy
 
 REFACTORED:
@@ -7,6 +10,11 @@ REFACTORED:
 - Implements execute_decision() → Market orders with margin checks
 - Uses DecisionTradingAPI instead of TradeSimulator directly
 - ONE POSITION ONLY: Closes existing position before opening new one
+
+FIXED (Issue: Duplicate Orders):
+- Now checks BOTH open_positions AND pending_orders
+- Prevents duplicate order submissions during execution delays
+- Uses _normalize_direction() for robust direction comparison
 
 This logic is more aggressive than SimpleConsensus:
 - Acts on single indicator signals (no consensus needed)
@@ -96,7 +104,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.min_free_margin = self.get_config_value("min_free_margin", 1000)
         self.lot_size = self.get_config_value("lot_size", 0.1)
 
-        vLog.info(
+        vLog.debug(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
             f"Envelope extremes({self.envelope_extremes}), "
@@ -119,6 +127,26 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         return [OrderType.MARKET]
 
+    def _normalize_direction(self, direction) -> str:
+        """
+        Helper: Normalize direction to string for comparison.
+
+        Handles both OrderDirection enum and string types robustly.
+        This fixes the issue where position.direction can be either type.
+
+        Args:
+            direction: Either OrderDirection enum or string
+
+        Returns:
+            Direction as string ("BUY" or "SELL")
+        """
+        if isinstance(direction, str):
+            return direction.upper()
+        elif isinstance(direction, OrderDirection):
+            return direction.value.upper()
+        else:
+            return str(direction).upper()
+
     def _execute_decision_impl(
         self,
         decision: Decision,
@@ -133,7 +161,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         3. Opposite direction signal → Close old, open new (reversal)
         4. New signal with no position → Open position (entry)
 
-        This keeps trading simple and predictable with maximum one position.
+        CRITICAL FIX: Now checks BOTH open positions AND pending orders
+        to prevent duplicate order submissions during execution delays!
 
         Args:
             decision: Decision object from compute()
@@ -147,8 +176,26 @@ class AggressiveTrend(AbstractDecisionLogic):
             vLog.warning("Trading API not available - cannot execute decision")
             return None
 
-        # Get current open positions
+        # ============================================
+        # NEW: Get BOTH positions AND pending orders
+        # ============================================
         open_positions = self.trading_api.get_open_positions()
+        pending_orders = self.trading_api.get_pending_orders()
+
+        # CRITICAL: Check if we have pending orders for same direction
+        # This prevents duplicate submissions during execution delay!
+        new_direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+        new_direction_str = self._normalize_direction(new_direction)
+
+        # Check if we already have a pending order for this direction
+        for pending in pending_orders:
+            pending_dir = self._normalize_direction(pending["direction"])
+            if pending_dir == new_direction_str:
+                vLog.debug(
+                    f"⏳ Already have pending {new_direction_str} order "
+                    f"(ID: {pending['order_id']}, {pending['ticks_remaining']} ticks remaining) - skipping"
+                )
+                return None
 
         # ============================================
         # STEP 1: Handle FLAT signal (exit strategy)
@@ -156,8 +203,10 @@ class AggressiveTrend(AbstractDecisionLogic):
         if decision.action == "FLAT":
             if len(open_positions) > 0:
                 position = open_positions[0]
+                position_dir_str = self._normalize_direction(
+                    position.direction)
                 vLog.debug(
-                    f"📍 FLAT signal - closing {position.direction.value} position "
+                    f"📍 FLAT signal - closing {position_dir_str} position "
                     f"(ID: {position.position_id})"
                 )
                 return self.trading_api.close_position(position.position_id)
@@ -167,25 +216,25 @@ class AggressiveTrend(AbstractDecisionLogic):
         # ============================================
         # STEP 2: Check if we already have a position
         # ============================================
-        new_direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
-
         if len(open_positions) > 0:
             current_position = open_positions[0]
+            current_dir_str = self._normalize_direction(
+                current_position.direction)
 
             # Same direction? Skip (we already have what the strategy wants)
-            if current_position.direction == new_direction:
+            if current_dir_str == new_direction_str:
                 vLog.debug(
-                    f"⏭️  Already holding {new_direction.value} position "
+                    f"⏭️  Already holding {new_direction_str} position "
                     f"(ID: {current_position.position_id}) - skipping duplicate signal"
                 )
                 return None
 
             # Opposite direction? Close old position (signal reversal)
             vLog.debug(
-                f"🔄 Signal reversal detected: {current_position.direction.value} → {new_direction.value}"
+                f"🔄 Signal reversal detected: {current_dir_str} → {new_direction_str}"
             )
             vLog.debug(
-                f"   Closing {current_position.direction.value} position "
+                f"   Closing {current_dir_str} position "
                 f"(ID: {current_position.position_id})"
             )
             self.trading_api.close_position(current_position.position_id)
@@ -199,7 +248,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         account = self.trading_api.get_account_info()
 
         if account.free_margin < self.min_free_margin:
-            vLog.debug(
+            vLog.info(
                 f"Insufficient free margin: {account.free_margin:.2f} "
                 f"< {self.min_free_margin} - skipping trade"
             )
@@ -217,8 +266,8 @@ class AggressiveTrend(AbstractDecisionLogic):
 
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
-                vLog.debug(
-                    f"⏳ Order submitted: {new_direction.value} {self.lot_size} lots "
+                vLog.info(
+                    f"⏳ Order submitted: {new_direction_str} {self.lot_size} lots "
                     f"(ID: {order_result.order_id}) - awaiting execution"
                 )
             elif order_result.is_rejected:

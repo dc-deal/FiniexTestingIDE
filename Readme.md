@@ -8,11 +8,11 @@
 
 **Vision:** Parameter-centric testing platform for trading strategies with focus on reproducible results and IP protection.
 
-**Current Phase:** Core Framework Implementation (MVP)
+**Current Phase:** MVP Foundation Complete - Performance Validation Next
 
 ---
 
-## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.7.1)
+## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.8)
 
 ### ✅ Data Pipeline (Production-Ready)
 - **MQL5 TickCollector v1.03** - Live tick collection with error classification
@@ -50,7 +50,7 @@
 - **Decision Logic Metrics** - Separate tracking for strategy decision time
 - **Batch Mode Clarity** - Clear indication of batch vs. scenario parallelization
 
-### ✅ Order Execution System (NEW in V0.7.1 - Issue #003 COMPLETED) 🎯
+### ✅ Order Execution System (NEW in V0.8 - Issue #003 COMPLETED) 🎯
 **Deterministic order execution with realistic broker delays**
 
 **Seeded Randomness:**
@@ -153,7 +153,7 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 ### 📋 Core Issue C#004: Performance Validation & Benchmarking (HIGH Priority) 🚀
 **Goal:** Validate performance-first architecture and establish production readiness
 
-**POC for Scalability (3-4 days, parallel to C#003):**
+**POC for Scalability (3-4 days):**
 
 **A) Benchmarking Suite**
 - [ ] Batch testing: 10 scenarios @ 1,000 ticks in <60s (8 cores)
@@ -180,71 +180,75 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 **Why Critical:**
 - **Proof-of-Concept** for production readiness
 - **User confidence**: "Is this tool fast enough?"
-- **Marketing**: Finiex MVP beats MT5, reaches 70-80% of institutional tools
-- **Quality-Aware Data** is unique competitive advantage
+- **Design validation**: Architecture can scale to production workloads
 
-**Effort:** 3-4 days (can run parallel to C#003 Phase 1)  
-**Priority:** **HIGH** - Critical for MVP validation
+**Status:** **NEXT** - Critical for MVP validation  
+**Effort:** 3-4 days  
+**Priority:** HIGH (MVP blocker)
 
 ---
 
-### 📋 Core Issue C#005: IP-Protected Blackbox System (OPTIONAL MVP) 🔒
-**Goal:** Enable deployment of compiled workers for IP protection
+### 📋 Core Issue C#005: Blackbox System (OPTIONAL)
+**Goal:** Encrypted/compiled worker and decision logic loading
 
-**MVP Critical (2-3 days):**
+- [ ] Worker/Logic encryption utilities
+- [ ] Secure loading mechanism
+- [ ] License verification system
+- [ ] Documentation for blackbox developers
 
-**A) Blackbox Loader**
-- [ ] `BlackboxLoader` class for .pyc loading
-- [ ] Update feature gate in `WorkerFactory` and `DecisionLogicFactory`
-- [ ] Replace `NotImplementedError` with actual loading
-
-**B) Deployment Tooling**
-- [ ] `scripts/deploy_blackbox.py` - Compile .py → .pyc
-- [ ] Documentation with usage examples
-
-**C) Testing**
-- [ ] Test blackbox worker loading
-- [ ] Verify parameters still configurable
-- [ ] Example blackbox worker in docs
-
-**Status:** OPTIONAL - Will attempt if time permits after C#003 & C#004  
-**Fallback:** Can defer to Post-MVP without breaking anything  
+**Status:** OPTIONAL - Only if time permits after C#004  
 **Effort:** 2-3 days  
-**Priority:** Optional (Important for vision, not blocking MVP)
+**Priority:** Optional (Nice-to-have for IP protection demo)
 
 ---
 
-### 📋 Core Issue C#006: Code Guidelines & CI Pipeline 📏
-**Goal:** Establish code quality standards and automated enforcement
+### 📋 Core Issue C#006: Code Guidelines & CI (FOUNDATION)
+**Goal:** Professional code quality standards and automated enforcement
 
-**Foundation for Post-MVP (2-3 days + 1-2 days refactor):**
+**Code Guidelines (2-3 days):**
 
-**A) Code Guidelines Documentation**
-- [ ] Create `CODE_GUIDELINES.md` (English-only, PEP 8, type hints)
-- [ ] Define naming conventions, import order, comment style
-- [ ] VSCode settings for local development (autopep8, flake8, mypy)
+**A) Documentation Standards**
+- [ ] English-only codebase policy
+- [ ] Docstring conventions (Google style)
+- [ ] Type hints everywhere
+- [ ] Comment guidelines
 
-**B) GitHub Actions CI Pipeline**
-- [ ] Linting checks (Black, Flake8, pylint)
+**B) Code Style**
+- [ ] PEP 8 compliance (autopep8)
+- [ ] Import sorting (isort)
+- [ ] Line length: 79 chars
+- [ ] Naming conventions
+
+**C) Quality Gates**
 - [ ] Type checking (mypy)
-- [ ] Language enforcement (detect non-English comments)
-- [ ] Build verification (pip install, Docker build)
+- [ ] Linting (flake8)
+- [ ] Complexity limits (McCabe)
 
-**C) Mandatory Refactor**
-- [ ] Translate German comments to English
+**D) CI Pipeline**
+- [ ] GitHub Actions workflow
+- [ ] Pre-commit hooks
+- [ ] PR blocking on violations
+
+**Refactoring Effort (1-2 days):**
+- [ ] Convert German comments to English
 - [ ] Add missing type hints
-- [ ] Apply consistent formatting
-- [ ] Fix guideline violations
+- [ ] Fix linting violations
+- [ ] Update docstrings
 
-**Status:** Foundation for Post-MVP - Prevents technical debt  
-**Timing:** After C#005, BEFORE Post-MVP Phase 4  
-**Effort:** 2-3 days setup + 1-2 days refactor  
-**Priority:** Foundation (Critical for clean Post-MVP development)
+**Why Foundation:**
+- **Team Collaboration** - Enables future contributors
+- **Code Quality** - Prevents regression
+- **Professional Standard** - Industry best practices
+
+**Status:** Foundation for Post-MVP  
+**Timing:** After C#004, before Post-MVP Phase 4  
+**Effort:** 2-3 days + 1-2 days refactor  
+**Priority:** Foundation (Critical for long-term maintenance)
 
 ---
 
-### 📋 Core Issue C#007: Automated Test System 🧪
-**Goal:** Regression protection and confident refactoring
+### 📋 Core Issue C#007: Automated Test System (FOUNDATION)
+**Goal:** Comprehensive test coverage for regression protection and confident refactoring
 
 **Foundation for Post-MVP (2-3 days):**
 
@@ -356,7 +360,7 @@ docker-compose exec finiex-dev bash -i
 python python/strategy_runner_enhanced.py
 ```
 
-### Current Test Output (V0.7.1)
+### Current Test Output (V0.8)
 ```
 ============================================================
                     🎉 EXECUTION RESULTS                     
@@ -464,7 +468,7 @@ SCENARIO DETAILS
 
 ## 🗃️ Architecture Overview
 
-### Current System (V0.7.1)
+### Current System (V0.8)
 ```
 MQL5 TickCollector → JSON → Parquet (Quality-Aware)
                                 ↓
@@ -485,19 +489,27 @@ MQL5 TickCollector → JSON → Parquet (Quality-Aware)
                                 ↓
                     Decision Logic (Injected Strategy)
                                 ↓
-                    Decision Output
+                    ┌─────────────────────────────────┐
+                    │  Trade Simulator (V0.8)         │
+                    ├─────────────────────────────────┤
+                    │  Order Execution Engine         │
+                    │  Portfolio Manager              │
+                    │  Risk Management                │
+                    └─────────────────────────────────┘
+                                ↓
+                    Results & Performance Metrics
 ```
 
-### Post-MVP (Issue #003+)
+### Post-MVP (Issue #004+)
 ```
-Decision Logic → Trade Simulator (Portfolio/Risk/Orders)
+Decision Logic → Trade Simulator → Performance Validation
                         ↓
-                Event Bus → Results/Metrics
+                Event Bus → Advanced Analytics
 ```
 
 ---
 
-## 📁 Project Structure (Pre-Alpha V0.7.1)
+## 📁 Project Structure (Pre-Alpha V0.8)
 
 ```
 FiniexTestingIDE/
@@ -506,77 +518,123 @@ FiniexTestingIDE/
 ├── python/
 │   ├── data_worker/               # Data pipeline
 │   │   ├── tick_importer.py       # JSON → Parquet conversion
-│   │   └── data_loader/           # Parquet loading
-│   ├── framework/
-│   │   ├── factory/               # NEW: Worker + DecisionLogic Factories
-│   │   │   ├── worker_factory.py
-│   │   │   └── decision_logic_factory.py
-│   │   ├── batch_orchestrator.py  # Multi-scenario testing
-│   │   ├── workers/               # CORE Workers
-│   │   │   ├── core/              # RSI, SMA, Envelope
-│   │   │   └── worker_coordinator.py
-│   │   ├── bars/                  # Bar rendering + warmup
-│   │   └── tick_data_preparator.py
-│   ├── workers/                   # NEW: Namespace Structure
-│   │   ├── core/                  # CORE Workers (builtin)
-│   │   ├── user/                  # USER Workers (custom)
-│   │   └── blackbox/              # BLACKBOX Workers (Post-MVP, git-ignored)
-│   ├── decision_logic/            # NEW: Decision Logic Layer
-│   │   ├── core/                  # CORE Logics
-│   │   ├── user/                  # USER Logics (custom)
-│   │   └── blackbox/              # BLACKBOX Logics (Post-MVP, git-ignored)
-│   ├── scenario/
-│   │   ├── config_loader.py       # Scenario loading
-│   │   └── generator.py           # Scenario generation
-│   └── strategy_runner_enhanced.py # Main entry point
-├── configs/
-│   └── scenario_sets/             # JSON scenario configs
+│   │   └── scenario_generator.py  # Auto-generate test configs
+│   ├── framework/                 # Core framework (MVP stable)
+│   │   ├── bar_renderer/          # Multi-timeframe bar generation
+│   │   ├── workers/               # Worker system + coordinator
+│   │   ├── decision_logic/        # Strategy logic (factory-based)
+│   │   ├── factories/             # Worker/Logic factories (V0.7)
+│   │   ├── performance/           # Performance logging system (V0.7.1)
+│   │   ├── trading/               # Trade simulation (V0.8)
+│   │   │   ├── order_execution_engine.py    # Order lifecycle
+│   │   │   ├── portfolio_manager.py         # Balance/positions
+│   │   │   └── decision_trading_api.py      # Public API
+│   │   └── types.py               # Shared type definitions
+│   ├── workers/                   # Concrete workers
+│   │   ├── core/                  # Built-in (RSI, SMA, Envelope)
+│   │   ├── user/                  # Custom open-source
+│   │   └── blackbox/              # IP-protected (git-ignored)
+│   ├── decision_logic/            # Concrete strategies
+│   │   ├── core/                  # Built-in (SimpleConsensus)
+│   │   ├── user/                  # Custom open-source
+│   │   └── blackbox/              # IP-protected (git-ignored)
+│   ├── orchestrator/              # Batch testing
+│   │   └── batch_orchestrator.py  # Multi-scenario execution
+│   └── tests/                     # Test suite
+│       └── test_strategy_runner.py # Integration tests
 ├── data/
-│   ├── raw/                       # MQL5 JSON output
-│   └── processed/                 # Processed tick data (Parquet)
-└── docs/                          # Architecture + Post-MVP plans
+│   ├── raw/                       # JSON tick data
+│   ├── processed/                 # Parquet databases
+│   └── samples/                   # Sample data for demo
+├── configs/
+│   ├── app_config.json           # Global application settings
+│   ├── brokers/                  # Broker configurations
+│   │   └── mt5/                  # MetaTrader 5 configs
+│   └── scenarios/                # Test scenario configs
+├── notebooks/                     # Jupyter analysis tools
+└── docs/                          # Documentation
 ```
 
 ---
 
-## 🔧 Configuration Example (V0.7.1)
+## 🔧 Configuration Example (V0.8)
 
 ### New Factory-Compatible Config Structure
 
 ```json
 {
-  "name": "EURUSD_window_01",
-  "symbol": "EURUSD",
-  "start_date": "2024-09-16 00:00:00",
-  "end_date": "2024-09-18 23:59:59",
-  "data_mode": "realistic",
-  "max_ticks": 1000,
-  
-  "strategy_config": {
-    "decision_logic_type": "CORE/simple_consensus",
-    "worker_types": ["CORE/rsi", "CORE/envelope"],
-    "workers": {
-      "CORE/rsi": {
-        "period": 14,
-        "timeframe": "M5"
+  "version": "1.0",
+  "scenario_set_name": "scn_EURUSD_3_windows",
+  "created": "2025-10-06T07:33:57.429428",
+  "trade_simulator_seeds": {
+    "api_latency_seed": 42,
+    "market_execution_seed": 123
+  },
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/simple_consensus",
+      "worker_types": [
+        "CORE/rsi",
+        "CORE/envelope"
+      ],
+      "workers": {
+        "CORE/rsi": {
+          "period": 14,
+          "timeframe": "M5"
+        },
+        "CORE/envelope": {
+          "period": 20,
+          "deviation": 0.02,
+          "timeframe": "M5"
+        }
       },
-      "CORE/envelope": {
-        "period": 20,
-        "deviation": 0.02,
-        "timeframe": "M5"
+      "decision_logic_config": {
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confidence": 0.6
       }
     },
-    "decision_logic_config": {
-      "rsi_oversold": 30,
-      "rsi_overbought": 70,
-      "min_confidence": 0.6
+    "execution_config": {
+      "parallel_workers": true,
+      "worker_parallel_threshold_ms": 1.0,
+      "adaptive_parallelization": true,
+      "log_performance_stats": true
+    },
+    "trade_simulator_config": {
+      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+      "initial_balance": 10000,
+      "currency": "EUR"
     }
   },
-  
-  "execution_config": {
-    "parallel_workers": true,
-    "worker_parallel_threshold_ms": 1.0
-  }
+  "scenarios": [
+    {
+      "name": "EURUSD_window_02",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-19",
+      "end_date": "2025-09-21",
+      "max_ticks": 4000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "EURUSD_window_03",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-21",
+      "end_date": "2025-09-23",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "enabled": false,
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": false
+      },
+      "trade_simulator_config": {}
+    }
+  ]
 }
 ```
 
@@ -674,11 +732,20 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 **Problem:** Strategy code must remain secret, but parameters must be optimizable.
 
 **Solution:** Blackbox framework with parameter-contract system.
+
+## 🏗️ Extended Features (Post-MVP)
+
+### Blackbox Worker System (Post-MVP)
+**Secure deployment of proprietary strategies**
+
+- **Encrypted Workers** - AES-256 encrypted `.fwx` files
+- **License Verification** - Hardware-bound activation
+- **Zero Source Exposure** - Compiled bytecode execution
 - **Status:** Folder structure prepared, feature-gated for post-MVP
 - **Plan:** Encrypted/compiled workers + decision logics
 - **Usage:** `"worker_types": ["BLACKBOX/my_secret_strategy"]`
 
-### Worker Type Classification (V0.7.1)
+### Worker Type Classification (V0.8)
 **Three worker types for different use-cases:**
 
 1. **COMPUTE Workers** (✅ MVP)
@@ -777,4 +844,4 @@ Thank you to everyone supporting this project!
 
 *Building the foundation for parameter-centric trading strategy development - one issue at a time.*
 
-**Latest:** Pre-Alpha V0.7.1 - Enhanced Performance Logging ✅
+**Latest:** Pre-Alpha V0.8 - MVP Foundation Complete ✅
