@@ -50,6 +50,51 @@
 - **Decision Logic Metrics** - Separate tracking for strategy decision time
 - **Batch Mode Clarity** - Clear indication of batch vs. scenario parallelization
 
+### ✅ Order Execution System (NEW in V0.7.1 - Issue #003 COMPLETED) 🎯
+**Deterministic order execution with realistic broker delays**
+
+**Seeded Randomness:**
+- **API Latency Simulation** - Network and API processing delays (1-3 ticks)
+- **Market Execution Delays** - Broker-side order matching time (2-5 ticks)
+- **Reproducible Testing** - Seeds ensure identical execution across runs
+- **Config-Based Seeds** - `trade_simulator_seeds` in scenario JSON files
+
+**Order Lifecycle:**
+```
+Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUTED
+```
+
+**MVP Implementation:**
+- **Tick-Based Delays** - Simple, deterministic delays measured in ticks
+- **Always Fill** - Orders always execute (no rejections except margin)
+- **Order Status Tracking** - PENDING → EXECUTED lifecycle
+- **Execution Statistics** - Track submitted/filled/rejected orders
+
+**Configuration Example:**
+```json
+{
+  "trade_simulator_seeds": {
+    "api_latency_seed": 42,
+    "market_execution_seed": 123
+  }
+}
+```
+
+**Post-MVP Roadmap:**
+- **MS-Based Delays** - Realistic millisecond timing with tick timestamp mapping
+- **OrderBook Simulation** - Liquidity-aware order matching with partial fills
+- **Extended Order Types** - FOK (Fill-Or-Kill), IOC (Immediate-Or-Cancel)
+- **Market Impact** - Price slippage based on order size and liquidity
+- **Partial Fills** - Large orders filled incrementally based on available liquidity
+- **Dynamic OrderBook** - Seeded liquidity generation from tick volatility patterns
+- **Broker-Specific OrderBooks** - AbstractOrderBook with MT5/Kraken implementations
+- **FiniexAutoTrader Integration** - Live trading via same DecisionTradingAPI interface
+
+**Architecture Notes:**
+- **OrderExecutionEngine** - Manages pending orders with seeded delays
+- **DecisionTradingAPI** - Public interface for decision logics (simulator + live-ready)
+- **Minimal Code Changes** - Live trading requires ~50 lines (replace simulator with live executor)
+
 ### ⚠️ Blackbox Support (Prepared, Post-MVP)
 - **Folder Structure** - `python/workers/blackbox/` and `python/decision_logic/blackbox/`
 - **Git-Ignored** - All `.py` files automatically excluded (IP protection)
@@ -74,47 +119,34 @@
 
 ---
 
-### 📋 Core Issue C#003: Trade Simulation (NEXT - HIGH Priority) ⚠️
+### ✅ Core Issue C#003: Trade Simulation (COMPLETED) ✅
 **Goal:** Realistic trade execution with portfolio management
 
-**Phase 1: Core Trade Simulator (4-5 days)**
+**COMPLETED Features:**
+- ✅ **OrderExecutionEngine** - Deterministic delay simulation with seeds
+- ✅ **Seeded Randomness** - Reproducible API and execution delays
+- ✅ **Order Lifecycle** - PENDING → EXECUTED status tracking
+- ✅ **PortfolioManager** - Balance/equity tracking, open positions
+- ✅ **BrokerConfig System** - MT5/Kraken adapter architecture
+- ✅ **DecisionTradingAPI** - Public interface for decision logics
+- ✅ **Trading Fees** - SpreadFee from live tick data
+- ✅ **Risk Management** - Margin checks, position tracking
+- ✅ **Market Orders** - Fully functional with realistic delays
 
-**A) BrokerConfig Importer (MQL5)**
-- [ ] New MQL5 tool: `TraderDefaultsImporter`
-- [ ] Import: Order types, commission, lot sizes, margin requirements
-- [ ] Export as JSON
+**Post-MVP Extensions (Planned):**
+- [ ] **MS-Based Timing** - Convert from tick-based to millisecond-based delays
+- [ ] **OrderBook Simulation** - Liquidity-aware matching with partial fills
+- [ ] **Extended Orders** - FOK, IOC, Stop-Limit with time-in-force
+- [ ] **Market Impact** - Order size affects execution price
+- [ ] **Dynamic Liquidity** - Seeded orderbook generation from tick volatility
+- [ ] **Broker-Specific Books** - AbstractOrderBook with MT5/Kraken variants
+- [ ] **FiniexAutoTrader** - Live trading integration via DecisionTradingAPI
+- [ ] **EventBus Integration** - TradeExecuted, OrderRejected, MarginWarning events
+- [ ] **Swap/Rollover** - Overnight interest calculations
+- [ ] **Advanced Slippage** - Non-linear slippage based on market conditions
 
-**B) TradeSimulator - Core Components**
-- [ ] **PortfolioManager**: Balance/equity tracking, open positions
-- [ ] **OrderManager**: Active trades, trade history
-- [ ] **RiskManager**: Max positions (default: 1), max drawdown (default: 30%)
-- [ ] **ExecutionEngine**: 
-  - Fixed latency (100ms)
-  - Fixed slippage (0.5 pips)
-  - Market + limit orders only
-  - Order fully filled or rejected (no partial fills)
-- [ ] **EventBus**: Events to DecisionLogic (TradeExecuted, OrderRejected, MarginWarning)
-
-**C) DecisionLogic Integration**
-- [ ] Query: `get_account_info()`, `get_open_positions()`, `get_trade_history()`
-- [ ] Send orders: `TradeSimulator.send_order()`
-- [ ] Receive events via EventBus
-
-**D) Realism Features**
-- [ ] Spread dynamics from demo data
-- [ ] Commission consideration
-- [ ] Basic margin checks
-
-**Simplifications (Postponed to Post-MVP):**
-- ❌ ECN market simulation → Standard broker sufficient
-- ❌ Partial fills → Order fully filled or rejected
-- ❌ Connection-lost events → Unrealistic for backtest
-- ❌ Swap/rollover → Config option (default: 0)
-- ❌ Adaptive tick processing → Process every tick
-- ❌ Liquidity simulation → Assume infinite liquidity
-
-**Effort:** 4-5 days (instead of 7-10 through simplifications)  
-**Priority:** **HIGH** - Critical for realistic tests
+**Status:** ✅ **COMPLETED** - MVP features fully functional  
+**Effort:** 4-5 days (completed as planned)
 
 ---
 
@@ -246,8 +278,8 @@
 
 **Core Path (Critical):** ~9-12 days
 
-1. **C#003** (4-5 days) → **NEXT** - Trade simulation ⚠️ HIGH PRIORITY
-2. **C#004** (3-4 days) → **Parallel to C#003** - Performance validation 🚀 POC
+1. ✅ **C#003** (4-5 days) → **COMPLETED** - Trade simulation ✅
+2. **C#004** (3-4 days) → **NEXT** - Performance validation 🚀 POC
 3. **C#001** (1-2 days) - Logging & TUI (Low priority polish)
 
 **Optional Path (If time permits):** +2-3 days
@@ -261,9 +293,9 @@
 
 **Total Estimated:** 9-25 days (2-5 weeks) depending on optional features
 
-**Critical for MVP Release:** C#003 + C#004 (Trade Simulation + Performance Validation)
+**Critical for MVP Release:** C#003 ✅ + C#004 (Trade Simulation + Performance Validation)
 
-**Decision Point:** Assess schedule after C#003 & C#004 completion
+**Decision Point:** Assess schedule after C#004 completion
 
 ---
 
@@ -308,7 +340,7 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
 
 ### Next Steps
 - Create your own scenarios in `configs/scenario_sets/`
-- Use the **"🔍 Scenario Generator"** to automatically generate scenarios from your data
+- Use the **"📝 Scenario Generator"** to automatically generate scenarios from your data
 - Adjust parameters in scenario configs (RSI, Envelope, etc.)
 - Create your own workers/decision logics under `USER/` namespace
 
@@ -329,140 +361,103 @@ python python/strategy_runner_enhanced.py
 ============================================================
                     🎉 EXECUTION RESULTS                     
 ============================================================
-✅ Success: True  |  📊 Scenarios: 6  |  ⏱️  Time: 5.87s
-⚙️  Batch Mode: Parallel (4 scenarios concurrent)
-------------------------------------------------------------------------------------------------------------------------
+✅ Success: True  |  📊 Scenarios: 1  |  ⏱️  Time: 10.93s
+⚙️  Batch Mode: Sequential
+------------------------------------------------------------
+SCENARIO DETAILS
+------------------------------------------------------------
+┌────────────────────────────────────┐
+│ 📋 EURUSD_window_02                 │
+│ Symbol: EURUSD                     │
+│ Ticks: 4,000                       │
+│ Signals: 10 (0.2%)                 │
+│ Buy/Sell: 5/5                      │
+│ Worker/Calls: 2/0                  │
+│ Decisions: 4000                    │
+└────────────────────────────────────┘
+
+------------------------------------------------------------
+💰 PORTFOLIO & TRADING RESULTS
+------------------------------------------------------------
+
+┌────────────────────────────────────┐
+│ 💰 EURUSD_window_02                 │
+│ Trades: 5 (5W/0L)                  │
+│ Win Rate: 100.0%                   │
+│ P&L: +$21.37                       │
+│ Spread: $12.43                     │
+│ Orders: 10                         │
+└────────────────────────────────────┘
+
+
+------------------------------------------------------------
+📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)
+------------------------------------------------------------
+
+   📈 TRADING SUMMARY:
+      Total Trades: 5  |  Win/Loss: 5W/0L  |  Win Rate: 100.0%
+      Total P&L: $21.37  |  Profit: $21.37  |  Loss: $0.00
+      Profit Factor: 0.00
+
+   📋 ORDER EXECUTION:
+      Orders Sent: 10  |  Executed: 10  |  Rejected: 0
+      Execution Rate: 100.0%
+
+   💸 COST BREAKDOWN:
+      Spread Cost: $12.43  |  Commission: $0.00  |  Swap: $0.00
+      Total Costs: $12.43
+
+------------------------------------------------------------
 📊 PERFORMANCE DETAILS (PER SCENARIO)
-------------------------------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: EURUSD_window_01
-   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.025ms  |  Range:  0.003- 0.169ms  |  Total:    25.02ms
-      Envelope         Calls:  1000  |  Avg:  0.003ms  |  Range:  0.002- 0.007ms  |  Total:     2.98ms
-
-   ⚡ PARALLEL EFFICIENCY:
-      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.131ms  |  Total:     6.04ms
-
-
-························································································································
-
-------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
 📊 SCENARIO PERFORMANCE: EURUSD_window_02
-   Workers: 2 workers (Sequential)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
+   Workers: 2 workers (Parallel)  |  Ticks: 4,000  |  Calls: 8,000  |  Decisions: 4000
 
    📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.043ms  |  Range:  0.032- 0.181ms  |  Total:    42.60ms
-      Envelope         Calls:  1000  |  Avg:  0.026ms  |  Range:  0.021- 0.095ms  |  Total:    26.40ms
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.003- 0.035ms  |  Total:     6.33ms
-
-
-························································································································
-
-------------------------------------------------------------------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: EURUSD_window_03
-   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.057ms  |  Range:  0.038- 0.221ms  |  Total:    57.43ms
-      Envelope         Calls:  1000  |  Avg:  0.035ms  |  Range:  0.002- 0.133ms  |  Total:    35.21ms
+      RSI              Calls:  4000  |  Avg:  0.138ms  |  Range:  0.066- 0.400ms  |  Total:   552.73ms
+      Envelope         Calls:  4000  |  Avg:  0.053ms  |  Range:  0.004- 0.710ms  |  Total:   213.48ms
 
    ⚡ PARALLEL EFFICIENCY:
       Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
 
    🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.009ms  |  Range:  0.004- 0.056ms  |  Total:     9.42ms
+      Decisions: 4000  |  Avg:  0.011ms  |  Range:  0.006- 0.138ms  |  Total:    45.67ms
 
 
-························································································································
-
-------------------------------------------------------------------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: AUDUSD_window_01
-   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.004ms  |  Range:  0.002- 0.039ms  |  Total:     4.27ms
-      Envelope         Calls:  1000  |  Avg:  0.003ms  |  Range:  0.002- 0.042ms  |  Total:     3.16ms
-
-   ⚡ PARALLEL EFFICIENCY:
-      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.027ms  |  Total:     6.06ms
-
-
-························································································································
-
-------------------------------------------------------------------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: AUDUSD_window_02
-   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.049ms  |  Range:  0.036- 0.144ms  |  Total:    49.14ms
-      Envelope         Calls:  1000  |  Avg:  0.041ms  |  Range:  0.028- 0.188ms  |  Total:    40.71ms
-
-   ⚡ PARALLEL EFFICIENCY:
-      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.005ms  |  Range:  0.004- 0.019ms  |  Total:     5.47ms
-
-
-························································································································
-
-------------------------------------------------------------------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: AUDUSD_window_03
-   Workers: 2 workers (Parallel)  |  Ticks: 1,000  |  Calls: 2,000  |  Decisions: 1000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  1000  |  Avg:  0.049ms  |  Range:  0.037- 0.173ms  |  Total:    49.34ms
-      Envelope         Calls:  1000  |  Avg:  0.041ms  |  Range:  0.027- 0.282ms  |  Total:    40.75ms
-
-   ⚡ PARALLEL EFFICIENCY:
-      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 1000  |  Avg:  0.006ms  |  Range:  0.004- 0.039ms  |  Total:     6.48ms
-
-
-------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
 📊 AGGREGATED SUMMARY (ALL SCENARIOS)
-------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
 
    📈 OVERALL:
-      Total Ticks: 6,000  |  Total Signals: 779  |  Total Decisions: 6,000
+      Total Ticks: 4,000  |  Total Signals: 10  |  Total Decisions: 4,000
 
    👷 WORKERS (AGGREGATED):
-      RSI              Total Calls:   6000  |  Total Time:   227.80ms  |  Avg:  0.038ms  |  Scenario Avg:  0.038ms
-      Envelope         Total Calls:   6000  |  Total Time:   149.21ms  |  Avg:  0.025ms  |  Scenario Avg:  0.025ms
+      RSI              Total Calls:   4000  |  Total Time:   552.73ms  |  Avg:  0.138ms  |  Scenario Avg:  0.138ms
+      Envelope         Total Calls:   4000  |  Total Time:   213.48ms  |  Avg:  0.053ms  |  Scenario Avg:  0.053ms
 
    🧠 DECISION LOGIC (AGGREGATED):
-      Total Decisions: 6000  |  Total Time:    39.80ms  |  Avg:  0.007ms  |  Scenario Avg:  0.006ms
+      Total Decisions: 4000  |  Total Time:    45.67ms  |  Avg:  0.011ms  |  Scenario Avg:  0.011ms
 
 
-------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
 ⚠️  BOTTLENECK ANALYSIS (Worst Performers)
-------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
 
    🐌 SLOWEST SCENARIO:
-      EURUSD_window_03  |  Avg/tick: 0.102ms  |  Total: 102.06ms
+      EURUSD_window_02  |  Avg/tick: 0.203ms  |  Total: 811.88ms
       → This scenario took the longest time per tick
 
    🐌 SLOWEST WORKER:
-      RSI  |  Avg: 0.038ms (across all scenarios)
-      → Worst in scenario 'EURUSD_window_03': 0.057ms
+      RSI  |  Avg: 0.138ms (across all scenarios)
+      → Worst in scenario 'EURUSD_window_02': 0.138ms
 
    💡 RECOMMENDATIONS:
       ✅ All components performing well! No major bottlenecks detected.
 
-========================================================================================================================
-  6s 222ms - StrategyRunner            - INFO    - ✅ All tests passed!
+
+------------------------------------------------------------------------------------------------------------------------
+ 11s 344ms - StrategyRunner            - INFO    - ✅ All tests passed!
 ```
 
 ---
@@ -762,7 +757,7 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 
 **Maintainer:** Frank Krätzig ([dc-deal](https://github.com/dc-deal))
 
-**Status:** Active MVP development - Core Issue C#002 completed, C#003 next
+**Status:** Active MVP development - Core Issue C#003 completed ✅, C#004 next
 
 **Contributing:**
 - ✅ Custom workers: Add to `python/workers/user/`

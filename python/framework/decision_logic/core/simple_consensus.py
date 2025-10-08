@@ -6,6 +6,7 @@ REFACTORED:
 - Implements get_required_order_types() → [OrderType.MARKET]
 - Implements execute_decision() → Market orders with margin checks
 - Uses DecisionTradingAPI instead of TradeSimulator directly
+- ONE POSITION ONLY: Closes existing position before opening new one
 
 This is the default decision logic provided by the framework.
 It demonstrates the separation between worker coordination and
@@ -21,6 +22,12 @@ Trading Rules (NEW):
 - Check free margin before trading (min 1000 EUR)
 - Fixed lot size 0.1 (TODO: Position sizing logic)
 - No SL/TP for MVP (TODO: Risk management)
+- ONE POSITION ONLY: Maximum one position at a time
+
+Position Management:
+- FLAT signal → Close existing position
+- Same direction signal → Skip (already have position)
+- Opposite direction signal → Close old, open new (reversal)
 
 This logic requires two workers:
 - RSI: Relative Strength Index indicator
@@ -35,6 +42,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types import Bar, Decision, TickData, WorkerResult
 from python.framework.trading_env.order_types import (
+    OrderStatus,
     OrderType,
     OrderDirection,
     OrderResult
@@ -112,6 +120,26 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         return [OrderType.MARKET]
 
+    def _normalize_direction(self, direction) -> str:
+        """
+        Helper: Normalize direction to string for comparison.
+
+        Handles both OrderDirection enum and string types robustly.
+        This fixes the issue where position.direction can be either type.
+
+        Args:
+            direction: Either OrderDirection enum or string
+
+        Returns:
+            Direction as string ("BUY" or "SELL")
+        """
+        if isinstance(direction, str):
+            return direction.upper()
+        elif isinstance(direction, OrderDirection):
+            return direction.value.upper()
+        else:
+            return str(direction).upper()
+
     def _execute_decision_impl(
         self,
         decision: Decision,
@@ -120,15 +148,13 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         Implementation: Execute trading decision via DecisionTradingAPI.
 
-        Called by execute_decision() template method.
-        Statistics are updated automatically after this returns.
+        ONE POSITION ONLY Strategy:
+        1. FLAT signal → Close existing position (exit)
+        2. Same direction signal → Skip (already have what we want)
+        3. Opposite direction signal → Close old, open new (reversal)
+        4. New signal with no position → Open position (entry)
 
-        Checks account state before placing orders:
-        - Free margin must be >= min_free_margin
-        - Only executes BUY/SELL decisions (ignores FLAT)
-
-        MVP: Fixed lot size, no SL/TP, no position sizing.
-        Post-MVP: Position sizing, risk management, SL/TP.
+        This keeps trading simple and predictable with maximum one position.
 
         Args:
             decision: Decision object from compute()
@@ -137,45 +163,91 @@ class SimpleConsensus(AbstractDecisionLogic):
         Returns:
             OrderResult if order was sent, None if no trade
         """
-        # Only trade on BUY/SELL signals
-        if decision.action == "FLAT":
-            return None
-
         # Check if trading API is available
         if not self.trading_api:
             vLog.warning("Trading API not available - cannot execute decision")
             return None
 
-        # Check account state
+        # Get current open positions
+        open_positions = self.trading_api.get_open_positions()
+
+        # ============================================
+        # STEP 1: Handle FLAT signal (exit strategy)
+        # ============================================
+        if decision.action == "FLAT":
+            if len(open_positions) > 0:
+                position = open_positions[0]
+                position_dir_str = self._normalize_direction(
+                    position.direction)
+                vLog.debug(
+                    f"📍 FLAT signal - closing {position_dir_str} position "
+                    f"(ID: {position.position_id})"
+                )
+                return self.trading_api.close_position(position.position_id)
+            # No position to close, nothing to do
+            return None
+
+        # ============================================
+        # STEP 2: Check if we already have a position
+        # ============================================
+        new_direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+        new_direction_str = self._normalize_direction(new_direction)
+
+        if len(open_positions) > 0:
+            current_position = open_positions[0]
+            current_dir_str = self._normalize_direction(
+                current_position.direction)
+
+            # Same direction? Skip (we already have what the strategy wants)
+            if current_dir_str == new_direction_str:
+                vLog.debug(
+                    f"⏭️  Already holding {new_direction_str} position "
+                    f"(ID: {current_position.position_id}) - skipping duplicate signal"
+                )
+                return None
+
+            # Opposite direction? Close old position (signal reversal)
+            vLog.debug(
+                f"🔄 Signal reversal detected: {current_dir_str} → {new_direction_str}"
+            )
+            vLog.debug(
+                f"   Closing {current_dir_str} position "
+                f"(ID: {current_position.position_id})"
+            )
+            self.trading_api.close_position(current_position.position_id)
+            # Continue to open new position below
+
+        # ============================================
+        # STEP 3: Open new position
+        # ============================================
+
+        # Check account state (margin available)
         account = self.trading_api.get_account_info()
 
         if account.free_margin < self.min_free_margin:
-            vLog.debug(
+            vLog.info(
                 f"Insufficient free margin: {account.free_margin:.2f} "
                 f"< {self.min_free_margin} - skipping trade"
             )
             return None
-
-        # Determine order direction
-        direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
 
         # Send market order
         try:
             order_result = self.trading_api.send_order(
                 symbol=tick.symbol,
                 order_type=OrderType.MARKET,
-                direction=direction,
+                direction=new_direction,
                 lots=self.lot_size,
-                # Truncate reason
                 comment=f"SimpleConsensus: {decision.reason[:50]}"
             )
 
-            if order_result.is_success:
-                vLog.debug(
-                    f"✓ Order executed: {direction.value} {self.lot_size} lots "
-                    f"@ {order_result.executed_price:.5f} (ID: {order_result.order_id})"
+            # Log order submission status
+            if order_result.status == OrderStatus.PENDING:
+                vLog.info(
+                    f"⏳ Order submitted: {new_direction_str} {self.lot_size} lots "
+                    f"(ID: {order_result.order_id}) - awaiting execution"
                 )
-            else:
+            elif order_result.is_rejected:
                 vLog.warning(
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"

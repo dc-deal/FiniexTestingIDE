@@ -74,16 +74,16 @@ class BatchSummary:
         self._render_scenario_grid()
 
         # Portfolio summaries
-        self.renderer.section_separator(width=120)
+        self.renderer.section_separator()
         self.renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
-        self.renderer.section_separator(width=120)
+        self.renderer.section_separator()
         self.portfolio_summary.render_per_scenario(self.renderer)
         self.portfolio_summary.render_aggregated(self.renderer)
 
         # Performance summaries
-        self.renderer.section_separator(width=120)
+        self.renderer.section_separator()
         self.renderer.print_bold("📊 PERFORMANCE DETAILS (PER SCENARIO)")
-        self.renderer.section_separator(width=120)
+        self.renderer.section_separator()
         self.performance_summary.render_per_scenario(self.renderer)
         self.performance_summary.render_aggregated(self.renderer)
         self.performance_summary.render_bottleneck_analysis(self.renderer)

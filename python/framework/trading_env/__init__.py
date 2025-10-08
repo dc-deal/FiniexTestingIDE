@@ -12,6 +12,7 @@ REFACTORED:
 from .broker_config import BrokerConfig, BrokerType
 from .trade_simulator import TradeSimulator
 from .decision_trading_api import DecisionTradingAPI
+from .order_execution_engine import OrderExecutionEngine
 from .portfolio_manager import PortfolioManager, Position, AccountInfo
 from .order_types import (
     OrderType,
@@ -41,6 +42,7 @@ __all__ = [
     'BrokerType',
     'TradeSimulator',
     'DecisionTradingAPI',  # NEW
+    'OrderExecutionEngine',
     'PortfolioManager',
     'Position',
     'AccountInfo',

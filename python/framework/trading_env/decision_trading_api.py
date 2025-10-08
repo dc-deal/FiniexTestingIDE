@@ -1,3 +1,6 @@
+# ============================================
+# python/framework/trading_env/decision_trading_api.py
+# ============================================
 """
 FiniexTestingIDE - Decision Trading API
 Public interface for Decision Logic to interact with trading environment
@@ -15,6 +18,14 @@ Post-MVP:
 - Position modification (SL/TP changes)
 - Order history access
 - EventBus integration
+
+FUTURE NOTES:
+- Tick→MS Migration: Currently delays are tick-based. Post-MVP will use millisecond-based 
+  timing with tick timestamp mapping for more realistic execution simulation.
+- FiniexAutoTrader Integration: This API serves as the interface layer for both simulated 
+  and live trading. When integrating FiniexAutoTrader, Decision Logics remain unchanged. 
+  Replace TradeSimulator with LiveTradeExecutor that implements same interface but routes 
+  to real broker. Example: DecisionTradingAPI(LiveTradeExecutor(broker_connection), required_types)
 """
 
 from typing import List, Optional
@@ -40,6 +51,7 @@ class DecisionTradingAPI:
     - Order-type validation at creation time (BEFORE scenario runs)
     - Clean public API (only what Decision Logics need)
     - Framework retains full TradeSimulator access
+    - Interface compatible with future FiniexAutoTrader integration
 
     Usage:
         # In BatchOrchestrator
@@ -88,7 +100,16 @@ class DecisionTradingAPI:
             required_types: List of OrderType that Decision Logic needs
 
         Raises:
-            ValueError: If any order type is not supported
+            ValueError: If any order type not supported by broker
+
+        Example:
+            # Decision Logic requires Market + Limit
+            required = [OrderType.MARKET, OrderType.LIMIT]
+
+            # But broker only supports Market
+            # → ValueError raised BEFORE scenario starts
+            # → Clear error message to user
+            # → No wasted computation on invalid scenario
         """
         unsupported = []
 
@@ -98,7 +119,6 @@ class DecisionTradingAPI:
 
         if unsupported:
             supported_types = self._get_supported_order_types()
-
             raise ValueError(
                 f"❌ Broker '{self._simulator.broker.adapter.get_broker_name()}' "
                 f"does not support required order types!\n"
@@ -117,7 +137,6 @@ class DecisionTradingAPI:
                 supported.append(order_type)
 
         return supported
-
     # ============================================
     # Public API: Order Execution
     # ============================================
@@ -131,7 +150,7 @@ class DecisionTradingAPI:
         **kwargs
     ) -> OrderResult:
         """
-        Send order to broker.
+        Send order to trading environment.
 
         This is the main entry point for Decision Logics to execute trades.
         Order-type validation already happened in __init__, so this will
@@ -211,11 +230,45 @@ class DecisionTradingAPI:
 
         Example:
             positions = self.trading_api.get_open_positions("EURUSD")
-            if len(positions) >= max_positions:
-                return None  # Max positions reached
+            for pos in positions:
+                if pos.unrealized_pnl < -100:
+                    self.close_position(pos.position_id)
         """
-        return self._simulator.get_positions(symbol)
+        all_positions = self._simulator.get_open_positions()
 
+        if symbol:
+            return [p for p in all_positions if p.symbol == symbol]
+
+        return all_positions
+
+    def get_position(self, position_id: str) -> Optional[Position]:
+        """
+        Get specific position by ID.
+
+        Args:
+            position_id: Position identifier
+
+        Returns:
+            Position object or None if not found
+        """
+        return self._simulator.get_position(position_id)
+
+    def close_position(
+        self,
+        position_id: str,
+        lots: Optional[float] = None
+    ) -> OrderResult:
+        """
+        Close position (full or partial).
+
+        Args:
+            position_id: Position to close
+            lots: Lots to close (None = close all)
+
+        Returns:
+            OrderResult with close execution details
+        """
+        return self._simulator.close_position(position_id, lots)
     # ============================================
     # Public API: Broker Capabilities
     # ============================================
@@ -261,7 +314,7 @@ class DecisionTradingAPI:
         return self._simulator.broker.get_max_leverage()
 
     # ============================================
-    # Post-MVP: Advanced Features (Prepared)
+    # Post-MVP Features (Feature-Gated)
     # ============================================
 
     def modify_position(
@@ -271,7 +324,7 @@ class DecisionTradingAPI:
         take_profit: Optional[float] = None
     ) -> bool:
         """
-        Modify existing position SL/TP levels.
+        Modify position stop loss and take profit.
 
         Post-MVP: Will allow dynamic SL/TP management.
         MVP: Not implemented.

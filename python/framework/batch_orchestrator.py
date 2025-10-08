@@ -41,7 +41,7 @@ from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
-from python.framework.trading_env.order_types import OrderType, OrderDirection
+from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
 
 # ============================================
 # NEW (Issue 2): Factory Imports
@@ -111,6 +111,7 @@ class BatchOrchestrator:
         """
         vLog.info(
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)")
+        vLog.section_separator()
         start_time = time.time()
 
         # Get batch mode from app_config.json
@@ -148,12 +149,11 @@ class BatchOrchestrator:
         results = []
 
         for scenario_index, scenario in enumerate(self.scenarios):
-            vLog.section_separator()
+
             readable_index = scenario_index+1
             vLog.info(
                 f"📊 Running scenario {readable_index}/{len(self.scenarios)}: {scenario.name}"
             )
-
             try:
                 result = self._execute_single_scenario(
                     scenario, scenario_index)
@@ -161,6 +161,7 @@ class BatchOrchestrator:
                 vLog.info(
                     f"✅ Scenario {readable_index} completed"
                 )
+                vLog.section_separator()
             except Exception as e:
                 vLog.error(
                     f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
@@ -281,7 +282,7 @@ class BatchOrchestrator:
 
         self._last_orchestrator = orchestrator
 
-        vLog.info(
+        vLog.debug(
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
@@ -315,14 +316,14 @@ class BatchOrchestrator:
         tick_count = 0
         ticks_processed = 0
         signals_generated = 0
+        signals_gen_buy = 0
+        signals_gen_sell = 0
+
+        vLog.info(f"🚀 Starting Tick Loop")
 
         for tick in test_iterator:
             # Update scenario-specific TradeSimulator with current tick prices
-            scenario_simulator.update_prices(
-                symbol=tick.symbol,
-                bid=tick.bid,
-                ask=tick.ask
-            )
+            scenario_simulator.update_prices(tick)
 
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)
@@ -349,7 +350,7 @@ class BatchOrchestrator:
                         decision, tick)
 
                     # Track successful orders as signals
-                    if order_result and order_result.is_success:
+                    if order_result and order_result.status == OrderStatus.PENDING:
                         signals.append({
                             **decision.to_dict(),
                             'order_id': order_result.order_id,
@@ -357,6 +358,10 @@ class BatchOrchestrator:
                             'lot_size': order_result.executed_lots
                         })
                         signals_generated += 1
+                        if decision.action == "BUY":
+                            signals_gen_buy += 1
+                        if decision.action == "SELL":
+                            signals_gen_sell += 1
 
                 except Exception as e:
                     vLog.error(
@@ -380,6 +385,8 @@ class BatchOrchestrator:
             symbol=scenario.symbol,
             ticks_processed=tick_count,
             signals_generated=len(signals),
+            signals_gen_buy=signals_gen_buy,
+            signals_gen_sell=signals_gen_sell,
             signal_rate=len(signals) / tick_count if tick_count > 0 else 0,
             success=True,
             worker_statistics=worker_stats,

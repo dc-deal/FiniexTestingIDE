@@ -1,19 +1,31 @@
+# ============================================
+# python/framework/trading_env/trade_simulator.py
+# ============================================
 """
-FiniexTestingIDE - Trade Simulator (EXTENDED)
-Main trading environment injected into DecisionLogic
+FiniexTestingIDE - Trade Simulator
+Simulates broker trading environment with realistic execution
 
-EXTENDED FEATURES:
-- modify_position() for dynamic SL/TP management
-- Order history tracking for all executed/rejected orders
-- Closed positions access for performance analysis
-- Spread fee calculation from LIVE tick data
+Core Responsibilities:
+- Order execution with realistic delays (MVP: tick-based)
+- Portfolio management (positions, P&L)
+- Price updates and spread calculations
+- Trading fee simulation
+- Account queries for Decision Logic
+
+Architecture:
+TradeSimulator = OrderExecutionEngine + PortfolioManager + BrokerConfig
+- Engine: Handles order delays (PENDING state)
+- Portfolio: Manages positions and balance
+- Broker: Provides spreads, symbols, capabilities
 """
 
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
 
+from python.framework.types import TickData
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position, AccountInfo
+from .order_execution_engine import OrderExecutionEngine
 from .order_types import (
     OrderType,
     OrderDirection,
@@ -29,22 +41,28 @@ from .trading_fees import create_spread_fee_from_tick
 
 class TradeSimulator:
     """
-    Trade Simulator - Main trading environment.
+    Trade Simulator - Orchestrates order execution and portfolio.
 
-    EXTENDED FEATURES:
-    - Order history tracking (all executed/rejected orders)
-    - Position modification (SL/TP changes)
-    - Closed positions access (for performance reports)
-    - Live spread fee calculation from tick data
+    Uses OrderExecutionEngine for realistic delays (Issue #003).
+    Orders go through PENDING → EXECUTED lifecycle.
     """
 
     def __init__(
         self,
         broker_config: BrokerConfig,
-        initial_balance: float = 10000.0,
-        currency: str = "USD"
+        initial_balance: float = 10000,
+        currency: str = "EUR",
+        seeds: Optional[Dict[str, int]] = None
     ):
-        """Initialize trade simulator"""
+        """
+        Initialize trade simulator.
+
+        Args:
+            broker_config: Broker configuration with spreads and capabilities
+            initial_balance: Starting account balance
+            currency: Account currency
+            seeds: Seeds for order execution delays (from config)
+        """
         self.broker = broker_config
 
         # Create portfolio manager
@@ -55,16 +73,21 @@ class TradeSimulator:
             currency=currency,
             leverage=leverage
         )
-
         # Current market prices
         # symbol: (bid, ask)
         self._current_prices: Dict[str, Tuple[float, float]] = {}
 
-        # Order execution counter
+        # Order execution engine with deterministic delays
+        seeds = seeds or {}
+        self.execution_engine = OrderExecutionEngine(seeds)
+
+        # Internal state
         self._order_counter = 0
 
         # EXTENDED: Order history (all orders)
         self._order_history: List[OrderResult] = []
+        self._current_tick: Optional[TickData] = None
+        self._tick_counter = 0
 
         # Execution statistics
         self._execution_stats = {
@@ -72,20 +95,35 @@ class TradeSimulator:
             "orders_executed": 0,
             "orders_rejected": 0,
             "total_commission": 0.0,
-            "total_spread_cost": 0.0,  # EXTENDED
+            "total_spread_cost": 0.0,
         }
 
     # ============================================
     # Price Updates
     # ============================================
 
-    def update_prices(self, symbol: str, bid: float, ask: float):
+    def update_prices(self, tick: TickData):
         """
-        Update current market prices from LIVE tick data.
+        Update prices and process pending orders.
 
-        CRITICAL: Spread is calculated from these tick prices, NOT from JSON.
+        Called by BatchOrchestrator on every tick to:
+        1. Update current tick data
+        2. Process pending orders that are ready to fill
+        3. Update portfolio with new prices (unrealized P&L)
+
+        Args:
+            tick: Current tick data with bid/ask prices
         """
-        self._current_prices[symbol] = (bid, ask)
+        self._current_tick = tick
+        self._tick_counter += 1
+
+        # Process pending orders from execution engine
+        filled_orders = self.execution_engine.process_tick(self._tick_counter)
+
+        for pending_order in filled_orders:
+            self._fill_pending_order(pending_order)
+
+        self._current_prices[tick.symbol] = (tick.bid, tick.ask)
 
         # Update all positions
         symbol_specs = {
@@ -102,6 +140,18 @@ class TradeSimulator:
 
         return self._current_prices[symbol]
 
+    def get_current_price(self, symbol: str) -> tuple[float, float]:
+        """
+        Get current bid/ask price for symbol.
+
+        Returns:
+            (bid, ask) tuple
+        """
+        if not self._current_tick or self._current_tick.symbol != symbol:
+            raise ValueError(f"No current price data for {symbol}")
+
+        return self._current_tick.bid, self._current_tick.ask
+
     # ============================================
     # Order Execution
     # ============================================
@@ -115,7 +165,7 @@ class TradeSimulator:
         **kwargs
     ) -> OrderResult:
         """
-        Send trading order.
+        Send order to broker simulation.
 
         EXTENDED: Automatically attaches SpreadFee from live tick data.
         """
@@ -178,88 +228,119 @@ class TradeSimulator:
         **kwargs
     ) -> OrderResult:
         """
-        Execute market order with LIVE spread calculation.
+        Execute market order with delay.
 
-        EXTENDED: Creates SpreadFee from current tick bid/ask.
+        Submits to execution engine, returns PENDING status immediately.
         """
-        try:
-            # Get current price from LIVE tick data
-            bid, ask = self.get_current_price(symbol)
-        except ValueError as e:
+        # Pre-validate margin
+        estimated_margin = lots * 100000 * 0.01
+        if self.portfolio.get_free_margin() < estimated_margin:
             self._execution_stats["orders_rejected"] += 1
             return create_rejection_result(
                 order_id=order_id,
-                reason=RejectionReason.BROKER_ERROR,
-                message=str(e)
+                reason=RejectionReason.INSUFFICIENT_MARGIN,
+                message=f"Insufficient margin: need ~{estimated_margin:.2f}"
             )
 
-        # Determine execution price
-        if direction == OrderDirection.BUY:
-            execution_price = ask
-        else:
-            execution_price = bid
+        # Submit to execution engine
+        engine_order_id = self.execution_engine.submit_order(
+            symbol=symbol,
+            direction=direction.value,
+            lots=lots,
+            current_tick=self._tick_counter,
+            **kwargs
+        )
 
+        # Return PENDING status
+        return OrderResult(
+            order_id=engine_order_id,
+            status=OrderStatus.PENDING,
+            metadata={
+                "symbol": symbol,
+                "direction": direction.value,
+                "lots": lots,
+                "submitted_at_tick": self._tick_counter
+            }
+        )
+
+    def _fill_pending_order(self, pending_order) -> None:
+        """
+        Fill pending order that has completed its delay.
+
+        Called by update_prices() for orders from execution engine.
+
+        Args:
+            pending_order: PendingOrder from execution engine
+        """
+        # Get current prices
+        bid, ask = self.get_current_price(pending_order.symbol)
+
+        # Determine entry price
+        if pending_order.direction == "BUY":
+            entry_price = ask
+        else:
+            entry_price = bid
+
+        # Calculate spread fee
         # EXTENDED: Create SpreadFee from LIVE tick data
-        symbol_info = self.broker.get_symbol_info(symbol)
+        symbol_info = self.broker.get_symbol_info(pending_order.symbol)
         tick_value = symbol_info.get('tick_value', 1.0)
         digits = symbol_info.get('digits', 5)
-
         spread_fee = create_spread_fee_from_tick(
-            bid=bid,
-            ask=ask,
-            lots=lots,
+            tick=self._current_tick,
+            lots=pending_order.lots,
             tick_value=tick_value,
             digits=digits
         )
-
-        # Track spread cost
         self._execution_stats["total_spread_cost"] += spread_fee.cost
-
         # Check margin available
-        margin_required = self.broker.calculate_margin(symbol, lots)
+        margin_required = self.broker.calculate_margin(
+            pending_order.symbol, pending_order.lots)
         free_margin = self.portfolio.get_free_margin()
 
         if margin_required > free_margin:
             self._execution_stats["orders_rejected"] += 1
             return create_rejection_result(
-                order_id=order_id,
+                order_id=pending_order.order_id,
                 reason=RejectionReason.INSUFFICIENT_MARGIN,
                 message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
             )
 
-        # EXTENDED: Open position with SpreadFee
+        # Create position in portfolio
         position = self.portfolio.open_position(
-            symbol=symbol,
-            direction=direction,
-            lots=lots,
-            entry_price=execution_price,
-            entry_fee=spread_fee,  # EXTENDED
-            stop_loss=kwargs.get('stop_loss'),
-            take_profit=kwargs.get('take_profit'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
+            symbol=pending_order.symbol,
+            direction=pending_order.direction,
+            lots=pending_order.lots,
+            entry_price=entry_price,
+            entry_fee=spread_fee,
+            stop_loss=pending_order.order_kwargs.get('stop_loss'),
+            take_profit=pending_order.order_kwargs.get('take_profit'),
+            comment=pending_order.order_kwargs.get('comment', ''),
+            magic_number=pending_order.order_kwargs.get('magic_number', 0)
+        )
+
+        # Create successful order result
+        result = OrderResult(
+            order_id=pending_order.order_id,
+            status=OrderStatus.EXECUTED,
+            executed_price=entry_price,
+            executed_lots=pending_order.lots,
+            execution_time=datetime.now(),
+            commission=0.0,
+            broker_order_id=position.position_id,
+            metadata={
+                "symbol": pending_order.symbol,
+                "direction": pending_order.direction,
+                "position_id": position.position_id,
+                "spread_cost": spread_fee.cost,
+                "spread_points": spread_fee.metadata['spread_points'],
+                "filled_at_tick": self._tick_counter
+            }
         )
 
         # Update statistics
         self._execution_stats["orders_executed"] += 1
-
-        # Return success result
-        return OrderResult(
-            order_id=order_id,
-            status=OrderStatus.EXECUTED,
-            executed_price=execution_price,
-            executed_lots=lots,
-            execution_time=datetime.now(),
-            commission=0.0,  # Spread-only for now
-            broker_order_id=position.position_id,
-            metadata={
-                "symbol": symbol,
-                "direction": direction.value,
-                "position_id": position.position_id,
-                "spread_cost": spread_fee.cost,  # EXTENDED
-                "spread_points": spread_fee.metadata['spread_points']
-            }
-        )
+        self._order_history.append(result)
 
     def _execute_limit_order(
         self,

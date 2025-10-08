@@ -67,9 +67,9 @@ class PerformanceSummary:
         aggregated = self._aggregate_performance_stats()
 
         print()
-        renderer.section_separator(width=120)
+        renderer.section_separator()
         renderer.print_bold("📊 AGGREGATED SUMMARY (ALL SCENARIOS)")
-        renderer.section_separator(width=120)
+        renderer.section_separator()
 
         self._render_aggregated_details(aggregated, renderer)
         print()
@@ -86,17 +86,17 @@ class PerformanceSummary:
         bottlenecks = self._analyze_bottlenecks()
 
         print()
-        renderer.section_separator(width=120)
+        renderer.section_separator()
         print(f"{renderer.bold(renderer.red('⚠️  BOTTLENECK ANALYSIS'))} "
               f"{renderer.gray('(Worst Performers)')}")
-        renderer.section_separator(width=120)
+        renderer.section_separator()
 
         self._render_bottleneck_details(bottlenecks, renderer)
         print()
 
     def _render_scenario_performance(self, scenario, renderer):
         """Render performance for single scenario."""
-        renderer.section_separator(width=120)
+        renderer.section_separator()
 
         stats = scenario.worker_statistics
         ticks_processed = scenario.ticks_processed
@@ -108,7 +108,8 @@ class PerformanceSummary:
 
         decision_stats = stats.get('decision_logic_statistics', {})
         decisions_made = decision_stats.get('decision_count', 0)
-
+        buy_signal_count = decision_stats.get('buy_signal_count', 0)
+        sell_signal_count = decision_stats.get('sell_signal_count', 0)
         # Header
         mode_str = renderer.green(
             "Parallel") if parallel_mode else renderer.yellow("Sequential")
