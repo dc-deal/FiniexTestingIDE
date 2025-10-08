@@ -59,7 +59,8 @@ class BarRenderingController:
         test_start_time: datetime
     ):
         """
-        Prepare warmup data from already-loaded ticks (avoids redundant data loading).
+        Prepare warmup data from already-loaded ticks.
+
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             warmup_ticks: Pre-loaded warmup ticks from TickDataPreparator
@@ -81,6 +82,13 @@ class BarRenderingController:
             self.bar_renderer.initialize_historical_bars(
                 symbol, timeframe, bars)
 
+        # Detailed logging per timeframe
+        total_bars = sum(len(bars) for bars in self._warmup_data.values())
+        timeframe_details = ", ".join(
+            [f"{tf}:{len(bars)}" for tf, bars in self._warmup_data.items()]
+        )
+
         vLog.info(
-            f"🔥 Warmup prepared with {sum(len(bars) for bars in self._warmup_data.values())} total bars (from pre-loaded ticks)"
+            f"🔥 Warmup complete: {total_bars} bars rendered "
+            f"({timeframe_details}) from {len(warmup_ticks):,} ticks"
         )

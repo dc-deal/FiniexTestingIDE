@@ -50,10 +50,11 @@ def run_strategy_test() -> dict:
         # Config-Based Scenario loading
         # ============================================================
 
-        vLog.info("📂 Loading scenario_set from config file...", "StrategyRunner")
+        vLog.debug("📂 Loading scenario_set from config file...",
+                   "StrategyRunner")
         config_loader = ScenarioConfigLoader()
         scenario_set = config_loader.load_config("eurusd_3_windows.json")
-        vLog.info(
+        vLog.debug(
             f"✅ Loaded {len(scenario_set)} scenario_set from config", "StrategyRunner")
 
         # ============================================

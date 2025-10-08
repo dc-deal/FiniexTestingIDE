@@ -85,7 +85,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
 
     def get_warmup_requirements(self):
         requirements = {}
-        minimum_warmup_bars = self.period + 10
+        minimum_warmup_bars = self.period
         for tf in self.get_required_timeframes():
             requirements[tf] = minimum_warmup_bars
         return requirements
@@ -229,7 +229,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
 
     def get_warmup_requirements(self):
         requirements = {}
-        minimum_warmup_bars = self.period + 10
+        minimum_warmup_bars = self.period
         for tf in self.get_required_timeframes():
             requirements[tf] = minimum_warmup_bars
         return requirements
@@ -381,7 +381,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
         return [self.timeframe]
 
     def get_warmup_requirements(self):
-        return {self.timeframe: self.slow + 10}
+        return {self.timeframe: self.slow}
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated

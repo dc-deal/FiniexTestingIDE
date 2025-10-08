@@ -241,6 +241,7 @@ class ScenarioGenerator:
         num_windows: int = 5,
         window_days: int = 2,
         ticks_per_window: int = 1000,
+        session: str = "london_ny_overlap",  # NEU: Session-Parameter
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
@@ -259,7 +260,23 @@ class ScenarioGenerator:
             strategy_config: Strategy parameters (NEW structure!)
             execution_config: Execution parameters
             trade_simulator_config: TradeSimulator config (balance, currency, broker)
+        Generate scenarios by splitting data into time windows.
+
+        Args:
+            session: Trading session - 'london', 'ny', 'london_ny_overlap', 'asian', or 'full_day'
         """
+        # Define trading sessions (UTC times)
+        SESSIONS = {
+            'asian': (0, 8),           # 00:00 - 08:00 UTC (Tokyo)
+            'london': (8, 16),         # 08:00 - 16:00 UTC
+            'ny': (13, 21),            # 13:00 - 21:00 UTC
+            # 13:00 - 16:00 UTC (best liquidity!)
+            'london_ny_overlap': (13, 16),
+            'full_day': (0, 23),       # 00:00 - 23:00 UTC
+        }
+
+        start_hour, end_hour = SESSIONS.get(
+            session, (8, 16))  # Default: London
         # Get available date range
         symbol_info = self.analyzer.get_symbol_info(symbol)
 
@@ -300,7 +317,6 @@ class ScenarioGenerator:
                 "log_performance_stats": True,
             }
 
-        # Generate window scenarios
         for i in range(num_windows):
             window_start = start_date + (i * window_duration)
             window_end = window_start + window_duration
@@ -308,34 +324,30 @@ class ScenarioGenerator:
             if window_end > end_date:
                 window_end = end_date
 
-            # IMPORTANT: Create TestScenario with FULL strategy_config
-            # The ConfigLoader.save_config() will handle extracting
-            # only the overrides when writing to JSON
-            # NEW (C#003): Added trade_simulator_config and enabled fields
+            # Set realistic intraday times
+            window_start = window_start.replace(
+                hour=start_hour, minute=0, second=0, microsecond=0)
+            window_end = window_end.replace(
+                hour=end_hour, minute=0, second=0, microsecond=0)
+
             scenario = TestScenario(
                 symbol=symbol,
-                start_date=window_start.strftime("%Y-%m-%d"),
-                end_date=window_end.strftime("%Y-%m-%d"),
+                start_date=window_start.isoformat(),  # ✅ z.B. "2025-09-23T13:00:00"
+                end_date=window_end.isoformat(),      # ✅ z.B. "2025-09-25T16:00:00"
                 max_ticks=ticks_per_window,
                 data_mode="realistic",
-
-                # Full config here - save_config() will extract overrides
                 strategy_config=strategy_config.copy(),
                 execution_config=execution_config.copy(),
-
-                # NEW (C#003): TradeSimulator config
                 trade_simulator_config=trade_simulator_config.copy(
                 ) if trade_simulator_config else None,
-
-                # NEW (C#003): Default enabled
                 enabled=True,
-
                 name=f"{symbol}_window_{i+1:02d}"
             )
             scenarios.append(scenario)
 
         vLog.info(
-            f"Generated {len(scenarios)} time window scenarios for {symbol}")
+            f"Generated {len(scenarios)} {session} session scenarios for {symbol}"
+        )
         return scenarios
 
     def _generate_volatility_based(

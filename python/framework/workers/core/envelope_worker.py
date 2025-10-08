@@ -76,10 +76,16 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         )
 
     def get_warmup_requirements(self):
+        """
+        Define warmup requirements for Envelope calculation.
+
+        Envelope needs exactly 'period' bars to calculate the moving average.
+        No safety margin - we validate data quality instead.
+        """
         requirements = {}
-        minimum_warmup_bars = self.period + 10
+        # EXAKT was gebraucht wird - kein +10 mehr!
         for tf in self.get_required_timeframes():
-            requirements[tf] = minimum_warmup_bars
+            requirements[tf] = self.period  # z.B. 21 für Envelope-21
         return requirements
 
     def get_required_timeframes(self) -> List[str]:

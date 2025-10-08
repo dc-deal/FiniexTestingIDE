@@ -69,10 +69,16 @@ class RSIWorker(AbstractBlackboxWorker):
         )
 
     def get_warmup_requirements(self):
+        """
+        Define warmup requirements for RSI calculation.
+
+        RSI needs exactly 'period' bars to calculate properly.
+        No safety margin - we validate data quality instead.
+        """
         requirements = {}
-        minimum_warmup_bars = self.period + 10
+        # EXAKT was gebraucht wird - kein +10 mehr!
         for tf in self.get_required_timeframes():
-            requirements[tf] = minimum_warmup_bars
+            requirements[tf] = self.period  # z.B. 14 für RSI-14
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
