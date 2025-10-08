@@ -263,98 +263,6 @@ class TradeSimulator:
             }
         )
 
-    def __OLD_execute_market_order(
-        self,
-        order_id: str,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        **kwargs
-    ) -> OrderResult:
-        """
-        Execute market order with LIVE spread calculation.
-
-        EXTENDED: Creates SpreadFee from current tick bid/ask.
-        """
-        try:
-            # Get current price from LIVE tick data
-            bid, ask = self.get_current_price(symbol)
-        except ValueError as e:
-            self._execution_stats["orders_rejected"] += 1
-            return create_rejection_result(
-                order_id=order_id,
-                reason=RejectionReason.BROKER_ERROR,
-                message=str(e)
-            )
-
-        # Determine execution price
-        if direction == OrderDirection.BUY:
-            execution_price = ask
-        else:
-            execution_price = bid
-
-        # EXTENDED: Create SpreadFee from LIVE tick data
-        symbol_info = self.broker.get_symbol_info(symbol)
-        tick_value = symbol_info.get('tick_value', 1.0)
-        digits = symbol_info.get('digits', 5)
-
-        spread_fee = create_spread_fee_from_tick(
-            bid=bid,
-            ask=ask,
-            lots=lots,
-            tick_value=tick_value,
-            digits=digits
-        )
-
-        # Track spread cost
-        self._execution_stats["total_spread_cost"] += spread_fee.cost
-
-        # Check margin available
-        margin_required = self.broker.calculate_margin(symbol, lots)
-        free_margin = self.portfolio.get_free_margin()
-
-        if margin_required > free_margin:
-            self._execution_stats["orders_rejected"] += 1
-            return create_rejection_result(
-                order_id=order_id,
-                reason=RejectionReason.INSUFFICIENT_MARGIN,
-                message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
-            )
-
-        # EXTENDED: Open position with SpreadFee
-        position = self.portfolio.open_position(
-            symbol=symbol,
-            direction=direction,
-            lots=lots,
-            entry_price=execution_price,
-            entry_fee=spread_fee,  # EXTENDED
-            stop_loss=kwargs.get('stop_loss'),
-            take_profit=kwargs.get('take_profit'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
-        )
-
-        # Update statistics
-        self._execution_stats["orders_executed"] += 1
-
-        # Return success result
-        return OrderResult(
-            order_id=order_id,
-            status=OrderStatus.EXECUTED,
-            executed_price=execution_price,
-            executed_lots=lots,
-            execution_time=datetime.now(),
-            commission=0.0,  # Spread-only for now
-            broker_order_id=position.position_id,
-            metadata={
-                "symbol": symbol,
-                "direction": direction.value,
-                "position_id": position.position_id,
-                "spread_cost": spread_fee.cost,  # EXTENDED
-                "spread_points": spread_fee.metadata['spread_points']
-            }
-        )
-
     def _fill_pending_order(self, pending_order) -> None:
         """
         Fill pending order that has completed its delay.
@@ -410,8 +318,6 @@ class TradeSimulator:
             comment=pending_order.order_kwargs.get('comment', ''),
             magic_number=pending_order.order_kwargs.get('magic_number', 0)
         )
-
-        self.close_position(position.position_id)
 
         # Create successful order result
         result = OrderResult(

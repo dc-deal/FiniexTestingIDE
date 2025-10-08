@@ -42,6 +42,8 @@ class ScenarioPerformanceStats:
     # Execution stats
     ticks_processed: int
     signals_generated: int
+    signals_gen_buy: int
+    signals_gen_sell: int
     signal_rate: float
     success: bool
 

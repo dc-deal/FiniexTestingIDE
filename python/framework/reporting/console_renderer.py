@@ -248,6 +248,7 @@ class ConsoleRenderer:
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
             f"Signals: {signals} ({rate:.1%})",
+            f"Buy/Sell: {scenario.signals_gen_buy}/{scenario.signals_gen_sell}",
             f"Worker/Calls: {total_workers}/{worker_calls:,}",
             f"Decisions: {decisions}"
         ]

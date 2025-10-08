@@ -6,6 +6,7 @@ REFACTORED:
 - Implements get_required_order_types() → [OrderType.MARKET]
 - Implements execute_decision() → Market orders with margin checks
 - Uses DecisionTradingAPI instead of TradeSimulator directly
+- ONE POSITION ONLY: Closes existing position before opening new one
 
 This logic is more aggressive than SimpleConsensus:
 - Acts on single indicator signals (no consensus needed)
@@ -22,6 +23,12 @@ Trading Rules (NEW):
 - Check free margin before trading (min 1000 EUR)
 - Fixed lot size 0.1 (TODO: Position sizing logic)
 - No SL/TP for MVP (TODO: Risk management)
+- ONE POSITION ONLY: Maximum one position at a time
+
+Position Management:
+- FLAT signal → Close existing position
+- Same direction signal → Skip (already have position)
+- Opposite direction signal → Close old, open new (reversal)
 
 This demonstrates how different DecisionLogic implementations
 can use the same workers but with completely different strategies.
@@ -120,16 +127,13 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         Implementation: Execute trading decision via DecisionTradingAPI.
 
-        Called by execute_decision() template method.
-        Statistics are updated automatically after this returns.
+        ONE POSITION ONLY Strategy:
+        1. FLAT signal → Close existing position (exit)
+        2. Same direction signal → Skip (already have what we want)
+        3. Opposite direction signal → Close old, open new (reversal)
+        4. New signal with no position → Open position (entry)
 
-        Same execution logic as SimpleConsensus:
-        - Check free margin
-        - Send market order
-        - Log results
-
-        This shows how execution logic can be standardized
-        across different decision strategies.
+        This keeps trading simple and predictable with maximum one position.
 
         Args:
             decision: Decision object from compute()
@@ -138,16 +142,60 @@ class AggressiveTrend(AbstractDecisionLogic):
         Returns:
             OrderResult if order was sent, None if no trade
         """
-        # Only trade on BUY/SELL signals
-        if decision.action == "FLAT":
-            return None
-
         # Check if trading API is available
         if not self.trading_api:
             vLog.warning("Trading API not available - cannot execute decision")
             return None
 
-        # Check account state
+        # Get current open positions
+        open_positions = self.trading_api.get_open_positions()
+
+        # ============================================
+        # STEP 1: Handle FLAT signal (exit strategy)
+        # ============================================
+        if decision.action == "FLAT":
+            if len(open_positions) > 0:
+                position = open_positions[0]
+                vLog.debug(
+                    f"📍 FLAT signal - closing {position.direction.value} position "
+                    f"(ID: {position.position_id})"
+                )
+                return self.trading_api.close_position(position.position_id)
+            # No position to close, nothing to do
+            return None
+
+        # ============================================
+        # STEP 2: Check if we already have a position
+        # ============================================
+        new_direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
+
+        if len(open_positions) > 0:
+            current_position = open_positions[0]
+
+            # Same direction? Skip (we already have what the strategy wants)
+            if current_position.direction == new_direction:
+                vLog.debug(
+                    f"⏭️  Already holding {new_direction.value} position "
+                    f"(ID: {current_position.position_id}) - skipping duplicate signal"
+                )
+                return None
+
+            # Opposite direction? Close old position (signal reversal)
+            vLog.debug(
+                f"🔄 Signal reversal detected: {current_position.direction.value} → {new_direction.value}"
+            )
+            vLog.debug(
+                f"   Closing {current_position.direction.value} position "
+                f"(ID: {current_position.position_id})"
+            )
+            self.trading_api.close_position(current_position.position_id)
+            # Continue to open new position below
+
+        # ============================================
+        # STEP 3: Open new position
+        # ============================================
+
+        # Check account state (margin available)
         account = self.trading_api.get_account_info()
 
         if account.free_margin < self.min_free_margin:
@@ -157,24 +205,21 @@ class AggressiveTrend(AbstractDecisionLogic):
             )
             return None
 
-        # Determine order direction
-        direction = OrderDirection.BUY if decision.action == "BUY" else OrderDirection.SELL
-
         # Send market order
         try:
             order_result = self.trading_api.send_order(
                 symbol=tick.symbol,
                 order_type=OrderType.MARKET,
-                direction=direction,
+                direction=new_direction,
                 lots=self.lot_size,
                 comment=f"AggressiveTrend: {decision.reason[:50]}"
             )
 
-            # Check order submission status
+            # Log order submission status
             if order_result.status == OrderStatus.PENDING:
                 vLog.debug(
-                    f"⏳ Order submitted: {direction.value} {self.lot_size} lots "
-                    f"(ID: {order_result.order_id}) - PENDING execution"
+                    f"⏳ Order submitted: {new_direction.value} {self.lot_size} lots "
+                    f"(ID: {order_result.order_id}) - awaiting execution"
                 )
             elif order_result.is_rejected:
                 vLog.warning(

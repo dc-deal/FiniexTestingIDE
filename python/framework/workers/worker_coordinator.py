@@ -280,7 +280,8 @@ class WorkerCoordinator:
 
         # Record decision logic performance
         if self.decision_logic.performance_logger:
-            self.decision_logic.performance_logger.record(decision_time_ms)
+            self.decision_logic.performance_logger.record(
+                decision_time_ms, decision)
 
         # Update statistics
         if decision and decision.action != "FLAT":

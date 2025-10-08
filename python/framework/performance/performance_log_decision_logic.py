@@ -5,6 +5,8 @@ Tracks performance metrics for decision logic
 
 from typing import Dict, Any
 
+from python.framework.types import Decision
+
 
 class PerformanceLogDecisionLogic:
     """
@@ -27,11 +29,13 @@ class PerformanceLogDecisionLogic:
 
         # Performance metrics
         self.decision_count = 0
+        self.buy_decision_count = 0
+        self.sell_decision_count = 0
         self.total_time_ms = 0.0
         self.min_time_ms = float('inf')
         self.max_time_ms = 0.0
 
-    def record(self, execution_time_ms: float):
+    def record(self, execution_time_ms: float, decision: Decision):
         """
         Record a single execution time.
 
@@ -39,6 +43,10 @@ class PerformanceLogDecisionLogic:
             execution_time_ms: Execution time in milliseconds
         """
         self.decision_count += 1
+        if decision.action == "BUY":
+            self.buy_decision_count += 1
+        if decision.action == "SELL":
+            self.sell_decision_count += 1
         self.total_time_ms += execution_time_ms
 
         # Update min/max
@@ -64,6 +72,8 @@ class PerformanceLogDecisionLogic:
             "decision_logic_type": self.decision_logic_type,
             "decision_logic_name": self.decision_logic_name,
             "decision_count": self.decision_count,
+            "buy_decision_count": self.buy_decision_count,
+            "sell_decision_count": self.sell_decision_count,
             "total_time_ms": round(self.total_time_ms, 3),
             "avg_time_ms": round(self.get_avg_time_ms(), 3),
             "min_time_ms": round(self.min_time_ms, 3) if self.min_time_ms != float('inf') else 0.0,

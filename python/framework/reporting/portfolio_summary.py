@@ -104,9 +104,9 @@ class PortfolioSummary:
             return
 
         print()
-        renderer.section_separator(width=120)
+        renderer.section_separator()
         renderer.print_bold("📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)")
-        renderer.section_separator(width=120)
+        renderer.section_separator()
 
         self._render_aggregated_details(
             aggregated_portfolio,
