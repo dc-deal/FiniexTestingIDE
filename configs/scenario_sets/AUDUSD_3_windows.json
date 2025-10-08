@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "scenario_set_name": "scn_AUDUSD_3_windows",
-  "created": "2025-10-08T08:42:36.445858",
+  "created": "2025-10-08T19:35:40.496615",
   "trade_simulator_seeds": {
     "api_latency_seed": 42,
     "market_execution_seed": 123
@@ -47,8 +47,8 @@
     {
       "name": "AUDUSD_window_01",
       "symbol": "AUDUSD",
-      "start_date": "2025-09-17",
-      "end_date": "2025-09-19",
+      "start_date": "2025-09-17T13:00:00+00:00",
+      "end_date": "2025-09-19T16:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": true,
@@ -59,8 +59,8 @@
     {
       "name": "AUDUSD_window_02",
       "symbol": "AUDUSD",
-      "start_date": "2025-09-19",
-      "end_date": "2025-09-21",
+      "start_date": "2025-09-19T13:00:00+00:00",
+      "end_date": "2025-09-21T16:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": true,
@@ -71,8 +71,8 @@
     {
       "name": "AUDUSD_window_03",
       "symbol": "AUDUSD",
-      "start_date": "2025-09-21",
-      "end_date": "2025-09-23",
+      "start_date": "2025-09-21T13:00:00+00:00",
+      "end_date": "2025-09-23T16:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": true,

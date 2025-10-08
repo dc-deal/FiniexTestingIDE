@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
+from python.framework.exceptions import InsufficientWarmupDataError
 from python.framework.types import Bar, TickData, TimeframeConfig
 
 vLog = setup_logging(name="StrategyRunner")
@@ -141,6 +142,9 @@ class BarWarmupManager:
 
         Returns:
             Dict[timeframe, List[Bar]] - Historical bars per timeframe
+
+        Raises:
+            InsufficientWarmupDataError: If not enough bars could be rendered
         """
         historical_bars = {}
 
@@ -150,18 +154,29 @@ class BarWarmupManager:
 
         # Render bars for each required timeframe
         for timeframe, minutes_needed in warmup_requirements.items():
-            # Use the bar_renderer's render logic (we'll need to import it)
-            # For now, we'll use the local rendering method
+            # Render ALL bars from ticks
             bars = self._render_bars_from_ticks(
                 warmup_ticks, timeframe, symbol)
 
-            # Take only the last N bars needed for warmup
+            # Calculate how many bars we need
             bars_needed = minutes_needed // TimeframeConfig.get_minutes(
                 timeframe)
-            historical_bars[timeframe] = bars[-bars_needed:] if bars else []
+
+            # HARD VALIDATION: Do we have enough bars?
+            if len(bars) < bars_needed:
+                raise InsufficientWarmupDataError(
+                    timeframe=timeframe,
+                    required_bars=bars_needed,
+                    rendered_bars=len(bars),
+                    last_bar_timestamp=bars[-1].timestamp if bars else None
+                )
+
+            # Take only the last N bars needed for warmup
+            historical_bars[timeframe] = bars[-bars_needed:]
 
             vLog.debug(
-                f"Prepared {len(historical_bars[timeframe])} {timeframe} bars for warmup"
+                f"✅ Prepared {len(historical_bars[timeframe])} {timeframe} bars "
+                f"for warmup (required: {bars_needed}, rendered: {len(bars)})"
             )
 
         return historical_bars

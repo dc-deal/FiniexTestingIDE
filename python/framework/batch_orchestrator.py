@@ -75,7 +75,7 @@ class BatchOrchestrator:
         scenarios: List[TestScenario],
         data_worker: TickDataLoader,
         app_config: AppConfigLoader,
-        performance_log: ScenarioSetPerformanceManager
+        performance_log: ScenarioSetPerformanceManager,
     ):
         """
         Initialize batch orchestrator.
@@ -287,31 +287,32 @@ class BatchOrchestrator:
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 6.1 Calculate per-scenario requirements
+        # 6. Calculate per-scenario requirements
         scenario_contract = self._calculate_scenario_requirements(workers)
 
-        # 6.2 Prepare data using timeframe-aware warmup calculation
+        # 7. Prepare data using timestamp-based warmup
         preparator = TickDataPreparator(self.data_worker)
 
-        # 6.3 Convert bar requirements to minute requirements for accurate tick estimation
-        warmup_minutes_by_tf = {}
-        for timeframe, bars_needed in scenario_contract["warmup_by_timeframe"].items():
-            minutes_needed = TimeframeConfig.get_minutes(
-                timeframe) * bars_needed
-            warmup_minutes_by_tf[timeframe] = minutes_needed
+        # Parse test period timestamps
+        test_start = datetime.fromisoformat(scenario.start_date)
+        test_end = datetime.fromisoformat(scenario.end_date)
 
-        vLog.debug(f"📊 Scenario warmup requirements: {warmup_minutes_by_tf}")
-
-        warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
-            symbol=scenario.symbol,
-            warmup_requirements=warmup_minutes_by_tf,
-            test_ticks_count=scenario.max_ticks or 1000,
-            data_mode=scenario.data_mode,
-            start_date=scenario.start_date,
-            end_date=scenario.end_date,
+        vLog.debug(
+            f"📊 Scenario warmup bar requirements: {scenario_contract['warmup_by_timeframe']}"
         )
 
-        # 7. Setup bar rendering
+        # Preparator converts bars to minutes internally
+        warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
+            symbol=scenario.symbol,
+            warmup_bar_requirements=scenario_contract["warmup_by_timeframe"],
+            test_start=test_start,
+            test_end=test_end,
+            max_test_ticks=scenario.max_ticks,
+            data_mode=scenario.data_mode,
+            scenario_name=scenario.name
+        )
+
+        # 8. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
 
@@ -322,7 +323,7 @@ class BatchOrchestrator:
             test_start_time=first_test_time,
         )
 
-        # 8. Execute test loop
+        # 9. Execute test loop
         signals = []
         tick_count = 0
         ticks_processed = 0

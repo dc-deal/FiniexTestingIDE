@@ -124,7 +124,7 @@ class ScenarioConfigLoader:
 
         if disabled_count > 0:
             vLog.info(
-                f"🔻 | Copy & Paste Filtered out {disabled_count} disabled scenario(s)")
+                f"🔻 Filtered out {disabled_count} disabled scenario(s)")
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
         return scenarios
 
