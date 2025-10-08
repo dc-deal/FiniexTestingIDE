@@ -367,6 +367,14 @@ class BatchOrchestrator:
                     vLog.error(
                         f"Order execution failed: \n{traceback.format_exc()}")
 
+        # BEFORE collecting statistics - cleanup pending orders.
+        open_positions = scenario_simulator.get_open_positions()
+        if open_positions:
+            vLog.warning(
+                f"⚠️ {len(open_positions)} positions remain open - auto-closing")
+            for pos in open_positions:
+                scenario_simulator.close_position(pos.position_id)
+
         # ============================================
         # Collect trading statistics
         # ============================================
