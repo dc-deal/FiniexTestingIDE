@@ -70,15 +70,17 @@ class TickDataImporter:
 
     def process_all_mql5_exports(self):
         """
-        Batch-Verarbeitung aller *_ticks.json Files im Source-Directory.
-
         Sucht alle TickCollector-Exports und konvertiert sie sequenziell.
         Fehler stoppen nicht die Verarbeitung weiterer Files.
+
+        EXTENDED (C#002): Rebuilds index after successful imports
         """
         json_files = list(self.source_dir.glob("*_ticks.json"))
 
         if not json_files:
-            vLog.warning(f"Keine JSON-Files gefunden in {self.source_dir}")
+            vLog.warning(
+                f"Keine JSON-Files gefunden in {self.source_dir}. Just rebuilding Index.")
+            self.rebuild_parquet_index()
             return
 
         vLog.info(f"Gefunden: {len(json_files)} JSON-Files")
@@ -90,7 +92,7 @@ class TickDataImporter:
                 self.convert_json_to_parquet(json_file)
                 self.processed_files += 1
             except ArtificialDuplicateException as e:
-                # NEW: Special handling for duplicate detection
+                # Special handling for duplicate detection
                 error_msg = f"DUPLICATE DETECTED bei {json_file.name}"
                 vLog.error(error_msg)
                 vLog.error(str(e))
@@ -101,7 +103,26 @@ class TickDataImporter:
                 vLog.error(error_msg)
                 self.errors.append(error_msg)
 
+        self.rebuild_parquet_index()
+
         self._print_summary()
+
+    def rebuild_parquet_index(self):
+        # NEW (C#002): Rebuild index after successful imports
+        vLog.info("🔄 Rebuilding Parquet index...")
+        try:
+            from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+
+            index_manager = ParquetIndexManager(self.target_dir)
+            index_manager.build_index(force_rebuild=True)
+
+            # Print brief summary
+            symbols = index_manager.list_symbols()
+            vLog.info(f"✅ Index rebuilt: {len(symbols)} symbols indexed")
+
+        except Exception as e:
+            vLog.error(f"❌ Failed to rebuild index: {e}")
+            vLog.error("   Index may be outdated - run manual rebuild!")
 
     def convert_json_to_parquet(self, json_file: Path):
         """
