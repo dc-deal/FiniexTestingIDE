@@ -118,16 +118,17 @@ class TickDataPreparator:
             minutes = (total_seconds % 3600) // 60
 
             if hours > 0:
-                vLog.info(f"└─Emulated Time: {hours}h {minutes}m")
+                vLog.info(f"└─Emulated Running Time Span: {hours}h {minutes}m")
             else:
-                vLog.info(f"└─Emulated Time: {minutes}m")
+                vLog.info(f"└─Emulated Running Time Span: {minutes}m")
 
-        # Load ALL ticks covering warmup + test period
+        # NEW: Pass data_mode to loader for proper duplicate handling
         df = self.data_worker.load_symbol_data(
             symbol=symbol,
             start_date=warmup_start.isoformat(),
             end_date=test_end.isoformat(),
-            use_cache=True
+            use_cache=True,
+            data_mode=data_mode  # NEW: Forward data_mode from scenario
         )
 
         if df.empty:
