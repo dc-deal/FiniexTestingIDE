@@ -1,20 +1,121 @@
 {
     "version": "0.2.0",
     "configurations": [
+        // ====================================================
+        // 📊 DATA PIPELINE
+        // ====================================================
         {
             "name": "📊 Data Pipeline: Import Ticks",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/data_worker/tick_importer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         },
         {
             "name": "📊 Data Pipeline: Test Data Report",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/data_worker/data_loader/reports.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
+        // 🔍 INDEX MANAGEMENT (NEW - C#002)
+        // ====================================================
+        {
+            "name": "🔍 Index: Rebuild",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
         },
         {
-            "name": "🔬 Strategy Runner- Default Log",
+            "name": "🔍 Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Index: Validate All Symbols",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
+        // 📈 GAP ANALYSIS & COVERAGE (NEW - C#002)
+        // ====================================================
+        {
+            "name": "📈 CLI - Gap Report: EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "gaps",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📈 CLI - Gap Report: GBPUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "gaps",
+                "GBPUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📈 CLI - Coverage: EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "coverage",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📈 CLI - File Selection Demo: EURUSD (2 days)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "files",
+                "EURUSD",
+                "--start",
+                "2025-09-23T00:00:00+00:00",
+                "--end",
+                "2025-09-25T23:59:00+00:00"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
+        // 🔬 STRATEGY RUNNER
+        // ====================================================
+        {
+            "name": "🔬 Strategy Runner - Default",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/strategy_runner.py",
@@ -22,13 +123,16 @@
             "justMyCode": false
         },
         {
-            "name": "🚀 Strategy Runner-Live Demo",
+            "name": "🚀 Strategy Runner - Live Demo",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/demos/tui_live_monitor_demo.py",
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        // ====================================================
+        // 📝 SCENARIO MANAGEMENT
+        // ====================================================
         {
             "name": "📝 Scenario Generator - Run",
             "type": "debugpy",
@@ -36,6 +140,6 @@
             "program": "${workspaceFolder}/python/scenario/generate_scenarios.py",
             "console": "integratedTerminal",
             "justMyCode": false
-        },
+        }
     ]
 }

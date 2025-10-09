@@ -6,6 +6,8 @@ Location: python/data_worker/reports.py
 """
 
 import traceback
+
+import pandas as pd
 from python.components.logger.bootstrap_logger import setup_logging
 from typing import Dict
 
@@ -96,10 +98,17 @@ class TickDataReporter:
             vLog.info(f"❌ Cannot load {symbol}: {info['error']}")
             return
 
+        start_date = info["date_range"]["start_formatted"].split()[
+            0]
+        end_date = info["date_range"]["end_formatted"].split()[
+            0]
+        start_dt = pd.to_datetime(start_date).tz_localize('UTC')
+        end_dt = pd.to_datetime(end_date).tz_localize('UTC')
+
         df = self.loader.load_symbol_data(
             symbol,
-            start_date=info["date_range"]["start_formatted"].split()[0],
-            end_date=info["date_range"]["end_formatted"].split()[0],
+            start_date=start_dt,
+            end_date=end_dt,
         )
 
         vLog.info(f"✓ Loaded:      {len(df):,} ticks")
