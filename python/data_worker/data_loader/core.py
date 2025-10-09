@@ -2,7 +2,7 @@
 FiniexTestingIDE Data Loader - Core Module
 Pure loading logic: Fast, focused, zero dependencies on analysis
 
-Location: python/data_worker/core.py
+Location: python/data_worker/data_loader/core.py
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
+import pyarrow.parquet as pq
+
+# NEW: Import quality exceptions
+from python.data_worker.data_loader.exceptions import (
+    ArtificialDuplicateException,
+    DuplicateReport,
+    InvalidDataModeException
+)
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -23,10 +31,14 @@ class TickDataLoader:
     - Load parquet files from disk
     - Cache loaded data for performance
     - Apply date range filters
-    - Remove duplicates
+    - Remove duplicates based on data_mode
+    - Detect artificial duplicates (data integrity)
 
     Design: Minimal, fast, no analysis logic
     """
+
+    # Valid data modes
+    VALID_DATA_MODES = ["raw", "realistic", "clean"]
 
     def __init__(self, data_dir: str = "./data/processed/"):
         """
@@ -69,8 +81,9 @@ class TickDataLoader:
         symbol: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        data_mode: str = "realistic",  # NEW: Replaces drop_duplicates
         use_cache: bool = True,
-        drop_duplicates: bool = True,
+        detect_artificial_duplicates: bool = True,  # NEW: Integrity check
     ) -> pd.DataFrame:
         """
         Load tick data for a symbol with optional date filtering
@@ -79,19 +92,31 @@ class TickDataLoader:
             symbol: Currency pair (e.g. 'EURUSD')
             start_date: Start date (ISO format: '2024-01-15') or None for all data
             end_date: End date (ISO format: '2024-01-16') or None for all data
+            data_mode: Data quality mode - controls duplicate handling:
+                - "raw": Keep all duplicates (maximum realism)
+                - "realistic": Remove duplicates (normal testing)
+                - "clean": Remove duplicates (same as realistic for now)
             use_cache: Whether to use cached data for performance
+            detect_artificial_duplicates: Check for file-level duplicates
 
         Returns:
             DataFrame with columns: timestamp, bid, ask, volume, spread_points, etc.
 
         Raises:
             ValueError: If no data found for symbol
+            InvalidDataModeException: If data_mode is invalid
+            ArtificialDuplicateException: If duplicate Parquet files detected
         """
-        cache_key = f"{symbol}_{start_date}_{end_date}"
+        # Validate data_mode
+        if data_mode not in self.VALID_DATA_MODES:
+            raise InvalidDataModeException(data_mode)
+
+        cache_key = f"{symbol}_{start_date}_{end_date}_{data_mode}"
 
         # Check cache
         if use_cache and cache_key in self._symbol_cache:
-            vLog.info(f"Using cached data for {symbol}")
+            vLog.info(
+                f"Using cached data for {symbol} (data_mode={data_mode})")
             return self._symbol_cache[cache_key].copy()
 
         # Find files for symbol
@@ -99,6 +124,14 @@ class TickDataLoader:
 
         if not files:
             raise ValueError(f"No data found for symbol {symbol}")
+
+        # NEW: Check for artificial duplicates (data integrity)
+        if detect_artificial_duplicates:
+            vLog.info(
+                f"🛡️  Check for artificial duplicates over {len(files)} files for {symbol} (data integrity)")
+            duplicate_report = self._check_artificial_duplicates(files)
+            if duplicate_report:
+                raise ArtificialDuplicateException(duplicate_report)
 
         vLog.debug(f"Loading {len(files)} files for {symbol}")
 
@@ -119,9 +152,8 @@ class TickDataLoader:
         combined_df = combined_df.sort_values(
             "timestamp").reset_index(drop=True)
 
-        # Remove duplicates (keep latest)
-        # trigger: Miliseconds.
-        if drop_duplicates:
+        # NEW: Remove duplicates based on data_mode
+        if self._should_filter_duplicates(data_mode):
             initial_count = len(combined_df)
             combined_df = combined_df.drop_duplicates(
                 subset=["time_msc", "bid", "ask"], keep="last"
@@ -131,13 +163,18 @@ class TickDataLoader:
             if duplicates_removed > 0:
                 duplicate_percentage = (
                     duplicates_removed / initial_count) * 100
-                vLog.debug(
-                    f"Removed {duplicates_removed:,} duplicates from {initial_count:,} total ticks "
-                    f"({duplicate_percentage:.2f}% of data)"
+                vLog.info(
+                    f"🔁 Removed {duplicates_removed:,} natural duplicates ")
+                vLog.info(
+                    f"from {initial_count:,} total ticks ({duplicate_percentage:.2f}% of data) [data_mode={data_mode}]"
                 )
-                vLog.debug(f"Remaining: {len(combined_df):,} unique ticks")
             else:
-                vLog.debug(f"No duplicates found in {initial_count:,} ticks")
+                vLog.info(
+                    f"🔁 No natural duplicates found in {initial_count:,} ticks")
+        else:
+            vLog.info(
+                f"🔁 Keeping all ticks including natural duplicates [data_mode={data_mode}]"
+            )
 
         # Apply date filters
         combined_df = self._apply_date_filters(
@@ -147,8 +184,93 @@ class TickDataLoader:
         if use_cache:
             self._symbol_cache[cache_key] = combined_df.copy()
 
-        vLog.debug(f"✓ Loaded: {len(combined_df):,} ticks for {symbol}")
+        vLog.info(f"✅ Loaded: {len(combined_df):,} ticks for {symbol}")
         return combined_df
+
+    def _check_artificial_duplicates(self, files: List[Path]) -> Optional[DuplicateReport]:
+        """
+        Check for artificial duplicates via Parquet metadata
+
+        Artificial duplicates occur when multiple Parquet files reference
+        the same source JSON file (e.g. through manual file copying).
+
+        Args:
+            files: List of Parquet files to check
+
+        Returns:
+            DuplicateReport if duplicates found, None otherwise
+        """
+        source_map = {
+        }  # source_file -> (path, tick_count, time_range, size, metadata)
+
+        for file in files:
+            try:
+                # Read Parquet metadata
+                parquet_file = pq.ParquetFile(file)
+                metadata_raw = parquet_file.metadata.metadata
+
+                # Extract and decode all metadata
+                metadata_dict = {
+                    key.decode('utf-8') if isinstance(key, bytes) else key:
+                    value.decode('utf-8') if isinstance(value,
+                                                        bytes) else value
+                    for key, value in metadata_raw.items()
+                }
+
+                # Extract source_file from metadata
+                source_file = metadata_dict.get('source_file', 'unknown')
+
+                # Read tick count and time range from data
+                df = pd.read_parquet(file)
+                tick_count = len(df)
+                time_range = (df['timestamp'].min(), df['timestamp'].max())
+                file_size_mb = file.stat().st_size / (1024 * 1024)
+
+                # Check if we've seen this source file before
+                if source_file in source_map:
+                    # ARTIFICIAL DUPLICATE DETECTED!
+                    prev_file, prev_count, prev_range, prev_size, prev_metadata = source_map[
+                        source_file]
+
+                    # Build detailed report with metadata comparison
+                    return DuplicateReport(
+                        source_file=source_file,
+                        duplicate_files=[prev_file, file],
+                        tick_counts=[prev_count, tick_count],
+                        time_ranges=[prev_range, time_range],
+                        file_sizes_mb=[prev_size, file_size_mb],
+                        metadata=[prev_metadata, metadata_dict]
+                    )
+
+                # Store for future comparison (including metadata)
+                source_map[source_file] = (
+                    file, tick_count, time_range, file_size_mb, metadata_dict)
+
+            except Exception as e:
+                vLog.warning(f"Could not read metadata from {file.name}: {e}")
+                # Continue checking other files
+
+        return None
+
+    def _should_filter_duplicates(self, data_mode: str) -> bool:
+        """
+        Determine if natural duplicates should be filtered based on data_mode
+
+        Natural duplicates are ticks with identical time_msc, bid, and ask
+        that arrived from the broker (not artificial file duplicates).
+
+        Args:
+            data_mode: Data quality mode
+
+        Returns:
+            True if duplicates should be removed, False to keep them
+
+        Data Mode Behavior:
+            - "raw":       False (keep duplicates for maximum realism)
+            - "realistic": True  (remove duplicates for normal testing)
+            - "clean":     True  (remove duplicates for clean testing)
+        """
+        return data_mode in ["realistic", "clean"]
 
     def _apply_date_filters(
         self, df: pd.DataFrame, start_date: Optional[str], end_date: Optional[str]
@@ -199,7 +321,7 @@ class TickDataLoader:
 
             return df
 
-        return df  # ← EINZIGE ÄNDERUNG: Diese Zeile wurde hinzugefügt
+        return df
 
     def _get_symbol_files(self, symbol: str) -> List[Path]:
         """Find all parquet files for a symbol"""

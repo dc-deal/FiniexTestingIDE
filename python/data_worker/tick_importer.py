@@ -6,7 +6,7 @@ Konvertiert MQL5 JSON-Exports zu optimierten Parquet-Files.
 Workflow: JSON laden → Validieren → Optimieren → Parquet speichern
 
 Author: FiniexTestingIDE Team
-Version: 1.0
+Version: 1.1 (with duplicate detection)
 """
 
 import json
@@ -24,6 +24,12 @@ import pyarrow.parquet as pq
 from python.configuration import AppConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
+# NEW: Import duplicate detection
+from python.data_worker.data_loader.exceptions import (
+    ArtificialDuplicateException,
+    DuplicateReport
+)
+
 setup_logging(name="StrategyRunner")
 vLog = setup_logging(name="StrategyRunner")
 
@@ -37,6 +43,7 @@ class TickDataImporter:
     - Datentyp-Optimierung für Performance
     - Qualitäts-Checks und Bereinigung
     - Batch-Verarbeitung mit Error-Handling
+    - Duplicate Prevention (NEW in V1.1)
 
     Args:
         source_dir (str): Verzeichnis mit JSON-Files
@@ -82,6 +89,13 @@ class TickDataImporter:
             try:
                 self.convert_json_to_parquet(json_file)
                 self.processed_files += 1
+            except ArtificialDuplicateException as e:
+                # NEW: Special handling for duplicate detection
+                error_msg = f"DUPLICATE DETECTED bei {json_file.name}"
+                vLog.error(error_msg)
+                vLog.error(str(e))
+                self.errors.append(error_msg)
+                vLog.info("→ Überspringe Import (Duplikat existiert bereits)")
             except Exception as e:
                 error_msg = f"FEHLER bei {json_file.name}: {str(e)}"
                 vLog.error(error_msg)
@@ -97,14 +111,16 @@ class TickDataImporter:
         1. JSON laden und Struktur validieren
         2. DataFrame erstellen und Datentypen optimieren
         3. Zeitstempel normalisieren und Qualitäts-Checks
-        4. Als Parquet mit Metadaten speichern
-        5. Optional: Source-File nach finished/ verschieben
+        4. NEW: Check for existing duplicates BEFORE writing
+        5. Als Parquet mit Metadaten speichern
+        6. Optional: Source-File nach finished/ verschieben
 
         Args:
             json_file (Path): Pfad zur JSON-Datei
 
         Raises:
             ValueError: Bei ungültiger JSON-Struktur
+            ArtificialDuplicateException: Bei existierenden Duplikaten
             Exception: Bei Parquet-Schreibfehlern
         """
 
@@ -173,7 +189,22 @@ class TickDataImporter:
         }
 
         # ===========================================
-        # 4. PARQUET SCHREIBEN UND FILE-MANAGEMENT
+        # 4. NEW: CHECK FOR EXISTING DUPLICATES
+        # ===========================================
+
+        vLog.debug(f"Checking for existing duplicates of {json_file.name}...")
+        duplicate_report = self._check_for_existing_duplicate(
+            json_file.name,
+            symbol,
+            df
+        )
+
+        if duplicate_report:
+            # DUPLICATE DETECTED - Abort import!
+            raise ArtificialDuplicateException(duplicate_report)
+
+        # ===========================================
+        # 5. PARQUET SCHREIBEN UND FILE-MANAGEMENT
         # ===========================================
 
         try:
@@ -218,6 +249,81 @@ class TickDataImporter:
             for key, value in parquet_metadata.items():
                 vLog.error(f"  {key}: {value} (Type: {type(value)})")
             raise  # Re-raise für Caller-Error-Handling
+
+    def _check_for_existing_duplicate(
+        self,
+        source_json_name: str,
+        symbol: str,
+        new_df: pd.DataFrame
+    ) -> Optional[DuplicateReport]:
+        """
+        NEW: Check if a Parquet file already exists with the same source_file
+
+        This prevents accidental re-imports and manual file duplication.
+        Checks BEFORE writing the new Parquet file.
+
+        Args:
+            source_json_name: Name of the source JSON file being imported
+            symbol: Trading symbol (for finding relevant Parquet files)
+            new_df: DataFrame about to be written (for comparison)
+
+        Returns:
+            DuplicateReport if duplicate found, None otherwise
+        """
+        # Find all existing Parquet files for this symbol
+        existing_files = list(self.target_dir.glob(f"{symbol}_*.parquet"))
+
+        if not existing_files:
+            return None  # No existing files, safe to proceed
+
+        # Check each existing file's metadata
+        for existing_file in existing_files:
+            try:
+                parquet_file = pq.ParquetFile(existing_file)
+                metadata_raw = parquet_file.metadata.metadata
+
+                # Extract and decode all metadata
+                existing_metadata = {
+                    key.decode('utf-8') if isinstance(key, bytes) else key:
+                    value.decode('utf-8') if isinstance(value,
+                                                        bytes) else value
+                    for key, value in metadata_raw.items()
+                }
+
+                # Extract source_file from metadata
+                existing_source = existing_metadata.get('source_file', '')
+
+                # Check if this Parquet was created from the same source JSON
+                if existing_source == source_json_name:
+                    # DUPLICATE DETECTED!
+                    vLog.warning(
+                        f"⚠️  Found existing Parquet from same source: {existing_file.name}"
+                    )
+
+                    # Read existing file data for comparison
+                    existing_df = pd.read_parquet(existing_file)
+
+                    # Build comparison report - only show existing file
+                    return DuplicateReport(
+                        source_file=source_json_name,
+                        duplicate_files=[existing_file],
+                        tick_counts=[len(existing_df)],
+                        time_ranges=[
+                            (existing_df['timestamp'].min(),
+                             existing_df['timestamp'].max())
+                        ],
+                        file_sizes_mb=[
+                            existing_file.stat().st_size / (1024 * 1024)
+                        ],
+                        metadata=[existing_metadata]
+                    )
+
+            except Exception as e:
+                vLog.warning(
+                    f"Could not read metadata from {existing_file.name}: {e}")
+                # Continue checking other files
+
+        return None  # No duplicates found
 
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -348,6 +454,7 @@ if __name__ == "__main__":
     TARGET_DIR = "./data/processed/"  # Parquet-Ziel
 
     vLog.info("FiniexTestingIDE Tick Data Importer gestartet")
+    vLog.info("Version 1.1 - with Duplicate Detection")
 
     # Batch-Processing ausführen
     importer = TickDataImporter(SOURCE_DIR, TARGET_DIR)

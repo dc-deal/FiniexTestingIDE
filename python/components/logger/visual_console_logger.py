@@ -157,7 +157,7 @@ class VisualLogFormatter(logging.Formatter):
             millis = elapsed_ms % 1000
             time_display = f"{seconds:>3}s {millis:03d}ms"
         else:
-            time_display = f"   {elapsed_ms:>3}ms   "
+            time_display = f"   {elapsed_ms:>3}ms  "
 
         # Extract class name and optionally prefix with C/
         logger_name = record.name
