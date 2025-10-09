@@ -131,6 +131,8 @@ dmypy.json
 # FiniexTestingIDE specific
 data/raw/*.json
 data/processed/*.parquet
+# Index builder
+data/processed/*.json 
 data/finished/*.json 
 data/cache/
 *.log

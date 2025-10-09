@@ -146,41 +146,20 @@ class TickDataAnalyzer:
     def _count_weekends(
         self, start_date: datetime, end_date: datetime
     ) -> Dict[str, any]:
-        """Count weekends between two dates"""
-        # Number of full weeks
-        full_weeks = (end_date - start_date).days // 7
+        """
+        Count weekends between two dates.
 
-        # Remaining days
-        remaining_days = (end_date - start_date).days % 7
+        REFACTORED (C#002): Now uses MarketCalendar.get_weekend_statistics()
+        for consistency across codebase.
 
-        # Check if start/end falls on weekend
-        start_weekday = start_date.weekday()
-        end_weekday = end_date.weekday()
+        Args:
+            start_date: Start timestamp
+            end_date: End timestamp
 
-        # Count Saturdays and Sundays separately
-        saturdays = full_weeks
-        sundays = full_weeks
+        Returns:
+            Dict with weekend statistics (same format as before)
+        """
+        from python.framework.utils.market_calendar import MarketCalendar
 
-        # Check remaining days
-        current_date = start_date
-        for _ in range(remaining_days + 1):
-            if current_date.weekday() == 5:  # Saturday
-                saturdays += 1
-            elif current_date.weekday() == 6:  # Sunday
-                sundays += 1
-            current_date += timedelta(days=1)
-
-        # Weekend days (Sat+Sun together)
-        weekend_days = saturdays + sundays
-
-        # Number of complete weekends (Sat+Sun pairs)
-        full_weekends = min(saturdays, sundays)
-
-        return {
-            "full_weekends": full_weekends,
-            "saturdays": saturdays,
-            "sundays": sundays,
-            "total_weekend_days": weekend_days,
-            "start_is_weekend": start_weekday >= 5,
-            "end_is_weekend": end_weekday >= 5,
-        }
+        # Use centralized weekend analysis
+        return MarketCalendar.get_weekend_statistics(start_date, end_date)
