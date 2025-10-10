@@ -15,6 +15,7 @@ Usage:
 import sys
 from pathlib import Path
 from datetime import datetime
+import traceback
 import pandas as pd
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -147,7 +148,7 @@ class DataIndexCLI:
                     print(f"✅ {symbol}: No issues")
 
             except Exception as e:
-                print(f"❌ {symbol}: Error - {e}")
+                print(f"❌ {symbol}: Error - {e} \n{traceback.format_exc()}")
 
         print("\n" + "="*60)
         print("Use 'gaps SYMBOL' for detailed gap analysis")

@@ -3,7 +3,6 @@
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
 //+------------------------------------------------------------------+
 #property copyright "FiniexTestingIDE"
-#property version   "1.03"
 #property strict
 
 // Error-Severity-Enum
@@ -34,7 +33,10 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.0.3";
+input string DataFormatVersion = "1.0.4";
+// Identifies the data collection platform (mt5, ib, etc.)
+// Only change when importing from a different broker platform!
+input string DataCollectorName = "mt5"; 
 input string CollectionPurpose = "backtesting";
 input string CollectorOperator = "";
 
@@ -403,7 +405,7 @@ bool CreateNewExportFile()
     }
     
     // JSON mit erweiterten Error-Tracking-Metadaten
-    string header = StringFormat("{\n  \"metadata\": {\n    \"symbol\": \"%s\",\n    \"broker\": \"%s\",\n    \"server\": \"%s\",\n    \"start_time\": \"%s\",\n    \"start_time_unix\": %d,\n    \"timeframe\": \"TICK\",\n    \"volume_timeframe\": \"%s\",\n    \"volume_timeframe_minutes\": %d,\n    \"collector_version\": \"1.03\",\n    \"data_format_version\": \"%s\",\n    \"collection_purpose\": \"%s\",\n    \"operator\": \"%s\",\n    \"symbol_info\": {\n      \"point_value\": %.8f,\n      \"digits\": %d,\n      \"tick_size\": %.8f,\n      \"tick_value\": %.8f\n    },\n    \"collection_settings\": {\n      \"max_ticks_per_file\": %d,\n      \"max_errors_per_file\": %d,\n      \"include_real_volume\": %s,\n      \"include_tick_flags\": %s,\n      \"stop_on_fatal_errors\": %s\n    },\n    \"error_tracking\": {\n      \"enabled\": %s,\n      \"log_negligible\": %s,\n      \"log_serious\": %s,\n      \"log_fatal\": %s,\n      \"max_spread_percent\": %.2f,\n      \"max_price_jump_percent\": %.2f,\n      \"max_data_gap_seconds\": %d\n    }\n  },\n  \"ticks\": [",
+    string header = StringFormat("{\n  \"metadata\": {\n    \"symbol\": \"%s\",\n    \"broker\": \"%s\",\n    \"server\": \"%s\",\n    \"start_time\": \"%s\",\n    \"start_time_unix\": %d,\n    \"timeframe\": \"TICK\",\n    \"volume_timeframe\": \"%s\",\n    \"volume_timeframe_minutes\": %d,\n    \"data_format_version\": \"%s\",\n    \"data_collector\": \"%s\",\n    \"collection_purpose\": \"%s\",\n    \"operator\": \"%s\",\n    \"symbol_info\": {\n      \"point_value\": %.8f,\n      \"digits\": %d,\n      \"tick_size\": %.8f,\n      \"tick_value\": %.8f\n    },\n    \"collection_settings\": {\n      \"max_ticks_per_file\": %d,\n      \"max_errors_per_file\": %d,\n      \"include_real_volume\": %s,\n      \"include_tick_flags\": %s,\n      \"stop_on_fatal_errors\": %s\n    },\n    \"error_tracking\": {\n      \"enabled\": %s,\n      \"log_negligible\": %s,\n      \"log_serious\": %s,\n      \"log_fatal\": %s,\n      \"max_spread_percent\": %.2f,\n      \"max_price_jump_percent\": %.2f,\n      \"max_data_gap_seconds\": %d\n    }\n  },\n  \"ticks\": [",
                                 Symbol(),
                                 AccountInfoString(ACCOUNT_COMPANY),
                                 serverName,
@@ -412,6 +414,7 @@ bool CreateNewExportFile()
                                 EnumToString(VolumeTimeframe),
                                 PeriodSeconds(VolumeTimeframe) / 60,
                                 DataFormatVersion,
+                                DataCollectorName,
                                 CollectionPurpose,
                                 (StringLen(CollectorOperator) > 0) ? CollectorOperator : "automated",
                                 pointValue,

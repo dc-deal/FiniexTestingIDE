@@ -6,7 +6,7 @@ Konvertiert MQL5 JSON-Exports zu optimierten Parquet-Files.
 Workflow: JSON laden → Validieren → Optimieren → Parquet speichern
 
 Author: FiniexTestingIDE Team
-Version: 1.1 (with duplicate detection)
+Version: 1.2 (with hierarchical directory structure)
 """
 
 import json
@@ -44,6 +44,7 @@ class TickDataImporter:
     - Qualitäts-Checks und Bereinigung
     - Batch-Verarbeitung mit Error-Handling
     - Duplicate Prevention (NEW in V1.1)
+    - Hierarchical directory structure (NEW in V1.2)
 
     Args:
         source_dir (str): Verzeichnis mit JSON-Files
@@ -191,11 +192,20 @@ class TickDataImporter:
         # 3. PARQUET-OUTPUT MIT METADATEN
         # ===========================================
 
-        # Dateiname: SYMBOL_YYYYMMDD_HHMMSS.parquet
+        # NEW (C#003): Extract data_collector with fallback to "mt5"
+        data_collector = metadata.get("data_collector", "mt5")
+
         symbol = metadata.get("symbol", "UNKNOWN")
         start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
+
+        # NEW (C#003): Hierarchical directory structure
+        # data/processed/{data_collector}/{symbol}/
+        target_path = self.target_dir / data_collector / symbol
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        # Dateiname: SYMBOL_YYYYMMDD_HHMMSS.parquet
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
-        parquet_path = self.target_dir / parquet_name
+        parquet_path = target_path / parquet_name
 
         # Metadaten für Parquet-Header (alle Werte als Strings)
         parquet_metadata = {
@@ -203,6 +213,7 @@ class TickDataImporter:
             "symbol": symbol,
             "broker": metadata.get("broker", "unknown"),
             "collector_version": metadata.get("collector_version", "1.0"),
+            "data_collector": data_collector,  # NEW (C#003)
             "processed_at": datetime.now().isoformat(),
             "tick_count": str(
                 len(df)
@@ -216,6 +227,7 @@ class TickDataImporter:
         vLog.debug(f"Checking for existing duplicates of {json_file.name}...")
         duplicate_report = self._check_for_existing_duplicate(
             json_file.name,
+            data_collector,  # CHANGED (C#003): Pass data_collector
             symbol,
             df
         )
@@ -255,7 +267,8 @@ class TickDataImporter:
 
             # Success-Logging mit Statistiken
             vLog.info(
-                f"✓ {parquet_name}: {len(df):,} Ticks, "
+                # CHANGED (C#003): Show new path
+                f"✓ {data_collector}/{symbol}/{parquet_name}: {len(df):,} Ticks, "
                 f"Kompression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
             )
@@ -274,25 +287,32 @@ class TickDataImporter:
     def _check_for_existing_duplicate(
         self,
         source_json_name: str,
+        data_collector: str,
         symbol: str,
         new_df: pd.DataFrame
     ) -> Optional[DuplicateReport]:
         """
-        NEW: Check if a Parquet file already exists with the same source_file
+        Check if a Parquet file already exists with the same source_file
 
         This prevents accidental re-imports and manual file duplication.
         Checks BEFORE writing the new Parquet file.
 
+        EXTENDED (C#003b): Searches across ALL data_collector directories
+        to detect duplicates even if imported under different collector.
+
         Args:
             source_json_name: Name of the source JSON file being imported
+            data_collector: Data collector type being imported to (e.g. "mt5")
             symbol: Trading symbol (for finding relevant Parquet files)
             new_df: DataFrame about to be written (for comparison)
 
         Returns:
             DuplicateReport if duplicate found, None otherwise
         """
-        # Find all existing Parquet files for this symbol
-        existing_files = list(self.target_dir.glob(f"{symbol}_*.parquet"))
+        # CHANGED (C#003b): Search across ALL data_collector directories
+        # Pattern: data/processed/*/SYMBOL/SYMBOL_*.parquet
+        search_pattern = f"*/{symbol}/{symbol}_*.parquet"
+        existing_files = list(self.target_dir.glob(search_pattern))
 
         if not existing_files:
             return None  # No existing files, safe to proceed
@@ -313,12 +333,22 @@ class TickDataImporter:
 
                 # Extract source_file from metadata
                 existing_source = existing_metadata.get('source_file', '')
+                existing_collector = existing_metadata.get(
+                    'data_collector', 'unknown')
 
                 # Check if this Parquet was created from the same source JSON
                 if existing_source == source_json_name:
                     # DUPLICATE DETECTED!
+                    # Extract directory path to show data_collector location
+                    relative_path = existing_file.relative_to(self.target_dir)
+                    collector_path = relative_path.parts[0] if len(
+                        relative_path.parts) > 0 else "unknown"
+
                     vLog.warning(
-                        f"⚠️  Found existing Parquet from same source: {existing_file.name}"
+                        f"⚠️  Found existing Parquet from same source: {collector_path}/{symbol}/{existing_file.name}"
+                    )
+                    vLog.warning(
+                        f"    Existing: data_collector='{existing_collector}' | Importing: data_collector='{data_collector}'"
                     )
 
                     # Read existing file data for comparison
@@ -350,95 +380,99 @@ class TickDataImporter:
         """
         Optimiert DataFrame-Datentypen für Performance und Speichernutzung.
 
-        Transformationen:
-        - float64 → float32 für Preisdaten (50% Speicher-Reduktion)
-        - int64 → int32 für Volume-Daten (50% Speicher-Reduktion)
-        - String → Category für Session-Daten (bessere Kompression)
+        Konvertierungen:
+        - float64 → float32 (für bid/ask/last)
+        - int64 → int32 (für Flags, Volumes)
 
         Args:
-            df (pd.DataFrame): Input DataFrame
+            df (pd.DataFrame): Raw DataFrame
 
         Returns:
-            pd.DataFrame: Optimierter DataFrame
+            pd.DataFrame: Optimized DataFrame
         """
-
-        # Preis-Spalten: float64 → float32 (ausreichend für Forex-Precision)
-        for col in ["bid", "ask", "last", "spread_pct"]:
+        # Float-Spalten zu float32
+        float_cols = ["bid", "ask", "last", "spread_pct", "real_volume"]
+        for col in float_cols:
             if col in df.columns:
                 df[col] = df[col].astype("float32")
 
-        # Volume-Spalten: int64 → int32 (Forex-Volumes passen in int32)
-        for col in ["tick_volume", "real_volume", "spread_points"]:
+        # Int-Spalten zu int32
+        int_cols = [
+            "tick_volume",
+            "chart_tick_volume",
+            "spread_points",
+        ]
+        for col in int_cols:
             if col in df.columns:
                 df[col] = df[col].astype("int32")
-
-        # Session als Category (nur wenige verschiedene Werte)
-        if "session" in df.columns:
-            df["session"] = df["session"].astype("category")
 
         return df
 
     def _normalize_timestamps(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Normalisiert Zeitstempel zu UTC für konsistente Verarbeitung.
-
-        Transformationen:
-        - String → datetime64[ns]
-        - Timezone-unaware → UTC timezone-aware
+        Normalisiert Zeitstempel zu UTC datetime64[ns].
 
         Args:
-            df (pd.DataFrame): DataFrame mit timestamp-Spalte
+            df (pd.DataFrame): DataFrame mit 'timestamp' Spalte
 
         Returns:
-            pd.DataFrame: DataFrame mit UTC-normalisierten Zeitstempeln
+            pd.DataFrame: DataFrame mit normalisiertem Zeitstempel
         """
-
         if "timestamp" in df.columns:
-            # String-Zeitstempel zu datetime konvertieren
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-
-            # UTC-Timezone setzen (MQL5 liefert UTC)
-            if df["timestamp"].dt.tz is None:
-                df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
 
         return df
 
     def _quality_checks(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Führt Datenqualitäts-Checks durch und entfernt invalide Ticks.
+        Führt Qualitäts-Checks auf Tick-Daten durch.
 
-        Validierungsregeln:
-        - Bid/Ask > 0 (keine negativen Preise)
-        - Ask >= Bid (kein invertierter Spread)
-        - Spread <= 10% (Outlier-Filter)
+        Checks:
+        - Bid/Ask > 0 (keine invaliden Preise)
+        - Spread < 5% (keine extremen Spreads)
+        - Consecutive price jumps < 10% (keine Flash-Crashes)
+
+        Invalide Ticks werden NICHT entfernt, nur geloggt!
 
         Args:
-            df (pd.DataFrame): Input DataFrame
+            df (pd.DataFrame): Raw DataFrame
 
         Returns:
-            pd.DataFrame: Bereinigter DataFrame
+            pd.DataFrame: Validated DataFrame (mit Warnings)
         """
-
         initial_count = len(df)
 
-        # Kritische Preis-Validierung
-        df = df[(df["bid"] > 0) & (df["ask"] > 0) & (df["ask"] >= df["bid"])]
-
-        # Extreme Spread-Outlier entfernen (Feed-Korruption-Schutz)
-        if "spread_pct" in df.columns:
-            df = df[df["spread_pct"] <= 10.0]
-
-        # Logging für entfernte Ticks
-        removed = initial_count - len(df)
-        if removed > 0:
+        # Check 1: Invalid Prices (bid/ask <= 0)
+        invalid_prices = df[(df["bid"] <= 0) | (df["ask"] <= 0)]
+        if len(invalid_prices) > 0:
             vLog.warning(
-                f"Qualitäts-Check: {removed} invalide Ticks entfernt")
+                f"⚠️  {len(invalid_prices)} Ticks mit invaliden Preisen gefunden (bid/ask <= 0)"
+            )
+
+        # Check 2: Extreme Spreads (>5%)
+        if "spread_pct" in df.columns:
+            extreme_spreads = df[df["spread_pct"] > 5.0]
+            if len(extreme_spreads) > 0:
+                vLog.warning(
+                    f"⚠️  {len(extreme_spreads)} Ticks mit extremen Spreads (>5%) gefunden"
+                )
+
+        # Check 3: Price Jumps (>10% bid change between consecutive ticks)
+        df["bid_pct_change"] = df["bid"].pct_change().abs() * 100
+        large_jumps = df[df["bid_pct_change"] > 10.0]
+        if len(large_jumps) > 0:
+            vLog.warning(
+                f"⚠️  {len(large_jumps)} Ticks mit großen Preissprüngen (>10%) gefunden"
+            )
+
+        # Cleanup temporary columns
+        df = df.drop(columns=["bid_pct_change"], errors="ignore")
 
         return df
 
     def _print_summary(self):
         """
-        Druckt Batch-Processing-Zusammenfassung.
+        Gibt Zusammenfassung der Batch-Verarbeitung aus.
 
         Ausgabe:
         - Anzahl verarbeiteter Dateien
@@ -475,7 +509,7 @@ if __name__ == "__main__":
     TARGET_DIR = "./data/processed/"  # Parquet-Ziel
 
     vLog.info("FiniexTestingIDE Tick Data Importer gestartet")
-    vLog.info("Version 1.1 - with Duplicate Detection")
+    vLog.info("Version 1.2 - with Hierarchical Directory Structure")
 
     # Batch-Processing ausführen
     importer = TickDataImporter(SOURCE_DIR, TARGET_DIR)

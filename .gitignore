@@ -128,22 +128,34 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# FiniexTestingIDE specific
+# FiniexTestingIDE specific - Data directories
 data/raw/*.json
-data/processed/*.parquet
-# Index builder
-data/processed/*.json 
-data/finished/*.json 
+data/finished/*.json
 data/cache/
+
+# UPDATED (C#003): Ignore all subdirectories in processed/
+# This covers hierarchical structure: data/processed/{collector}/{symbol}/*.parquet
+data/processed/*
+!data/processed/.gitkeep
+
+# Log files
 *.log
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
 
 # MQL5 compiled files
 *.ex5
 
 # IDE files
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
@@ -162,12 +174,3 @@ api_keys.txt
 *.model
 *.pkl
 *.h5
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
