@@ -3,6 +3,7 @@ FiniexTestingIDE Data Loader - Core Module
 Pure loading logic: Fast, focused, zero dependencies on analysis
 
 EXTENDED (C#002): Integration with ParquetIndexManager for optimized loading
+UPDATED (C#003): Support for hierarchical directory structure
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -41,6 +42,9 @@ class TickDataLoader:
     - Uses ParquetIndexManager for optimized file selection
     - Only loads files that intersect with requested time range
     - 10x faster loading for time-filtered queries
+
+    UPDATED (C#003):
+    - Supports hierarchical directory structure (data_collector/symbol/)
 
     Design: Minimal, fast, no analysis logic
     """
@@ -138,42 +142,42 @@ class TickDataLoader:
             all_files_count = len(self.index_manager.index.get(symbol, []))
 
             if files:
-                reduction_pct = (1 - len(files) / all_files_count) * 100
                 vLog.info(
-                    f"📊 Index selected {len(files)} of {all_files_count} files "
-                    f"({reduction_pct:.0f}% reduction)"
+                    f"📊 Loading {len(files)}/{all_files_count} files for {symbol} "
+                    f"({start_date} to {end_date})"
                 )
+            else:
+                vLog.warning(f"No files found for {symbol} in date range")
+                return pd.DataFrame()
         else:
-            # No date filter: load all files (fallback to old behavior)
+            # No date filter: load all files (fallback to legacy method)
             files = self._get_symbol_files(symbol)
+            vLog.info(f"📊 Loading all {len(files)} files for {symbol}")
 
-        # Artificial duplicate check
+        if not files:
+            vLog.warning(f"No Parquet files found for {symbol}")
+            return pd.DataFrame()
+
+        # Optional: Detect artificial duplicates
         if detect_artificial_duplicates:
             duplicate_report = self._check_artificial_duplicates(files)
             if duplicate_report:
                 raise ArtificialDuplicateException(duplicate_report)
 
-        vLog.debug(f"Loading {len(files)} files for {symbol}")
-
-        # Load and combine all files
-        dataframes = []
+        # Load all files into DataFrame
+        dfs = []
         for file in files:
-            try:
-                df = pd.read_parquet(file)
-                dataframes.append(df)
-            except Exception as e:
-                vLog.warning(f"Error reading {file}: {e}")
+            df = pd.read_parquet(file)
+            dfs.append(df)
 
-        if not dataframes:
-            raise ValueError(f"No valid data found for {symbol}")
+        combined_df = pd.concat(dfs, ignore_index=True)
 
-        # Combine and sort
-        combined_df = pd.concat(dataframes, ignore_index=True)
+        # Sort by timestamp (critical for backtesting)
         combined_df = combined_df.sort_values(
             "timestamp").reset_index(drop=True)
 
-        # Remove duplicates based on data_mode
-        if self._should_filter_duplicates(data_mode):
+        # Handle natural duplicates based on data_mode
+        if data_mode in ["realistic", "clean"]:
             initial_count = len(combined_df)
             combined_df = combined_df.drop_duplicates(
                 subset=["time_msc", "bid", "ask"], keep="last"
@@ -216,8 +220,13 @@ class TickDataLoader:
         Get all Parquet files for a symbol (legacy method).
 
         Used as fallback when no date filter specified.
+
+        UPDATED (C#003): Searches in hierarchical structure
         """
-        pattern = f"{symbol}_*.parquet"
+        # CHANGED (C#003): Recursive pattern for hierarchical structure
+        # Before: f"{symbol}_*.parquet"
+        # Now: f"**/{symbol}/*.parquet" - searches in all data_collector subdirs
+        pattern = f"**/{symbol}/{symbol}_*.parquet"
         files = list(self.data_dir.glob(pattern))
         return sorted(files)
 
@@ -248,38 +257,57 @@ class TickDataLoader:
                     # DUPLICATE DETECTED!
                     existing_file = source_files[source_file]
 
-                    # Read both files for comparison
-                    existing_df = pd.read_parquet(existing_file)
-                    current_df = pd.read_parquet(file)
+                    vLog.error(
+                        f"❌ ARTIFICIAL DUPLICATE DETECTED!")
+                    vLog.error(
+                        f"   Source: {source_file}")
+                    vLog.error(
+                        f"   File 1: {existing_file.name}")
+                    vLog.error(
+                        f"   File 2: {file.name}")
+
+                    # Build duplicate report
+                    duplicate_files = [existing_file, file]
+                    tick_counts = []
+                    time_ranges = []
+                    file_sizes_mb = []
+                    metadata_list = []
+
+                    for dup_file in duplicate_files:
+                        df = pd.read_parquet(dup_file)
+                        pq_file = pq.ParquetFile(dup_file)
+                        metadata_raw = pq_file.metadata.metadata
+
+                        tick_counts.append(len(df))
+                        time_ranges.append(
+                            (df['timestamp'].min(), df['timestamp'].max())
+                        )
+                        file_sizes_mb.append(
+                            dup_file.stat().st_size / (1024 * 1024)
+                        )
+                        metadata_list.append({
+                            key.decode('utf-8') if isinstance(key, bytes) else key:
+                            value.decode(
+                                'utf-8') if isinstance(value, bytes) else value
+                            for key, value in metadata_raw.items()
+                        })
 
                     return DuplicateReport(
                         source_file=source_file,
-                        duplicate_files=[existing_file, file],
-                        tick_counts=[len(existing_df), len(current_df)],
-                        time_ranges=[
-                            (existing_df['timestamp'].min(),
-                             existing_df['timestamp'].max()),
-                            (current_df['timestamp'].min(),
-                             current_df['timestamp'].max())
-                        ],
-                        file_sizes_mb=[
-                            existing_file.stat().st_size / (1024 * 1024),
-                            file.stat().st_size / (1024 * 1024)
-                        ],
-                        metadata=[{}, {}]
+                        duplicate_files=duplicate_files,
+                        tick_counts=tick_counts,
+                        time_ranges=time_ranges,
+                        file_sizes_mb=file_sizes_mb,
+                        metadata=metadata_list
                     )
 
                 source_files[source_file] = file
 
             except Exception as e:
                 vLog.warning(
-                    f"Could not check duplicates for {file.name}: {e}")
+                    f"Could not check {file.name} for duplicates: {e}")
 
         return None
-
-    def _should_filter_duplicates(self, data_mode: str) -> bool:
-        """Check if duplicates should be filtered for this data mode"""
-        return data_mode in ["realistic", "clean"]
 
     def _apply_date_filters(
         self,
@@ -287,7 +315,17 @@ class TickDataLoader:
         start_date: Optional[str],
         end_date: Optional[str]
     ) -> pd.DataFrame:
-        """Apply date range filters to DataFrame"""
+        """
+        Apply date range filters to DataFrame
+
+        Args:
+            df: Input DataFrame
+            start_date: Start date filter
+            end_date: End date filter
+
+        Returns:
+            Filtered DataFrame
+        """
         if start_date:
             start_dt = pd.to_datetime(start_date)
             df = df[df["timestamp"] >= start_dt]
@@ -297,15 +335,3 @@ class TickDataLoader:
             df = df[df["timestamp"] <= end_dt]
 
         return df
-
-    def get_symbol_info(self, symbol: str) -> dict:
-        """
-        Get symbol information (delegated to analytics module).
-
-        Note: This is a legacy method that loads ALL data.
-        For fast metadata access, use index_manager.get_symbol_coverage() instead.
-        """
-        from python.data_worker.data_loader.analytics import TickDataAnalyzer
-
-        analyzer = TickDataAnalyzer(self)
-        return analyzer.get_symbol_info(symbol)

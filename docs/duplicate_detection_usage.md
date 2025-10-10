@@ -2,32 +2,87 @@
 
 ## 📋 Overview
 
-Das neue System schützt die Datenintegrität durch:
+Das System schützt die Datenintegrität durch:
 1. **Artificial Duplicate Detection** - Erkennt manuell kopierte Parquet-Files
-2. **Data Mode Support** - Steuert das Handling von natürlichen Duplikaten
+2. **Cross-Directory Detection** - Erkennt Duplikate über data_collector Verzeichnisse hinweg (NEW in C#003)
+3. **Data Mode Support** - Steuert das Handling von natürlichen Duplikaten
 
 ---
 
-## 🔄 Import Behavior
+## 🗂️ Directory Structure (NEW in C#003)
 
-### Normaler Import
-```bash
-python tick_importer.py
+### Hierarchische Organisation
 
-Processing: AUDUSD_20250919_053807_ticks.json
-  → Checking for existing duplicates...
-  → No duplicates found ✅
-  → Creating: AUDUSD_20250919_053807.parquet
-  ✓ 12,847 Ticks, Compression 10.2:1 (45.3MB → 4.4MB)
+```
+data/processed/
+├── .parquet_index.json          # Zentraler Index
+├── mt5/                          # data_collector: MetaTrader 5
+│   ├── EURUSD/                   # Symbol-spezifische Verzeichnisse
+│   │   ├── EURUSD_20250923_120000.parquet
+│   │   └── EURUSD_20250923_130000.parquet
+│   ├── GBPUSD/
+│   └── USDJPY/
+└── ib/                           # data_collector: Interactive Brokers (zukünftig)
+    └── EURUSD/
+        └── EURUSD_20250923_120000.parquet
 ```
 
-### Re-Import Detection (Layer 1)
+### data_collector Feld
+
+**In JSON Metadata (TickCollector v1.0.4):**
+```json
+{
+  "metadata": {
+    "symbol": "EURUSD",
+    "data_collector": "mt5",      // NEU in v1.0.4
+    "data_format_version": "1.0.4",
+    "broker": "Vantage...",
+    ...
+  }
+}
+```
+
+**In Parquet Metadata:**
+```python
+parquet_metadata = {
+    "source_file": "EURUSD_20250923_120000_ticks.json",
+    "symbol": "EURUSD",
+    "data_collector": "mt5",      // Wird aus JSON übernommen
+    "broker": "Vantage...",
+    ...
+}
+```
+
+**Fallback:** Wenn `data_collector` fehlt → automatisch "mt5"
+
+---
+
+## 📄 Import Behavior
+
+### Normaler Import (C#003)
 ```bash
 python tick_importer.py
 
-Processing: AUDUSD_20250919_053807_ticks.json
-  → Checking for existing duplicates...
-  ⚠️  Found existing Parquet from same source: AUDUSD_20250919_053807.parquet
+Processing: EURUSD_20250923_120000_ticks.json
+  → Extracting data_collector: 'mt5'
+  → Target: data/processed/mt5/EURUSD/
+  → Checking for existing duplicates (all collectors)...
+  → No duplicates found ✅
+  → Creating: EURUSD_20250923_120000.parquet
+  ✓ mt5/EURUSD/EURUSD_20250923_120000.parquet: 45,231 Ticks
+    Compression 10.2:1 (45.3MB → 4.4MB)
+```
+
+### Re-Import Detection - Same Collector
+```bash
+python tick_importer.py
+
+Processing: EURUSD_20250923_120000_ticks.json
+  → Extracting data_collector: 'mt5'
+  → Target: data/processed/mt5/EURUSD/
+  → Checking for existing duplicates (all collectors)...
+  ⚠️  Found existing Parquet: mt5/EURUSD/EURUSD_20250923_120000.parquet
+      Existing: data_collector='mt5' | Importing: data_collector='mt5'
   
 ERROR: 
 ================================================================================
@@ -35,54 +90,170 @@ ERROR:
 ================================================================================
 
 📄 Original Source JSON:
-   AUDUSD_20250919_053807_ticks.json
+   EURUSD_20250923_120000_ticks.json
 
-📦 Duplicate Parquet Files Found: 2
+📦 Duplicate Parquet Files Found: 1
 
-   [1] AUDUSD_20250919_053807.parquet
-       Ticks:          12,847
-       Range:     2025-09-19 05:38:07 → 2025-09-19 08:15:23
-       Size:            1.24 MB
+   [1] mt5/EURUSD/EURUSD_20250923_120000.parquet
+       Ticks:          45,231
+       Range:     2025-09-23 12:00:00 → 2025-09-23 14:30:45
+       Size:            4.42 MB
 
-   [2] (new import)
-       Ticks:          12,847
-       Range:     2025-09-19 05:38:07 → 2025-09-19 08:15:23
-       Size:            0.00 MB
+📋 Parquet Metadata Comparison:
 
-🔬 Similarity Analysis:
+   • source_file        ✅ IDENTICAL
+   • symbol             ✅ IDENTICAL
+   • data_collector     ✅ IDENTICAL
+       [1] mt5
+   • broker             ✅ IDENTICAL
+   • collector_version  ✅ IDENTICAL
+   • tick_count         ✅ IDENTICAL
+   • processed_at       ⚠️  DIFFERENT
+       [1] 2025-09-23T12:05:30
+       [2] 2025-09-23T14:32:15
+
+🔬 Data Similarity Analysis:
    • Tick Counts:  ✅ IDENTICAL
    • Time Ranges:  ✅ IDENTICAL
 
 ⚠️  🔴 CRITICAL - Complete data duplication detected
-   Impact: Test results will be severely compromised (2x tick density)
+   Impact: Identical files, test results will be severely compromised
 
 💡 Recommended Actions:
-   1. DELETE one of the duplicate Parquet files manually
-   2. Keep only the most recent file (check file modification date)
-   3. Re-run the test after cleanup
-   4. Prevent: Avoid manual copying of Parquet files
+   1. DELETE the older file (check processed_at timestamp)
+   2. Keep the file with most recent processed_at
+   3. Rebuild index: python python/cli/data_index_cli.py rebuild
 
 ================================================================================
 
 → Überspringe Import (Duplikat existiert bereits)
-
-VERARBEITUNGS-ZUSAMMENFASSUNG
-Verarbeitete Dateien: 0
-Fehler: 1
-  - DUPLICATE DETECTED bei AUDUSD_20250919_053807_ticks.json
 ```
 
-### Manual File Duplication Detection (Layer 2)
+### Cross-Collector Duplicate Detection (NEW in C#003) 🔥
+
 ```bash
-# User copies file manually
-cp data/processed/AUDUSD_20250919_053807.parquet \
-   data/processed/AUDUSD_20250919_053807_COPY.parquet
+# Scenario: Dieselbe Quelle versehentlich unter anderem Collector importiert
 
-# Run test
-python run_strategy.py --scenario audusd_test
+python tick_importer.py
 
-ERROR: [Same detailed report as above, but detected during load]
+Processing: EURUSD_20250923_120000_ticks.json
+  → Extracting data_collector: 'ib'  # Andere Quelle!
+  → Target: data/processed/ib/EURUSD/
+  → Checking for existing duplicates (all collectors)...
+  ⚠️  Found existing Parquet: mt5/EURUSD/EURUSD_20250923_120000.parquet
+      Existing: data_collector='mt5' | Importing: data_collector='ib'
+      ⚠️  CROSS-COLLECTOR DUPLICATE DETECTED!
+
+ERROR:
+================================================================================
+⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION
+================================================================================
+
+📄 Original Source JSON:
+   EURUSD_20250923_120000_ticks.json
+
+📦 Duplicate Parquet Files Found: 1
+
+   [1] mt5/EURUSD/EURUSD_20250923_120000.parquet
+       Ticks:          45,231
+       Range:     2025-09-23 12:00:00 → 2025-09-23 14:30:45
+       Size:            4.42 MB
+
+📋 Parquet Metadata Comparison:
+
+   • source_file        ✅ IDENTICAL
+   • symbol             ✅ IDENTICAL
+   • data_collector     ⚠️  CROSS-COLLECTOR DUPLICATE!
+       [1] mt5
+       [2] ib
+   • broker             ✅ IDENTICAL
+   • collector_version  ✅ IDENTICAL
+
+⚠️  🔴 CRITICAL - Cross-Collector Duplication
+   Impact: Same data imported under different collectors: mt5, ib
+
+💡 Recommended Actions:
+   1. INVESTIGATE why the same source was imported under different collectors
+   2. DELETE one of the duplicate files (choose the wrong collector)
+   3. Check your import workflow to prevent cross-collector duplicates
+   4. Rebuild index: python python/cli/data_index_cli.py rebuild
+
+================================================================================
 ```
+
+---
+
+## 🚨 Artificial Duplicate Detection (Cross-Directory Protection)
+
+### Enhanced Two-Layer Protection (C#003)
+
+#### 🛡️ Layer 1: Import Prevention (tick_importer.py)
+**Sucht über ALLE data_collector Verzeichnisse hinweg**
+
+```python
+# VORHER (Old):
+existing_files = list(self.target_dir.glob(f"{symbol}_*.parquet"))
+# Sucht nur: data/processed/EURUSD_*.parquet
+
+# NACHHER (C#003):
+search_pattern = f"*/{symbol}/{symbol}_*.parquet"
+existing_files = list(self.target_dir.glob(search_pattern))
+# Sucht: data/processed/*/EURUSD/EURUSD_*.parquet
+#   → mt5/EURUSD/*.parquet
+#   → ib/EURUSD/*.parquet
+#   → (alle collector)
+```
+
+**Was es erkennt:**
+```
+Scenario 1: Same Collector Re-Import
+────────────────────────────────────────
+mt5/EURUSD/EURUSD_20250923_120000.parquet    (exists)
+mt5/EURUSD/EURUSD_20250923_120000.parquet    (trying to import)
+→ 🔴 DUPLICATE DETECTED (same collector)
+
+Scenario 2: Cross-Collector Duplicate
+────────────────────────────────────────
+mt5/EURUSD/EURUSD_20250923_120000.parquet    (exists)
+ib/EURUSD/EURUSD_20250923_120000.parquet     (trying to import)
+→ 🔴 CROSS-COLLECTOR DUPLICATE!
+```
+
+#### 🛡️ Layer 2: Load Validation (TickDataLoader)
+**Validiert beim Laden über alle Collector hinweg**
+
+```python
+# Uses index which scans recursively: glob("**/*.parquet")
+# Lädt ALLE Parquet-Files für das Symbol, egal unter welchem collector
+
+files = self.index_manager.get_relevant_files(symbol, start, end)
+# Returns: [
+#   Path("data/processed/mt5/EURUSD/file1.parquet"),
+#   Path("data/processed/ib/EURUSD/file2.parquet"),  # if exists
+# ]
+
+# Check for duplicates across ALL files
+duplicate_report = self._check_artificial_duplicates(files)
+```
+
+### Metadata-Vergleich (Enhanced in C#003)
+
+Der Duplicate Report vergleicht jetzt auch `data_collector`:
+
+```
+📋 Parquet Metadata Comparison:
+
+   • source_file        ✅ IDENTICAL
+   • symbol             ✅ IDENTICAL
+   • data_collector     ⚠️  CROSS-COLLECTOR DUPLICATE!  // NEU!
+       [1] mt5
+       [2] ib
+   • broker             ✅ IDENTICAL
+```
+
+**Wichtig:** `data_collector` wird **NICHT** als Duplicate-Kriterium verwendet!
+- Duplikat = Gleiche `source_file`
+- `data_collector` wird nur zur **Info** angezeigt
 
 ---
 
@@ -99,100 +270,9 @@ ERROR: [Same detailed report as above, but detected during load]
 - **Use-Case:** Standard-Testing, Performance-Validierung
 
 ### `data_mode="clean"`
-- **Zweck:** Optimierte Test-Bedingungen
+- **Zweck:** Optimierte Test-Bedingungen  
 - **Verhalten:** Natürliche Duplikate werden entfernt (wie realistic)
 - **Use-Case:** Benchmark-Tests, Clean-Data-Szenarien
-
----
-
-## 🚨 Artificial Duplicate Detection (Two-Layer Protection)
-
-Das System hat **zwei Verteidigungslinien** gegen künstliche Duplikate:
-
-### 🛡️ Layer 1: Import Prevention (tick_importer.py)
-**Verhindert versehentliche Re-Imports beim Parquet-Erstellen**
-
-Prüft BEVOR ein neues Parquet geschrieben wird, ob bereits ein File existiert mit derselben `source_file`:
-
-```
-Scenario: Re-Import derselben JSON
-─────────────────────────────────────
-1. Import: AUDUSD_20250919_053807_ticks.json
-   → Erstellt: AUDUSD_20250919_053807.parquet ✅
-
-2. Re-Import: AUDUSD_20250919_053807_ticks.json (nochmal)
-   → Check: Parquet mit source_file bereits vorhanden
-   → ABORT: ArtificialDuplicateException ❌
-   → Überspringt Import, zeigt Report
-```
-
-### 🛡️ Layer 2: Load Validation (TickDataLoader)
-**Erkennt manuelle File-Duplikationen beim Laden**
-
-Prüft beim Laden ALLER Parquet-Files eines Symbols, ob mehrere dieselbe `source_file` haben:
-
-```
-Scenario: Manuelle File-Kopie
-─────────────────────────────────────
-1. User kopiert manuell:
-   cp AUDUSD_20250919_053807.parquet \
-      AUDUSD_20250919_053807_COPY.parquet
-
-2. Test startet → load_symbol_data("AUDUSD")
-   → Findet beide Files
-   → Check: BEIDE haben source_file = "AUDUSD_20250919_053807_ticks.json"
-   → ABORT: ArtificialDuplicateException ❌
-   → Zeigt detaillierten Report
-```
-
-### Was wird erkannt?
-
-Wenn **zwei oder mehr Parquet-Files dieselbe `source_file` Metadaten haben**:
-
-```
-AUDUSD_20250919_053807.parquet      (source: AUDUSD_20250919_053807_ticks.json)
-AUDUSD_20250919_053807_COPY.parquet (source: AUDUSD_20250919_053807_ticks.json)
-                                     ↑
-                            BEIDE haben gleiche source_file!
-```
-
-### Beispiel-Report
-
-```
-================================================================================
-⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION
-================================================================================
-
-📄 Original Source JSON:
-   AUDUSD_20250919_053807_ticks.json
-
-📦 Duplicate Parquet Files Found: 2
-
-   [1] AUDUSD_20250919_053807.parquet
-       Ticks:          12,847
-       Range:     2025-09-19 05:38:07 → 2025-09-19 08:15:23
-       Size:            1.24 MB
-
-   [2] AUDUSD_20250919_053807_COPY.parquet
-       Ticks:          12,847
-       Range:     2025-09-19 05:38:07 → 2025-09-19 08:15:23
-       Size:            1.24 MB
-
-🔬 Similarity Analysis:
-   • Tick Counts:  ✅ IDENTICAL
-   • Time Ranges:  ✅ IDENTICAL
-
-⚠️  🔴 CRITICAL - Complete data duplication detected
-   Impact: Test results will be severely compromised (2x tick density)
-
-💡 Recommended Actions:
-   1. DELETE one of the duplicate Parquet files manually
-   2. Keep only the most recent file (check file modification date)
-   3. Re-run the test after cleanup
-   4. Prevent: Avoid manual copying of Parquet files
-
-================================================================================
-```
 
 ---
 
@@ -224,209 +304,240 @@ from python.data_worker.data_loader.exceptions import ArtificialDuplicateExcepti
 loader = TickDataLoader('./data/processed/')
 
 try:
-    # Load with raw mode (keeps all duplicates)
     df = loader.load_symbol_data(
         symbol="EURUSD",
-        data_mode="raw",
+        data_mode="realistic",
         detect_artificial_duplicates=True  # Default
     )
 except ArtificialDuplicateException as e:
     print(e.report.get_detailed_report())
-    # Handle error: cleanup, alert, abort
-```
-
-### In TickDataPreparator
-
-```python
-preparator = TickDataPreparator(data_worker)
-
-warmup, test = preparator.prepare_test_and_warmup_split(
-    symbol="EURUSD",
-    warmup_bars_needed=105,
-    test_ticks_count=773,
-    data_mode="raw"  # From scenario config
-)
+    # Cross-Collector duplicate detected!
 ```
 
 ---
 
-## 🔧 Integration Points
+## 🔧 Migration Guide (Old → C#003)
 
-### 1. Config Loader → Preparator
-```python
-# In batch_orchestrator.py
-scenario_contract = self._calculate_scenario_requirements(workers)
-preparator = TickDataPreparator(self.data_worker)
+### Step 1: Update Code Files
+Replace these files with C#003 versions:
+- `tick_importer.py` (V1.1 → V1.2)
+- `parquet_index.py` (add recursive scanning)
+- `core.py` (add hierarchical pattern)
+- `exceptions.py` (V1.1 → V1.2 with data_collector)
+- `TickCollector.mq5` (V1.0.3 → V1.0.4)
 
-warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
-    symbol=scenario.symbol,
-    warmup_bars_needed=scenario_contract["max_warmup_bars"],
-    test_ticks_count=scenario.max_ticks or 1000,
-    data_mode=scenario.data_mode,  # ← From scenario config
-    start_date=scenario.start_date,
-    end_date=scenario.end_date,
-)
+### Step 2: Migrate Existing Data
+
+**Option A: Manual Move** (empfohlen)
+```bash
+cd data/processed/
+
+# Create collector structure
+mkdir -p mt5/{EURUSD,GBPUSD,USDJPY,AUDUSD}
+
+# Move existing files
+mv EURUSD_*.parquet mt5/EURUSD/
+mv GBPUSD_*.parquet mt5/GBPUSD/
+mv USDJPY_*.parquet mt5/USDJPY/
+mv AUDUSD_*.parquet mt5/AUDUSD/
+
+# Rebuild index
+python python/cli/data_index_cli.py rebuild
 ```
 
-### 2. Error Handling
-```python
-try:
-    df = loader.load_symbol_data(...)
-except ArtificialDuplicateException as e:
-    vLog.error(e.report.get_detailed_report())
-    # Stop test execution
-    raise
-except InvalidDataModeException as e:
-    vLog.error(f"Invalid data_mode: {e}")
-    # Use fallback mode
-    df = loader.load_symbol_data(..., data_mode="realistic")
+**Option B: Fresh Import**
+```bash
+# Delete old structure
+rm -rf data/processed/*.parquet
+rm data/processed/.parquet_index.json
+
+# Re-import with new code
+python python/data_worker/tick_importer.py
+```
+
+### Step 3: Update MQL5 Collector
+
+1. Open `mql5/TickCollector.mq5` in MetaEditor
+2. Find: `"data_format_version": "1.0.3"`
+3. Replace with: `"data_format_version": "1.0.4"`
+4. Add below: `"data_collector": "mt5"`
+5. Compile (F7) and restart EA
+
+### Step 4: Verify Migration
+
+```bash
+# Check structure
+tree data/processed/ -L 3
+
+# Expected output:
+# data/processed/
+# ├── .parquet_index.json
+# └── mt5/
+#     ├── EURUSD/
+#     │   ├── EURUSD_20250923_120000.parquet
+#     │   └── ...
+#     ├── GBPUSD/
+#     └── USDJPY/
+
+# Test loading
+python -c "
+from python.data_worker.data_loader.core import TickDataLoader
+loader = TickDataLoader()
+print(loader.list_available_symbols())
+df = loader.load_symbol_data('EURUSD')
+print(f'Loaded {len(df)} ticks')
+"
 ```
 
 ---
 
-## 📊 Logging Output
+## 🧪 Testing Cross-Directory Detection
 
-### Normal Load (no duplicates)
-```
-Loading 3 files for EURUSD
-No natural duplicates found in 7,689 ticks
-✓ Loaded: 7,689 ticks for EURUSD
-```
+### Test 1: Same Collector Re-Import
+```bash
+# Import once
+python python/data_worker/tick_importer.py
+# ✅ Creates: mt5/EURUSD/EURUSD_*.parquet
 
-### With Natural Duplicates (realistic mode)
-```
-Loading 3 files for EURUSD
-Removed 127 natural duplicates from 7,816 total ticks (1.63% of data) [data_mode=realistic]
-✓ Loaded: 7,689 ticks for EURUSD
+# Try re-import
+python python/data_worker/tick_importer.py
+# ❌ Should detect: DUPLICATE DETECTED
 ```
 
-### With Natural Duplicates (raw mode)
-```
-Loading 3 files for EURUSD
-Keeping all ticks including natural duplicates [data_mode=raw]
-✓ Loaded: 7,816 ticks for EURUSD
+### Test 2: Cross-Collector Duplicate (Simulated)
+```bash
+# Copy to simulate different collector
+mkdir -p data/processed/ib/EURUSD
+cp data/processed/mt5/EURUSD/EURUSD_20250923_120000.parquet \
+   data/processed/ib/EURUSD/
+
+# Manually edit Parquet metadata to set data_collector='ib'
+# (In real scenario, this would happen during import)
+
+# Try loading - should detect cross-collector duplicate
+python -c "
+from python.data_worker.data_loader.core import TickDataLoader
+loader = TickDataLoader()
+df = loader.load_symbol_data('EURUSD')
+"
+# ❌ Should throw: CROSS-COLLECTOR DUPLICATE!
 ```
 
-### Artificial Duplicate Detected
-```
-ERROR: 
+### Test 3: Manual File Copy
+```bash
+# Copy file within same collector
+cp data/processed/mt5/EURUSD/EURUSD_20250923_120000.parquet \
+   data/processed/mt5/EURUSD/EURUSD_20250923_120000_COPY.parquet
 
-================================================================================
-⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION
-================================================================================
-[... full report ...]
+# Try loading
+python run_strategy.py --scenario eurusd_test
+# ❌ Should detect: DUPLICATE (same source_file)
 ```
 
 ---
 
-## 🛡️ Best Practices
+## 📊 Logging Output (C#003)
+
+### Successful Import
+```
+✓ mt5/EURUSD/EURUSD_20250923_120000.parquet: 45,231 Ticks
+  Compression 10.2:1 (45.3MB → 4.4MB)
+```
+
+### Cross-Collector Warning
+```
+⚠️  Found existing Parquet: mt5/EURUSD/EURUSD_20250923_120000.parquet
+    Existing: data_collector='mt5' | Importing: data_collector='ib'
+    
+🔴 CRITICAL - Cross-Collector Duplication
+   Impact: Same data imported under different collectors: mt5, ib
+```
+
+### Index Rebuild
+```
+🔄 Rebuilding Parquet index...
+🔍 Scanning Parquet files for index... (recursive)
+✅ Index built: 47 files across 4 symbols in 0.23s
+```
+
+---
+
+## 🛡️ Best Practices (Updated for C#003)
 
 ### DO ✅
-- Use `data_mode="raw"` for stress tests in Phase 3
+- Use hierarchical structure: `{collector}/{symbol}/`
+- Set `data_collector` in JSON metadata (v1.0.4+)
+- Let both protection layers work automatically
 - Use `data_mode="realistic"` for standard testing
-- Let both protection layers work automatically (Importer + Loader)
-- Review import logs for duplicate warnings
-- Delete duplicate files manually if detected
+- Review import logs for cross-collector warnings
+- Rebuild index after manual file operations
 
 ### DON'T ❌
-- Never manually copy Parquet files in `processed/`
-- Don't disable `detect_artificial_duplicates` in production
-- Don't ignore `ArtificialDuplicateException` warnings
-- Don't re-import the same JSON without deleting old Parquet first
+- Never manually copy Parquet files between collectors
+- Don't import same source under different collectors
+- Don't bypass the directory structure
+- Don't disable `detect_artificial_duplicates`
+- Don't ignore cross-collector duplicate warnings
 
-### Why Two Layers?
+### Why Cross-Directory Detection?
 
-**Import Layer (tick_importer.py):**
-- Prevents accidental re-imports
-- Zero overhead (only runs during import)
-- Catches 95% of duplicate scenarios
+**Problem:** User könnte versehentlich dieselben Daten mehrfach importieren:
+```
+data/processed/
+├── mt5/EURUSD/file.parquet       (from source.json)
+└── ib/EURUSD/file.parquet        (from same source.json!)
+```
 
-**Load Layer (TickDataLoader):**
-- Safety net for manual file operations
-- Minimal overhead (cached per symbol, runs once)
-- Catches edge cases and manual mistakes
-
-**Result:** Maximum safety with acceptable performance impact
+**Solution:** Duplicate-Checker durchsucht **ALLE** Collector-Verzeichnisse:
+- Erkennt Cross-Collector Duplikate
+- Zeigt data_collector Unterschiede an
+- Verhindert gemischte Datenquellen im Test
 
 ---
 
-## 🧪 Testing
+## 🔍 Troubleshooting
 
-### Test Layer 1: Import Prevention
+### "Symbol not found in index"
 ```bash
-# First import (should succeed)
-python tick_importer.py
-
-# Second import of same JSON (should detect duplicate)
-python tick_importer.py
-# Expected: ArtificialDuplicateException, skips import
+# Rebuild index with recursive scanning
+python python/cli/data_index_cli.py rebuild
 ```
 
-### Test Layer 2: Load Validation
+### "No files found for symbol"
 ```bash
-# Create artificial duplicate for testing
-cp data/processed/EURUSD_20250919_053807.parquet \
-   data/processed/EURUSD_20250919_053807_TEST.parquet
+# Check directory structure
+tree data/processed/ -L 3
 
-# Run test - should throw ArtificialDuplicateException during load
-python run_strategy.py --scenario eurusd_test
-# Expected: Exception with detailed report
+# Ensure files are in: {collector}/{symbol}/ format
+ls data/processed/mt5/EURUSD/
 ```
 
-### Verify Data Mode Behavior
-```python
-# Load same symbol with different modes
-df_raw = loader.load_symbol_data("EURUSD", data_mode="raw")
-df_realistic = loader.load_symbol_data("EURUSD", data_mode="realistic")
-
-print(f"Raw mode ticks: {len(df_raw)}")
-print(f"Realistic mode ticks: {len(df_realistic)}")
-print(f"Duplicates removed: {len(df_raw) - len(df_realistic)}")
-```
-
-### Test Both Layers Together
+### Cross-Collector Duplicate persists
 ```bash
-# Workflow simulation
-cd data/raw
+# Find all occurrences
+find data/processed -name "*EURUSD_20250923*"
 
-# 1. Import data (Layer 1 active)
-python ../../tick_importer.py
-# Expected: Success, creates Parquet
+# Delete unwanted collector version
+rm -rf data/processed/ib/EURUSD/EURUSD_20250923_120000.parquet
 
-# 2. Try re-import (Layer 1 should catch)
-python ../../tick_importer.py
-# Expected: Duplicate detected, skips import
-
-# 3. Manual copy (bypasses Layer 1)
-cd ../processed
-cp EURUSD_20250919_053807.parquet EURUSD_MANUAL_COPY.parquet
-
-# 4. Run test (Layer 2 should catch)
-cd ../..
-python run_strategy.py --scenario eurusd_test
-# Expected: Duplicate detected during load
+# Rebuild index
+python python/cli/data_index_cli.py rebuild
 ```
 
 ---
 
-## 📝 Migration Notes
+## 📝 Summary of Changes (C#003)
 
-### Old Code (drop_duplicates parameter)
-```python
-df = loader.load_symbol_data(
-    symbol="EURUSD",
-    drop_duplicates=True  # OLD
-)
-```
+| Feature | Old (V1.1) | New (C#003) |
+|---------|-----------|-------------|
+| **Structure** | Flat: `SYMBOL_*.parquet` | Hierarchical: `{collector}/{symbol}/` |
+| **Duplicate Search** | Single directory | Cross-directory (all collectors) |
+| **Metadata** | Basic fields | + `data_collector` field |
+| **Index Scan** | `glob("*.parquet")` | `glob("**/*.parquet")` (recursive) |
+| **Error Report** | Basic comparison | + Cross-collector detection |
+| **MQL5 Version** | v1.0.3 | v1.0.4 (+ data_collector) |
 
-### New Code (data_mode parameter)
-```python
-df = loader.load_symbol_data(
-    symbol="EURUSD",
-    data_mode="realistic"  # NEW
-)
-```
-
-**Mapping:**
-- `drop_duplicates=True` → `data_mode="realistic"`
-- `drop_duplicates=False` → `data_mode="raw"`
+**Migration Required:** ✅ Yes  
+**Breaking Changes:** ✅ Yes (directory structure)  
+**Data Loss:** ❌ No (manual migration possible)  
+**Backward Compatible:** ⚠️ Partial (fallback to "mt5")

@@ -3,6 +3,7 @@ ParquetIndexManager - Fast File Selection via Metadata Index
 Enables O(1) file selection based on time range requirements
 
 NEW (C#002): Core index system for optimized data loading
+UPDATED (C#003): Recursive scanning for hierarchical directory structure
 """
 
 import json
@@ -32,6 +33,7 @@ class ParquetIndexManager:
     - Persists index as JSON for instant loading
     - Enables precise file selection based on time range
     - Validates data continuity and detects gaps
+    - Supports hierarchical directory structure (NEW in C#003)
 
     Performance:
     - Index build: ~5ms per file (metadata-only, no data load)
@@ -72,8 +74,10 @@ class ParquetIndexManager:
         vLog.info("🔍 Scanning Parquet files for index...")
         start_time = time.time()
 
-        # Scan all Parquet files
-        parquet_files = list(self.data_dir.glob("*.parquet"))
+        # CHANGED (C#003): Recursive scanning for hierarchical structure
+        # Before: glob("*.parquet")
+        # Now: glob("**/*.parquet") - scans data/processed/mt5/EURUSD/*.parquet
+        parquet_files = list(self.data_dir.glob("**/*.parquet"))
 
         if not parquet_files:
             vLog.warning(f"No Parquet files found in {self.data_dir}")
@@ -149,6 +153,7 @@ class ParquetIndexManager:
         # Build index entry
         return {
             'file': parquet_file.name,
+            # Absolute path works transparently with hierarchical structure
             'path': str(parquet_file.absolute()),
             'symbol': symbol,
             'start_time': start_time.isoformat(),
@@ -175,8 +180,8 @@ class ParquetIndexManager:
 
         index_mtime = self.index_file.stat().st_mtime
 
-        # Find newest Parquet file
-        parquet_files = list(self.data_dir.glob("*.parquet"))
+        # CHANGED (C#003): Recursive search for newest Parquet file
+        parquet_files = list(self.data_dir.glob("**/*.parquet"))
         if parquet_files:
             newest_parquet = max(f.stat().st_mtime for f in parquet_files)
 
@@ -264,79 +269,87 @@ class ParquetIndexManager:
         """
         Generate coverage report for a symbol.
 
+        Analyzes:
+        - Total tick count
+        - Time range coverage
+        - Data gaps (>5min)
+        - File distribution
+
         Args:
             symbol: Trading symbol
 
         Returns:
-            TimeRangeCoverageReport instance
+            Coverage report object
         """
         if symbol not in self.index:
-            raise ValueError(f"Symbol '{symbol}' not found in index")
+            vLog.warning(f"Symbol '{symbol}' not found in index")
+            return TimeRangeCoverageReport(symbol, [], [], [])
+
+        entries = self.index[symbol]
 
         # Convert index entries to IndexEntry objects
-        entries = [
+        index_entries = [
             IndexEntry(
-                file=e['file'],
-                path=e['path'],
-                symbol=e['symbol'],
-                start_time=pd.to_datetime(e['start_time']),
-                end_time=pd.to_datetime(e['end_time']),
-                tick_count=e['tick_count'],
-                file_size_mb=e['file_size_mb'],
-                source_file=e['source_file'],
-                num_row_groups=e['num_row_groups']
+                file=entry['file'],
+                path=entry['path'],                              # FEHLT!
+                symbol=entry['symbol'],                          # FEHLT!
+                start_time=pd.to_datetime(entry['start_time']),
+                end_time=pd.to_datetime(entry['end_time']),
+                tick_count=entry['tick_count'],
+                file_size_mb=entry['file_size_mb'],             # FEHLT!
+                source_file=entry['source_file'],               # FEHLT!
+                num_row_groups=entry['num_row_groups']          # FEHLT!
             )
-            for e in self.index[symbol]
+            for entry in entries
         ]
 
-        # Create and analyze report
-        report = TimeRangeCoverageReport(symbol, entries)
-        report.analyze()
+        # Detect gaps
+        gaps = []
+        for i in range(len(index_entries) - 1):
+            gap_start = index_entries[i].end_time
+            gap_end = index_entries[i + 1].start_time
+            gap_duration = (gap_end - gap_start).total_seconds()
 
+            # Report gaps >5min
+            if gap_duration > 300:
+                gaps.append((gap_start, gap_end, gap_duration))
+
+        # Calculate warnings
+        warnings = []
+        if gaps:
+            warnings.append(f"{len(gaps)} data gaps detected (>5min)")
+
+        report = TimeRangeCoverageReport(symbol, index_entries)
+        report.analyze()  # Berechnet gaps und warnings intern!
         return report
-
-    def print_coverage_report(self, symbol: str) -> None:
-        """
-        Print coverage report for a symbol.
-
-        Args:
-            symbol: Trading symbol
-        """
-        report = self.get_coverage_report(symbol)
-        print(report.generate_report())
-
-    # =========================================================================
-    # STATISTICS & UTILITIES
-    # =========================================================================
 
     def get_symbol_coverage(self, symbol: str) -> Dict:
         """
-        Get coverage statistics for a symbol.
-
-        Args:
-            symbol: Trading symbol
+        Get basic coverage statistics for a symbol.
 
         Returns:
-            Dict with coverage statistics
+            Dict with coverage stats
         """
         if symbol not in self.index:
-            return {'error': f'No data for {symbol}'}
+            return {}
 
-        files = self.index[symbol]
+        entries = self.index[symbol]
 
         return {
-            'symbol': symbol,
-            'start_time': files[0]['start_time'],
-            'end_time': files[-1]['end_time'],
-            'total_ticks': sum(f['tick_count'] for f in files),
-            'num_files': len(files),
-            'total_size_mb': sum(f['file_size_mb'] for f in files),
-            'files': [f['file'] for f in files]
+            'num_files': len(entries),
+            'total_ticks': sum(e['tick_count'] for e in entries),
+            'total_size_mb': sum(e['file_size_mb'] for e in entries),
+            'start_time': entries[0]['start_time'],
+            'end_time': entries[-1]['end_time']
         }
+
+    # =========================================================================
+    # UTILITY METHODS
+    # =========================================================================
 
     def list_symbols(self) -> List[str]:
         """
-        List all symbols in index.
+        List all available symbols.
 
         Returns:
             Sorted list of symbol names
@@ -363,3 +376,38 @@ class ParquetIndexManager:
                 f"   Range:      {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
         print("="*60 + "\n")
+
+    def print_coverage_report(self, symbol: str) -> None:
+        """
+        Print coverage report for a symbol.
+
+        Args:
+            symbol: Trading symbol
+        """
+        report = self.get_coverage_report(symbol)
+        print(report.generate_report())
+
+    def get_symbol_coverage(self, symbol: str) -> Dict:
+        """
+        Get coverage statistics for a symbol.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Dict with coverage statistics
+        """
+        if symbol not in self.index:
+            return {'error': f'No data for {symbol}'}
+
+        files = self.index[symbol]
+
+        return {
+            'symbol': symbol,
+            'start_time': files[0]['start_time'],
+            'end_time': files[-1]['end_time'],
+            'total_ticks': sum(f['tick_count'] for f in files),
+            'num_files': len(files),
+            'total_size_mb': sum(f['file_size_mb'] for f in files),
+            'files': [f['file'] for f in files]  # ← FEHLT! Hinzufügen!
+        }
