@@ -27,6 +27,8 @@ REFACTORED (Trade Simulation):
 - Collects trading statistics (portfolio, execution, costs)
 """
 
+import re
+import threading
 import pandas as pd
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -214,6 +216,20 @@ class BatchOrchestrator:
         - Decision Logic executes orders via API
         - Writes stats to ScenarioSetPerformanceManager including portfolio data
         """
+
+        # Set thread name for debugging
+        # ============================================
+        current_thread = threading.current_thread()
+        original_thread_name = current_thread.name
+
+        # Sanitize scenario name (max 13 chars to leave room for prefix)
+        safe_scenario_name = self._sanitize_thread_name(
+            scenario.name, max_length=13)
+        current_thread.name = f"Scen_{scenario_index}_{safe_scenario_name}"
+
+        vLog.debug(
+            f"🧵 Thread renamed: {original_thread_name} → {current_thread.name}")
+
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_simulator = self._create_trade_simulator_for_scenario(
             scenario)
@@ -278,6 +294,7 @@ class BatchOrchestrator:
             parallel_workers=parallel_workers,
             parallel_threshold_ms=parallel_threshold,
             scenario_name=scenario.name,  # NEW: Pass scenario name for performance logging
+            scenario_index=scenario_index,  # ← NEW!
         )
         orchestrator.initialize()
 
@@ -524,3 +541,46 @@ class BatchOrchestrator:
             initial_balance=initial_balance,
             currency=currency
         )
+
+    def _sanitize_thread_name(self, name: str, max_length: int = 20) -> str:
+        """
+        Sanitize name for thread naming.
+        - Converts to snake_case
+        - Removes special characters
+        - Truncates to max_length
+
+        Examples:
+            "CORE/rsi" → "core_rsi"
+            "eurusd_2024-06-01_window1" → "eurusd_2024_06_01_w"
+            "My Strategy!" → "my_strategy"
+
+        Args:
+            name: Original name to sanitize
+            max_length: Maximum length (default: 20)
+
+        Returns:
+            Sanitized thread-safe name
+        """
+
+        # Convert to lowercase
+        name = name.lower()
+
+        # Replace separators with underscore
+        name = name.replace("/", "_")
+        name = name.replace("-", "_")
+        name = name.replace(" ", "_")
+
+        # Remove special characters (keep only alphanumeric + underscore)
+        name = re.sub(r'[^a-z0-9_]', '', name)
+
+        # Remove consecutive underscores
+        name = re.sub(r'_+', '_', name)
+
+        # Truncate to max_length
+        if len(name) > max_length:
+            name = name[:max_length]
+
+        # Remove trailing underscore if present after truncation
+        name = name.rstrip('_')
+
+        return name
