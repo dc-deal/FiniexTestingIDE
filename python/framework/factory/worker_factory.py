@@ -73,10 +73,16 @@ class WorkerFactory:
         try:
             from python.framework.workers.core.rsi_worker import RSIWorker
             from python.framework.workers.core.envelope_worker import EnvelopeWorker
+            from python.framework.workers.core.heavy_workers import HeavyEnvelopeWorker
+            from python.framework.workers.core.heavy_workers import HeavyMACDWorker
+            from python.framework.workers.core.heavy_workers import HeavyRSIWorker
 
             # Register with CORE namespace
             self._registry["CORE/rsi"] = RSIWorker
             self._registry["CORE/envelope"] = EnvelopeWorker
+            self._registry["CORE/heavy_envelope"] = HeavyEnvelopeWorker
+            self._registry["CORE/heavy_macd"] = HeavyMACDWorker
+            self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
 
             vLog.debug(
                 f"Core workers registered: {list(self._registry.keys())}"

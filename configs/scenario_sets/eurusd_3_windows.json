@@ -12,17 +12,17 @@
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_types": [
         "CORE/rsi",
-        "CORE/envelope"
+        "CORE/envelope",
+        "CORE/heavy_envelope"
       ],
       "workers": {
         "CORE/rsi": {
-          "period": 14,
+          "period": 30,
           "timeframe": "M5"
         },
-        "CORE/envelope": {
-          "period": 21,
-          "deviation": 0.02,
-          "timeframe": "M5"
+        "CORE/envelope": {},
+        "CORE/heavy_envelope": {
+          "artificial_load_ms": 20
         }
       },
       "decision_logic_config": {

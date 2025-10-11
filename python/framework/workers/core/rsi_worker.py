@@ -10,7 +10,7 @@ from python.framework.workers.abstract_blackbox_worker import \
 class RSIWorker(AbstractBlackboxWorker):
     """RSI computation worker - Bar-based computation"""
 
-    def __init__(self, name: str = "RSI", parameters: Dict = None, **kwargs):
+    def __init__(self, name: str, parameters: Dict = None, **kwargs):
         """
         Initialize RSI worker.
 

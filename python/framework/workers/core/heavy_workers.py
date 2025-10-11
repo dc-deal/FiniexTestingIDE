@@ -22,7 +22,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
     Simuliert komplexe Berechnungen (z.B. ML-Model, FFT, etc.)
     """
 
-    def __init__(self, name: str = "HeavyRSI", parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict = None, **kwargs):
         """
         Args:
             name: Worker name
@@ -165,7 +165,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
     Simuliert komplexe Band-Berechnungen.
     """
 
-    def __init__(self, name: str = "HeavyEnvelope", parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict = None, **kwargs):
         """
         Args:
             name: Worker name
@@ -256,7 +256,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
 
         if len(bars) < self.period:
             return WorkerResult(
-                worker_name=self.name,
+                worker_1=self.name,
                 value={"upper": 0, "middle": 0, "lower": 0},
                 confidence=0.0,
             )
@@ -313,7 +313,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
     Zusätzlicher Worker für bessere Parallelisierungs-Tests.
     """
 
-    def __init__(self, name: str = "HeavyMACD", parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict = None, **kwargs):
         """
         Args:
             name: Worker name

@@ -15,7 +15,7 @@ from python.framework.workers.abstract_blackbox_worker import \
 class EnvelopeWorker(AbstractBlackboxWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
-    def __init__(self, name: str = "Envelope", parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict = None, **kwargs):
         """
         Initialize Envelope worker.
 
