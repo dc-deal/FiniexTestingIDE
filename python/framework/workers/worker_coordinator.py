@@ -46,6 +46,7 @@ class WorkerCoordinator:
         self,
         workers: List[AbstractBlackboxWorker],
         decision_logic: AbstractDecisionLogic,
+        strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
         parallel_threshold_ms: float = 1.0,
         scenario_name: str = "unknown_scenario",
@@ -67,6 +68,7 @@ class WorkerCoordinator:
             worker.name: worker for worker in workers
         }
         self.decision_logic = decision_logic
+        self.strategy_config = strategy_config
 
         # Validate that decision logic has all required workers
         self._validate_decision_logic_requirements()
@@ -179,26 +181,73 @@ class WorkerCoordinator:
 
     def _validate_decision_logic_requirements(self):
         """
-        Validate that all required workers are available.
+        Validate that all required worker instances are available with correct types.
 
-        This prevents runtime errors from missing workers.
-        Called during initialization.
+        Validation flow:
+        1. Get required worker instances from DecisionLogic (instance_name → worker_type)
+        2. Get configured worker_instances from config
+        3. Validate:
+        - All required instance names exist in config
+        - All instance types match exactly (no override allowed)
+        - All required instances were successfully created
+
+        Raises:
+            ValueError: If requirements not met
         """
-        required_workers = self.decision_logic.get_required_workers()
+        # Get required worker instances (instance_name → worker_type)
+        required_instances = self.decision_logic.get_required_worker_instances()
+
+        if not required_instances:
+            return  # No requirements
+
+        # Get configured worker instances
+        config_instances = self.strategy_config.get("worker_instances", {})
+
+        # Get actually created workers
         available_workers = set(self.workers.keys())
 
-        missing = [w for w in required_workers if w not in available_workers]
+        # Validation errors
+        errors = []
 
-        if missing:
-            raise ValueError(
-                f"DecisionLogic '{self.decision_logic.name}' requires workers "
-                f"that are not available: {missing}. "
-                f"Available workers: {list(available_workers)}"
+        # Check each required instance
+        for instance_name, required_type in required_instances.items():
+
+            # 1. Does instance exist in config?
+            if instance_name not in config_instances:
+                errors.append(
+                    f"Missing '{instance_name}' in worker_instances. "
+                    f"DecisionLogic requires this instance."
+                )
+                continue
+
+            # 2. Does type match exactly?
+            config_type = config_instances[instance_name]
+            if config_type != required_type:
+                errors.append(
+                    f"Type mismatch for '{instance_name}': "
+                    f"DecisionLogic requires '{required_type}', "
+                    f"but config has '{config_type}'. Type override not allowed!"
+                )
+                continue
+
+            # 3. Was instance successfully created?
+            if instance_name not in available_workers:
+                errors.append(
+                    f"Worker '{instance_name}' configured but not created. "
+                    f"Check factory logs for creation errors."
+                )
+
+        # Raise all errors together
+        if errors:
+            error_msg = (
+                f"DecisionLogic '{self.decision_logic.__class__.__name__}' "
+                f"validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
             )
+            raise ValueError(error_msg)
 
         vLog.debug(
-            f"✓ DecisionLogic '{self.decision_logic.name}' requirements satisfied: "
-            f"{required_workers}"
+            f"✓ DecisionLogic requirements validated: "
+            f"{len(required_instances)} worker instances"
         )
 
     def _auto_detect_parallel_mode(self, workers):

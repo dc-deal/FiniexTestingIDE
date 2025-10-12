@@ -84,14 +84,17 @@ This system enables:
 {
   "global": {
     "strategy_config": {
-      "decision_logic_type": "CORE/simple_consensus",
-      "worker_types": ["CORE/rsi", "CORE/envelope"],
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
       "workers": {
-        "CORE/rsi": {
+        "rsi_fast": {
           "period": 14,
           "timeframe": "M5"
         },
-        "CORE/envelope": {
+        "envelope_main": {
           "period": 20,
           "deviation": 0.02,
           "timeframe": "M5"
@@ -119,6 +122,8 @@ This system enables:
 ```
 
 **Key Points:**
+- ✅ **worker_instances** - Defines which worker instances exist (instance_name → worker_type)
+- ✅ **workers** - Parameters for each worker instance (indexed by instance_name)
 - ✅ **Inherited by all scenarios** - Base values for this scenario set
 - ✅ **Can be overridden** - Scenarios can change individual parameters
 - ✅ **Extracted from first scenario** - When saving, global config comes from scenarios[0]
@@ -144,7 +149,7 @@ This system enables:
       "max_ticks": 4000,
       "strategy_config": {
         "workers": {
-          "CORE/rsi": {
+          "rsi_fast": {
             "period": 5,
             "timeframe": "M1"
           }
@@ -164,7 +169,8 @@ This system enables:
 
 **Key Points:**
 - ✅ **Only overrides** - Empty sections (`{}`) mean "use global"
-- ✅ **Per-parameter merge** - `workers.CORE/rsi.period: 5` overrides only period, not timeframe
+- ✅ **Per-parameter merge** - `workers.rsi_fast.period: 5` overrides only period, not timeframe
+- ✅ **worker_instances NOT overridable** - Worker architecture is global only
 - ✅ **Automatic detection** - Override warnings logged if `warn_on_parameter_override: true`
 
 ---
@@ -174,26 +180,28 @@ This system enables:
 ### Boot Sequence
 
 ```
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │ 1. APP BOOT                                             │
 │    AppConfigLoader.__init__()                           │
 │    ├─ Load app_config.json                              │
 │    ├─ Initialize singleton                              │
 │    └─ Provide flags: warn_on_parameter_override, etc.   │
-└─────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────┘
                           ↓
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │ 2. SCENARIO LOADING                                     │
 │    config_loader.load_config("eurusd_3_windows.json")  │
 │    ├─ Load scenario_set.json                            │
 │    ├─ Extract global configs                            │
 │    │  ├─ global.strategy_config                         │
+│    │  │  ├─ worker_instances (architecture)             │
+│    │  │  └─ workers (parameters)                        │
 │    │  ├─ global.execution_config                        │
 │    │  └─ global.trade_simulator_config                  │
 │    │                                                     │
 │    └─ For each scenario:                                │
 │       ├─ Merge configs (global + scenario overrides)    │
-│       │  ├─ strategy_config: Per-parameter merge        │
+│       │  ├─ strategy_config.workers: Per-param merge    │
 │       │  ├─ execution_config: Per-parameter merge       │
 │       │  └─ trade_simulator_config: Per-parameter merge │
 │       │                                                  │
@@ -201,21 +209,21 @@ This system enables:
 │       │  └─ Log: ⚠️  Parameter overrides...             │
 │       │                                                  │
 │       └─ Create TestScenario with merged config         │
-└─────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────┘
                           ↓
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │ 3. SCENARIO EXECUTION                                   │
 │    Each scenario runs with its merged configuration     │
-└─────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────┘
                           ↓
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │ 4. SCENARIO SAVING (Optional)                           │
 │    config_loader.save_config(scenarios, "output.json")  │
 │    ├─ Extract global from scenarios[0]                  │
 │    ├─ For each scenario:                                │
 │    │  └─ Extract only overrides (vs global)             │
 │    └─ Write JSON with minimal redundancy                │
-└─────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -226,12 +234,22 @@ These parameters support **per-parameter inheritance and overrides**:
 
 ### 1. `strategy_config.workers` (Per-Parameter Merge)
 
+Worker parameters cascade **per worker instance, per parameter**. Each worker instance's parameters merge independently.
+
 **Global:**
 ```json
+"worker_instances": {
+  "rsi_fast": "CORE/rsi",
+  "envelope_main": "CORE/envelope"
+},
 "workers": {
-  "CORE/rsi": {
+  "rsi_fast": {
     "period": 14,
     "timeframe": "M5"
+  },
+  "envelope_main": {
+    "period": 20,
+    "deviation": 0.02
   }
 }
 ```
@@ -239,7 +257,7 @@ These parameters support **per-parameter inheritance and overrides**:
 **Scenario Override:**
 ```json
 "workers": {
-  "CORE/rsi": {
+  "rsi_fast": {
     "period": 5
   }
 }
@@ -248,9 +266,13 @@ These parameters support **per-parameter inheritance and overrides**:
 **Result (Merged):**
 ```json
 "workers": {
-  "CORE/rsi": {
+  "rsi_fast": {
     "period": 5,        // ← FROM SCENARIO
     "timeframe": "M5"   // ← FROM GLOBAL
+  },
+  "envelope_main": {
+    "period": 20,       // ← FROM GLOBAL (unchanged)
+    "deviation": 0.02   // ← FROM GLOBAL (unchanged)
   }
 }
 ```
@@ -258,12 +280,16 @@ These parameters support **per-parameter inheritance and overrides**:
 **Override Log:**
 ```
 ⚠️  Parameter overrides in scenario 'EURUSD_window_02':
-   └─ strategy_config.workers.CORE/rsi.period: 14 → 5
+   └─ strategy_config.workers.rsi_fast.period: 14 → 5
 ```
+
+**Important:** You cannot add new worker instances in scenarios. The `worker_instances` dict defines the architecture globally and cannot be overridden per scenario. You can only change parameters of existing instances.
 
 ---
 
 ### 2. `strategy_config.decision_logic_config` (Per-Parameter Merge)
+
+DecisionLogic configuration parameters cascade individually. This allows fine-tuning strategy behavior per scenario.
 
 **Global:**
 ```json
@@ -299,6 +325,8 @@ These parameters support **per-parameter inheritance and overrides**:
 ---
 
 ### 3. `execution_config` (Per-Parameter Merge)
+
+Execution settings cascade individually, allowing performance testing with different configurations.
 
 **Global:**
 ```json
@@ -336,6 +364,8 @@ These parameters support **per-parameter inheritance and overrides**:
 ---
 
 ### 4. `trade_simulator_config` (Per-Parameter Merge)
+
+Trading simulator settings cascade individually, enabling testing across different account configurations.
 
 **Global:**
 ```json
@@ -392,16 +422,21 @@ These parameters are **scenario-specific only** - no inheritance:
 
 ---
 
-### Strategy Config Top-Level
+### Strategy Config Architecture
 
 ```json
 "strategy_config": {
-  "decision_logic_type": "CORE/simple_consensus",  // Global only
-  "worker_types": ["CORE/rsi", "CORE/envelope"]    // Global only
+  "decision_logic_type": "CORE/aggressive_trend",  // Global only
+  "worker_instances": {                            // Global only
+    "rsi_fast": "CORE/rsi",
+    "envelope_main": "CORE/envelope"
+  }
 }
 ```
 
-**These cannot be overridden per scenario** - they define the strategy architecture!
+**These cannot be overridden per scenario** - they define the strategy architecture! The `worker_instances` dict determines which workers exist and their types. Scenarios can only modify parameters of these instances via the `workers` section, not change the architecture itself.
+
+**Why?** Because the DecisionLogic's `get_required_worker_instances()` method declares a fixed contract. Changing which workers exist would break this contract.
 
 ---
 
@@ -446,8 +481,8 @@ ParameterOverrideDetector.detect_and_log_overrides(
 ```
 📂 Loading scenarios from: configs/scenario_sets/eurusd_3_windows.json
 ⚠️  Parameter overrides in scenario 'EURUSD_window_02':
-   └─ strategy_config.workers.CORE/rsi.period: 14 → 5
-   └─ strategy_config.workers.CORE/rsi.timeframe: M5 → M1
+   └─ strategy_config.workers.rsi_fast.period: 14 → 5
+   └─ strategy_config.workers.rsi_fast.timeframe: M5 → M1
    └─ strategy_config.decision_logic_config.min_confidence: 0.6 → 0.8
    └─ execution_config.parallel_workers: true → false
 ✅ Loaded 1 scenarios from eurusd_3_windows.json
@@ -462,13 +497,13 @@ from python.framework.utils.parameter_override_detector import ParameterOverride
 
 # Detect overrides
 overrides = ParameterOverrideDetector.detect_overrides(
-    global_config={'workers': {'CORE/rsi': {'period': 14}}},
-    scenario_config={'workers': {'CORE/rsi': {'period': 5}}}
+    global_config={'workers': {'rsi_fast': {'period': 14}}},
+    scenario_config={'workers': {'rsi_fast': {'period': 5}}}
 )
 
 # Format for display
 formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
-# {'workers.CORE/rsi.period': '14 → 5'}
+# {'workers.rsi_fast.period': '14 → 5'}
 ```
 
 ---
@@ -477,62 +512,176 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 ### Example 1: Testing Different RSI Periods
 
-**Use Case:** Test strategy with RSI periods 5, 14, 21
+**Use Case:** Test strategy with fast RSI (period 5) vs standard RSI (period 14)
 
 **Config:**
 ```json
 {
   "global": {
     "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
       "workers": {
-        "CORE/rsi": {"period": 14, "timeframe": "M5"}
+        "rsi_fast": {
+          "period": 14,
+          "timeframe": "M5"
+        },
+        "envelope_main": {
+          "period": 20,
+          "deviation": 0.02
+        }
       }
     }
   },
   "scenarios": [
     {
-      "name": "RSI_5",
+      "name": "RSI_Fast_Period5",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "strategy_config": {
-        "workers": {"CORE/rsi": {"period": 5}}
+        "workers": {
+          "rsi_fast": {
+            "period": 5
+          }
+        }
       }
     },
     {
-      "name": "RSI_14",
+      "name": "RSI_Standard_Period14",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "strategy_config": {}  // Uses global (period: 14)
     },
     {
-      "name": "RSI_21",
+      "name": "RSI_Slow_Period21",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "strategy_config": {
-        "workers": {"CORE/rsi": {"period": 21}}
+        "workers": {
+          "rsi_fast": {
+            "period": 21
+          }
+        }
       }
     }
   ]
 }
 ```
 
-**Result:** 3 scenarios testing different RSI periods, timeframe inherited!
+**Result:** 3 scenarios testing different RSI periods. All other parameters (timeframe, envelope settings) are inherited from global!
 
 ---
 
-### Example 2: Sequential vs Parallel Testing
+### Example 2: Multiple Worker Instances with Different Timeframes
 
-**Use Case:** Test same strategy with parallel ON and OFF
+**Use Case:** Strategy uses both fast RSI (M1) and slow RSI (M5) for trend confirmation
+
+**Config:**
+```json
+{
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "USER/dual_rsi_strategy",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "rsi_slow": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
+      "workers": {
+        "rsi_fast": {
+          "period": 14,
+          "timeframe": "M1"
+        },
+        "rsi_slow": {
+          "period": 14,
+          "timeframe": "M5"
+        },
+        "envelope_main": {
+          "period": 20,
+          "deviation": 0.02
+        }
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Standard_M1_M5",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "strategy_config": {}  // Uses global config
+    },
+    {
+      "name": "Aggressive_M1_M1",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "strategy_config": {
+        "workers": {
+          "rsi_slow": {
+            "timeframe": "M1"  // Both on M1 now
+          }
+        }
+      }
+    },
+    {
+      "name": "Conservative_M5_M15",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "strategy_config": {
+        "workers": {
+          "rsi_fast": {
+            "timeframe": "M5"
+          },
+          "rsi_slow": {
+            "timeframe": "M15"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**Result:** Compare different timeframe combinations. Worker periods remain at 14, only timeframes change per scenario!
+
+---
+
+### Example 3: Sequential vs Parallel Testing
+
+**Use Case:** Test same strategy with parallel ON and OFF to measure performance impact
 
 **Config:**
 ```json
 {
   "global": {
     "execution_config": {
-      "parallel_workers": true
+      "parallel_workers": true,
+      "worker_parallel_threshold_ms": 1.0,
+      "adaptive_parallelization": true,
+      "log_performance_stats": true
     }
   },
   "scenarios": [
     {
-      "name": "Parallel_ON",
+      "name": "Parallel_Enabled",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "execution_config": {}  // Uses global (parallel: true)
     },
     {
-      "name": "Parallel_OFF",
+      "name": "Sequential_Only",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "execution_config": {
         "parallel_workers": false
       }
@@ -541,11 +690,11 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 }
 ```
 
-**Result:** Compare performance with/without parallelization!
+**Result:** Compare performance with/without parallelization. All other execution settings (thresholds, logging) inherited!
 
 ---
 
-### Example 3: Multi-Balance Testing
+### Example 4: Multi-Balance Testing
 
 **Use Case:** Test strategy performance across different account sizes
 
@@ -554,32 +703,51 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 {
   "global": {
     "trade_simulator_config": {
+      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 10000,
       "currency": "EUR"
     }
   },
   "scenarios": [
     {
-      "name": "Balance_1K",
-      "trade_simulator_config": {"initial_balance": 1000}
+      "name": "Micro_Account_1K",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "trade_simulator_config": {
+        "initial_balance": 1000
+      }
     },
     {
-      "name": "Balance_5K",
-      "trade_simulator_config": {"initial_balance": 5000}
+      "name": "Small_Account_5K",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "trade_simulator_config": {
+        "initial_balance": 5000
+      }
     },
     {
-      "name": "Balance_10K",
+      "name": "Standard_Account_10K",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
       "trade_simulator_config": {}  // Uses global (10000)
     },
     {
-      "name": "Balance_50K",
-      "trade_simulator_config": {"initial_balance": 50000}
+      "name": "Large_Account_50K",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-23",
+      "end_date": "2025-09-24",
+      "trade_simulator_config": {
+        "initial_balance": 50000
+      }
     }
   ]
 }
 ```
 
-**Result:** Test if strategy scales across account sizes, currency inherited!
+**Result:** Test if strategy scales across account sizes. Broker config and currency are inherited!
 
 ---
 
@@ -590,17 +758,23 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 // ✅ GOOD - Define once
 "global": {
   "strategy_config": {
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi"
+    },
     "workers": {
-      "CORE/rsi": {"period": 14, "timeframe": "M5"}
+      "rsi_fast": {
+        "period": 14,
+        "timeframe": "M5"
+      }
     }
   }
 }
 
 // ❌ BAD - Repeat in every scenario
 "scenarios": [
-  {"name": "S1", "strategy_config": {"workers": {"CORE/rsi": {...}}}},
-  {"name": "S2", "strategy_config": {"workers": {"CORE/rsi": {...}}}},
-  {"name": "S3", "strategy_config": {"workers": {"CORE/rsi": {...}}}}
+  {"name": "S1", "strategy_config": {"workers": {"rsi_fast": {...}}}},
+  {"name": "S2", "strategy_config": {"workers": {"rsi_fast": {...}}}},
+  {"name": "S3", "strategy_config": {"workers": {"rsi_fast": {...}}}}
 ]
 ```
 
@@ -611,14 +785,16 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 // ✅ GOOD - Only override period
 "strategy_config": {
   "workers": {
-    "CORE/rsi": {"period": 5}
+    "rsi_fast": {
+      "period": 5
+    }
   }
 }
 
 // ❌ BAD - Repeat entire config
 "strategy_config": {
   "workers": {
-    "CORE/rsi": {
+    "rsi_fast": {
       "period": 5,
       "timeframe": "M5"  // ← Unnecessary! Same as global
     }
@@ -651,19 +827,70 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 ---
 
-### 5. **Document Override Intent**
+### 5. **Use Descriptive Instance Names**
+```json
+// ✅ GOOD - Self-documenting names
+"worker_instances": {
+  "rsi_fast": "CORE/rsi",      // Period 5, M1
+  "rsi_slow": "CORE/rsi",      // Period 21, M5
+  "envelope_tight": "CORE/envelope",  // deviation 0.01
+  "envelope_wide": "CORE/envelope"    // deviation 0.05
+}
+
+// ❌ BAD - Generic names
+"worker_instances": {
+  "rsi1": "CORE/rsi",
+  "rsi2": "CORE/rsi",
+  "env1": "CORE/envelope",
+  "env2": "CORE/envelope"
+}
+```
+
+---
+
+### 6. **Document Override Intent**
 ```json
 {
-  "name": "EURUSD_FastRSI",
+  "name": "EURUSD_ScalpingTest",
   "strategy_config": {
     "workers": {
-      "CORE/rsi": {
-        "period": 5  // Testing faster RSI for scalping
+      "rsi_fast": {
+        "period": 5,      // Faster RSI for scalping
+        "timeframe": "M1" // Tick-level sensitivity
       }
     }
   }
 }
 ```
+
+---
+
+### 7. **Keep Architecture Global**
+```json
+// ✅ GOOD - Architecture in global
+"global": {
+  "strategy_config": {
+    "decision_logic_type": "CORE/aggressive_trend",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "envelope_main": "CORE/envelope"
+    }
+  }
+}
+
+// ❌ BAD - Cannot override architecture per scenario
+"scenarios": [
+  {
+    "strategy_config": {
+      "worker_instances": {  // ❌ This won't work!
+        "macd": "CORE/macd"  // ❌ Cannot add new workers
+      }
+    }
+  }
+]
+```
+
+**Why?** DecisionLogic declares required workers via `get_required_worker_instances()`. This contract is fixed and cannot change per scenario.
 
 ---
 
@@ -679,8 +906,16 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 - ✅ **Per-parameter merge** - Only changed parameters override
 - ✅ **Inheritance** - Unspecified parameters come from global
+- ✅ **Worker instances** - Architecture is global, parameters cascade
 - ✅ **Automatic detection** - Override warnings show what changed
 - ✅ **Minimal JSON** - Save only overrides, not full config
+
+### Worker System
+
+- 🏗️ **worker_instances** - Defines architecture (global only, cannot override)
+- ⚙️ **workers** - Parameters cascade per instance (can override individual params)
+- 📝 **Instance names** - Use descriptive names (rsi_fast, rsi_slow, envelope_tight)
+- 🔗 **Contract-driven** - DecisionLogic's `get_required_worker_instances()` defines requirements
 
 ### Key Benefits
 
@@ -688,6 +923,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 - 🔍 **Visibility** - Know exactly what changes per scenario
 - ⚡ **Fast iteration** - Test parameter variations easily
 - 📊 **Parameter-centric** - Focus on what matters: parameter tuning
+- 🏗️ **Type-safe** - Worker architecture validated against DecisionLogic contract
 
 ---
 
@@ -695,3 +931,5 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 - `python/framework/utils/parameter_override_detector.py`
 - `python/scenario/config_loader.py`
 - `python/configuration/app_config_loader.py`
+- `python/framework/workers/worker_factory.py`
+- `python/framework/decision_logic/abstract_decision_logic.py`

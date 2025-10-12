@@ -2,8 +2,9 @@
 FiniexTestingIDE - Scenario Generator CLI
 Generates test scenario configs from available data
 
-REFACTORED (Issue 2): Now generates factory-compatible config structure
-with decision_logic_type, worker_types, and explicit worker configs.
+REFACTORED (Worker Instance System): Now generates configs with
+worker_instances dict (instance_name → worker_type) and workers
+dict indexed by instance names.
 
 NEW (C#003 Refactor):
 - All generator functions support trade_simulator_config
@@ -33,41 +34,44 @@ ts_config_global = {
 
 def generate_single_symbol(
     symbol: str,
-    decision_logic_type: str = "CORE/simple_consensus",
-    worker_types: list = None,
+    decision_logic_type: str = "CORE/aggressive_trend",
+    worker_instances: dict = None,
     workers_config: dict = None,
-    trade_simulator_config: dict = None,  # NEW (C#003)
+    trade_simulator_config: dict = None,
 ):
     """
     Generate scenarios for a single symbol.
 
-    REFACTORED (Issue 2): Uses new config structure with explicit
-    decision logic type and worker configuration.
+    REFACTORED (Worker Instance System): Uses worker_instances dict
+    with instance names as keys.
 
     NEW (C#003): Added optional trade_simulator_config parameter.
 
     Args:
         symbol: Trading symbol (e.g., "EURUSD")
         decision_logic_type: DecisionLogic type to use
-        worker_types: List of worker types
-        workers_config: Worker configurations
+        worker_instances: Dict[instance_name, worker_type]
+        workers_config: Worker configs indexed by instance name
         trade_simulator_config: TradeSimulator config (optional)
     """
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
 
-    # Default workers if not specified
-    if worker_types is None:
-        worker_types = ["CORE/rsi", "CORE/envelope"]
+    # Default worker instances if not specified
+    if worker_instances is None:
+        worker_instances = {
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
+        }
 
     # Default worker configs if not specified
     if workers_config is None:
         workers_config = {
-            "CORE/rsi": {
+            "rsi_fast": {
                 "period": 14,
                 "timeframe": "M5"
             },
-            "CORE/envelope": {
+            "envelope_main": {
                 "period": 20,
                 "deviation": 0.02,
                 "timeframe": "M5"
@@ -82,9 +86,9 @@ def generate_single_symbol(
         window_days=2,
         ticks_per_window=1000,
 
-        # Factory-compatible parameters
+        # Worker instance system
         decision_logic_type=decision_logic_type,
-        worker_types=worker_types,
+        worker_instances=worker_instances,
         workers_config=workers_config,
 
         # Optional: DecisionLogic-specific config
@@ -103,7 +107,7 @@ def generate_single_symbol(
         },
 
         # NEW (C#003): TradeSimulator config (optional)
-        trade_simulator_config=ts_config_global
+        trade_simulator_config=trade_simulator_config or ts_config_global
     )
 
     # Save to config file
@@ -116,12 +120,12 @@ def generate_single_symbol(
 
 def generate_multi_symbol(
     symbols: list = None,
-    trade_simulator_config: dict = None  # NEW (C#003)
+    trade_simulator_config: dict = None
 ):
     """
     Generate scenarios for multiple symbols.
 
-    REFACTORED (Issue 2): Uses new config structure.
+    REFACTORED (Worker Instance System): Uses worker_instances dict.
     NEW (C#003): Added optional trade_simulator_config parameter.
 
     Args:
@@ -136,12 +140,15 @@ def generate_multi_symbol(
         symbols=symbols,  # None = all available
         scenarios_per_symbol=3,
 
-        # Factory-compatible parameters
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=["CORE/rsi", "CORE/envelope"],
+        # Worker instance system
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances={
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
+        },
         workers_config={
-            "CORE/rsi": {"period": 14, "timeframe": "M5"},
-            "CORE/envelope": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
+            "rsi_fast": {"period": 14, "timeframe": "M5"},
+            "envelope_main": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
         },
 
         execution_config={
@@ -149,7 +156,7 @@ def generate_multi_symbol(
         },
 
         # NEW (C#003): TradeSimulator config (optional)
-        trade_simulator_config=ts_config_global
+        trade_simulator_config=trade_simulator_config or ts_config_global
     )
 
     # Save
@@ -164,9 +171,8 @@ def generate_quick_test():
     """
     Generate a quick test config for debugging.
 
-    REFACTORED (Issue 2): Uses new config structure.
+    REFACTORED (Worker Instance System): Uses worker_instances dict.
     Fast execution, minimal scenarios, sequential mode.
-    Uses default TradeSimulator settings (no custom config).
     """
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
@@ -178,19 +184,22 @@ def generate_quick_test():
         window_days=1,  # One day
         ticks_per_window=100,  # Very few ticks
 
-        # Factory-compatible parameters
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=["CORE/rsi", "CORE/envelope"],
+        # Worker instance system
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances={
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
+        },
         workers_config={
-            "CORE/rsi": {"period": 14, "timeframe": "M5"},
-            "CORE/envelope": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
+            "rsi_fast": {"period": 14, "timeframe": "M5"},
+            "envelope_main": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
         },
 
         execution_config={
             "parallel_workers": False,  # Sequential for debugging
             "log_performance_stats": True,
         },
-        # NEW (C#003): TradeSimulator config (optional)
+
         trade_simulator_config=ts_config_global
     )
 
@@ -205,7 +214,7 @@ def generate_heavy_batch():
     """
     Generate a heavy batch config for performance testing.
 
-    REFACTORED (Issue 2): Now uses Heavy Workers with artificial load.
+    REFACTORED (Worker Instance System): Uses heavy worker instances.
 
     This configuration is designed for stress-testing parallelization:
     - Heavy Workers simulate CPU-intensive computations (ML, FFT, etc.)
@@ -215,24 +224,26 @@ def generate_heavy_batch():
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
 
-    # Heavy Workers for Performance Testing
-    # These workers have artificial_load_ms to simulate heavy computation
-    heavy_worker_types = ["CORE/heavy_rsi",
-                          "CORE/heavy_envelope", "CORE/heavy_macd"]
+    # Heavy worker instances for performance testing
+    heavy_worker_instances = {
+        "rsi_heavy": "CORE/heavy_rsi",
+        "envelope_heavy": "CORE/heavy_envelope",
+        "macd_heavy": "CORE/heavy_macd"
+    }
 
     heavy_workers_config = {
-        "CORE/heavy_rsi": {
+        "rsi_heavy": {
             "period": 14,
             "timeframe": "M5",
             "artificial_load_ms": 5.0,  # 5ms CPU load
         },
-        "CORE/heavy_envelope": {
+        "envelope_heavy": {
             "period": 20,
             "deviation": 0.02,
             "timeframe": "M5",
             "artificial_load_ms": 8.0,  # 8ms CPU load (heavier)
         },
-        "CORE/heavy_macd": {
+        "macd_heavy": {
             "fast": 12,
             "slow": 26,
             "signal": 9,
@@ -248,19 +259,19 @@ def generate_heavy_batch():
         window_days=2,
         ticks_per_window=1000,
 
-        # Heavy Workers configuration
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=heavy_worker_types,
+        # Heavy worker instances
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances=heavy_worker_instances,
         workers_config=heavy_workers_config,
 
         # Aggressive parallelization for performance testing
         execution_config={
-            "parallel_workers": True,  # Enable parallel workers
+            "parallel_workers": True,
             "worker_parallel_threshold_ms": 1.0,
             "adaptive_parallelization": True,
-            "log_performance_stats": True,  # Track performance metrics
+            "log_performance_stats": True,
         },
-        # NEW (C#003): TradeSimulator config (optional)
+
         trade_simulator_config=ts_config_global
     )
 
@@ -281,13 +292,19 @@ def generate_custom_strategy_example():
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
 
-    # Custom worker config with different RSI period
-    custom_workers = {
-        "CORE/rsi": {
+    # Custom worker instances with descriptive names
+    custom_worker_instances = {
+        "rsi_slow": "CORE/rsi",        # Longer period RSI
+        "envelope_wide": "CORE/envelope"  # Wider envelope
+    }
+
+    # Custom worker config with different parameters
+    custom_workers_config = {
+        "rsi_slow": {
             "period": 21,  # Longer period RSI
             "timeframe": "M5"
         },
-        "CORE/envelope": {
+        "envelope_wide": {
             "period": 30,  # Wider envelope
             "deviation": 0.03,
             "timeframe": "M5"
@@ -299,15 +316,15 @@ def generate_custom_strategy_example():
         strategy="time_windows",
         num_windows=3,
 
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=["CORE/rsi", "CORE/envelope"],
-        workers_config=custom_workers,  # Custom config
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances=custom_worker_instances,
+        workers_config=custom_workers_config,
 
         decision_logic_config={
             "rsi_oversold": 25,  # More aggressive thresholds
             "rsi_overbought": 75,
         },
-        # NEW (C#003): TradeSimulator config (optional)
+
         trade_simulator_config=ts_config_global
     )
 
@@ -316,6 +333,60 @@ def generate_custom_strategy_example():
     config_saver.save_config(scenarios, output_file)
 
     vLog.info(f"✅ Generated custom strategy → {output_file}")
+
+
+def generate_dual_rsi_strategy():
+    """
+    Example: Strategy with multiple instances of same worker type.
+
+    Demonstrates:
+    - Multiple RSI workers with different parameters
+    - Descriptive instance names (rsi_fast, rsi_slow)
+    - How DecisionLogic can use multiple instances for comparison
+    """
+    loader = TickDataLoader("./data/processed/")
+    generator = ScenarioGenerator(loader)
+
+    # Multiple RSI instances with different timeframes
+    dual_rsi_instances = {
+        "rsi_fast": "CORE/rsi",    # M1 fast RSI
+        "rsi_slow": "CORE/rsi",    # M5 slow RSI
+        "envelope_main": "CORE/envelope"
+    }
+
+    dual_rsi_config = {
+        "rsi_fast": {
+            "period": 14,
+            "timeframe": "M1"  # Fast timeframe
+        },
+        "rsi_slow": {
+            "period": 14,
+            "timeframe": "M5"  # Slow timeframe
+        },
+        "envelope_main": {
+            "period": 20,
+            "deviation": 0.02,
+            "timeframe": "M5"
+        }
+    }
+
+    scenarios = generator.generate_from_symbol(
+        "EURUSD",
+        strategy="time_windows",
+        num_windows=3,
+
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances=dual_rsi_instances,
+        workers_config=dual_rsi_config,
+
+        trade_simulator_config=ts_config_global
+    )
+
+    config_saver = ScenarioConfigSaver()
+    output_file = "eurusd_dual_rsi.json"
+    config_saver.save_config(scenarios, output_file)
+
+    vLog.info(f"✅ Generated dual RSI strategy → {output_file}")
 
 
 # ============================================
@@ -336,6 +407,13 @@ def generate_with_custom_balance():
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
 
+    # Custom balance and currency
+    custom_ts_config = {
+        "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+        "initial_balance": 5000,
+        "currency": "USD"
+    }
+
     scenarios = generator.generate_from_symbol(
         "EURUSD",
         strategy="time_windows",
@@ -343,16 +421,19 @@ def generate_with_custom_balance():
         window_days=2,
         ticks_per_window=1000,
 
-        # Strategy config
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=["CORE/rsi", "CORE/envelope"],
+        # Worker instances
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances={
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
+        },
         workers_config={
-            "CORE/rsi": {"period": 14, "timeframe": "M5"},
-            "CORE/envelope": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
+            "rsi_fast": {"period": 14, "timeframe": "M5"},
+            "envelope_main": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
         },
 
-        # NEW: TradeSimulator config (applies to all scenarios in this set)
-        trade_simulator_config=ts_config_global
+        # Custom TradeSimulator config
+        trade_simulator_config=custom_ts_config
     )
 
     config_saver = ScenarioConfigSaver()
@@ -375,10 +456,7 @@ def generate_per_scenario_balance():
     loader = TickDataLoader("./data/processed/")
     generator = ScenarioGenerator(loader)
 
-    ts_config_local = {**ts_config_global,
-                       "initial_balance": 30000, "currency": "EUR"}
-
-    # First, generate base scenarios with default config
+    # Generate base scenarios with standard config
     base_scenarios = generator.generate_from_symbol(
         "EURUSD",
         strategy="time_windows",
@@ -386,13 +464,17 @@ def generate_per_scenario_balance():
         window_days=2,
         ticks_per_window=1000,
 
-        decision_logic_type="CORE/simple_consensus",
-        worker_types=["CORE/rsi", "CORE/envelope"],
-        workers_config={
-            "CORE/rsi": {"period": 14, "timeframe": "M5"},
-            "CORE/envelope": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
+        decision_logic_type="CORE/aggressive_trend",
+        worker_instances={
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
         },
-        trade_simulator_config=ts_config_local
+        workers_config={
+            "rsi_fast": {"period": 14, "timeframe": "M5"},
+            "envelope_main": {"period": 20, "deviation": 0.02, "timeframe": "M5"}
+        },
+
+        trade_simulator_config=ts_config_global
     )
 
     # Manually assign different balances to each scenario
@@ -401,7 +483,9 @@ def generate_per_scenario_balance():
     for i, scenario in enumerate(base_scenarios):
         # Override trade_simulator_config for each scenario
         scenario.trade_simulator_config = {
-            **ts_config_global, "initial_balance": balances[i]}
+            **ts_config_global,
+            "initial_balance": balances[i]
+        }
         # Update scenario name to reflect balance
         scenario.name = f"EURUSD_balance_{int(balances[i])}"
 
@@ -412,17 +496,17 @@ def generate_per_scenario_balance():
     vLog.info(
         f"✅ Generated scenarios with varied balances (1k-50k) → {output_file}")
 
+
 # ============================================
 # Main Entry Point
 # ============================================
-
 
 if __name__ == "__main__":
     """
     Main entry point - generates various scenario configs.
 
-    REFACTORED (Issue 2): All generators now use factory-compatible
-    config structure with explicit decision logic and worker types.
+    REFACTORED (Worker Instance System): All generators now use
+    worker_instances dict with instance names as keys.
 
     NEW (C#003): Added examples for custom TradeSimulator configurations.
     """
@@ -448,6 +532,9 @@ if __name__ == "__main__":
 
         vLog.info("📝 Generating custom strategy example...")
         generate_custom_strategy_example()
+
+        vLog.info("📝 Generating dual RSI strategy (multiple instances)...")
+        generate_dual_rsi_strategy()
 
         # NEW (C#003): TradeSimulator config examples
         vLog.info("📝 Generating with custom balance (5k USD)...")

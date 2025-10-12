@@ -291,9 +291,10 @@ class BatchOrchestrator:
         orchestrator = WorkerCoordinator(
             workers=workers,
             decision_logic=decision_logic,
+            strategy_config=strategy_config,
             parallel_workers=parallel_workers,
             parallel_threshold_ms=parallel_threshold,
-            scenario_name=scenario.name,
+            scenario_name=scenario.name
         )
         orchestrator.initialize()
 

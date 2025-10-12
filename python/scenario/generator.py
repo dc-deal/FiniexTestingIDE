@@ -1,12 +1,12 @@
 """
 FiniexTestingIDE - Scenario Config System
-Auto-Generator (REFACTORED for Issue 2)
+Auto-Generator (REFACTORED for Worker Instance System)
 
-ARCHITECTURE CHANGE:
-- Generates new config structure with decision_logic_type and worker_types
-- Explicit worker configuration with namespaces (CORE/, USER/, BLACKBOX/)
-- Separates strategy logic from execution settings
-- Supports custom decision logics and workers
+ARCHITECTURE CHANGE (Worker Instance System):
+- Generates worker_instances dict (instance_name → worker_type)
+- Workers dict uses instance names as keys (not types)
+- Supports multiple instances of same worker type
+- DecisionLogic contract-driven configuration
 
 FIXED (Config Structure):
 - strategy_config stays in global section (not duplicated per scenario)
@@ -34,7 +34,8 @@ class ScenarioGenerator:
     """
     Generates test scenarios automatically from available data.
 
-    REFACTORED (Issue 2): Now generates new config structure for factory system.
+    REFACTORED (Worker Instance System): Now generates worker_instances
+    with instance names and supports multiple instances per type.
     NEW (C#003): Supports trade_simulator_config for all generation strategies.
     """
 
@@ -46,30 +47,50 @@ class ScenarioGenerator:
         self.data_loader = data_loader
         self.analyzer = TickDataAnalyzer(self.data_loader)
 
+    def _generate_instance_name(self, worker_type: str, suffix: str = "main") -> str:
+        """
+        Generate instance name from worker type.
+
+        Examples:
+            "CORE/rsi" + "main" → "rsi_main"
+            "CORE/envelope" + "fast" → "envelope_fast"
+            "USER/custom_indicator" + "main" → "custom_indicator_main"
+
+        Args:
+            worker_type: Full worker type (e.g., "CORE/rsi")
+            suffix: Instance suffix (e.g., "main", "fast", "slow")
+
+        Returns:
+            Instance name in snake_case
+        """
+        # Extract worker name from type
+        _, worker_name = worker_type.split("/", 1)
+        return f"{worker_name}_{suffix}"
+
     def generate_from_symbol(
         self,
         symbol: str,
         strategy: str = "time_windows",
-        decision_logic_type: str = "CORE/simple_consensus",
-        worker_types: List[str] = None,
+        decision_logic_type: str = "CORE/aggressive_trend",
+        worker_instances: Dict[str, str] = None,
         workers_config: Dict[str, Dict[str, Any]] = None,
         decision_logic_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
+        trade_simulator_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> List[TestScenario]:
         """
         Generate scenarios for a symbol using different strategies.
 
-        REFACTORED (Issue 2): New parameters for factory-driven config.
+        REFACTORED (Worker Instance System): Uses worker_instances dict.
         NEW (C#003): Added trade_simulator_config parameter.
 
         Args:
             symbol: Trading symbol
             strategy: Generation strategy ("time_windows", "volatility", "sessions")
-            decision_logic_type: DecisionLogic to use (e.g., "CORE/simple_consensus")
-            worker_types: List of workers to use (e.g., ["CORE/rsi", "CORE/envelope"])
-            workers_config: Explicit worker configurations (overrides defaults)
+            decision_logic_type: DecisionLogic to use (e.g., "CORE/aggressive_trend")
+            worker_instances: Dict[instance_name, worker_type] (e.g., {"rsi_main": "CORE/rsi"})
+            workers_config: Worker parameters indexed by instance name
             decision_logic_config: DecisionLogic-specific config
             execution_config: Execution-specific config (parallelization, etc.)
             trade_simulator_config: TradeSimulator config (balance, currency, broker)
@@ -79,18 +100,21 @@ class ScenarioGenerator:
             List of generated TestScenario objects
         """
         # Default to RSI + Envelope workers if not specified
-        if worker_types is None:
-            worker_types = ["CORE/rsi", "CORE/envelope"]
+        if worker_instances is None:
+            worker_instances = {
+                "rsi_main": "CORE/rsi",
+                "envelope_main": "CORE/envelope"
+            }
 
         # Build strategy config with new structure
         strategy_config = self._build_strategy_config(
             decision_logic_type=decision_logic_type,
-            worker_types=worker_types,
+            worker_instances=worker_instances,
             workers_config=workers_config,
             decision_logic_config=decision_logic_config
         )
 
-        # Generate scenarios based on strategy (NEW: pass trade_simulator_config)
+        # Generate scenarios based on strategy
         if strategy == "time_windows":
             return self._generate_time_windows(
                 symbol,
@@ -121,20 +145,20 @@ class ScenarioGenerator:
     def _build_strategy_config(
         self,
         decision_logic_type: str,
-        worker_types: List[str],
+        worker_instances: Dict[str, str],
         workers_config: Optional[Dict[str, Dict[str, Any]]] = None,
         decision_logic_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Build strategy configuration with new factory-compatible structure.
+        Build strategy configuration with worker instance system.
 
-        This method constructs the hierarchical config that the factories need.
-        It sets up sensible defaults for workers and decision logic.
+        This method constructs the hierarchical config that factories need.
+        It sets up sensible defaults for workers based on their type.
 
         Args:
-            decision_logic_type: e.g., "CORE/simple_consensus"
-            worker_types: e.g., ["CORE/rsi", "CORE/envelope"]
-            workers_config: Explicit worker configs (optional)
+            decision_logic_type: e.g., "CORE/aggressive_trend"
+            worker_instances: e.g., {"rsi_main": "CORE/rsi", "envelope_main": "CORE/envelope"}
+            workers_config: Worker configs indexed by instance name (optional)
             decision_logic_config: DecisionLogic config (optional)
 
         Returns:
@@ -143,21 +167,23 @@ class ScenarioGenerator:
         # Build workers config with defaults if not provided
         if workers_config is None:
             workers_config = {}
-            for worker_type in worker_types:
+            for instance_name, worker_type in worker_instances.items():
                 # Set sensible defaults based on worker type
-                if "rsi" in worker_type.lower():
-                    workers_config[worker_type] = {
+                worker_name = worker_type.split("/")[1].lower()
+
+                if "rsi" in worker_name:
+                    workers_config[instance_name] = {
                         "period": 14,
                         "timeframe": "M5"
                     }
-                elif "envelope" in worker_type.lower():
-                    workers_config[worker_type] = {
+                elif "envelope" in worker_name:
+                    workers_config[instance_name] = {
                         "period": 20,
                         "deviation": 0.02,
                         "timeframe": "M5"
                     }
-                elif "macd" in worker_type.lower():
-                    workers_config[worker_type] = {
+                elif "macd" in worker_name:
+                    workers_config[instance_name] = {
                         "fast": 12,
                         "slow": 26,
                         "signal": 9,
@@ -168,7 +194,7 @@ class ScenarioGenerator:
         # Build complete strategy config
         config = {
             "decision_logic_type": decision_logic_type,
-            "worker_types": worker_types,
+            "worker_instances": worker_instances,
             "workers": workers_config
         }
 
@@ -182,26 +208,26 @@ class ScenarioGenerator:
         self,
         symbols: List[str] = None,
         scenarios_per_symbol: int = 3,
-        decision_logic_type: str = "CORE/simple_consensus",
-        worker_types: List[str] = None,
+        decision_logic_type: str = "CORE/aggressive_trend",
+        worker_instances: Dict[str, str] = None,
         workers_config: Dict[str, Dict[str, Any]] = None,
         decision_logic_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
+        trade_simulator_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> List[TestScenario]:
         """
         Generate scenarios for multiple symbols.
 
-        REFACTORED (Issue 2): Uses new config structure.
+        REFACTORED (Worker Instance System): Uses worker_instances dict.
         NEW (C#003): Added trade_simulator_config parameter.
 
         Args:
             symbols: List of symbols (None = all available)
             scenarios_per_symbol: Number of scenarios per symbol
             decision_logic_type: DecisionLogic to use
-            worker_types: List of workers to use
-            workers_config: Explicit worker configurations
+            worker_instances: Dict[instance_name, worker_type]
+            workers_config: Worker configs indexed by instance name
             decision_logic_config: DecisionLogic config
             execution_config: Execution config
             trade_simulator_config: TradeSimulator config
@@ -222,11 +248,11 @@ class ScenarioGenerator:
                 symbol,
                 strategy="time_windows",
                 decision_logic_type=decision_logic_type,
-                worker_types=worker_types,
+                worker_instances=worker_instances,
                 workers_config=workers_config,
                 decision_logic_config=decision_logic_config,
                 execution_config=execution_config,
-                trade_simulator_config=trade_simulator_config,  # NEW (C#003)
+                trade_simulator_config=trade_simulator_config,
                 num_windows=scenarios_per_symbol,
                 **kwargs
             )
@@ -241,15 +267,15 @@ class ScenarioGenerator:
         num_windows: int = 5,
         window_days: int = 2,
         ticks_per_window: int = 1000,
-        session: str = "london_ny_overlap",  # NEU: Session-Parameter
+        session: str = "london_ny_overlap",
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
+        trade_simulator_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
         Generate scenarios by splitting data into time windows.
 
-        REFACTORED (Issue 2): Uses new config structure.
+        REFACTORED (Worker Instance System): Uses worker_instances dict.
         NEW (C#003): Added trade_simulator_config parameter.
 
         Args:
@@ -257,13 +283,10 @@ class ScenarioGenerator:
             num_windows: Number of time windows
             window_days: Days per window
             ticks_per_window: Max ticks per window
-            strategy_config: Strategy parameters (NEW structure!)
+            session: Trading session - 'london', 'ny', 'london_ny_overlap', 'asian', or 'full_day'
+            strategy_config: Strategy parameters (new structure!)
             execution_config: Execution parameters
             trade_simulator_config: TradeSimulator config (balance, currency, broker)
-        Generate scenarios by splitting data into time windows.
-
-        Args:
-            session: Trading session - 'london', 'ny', 'london_ny_overlap', 'asian', or 'full_day'
         """
         # Define trading sessions (UTC times)
         SESSIONS = {
@@ -277,6 +300,7 @@ class ScenarioGenerator:
 
         start_hour, end_hour = SESSIONS.get(
             session, (8, 16))  # Default: London
+
         # Get available date range
         symbol_info = self.analyzer.get_symbol_info(symbol)
 
@@ -303,8 +327,11 @@ class ScenarioGenerator:
         # Use provided configs or build defaults
         if strategy_config is None:
             strategy_config = self._build_strategy_config(
-                decision_logic_type="CORE/simple_consensus",
-                worker_types=["CORE/rsi", "CORE/envelope"],
+                decision_logic_type="CORE/aggressive_trend",
+                worker_instances={
+                    "rsi_main": "CORE/rsi",
+                    "envelope_main": "CORE/envelope"
+                },
                 workers_config=None,
                 decision_logic_config=None
             )
@@ -332,8 +359,8 @@ class ScenarioGenerator:
 
             scenario = TestScenario(
                 symbol=symbol,
-                start_date=window_start.isoformat(),  # ✅ z.B. "2025-09-23T13:00:00"
-                end_date=window_end.isoformat(),      # ✅ z.B. "2025-09-25T16:00:00"
+                start_date=window_start.isoformat(),
+                end_date=window_end.isoformat(),
                 max_ticks=ticks_per_window,
                 data_mode="realistic",
                 strategy_config=strategy_config.copy(),
@@ -357,7 +384,7 @@ class ScenarioGenerator:
         max_scenarios: int = 10,
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
+        trade_simulator_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
         Generate scenarios based on volatility periods.
@@ -374,7 +401,7 @@ class ScenarioGenerator:
             num_windows=max_scenarios,
             strategy_config=strategy_config,
             execution_config=execution_config,
-            trade_simulator_config=trade_simulator_config,  # NEW (C#003)
+            trade_simulator_config=trade_simulator_config,
         )
 
     def _generate_session_based(
@@ -383,7 +410,7 @@ class ScenarioGenerator:
         sessions: List[str] = None,
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,  # NEW (C#003)
+        trade_simulator_config: Optional[Dict[str, Any]] = None,
     ) -> List[TestScenario]:
         """
         Generate scenarios based on trading sessions.
@@ -400,5 +427,5 @@ class ScenarioGenerator:
             num_windows=3,
             strategy_config=strategy_config,
             execution_config=execution_config,
-            trade_simulator_config=trade_simulator_config,  # NEW (C#003)
+            trade_simulator_config=trade_simulator_config,
         )

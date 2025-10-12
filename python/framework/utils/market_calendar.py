@@ -6,8 +6,10 @@ EXTENDED (C#002): Comprehensive weekend analysis and gap classification
 """
 
 from datetime import datetime, timedelta
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Union
 from enum import Enum
+
+import pytz
 
 
 class GapCategory(Enum):
@@ -318,3 +320,67 @@ class MarketCalendar:
         d = int(days)
         h = int((days - d) * 24)
         return f"{d}d {h}h" if h > 0 else f"{d}d"
+
+    @staticmethod
+    def format_time_range(
+        start: Union[datetime, str],
+        end: Union[datetime, str],
+        date_format: str = "%d.%m.%Y",
+        time_format: str = "%H:%M:%S",
+        timezone: str = "UTC"
+    ) -> str:
+        """
+        Format time range in human-readable format.
+        Shows date only once if both timestamps are on the same day.
+
+        Args:
+            start: Start datetime
+            end: End datetime
+            date_format: Date format (default: DD.MM.YYYY)
+            time_format: Time format (default: HH:MM:SS)
+            timezone: Timezone for display (default: UTC)
+
+        Returns:
+            Formatted string like "23.09.2025 10:30:00 → 13:00:00"
+            or "23.09.2025 23:30:00 → 24.09.2025 01:00:00" for different days
+
+        Examples:
+            >>> start = datetime(2025, 9, 23, 10, 30, 0, tzinfo=pytz.UTC)
+            >>> end = datetime(2025, 9, 23, 13, 0, 0, tzinfo=pytz.UTC)
+            >>> format_time_range(start, end)
+            '23.09.2025 10:30:00 → 13:00:00'
+        """
+        # Convert strings to datetime if needed
+        if isinstance(start, str):
+            start = datetime.fromisoformat(start.replace('Z', '+00:00'))
+        if isinstance(end, str):
+            end = datetime.fromisoformat(end.replace('Z', '+00:00'))
+
+        # Ensure timezone awareness
+        if start.tzinfo is None:
+            start = pytz.UTC.localize(start)
+        if end.tzinfo is None:
+            end = pytz.UTC.localize(end)
+
+        # Convert to desired timezone if specified
+        if timezone != "UTC":
+            tz = pytz.timezone(timezone)
+            start = start.astimezone(tz)
+            end = end.astimezone(tz)
+
+        # Check if same day
+        same_day = start.date() == end.date()
+
+        if same_day:
+            # Date only once: "23.09.2025 10:30:00 → 13:00:00"
+            return f"{start.strftime(date_format)} {start.strftime(time_format)} → {end.strftime(time_format)}"
+        else:
+            # Different days: "23.09.2025 23:30:00 → 24.09.2025 01:00:00"
+            return (f"{start.strftime(date_format)} {start.strftime(time_format)} → "
+                    f"{end.strftime(date_format)} {end.strftime(time_format)}")
+
+    # Vereinfachte Variante ohne Sekunden
+    @staticmethod
+    def format_time_range_short(start: Union[datetime, str], end: Union[datetime, str]) -> str:
+        """Shortened version without seconds: '23.09.2025 10:30 → 13:00'"""
+        return MarketCalendar.format_time_range(start, end, time_format="%H:%M")

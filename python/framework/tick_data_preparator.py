@@ -88,20 +88,21 @@ class TickDataPreparator:
         # Warmup period with readable duration
         warmup_duration = format_duration(warmup_start, test_start)
         vLog.info(
-            f"└─Warmup period: {warmup_start.isoformat()} → {test_start.isoformat()} "
+            f"└─Warmup period: {MarketCalendar.format_time_range(warmup_start, test_start)} "
             f"({warmup_duration})"
         )
 
         # Test period with readable duration OR max ticks
+        test_period_string = f"└─Test period: {MarketCalendar.format_time_range(test_start, test_end)} "
         if max_test_ticks:
             vLog.info(
-                f"└─Test period: {test_start.isoformat()} → {test_end.isoformat()} "
+                test_period_string +
                 f"(max {max_test_ticks:,} ticks)"
             )
         else:
             test_duration = format_duration(test_start, test_end)
             vLog.info(
-                f"└─Test period: {test_start.isoformat()} → {test_end.isoformat()} "
+                test_period_string +
                 f"({test_duration})"
             )
 

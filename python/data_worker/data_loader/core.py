@@ -23,6 +23,7 @@ from python.data_worker.data_loader.exceptions import (
 
 # NEW (C#002): Index integration
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.framework.utils.market_calendar import MarketCalendar
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -144,8 +145,9 @@ class TickDataLoader:
             if files:
                 vLog.info(
                     f"📊 Loading {len(files)}/{all_files_count} files for {symbol} "
-                    f"({start_date} to {end_date})"
+                    f"({MarketCalendar.format_time_range(start_date, end_date)})"
                 )
+
             else:
                 vLog.warning(f"No files found for {symbol} in date range")
                 return pd.DataFrame()

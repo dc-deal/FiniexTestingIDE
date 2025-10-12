@@ -45,8 +45,11 @@ class AbstractDecisionLogic(ABC):
 
     Example:
         class SimpleConsensus(AbstractDecisionLogic):
-            def get_required_workers(self):
-                return ["RSI", "Envelope"]
+            def get_required_worker_instances(self):
+                return  {
+                    "rsi_fast": "CORE/rsi",
+                    "envelope_main": "CORE/envelope"
+                }
 
             def get_required_order_types(self):
                 return [OrderType.MARKET]
@@ -188,15 +191,30 @@ class AbstractDecisionLogic(ABC):
     # ============================================
 
     @abstractmethod
-    def get_required_workers(self) -> List[str]:
+    def get_required_worker_instances(self) -> Dict[str, str]:
         """
-        Declare which workers this logic needs.
+        Define required worker instances with exact names and types.
 
-        Factory uses this to instantiate the correct workers.
-        Worker names must match the worker_types in scenario config.
+        This is the contract between DecisionLogic and configuration.
+        The config MUST provide worker_instances with matching keys and types.
+
+        Example:
+            {
+                "rsi_fast": "CORE/rsi",
+                "envelope_main": "CORE/envelope"
+            }
+
+        Config must match exactly:
+            "worker_instances": {
+                "rsi_fast": "CORE/rsi",        # ✓ Same key, same type
+                "envelope_main": "CORE/envelope"  # ✓ Same key, same type
+            }
+
+        Type override is NOT allowed - if DecisionLogic declares
+        "rsi_fast": "CORE/rsi", config cannot use "CORE/macd" instead.
 
         Returns:
-            List of worker names (e.g., ["RSI", "envelope", "macd"])
+            Dict[instance_name, worker_type] - The exact worker contract
         """
         pass
 
@@ -279,29 +297,6 @@ class AbstractDecisionLogic(ABC):
                 self._statistics["orders_executed"] += 1
             elif order_result.is_rejected:
                 self._statistics["orders_rejected"] += 1
-
-    def validate_worker_results(self, worker_results: Dict[str, WorkerResult]) -> bool:
-        """
-        Validate that all required workers provided results.
-
-        Called by orchestrator before compute().
-        Override for custom validation logic.
-
-        Args:
-            worker_results: Dict of worker outputs
-
-        Returns:
-            True if valid, raises ValueError if invalid
-        """
-        required = self.get_required_workers()
-        missing = [w for w in required if w not in worker_results]
-
-        if missing:
-            raise ValueError(
-                f"DecisionLogic '{self.name}': Missing worker results: {missing}"
-            )
-
-        return True
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """

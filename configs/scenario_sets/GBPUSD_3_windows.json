@@ -1,25 +1,21 @@
 {
   "version": "1.0",
-  "scenario_set_name": "scn_GBPUSD_3_windows",
-  "created": "2025-10-08T19:35:39.934213",
-  "trade_simulator_seeds": {
-    "api_latency_seed": 42,
-    "market_execution_seed": 123
-  },
+  "scenario_set_name": "GBPUSD_3_windows",
+  "created": "2025-10-12T08:41:32.839920",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
-      "decision_logic_type": "CORE/simple_consensus",
-      "worker_types": [
-        "CORE/rsi",
-        "CORE/envelope"
-      ],
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
       "workers": {
-        "CORE/rsi": {
+        "rsi_fast": {
           "period": 14,
           "timeframe": "M5"
         },
-        "CORE/envelope": {
+        "envelope_main": {
           "period": 20,
           "deviation": 0.02,
           "timeframe": "M5"

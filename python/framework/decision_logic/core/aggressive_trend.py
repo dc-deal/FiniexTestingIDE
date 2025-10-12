@@ -286,17 +286,21 @@ class AggressiveTrend(AbstractDecisionLogic):
     # Existing methods (unchanged)
     # ============================================
 
-    def get_required_workers(self) -> List[str]:
+    def get_required_worker_instances(self) -> Dict[str, str]:
         """
-        Declare required workers - same as SimpleConsensus.
+        Define required worker instances for AggressiveTrend strategy.
 
-        Both strategies use the same workers but interpret them differently.
-        This shows the power of DecisionLogic abstraction.
+        Requires:
+        - rsi_fast: Fast RSI indicator for trend detection
+        - envelope_main: Envelope for price position analysis
 
         Returns:
-            List of worker names required
+            Dict[instance_name, worker_type]
         """
-        return ["RSI", "Envelope"]
+        return {
+            "rsi_fast": "CORE/rsi",
+            "envelope_main": "CORE/envelope"
+        }
 
     def compute(
         self,
@@ -321,8 +325,8 @@ class AggressiveTrend(AbstractDecisionLogic):
             Decision object with action, confidence, and reason
         """
         # Extract worker results
-        rsi_result = worker_results.get("RSI")
-        envelope_result = worker_results.get("Envelope")
+        rsi_result = worker_results.get("rsi_fast")
+        envelope_result = worker_results.get("envelope_main")
 
         if not rsi_result or not envelope_result:
             return Decision(

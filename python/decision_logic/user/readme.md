@@ -4,7 +4,7 @@ Custom open-source decision logic implementations.
 
 ## Usage
 1. Create your logic inheriting from `AbstractDecisionLogic`
-2. Implement `compute()` and `get_required_workers()`
+2. Implement `compute()` and `get_required_worker_instances()`
 3. Reference in scenario config: `"decision_logic_type": "USER/my_custom_logic"`
 
 ## Example

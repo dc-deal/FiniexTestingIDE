@@ -120,6 +120,7 @@ class WorkerFactory:
 
     def create_worker(
         self,
+        instance_name: str,
         worker_type: str,
         worker_config: Dict[str, Any] = None
     ) -> AbstractBlackboxWorker:
@@ -134,6 +135,7 @@ class WorkerFactory:
         5. Instantiates the worker with merged parameters
 
         Args:
+            instance_name: User-defined instance name (e.g., "rsi_main")
             worker_type: Worker type with namespace (e.g., "CORE/rsi")
             worker_config: User-provided parameters for this worker
 
@@ -151,7 +153,7 @@ class WorkerFactory:
         # Step 2: Create temporary instance to get contract
         # We need the contract to know which parameters are required/optional
         temp_instance = worker_class(
-            name=self._extract_worker_name(worker_type),
+            name=instance_name,
             parameters={}
         )
         contract = temp_instance.get_contract()
@@ -170,14 +172,13 @@ class WorkerFactory:
         )
 
         # Step 5: Instantiate final worker with merged parameters
-        worker_name = self._extract_worker_name(worker_type)
         worker_instance = worker_class(
-            name=worker_name,
+            name=instance_name,
             parameters=merged_params
         )
 
         vLog.debug(
-            f"✓ Created worker: {worker_type} with {len(merged_params)} parameters"
+            f"✓ Created worker: {instance_name} ({worker_type}) with {len(merged_params)} parameters"
         )
 
         return worker_instance
@@ -194,10 +195,13 @@ class WorkerFactory:
 
         Expected config structure:
         {
-            "worker_types": ["CORE/rsi", "CORE/envelope"],
+            "worker_instances": {
+                "rsi_main": "CORE/rsi",
+                "envelope_main": "CORE/envelope"
+            },
             "workers": {
-                "CORE/rsi": {"period": 14, "timeframe": "M5"},
-                "CORE/envelope": {"period": 20, "deviation": 0.02}
+                "rsi_main": {"period": 14, "timeframe": "M5"},
+                "envelope_main": {"period": 20, "deviation": 0.02}
             }
         }
 
@@ -205,38 +209,41 @@ class WorkerFactory:
             strategy_config: Strategy configuration dict
 
         Returns:
-            Dict mapping worker names to worker instances
+            Dict mapping worker instance names to worker instances
 
         Raises:
             ValueError: If config is invalid or worker creation fails
         """
-        # Extract worker types and worker configs
-        worker_types = strategy_config.get("worker_types", [])
+        # Extract worker instances mapping and configs
+        worker_instances = strategy_config.get("worker_instances", {})
         workers_config = strategy_config.get("workers", {})
 
-        if not worker_types:
-            raise ValueError("No worker_types specified in strategy_config")
+        if not worker_instances:
+            raise ValueError(
+                "No worker_instances specified in strategy_config")
 
-        # Create each worker
+        # Create each worker instance
         created_workers = {}
 
-        for worker_type in worker_types:
-            # Get config for this specific worker (may be empty dict)
-            worker_config = workers_config.get(worker_type, {})
+        for instance_name, worker_type in worker_instances.items():
+            # Get config for this worker instance (may be empty dict)
+            worker_config = workers_config.get(instance_name, {})
 
             # Create worker instance
             try:
                 worker_instance = self.create_worker(
-                    worker_type, worker_config)
+                    instance_name=instance_name,
+                    worker_type=worker_type,
+                    worker_config=worker_config
+                )
 
-                # Use simple name as key (without namespace)
-                worker_name = self._extract_worker_name(worker_type)
-                created_workers[worker_name] = worker_instance
+                created_workers[instance_name] = worker_instance
 
             except Exception as e:
-                vLog.error(f"Failed to create worker {worker_type}: {e}")
+                vLog.error(
+                    f"Failed to create worker {instance_name} ({worker_type}): {e}")
                 raise ValueError(
-                    f"Worker creation failed for {worker_type}: {e}")
+                    f"Worker creation failed for {instance_name} ({worker_type}): {e}")
 
         vLog.debug(
             f"✓ Created {len(created_workers)} workers: "
@@ -341,24 +348,6 @@ class WorkerFactory:
             raise ValueError(
                 f"Failed to load custom worker {worker_type}: {e}"
             )
-
-    def _extract_worker_name(self, worker_type: str) -> str:
-        """
-        Extract simple worker name from full type.
-
-        Examples:
-            "CORE/rsi" → "RSI"
-            "USER/my_custom_worker" → "MyCustomWorker"
-
-        Args:
-            worker_type: Full worker type with namespace
-
-        Returns:
-            Simple worker name (capitalized)
-        """
-        _, worker_name = worker_type.split("/", 1)
-        # Capitalize for display (RSI, Envelope, etc.)
-        return worker_name.upper() if len(worker_name) <= 3 else worker_name.capitalize()
 
     def _validate_required_parameters(
         self,
