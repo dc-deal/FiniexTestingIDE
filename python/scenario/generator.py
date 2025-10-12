@@ -1,21 +1,6 @@
 """
 FiniexTestingIDE - Scenario Config System
 Auto-Generator (REFACTORED for Worker Instance System)
-
-ARCHITECTURE CHANGE (Worker Instance System):
-- Generates worker_instances dict (instance_name → worker_type)
-- Workers dict uses instance names as keys (not types)
-- Supports multiple instances of same worker type
-- DecisionLogic contract-driven configuration
-
-FIXED (Config Structure):
-- strategy_config stays in global section (not duplicated per scenario)
-- Scenarios only contain worker parameter overrides in strategy_config
-- Only workers dict gets saved on scenario level (if different from global)
-
-NEW (C#003 Refactor):
-- Added trade_simulator_config support for all generation methods
-- Added enabled field to all generated TestScenarios (default: true)
 """
 
 from python.components.logger.bootstrap_logger import setup_logging

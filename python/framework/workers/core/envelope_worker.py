@@ -3,11 +3,11 @@ FiniexTestingIDE - Envelope Worker
 Bar-based envelope/bollinger band computation
 """
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.types import Bar, TickData, WorkerResult, WorkerType
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -30,7 +30,6 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         """
         super().__init__(name, parameters)
 
-        # Extract parameters from dict or kwargs
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 20)
         self.deviation = params.get(
@@ -38,59 +37,50 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         self.timeframe = params.get(
             'timeframe') or kwargs.get('timeframe', 'M5')
 
-    def get_contract(self) -> WorkerContract:
+    # ============================================
+    # STATIC: Classmethods für Factory/UI
+    # ============================================
+
+    @classmethod
+    def get_required_parameters(cls) -> Dict[str, type]:
+        """Envelope hat KEINE required parameters - alle haben defaults"""
+        return {}
+
+    @classmethod
+    def get_optional_parameters(cls) -> Dict[str, Any]:
+        """Envelope hat NUR optionale Parameter mit defaults"""
+        return {
+            'period': 20,         # Moving average period
+            'deviation': 0.02,    # Band deviation (2%)
+            'timeframe': 'M5',    # Default timeframe
+        }
+
+    # ============================================
+    # DYNAMIC: Instance methods für Runtime
+    # ============================================
+
+    def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        Define Envelope worker contract.
+        Envelope braucht 'period' bars.
 
-        NEW (Issue 2): All parameters are optional with defaults.
-        This shows a different pattern than RSI (which has required params).
-        """
-        return WorkerContract(
-            # ============================================
-            # NEW (Issue 2): Factory-Compatible Contract
-            # ============================================
-            worker_type=WorkerType.COMPUTE,
-
-            # Required parameters - NONE for Envelope (all have defaults)
-            required_parameters={},
-
-            # Optional parameters - all have defaults, fully configurable
-            optional_parameters={
-                'period': 20,         # Moving average period
-                'deviation': 0.02,    # Band deviation (2%)
-                'timeframe': 'M5',    # Default timeframe
-            },
-
-            # ============================================
-            # Existing contract fields (unchanged)
-            # ============================================
-            parameters={
-                'envelope_period': self.period,
-                'envelope_deviation': self.deviation,
-                'envelope_timeframe': self.timeframe,
-            },
-            price_change_sensitivity=0.0001,
-            max_computation_time_ms=50.0,
-            required_timeframes=self.get_required_timeframes(),
-            warmup_requirements=self.get_warmup_requirements(),
-        )
-
-    def get_warmup_requirements(self):
-        """
-        Define warmup requirements for Envelope calculation.
-
-        Envelope needs exactly 'period' bars to calculate the moving average.
-        No safety margin - we validate data quality instead.
+        Berechnet aus self.period (aus Config!)
         """
         requirements = {}
-        # EXAKT was gebraucht wird - kein +10 mehr!
         for tf in self.get_required_timeframes():
-            requirements[tf] = self.period  # z.B. 21 für Envelope-21
+            requirements[tf] = self.period
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
-        """Define required timeframes"""
+        """
+        Envelope braucht nur einen Timeframe.
+
+        Berechnet aus self.timeframe (aus Config!)
+        """
         return [self.timeframe]
+
+    def get_max_computation_time_ms(self) -> float:
+        """Envelope ist schnell - 50ms Timeout"""
+        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """Envelope recomputes when bar updated"""

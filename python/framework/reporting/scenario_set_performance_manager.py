@@ -53,8 +53,8 @@ class ScenarioPerformanceStats:
     # Decision logic
     decision_logic_name: str
 
-    # Scenario contract
-    scenario_contract: Dict[str, Any]
+    # Scenario requirement
+    scenario_requirement: Dict[str, Any]
 
     # Optional: First 10 signals for inspection
     sample_signals: List[Dict] = field(default_factory=list)

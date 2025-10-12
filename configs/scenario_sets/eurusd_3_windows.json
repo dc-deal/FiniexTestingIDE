@@ -13,7 +13,7 @@
       "workers": {
         "rsi_fast": {
           "period": 14,
-          "timeframe": "M5"
+          "timeframe": "M15"
         },
         "envelope_main": {
           "period": 20,

@@ -1,8 +1,8 @@
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.types import Bar, TickData, WorkerResult, WorkerType
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -30,60 +30,51 @@ class RSIWorker(AbstractBlackboxWorker):
         self.timeframe = params.get(
             'timeframe') or kwargs.get('timeframe', 'M5')
 
-    def get_contract(self) -> WorkerContract:
+    @classmethod
+    def get_required_parameters(cls) -> Dict[str, type]:
+        """RSI benötigt period und timeframe zwingend"""
+        return {
+            'period': int,      # RSI period (e.g., 14)
+            'timeframe': str,   # Timeframe (e.g., "M5")
+        }
+
+    @classmethod
+    def get_optional_parameters(cls) -> Dict[str, Any]:
+        """RSI hat aktuell keine optionalen Parameter"""
+        return {}
+        # Post-MVP könnte hier stehen:
+        # return {
+        #     'smoothing': 'exponential',
+        #     'overbought': 70,
+        #     'oversold': 30
+        # }
+
+    # ============================================
+    # DYNAMIC: Instance methods für Runtime
+    # ============================================
+
+    def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        Define RSI worker contract.
+        RSI braucht exakt 'period' bars.
 
-        NEW (Issue 2): Split into required and optional parameters
-        for factory validation.
-        """
-        return WorkerContract(
-            # ============================================
-            # NEW (Issue 2): Factory-Compatible Contract
-            # ============================================
-            worker_type=WorkerType.COMPUTE,
-
-            # Required parameters - MUST be provided by user
-            required_parameters={
-                'period': int,      # RSI period (e.g., 14)
-                'timeframe': str,   # Timeframe (e.g., "M5")
-            },
-
-            # Optional parameters - have defaults, can be overridden
-            optional_parameters={
-                # Currently none, but could add:
-                # 'smoothing': 'exponential',
-                # 'overbought': 70,
-                # 'oversold': 30
-            },
-
-            # ============================================
-            # Existing contract fields (unchanged)
-            # ============================================
-            parameters={'rsi_period': self.period,
-                        'rsi_timeframe': self.timeframe},
-            price_change_sensitivity=0.0001,
-            max_computation_time_ms=50.0,
-            required_timeframes=self.get_required_timeframes(),
-            warmup_requirements=self.get_warmup_requirements(),
-        )
-
-    def get_warmup_requirements(self):
-        """
-        Define warmup requirements for RSI calculation.
-
-        RSI needs exactly 'period' bars to calculate properly.
-        No safety margin - we validate data quality instead.
+        Berechnet aus self.period (aus Config!)
         """
         requirements = {}
-        # EXAKT was gebraucht wird - kein +10 mehr!
         for tf in self.get_required_timeframes():
-            requirements[tf] = self.period  # z.B. 14 für RSI-14
+            requirements[tf] = self.period
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
-        """Define timeframes needed"""
+        """
+        RSI braucht nur einen Timeframe.
+
+        Berechnet aus self.timeframe (aus Config!)
+        """
         return [self.timeframe]
+
+    def get_max_computation_time_ms(self) -> float:
+        """RSI ist schnell - 50ms Timeout"""
+        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """RSI recomputes when bar updated"""

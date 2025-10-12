@@ -1,17 +1,14 @@
 """
 FiniexTestingIDE - Heavy Workers für Parallelisierungs-Tests
 Workers mit künstlicher CPU-Last zum Testen von Parallel-Performance
-
-REFACTORED (Issue 2): Updated contracts with required_parameters
-and factory-compatible structure.
 """
 
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerContract, WorkerResult, WorkerType
+from python.framework.types import Bar, TickData, WorkerResult, WorkerType
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -38,7 +35,6 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         """
         super().__init__(name, parameters)
 
-        # Extract parameters
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 14)
         self.timeframe = params.get(
@@ -46,52 +42,32 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         self.artificial_load_ms = params.get(
             'artificial_load_ms') or kwargs.get('artificial_load_ms', 5.0)
 
-    def get_contract(self) -> WorkerContract:
-        """
-        Define Heavy RSI worker contract.
+    @classmethod
+    def get_required_parameters(cls) -> Dict[str, type]:
+        """Heavy RSI benötigt period und timeframe"""
+        return {
+            'period': int,
+            'timeframe': str,
+        }
 
-        REFACTORED (Issue 2): Split into required/optional parameters.
-        """
-        return WorkerContract(
-            # ============================================
-            # NEW (Issue 2): Factory-Compatible Contract
-            # ============================================
-            worker_type=WorkerType.COMPUTE,
+    @classmethod
+    def get_optional_parameters(cls) -> Dict[str, Any]:
+        """Heavy RSI hat artificial_load als optional"""
+        return {
+            'artificial_load_ms': 5.0,
+        }
 
-            # Required parameters - MUST be provided
-            required_parameters={
-                'period': int,      # RSI period
-                'timeframe': str,   # Timeframe
-            },
-
-            # Optional parameters - have defaults
-            optional_parameters={
-                'artificial_load_ms': 5.0,  # CPU load duration
-            },
-
-            # ============================================
-            # Existing contract fields (unchanged)
-            # ============================================
-            parameters={
-                "rsi_period": self.period,
-                "rsi_timeframe": self.timeframe,
-                "artificial_load_ms": self.artificial_load_ms,
-            },
-            price_change_sensitivity=0.0001,
-            max_computation_time_ms=self.artificial_load_ms + 10.0,
-            required_timeframes=self.get_required_timeframes(),
-            warmup_requirements=self.get_warmup_requirements(),
-        )
-
-    def get_warmup_requirements(self):
+    def get_warmup_requirements(self) -> Dict[str, int]:
         requirements = {}
-        minimum_warmup_bars = self.period
         for tf in self.get_required_timeframes():
-            requirements[tf] = minimum_warmup_bars
+            requirements[tf] = self.period
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
         return [self.timeframe]
+
+    def get_max_computation_time_ms(self) -> float:
+        return self.artificial_load_ms + 10.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated
@@ -170,7 +146,6 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
         Args:
             name: Worker name
             parameters: Factory-style parameters dict
-            **kwargs: Legacy constructor support
 
         Optional parameters (all have defaults):
             - period: MA period (default: 20)
@@ -189,53 +164,32 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
         self.artificial_load_ms = params.get(
             'artificial_load_ms') or kwargs.get('artificial_load_ms', 8.0)
 
-    def get_contract(self) -> WorkerContract:
-        """
-        Define Heavy Envelope worker contract.
+    @classmethod
+    def get_required_parameters(cls) -> Dict[str, type]:
+        """Heavy Envelope hat keine required parameters"""
+        return {}
 
-        REFACTORED (Issue 2): All parameters optional with defaults.
-        """
-        return WorkerContract(
-            # ============================================
-            # NEW (Issue 2): Factory-Compatible Contract
-            # ============================================
-            worker_type=WorkerType.COMPUTE,
+    @classmethod
+    def get_optional_parameters(cls) -> Dict[str, Any]:
+        """Heavy Envelope - alle Parameter optional mit defaults"""
+        return {
+            'period': 20,
+            'deviation': 0.02,
+            'timeframe': 'M5',
+            'artificial_load_ms': 8.0,
+        }
 
-            # Required parameters - NONE (all have defaults)
-            required_parameters={},
-
-            # Optional parameters - all configurable
-            optional_parameters={
-                'period': 20,
-                'deviation': 0.02,
-                'timeframe': 'M5',
-                'artificial_load_ms': 8.0,  # Higher load than RSI
-            },
-
-            # ============================================
-            # Existing contract fields (unchanged)
-            # ============================================
-            parameters={
-                "envelope_period": self.period,
-                "envelope_deviation": self.deviation,
-                "envelope_timeframe": self.timeframe,
-                "artificial_load_ms": self.artificial_load_ms,
-            },
-            price_change_sensitivity=0.0001,
-            max_computation_time_ms=self.artificial_load_ms + 10.0,
-            required_timeframes=self.get_required_timeframes(),
-            warmup_requirements=self.get_warmup_requirements(),
-        )
-
-    def get_warmup_requirements(self):
+    def get_warmup_requirements(self) -> Dict[str, int]:
         requirements = {}
-        minimum_warmup_bars = self.period
         for tf in self.get_required_timeframes():
-            requirements[tf] = minimum_warmup_bars
+            requirements[tf] = self.period
         return requirements
 
     def get_required_timeframes(self) -> List[str]:
         return [self.timeframe]
+
+    def get_max_computation_time_ms(self) -> float:
+        return self.artificial_load_ms + 10.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated
@@ -318,7 +272,6 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
         Args:
             name: Worker name
             parameters: Factory-style parameters dict
-            **kwargs: Legacy constructor support
 
         Optional parameters:
             - fast: Fast EMA period (default: 12)
@@ -338,50 +291,30 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
         self.artificial_load_ms = params.get(
             'artificial_load_ms') or kwargs.get('artificial_load_ms', 6.0)
 
-    def get_contract(self) -> WorkerContract:
-        """
-        Define Heavy MACD worker contract.
+    @classmethod
+    def get_required_parameters(cls) -> Dict[str, type]:
+        """Heavy MACD hat keine required parameters"""
+        return {}
 
-        REFACTORED (Issue 2): All parameters optional.
-        """
-        return WorkerContract(
-            # ============================================
-            # NEW (Issue 2): Factory-Compatible Contract
-            # ============================================
-            worker_type=WorkerType.COMPUTE,
+    @classmethod
+    def get_optional_parameters(cls) -> Dict[str, Any]:
+        """Heavy MACD - alle Parameter optional mit defaults"""
+        return {
+            'fast': 12,
+            'slow': 26,
+            'signal': 9,
+            'timeframe': 'M5',
+            'artificial_load_ms': 6.0,
+        }
 
-            # Required parameters - NONE
-            required_parameters={},
-
-            # Optional parameters
-            optional_parameters={
-                'fast': 12,
-                'slow': 26,
-                'signal': 9,
-                'timeframe': 'M5',
-                'artificial_load_ms': 6.0,
-            },
-
-            # ============================================
-            # Existing contract fields (unchanged)
-            # ============================================
-            parameters={
-                "macd_fast": self.fast,
-                "macd_slow": self.slow,
-                "macd_signal": self.signal,
-                "artificial_load_ms": self.artificial_load_ms,
-            },
-            price_change_sensitivity=0.0001,
-            max_computation_time_ms=self.artificial_load_ms + 10.0,
-            required_timeframes=[self.timeframe],
-            warmup_requirements={self.timeframe: self.slow + 10},
-        )
+    def get_warmup_requirements(self) -> Dict[str, int]:
+        return {self.timeframe: self.slow + 10}
 
     def get_required_timeframes(self) -> List[str]:
         return [self.timeframe]
 
-    def get_warmup_requirements(self):
-        return {self.timeframe: self.slow}
+    def get_max_computation_time_ms(self) -> float:
+        return self.artificial_load_ms + 10.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated

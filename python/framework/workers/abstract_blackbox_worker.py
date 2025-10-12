@@ -6,7 +6,7 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from python.framework.types import (Bar, TickData, WorkerContract,
+from python.framework.types import (Bar, TickData,
                                     WorkerResult, WorkerState, WorkerType)
 
 
@@ -34,14 +34,42 @@ class AbstractBlackboxWorker(ABC):
         self.performance_logger: Optional['PerformanceLogWorker'] = None
 
     @abstractmethod
-    def get_contract(self) -> WorkerContract:
+    def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        Define worker contract (requirements and capabilities)
+        Get warmup requirements per timeframe.
+
+        Calculated from instance parameters (e.g., self.period).
 
         Returns:
-            WorkerContract with warmup needs, timeframes, etc.
+            Dict[timeframe, bars_needed]
+            Example: {"M5": 20, "M15": 20}
         """
         pass
+
+    @abstractmethod
+    def get_required_timeframes(self) -> List[str]:
+        """
+        Get required timeframes for this worker instance.
+
+        Calculated from instance parameters (e.g., self.timeframe).
+
+        Returns:
+            List of timeframe strings
+            Example: ["M5"]
+        """
+        pass
+
+    def get_max_computation_time_ms(self) -> float:
+        """
+        Get max computation time for this worker instance.
+
+        Optional - für Monitoring/Timeouts.
+        Default: 100ms
+
+        Returns:
+            Max computation time in milliseconds
+        """
+        return 100.0
 
     def get_required_timeframes(self) -> List[str]:
         """

@@ -1,30 +1,6 @@
 """
 FiniexTestingIDE - Batch Orchestrator (REFACTORED)
 Universal entry point for 1-1000+ test scenarios
-
-ARCHITECTURE CHANGE (Issue 2):
-- Uses Worker Factory to create workers from config
-- Uses DecisionLogic Factory to create strategy from config
-- No more hardcoded workers or decision logic!
-- Complete config-driven architecture
-- Per-scenario requirements (no global contract)
-
-This is the final integration point where all pieces come together:
-Config → Factories → Workers + DecisionLogic → WorkerCoordinator → Results
-
-ARCHITECTURE CHANGE (Parameter Inheritance Bug Fix):
-- Removed global contract - each scenario calculates its own requirements
-- This allows scenarios to have completely different worker configurations
-- Scenario 1 can use M1 with period 10, while Scenario 2 uses M5 with period 14
-- No more cross-contamination of requirements between scenarios
-
-REFACTORED (Trade Simulation):
-- Creates TradeSimulator from broker config (per scenario)
-- Creates DecisionTradingAPI with order-type validation
-- Injects DecisionTradingAPI into DecisionLogic after validation
-- Decision Logic executes orders via DecisionTradingAPI
-- Updates prices on each tick for realistic spread calculation
-- Collects trading statistics (portfolio, execution, costs)
 """
 
 import re
@@ -279,7 +255,7 @@ class BatchOrchestrator:
         vLog.debug("✓ DecisionTradingAPI injected into Decision Logic")
 
         # 6. Calculate per-scenario requirements
-        scenario_contract = self._calculate_scenario_requirements(workers)
+        scenario_requirement = self._calculate_scenario_requirements(workers)
 
         # 4. Extract execution config
         exec_config = scenario.execution_config or {}
@@ -305,7 +281,7 @@ class BatchOrchestrator:
         )
 
         # 6. Calculate per-scenario requirements
-        scenario_contract = self._calculate_scenario_requirements(workers)
+        scenario_requirement = self._calculate_scenario_requirements(workers)
 
         # 7. Prepare data using timestamp-based warmup
         preparator = TickDataPreparator(self.data_worker)
@@ -315,13 +291,13 @@ class BatchOrchestrator:
         test_end = datetime.fromisoformat(scenario.end_date)
 
         vLog.debug(
-            f"📊 Scenario warmup bar requirements: {scenario_contract['warmup_by_timeframe']}"
+            f"📊 Scenario warmup bar requirements: {scenario_requirement['warmup_by_timeframe']}"
         )
 
         # Preparator converts bars to minutes internally
         warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
-            warmup_bar_requirements=scenario_contract["warmup_by_timeframe"],
+            warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
             test_start=test_start,
             test_end=test_end,
             max_test_ticks=scenario.max_ticks,
@@ -359,7 +335,7 @@ class BatchOrchestrator:
             bar_history = {
                 tf: bar_orchestrator.get_bar_history(scenario.symbol, tf, 100)
                 # Use scenario's timeframes!
-                for tf in scenario_contract["all_timeframes"]
+                for tf in scenario_requirement["all_timeframes"]
             }
 
             # Process decision through orchestrator
@@ -428,7 +404,7 @@ class BatchOrchestrator:
             success=True,
             worker_statistics=worker_stats,
             decision_logic_name=decision_logic.name,
-            scenario_contract=scenario_contract,
+            scenario_requirement=scenario_requirement,
             sample_signals=signals[:10],
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,
@@ -450,8 +426,7 @@ class BatchOrchestrator:
         """
         Calculate requirements for THIS scenario based on its workers.
 
-        NEW (Parameter Inheritance Fix): This replaces the global contract approach.
-        Each scenario now calculates its own requirements independently, allowing
+        Each scenario calculates its own requirements independently, allowing
         different scenarios to use completely different worker configurations.
 
         Args:
@@ -460,30 +435,33 @@ class BatchOrchestrator:
         Returns:
             Dict with max_warmup_bars, all_timeframes, warmup_by_timeframe
         """
-        # Get contracts from all workers
-        contracts = [worker.get_contract() for worker in workers]
+        # Collect warmup requirements and timeframes directly from workers
+        all_warmup_reqs = []
+        all_timeframes = set()
+        warmup_by_tf = {}
+
+        for worker in workers:
+            # Get warmup requirements from worker instance
+            warmup_reqs = worker.get_warmup_requirements()
+            all_warmup_reqs.append(warmup_reqs)
+
+            # Get required timeframes from worker instance
+            timeframes = worker.get_required_timeframes()
+            all_timeframes.update(timeframes)
+
+            # Track max warmup per timeframe
+            for tf, bars in warmup_reqs.items():
+                warmup_by_tf[tf] = max(warmup_by_tf.get(tf, 0), bars)
 
         # Calculate maximum warmup bars needed for this scenario
         max_warmup = max(
-            [max(c.warmup_requirements.values())
-             for c in contracts if c.warmup_requirements],
+            [max(reqs.values()) for reqs in all_warmup_reqs if reqs],
             default=50
         )
 
-        # Collect all timeframes needed for this scenario
-        all_timeframes = list(
-            set(tf for c in contracts for tf in c.required_timeframes)
-        )
-
-        # Calculate warmup requirements per timeframe for this scenario
-        warmup_by_tf = {}
-        for contract in contracts:
-            for tf, bars in contract.warmup_requirements.items():
-                warmup_by_tf[tf] = max(warmup_by_tf.get(tf, 0), bars)
-
         return {
             "max_warmup_bars": max_warmup,
-            "all_timeframes": all_timeframes,
+            "all_timeframes": list(all_timeframes),
             "warmup_by_timeframe": warmup_by_tf,
             "total_workers": len(workers),
         }

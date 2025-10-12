@@ -125,14 +125,16 @@ class WorkerFactory:
         worker_config: Dict[str, Any] = None
     ) -> AbstractBlackboxWorker:
         """
-        Create a worker instance from configuration.
+        Create a worker instance with validation.
 
-        This is the main entry point for worker creation. It:
-        1. Resolves the worker type to a worker class
-        2. Extracts the worker's contract to understand requirements
-        3. Validates that all required parameters are provided
-        4. Merges user config with default parameters
-        5. Instantiates the worker with merged parameters
+        REFACTORED: Keine temp_instance mehr - nutzt classmethods!
+
+        New Flow:
+        1. Resolve worker class
+        2. Get required/optional params via CLASSMETHODS (ohne Instanz!)
+        3. Validate required parameters
+        4. Merge user config with optional defaults
+        5. Instantiate worker ONCE with merged parameters
 
         Args:
             instance_name: User-defined instance name (e.g., "rsi_main")
@@ -150,35 +152,32 @@ class WorkerFactory:
         # Step 1: Resolve worker class
         worker_class = self._resolve_worker_class(worker_type)
 
-        # Step 2: Create temporary instance to get contract
-        # We need the contract to know which parameters are required/optional
-        temp_instance = worker_class(
-            name=instance_name,
-            parameters={}
-        )
-        contract = temp_instance.get_contract()
+        # Step 2: Get parameter requirements via CLASSMETHODS
+        required_params = worker_class.get_required_parameters()
+        optional_params = worker_class.get_optional_parameters()
 
         # Step 3: Validate required parameters
         self._validate_required_parameters(
             worker_type,
-            contract.required_parameters,
+            required_params,
             worker_config
         )
 
         # Step 4: Merge user config with optional defaults
         merged_params = self._merge_parameters(
-            contract.optional_parameters,
+            optional_params,
             worker_config
         )
 
-        # Step 5: Instantiate final worker with merged parameters
+        # Step 5: Instantiate worker ONCE with merged parameters
         worker_instance = worker_class(
             name=instance_name,
             parameters=merged_params
         )
 
         vLog.debug(
-            f"✓ Created worker: {instance_name} ({worker_type}) with {len(merged_params)} parameters"
+            f"✓ Created worker: {instance_name} ({worker_type}) "
+            f"with {len(merged_params)} parameters"
         )
 
         return worker_instance

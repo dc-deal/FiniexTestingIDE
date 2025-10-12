@@ -195,7 +195,7 @@ class AbstractDecisionLogic(ABC):
         """
         Define required worker instances with exact names and types.
 
-        This is the contract between DecisionLogic and configuration.
+        This is the connection between DecisionLogic and configuration.
         The config MUST provide worker_instances with matching keys and types.
 
         Example:
@@ -214,7 +214,7 @@ class AbstractDecisionLogic(ABC):
         "rsi_fast": "CORE/rsi", config cannot use "CORE/macd" instead.
 
         Returns:
-            Dict[instance_name, worker_type] - The exact worker contract
+            Dict[instance_name, worker_type] - The exact worker
         """
         pass
 

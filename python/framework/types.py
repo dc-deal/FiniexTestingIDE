@@ -128,28 +128,6 @@ class Decision:
 
 
 @dataclass
-class WorkerContract:
-    """Contract defining worker requirements"""
-
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    price_change_sensitivity: float = 0.0001
-    max_computation_time_ms: float = 100.0
-    can_work_async: bool = False
-    required_timeframes: List[str] = field(default_factory=lambda: ["M1"])
-    warmup_requirements: Dict[str, int] = field(default_factory=dict)
-
-    # ============================================
-    # NEW (Issue 2): Factory-Compatible Contract
-    # ============================================
-    # Worker type for monitoring/handling
-    worker_type: WorkerType = WorkerType.COMPUTE
-
-    # Split parameters into required vs optional for factory validation
-    required_parameters: Dict[str, type] = field(default_factory=dict)
-    optional_parameters: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class TestScenario:
     """Test scenario configuration for batch testing"""
 
@@ -163,7 +141,7 @@ class TestScenario:
     # ============================================
     # STRATEGY PARAMETERS
     # ============================================
-    # Strategy-Logic (→ WorkerCoordinator sammelt Contracts & dessen Parameter)
+    # Strategy-Logic (→ WorkerCoordinator sammelt Requirements & dessen Parameter)
     strategy_config: Dict[str, Any] = field(default_factory=dict)
 
     # NEW: Execution-Optimization (→ Framework)
@@ -196,23 +174,6 @@ class TestScenario:
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
                 "log_performance_stats": True,  # Log timing statistics
             }
-
-
-@dataclass
-class GlobalContract:
-    """Aggregated contract from all scenarios/workers"""
-
-    max_warmup_bars: int
-    all_timeframes: List[str]
-    warmup_by_timeframe: Dict[str, int]
-    total_workers: int
-    all_parameters: Dict[str, Any]
-
-    # ============================================
-    # NEW (Issue 2): Worker Type Distribution
-    # ============================================
-    # Track worker types for monitoring (e.g., {COMPUTE: 3, API: 1})
-    worker_types: Dict[WorkerType, int] = field(default_factory=dict)
 
 
 class TimeframeConfig:
