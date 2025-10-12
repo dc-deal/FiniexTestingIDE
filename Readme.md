@@ -564,26 +564,22 @@ FiniexTestingIDE/
 ```json
 {
   "version": "1.0",
-  "scenario_set_name": "scn_EURUSD_3_windows",
-  "created": "2025-10-06T07:33:57.429428",
-  "trade_simulator_seeds": {
-    "api_latency_seed": 42,
-    "market_execution_seed": 123
-  },
+  "scenario_set_name": "EURUSD_3_windows",
+  "created": "2025-10-12T08:41:31.685102",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
-      "decision_logic_type": "CORE/simple_consensus",
-      "worker_types": [
-        "CORE/rsi",
-        "CORE/envelope"
-      ],
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
       "workers": {
-        "CORE/rsi": {
+        "rsi_fast": {
           "period": 14,
           "timeframe": "M5"
         },
-        "CORE/envelope": {
+        "envelope_main": {
           "period": 20,
           "deviation": 0.02,
           "timeframe": "M5"
@@ -609,11 +605,23 @@ FiniexTestingIDE/
   },
   "scenarios": [
     {
+      "name": "EURUSD_window_01",
+      "symbol": "EURUSD",
+      "start_date": "2025-09-17T13:00:00+00:00",
+      "end_date": "2025-09-19T16:00:00+00:00",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "enabled": false,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
       "name": "EURUSD_window_02",
       "symbol": "EURUSD",
-      "start_date": "2025-09-19",
-      "end_date": "2025-09-21",
-      "max_ticks": 4000,
+      "start_date": "2025-09-19T13:00:00+00:00",
+      "end_date": "2025-09-21T16:00:00+00:00",
+      "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
@@ -623,15 +631,13 @@ FiniexTestingIDE/
     {
       "name": "EURUSD_window_03",
       "symbol": "EURUSD",
-      "start_date": "2025-09-21",
-      "end_date": "2025-09-23",
+      "start_date": "2025-09-21T13:00:00+00:00",
+      "end_date": "2025-09-23T16:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": false,
       "strategy_config": {},
-      "execution_config": {
-        "parallel_workers": false
-      },
+      "execution_config": {},
       "trade_simulator_config": {}
     }
   ]
