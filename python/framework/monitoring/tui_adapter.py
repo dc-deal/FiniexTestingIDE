@@ -11,6 +11,7 @@ a future TUI (Terminal User Interface). It provides:
 - Standardized data format for display
 """
 
+from datetime import timezone
 from typing import Dict, Any, Optional, List
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.framework.batch_orchestrator import BatchOrchestrator
@@ -180,7 +181,7 @@ class TUIAdapter:
             ISO format timestamp
         """
         from datetime import datetime
-        return datetime.now().isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
     def _get_empty_metrics(self) -> Dict[str, Any]:
         """

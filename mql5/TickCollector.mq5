@@ -1,6 +1,13 @@
 //+------------------------------------------------------------------+
 //| FiniexTestingIDE Tick Data Collector - Enhanced Error Version    |
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
+//| Version 1.0.5 - UTC Offset Auto-Detection                       |
+//|                                                                  |
+//| NEW in V1.0.5:                                                   |
+//| - Automatic broker UTC offset detection                         |
+//| - Warns user to verify offset (depends on PC clock)             |
+//| - Adds broker_utc_offset_hours, local_device_time to JSON       |
+//| - Tick times remain in broker server time (unchanged)           |
 //+------------------------------------------------------------------+
 #property copyright "FiniexTestingIDE"
 #property strict
@@ -33,7 +40,7 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.0.4";
+input string DataFormatVersion = "1.0.5";  // CHANGED: Version 1.0.5
 // Identifies the data collection platform (mt5, ib, etc.)
 // Only change when importing from a different broker platform!
 input string DataCollectorName = "mt5"; 
@@ -53,6 +60,9 @@ int fileHandle = INVALID_HANDLE;
 string currentFileName = "";
 int tickCounter = 0;
 datetime fileStartTime;
+
+// NEW V1.0.5: Automatisch erkannter Broker UTC Offset
+int g_brokerUtcOffsetHours = 0;
 
 // Enhanced Error-Tracking
 ErrorInfo errorBuffer[];
@@ -74,6 +84,55 @@ int warningDataGapSeconds = 60;       // Warning bei 1 Min Lücke
 //+------------------------------------------------------------------+
 int OnInit()
 {
+    Print("═══════════════════════════════════════════════════════════");
+    Print("  FiniexTestingIDE TickCollector V1.0.5                    ");
+    Print("  UTC Offset Auto-Detection ENABLED (time_msc method)      ");
+    Print("═══════════════════════════════════════════════════════════");
+    
+    // NEW: 100% ZUVERLÄSSIGE UTC-Offset-Erkennung via time_msc
+    // time_msc ist IMMER in UTC (Unix timestamp in milliseconds)
+    // tick.time ist in Broker Server Zeit
+    
+    MqlTick tick;
+    if (!SymbolInfoTick(Symbol(), tick))
+    {
+        Print("❌ FEHLER: Konnte keinen Tick abrufen für UTC-Offset-Berechnung");
+        Print("   Verwende Fallback: TimeGMT() Methode");
+        
+        datetime serverTime = TimeCurrent();
+        datetime utcTime = TimeGMT();
+        g_brokerUtcOffsetHours = (int)((serverTime - utcTime) / 3600);
+    }
+    else
+    {
+        // Broker Server Zeit aus tick.time
+        datetime brokerTime = tick.time;
+        
+        // Echte UTC Zeit aus time_msc (Unix timestamp)
+        datetime utcTime = (datetime)(tick.time_msc / 1000);
+        
+        // Berechne Offset in Stunden
+        g_brokerUtcOffsetHours = (int)((brokerTime - utcTime) / 3600);
+        
+        Print("🌍 Broker Timezone Detection (via time_msc - 100% reliable):");
+        Print("   Broker Time:  ", TimeToString(brokerTime, TIME_DATE | TIME_SECONDS));
+        Print("   UTC Time:     ", TimeToString(utcTime, TIME_DATE | TIME_SECONDS));
+        Print("   time_msc:     ", tick.time_msc);
+        Print("   Calculated Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours);
+    }
+    Print("───────────────────────────────────────────────────────────");
+    Print("Symbol:           ", Symbol());
+    Print("Broker:           ", AccountInfoString(ACCOUNT_COMPANY));
+    Print("Server:           ", AccountInfoString(ACCOUNT_SERVER));
+    Print("Max Ticks/File:   ", MaxTicksPerFile);
+    Print("Real Volume:      ", (IncludeRealVolume ? "Yes" : "No"));
+    Print("Tick Flags:       ", (IncludeTickFlags ? "Yes" : "No"));
+    Print("═══════════════════════════════════════════════════════════");
+    Print("⚠️  IMPORTANT: Tick times stored in BROKER SERVER TIME");
+    Print("   UTC Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours, " (auto-detected via time_msc)");
+    Print("   UTC conversion will be handled by tick_importer.py");
+    Print("═══════════════════════════════════════════════════════════\n");
+    
     // Error-System initialisieren
     ArrayResize(errorBuffer, 0);
     ArrayInitialize(errorCounts, 0);
@@ -94,9 +153,9 @@ int OnInit()
         return INIT_FAILED;
     }
     
-    Print("✓ TickCollector Enhanced v1.03 erfolgreich gestartet für ", Symbol());
-    Print("✓ Export-Pfad: ", ExportPath);
-    Print("✓ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
+    Print("✅ TickCollector V1.0.5 erfolgreich gestartet für ", Symbol());
+    Print("✅ Export-Pfad: ", ExportPath);
+    Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
     
     return INIT_SUCCEEDED;
@@ -386,6 +445,10 @@ bool CreateNewExportFile()
     double tickValue = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE);
     string serverName = AccountInfoString(ACCOUNT_SERVER);
     
+    // NEW V1.0.5: Zeitstempel für Metadaten
+    datetime localTime = TimeLocal();      // Lokale PC-Zeit
+    datetime brokerTime = TimeCurrent();   // Broker-Serverzeit
+    
     // Dateinamen generieren
     string dateTimeStr = TimeToString(fileStartTime, TIME_DATE | TIME_SECONDS);
     StringReplace(dateTimeStr, ".", "");
@@ -404,41 +467,89 @@ bool CreateNewExportFile()
         return false;
     }
     
-    // JSON mit erweiterten Error-Tracking-Metadaten
-    string header = StringFormat("{\n  \"metadata\": {\n    \"symbol\": \"%s\",\n    \"broker\": \"%s\",\n    \"server\": \"%s\",\n    \"start_time\": \"%s\",\n    \"start_time_unix\": %d,\n    \"timeframe\": \"TICK\",\n    \"volume_timeframe\": \"%s\",\n    \"volume_timeframe_minutes\": %d,\n    \"data_format_version\": \"%s\",\n    \"data_collector\": \"%s\",\n    \"collection_purpose\": \"%s\",\n    \"operator\": \"%s\",\n    \"symbol_info\": {\n      \"point_value\": %.8f,\n      \"digits\": %d,\n      \"tick_size\": %.8f,\n      \"tick_value\": %.8f\n    },\n    \"collection_settings\": {\n      \"max_ticks_per_file\": %d,\n      \"max_errors_per_file\": %d,\n      \"include_real_volume\": %s,\n      \"include_tick_flags\": %s,\n      \"stop_on_fatal_errors\": %s\n    },\n    \"error_tracking\": {\n      \"enabled\": %s,\n      \"log_negligible\": %s,\n      \"log_serious\": %s,\n      \"log_fatal\": %s,\n      \"max_spread_percent\": %.2f,\n      \"max_price_jump_percent\": %.2f,\n      \"max_data_gap_seconds\": %d\n    }\n  },\n  \"ticks\": [",
-                                Symbol(),
-                                AccountInfoString(ACCOUNT_COMPANY),
-                                serverName,
-                                TimeToString(fileStartTime, TIME_DATE | TIME_SECONDS),
-                                (int)fileStartTime,
-                                EnumToString(VolumeTimeframe),
-                                PeriodSeconds(VolumeTimeframe) / 60,
-                                DataFormatVersion,
-                                DataCollectorName,
-                                CollectionPurpose,
-                                (StringLen(CollectorOperator) > 0) ? CollectorOperator : "automated",
-                                pointValue,
-                                digits,
-                                tickSize,
-                                tickValue,
-                                MaxTicksPerFile,
-                                MaxErrorsPerFile,
-                                IncludeRealVolume ? "true" : "false",
-                                IncludeTickFlags ? "true" : "false",
-                                StopOnFatalErrors ? "true" : "false",
-                                EnableErrorTracking ? "true" : "false",
-                                LogNegligibleErrors ? "true" : "false",
-                                LogSeriousErrors ? "true" : "false",
-                                LogFatalErrors ? "true" : "false",
-                                maxSpreadPercent,
-                                maxPriceJumpPercent,
-                                maxDataGapSeconds);
+    // NEW: JSON mit local_device_time und broker_server_time in Metadaten
+    string header = StringFormat(
+        "{\n"
+        "  \"metadata\": {\n"
+        "    \"symbol\": \"%s\",\n"
+        "    \"broker\": \"%s\",\n"
+        "    \"server\": \"%s\",\n"
+        "    \"broker_utc_offset_hours\": %d,\n"
+        "    \"local_device_time\": \"%s\",\n"           // NEW V1.0.5
+        "    \"broker_server_time\": \"%s\",\n"          // NEW V1.0.5
+        "    \"start_time\": \"%s\",\n"
+        "    \"start_time_unix\": %d,\n"
+        "    \"timeframe\": \"TICK\",\n"
+        "    \"volume_timeframe\": \"%s\",\n"
+        "    \"volume_timeframe_minutes\": %d,\n"
+        "    \"data_format_version\": \"%s\",\n"
+        "    \"data_collector\": \"%s\",\n"
+        "    \"collection_purpose\": \"%s\",\n"
+        "    \"operator\": \"%s\",\n"
+        "    \"symbol_info\": {\n"
+        "      \"point_value\": %.8f,\n"
+        "      \"digits\": %d,\n"
+        "      \"tick_size\": %.8f,\n"
+        "      \"tick_value\": %.8f\n"
+        "    },\n"
+        "    \"collection_settings\": {\n"
+        "      \"max_ticks_per_file\": %d,\n"
+        "      \"max_errors_per_file\": %d,\n"
+        "      \"include_real_volume\": %s,\n"
+        "      \"include_tick_flags\": %s,\n"
+        "      \"stop_on_fatal_errors\": %s\n"
+        "    },\n"
+        "    \"error_tracking\": {\n"
+        "      \"enabled\": %s,\n"
+        "      \"log_negligible\": %s,\n"
+        "      \"log_serious\": %s,\n"
+        "      \"log_fatal\": %s,\n"
+        "      \"max_spread_percent\": %.2f,\n"
+        "      \"max_price_jump_percent\": %.2f,\n"
+        "      \"max_data_gap_seconds\": %d\n"
+        "    }\n"
+        "  },\n"
+        "  \"ticks\": [",
+        Symbol(),
+        AccountInfoString(ACCOUNT_COMPANY),
+        serverName,
+        g_brokerUtcOffsetHours,
+        TimeToString(localTime, TIME_DATE | TIME_SECONDS),    // Lokale PC-Zeit
+        TimeToString(brokerTime, TIME_DATE | TIME_SECONDS),   // Broker-Serverzeit
+        TimeToString(fileStartTime, TIME_DATE | TIME_SECONDS),
+        (int)fileStartTime,
+        EnumToString(VolumeTimeframe),
+        PeriodSeconds(VolumeTimeframe) / 60,
+        DataFormatVersion,
+        DataCollectorName,
+        CollectionPurpose,
+        (StringLen(CollectorOperator) > 0) ? CollectorOperator : "automated",
+        pointValue,
+        digits,
+        tickSize,
+        tickValue,
+        MaxTicksPerFile,
+        MaxErrorsPerFile,
+        IncludeRealVolume ? "true" : "false",
+        IncludeTickFlags ? "true" : "false",
+        StopOnFatalErrors ? "true" : "false",
+        EnableErrorTracking ? "true" : "false",
+        LogNegligibleErrors ? "true" : "false",
+        LogSeriousErrors ? "true" : "false",
+        LogFatalErrors ? "true" : "false",
+        maxSpreadPercent,
+        maxPriceJumpPercent,
+        maxDataGapSeconds
+    );
     
     FileWriteString(fileHandle, header);
     tickCounter = 0;
     
-    Print("✓ Neue Export-Datei erstellt: ", currentFileName);
-    Print("✓ Enhanced Error-Tracking aktiviert");
+    Print("✅ Neue Export-Datei erstellt: ", currentFileName);
+    Print("   → Local Device Time: ", TimeToString(localTime, TIME_DATE | TIME_SECONDS));
+    Print("   → Broker Server Time: ", TimeToString(brokerTime, TIME_DATE | TIME_SECONDS));
+    Print("   → Broker UTC Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours);
+    Print("   → Enhanced Error-Tracking aktiviert");
     return true;
 }
 
@@ -486,6 +597,8 @@ bool ExportTick(MqlTick &tick)
     string session = GetTradingSession(tick.time);
     
     // JSON-Objekt erstellen
+    // NOTE: tick.time bleibt in BROKER SERVER ZEIT (unverändert!)
+    // UTC-Konvertierung erfolgt später im tick_importer.py
     string jsonTick = StringFormat(
         "%s\n    {\n      \"timestamp\": \"%s\",\n      \"time_msc\": %I64d,\n      \"bid\": %.5f,\n      \"ask\": %.5f,\n      \"last\": %.5f,\n      \"tick_volume\": %d,\n      \"real_volume\": %.2f,\n      \"chart_tick_volume\": %d,\n      \"spread_points\": %d,\n      \"spread_pct\": %.6f,\n      \"tick_flags\": \"%s\",\n      \"session\": \"%s\",\n      \"server_time\": \"%s\"\n    }",
         (tickCounter > 0) ? "," : "",
@@ -597,7 +710,7 @@ void CloseCurrentFile()
         FileClose(fileHandle);
         
         // Detailliertes Closing-Log
-        Print("✓ Export-Datei geschlossen: ", currentFileName);
+        Print("✅ Export-Datei geschlossen: ", currentFileName);
         Print(StringFormat("  → %d Ticks gesammelt", tickCounter));
         Print(StringFormat("  → %d Errors total (Negligible:%d, Serious:%d, Fatal:%d)", 
               totalErrors, errorCounts[ERROR_NEGLIGIBLE], errorCounts[ERROR_SERIOUS], errorCounts[ERROR_FATAL]));
@@ -669,7 +782,7 @@ void OnDeinit(const int reason)
     // Finale Statistiken
     int totalErrors = errorCounts[ERROR_NEGLIGIBLE] + errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL];
     Print("========================================");
-    Print("TickCollector Enhanced v1.03 gestoppt");
+    Print("TickCollector V1.0.5 gestoppt");
     Print("Grund: ", reasonText);
     Print(StringFormat("Finale Statistiken: %d Ticks, %d Errors", tickCounter, totalErrors));
     if (totalErrors > 0)

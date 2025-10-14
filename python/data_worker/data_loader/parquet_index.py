@@ -8,7 +8,7 @@ UPDATED (C#003): Recursive scanning for hierarchical directory structure
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -241,7 +241,7 @@ class ParquetIndexManager:
     def save_index(self) -> None:
         """Save index to JSON file"""
         index_data = {
-            'created_at': datetime.now().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'data_dir': str(self.data_dir),
             'symbols': self.index
         }

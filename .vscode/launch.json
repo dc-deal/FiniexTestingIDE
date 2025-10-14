@@ -5,10 +5,15 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📊 Data Pipeline: Import Ticks",
+            "name": "📥 Import: Offset +1",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/data_worker/tick_importer.py",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import",
+                "--time-offset",
+                "+1"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -21,7 +26,7 @@
             "justMyCode": false
         },
         // ====================================================
-        // 🔍 INDEX MANAGEMENT (NEW - C#002)
+        // 🔍 INDEX MANAGEMENT
         // ====================================================
         {
             "name": "🔍 Index: Rebuild",
@@ -57,7 +62,7 @@
             "justMyCode": false
         },
         // ====================================================
-        // 📈 GAP ANALYSIS & COVERAGE (NEW - C#002)
+        // 📈 GAP ANALYSIS & COVERAGE
         // ====================================================
         {
             "name": "📈 CLI - Gap Report: EURUSD",
