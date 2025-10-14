@@ -2,11 +2,11 @@
 FiniexTestingIDE Tick Data Importer
 ===================================
 
-Konvertiert MQL5 JSON-Exports zu optimierten Parquet-Files.
-Workflow: JSON laden → Validieren → Optimieren → Parquet speichern
+Konvertiert MQL5 JSON-Exports zu optimierten Parquet-Files mit UTC-Konvertierung.
+Workflow: JSON laden → Validieren → Optimieren → UTC-Konvertierung → Parquet speichern
 
 Author: FiniexTestingIDE Team
-Version: 1.2 (with hierarchical directory structure)
+Version: 1.3 (UTC Conversion with Manual Offset Support)
 """
 
 import json
@@ -24,7 +24,7 @@ import pyarrow.parquet as pq
 from python.configuration import AppConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
 
-# NEW: Import duplicate detection
+# Import duplicate detection
 from python.data_worker.data_loader.exceptions import (
     ArtificialDuplicateException,
     DuplicateReport
@@ -36,32 +36,44 @@ vLog = setup_logging(name="StrategyRunner")
 
 class TickDataImporter:
     """
-    Konvertiert MQL5 JSON-Exports zu Parquet-Format.
+    Konvertiert MQL5 JSON-Exports zu Parquet-Format mit UTC-Konvertierung.
 
     Hauptfunktionen:
     - JSON → Parquet Konvertierung (10:1 Kompression)
     - Datentyp-Optimierung für Performance
+    - UTC Timezone Conversion mit manuellem Offset
+    - Session-Neuberechnung basierend auf UTC
     - Qualitäts-Checks und Bereinigung
     - Batch-Verarbeitung mit Error-Handling
-    - Duplicate Prevention (NEW in V1.1)
-    - Hierarchical directory structure (NEW in V1.2)
+    - Duplicate Prevention mit Override-Option
+    - Hierarchical directory structure
 
     Args:
         source_dir (str): Verzeichnis mit JSON-Files
         target_dir (str): Zielverzeichnis für Parquet-Output
+        override (bool): Wenn True, überschreibe existierende Files
+        time_offset (int): Manueller UTC-Offset in Stunden (z.B. -3 für GMT+3)
     """
 
-    def __init__(self, source_dir: str, target_dir: str):
+    VERSION = "1.3"
+
+    def __init__(self, source_dir: str, target_dir: str,
+                 override: bool = False, time_offset: int = 0):
         """
         Initialisiert Importer mit Source- und Target-Pfaden.
 
         Args:
             source_dir (str): MQL5 JSON-Export-Verzeichnis
             target_dir (str): Parquet-Zielverzeichnis
+            override (bool): Überschreibe existierende Dateien
+            time_offset (int): UTC-Offset in Stunden
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
         self.target_dir.mkdir(parents=True, exist_ok=True)
+
+        self.override = override
+        self.time_offset = time_offset
 
         # Batch-Processing-Statistiken
         self.processed_files = 0
@@ -73,8 +85,6 @@ class TickDataImporter:
         """
         Sucht alle TickCollector-Exports und konvertiert sie sequenziell.
         Fehler stoppen nicht die Verarbeitung weiterer Files.
-
-        EXTENDED (C#002): Rebuilds index after successful imports
         """
         json_files = list(self.source_dir.glob("*_ticks.json"))
 
@@ -84,11 +94,23 @@ class TickDataImporter:
             self.rebuild_parquet_index()
             return
 
+        vLog.info("\n" + "=" * 80)
+        vLog.info(f"FiniexTestingIDE Tick Data Importer V{self.VERSION}")
+        vLog.info("=" * 80)
         vLog.info(f"Gefunden: {len(json_files)} JSON-Files")
+        vLog.info(
+            f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
+        if self.time_offset != 0:
+            vLog.info(f"Time Offset: {self.time_offset:+d} hours")
+            vLog.warning("⚠️ CRITICAL: After offset ALL TIMES ARE UTC!")
+            vLog.warning("⚠️ Sessions will be RECALCULATED based on UTC time!")
+        else:
+            vLog.info(f"Time Offset: NONE (timestamps remain as-is)")
+        vLog.info("=" * 80 + "\n")
 
         # Sequenzielle Verarbeitung mit Error-Recovery
         for json_file in json_files:
-            vLog.info(f"Verarbeite: {json_file.name}")
+            vLog.info(f"\n📄 Verarbeite: {json_file.name}")
             try:
                 self.convert_json_to_parquet(json_file)
                 self.processed_files += 1
@@ -105,19 +127,17 @@ class TickDataImporter:
                 self.errors.append(error_msg)
 
         self.rebuild_parquet_index()
-
         self._print_summary()
 
     def rebuild_parquet_index(self):
-        # NEW (C#002): Rebuild index after successful imports
-        vLog.info("🔄 Rebuilding Parquet index...")
+        """Rebuild index after successful imports"""
+        vLog.info("\n🔄 Rebuilding Parquet index...")
         try:
             from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
             index_manager = ParquetIndexManager(self.target_dir)
             index_manager.build_index(force_rebuild=True)
 
-            # Print brief summary
             symbols = index_manager.list_symbols()
             vLog.info(f"✅ Index rebuilt: {len(symbols)} symbols indexed")
 
@@ -127,23 +147,16 @@ class TickDataImporter:
 
     def convert_json_to_parquet(self, json_file: Path):
         """
-        Konvertiert einzelne JSON-Datei zu optimiertem Parquet.
+        Konvertiert einzelne JSON-Datei zu optimiertem Parquet mit UTC-Konvertierung.
 
         Pipeline:
         1. JSON laden und Struktur validieren
         2. DataFrame erstellen und Datentypen optimieren
-        3. Zeitstempel normalisieren und Qualitäts-Checks
-        4. NEW: Check for existing duplicates BEFORE writing
-        5. Als Parquet mit Metadaten speichern
-        6. Optional: Source-File nach finished/ verschieben
-
-        Args:
-            json_file (Path): Pfad zur JSON-Datei
-
-        Raises:
-            ValueError: Bei ungültiger JSON-Struktur
-            ArtificialDuplicateException: Bei existierenden Duplikaten
-            Exception: Bei Parquet-Schreibfehlern
+        3. Time Offset anwenden (wenn gesetzt)
+        4. Sessions neu berechnen (wenn Offset angewendet)
+        5. Qualitäts-Checks
+        6. Check for existing duplicates (mit Override-Support)
+        7. Als Parquet mit Metadaten speichern
         """
 
         # ===========================================
@@ -153,7 +166,6 @@ class TickDataImporter:
         with open(json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # TickCollector-Struktur prüfen: {metadata: {...}, ticks: [...]}
         if "ticks" not in data or "metadata" not in data:
             raise ValueError(
                 "Ungültige JSON-Struktur - 'ticks' oder 'metadata' fehlt")
@@ -161,92 +173,139 @@ class TickDataImporter:
         ticks = data["ticks"]
         metadata = data["metadata"]
 
-        # Early exit bei leeren Tick-Arrays
         if not ticks:
             vLog.warning(f"Keine Ticks in {json_file.name}")
             return
 
         # ===========================================
-        # 2. DATAFRAME ERSTELLEN UND OPTIMIEREN
+        # 2. BROKER METADATA ANZEIGEN (FIXED)
+        # ===========================================
+
+        vLog.info(f"📊 Broker Metadata:")
+
+        # Get data version to show in "not available" messages
+        data_version = metadata.get('data_format_version', 'unknown')
+
+        # Detected Offset (available since v1.0.5)
+        detected_offset = metadata.get('broker_utc_offset_hours', None)
+        if detected_offset is not None:
+            sign = '+' if detected_offset >= 0 else ''
+            vLog.info(f"   Detected Offset: GMT{sign}{detected_offset}")
+        else:
+            vLog.info(
+                f"   Detected Offset: Not available (pre v1.0.5 data, version: {data_version})")
+
+        # Local Device Time (planned for v1.0.5+, but not yet implemented in MQL5)
+        local_device = metadata.get('local_device_time', None)
+        if local_device:
+            vLog.info(f"   Local Device:    {local_device}")
+        else:
+            vLog.info(f"   Local Device:    Not available (pre v1.0.5 data)")
+
+        # Broker Time (planned for v1.0.5+, but not yet implemented in MQL5)
+        broker_time = metadata.get('broker_server_time', None)
+        if broker_time:
+            vLog.info(f"   Broker Time:     {broker_time}")
+        else:
+            vLog.info(f"   Broker Time:     Not available (pre v1.0.5 data)")
+
+        # User Offset (always show if set)
+        if self.time_offset != 0:
+            vLog.info(
+                f"   User Offset:     {self.time_offset:+d} hours → ALL TIMES WILL BE UTC!")
+
+        # ===========================================
+        # 3. DATAFRAME ERSTELLEN UND OPTIMIEREN
         # ===========================================
 
         df = pd.DataFrame(ticks)
-
-        # Datentyp-Optimierung: float64→float32, int64→int32
         df = self._optimize_datatypes(df)
 
-        # Zeitstempel-Normalisierung zu UTC
-        df = self._normalize_timestamps(df)
+        # Parse timestamps as timezone-naive
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
 
-        # Qualitäts-Checks: Invalid prices, extreme spreads
+        # ===========================================
+        # 4. TIME OFFSET ANWENDEN
+        # ===========================================
+
+        df = self._apply_time_offset(df)
+
+        # ===========================================
+        # 5. SESSIONS NEU BERECHNEN (wenn Offset)
+        # ===========================================
+
+        if self.time_offset != 0:
+            df = self._recalculate_sessions(df)
+            vLog.info(f"   ✅ Sessions recalculated based on UTC time")
+
+        # ===========================================
+        # 6. QUALITÄTS-CHECKS
+        # ===========================================
+
         df = self._quality_checks(df)
-
-        # Chronologische Sortierung (essentiell für Testing-Engine)
         df = df.sort_values("timestamp").reset_index(drop=True)
 
-        # Duplikat-Handling auskommentiert (Ticks as-is verarbeiten)
-        # initial_count = len(df)
-        # df = df.drop_duplicates(subset=['time_msc'], keep='last')
-
         # ===========================================
-        # 3. PARQUET-OUTPUT MIT METADATEN
+        # 7. PARQUET-OUTPUT VORBEREITEN
         # ===========================================
 
-        # NEW (C#003): Extract data_collector with fallback to "mt5"
         data_collector = metadata.get("data_collector", "mt5")
-
         symbol = metadata.get("symbol", "UNKNOWN")
         start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
 
-        # NEW (C#003): Hierarchical directory structure
-        # data/processed/{data_collector}/{symbol}/
         target_path = self.target_dir / data_collector / symbol
         target_path.mkdir(parents=True, exist_ok=True)
 
-        # Dateiname: SYMBOL_YYYYMMDD_HHMMSS.parquet
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
         parquet_path = target_path / parquet_name
 
-        # Metadaten für Parquet-Header (alle Werte als Strings)
+        # Metadaten für Parquet-Header
         parquet_metadata = {
             "source_file": json_file.name,
             "symbol": symbol,
             "broker": metadata.get("broker", "unknown"),
-            "collector_version": metadata.get("collector_version", "1.0"),
-            "data_collector": data_collector,  # NEW (C#003)
-            "processed_at": datetime.now().isoformat(),
-            "tick_count": str(
-                len(df)
-            ),  # Wichtig: als String für Parquet-Kompatibilität
+            "collector_version": metadata.get("data_format_version", "1.0"),
+            "data_collector": data_collector,
+            "processed_at":  datetime.now(timezone.utc).isoformat(),
+            "tick_count": str(len(df)),
+            "importer_version": self.VERSION,
+            # NEW: User offset metadata
+            "user_time_offset_hours": str(self.time_offset),
+            "utc_conversion_applied": "true" if self.time_offset != 0 else "false",
         }
 
         # ===========================================
-        # 4. NEW: CHECK FOR EXISTING DUPLICATES
+        # 8. CHECK FOR EXISTING DUPLICATES
         # ===========================================
 
-        vLog.debug(f"Checking for existing duplicates of {json_file.name}...")
+        vLog.debug(f"Checking for existing duplicates...")
         duplicate_report = self._check_for_existing_duplicate(
             json_file.name,
-            data_collector,  # CHANGED (C#003): Pass data_collector
+            data_collector,
             symbol,
-            df
+            df,
+            parquet_path
         )
 
         if duplicate_report:
-            # DUPLICATE DETECTED - Abort import!
-            raise ArtificialDuplicateException(duplicate_report)
+            if self.override:
+                vLog.warning(f"⚠️  Override enabled - deleting existing file")
+                for dup_file in duplicate_report.duplicate_files:
+                    dup_file.unlink()
+                    vLog.info(f"   🗑️  Deleted: {dup_file.name}")
+            else:
+                raise ArtificialDuplicateException(duplicate_report)
 
         # ===========================================
-        # 5. PARQUET SCHREIBEN UND FILE-MANAGEMENT
+        # 9. PARQUET SCHREIBEN
         # ===========================================
 
         try:
-            # Arrow-Table mit Metadaten erstellen
             table = pa.Table.from_pandas(df)
             table = table.replace_schema_metadata(parquet_metadata)
             pq.write_table(table, parquet_path, compression="snappy")
 
-            # Kompressionsrate berechnen (BEVOR File moved wird)
             json_size = json_file.stat().st_size
             parquet_size = parquet_path.stat().st_size
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
@@ -258,72 +317,112 @@ class TickDataImporter:
                 finished_file = finished_dir / json_file.name
                 json_file.rename(finished_file)
                 vLog.info(f"→ Moved {json_file.name} to finished/")
-            else:
-                vLog.info(
-                    f"→ DEV_MODE: File bleibt in raw/ (MOVE_PROCESSED_FILES=false)"
-                )
 
             self.total_ticks += len(df)
 
-            # Success-Logging mit Statistiken
+            # Success-Logging
+            time_suffix = " (UTC)" if self.time_offset != 0 else ""
             vLog.info(
-                # CHANGED (C#003): Show new path
-                f"✓ {data_collector}/{symbol}/{parquet_name}: {len(df):,} Ticks, "
+                f"✅ {data_collector}/{symbol}/{parquet_name}: {len(df):,} Ticks{time_suffix}, "
                 f"Kompression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
             )
 
         except Exception as e:
-            # Detailliertes Error-Logging für Debugging
             vLog.error(f"FEHLER beim Schreiben von {parquet_path}")
             vLog.error(f"Original Error: {str(e)}")
             vLog.error(f"Error Type: {type(e)}")
-            vLog.error(f"Metadaten waren: {parquet_metadata}")
-            # Metadaten-Typ-Debugging
-            for key, value in parquet_metadata.items():
-                vLog.error(f"  {key}: {value} (Type: {type(value)})")
-            raise  # Re-raise für Caller-Error-Handling
+            raise
+
+    def _apply_time_offset(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Wendet manuellen Time-Offset auf Timestamps an.
+
+        Args:
+            df: DataFrame mit 'timestamp' Spalte
+
+        Returns:
+            DataFrame mit angepassten Timestamps
+        """
+        if self.time_offset == 0:
+            return df
+
+        if "timestamp" not in df.columns:
+            return df
+
+        # Store original for logging
+        original_first = df["timestamp"].iloc[0]
+        original_last = df["timestamp"].iloc[-1]
+
+        # Apply offset
+        offset_timedelta = pd.Timedelta(hours=self.time_offset)
+        df["timestamp"] = df["timestamp"] - offset_timedelta
+
+        utc_first = df["timestamp"].iloc[0]
+        utc_last = df["timestamp"].iloc[-1]
+
+        vLog.info(f"   🕐 Time Offset Applied: {self.time_offset:+d} hours")
+        vLog.info(f"      Original: {original_first} → {original_last}")
+        vLog.info(f"      UTC:      {utc_first} → {utc_last}")
+
+        return df
+
+    def _recalculate_sessions(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Berechnet Trading-Sessions neu basierend auf UTC-Zeit.
+
+        KORREKTE Forex Sessions (UTC):
+        - sydney_tokyo: 22:00 - 08:00 UTC (10h Asian session)
+        - london:       08:00 - 16:00 UTC (8h European session)  
+        - new_york:     13:00 - 21:00 UTC (8h US session)
+        - transition:   21:00 - 22:00 UTC (1h gap)
+
+        Note: London/NY overlap = 13:00-16:00 UTC (markiert als "london")
+        """
+
+        def get_session_from_utc_hour(hour):
+            """Determine trading session from UTC hour"""
+            if 22 <= hour <= 23 or 0 <= hour < 8:
+                return "sydney_tokyo"
+            elif 8 <= hour < 13:
+                return "london"
+            elif 13 <= hour < 16:
+                return "london"  # London/NY overlap - bleibt "london"
+            elif 16 <= hour < 21:
+                return "new_york"
+            else:  # 21:00 - 21:59
+                return "transition"
+
+        df['session'] = df['timestamp'].dt.hour.apply(
+            get_session_from_utc_hour)
+        return df
 
     def _check_for_existing_duplicate(
         self,
         source_json_name: str,
         data_collector: str,
         symbol: str,
-        new_df: pd.DataFrame
+        new_df: pd.DataFrame,
+        target_path: Path
     ) -> Optional[DuplicateReport]:
         """
-        Check if a Parquet file already exists with the same source_file
+        Check if Parquet file already exists with same source.
 
-        This prevents accidental re-imports and manual file duplication.
-        Checks BEFORE writing the new Parquet file.
-
-        EXTENDED (C#003b): Searches across ALL data_collector directories
-        to detect duplicates even if imported under different collector.
-
-        Args:
-            source_json_name: Name of the source JSON file being imported
-            data_collector: Data collector type being imported to (e.g. "mt5")
-            symbol: Trading symbol (for finding relevant Parquet files)
-            new_df: DataFrame about to be written (for comparison)
-
-        Returns:
-            DuplicateReport if duplicate found, None otherwise
+        Mit Override-Support: Gibt Duplicate-Report zurück, aber
+        löscht NICHT automatisch (das macht der Caller).
         """
-        # CHANGED (C#003b): Search across ALL data_collector directories
-        # Pattern: data/processed/*/SYMBOL/SYMBOL_*.parquet
+
         search_pattern = f"*/{symbol}/{symbol}_*.parquet"
         existing_files = list(self.target_dir.glob(search_pattern))
 
         if not existing_files:
-            return None  # No existing files, safe to proceed
+            return None
 
-        # Check each existing file's metadata
         for existing_file in existing_files:
             try:
                 parquet_file = pq.ParquetFile(existing_file)
                 metadata_raw = parquet_file.metadata.metadata
 
-                # Extract and decode all metadata
                 existing_metadata = {
                     key.decode('utf-8') if isinstance(key, bytes) else key:
                     value.decode('utf-8') if isinstance(value,
@@ -331,30 +430,25 @@ class TickDataImporter:
                     for key, value in metadata_raw.items()
                 }
 
-                # Extract source_file from metadata
                 existing_source = existing_metadata.get('source_file', '')
                 existing_collector = existing_metadata.get(
                     'data_collector', 'unknown')
 
-                # Check if this Parquet was created from the same source JSON
                 if existing_source == source_json_name:
-                    # DUPLICATE DETECTED!
-                    # Extract directory path to show data_collector location
                     relative_path = existing_file.relative_to(self.target_dir)
                     collector_path = relative_path.parts[0] if len(
                         relative_path.parts) > 0 else "unknown"
 
                     vLog.warning(
-                        f"⚠️  Found existing Parquet from same source: {collector_path}/{symbol}/{existing_file.name}"
+                        f"⚠️  Found existing Parquet: {collector_path}/{symbol}/{existing_file.name}"
                     )
                     vLog.warning(
-                        f"    Existing: data_collector='{existing_collector}' | Importing: data_collector='{data_collector}'"
+                        f"    Existing: data_collector='{existing_collector}' | "
+                        f"Importing: data_collector='{data_collector}'"
                     )
 
-                    # Read existing file data for comparison
                     existing_df = pd.read_parquet(existing_file)
 
-                    # Build comparison report - only show existing file
                     return DuplicateReport(
                         source_file=source_json_name,
                         duplicate_files=[existing_file],
@@ -364,155 +458,73 @@ class TickDataImporter:
                              existing_df['timestamp'].max())
                         ],
                         file_sizes_mb=[
-                            existing_file.stat().st_size / (1024 * 1024)
-                        ],
+                            existing_file.stat().st_size / (1024 * 1024)],
                         metadata=[existing_metadata]
                     )
 
             except Exception as e:
                 vLog.warning(
                     f"Could not read metadata from {existing_file.name}: {e}")
-                # Continue checking other files
 
-        return None  # No duplicates found
+        return None
 
     def _optimize_datatypes(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Optimiert DataFrame-Datentypen für Performance und Speichernutzung.
+        """Optimiert DataFrame-Datentypen für Performance."""
 
-        Konvertierungen:
-        - float64 → float32 (für bid/ask/last)
-        - int64 → int32 (für Flags, Volumes)
-
-        Args:
-            df (pd.DataFrame): Raw DataFrame
-
-        Returns:
-            pd.DataFrame: Optimized DataFrame
-        """
-        # Float-Spalten zu float32
         float_cols = ["bid", "ask", "last", "spread_pct", "real_volume"]
         for col in float_cols:
             if col in df.columns:
                 df[col] = df[col].astype("float32")
 
-        # Int-Spalten zu int32
-        int_cols = [
-            "tick_volume",
-            "chart_tick_volume",
-            "spread_points",
-        ]
+        int_cols = ["tick_volume", "chart_tick_volume", "spread_points"]
         for col in int_cols:
             if col in df.columns:
                 df[col] = df[col].astype("int32")
 
         return df
 
-    def _normalize_timestamps(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalisiert Zeitstempel zu UTC datetime64[ns].
-
-        Args:
-            df (pd.DataFrame): DataFrame mit 'timestamp' Spalte
-
-        Returns:
-            pd.DataFrame: DataFrame mit normalisiertem Zeitstempel
-        """
-        if "timestamp" in df.columns:
-            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-
-        return df
-
     def _quality_checks(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Führt Qualitäts-Checks auf Tick-Daten durch.
+        """Führt Qualitäts-Checks auf Tick-Daten durch."""
 
-        Checks:
-        - Bid/Ask > 0 (keine invaliden Preise)
-        - Spread < 5% (keine extremen Spreads)
-        - Consecutive price jumps < 10% (keine Flash-Crashes)
-
-        Invalide Ticks werden NICHT entfernt, nur geloggt!
-
-        Args:
-            df (pd.DataFrame): Raw DataFrame
-
-        Returns:
-            pd.DataFrame: Validated DataFrame (mit Warnings)
-        """
-        initial_count = len(df)
-
-        # Check 1: Invalid Prices (bid/ask <= 0)
+        # Check 1: Invalid Prices
         invalid_prices = df[(df["bid"] <= 0) | (df["ask"] <= 0)]
         if len(invalid_prices) > 0:
             vLog.warning(
-                f"⚠️  {len(invalid_prices)} Ticks mit invaliden Preisen gefunden (bid/ask <= 0)"
-            )
+                f"⚠️  {len(invalid_prices)} Ticks mit invaliden Preisen")
 
-        # Check 2: Extreme Spreads (>5%)
+        # Check 2: Extreme Spreads
         if "spread_pct" in df.columns:
             extreme_spreads = df[df["spread_pct"] > 5.0]
             if len(extreme_spreads) > 0:
                 vLog.warning(
-                    f"⚠️  {len(extreme_spreads)} Ticks mit extremen Spreads (>5%) gefunden"
-                )
+                    f"⚠️  {len(extreme_spreads)} Ticks mit extremen Spreads")
 
-        # Check 3: Price Jumps (>10% bid change between consecutive ticks)
+        # Check 3: Price Jumps
         df["bid_pct_change"] = df["bid"].pct_change().abs() * 100
         large_jumps = df[df["bid_pct_change"] > 10.0]
         if len(large_jumps) > 0:
             vLog.warning(
-                f"⚠️  {len(large_jumps)} Ticks mit großen Preissprüngen (>10%) gefunden"
-            )
+                f"⚠️  {len(large_jumps)} Ticks mit großen Preissprüngen")
 
-        # Cleanup temporary columns
         df = df.drop(columns=["bid_pct_change"], errors="ignore")
-
         return df
 
     def _print_summary(self):
-        """
-        Gibt Zusammenfassung der Batch-Verarbeitung aus.
+        """Gibt Zusammenfassung der Batch-Verarbeitung aus."""
 
-        Ausgabe:
-        - Anzahl verarbeiteter Dateien
-        - Gesamtzahl konvertierter Ticks
-        - Aufgetretene Fehler (falls vorhanden)
-        """
-        vLog.info("=" * 50)
+        vLog.info("\n" + "=" * 80)
         vLog.info("VERARBEITUNGS-ZUSAMMENFASSUNG")
-        vLog.info("=" * 50)
-        vLog.info(f"Verarbeitete Dateien: {self.processed_files}")
-        vLog.info(f"Gesamte Ticks: {self.total_ticks:,}")
-        vLog.info(f"Fehler: {len(self.errors)}")
+        vLog.info("=" * 80)
+        vLog.info(f"✅ Verarbeitete Dateien: {self.processed_files}")
+        vLog.info(f"✅ Gesamte Ticks: {self.total_ticks:,}")
+        if self.time_offset != 0:
+            vLog.info(
+                f"✅ Time Offset: {self.time_offset:+d} hours (ALL TIMES ARE UTC!)")
+        vLog.info(f"❌ Fehler: {len(self.errors)}")
 
-        # Detaillierte Fehler-Liste
         if self.errors:
-            vLog.error("FEHLER-LISTE:")
+            vLog.error("\nFEHLER-LISTE:")
             for error in self.errors:
                 vLog.error(f"  - {error}")
 
-
-# ===========================================
-# CLI-INTERFACE
-# ===========================================
-
-if __name__ == "__main__":
-    """
-    Command-Line Interface für Standalone-Ausführung.
-
-    Konvertiert alle JSON-Files aus ./data/raw/ zu Parquet in ./data/processed/
-    """
-
-    # Standard-Pfade (TODO: Als CLI-Args konfigurierbar machen)
-    SOURCE_DIR = "./data/raw/"  # MQL5 Export-Ordner
-    TARGET_DIR = "./data/processed/"  # Parquet-Ziel
-
-    vLog.info("FiniexTestingIDE Tick Data Importer gestartet")
-    vLog.info("Version 1.2 - with Hierarchical Directory Structure")
-
-    # Batch-Processing ausführen
-    importer = TickDataImporter(SOURCE_DIR, TARGET_DIR)
-    importer.process_all_mql5_exports()
-
-    vLog.info("Import abgeschlossen!")
+        vLog.info("=" * 80 + "\n")

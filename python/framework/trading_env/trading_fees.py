@@ -227,7 +227,7 @@ class SwapFee(AbstractTradingFee):
         super().__init__(
             fee_type=FeeType.SWAP,
             status=FeeStatus.DEFERRED,  # Applied at position close
-            timestamp=timestamp or datetime.now()
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
 
         self.swap_rate_points = swap_rate_points

@@ -1,10 +1,11 @@
 """
 FiniexTestingIDE - Data Index CLI
-Command-line tools for Parquet index management
+Command-line tools for Parquet index management and tick data import
 
-NEW (C#002): Manual index management and gap analysis
+NEW: Import command with UTC offset support (explicit sign required)
 
 Usage:
+    python python/cli/data_index_cli.py import [--override] [--time-offset +N/-N]
     python python/cli/data_index_cli.py rebuild
     python python/cli/data_index_cli.py status
     python python/cli/data_index_cli.py coverage EURUSD
@@ -20,19 +21,48 @@ import pandas as pd
 
 from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.tick_importer import TickDataImporter
 
 vLog = setup_logging(name="DataIndexCLI")
 
 
 class DataIndexCLI:
     """
-    Command-line interface for Parquet index management.
+    Command-line interface for Parquet index management and data import.
     """
 
     def __init__(self, data_dir: str = "./data/processed/"):
         """Initialize CLI"""
         self.data_dir = Path(data_dir)
         self.index_manager = ParquetIndexManager(self.data_dir)
+
+    def cmd_import(self, override: bool = False, time_offset: int = 0):
+        """
+        Import tick data from JSON to Parquet with UTC conversion.
+
+        Args:
+            override: If True, overwrite existing Parquet files
+            time_offset: Manual UTC offset in hours (e.g., -3 for GMT+3 → UTC)
+        """
+        print("\n" + "="*80)
+        print("📥 Tick Data Import")
+        print("="*80)
+        print(f"Override Mode: {'ENABLED' if override else 'DISABLED'}")
+        print(f"Time Offset:   {time_offset:+d} hours" if time_offset !=
+              0 else "Time Offset:   NONE")
+        if time_offset != 0:
+            print("\n⚠️  WARNING: After offset ALL TIMES WILL BE UTC!")
+            print("⚠️  Sessions will be RECALCULATED based on UTC time!")
+        print("="*80 + "\n")
+
+        importer = TickDataImporter(
+            source_dir="./data/raw/",
+            target_dir="./data/processed/",
+            override=override,
+            time_offset=time_offset
+        )
+
+        importer.process_all_mql5_exports()
 
     def cmd_rebuild(self):
         """Rebuild index from scratch"""
@@ -42,7 +72,7 @@ class DataIndexCLI:
 
     def cmd_status(self):
         """Show index status"""
-        self.index_manager.build_index()  # Load if exists
+        self.index_manager.build_index()
 
         print("\n" + "="*60)
         print("📋 Index Status")
@@ -117,7 +147,7 @@ class DataIndexCLI:
                 symbol, start_dt, end_dt)
 
             print("\n" + "="*60)
-            print(f"📁 File Selection: {symbol}")
+            print(f"🔍 File Selection: {symbol}")
             print("="*60)
             print(f"Time range:  {start} → {end}")
             print(f"Selected:    {len(files)} files")
@@ -160,6 +190,13 @@ class DataIndexCLI:
 📚 Data Index CLI - Usage
 
 Commands:
+    import [--override] [--time-offset +N/-N]
+                        Import tick data from JSON to Parquet
+                        --override: Overwrite existing files
+                        --time-offset: UTC offset (REQUIRES explicit +/- sign!)
+                                      Valid: +1, -3, +5, -2
+                                      INVALID: 1, 3 (missing sign)
+    
     rebuild             Rebuild index from Parquet files
     status              Show index status and metadata
     coverage SYMBOL     Show coverage statistics for symbol
@@ -170,13 +207,51 @@ Commands:
     help                Show this help
 
 Examples:
+    python python/cli/data_index_cli.py import
+    python python/cli/data_index_cli.py import --time-offset -3
+    python python/cli/data_index_cli.py import --time-offset +2
+    python python/cli/data_index_cli.py import --override --time-offset -3
     python python/cli/data_index_cli.py rebuild
     python python/cli/data_index_cli.py status
     python python/cli/data_index_cli.py coverage EURUSD
     python python/cli/data_index_cli.py gaps EURUSD
     python python/cli/data_index_cli.py files EURUSD --start "2025-09-23" --end "2025-09-24"
     python python/cli/data_index_cli.py validate
+
+⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
 """)
+
+
+def parse_time_offset(value: str) -> int:
+    """
+    Parse time offset with MANDATORY explicit sign.
+
+    Args:
+        value: Offset string (must start with + or -)
+
+    Returns:
+        Integer offset value
+
+    Raises:
+        ValueError: If sign is missing or value is invalid
+    """
+    if not value:
+        raise ValueError("Time offset cannot be empty")
+
+    # Check for explicit sign
+    if not (value.startswith('+') or value.startswith('-')):
+        raise ValueError(
+            f"Time offset MUST have explicit sign (+/-): '{value}'\n"
+            f"   Valid examples: +1, -3, +5, -2\n"
+            f"   Invalid: 1, 3 (missing sign - ambiguous!)\n"
+            f"   This is a safety feature to prevent accidental timezone mistakes."
+        )
+
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(
+            f"Invalid time offset format: '{value}' (must be integer)")
 
 
 def main():
@@ -189,7 +264,22 @@ def main():
     command = sys.argv[1].lower()
 
     try:
-        if command == "rebuild":
+        if command == "import":
+            # Parse import options
+            override = "--override" in sys.argv
+            time_offset = 0
+
+            for i, arg in enumerate(sys.argv):
+                if arg == "--time-offset" and i + 1 < len(sys.argv):
+                    try:
+                        time_offset = parse_time_offset(sys.argv[i + 1])
+                    except ValueError as e:
+                        print(f"\n❌ ERROR: {e}\n")
+                        sys.exit(1)
+
+            cli.cmd_import(override=override, time_offset=time_offset)
+
+        elif command == "rebuild":
             cli.cmd_rebuild()
 
         elif command == "status":
@@ -240,6 +330,7 @@ def main():
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 
