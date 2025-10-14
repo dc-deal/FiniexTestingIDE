@@ -328,12 +328,17 @@ class TickDataLoader:
         Returns:
             Filtered DataFrame
         """
+
+        # Falls timestamp noch keine Zeitzone hat
+        if df["timestamp"].dt.tz is None:
+            df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+
         if start_date:
-            start_dt = pd.to_datetime(start_date)
+            start_dt = pd.to_datetime(start_date, utc=True)
             df = df[df["timestamp"] >= start_dt]
 
         if end_date:
-            end_dt = pd.to_datetime(end_date)
+            end_dt = pd.to_datetime(end_date, utc=True)
             df = df[df["timestamp"] <= end_dt]
 
         return df

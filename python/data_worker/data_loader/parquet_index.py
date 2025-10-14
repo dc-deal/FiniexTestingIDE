@@ -224,8 +224,8 @@ class ParquetIndexManager:
         relevant = []
 
         for entry in self.index[symbol]:
-            file_start = pd.to_datetime(entry['start_time'])
-            file_end = pd.to_datetime(entry['end_time'])
+            file_start = pd.to_datetime(entry['start_time'], utc=True)
+            file_end = pd.to_datetime(entry['end_time'], utc=True)
 
             # Overlap check: file intersects with requested range
             # Condition: file_start <= end_date AND file_end >= start_date

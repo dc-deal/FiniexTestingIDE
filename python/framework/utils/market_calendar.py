@@ -262,8 +262,7 @@ class MarketCalendar:
 
         is_friday_evening = (
             start_day == 4 and start.hour >= 20)  # Fr after 20:00
-        is_monday_morning = (end_day == 0 and end.hour <=
-                             2)       # Mo before 02:00
+        is_monday_morning = (end_day == 6 and end.hour <= 22)  # sunday
 
         if is_friday_evening and is_monday_morning and 40 <= gap_hours <= 80:
             return GapCategory.WEEKEND, f'✅ Normal weekend gap ({gap_hours:.1f}h)'

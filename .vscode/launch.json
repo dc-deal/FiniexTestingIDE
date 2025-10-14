@@ -5,14 +5,14 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📥 Import: Offset +1",
+            "name": "📥 Import: Offset +3",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "import",
                 "--time-offset",
-                "+1"
+                "+3"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
