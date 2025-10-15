@@ -13,7 +13,7 @@
       "workers": {
         "rsi_fast": {
           "period": 14,
-          "timeframe": "M15"
+          "timeframe": "M5"
         },
         "envelope_main": {
           "period": 20,
@@ -41,22 +41,10 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_window_01",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-17T13:00:00+00:00",
-      "end_date": "2025-09-19T16:00:00+00:00",
-      "max_ticks": 1000,
-      "data_mode": "realistic",
-      "enabled": false,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURUSD_window_02",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-19T13:00:00+00:00",
-      "end_date": "2025-09-21T16:00:00+00:00",
+      "name": "GBPUSD_window_01",
+      "symbol": "GBPUSD",
+      "start_date": "2025-09-25T10:00:00+00:00",
+      "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
       "enabled": true,
@@ -65,13 +53,25 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "EURUSD_window_03",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-21T13:00:00+00:00",
-      "end_date": "2025-09-23T16:00:00+00:00",
+      "name": "GBPUSD_window_02",
+      "symbol": "GBPUSD",
+      "start_date": "2025-09-25T14:00:00+00:00",
+      "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "GBPUSD_window_03",
+      "symbol": "GBPUSD",
+      "start_date": "2025-09-25T16:00:00+00:00",
+      "end_date": "2025-09-25T23:00:00+00:00",
+      "max_ticks": 1000,
+      "data_mode": "realistic",
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

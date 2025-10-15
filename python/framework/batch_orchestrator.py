@@ -1,6 +1,11 @@
 """
 FiniexTestingIDE - Batch Orchestrator (REFACTORED)
 Universal entry point for 1-1000+ test scenarios
+
+EXTENDED (Phase 1a):
+- Live progress display integration
+- Buffered logging for clean output
+- Live scenario tracking with real-time updates
 """
 
 import re
@@ -12,31 +17,32 @@ from datetime import datetime, timezone
 import traceback
 from typing import Any, Dict, List
 
-from python.components.logger.bootstrap_logger import setup_logging
+from python.components.logger.bootstrap_logger import get_logger
 from python.data_worker.data_loader.core import TickDataLoader
-from python.framework.bars.bar_rendering_controller import \
-    BarRenderingController
+from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types import TestScenario, TickData, TimeframeConfig
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
 from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
 
-# ============================================
-# NEW (Issue 2): Factory Imports
-# ============================================
+# Factory Imports
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 
-# ============================================
-# REFACTORED: Trade Simulation Imports
-# ============================================
+# Trade Simulation Imports
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager, ScenarioPerformanceStats
+from python.framework.reporting.scenario_set_performance_manager import (
+    ScenarioSetPerformanceManager,
+    ScenarioPerformanceStats
+)
 
-vLog = setup_logging(name="StrategyRunner")
+# NEW (Phase 1a): Live Progress Display
+from python.components.display.live_progress_display import LiveProgressDisplay
+
+vLog = get_logger()
 
 
 class BatchOrchestrator:
@@ -46,6 +52,10 @@ class BatchOrchestrator:
 
     Now fully config-driven thanks to Worker and DecisionLogic factories.
     Each scenario is completely independent with its own requirements.
+
+    EXTENDED (Phase 1a):
+    - Live progress display during execution
+    - Buffered logging for clean output
     """
 
     def __init__(
@@ -81,10 +91,6 @@ class BatchOrchestrator:
         """
         Execute all scenarios.
 
-        Args:
-            parallel: Run scenarios in parallel (default: False for debugging)
-            max_workers: Max parallel workers if parallel=True (can be overridden by execution_config)
-
         Returns:
             Aggregated results from all scenarios
         """
@@ -105,9 +111,7 @@ class BatchOrchestrator:
         # Aggregate results
         execution_time = time.time() - start_time
 
-        # ============================================
-        # NEU: Set metadata in ScenarioSetPerformanceManager
-        # ============================================
+        # Set metadata in ScenarioSetPerformanceManager
         self.performance_log.set_metadata(
             execution_time=execution_time,
             success=True
@@ -124,56 +128,95 @@ class BatchOrchestrator:
         return summary
 
     def _run_sequential(self) -> List[Dict[str, Any]]:
-        """Execute scenarios sequentially (easier debugging)"""
+        """
+        Execute scenarios sequentially (easier debugging).
+
+        EXTENDED (Phase 1a):
+        - Enable buffered logging
+        - Start live progress display
+        - Flush logs after completion
+        """
+        # ===== Phase 1a: Setup Live Display =====
+        vLog.enable_buffering()
+        live_display = LiveProgressDisplay(
+            self.performance_log,
+            self.scenarios
+        )
+        live_display.start()
+
+        # ===== Execute Scenarios =====
         results = []
 
         for scenario_index, scenario in enumerate(self.scenarios):
+            readable_index = scenario_index + 1
 
-            readable_index = scenario_index+1
-            vLog.info(
-                f"📊 Running scenario {readable_index}/{len(self.scenarios)}: {scenario.name}"
-            )
             try:
                 result = self._execute_single_scenario(
                     scenario, scenario_index)
                 results.append(result)
-                vLog.info(
-                    f"✅ Scenario {readable_index} completed"
-                )
-                vLog.section_separator()
+
             except Exception as e:
                 vLog.error(
                     f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
                 results.append({"error": str(e), "scenario": scenario.name})
 
+        # ===== Phase 1a: Cleanup =====
+        live_display.stop()
+        vLog.flush_buffer()
+
         return results
 
     def _run_parallel(self) -> List[Dict[str, Any]]:
-        """Execute scenarios in parallel using threads (not processes)."""
-        max_parallel_scenarios = self.appConfig.get_default_max_parallel_scenarios()
+        """
+        Execute scenarios in parallel using threads (not processes).
 
-        vLog.info(
-            f"🔀 Running {len(self.scenarios)} scenarios in parallel "
-            f"(max {max_parallel_scenarios} workers)"
+        EXTENDED (Phase 1a):
+        - Enable buffered logging
+        - Start live progress display
+        - Flush logs after completion
+        """
+        # ===== Phase 1a: Setup Live Display =====
+        vLog.enable_buffering()
+        live_display = LiveProgressDisplay(
+            self.performance_log,
+            self.scenarios
         )
+        live_display.start()
 
-        # ThreadPoolExecutor instead of ProcessPoolExecutor
-        # Reason: Shared state (TradeSimulator, ScenarioSetPerformanceManager) with threading.Lock
-        with ThreadPoolExecutor(max_workers=max_parallel_scenarios) as executor:
-            # Submit with scenario_index to maintain order
-            futures = [
-                executor.submit(self._execute_single_scenario, scenario, idx)
+        # ===== Execute Scenarios in Parallel =====
+        max_workers = self.appConfig.get_default_max_parallel_scenarios()
+
+        results = [None] * len(self.scenarios)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(
+                    self._execute_single_scenario,
+                    scenario,
+                    idx
+                ): idx
                 for idx, scenario in enumerate(self.scenarios)
-            ]
+            }
 
-            results = []
-            for future in futures:
+            for future in future_to_index:
+                idx = future_to_index[future]
+                readable_index = idx + 1
+
                 try:
-                    result = future.result(timeout=300)
-                    results.append(result)
+                    result = future.result()
+                    results[idx] = result
+
                 except Exception as e:
-                    vLog.error(f"❌ Parallel scenario failed: {e}")
-                    results.append({"error": str(e), "success": False})
+                    vLog.error(
+                        f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
+                    results[idx] = {
+                        "error": str(e),
+                        "scenario": self.scenarios[idx].name
+                    }
+
+        # ===== Phase 1a: Cleanup =====
+        live_display.stop()
+        vLog.flush_buffer()
 
         return results
 
@@ -194,7 +237,6 @@ class BatchOrchestrator:
         """
 
         # Set thread name for debugging
-        # ============================================
         current_thread = threading.current_thread()
         original_thread_name = current_thread.name
 
@@ -207,7 +249,7 @@ class BatchOrchestrator:
             f"🧵 Thread renamed: {original_thread_name} → {current_thread.name}")
 
         # 1. Create isolated TradeSimulator for THIS scenario
-        scenario_simulator = self._create_trade_simulator_for_scenario(
+        scenario_trade_simulator = self._create_trade_simulator_for_scenario(
             scenario)
 
         # 2. Create Workers using Worker Factory
@@ -223,7 +265,6 @@ class BatchOrchestrator:
             raise ValueError(f"Worker creation failed: {e}")
 
         # 3. Create DecisionLogic (WITHOUT trading API yet)
-        # REFACTORED: No trading_env parameter, API injected after validation
         try:
             decision_logic = self.decision_logic_factory.create_logic_from_strategy_config(
                 strategy_config
@@ -234,11 +275,10 @@ class BatchOrchestrator:
             raise ValueError(f"Decision logic creation failed: {e}")
 
         # 4. Create and validate DecisionTradingAPI
-        # This validates order types BEFORE scenario starts!
         try:
             required_order_types = decision_logic.get_required_order_types()
             trading_api = DecisionTradingAPI(
-                trade_simulator=scenario_simulator,
+                trade_simulator=scenario_trade_simulator,
                 required_order_types=required_order_types
             )
             vLog.debug(
@@ -257,13 +297,13 @@ class BatchOrchestrator:
         # 6. Calculate per-scenario requirements
         scenario_requirement = self._calculate_scenario_requirements(workers)
 
-        # 4. Extract execution config
+        # 7. Extract execution config
         exec_config = scenario.execution_config or {}
         parallel_workers = exec_config.get("parallel_workers")
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0)
 
-        # 5. Create WorkerCoordinator with injected dependencies
+        # 8. Create WorkerCoordinator with injected dependencies
         orchestrator = WorkerCoordinator(
             workers=workers,
             decision_logic=decision_logic,
@@ -280,10 +320,9 @@ class BatchOrchestrator:
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 6. Calculate per-scenario requirements
+        # 9. Calculate per-scenario requirements
         scenario_requirement = self._calculate_scenario_requirements(workers)
-
-        # 7. Prepare data using timestamp-based warmup
+        # 10. Prepare data using timestamp-based warmup
         preparator = TickDataPreparator(self.data_worker)
 
         # Parse test period timestamps
@@ -305,7 +344,17 @@ class BatchOrchestrator:
             scenario_name=scenario.name
         )
 
-        # 8. Setup bar rendering
+        # ===== LIVE STATS: Update total ticks after data loading =====
+        total_ticks = scenario.max_ticks if scenario.max_ticks else 0
+        self.performance_log.start_scenario_tracking(
+            scenario_index=scenario_index,
+            scenario_name=scenario.name,
+            total_ticks=total_ticks,
+            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
+            symbol=scenario.symbol
+        )
+
+        # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
 
@@ -316,7 +365,7 @@ class BatchOrchestrator:
             test_start_time=first_test_time,
         )
 
-        # 9. Execute test loop
+        # 11. Execute test loop
         signals = []
         tick_count = 0
         ticks_processed = 0
@@ -328,13 +377,12 @@ class BatchOrchestrator:
 
         for tick in test_iterator:
             # Update scenario-specific TradeSimulator with current tick prices
-            scenario_simulator.update_prices(tick)
+            scenario_trade_simulator.update_prices(tick)
 
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)
             bar_history = {
                 tf: bar_orchestrator.get_bar_history(scenario.symbol, tf, 100)
-                # Use scenario's timeframes!
                 for tf in scenario_requirement["all_timeframes"]
             }
 
@@ -347,7 +395,6 @@ class BatchOrchestrator:
             tick_count += 1
 
             # REFACTORED: Decision Logic executes orders via DecisionTradingAPI
-            # Statistics are updated automatically inside execute_decision()
             order_result = None
             if decision and decision.action != "FLAT":
                 try:
@@ -368,26 +415,52 @@ class BatchOrchestrator:
                         if decision.action == "SELL":
                             signals_gen_sell += 1
 
+                        # ===== LIVE STATS: Update after trade execution =====
+                        self.performance_log.update_live_stats(
+                            scenario_index=scenario_index,
+                            ticks_processed=tick_count,
+                            trades_count=signals_generated,
+                            account_info=scenario_trade_simulator.get_account_info(),
+                            total_ticks=total_ticks
+                        )
+
                 except Exception as e:
                     vLog.error(
                         f"Order execution failed: \n{traceback.format_exc()}")
 
-        # BEFORE collecting statistics - cleanup pending orders.
-        open_positions = scenario_simulator.get_open_positions()
+            # ===== LIVE STATS: Periodic update every 100 ticks =====
+            if tick_count % 100 == 0:
+                self.performance_log.update_live_stats(
+                    scenario_index=scenario_index,
+                    ticks_processed=tick_count,
+                    account_info=scenario_trade_simulator.get_account_info(),
+                    total_ticks=total_ticks
+                )
+
+        # BEFORE collecting statistics - cleanup pending orders
+        open_positions = scenario_trade_simulator.get_open_positions()
         if open_positions:
             vLog.warning(
                 f"⚠️ {len(open_positions)} positions remain open - auto-closing")
             for pos in open_positions:
-                scenario_simulator.close_position(pos.position_id)
+                scenario_trade_simulator.close_position(pos.position_id)
 
         # ============================================
-        # Collect trading statistics
+        # Collect statistics
         # ============================================
         worker_stats = orchestrator.get_statistics()
-        # 10. Collect portfolio stats from scenario-specific TradeSimulator
-        portfolio_stats = scenario_simulator.get_portfolio_stats()
-        execution_stats = scenario_simulator.get_execution_stats()
-        cost_breakdown = scenario_simulator.get_cost_breakdown()
+        portfolio_stats = scenario_trade_simulator.get_portfolio_stats()
+        execution_stats = scenario_trade_simulator.get_execution_stats()
+        cost_breakdown = scenario_trade_simulator.get_cost_breakdown()
+
+        # ===== LIVE STATS: Final update with completed stats =====
+        self.performance_log.update_live_stats(
+            scenario_index=scenario_index,
+            ticks_processed=tick_count,
+            trades_count=signals_generated,
+            total_ticks=total_ticks,
+            account_info=scenario_trade_simulator.get_account_info(),
+        )
 
         # ============================================
         # Build ScenarioPerformanceStats object
@@ -395,6 +468,8 @@ class BatchOrchestrator:
         stats = ScenarioPerformanceStats(
             scenario_index=scenario_index,
             scenario_name=scenario.name,
+            portfolio_value=scenario_trade_simulator.portfolio.balance,
+            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
             symbol=scenario.symbol,
             ticks_processed=tick_count,
             signals_generated=len(signals),
@@ -470,7 +545,6 @@ class BatchOrchestrator:
         """Get last created orchestrator for debugging"""
         return self._last_orchestrator
 
-    # Creacte TradeSimulator instance for a scenario
     def _create_trade_simulator_for_scenario(
         self,
         scenario: TestScenario
@@ -491,10 +565,6 @@ class BatchOrchestrator:
         Returns:
             TradeSimulator instance for this scenario
         """
-        # Get global trade_simulator_config from scenario_set (if exists)
-        # NOTE: This requires scenario_set to be passed to BatchOrchestrator
-        # For now, use defaults (can be extended later)
-
         # Get scenario-specific config (can override global)
         ts_config = scenario.trade_simulator_config or {}
 

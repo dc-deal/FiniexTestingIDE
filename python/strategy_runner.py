@@ -1,6 +1,8 @@
 """
 FiniexTestingIDE - Strategy Runner with VisualConsoleLogger
 Compact, colorful logging output
+
+ENTRY POINT: Initializes logger with setup_logging()
 """
 
 import os
@@ -15,10 +17,11 @@ from python.framework.reporting.scenario_set_performance_manager import Scenario
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.scenario.config_loader import ScenarioConfigLoader
-from python.components.logger.bootstrap_logger import setup_logging
 from python.configuration import AppConfigLoader
 
-vLog = setup_logging(name="StrategyRunner")
+# ENTRY POINT: Initialize logger (only here!)
+from python.components.logger.bootstrap_logger import setup_logging
+vLog = setup_logging(name="FiniexTestingIDE")
 
 
 def run_strategy_test() -> dict:
@@ -40,42 +43,38 @@ def run_strategy_test() -> dict:
         default_parallel_workers = app_config_loader.get_default_parallel_workers()
 
         vLog.info(
-            f"⚙️  App defaults: parallel_scenarios={default_parallel_scenarios}, "
-            f"max_scenarios={default_max_parallel_scenarios}, "
-            f"parallel_workers={default_parallel_workers}",
-            "StrategyRunner"
+            f"📋 Execution config: "
+            f"Parallel Scenarios={default_parallel_scenarios}, "
+            f"Max Workers={default_max_parallel_scenarios}, "
+            f"Worker Parallelism={default_parallel_workers}"
         )
 
         # ============================================================
-        # Config-Based Scenario loading
+        # Load Scenario Configuration
         # ============================================================
-
-        vLog.debug("📂 Loading scenario_set from config file...",
-                   "StrategyRunner")
         config_loader = ScenarioConfigLoader()
-        scenario_set = config_loader.load_config("eurusd_3_windows.json")
-        vLog.debug(
-            f"✅ Loaded {len(scenario_set)} scenario_set from config", "StrategyRunner")
+        scenario_set_name = "eurusd_3_windows.json"
+        scenarios = config_loader.load_config(scenario_set_name)
 
-        # ============================================
-        # Create ScenarioSetPerformanceManager
-        # ============================================
-        performance_log = ScenarioSetPerformanceManager()
-        vLog.debug("✅ Created ScenarioSetPerformanceManager")
+        vLog.info(
+            f"📂 Loaded scenario set: {scenario_set_name} ({len(scenarios)} scenarios)"
+        )
 
-        # ============================================
-        # Initialize Components
-        # ============================================
-        # Data loader
+        # ============================================================
+        # Initialize Data Worker
+        # ============================================================
         data_worker = TickDataLoader()
 
         # ============================================================
-        # RUN BATCH TEST
+        # Initialize Performance Log (NEW: C#003)
         # ============================================================
+        performance_log = ScenarioSetPerformanceManager()
 
-        # Batch orchestrator (NEW: with TradeSimulator and ScenarioSetPerformanceManager)
+        # ============================================================
+        # Execute Batch via Orchestrator
+        # ============================================================
         orchestrator = BatchOrchestrator(
-            scenario_set,
+            scenarios,
             data_worker,
             app_config_loader,
             performance_log
@@ -101,12 +100,16 @@ def run_strategy_test() -> dict:
         return results
 
     except FileNotFoundError as e:
-        vLog.error(f"❌ Config file not found: {e}", "StrategyRunner")
-        return {"success": False, "error": str(e), "results": []}
+        vLog.config_error(
+            f"Config file not found: {e}",
+            file_path=str(e)
+        )
+
     except Exception as e:
-        vLog.error(
-            f"❌ Unexpected error:\n{traceback.format_exc()}", "StrategyRunner")
-        return {"success": False, "error": str(e), "results": []}
+        vLog.hard_error(
+            f"Unexpected error during strategy test",
+            exception=e
+        )
 
 
 if __name__ == "__main__":
@@ -122,7 +125,7 @@ if __name__ == "__main__":
     results = run_strategy_test()
 
     # Exit with status
-    if results.get('success', False):
+    if results and results.get('success', False):
         vLog.info("✅ All tests passed!", "StrategyRunner")
         exit(0)
     else:
