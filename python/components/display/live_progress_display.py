@@ -85,6 +85,14 @@ class LiveProgressDisplay:
 
     def stop(self):
         """Stop the live display thread."""
+        # Final render BEFORE stopping
+        if self._live:
+            try:
+                self._live.update(self._render())
+                time.sleep(0.5)  # Give it time to display
+            except:
+                pass
+
         with self._lock:
             self._running = False
 
@@ -197,9 +205,10 @@ class LiveProgressDisplay:
         table = Table(show_header=False, box=None, padding=(0, 1))
 
         # Add columns
+        name_length = 20
         table.add_column("Icon", width=2)
-        table.add_column("Scenario", width=12)
-        table.add_column("Progress", width=25)
+        table.add_column("Scenario", width=name_length)
+        table.add_column("Progress", width=20)
         table.add_column("Stats", width=40)
 
         if not all_stats:
@@ -211,16 +220,20 @@ class LiveProgressDisplay:
         for stats in all_stats:
             # Truncate scenario name
             name = stats['scenario_name']
-            if len(name) > 10:
-                name = name[:7] + "..."
+            if len(name) > name_length-2:
+                name = name[:name_length-5] + "..."
 
             # Status icon
-            if stats['status'] == 'completed':
-                icon = "✅"
-                name_color = "green"
-            else:
-                icon = "🔬"
-                name_color = "cyan"
+            name_color = "white"
+            match stats['status']:
+                case "completed":
+                    icon = "✅"
+                    name_color = "green"
+                case "warmup":
+                    icon = "🔥"
+                case _:
+                    icon = "🔬"
+                    name_color = "cyan"
 
             # Progress bar
             progress_percent = stats['progress_percent']
@@ -228,11 +241,19 @@ class LiveProgressDisplay:
             filled = int((progress_percent / 100.0) * bar_width)
             bar = "█" * filled + "░" * (bar_width - filled)
             progress_text = f"{bar} {progress_percent:>5.1f}%"
+            if stats['status'] == "warmup":
+                progress_text = f"[yellow]Warming up...[/yellow]"
 
             # Stats
             elapsed = stats['elapsed_time']
             portfolio_value = stats['portfolio_value']
-            trades = stats['trades_count']
+
+            total_trades = stats["total_trades"]
+            winning = stats["winning_trades"]
+            losing = stats["losing_trades"]
+            trades = ""
+            if stats['status'] != "warmup":
+                trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
 
             # Format P/L
             # Assuming 10k start capital
@@ -247,8 +268,8 @@ class LiveProgressDisplay:
             stats_text = (
                 f"[yellow]{elapsed:>5.1f}s[/yellow] │ "
                 f"[{pnl_color}]${portfolio_value:>8,.0f}[/{pnl_color}] "
-                f"[dim]({pnl_sign}${pnl:>6,.2f})[/dim] │ "
-                f"[blue]{trades}[/blue] trades"
+                f"[dim]({pnl_sign}${pnl:>6,.2f})[/dim] \n"
+                f"[blue]{trades}[/blue]"
             )
 
             # Add row

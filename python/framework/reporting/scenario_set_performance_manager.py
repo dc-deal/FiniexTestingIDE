@@ -50,6 +50,7 @@ class ScenarioPerformanceStats:
     success: bool
     portfolio_value: float
     initial_balance: float
+    elapsed_time: float
 
     # Worker statistics
     worker_statistics: Dict[str, Any]
@@ -190,17 +191,26 @@ class ScenarioSetPerformanceManager:
                 'total_ticks': total_ticks,
                 'ticks_processed': 0,
                 'progress_percent': 0,
-                'trades_count': 0,
+                'total_trades': 0,
+                'winning_trades': 0,
+                'losing_trades': 0,
                 'portfolio_value': initial_balance,  # Default starting capital
                 'initial_balance': initial_balance,
-                'status': 'running'
+                'status': 'warmup'
             }
+
+    def set_live_status(self, scenario_index: int, status: str = "warmup"):
+        with self._lock:
+            if scenario_index not in self._live_stats:
+                return
+
+            stats = self._live_stats[scenario_index]
+            stats['status'] = status
 
     def update_live_stats(self, scenario_index: int,
                           ticks_processed: Optional[int] = None,
-                          trades_count: Optional[int] = None,
-                          account_info: AccountInfo = None,
-                          total_ticks: Optional[int] = None):
+                          portfolio_stats: Dict = None,
+                          account_info: AccountInfo = None):
         """
         Update live statistics during scenario execution.
         Thread-safe, can be called from worker threads.
@@ -216,7 +226,7 @@ class ScenarioSetPerformanceManager:
                 return
 
             stats = self._live_stats[scenario_index]
-
+            total_ticks = stats['total_ticks']
             if ticks_processed is not None:
                 stats['ticks_processed'] = ticks_processed
             if total_ticks is not None and total_ticks > 0:
@@ -224,8 +234,10 @@ class ScenarioSetPerformanceManager:
                 stats['progress_percent'] = progress_percent
                 if (progress_percent >= 100):
                     stats['status'] = 'completed'
-            if trades_count is not None:
-                stats['trades_count'] = trades_count
+            if portfolio_stats is not None:
+                stats['total_trades'] = portfolio_stats['total_trades']
+                stats['winning_trades'] = portfolio_stats['winning_trades']
+                stats['losing_trades'] = portfolio_stats['losing_trades']
             if account_info is not None:
                 stats['portfolio_value'] = account_info.equity
             if total_ticks is not None:
@@ -248,9 +260,9 @@ class ScenarioSetPerformanceManager:
                 'ticks_processed': int,
                 'progress_percent': float,
                 'elapsed_time': float,
-                'trades_count': int,
+                'total_trades': int,
                 'portfolio_value': float,
-                'status': str  # 'running' or 'completed'
+                'status': str  # 'running' or 'completed' or 'warmup'
             }
         """
         with self._lock:
@@ -263,8 +275,10 @@ class ScenarioSetPerformanceManager:
                     'total_ticks': scenario_status_object.ticks_processed,
                     'ticks_processed': scenario_status_object.ticks_processed,
                     'progress_percent': 100.0,
-                    'elapsed_time': 0.0,  # Not tracked for completed
-                    'trades_count': scenario_status_object.execution_stats.get('total_trades', 0) if scenario_status_object.execution_stats else 0,
+                    'elapsed_time': scenario_status_object.elapsed_time,  # Not tracked for completed
+                    'total_trades': scenario_status_object.portfolio_stats.get('total_trades', 0),
+                    'winning_trades': scenario_status_object.portfolio_stats.get('winning_trades', 0),
+                    'losing_trades': scenario_status_object.portfolio_stats.get('losing_trades', 0),
                     'portfolio_value': scenario_status_object.portfolio_value,
                     'initial_balance': scenario_status_object.initial_balance,
                     'status': 'completed'
@@ -291,7 +305,9 @@ class ScenarioSetPerformanceManager:
                 'ticks_processed': stats['ticks_processed'],
                 'progress_percent': progress,
                 'elapsed_time': elapsed,
-                'trades_count': stats['trades_count'],
+                'total_trades': stats['total_trades'],
+                'winning_trades': stats['winning_trades'],
+                'losing_trades':  stats['losing_trades'],
                 'portfolio_value': stats['portfolio_value'],
                 'initial_balance': stats['initial_balance'],
                 'status': stats['status']

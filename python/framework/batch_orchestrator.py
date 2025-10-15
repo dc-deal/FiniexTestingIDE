@@ -236,6 +236,9 @@ class BatchOrchestrator:
         - Writes stats to ScenarioSetPerformanceManager including portfolio data
         """
 
+        # Setup Log for this scenario
+        vLog.start_scenario_logging(scenario_index, scenario.name)
+
         # Set thread name for debugging
         current_thread = threading.current_thread()
         original_thread_name = current_thread.name
@@ -251,6 +254,16 @@ class BatchOrchestrator:
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_trade_simulator = self._create_trade_simulator_for_scenario(
             scenario)
+
+        # ===== LIVE STATS: Update total ticks after data loading =====
+        # as early as possible.
+        self.performance_log.start_scenario_tracking(
+            scenario_index=scenario_index,
+            scenario_name=scenario.name,
+            total_ticks=scenario.max_ticks,
+            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
+            symbol=scenario.symbol
+        )
 
         # 2. Create Workers using Worker Factory
         strategy_config = scenario.strategy_config
@@ -344,16 +357,6 @@ class BatchOrchestrator:
             scenario_name=scenario.name
         )
 
-        # ===== LIVE STATS: Update total ticks after data loading =====
-        total_ticks = scenario.max_ticks if scenario.max_ticks else 0
-        self.performance_log.start_scenario_tracking(
-            scenario_index=scenario_index,
-            scenario_name=scenario.name,
-            total_ticks=total_ticks,
-            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
-            symbol=scenario.symbol
-        )
-
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
@@ -364,6 +367,10 @@ class BatchOrchestrator:
             warmup_ticks=warmup_ticks,
             test_start_time=first_test_time,
         )
+
+        # Last startup live log after warmup phase.
+        self.performance_log.set_live_status(
+            scenario_index=scenario_index, status="running")
 
         # 11. Execute test loop
         signals = []
@@ -419,9 +426,8 @@ class BatchOrchestrator:
                         self.performance_log.update_live_stats(
                             scenario_index=scenario_index,
                             ticks_processed=tick_count,
-                            trades_count=signals_generated,
-                            account_info=scenario_trade_simulator.get_account_info(),
-                            total_ticks=total_ticks
+                            portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+                            account_info=scenario_trade_simulator.get_account_info()
                         )
 
                 except Exception as e:
@@ -433,8 +439,8 @@ class BatchOrchestrator:
                 self.performance_log.update_live_stats(
                     scenario_index=scenario_index,
                     ticks_processed=tick_count,
-                    account_info=scenario_trade_simulator.get_account_info(),
-                    total_ticks=total_ticks
+                    portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+                    account_info=scenario_trade_simulator.get_account_info()
                 )
 
         # BEFORE collecting statistics - cleanup pending orders
@@ -457,10 +463,10 @@ class BatchOrchestrator:
         self.performance_log.update_live_stats(
             scenario_index=scenario_index,
             ticks_processed=tick_count,
-            trades_count=signals_generated,
-            total_ticks=total_ticks,
-            account_info=scenario_trade_simulator.get_account_info(),
+            portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+            account_info=scenario_trade_simulator.get_account_info()
         )
+        elapsed = vLog.get_scenario_elapsed_time(scenario_index)
 
         # ============================================
         # Build ScenarioPerformanceStats object
@@ -472,6 +478,7 @@ class BatchOrchestrator:
             initial_balance=scenario_trade_simulator.portfolio.initial_balance,
             symbol=scenario.symbol,
             ticks_processed=tick_count,
+            elapsed_time=elapsed,
             signals_generated=len(signals),
             signals_gen_buy=signals_gen_buy,
             signals_gen_sell=signals_gen_sell,

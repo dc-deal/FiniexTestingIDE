@@ -1,22 +1,19 @@
 """
 VisualConsoleLogger - Colorful, compact logging output
-Preparation for future TUI (Terminal User Interface)
 
 PHASE 1a (Live Progress):
 - Buffered logging mode for clean live progress display
+- Scenario-grouped log output with relative timestamps
 - Custom error types (validation_error, config_error, hard_error)
 - Automatic flush on critical errors
 - Thread-safe buffering
-
-EXTENDED (C#003): Result rendering delegated to reporting/ package
 """
 
 import logging
 import sys
-import time
 import traceback
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from python.configuration import AppConfigLoader
 
@@ -39,11 +36,13 @@ class VisualConsoleLogger:
     - Compact class names (instead of fully qualified)
     - Relative time display (ms since start)
     - Buffered mode for clean live progress display
+    - Scenario-grouped log output
     - Custom error types with smart handling
 
-    BUFFERING:
+    BUFFERING & SCENARIOS:
     - Call enable_buffering() to buffer all logs (for live progress)
-    - Call flush_buffer() to output all buffered logs at once
+    - Call start_scenario_logging(index, name) to tag logs per scenario
+    - Call flush_buffer() to output all logs grouped by scenario
     - Critical errors (validation, config, hard) auto-flush and exit
 
     ERROR TYPES:
@@ -52,16 +51,22 @@ class VisualConsoleLogger:
     - hard_error(): Critical code errors (WITH stack trace)
     """
 
-    def __init__(self, name: str = "FiniexTestingIDE", terminal_height: int = 60):
+    def __init__(self, name: str = "FiniexTestingIDE"):
         self.name = name
-        self.terminal_height = terminal_height
         self.start_time = datetime.now()
 
         # Buffering state
         self._buffered_mode = False
-        # (level, message, logger_name)
-        self._log_buffer: List[Tuple[str, str, Optional[str], int]] = []
+        self._log_buffer: List[Tuple[str, str,
+                                     Optional[str], int, Optional[int]]] = []
+        # Structure: (level, message, logger_name, elapsed_ms, scenario_index)
         self._buffer_lock = threading.Lock()
+
+        # Scenario tracking for logging
+        self._current_scenario_index: Optional[int] = None
+        self._thread_local = threading.local()
+        self._scenario_start_times: Dict[int, datetime] = {}
+        self._scenario_names: Dict[int, str] = {}
 
         # Logging Setup
         self._setup_custom_logger()
@@ -99,6 +104,9 @@ class VisualConsoleLogger:
         with self._buffer_lock:
             self._buffered_mode = True
             self._log_buffer.clear()
+            self._current_scenario_index = None
+            self._scenario_start_times.clear()
+            self._scenario_names.clear()
 
     def disable_buffering(self):
         """
@@ -108,48 +116,122 @@ class VisualConsoleLogger:
         with self._buffer_lock:
             self._buffered_mode = False
 
+    def start_scenario_logging(self, scenario_index: int, scenario_name: str):
+        """Start logging for a new scenario."""
+        # Set THREAD-LOCAL scenario index
+        self._thread_local.scenario_index = scenario_index  # <-- CHANGED
+
+        with self._buffer_lock:
+            self._scenario_start_times[scenario_index] = datetime.now()
+            self._scenario_names[scenario_index] = scenario_name
+
     def flush_buffer(self):
-        """Flush all buffered logs to console."""
+        """
+        Flush all buffered logs to console, grouped by scenario.
+        Each scenario gets its own header and relative timestamps (starting at 0ms).
+        """
         with self._buffer_lock:
             if not self._log_buffer:
                 return
 
+            # Group logs by scenario_index
+            logs_by_scenario: Dict[Optional[int], List] = {}
+            for level, message, logger_name, elapsed_ms, scenario_index in self._log_buffer:
+                if scenario_index not in logs_by_scenario:
+                    logs_by_scenario[scenario_index] = []
+                logs_by_scenario[scenario_index].append(
+                    (level, message, logger_name, elapsed_ms))
+
+            # Output each scenario block
             root_logger = logging.getLogger()
             if not root_logger.handlers:
                 return
 
             handler = root_logger.handlers[0]
 
-            # Output all buffered logs with ORIGINAL elapsed time
-            for level, message, logger_name, elapsed_ms in self._log_buffer:
-                record = logging.LogRecord(
-                    name=logger_name or self.name,
-                    level=getattr(logging, level),
-                    pathname="(buffered)",
-                    lineno=0,
-                    msg=message,
-                    args=(),
-                    exc_info=None
-                )
+            for scenario_index in sorted(logs_by_scenario.keys(), key=lambda x: (x is None, x)):
+                # Print scenario header
+                if scenario_index is not None:
+                    scenario_name = self._scenario_names.get(
+                        scenario_index, f"Scenario {scenario_index}")
+                    self._print_scenario_header(scenario_index, scenario_name)
+                else:
+                    # Logs without scenario (global logs)
+                    print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+                    print(
+                        f"{ColorCodes.BOLD}{'GLOBAL LOGS'.center(60)}{ColorCodes.RESET}")
+                    print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
-                # CRITICAL: Store elapsed_ms for formatter
-                record.elapsed_ms_buffered = elapsed_ms  # Custom attribute!
+                # Get scenario start time for relative timestamps
+                scenario_start = self._scenario_start_times.get(
+                    scenario_index, self.start_time)
 
-                handler.emit(record)
+                # Output logs for this scenario with relative time
+                for level, message, logger_name, original_elapsed_ms in logs_by_scenario[scenario_index]:
+                    # Calculate relative time from scenario start
+                    if scenario_index is not None:
+                        # Reconstruct original log time
+                        original_time = self.start_time + \
+                            timedelta(milliseconds=original_elapsed_ms)
+                        # Calculate relative to scenario start
+                        relative_ms = int(
+                            (original_time - scenario_start).total_seconds() * 1000)
+                    else:
+                        relative_ms = original_elapsed_ms
 
+                    # Create LogRecord
+                    record = logging.LogRecord(
+                        name=logger_name or self.name,
+                        level=getattr(logging, level),
+                        pathname="(buffered)",
+                        lineno=0,
+                        msg=message,
+                        args=(),
+                        exc_info=None
+                    )
+
+                    # Store relative time for formatter
+                    record.elapsed_ms_buffered = relative_ms
+
+                    # Emit through handler
+                    handler.emit(record)
+
+            # Clear buffer
             self._log_buffer.clear()
+            self._scenario_start_times.clear()
+            self._scenario_names.clear()
+
+    def _print_scenario_header(self, scenario_index: int, scenario_name: str):
+        """Print scenario header for log block."""
+        print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+        header_text = f"📊 SCENARIO {scenario_index + 1}: {scenario_name}"
+        print(f"{ColorCodes.BOLD}{header_text.center(60)}{ColorCodes.RESET}")
+        print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
     def _log_or_buffer(self, level: str, message: str, logger_name: Optional[str] = None):
-        """Internal: Either log directly or buffer based on mode."""
+        """
+        Internal: Either log directly or buffer based on mode.
+
+        Args:
+            level: Log level (INFO, WARNING, ERROR, DEBUG)
+            message: Log message
+            logger_name: Optional logger name
+        """
         with self._buffer_lock:
             if self._buffered_mode:
                 # Calculate elapsed_ms NOW (relative to logger start)
                 elapsed_ms = int(
                     (datetime.now() - self.start_time).total_seconds() * 1000)
+
+                # Tag with current scenario index (if set)
+                scenario_index = getattr(
+                    self._thread_local, 'scenario_index', None)
+
+                # Buffer the log with scenario tag
                 self._log_buffer.append(
-                    (level, message, logger_name, elapsed_ms))
+                    (level, message, logger_name, elapsed_ms, scenario_index))
             else:
-                # Direct output (unchanged)
+                # Direct output
                 logger = logging.getLogger(logger_name or self.name)
 
                 if level == 'INFO':
@@ -160,6 +242,23 @@ class VisualConsoleLogger:
                     logger.error(message)
                 elif level == 'DEBUG':
                     logger.debug(message)
+
+    def get_scenario_elapsed_time(self, scenario_index: int) -> Optional[float]:
+        """
+        Get elapsed time for a scenario in seconds.
+
+        Args:
+            scenario_index: Scenario array index
+
+        Returns:
+            Elapsed time in seconds, or None if scenario not started
+        """
+        with self._buffer_lock:
+            start_time = self._scenario_start_times.get(scenario_index)
+            if start_time is None:
+                return None
+
+            return (datetime.now() - start_time).total_seconds()
 
     # ============================================
     # Standard Logging Methods (Buffer-Aware)
@@ -321,7 +420,7 @@ class VisualLogFormatter(logging.Formatter):
     Custom Formatter:
     - Colored log levels
     - Compact class names (with C/ prefix if class detected)
-    - Relative time (ms since start)
+    - Relative time (ms since start or scenario start)
     """
 
     def __init__(self, start_time: datetime):
