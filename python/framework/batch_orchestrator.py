@@ -347,7 +347,7 @@ class BatchOrchestrator:
         )
 
         # Preparator converts bars to minutes internally
-        warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
+        test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
             warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
             test_start=test_start,
@@ -360,12 +360,9 @@ class BatchOrchestrator:
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
-
-        first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
-        bar_orchestrator.prepare_warmup_from_ticks(
+        bar_orchestrator.prepare_warmup_from_parquet_bars(
             symbol=scenario.symbol,
-            warmup_ticks=warmup_ticks,
-            test_start_time=first_test_time,
+            test_start_time=test_start
         )
 
         # Last startup live log after warmup phase.

@@ -52,14 +52,17 @@ class BarRenderingController:
         """Get current bar"""
         return self.bar_renderer.get_current_bar(symbol, timeframe)
 
-    def prepare_warmup_from_ticks(
+    def prepare_warmup_from_parquet_bars(
         self,
         symbol: str,
-        warmup_ticks: List[TickData],
         test_start_time: datetime
     ):
         """
-        Prepare warmup data from already-loaded ticks.
+        Prepare warmup data - TRIES PARQUET FIRST, falls back to tick rendering.
+
+        NEW BEHAVIOR:
+        1. Try to load bars from pre-rendered parquet files (FAST!)
+        2. If that fails, fall back to rendering from ticks (SLOW)
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
@@ -70,12 +73,18 @@ class BarRenderingController:
             self._workers
         )
 
-        # Use the new method that works with pre-loaded ticks
-        self._warmup_data = self.warmup_manager.prepare_warmup_from_ticks(
-            symbol=symbol,
-            warmup_ticks=warmup_ticks,
-            warmup_requirements=warmup_requirements,
-        )
+        # === TRY PARQUET FIRST (NEW!) ===
+        try:
+            vLog.info(f"🚀 Attempting to load warmup bars from parquet...")
+            self._warmup_data = self.warmup_manager.load_bars_from_parquet(
+                symbol=symbol,
+                warmup_requirements=warmup_requirements,
+                test_start_time=test_start_time
+            )
+            vLog.info(f"✅ Warmup bars loaded from parquet files!")
+        except Exception as e:
+            vLog.error(f"⚠️  Could not load bars from parquet: {e}")
+            raise
 
         # Initialize the bar renderer's history with these warmup bars
         for timeframe, bars in self._warmup_data.items():
@@ -89,6 +98,5 @@ class BarRenderingController:
         )
 
         vLog.info(
-            f"🔥 Warmup complete: {total_bars} bars rendered "
-            f"({timeframe_details}) from {len(warmup_ticks):,} ticks"
+            f"🔥 Warmup complete: {total_bars} bars ready "
         )

@@ -23,6 +23,8 @@ import pyarrow.parquet as pq
 
 from python.configuration import AppConfigLoader
 from python.components.logger.bootstrap_logger import setup_logging
+from python.data_worker.importer.bar_importer import BarImporter
+from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
 # Import duplicate detection
 from python.data_worker.data_loader.exceptions import (
@@ -127,13 +129,18 @@ class TickDataImporter:
                 self.errors.append(error_msg)
 
         self.rebuild_parquet_index()
+
+        # === AUTO-TRIGGER BAR RENDERING ===
+        # After all ticks imported, render bars automatically
+        if self.processed_files > 0:
+            self._trigger_bar_rendering()
+
         self._print_summary()
 
     def rebuild_parquet_index(self):
         """Rebuild index after successful imports"""
         vLog.info("\n🔄 Rebuilding Parquet index...")
         try:
-            from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
             index_manager = ParquetIndexManager(self.target_dir)
             index_manager.build_index(force_rebuild=True)
@@ -248,13 +255,15 @@ class TickDataImporter:
 
         # ===========================================
         # 7. PARQUET-OUTPUT VORBEREITEN
+        # CHANGED: Neue Pfad-Konstruktion!
         # ===========================================
 
         data_collector = metadata.get("data_collector", "mt5")
         symbol = metadata.get("symbol", "UNKNOWN")
         start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
 
-        target_path = self.target_dir / data_collector / symbol
+        # NEUE STRUKTUR: data_collector / ticks / symbol
+        target_path = self.target_dir / data_collector / "ticks" / symbol
         target_path.mkdir(parents=True, exist_ok=True)
 
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
@@ -267,10 +276,9 @@ class TickDataImporter:
             "broker": metadata.get("broker", "unknown"),
             "collector_version": metadata.get("data_format_version", "1.0"),
             "data_collector": data_collector,
-            "processed_at":  datetime.now(timezone.utc).isoformat(),
+            "processed_at": datetime.now(timezone.utc).isoformat(),
             "tick_count": str(len(df)),
             "importer_version": self.VERSION,
-            # NEW: User offset metadata
             "user_time_offset_hours": str(self.time_offset),
             "utc_conversion_applied": "true" if self.time_offset != 0 else "false",
         }
@@ -310,7 +318,6 @@ class TickDataImporter:
             parquet_size = parquet_path.stat().st_size
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
-            # Optional: Source-File nach finished/ verschieben
             if self.appConfig.get_move_processed_files:
                 finished_dir = Path("./data/finished/")
                 finished_dir.mkdir(exist_ok=True)
@@ -320,10 +327,9 @@ class TickDataImporter:
 
             self.total_ticks += len(df)
 
-            # Success-Logging
             time_suffix = " (UTC)" if self.time_offset != 0 else ""
             vLog.info(
-                f"✅ {data_collector}/{symbol}/{parquet_name}: {len(df):,} Ticks{time_suffix}, "
+                f"✅ {data_collector}/ticks/{symbol}/{parquet_name}: {len(df):,} Ticks{time_suffix}, "
                 f"Kompression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
             )
@@ -528,3 +534,24 @@ class TickDataImporter:
                 vLog.error(f"  - {error}")
 
         vLog.info("=" * 80 + "\n")
+
+    def _trigger_bar_rendering(self):
+        """
+        Trigger automatic bar rendering after tick import.
+
+        Renders bars for all symbols that were just imported.
+        """
+        vLog.info("\n" + "=" * 80)
+        vLog.info("🔄 AUTO-TRIGGERING BAR RENDERING")
+        vLog.info("=" * 80)
+
+        try:
+            bar_importer = BarImporter(str(self.target_dir))
+            bar_importer.render_bars_for_all_symbols(data_collector="mt5")
+
+            vLog.info("✅ Bar rendering completed!")
+
+        except Exception as e:
+            vLog.error(f"❌ Bar rendering failed: {e}")
+            vLog.error("   You can manually trigger it later with:")
+            vLog.error("   python -m bar_importer")

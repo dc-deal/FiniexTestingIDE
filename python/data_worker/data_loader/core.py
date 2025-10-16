@@ -1,9 +1,8 @@
 """
 FiniexTestingIDE Data Loader - Core Module
-Pure loading logic: Fast, focused, zero dependencies on analysis
 
-EXTENDED (C#002): Integration with ParquetIndexManager for optimized loading
-UPDATED (C#003): Support for hierarchical directory structure
+ Support für neue Collector-First Hierarchie
+ mt5/ticks/EURUSD/*.parquet
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -14,14 +13,11 @@ from typing import List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
-# Existing imports
 from python.data_worker.data_loader.exceptions import (
     ArtificialDuplicateException,
     DuplicateReport,
     InvalidDataModeException
 )
-
-# NEW (C#002): Index integration
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
 
@@ -30,58 +26,26 @@ vLog = setup_logging(name="StrategyRunner")
 
 class TickDataLoader:
     """
-    Core tick data loading with caching and filtering
+    Core tick data loading with caching and filtering.
 
-    Responsibilities:
-    - Load parquet files from disk
-    - Cache loaded data for performance
-    - Apply date range filters
-    - Remove duplicates based on data_mode
-    - Detect artificial duplicates (data integrity)
-
-    EXTENDED (C#002):
-    - Uses ParquetIndexManager for optimized file selection
-    - Only loads files that intersect with requested time range
-    - 10x faster loading for time-filtered queries
-
-    UPDATED (C#003):
-    - Supports hierarchical directory structure (data_collector/symbol/)
-
-    Design: Minimal, fast, no analysis logic
+    UPDATED: Angepasst für neue Verzeichnisstruktur (Collector-First)
     """
 
-    # Valid data modes
     VALID_DATA_MODES = ["raw", "realistic", "clean"]
 
     def __init__(self, data_dir: str = "./data/processed/"):
-        """
-        Initialize data loader
-
-        Args:
-            data_dir: Directory containing parquet files
-
-        Raises:
-            FileNotFoundError: If data directory doesn't exist
-        """
         self.data_dir = Path(data_dir)
         if not self.data_dir.exists():
             raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
         self._symbol_cache = {}
 
-        # NEW (C#002): Initialize index manager
+        # Index manager bleibt unverändert - arbeitet transparent mit neuer Struktur
         self.index_manager = ParquetIndexManager(self.data_dir)
-        self.index_manager.build_index()  # Auto-build/load on init
+        self.index_manager.build_index()
 
     def list_available_symbols(self) -> List[str]:
-        """
-        List all available symbols in data directory
-
-        OPTIMIZED (C#002): Uses index instead of file scanning
-
-        Returns:
-            Sorted list of symbol names (e.g. ['EURUSD', 'GBPUSD', 'USDJPY'])
-        """
+        """List all available symbols [UNCHANGED - uses index]"""
         return self.index_manager.list_symbols()
 
     def load_symbol_data(
@@ -94,29 +58,8 @@ class TickDataLoader:
         detect_artificial_duplicates: bool = True,
     ) -> pd.DataFrame:
         """
-        Load tick data for a symbol with optional date filtering
-
-        OPTIMIZED (C#002): Uses index for precise file selection
-
-        Performance improvement:
-        - Before: Loads ALL files for symbol, then filters
-        - After: Loads ONLY files intersecting time range
-        - Speedup: ~10x for time-filtered queries
-
-        Args:
-            symbol: Currency pair (e.g. 'EURUSD')
-            start_date: Start date filter (ISO format or datetime)
-            end_date: End date filter (ISO format or datetime)
-            data_mode: Data quality mode ('raw', 'realistic', 'clean')
-            use_cache: Enable caching (default: True)
-            detect_artificial_duplicates: Check for duplicate imports
-
-        Returns:
-            DataFrame with tick data
-
-        Raises:
-            InvalidDataModeException: If data_mode is invalid
-            ArtificialDuplicateException: If duplicate files detected
+        Load tick data for a symbol with optional date filtering.
+        Index handles new structure transparently]
         """
         # Validate data mode
         if data_mode not in self.VALID_DATA_MODES:
@@ -129,17 +72,14 @@ class TickDataLoader:
             vLog.debug(f"📦 Cache hit for {cache_key}")
             return self._symbol_cache[cache_key].copy()
 
-        # NEW (C#002): Index-based file selection
+        # Index-based file selection (works transparently with new structure)
         if start_date and end_date:
-            # Convert to datetime for index query
             start_dt = pd.to_datetime(start_date)
             end_dt = pd.to_datetime(end_date)
 
-            # Use index to find relevant files
             files = self.index_manager.get_relevant_files(
                 symbol, start_dt, end_dt)
 
-            # Get total file count for comparison
             all_files_count = len(self.index_manager.index.get(symbol, []))
 
             if files:
@@ -147,12 +87,11 @@ class TickDataLoader:
                     f"📊 Loading {len(files)}/{all_files_count} files for {symbol} "
                     f"({MarketCalendar.format_time_range(start_date, end_date)})"
                 )
-
             else:
                 vLog.warning(f"No files found for {symbol} in date range")
                 return pd.DataFrame()
         else:
-            # No date filter: load all files (fallback to legacy method)
+            # No date filter: load all files
             files = self._get_symbol_files(symbol)
             vLog.info(f"📊 Loading all {len(files)} files for {symbol}")
 
@@ -173,8 +112,6 @@ class TickDataLoader:
             dfs.append(df)
 
         combined_df = pd.concat(dfs, ignore_index=True)
-
-        # Sort by timestamp (critical for backtesting)
         combined_df = combined_df.sort_values(
             "timestamp").reset_index(drop=True)
 
@@ -202,7 +139,7 @@ class TickDataLoader:
                 f"🔁 Keeping all ticks including natural duplicates [data_mode={data_mode}]"
             )
 
-        # Apply date filters (now more efficient as we pre-filtered files)
+        # Apply date filters
         combined_df = self._apply_date_filters(
             combined_df, start_date, end_date)
 
@@ -214,33 +151,23 @@ class TickDataLoader:
         return combined_df
 
     # =========================================================================
-    # EXISTING METHODS (Unchanged)
+    # EXISTING METHODS - ANGEPASST
     # =========================================================================
 
     def _get_symbol_files(self, symbol: str) -> List[Path]:
         """
         Get all Parquet files for a symbol (legacy method).
 
-        Used as fallback when no date filter specified.
-
-        UPDATED (C#003): Searches in hierarchical structure
+        CHANGED: Neue Glob-Pattern für Collector-First Hierarchie
         """
-        # CHANGED (C#003): Recursive pattern for hierarchical structure
-        # Before: f"{symbol}_*.parquet"
-        # Now: f"**/{symbol}/*.parquet" - searches in all data_collector subdirs
-        pattern = f"**/{symbol}/{symbol}_*.parquet"
+        # CHANGED: Neue Hierarchie berücksichtigen
+        # Pattern: */ticks/SYMBOL/*.parquet
+        pattern = f"*/ticks/{symbol}/{symbol}_*.parquet"
         files = list(self.data_dir.glob(pattern))
         return sorted(files)
 
     def _check_artificial_duplicates(self, files: List[Path]) -> Optional[DuplicateReport]:
-        """
-        Check for artificial duplicates via Parquet metadata
-
-        Artificial duplicates occur when multiple Parquet files reference
-        the same source JSON file (e.g. through manual file copying).
-
-        This is different from natural duplicates (same tick data from broker).
-        """
+        """Check for artificial duplicates via Parquet metadata [UNCHANGED]"""
         if not files:
             return None
 
@@ -251,12 +178,10 @@ class TickDataLoader:
                 pq_file = pq.ParquetFile(file)
                 metadata_raw = pq_file.metadata.metadata
 
-                # Extract source_file
                 source_file = metadata_raw.get(
                     b'source_file', b'').decode('utf-8')
 
                 if source_file in source_files:
-                    # DUPLICATE DETECTED!
                     existing_file = source_files[source_file]
 
                     vLog.error(
@@ -268,7 +193,6 @@ class TickDataLoader:
                     vLog.error(
                         f"   File 2: {file.name}")
 
-                    # Build duplicate report
                     duplicate_files = [existing_file, file]
                     tick_counts = []
                     time_ranges = []
@@ -317,19 +241,8 @@ class TickDataLoader:
         start_date: Optional[str],
         end_date: Optional[str]
     ) -> pd.DataFrame:
-        """
-        Apply date range filters to DataFrame
+        """Apply date range filters to DataFrame [UNCHANGED]"""
 
-        Args:
-            df: Input DataFrame
-            start_date: Start date filter
-            end_date: End date filter
-
-        Returns:
-            Filtered DataFrame
-        """
-
-        # Falls timestamp noch keine Zeitzone hat
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
 
