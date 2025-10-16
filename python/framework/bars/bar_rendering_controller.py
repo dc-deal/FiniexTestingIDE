@@ -76,11 +76,16 @@ class BarRenderingController:
         # === TRY PARQUET FIRST (NEW!) ===
         try:
             vLog.info(f"🚀 Attempting to load warmup bars from parquet...")
-            self._warmup_data = self.warmup_manager.load_bars_from_parquet(
+            warmup_result = self.warmup_manager.load_bars_from_parquet(
                 symbol=symbol,
                 warmup_requirements=warmup_requirements,
                 test_start_time=test_start_time
             )
+
+            # Extract data from result dict
+            self._warmup_data = warmup_result['historical_bars']
+            self._warmup_quality_metrics = warmup_result['quality_metrics']
+
             vLog.info(f"✅ Warmup bars loaded from parquet files!")
         except Exception as e:
             vLog.error(f"⚠️  Could not load bars from parquet: {e}")
@@ -93,10 +98,29 @@ class BarRenderingController:
 
         # Detailed logging per timeframe
         total_bars = sum(len(bars) for bars in self._warmup_data.values())
-        timeframe_details = ", ".join(
-            [f"{tf}:{len(bars)}" for tf, bars in self._warmup_data.items()]
-        )
 
         vLog.info(
             f"🔥 Warmup complete: {total_bars} bars ready "
         )
+
+    def get_warmup_quality_metrics(self) -> Dict:
+        """
+        Get quality metrics for warmup bars.
+
+        Returns:
+            Dict[timeframe, quality_stats] with synthetic/hybrid/real counts
+
+        Example:
+            {
+                'M5': {
+                    'total': 200,
+                    'synthetic': 15,
+                    'hybrid': 8,
+                    'real': 177,
+                    'synthetic_pct': 7.5,
+                    'hybrid_pct': 4.0,
+                    'real_pct': 88.5
+                }
+            }
+        """
+        return self._warmup_quality_metrics

@@ -547,8 +547,12 @@ class TickDataImporter:
 
         try:
             bar_importer = BarImporter(str(self.target_dir))
-            bar_importer.render_bars_for_all_symbols(data_collector="mt5")
-
+            # DEFAULT: clean_mode=True (because bar append not implemented yet)
+            # This ensures bars are always consistent with tick data
+            bar_importer.render_bars_for_all_symbols(
+                data_collector="mt5",
+                clean_mode=True  # ← Clean slate on every import
+            )
             vLog.info("✅ Bar rendering completed!")
 
         except Exception as e:

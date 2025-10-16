@@ -66,18 +66,44 @@ class BarImporter:
         self.total_bars_rendered = 0
         self.errors = []
 
-    def render_bars_for_all_symbols(self, data_collector: str = "mt5"):
+    def render_bars_for_all_symbols(self, data_collector: str = "mt5", clean_mode: bool = False):
         """
-        Render bars for ALL symbols found in tick data.
+            Render bars for ALL symbols found in tick data.
 
-        Use this after bulk tick import to pre-render everything.
+            Use this after bulk tick import to pre-render everything.
 
-        Args:
-            data_collector: Data collector name (default: 'mt5')
-        """
+            Args:
+                data_collector: Data collector name (default: 'mt5')
+                clean_mode: If True, delete all existing bars before rendering (default: False)
+            """
         vLog.info("\n" + "=" * 80)
         vLog.info(f"Bar Pre-Rendering - Batch Mode")
         vLog.info("=" * 80)
+
+        # === CLEAN MODE: Delete all bars first ===
+        if clean_mode:
+            bars_base_dir = self.data_dir / data_collector / "bars"
+
+            if bars_base_dir.exists():
+                vLog.warning(
+                    f"🗑️  CLEAN MODE: Deleting all bars in {bars_base_dir}")
+
+                # Delete all bar files
+                deleted_count = 0
+                for bar_file in bars_base_dir.glob("**/*_BARS.parquet"):
+                    bar_file.unlink()
+                    deleted_count += 1
+
+                vLog.info(f"   Deleted {deleted_count} bar files")
+
+                # Clean up empty directories
+                for symbol_dir in bars_base_dir.iterdir():
+                    if symbol_dir.is_dir() and not any(symbol_dir.iterdir()):
+                        symbol_dir.rmdir()
+                        vLog.debug(
+                            f"   Removed empty directory: {symbol_dir.name}")
+            else:
+                vLog.info(f"   No bars directory found - nothing to clean")
 
         # Get all symbols from tick index
         symbols = self.tick_index.list_symbols()

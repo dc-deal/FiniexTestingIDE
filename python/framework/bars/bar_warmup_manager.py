@@ -86,7 +86,7 @@ class BarWarmupManager:
         symbol: str,
         test_start_time: datetime,
         warmup_requirements: Dict[str, int],
-    ) -> Dict[str, List[Bar]]:
+    ) -> Dict:
         """
         Load warmup bars from pre-rendered parquet files.
 
@@ -111,6 +111,7 @@ class BarWarmupManager:
         bar_index.build_index()
 
         historical_bars = {}
+        quality_metrics = {}
 
         for timeframe, minutes_needed in warmup_requirements.items():
             # Calculate bars needed
@@ -149,6 +150,10 @@ class BarWarmupManager:
             # Take last N bars before test start
             warmup_bars_df = bars_before_test.tail(bars_needed)
 
+            # === NEW: Analyze bar quality ===
+            quality = self._analyze_bar_quality(warmup_bars_df)
+            quality_metrics[timeframe] = quality
+
             # Convert DataFrame to Bar objects
             bars = []
             for _, row in warmup_bars_df.iterrows():
@@ -183,4 +188,34 @@ class BarWarmupManager:
             f"({timeframe_details})"
         )
 
-        return historical_bars
+        return {
+            'historical_bars': historical_bars,
+            'quality_metrics': quality_metrics
+        }
+
+    def _analyze_bar_quality(self, bars_df: pd.DataFrame) -> Dict:
+        """
+        Analyze quality of warmup bars (synthetic/hybrid/real).
+
+        Args:
+            bars_df: DataFrame with warmup bars
+
+        Returns:
+            Dict with quality statistics
+        """
+        total = len(bars_df)
+
+        # Count bar types
+        synthetic = len(bars_df[bars_df['bar_type'] == 'synthetic'])
+        hybrid = len(bars_df[bars_df['bar_type'] == 'hybrid'])
+        real = len(bars_df[bars_df['bar_type'] == 'real'])
+
+        return {
+            'total': total,
+            'synthetic': synthetic,
+            'hybrid': hybrid,
+            'real': real,
+            'synthetic_pct': round((synthetic / total * 100), 2) if total > 0 else 0.0,
+            'hybrid_pct': round((hybrid / total * 100), 2) if total > 0 else 0.0,
+            'real_pct': round((real / total * 100), 2) if total > 0 else 0.0
+        }

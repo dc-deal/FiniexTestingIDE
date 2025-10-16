@@ -14,6 +14,7 @@ from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
 __all__ = [
     'BatchSummary',
@@ -21,4 +22,5 @@ __all__ = [
     'ScenarioSetPerformanceManager',
     'PerformanceSummary',
     'ConsoleRenderer',
+    'BarIndexReportGenerator'
 ]
