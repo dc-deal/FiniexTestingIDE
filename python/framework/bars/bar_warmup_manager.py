@@ -1,4 +1,5 @@
-from python.components.logger.bootstrap_logger import setup_logging
+import time
+from python.components.logger.bootstrap_logger import get_logger
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
@@ -8,7 +9,7 @@ import pandas as pd
 from python.framework.exceptions import InsufficientWarmupDataError
 from python.framework.types import Bar, TickData, TimeframeConfig
 
-vLog = setup_logging(name="StrategyRunner")
+vLog = get_logger()
 
 
 class BarWarmupManager:
@@ -33,52 +34,6 @@ class BarWarmupManager:
                     )
 
         return dict(warmup_requirements)
-
-    def prepare_historical_bars(
-        self,
-        symbol: str,
-        test_start_time: datetime,
-        warmup_requirements: Dict[str, int],
-    ) -> Dict[str, List[Bar]]:
-        """Prepare historical bars for warmup"""
-        historical_bars = {}
-
-        # Calculate earliest required time
-        max_warmup_minutes = (
-            max(warmup_requirements.values()) if warmup_requirements else 60
-        )
-        warmup_start_time = test_start_time - \
-            timedelta(minutes=max_warmup_minutes)
-
-        vLog.info(
-            f"Preparing warmup from {warmup_start_time} to {test_start_time}")
-
-        # Load tick data for warmup period
-        tick_data = self.data_worker.load_symbol_data(
-            symbol=symbol,
-            start_date=warmup_start_time.isoformat(),
-            end_date=test_start_time.isoformat(),
-        )
-
-        if tick_data.empty:
-            vLog.warning(f"No warmup data found for {symbol}")
-            return {}
-
-        # Render historical bars for each timeframe
-        for timeframe, minutes_needed in warmup_requirements.items():
-            bars = self._render_historical_bars(tick_data, timeframe, symbol)
-            historical_bars[timeframe] = (
-                bars[-minutes_needed //
-                     TimeframeConfig.get_minutes(timeframe):]
-                if bars
-                else []
-            )
-
-            vLog.debug(
-                f"Prepared {len(historical_bars[timeframe])} {timeframe} bars for warmup"
-            )
-
-        return historical_bars
 
     def _render_historical_bars(
         self, tick_data: pd.DataFrame, timeframe: str, symbol: str
@@ -201,7 +156,33 @@ class BarWarmupManager:
         bars = []
         current_bar = None
 
-        for tick in ticks:
+        # LOGGING: Start
+        loop_start = time.perf_counter()
+        timestamp_conversion_time = 0
+        bar_start_time_calc = 0
+        bar_comparison_time = 0
+
+        for i, tick in enumerate(ticks):
+            # Messe Timestamp-Konvertierung
+            t1 = time.perf_counter()
+            timestamp = pd.to_datetime(tick.timestamp)
+            timestamp_conversion_time += time.perf_counter() - t1
+
+            # Messe Bar-Start-Time Berechnung
+            t2 = time.perf_counter()
+            bar_start_time = TimeframeConfig.get_bar_start_time(
+                timestamp, timeframe)
+            bar_start_time_calc += time.perf_counter() - t2
+
+            # Messe Bar-Vergleich
+            t3 = time.perf_counter()
+            needs_new_bar = (
+                current_bar is None
+                or pd.to_datetime(current_bar.timestamp) != bar_start_time
+            )
+            bar_comparison_time += time.perf_counter() - t3
+
+            # verarbeitung
             timestamp = pd.to_datetime(tick.timestamp)
             mid_price = tick.mid
             volume = tick.volume
@@ -234,9 +215,28 @@ class BarWarmupManager:
             # Update bar with tick
             current_bar.update_with_tick(mid_price, volume)
 
+            if (i + 1) % 1000 == 0:
+                vLog.debug(f"⏱️ Processed {i+1}/{len(ticks)} ticks - "
+                           f"Timestamp conv: {timestamp_conversion_time*1000:.1f}ms, "
+                           f"Bar calc: {bar_start_time_calc*1000:.1f}ms, "
+                           f"Comparison: {bar_comparison_time*1000:.1f}ms")
+
         # Add final bar
         if current_bar is not None:
             current_bar.is_complete = True
             bars.append(current_bar)
+
+        # FINAL LOGGING
+        total_time = time.perf_counter() - loop_start
+        vLog.info(f"🔍 Bar rendering breakdown for {len(ticks)} ticks:")
+        vLog.info(f"   Total time: {total_time*1000:.1f}ms")
+        vLog.info(
+            f"   ├─ Timestamp conversions: {timestamp_conversion_time*1000:.1f}ms ({timestamp_conversion_time/total_time*100:.1f}%)")
+        vLog.info(
+            f"   ├─ Bar start calculations: {bar_start_time_calc*1000:.1f}ms ({bar_start_time_calc/total_time*100:.1f}%)")
+        vLog.info(
+            f"   ├─ Bar comparisons: {bar_comparison_time*1000:.1f}ms ({bar_comparison_time/total_time*100:.1f}%)")
+        vLog.info(
+            f"   └─ Other operations: {(total_time - timestamp_conversion_time - bar_start_time_calc - bar_comparison_time)*1000:.1f}ms")
 
         return bars
