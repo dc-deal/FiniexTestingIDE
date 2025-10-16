@@ -21,7 +21,7 @@ import pandas as pd
 
 from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
-from python.data_worker.tick_importer import TickDataImporter
+from python.data_worker.importer.tick_importer import TickDataImporter
 
 vLog = setup_logging(name="DataIndexCLI")
 
