@@ -18,6 +18,18 @@
             "justMyCode": false
         },
         {
+            "name": "📥 Bar Import / Render --clean",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "render",
+                "--clean"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "📊 Data Pipeline: Test Data Report",
             "type": "debugpy",
             "request": "launch",
@@ -57,6 +69,39 @@
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔹 Bar Index: Rebuild",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔹 Bar Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔹 Bar Index: Report",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "report"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

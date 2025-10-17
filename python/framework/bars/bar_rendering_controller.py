@@ -52,14 +52,17 @@ class BarRenderingController:
         """Get current bar"""
         return self.bar_renderer.get_current_bar(symbol, timeframe)
 
-    def prepare_warmup_from_ticks(
+    def prepare_warmup_from_parquet_bars(
         self,
         symbol: str,
-        warmup_ticks: List[TickData],
         test_start_time: datetime
     ):
         """
-        Prepare warmup data from already-loaded ticks.
+        Prepare warmup data - TRIES PARQUET FIRST, falls back to tick rendering.
+
+        NEW BEHAVIOR:
+        1. Try to load bars from pre-rendered parquet files (FAST!)
+        2. If that fails, fall back to rendering from ticks (SLOW)
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
@@ -70,12 +73,23 @@ class BarRenderingController:
             self._workers
         )
 
-        # Use the new method that works with pre-loaded ticks
-        self._warmup_data = self.warmup_manager.prepare_warmup_from_ticks(
-            symbol=symbol,
-            warmup_ticks=warmup_ticks,
-            warmup_requirements=warmup_requirements,
-        )
+        # === TRY PARQUET FIRST (NEW!) ===
+        try:
+            vLog.info(f"🚀 Attempting to load warmup bars from parquet...")
+            warmup_result = self.warmup_manager.load_bars_from_parquet(
+                symbol=symbol,
+                warmup_requirements=warmup_requirements,
+                test_start_time=test_start_time
+            )
+
+            # Extract data from result dict
+            self._warmup_data = warmup_result['historical_bars']
+            self._warmup_quality_metrics = warmup_result['quality_metrics']
+
+            vLog.info(f"✅ Warmup bars loaded from parquet files!")
+        except Exception as e:
+            vLog.error(f"⚠️  Could not load bars from parquet: {e}")
+            raise
 
         # Initialize the bar renderer's history with these warmup bars
         for timeframe, bars in self._warmup_data.items():
@@ -84,11 +98,29 @@ class BarRenderingController:
 
         # Detailed logging per timeframe
         total_bars = sum(len(bars) for bars in self._warmup_data.values())
-        timeframe_details = ", ".join(
-            [f"{tf}:{len(bars)}" for tf, bars in self._warmup_data.items()]
-        )
 
         vLog.info(
-            f"🔥 Warmup complete: {total_bars} bars rendered "
-            f"({timeframe_details}) from {len(warmup_ticks):,} ticks"
+            f"🔥 Warmup complete: {total_bars} bars ready "
         )
+
+    def get_warmup_quality_metrics(self) -> Dict:
+        """
+        Get quality metrics for warmup bars.
+
+        Returns:
+            Dict[timeframe, quality_stats] with synthetic/hybrid/real counts
+
+        Example:
+            {
+                'M5': {
+                    'total': 200,
+                    'synthetic': 15,
+                    'hybrid': 8,
+                    'real': 177,
+                    'synthetic_pct': 7.5,
+                    'hybrid_pct': 4.0,
+                    'real_pct': 88.5
+                }
+            }
+        """
+        return self._warmup_quality_metrics

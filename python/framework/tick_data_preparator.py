@@ -146,7 +146,6 @@ class TickDataPreparator:
             df['timestamp'] = df['timestamp'].dt.tz_localize(None)
 
         first_tick = df.iloc[0]['timestamp']
-        last_tick = df.iloc[-1]['timestamp']
 
         # Normalize test_start and test_end to timezone-naive for comparison
         test_start_naive = test_start.replace(
@@ -160,7 +159,7 @@ class TickDataPreparator:
         first_tick_naive = first_tick.replace(tzinfo=None) if hasattr(
             first_tick, 'tzinfo') and first_tick.tzinfo else first_tick
 
-        if first_tick_naive > warmup_start_naive:
+        if first_tick_naive > test_start_naive:
             raise InsufficientHistoricalDataError(
                 required_start=warmup_start_naive,
                 first_available=first_tick_naive,
@@ -194,10 +193,9 @@ class TickDataPreparator:
             )
 
         # Convert to TickData objects
-        warmup_ticks = self._df_to_ticks(warmup_df, symbol)
         test_iterator = self._df_to_tick_iterator(test_df, symbol)
 
-        return warmup_ticks, test_iterator
+        return test_iterator
 
     def _convert_bars_to_minutes(
         self, bar_requirements: Dict[str, int]

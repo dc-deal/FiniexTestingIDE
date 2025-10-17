@@ -219,10 +219,10 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # Same direction? Skip (we already have what the strategy wants)
             if current_dir_str == new_direction_str:
-                vLog.debug(
-                    f"⏭️  Already holding {new_direction_str} position "
-                    f"(ID: {current_position.position_id}) - skipping duplicate signal"
-                )
+                # vLog.debug(
+                #     f"⏭️  Already holding {new_direction_str} position "
+                #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
+                # )
                 return None
 
             # Opposite direction? Close old position (signal reversal)

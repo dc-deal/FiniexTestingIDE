@@ -347,7 +347,7 @@ class BatchOrchestrator:
         )
 
         # Preparator converts bars to minutes internally
-        warmup_ticks, test_iterator = preparator.prepare_test_and_warmup_split(
+        test_iterator = preparator.prepare_test_and_warmup_split(
             symbol=scenario.symbol,
             warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
             test_start=test_start,
@@ -360,13 +360,13 @@ class BatchOrchestrator:
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
         bar_orchestrator.register_workers(workers)
-
-        first_test_time = pd.to_datetime(warmup_ticks[-1].timestamp)
-        bar_orchestrator.prepare_warmup_from_ticks(
+        bar_orchestrator.prepare_warmup_from_parquet_bars(
             symbol=scenario.symbol,
-            warmup_ticks=warmup_ticks,
-            test_start_time=first_test_time,
+            test_start_time=test_start
         )
+
+        # Print Bar Quality Metrics - Synthetic bar impact on data
+        self._print_warmup_quality_metrics(bar_orchestrator)
 
         # Last startup live log after warmup phase.
         self.performance_log.set_live_status(
@@ -639,3 +639,37 @@ class BatchOrchestrator:
         name = name.rstrip('_')
 
         return name
+
+    def _print_warmup_quality_metrics(self, bar_orchestrator: BarRenderingController):
+        # === NEW: Warmup Quality Check ===
+        warmup_quality = bar_orchestrator.get_warmup_quality_metrics()
+
+        has_quality_issues = False
+        for timeframe, metrics in warmup_quality.items():
+            synthetic = metrics['synthetic']
+            hybrid = metrics['hybrid']
+            total = metrics['total']
+
+            if synthetic > 0 or hybrid > 0:
+                has_quality_issues = True
+
+                # Build warning message
+                issues = []
+                if synthetic > 0:
+                    issues.append(
+                        f"{synthetic} synthetic ({metrics['synthetic_pct']:.1f}%)")
+                if hybrid > 0:
+                    issues.append(
+                        f"{hybrid} hybrid ({metrics['hybrid_pct']:.1f}%)")
+
+                vLog.warning(
+                    f"⚠️  {timeframe} warmup quality: {', '.join(issues)} of {total} bars"
+                )
+
+        if has_quality_issues:
+            vLog.warning(
+                f"⚠️  Warmup contains synthetic/hybrid bars - indicator warmup may be unrealistic!"
+            )
+            vLog.warning(
+                f"   This typically happens when warmup period spans weekends/holidays."
+            )
