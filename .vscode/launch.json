@@ -172,14 +172,6 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
-        {
-            "name": "🚀 Strategy Runner - Live Demo",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/demos/tui_live_monitor_demo.py",
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
         // ====================================================
         // 📝 SCENARIO MANAGEMENT
         // ====================================================
