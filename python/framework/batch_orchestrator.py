@@ -263,16 +263,6 @@ class BatchOrchestrator:
         scenario_trade_simulator = self._create_trade_simulator_for_scenario(
             scenario)
 
-        # ===== LIVE STATS: Update total ticks after data loading =====
-        # as early as possible.
-        self.performance_log.start_scenario_tracking(
-            scenario_index=scenario_index,
-            scenario_name=scenario.name,
-            total_ticks=scenario.max_ticks,
-            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
-            symbol=scenario.symbol
-        )
-
         # 2. Create Workers using Worker Factory
         strategy_config = scenario.strategy_config
 
@@ -355,8 +345,9 @@ class BatchOrchestrator:
         )
 
         # Preparator converts bars to minutes internally
+        # read tick count of data, because you can't rely on max_ticks (gaps, timespan)
         try:
-            test_iterator = preparator.prepare_test_and_warmup_split(
+            test_iterator, total_test_ticks = preparator.prepare_test_and_warmup_split(
                 symbol=scenario.symbol,
                 warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
                 test_start=test_start,
@@ -371,6 +362,16 @@ class BatchOrchestrator:
                 message=str(e),
                 context=e.get_context()
             )
+
+        # ===== LIVE STATS: Update total ticks after ticks are known. =====
+        # as early as possible.
+        self.performance_log.start_scenario_tracking(
+            scenario_index=scenario_index,
+            scenario_name=scenario.name,
+            total_ticks=total_test_ticks,
+            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
+            symbol=scenario.symbol
+        )
 
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
