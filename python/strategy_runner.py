@@ -12,10 +12,9 @@ import traceback
 
 from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.exceptions.data_validation_errors import DataValidationError
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.configuration import AppConfigLoader
 
@@ -53,6 +52,7 @@ def run_strategy_test() -> dict:
         # Load Scenario Configuration
         # ============================================================
         config_loader = ScenarioConfigLoader()
+
         scenario_set_name = "eurusd_3_windows.json"
         scenarios = config_loader.load_config(scenario_set_name)
 
@@ -86,18 +86,18 @@ def run_strategy_test() -> dict:
         # ============================================
         # NEW (C#003): Direct Reporting via BatchSummary
         # ============================================
-        try:
-            summary = BatchSummary(
-                performance_log=performance_log,
-                app_config=app_config_loader
-            )
-            summary.render_all()
-
-        except Exception as e:
-            vLog.error(
-                f"❌ Failed to render summary: \n{traceback.format_exc()}")
-
+        summary = BatchSummary(
+            performance_log=performance_log,
+            app_config=app_config_loader
+        )
+        summary.render_all()
         return results
+
+    except DataValidationError as e:
+        vLog.validation_error(
+            message=str(e),
+            context=e.get_context()
+        )
 
     except FileNotFoundError as e:
         vLog.config_error(

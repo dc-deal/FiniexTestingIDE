@@ -16,7 +16,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.components.logger.bootstrap_logger import setup_logging
-from python.data_worker.data_loader.coverage_report import (
+from python.framework.reporting.coverage_report import (
     TimeRangeCoverageReport,
     IndexEntry
 )

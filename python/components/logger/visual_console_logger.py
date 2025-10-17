@@ -87,7 +87,7 @@ class VisualConsoleLogger:
         root_logger = logging.getLogger()
         root_logger.handlers.clear()  # Remove old handlers
         root_logger.addHandler(handler)
-        root_logger.setLevel(logging.INFO)
+        root_logger.setLevel(logging.DEBUG)
 
     # ============================================
     # Buffering Control

@@ -22,7 +22,6 @@ class InsufficientHistoricalDataError(Exception):
         symbol: str,
         scenario_name: str = None,
         scenario_start: datetime = None,
-        warmup_duration_minutes: int = None,
         config_path: str = None
     ):
         self.required_start = required_start
@@ -30,12 +29,7 @@ class InsufficientHistoricalDataError(Exception):
         self.symbol = symbol
         self.scenario_name = scenario_name
         self.scenario_start = scenario_start
-        self.warmup_duration_minutes = warmup_duration_minutes
         self.missing_time = first_available - required_start
-
-        # Format warmup duration in human-readable form
-        warmup_readable = format_minutes(
-            warmup_duration_minutes) if warmup_duration_minutes else "N/A"
 
         message = (
             f"❌ Insufficient historical data for {symbol}!\n"
@@ -47,8 +41,6 @@ class InsufficientHistoricalDataError(Exception):
             message += f"      Scenario:           '{scenario_name}'\n"
         if scenario_start:
             message += f"      Starts at:          {scenario_start.isoformat()}\n"
-        if warmup_duration_minutes:
-            message += f"      Warmup needed:      {warmup_duration_minutes} min ({warmup_readable})\n"
             message += f"      Must load from:     {required_start.isoformat()}\n"
 
         message += (
@@ -65,13 +57,7 @@ class InsufficientHistoricalDataError(Exception):
             message += f"      2. Find scenario: '{scenario_name}'\n"
 
         # Calculate recommended start date (first_available + warmup + buffer)
-        if first_available and warmup_duration_minutes:
-            from datetime import timedelta
-            recommended_start = first_available + \
-                timedelta(minutes=warmup_duration_minutes + 30)
-            message += f"      3. Change 'start_date' to: '{recommended_start.isoformat()}' (or later)\n"
-        else:
-            message += f"      → Move 'start_date' later to match available data\n"
+        message += f"      → Move 'start_date' later to match available data\n"
 
         super().__init__(message)
 
@@ -108,45 +94,5 @@ class InsufficientWarmupDataError(Exception):
             message += f"   Last bar:       {last_bar_timestamp}\n"
 
         message += "   → Check data quality or extend warmup period"
-
-        super().__init__(message)
-
-
-class WeekendOverlapError(Exception):
-    """
-    Raised when warmup period spans weekend and timeframe doesn't support it.
-
-    For intraday timeframes (M1-H4), weekends are handled automatically
-    by skipping weekend ticks. For daily+ timeframes, special logic is needed.
-    """
-
-    def __init__(
-        self,
-        timeframe: str,
-        start: datetime,
-        end: datetime,
-        weekend_days: int
-    ):
-        self.timeframe = timeframe
-        self.start = start
-        self.end = end
-        self.weekend_days = weekend_days
-
-        message = (
-            f"⚠️ Warmup period spans weekend for {timeframe}!\n"
-            f"   Period:         {start.isoformat()} → {end.isoformat()}\n"
-            f"   Weekend days:   {weekend_days}\n"
-        )
-
-        if timeframe in ['D1', 'W1', 'MN']:
-            message += (
-                f"   → Daily+ timeframes require weekend gap handling\n"
-                f"   → Use intraday timeframes (M1-H4) or implement weekend logic"
-            )
-        else:
-            message += (
-                f"   → Weekend ticks will be automatically skipped\n"
-                f"   → Warmup will use Friday's bars"
-            )
 
         super().__init__(message)

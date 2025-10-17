@@ -5,16 +5,20 @@ Uses timestamp-based loading for precise data requirements
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
-from python.framework.utils.market_calendar import MarketCalendar
-from python.framework.exceptions import InsufficientHistoricalDataError
-from typing import Iterator, List, Tuple, Dict
+from typing import Iterator, Dict
 from datetime import datetime, timedelta
+from python.framework.exceptions.data_validation_errors import (
+    InsufficientTickDataError,
+    CriticalGapError,
+    NoDataAvailableError,
+    NoTicksInTimespanError
+)
 
 import pandas as pd
 
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.exceptions.warmup_errors import InsufficientHistoricalDataError
 from python.framework.types import TickData, TimeframeConfig
-from python.framework.utils.time_utils import format_duration
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -50,238 +54,121 @@ class TickDataPreparator:
         data_mode: str = "realistic",
         scenario_name: str = None,
         config_path: str = None,
-    ) -> Tuple[List[TickData], Iterator[TickData]]:
+    ) -> Iterator[TickData]:
         """
-        Prepare warmup and test data split using timestamp-based loading.
+            Prepare test data iterator.
 
-        Args:
-            symbol: Trading symbol
-            warmup_bar_requirements: Dict[timeframe, bars_needed] from workers
-            test_start: When test period begins
-            test_end: When test period ends
-            max_test_ticks: Maximum number of test ticks (None = unlimited)
-            data_mode: Data quality mode (clean/realistic/raw)
-            scenario_name: Name of scenario (for error messages)
-            config_path: Path to config file (for error messages)
+            UPDATED (Bar Pre-Rendering):
+            - No warmup ticks needed (bars loaded from parquet)
+            - Only loads test period ticks
+            - warmup_bar_requirements only used for gap validation
 
-        Returns:
-            Tuple of (warmup_ticks, test_iterator)
+            Args:
+                symbol: Trading symbol
+                warmup_bar_requirements: Dict[timeframe, bars_needed] (for gap threshold only)
+                test_start: When test period begins
+                test_end: When test period ends (ignored if max_test_ticks set)
+                max_test_ticks: Maximum number of test ticks (None = timespan mode)
+                data_mode: Data quality mode (clean/realistic/raw)
+                scenario_name: Name of scenario (for error messages)
+                config_path: Path to config file (for error messages)
 
-        Raises:
-            InsufficientHistoricalDataError: If data doesn't cover warmup period
-            NotImplementedError: If timeframe requires weekend logic
-        """
-        # Convert bar requirements to time requirements
-        warmup_minutes = self._convert_bars_to_minutes(warmup_bar_requirements)
+            Returns:
+                Iterator[TickData] - Test tick iterator
 
-        # Calculate when warmup must start
-        max_minutes_needed = max(warmup_minutes.values())
-        warmup_start = test_start - timedelta(minutes=max_minutes_needed)
-
-        # Check for weekend overlap (informational)
-        self._check_weekend_overlap(
-            warmup_start, test_start, warmup_bar_requirements)
-
+            Raises:
+                InsufficientHistoricalDataError: If no ticks at test_start
+                ValueError: If insufficient ticks or critical gaps
+            """
         vLog.info(f"📊 Preparing data for {symbol}")
-        vLog.info(f"└─Warmup requirements: {warmup_minutes}")
 
-        # Warmup period with readable duration
-        warmup_duration = format_duration(warmup_start, test_start)
-        vLog.info(
-            f"└─Warmup period: {MarketCalendar.format_time_range(warmup_start, test_start)} "
-            f"({warmup_duration})"
-        )
-
-        # Test period with readable duration OR max ticks
-        test_period_string = f"└─Test period: {MarketCalendar.format_time_range(test_start, test_end)} "
+        # === MODE DETECTION ===
         if max_test_ticks:
+            vLog.info(f"└─Mode: Tick-limited ({max_test_ticks:,} ticks)")
             vLog.info(
-                test_period_string +
-                f"(max {max_test_ticks:,} ticks)"
-            )
+                f"└─Start: {test_start.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
-            test_duration = format_duration(test_start, test_end)
+            duration = test_end - test_start
+            hours = int(duration.total_seconds() // 3600)
+            minutes = int((duration.total_seconds() % 3600) // 60)
+            vLog.info(f"└─Mode: Timespan ({hours}h {minutes}m)")
             vLog.info(
-                test_period_string +
-                f"({test_duration})"
-            )
+                f"└─Period: {test_start.strftime('%Y-%m-%d %H:%M:%S')} → {test_end.strftime('%Y-%m-%d %H:%M:%S')}")
 
         vLog.info(f"└─Data mode: {data_mode}")
 
-        # Calculate and display test duration or tick limit
+        # === DETERMINE LOAD WINDOW ===
         if max_test_ticks:
-            vLog.info(f"└─Max ticks: {max_test_ticks:,}")
+            # Load far enough to get required ticks (technical maximum)
+            load_end = test_start + timedelta(days=365)
         else:
-            # Calculate duration in readable format
-            duration = test_end - test_start
-            total_seconds = int(duration.total_seconds())
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
+            load_end = test_end
 
-            if hours > 0:
-                vLog.info(f"└─Emulated Running Time Span: {hours}h {minutes}m")
-            else:
-                vLog.info(f"└─Emulated Running Time Span: {minutes}m")
-
-        # NEW: Pass data_mode to loader for proper duplicate handling
+        # === LOAD DATA ===
         df = self.data_worker.load_symbol_data(
             symbol=symbol,
-            start_date=warmup_start.isoformat(),
-            end_date=test_end.isoformat(),
+            start_date=test_start.isoformat(),  # ← CHANGED: Start from test_start!
+            end_date=load_end.isoformat(),
             use_cache=True,
-            data_mode=data_mode  # NEW: Forward data_mode from scenario
+            data_mode=data_mode
         )
 
         if df.empty:
-            raise ValueError(f"No data available for {symbol}")
+            raise NoDataAvailableError(
+                symbol=symbol,
+                start_date=test_start,
+                load_end=load_end
+            )
 
         vLog.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
 
-        # Validate that we have data covering warmup period
-        # Convert and normalize ALL timestamps to timezone-naive for consistent comparison
+        # === NORMALIZE TIMESTAMPS ===
         df['timestamp'] = pd.to_datetime(df['timestamp'])
-
-        # Remove timezone info from pandas Series if present
         if df['timestamp'].dt.tz is not None:
             df['timestamp'] = df['timestamp'].dt.tz_localize(None)
 
         first_tick = df.iloc[0]['timestamp']
 
-        # Normalize test_start and test_end to timezone-naive for comparison
         test_start_naive = test_start.replace(
             tzinfo=None) if test_start.tzinfo else test_start
         test_end_naive = test_end.replace(
             tzinfo=None) if test_end.tzinfo else test_end
-        warmup_start_naive = warmup_start.replace(
-            tzinfo=None) if warmup_start.tzinfo else warmup_start
-
-        # Normalize first_tick (pandas Timestamp)
         first_tick_naive = first_tick.replace(tzinfo=None) if hasattr(
             first_tick, 'tzinfo') and first_tick.tzinfo else first_tick
 
+        # === VALIDATE TEST START COVERAGE ===
         if first_tick_naive > test_start_naive:
             raise InsufficientHistoricalDataError(
-                required_start=warmup_start_naive,
+                required_start=test_start_naive,
                 first_available=first_tick_naive,
                 symbol=symbol,
                 scenario_name=scenario_name,
                 scenario_start=test_start,
-                warmup_duration_minutes=max_minutes_needed,
                 config_path=config_path
             )
 
-        # Split data at test_start timestamp
-        # DataFrames are already tz-naive from above normalization
-        warmup_df = df[df['timestamp'] < test_start_naive]
-        test_df = df[(df['timestamp'] >= test_start_naive)
-                     & (df['timestamp'] <= test_end_naive)]
-
-        # Limit test_df to max_test_ticks if specified
-        if max_test_ticks and len(test_df) > max_test_ticks:
-            vLog.info(
-                f"⚠️  Limiting test data: {len(test_df):,} → {max_test_ticks:,} ticks")
-            test_df = test_df.iloc[:max_test_ticks]
-
-        vLog.info(
-            f"📦 Split: {len(warmup_df):,} warmup ticks, {len(test_df):,} test ticks"
-        )
-
-        # Validate we got test data
-        if test_df.empty:
-            raise ValueError(
-                f"No test data found between {test_start} and {test_end}"
+        # === DISPATCH TO MODE-SPECIFIC VALIDATION ===
+        if max_test_ticks:
+            # Modus A: Tick-limited mode
+            test_iterator = self._validate_and_prepare_tick_mode(
+                df=df,
+                symbol=symbol,
+                test_start=test_start_naive,
+                max_test_ticks=max_test_ticks,
+                scenario_name=scenario_name
             )
-
-        # Convert to TickData objects
-        test_iterator = self._df_to_tick_iterator(test_df, symbol)
+        else:
+            # Modus B: Timespan mode
+            test_iterator = self._validate_and_prepare_timespan_mode(
+                df=df,
+                symbol=symbol,
+                test_start=test_start_naive,
+                test_end=test_end_naive,
+                warmup_bar_requirements=warmup_bar_requirements,
+                scenario_name=scenario_name
+            )
 
         return test_iterator
-
-    def _convert_bars_to_minutes(
-        self, bar_requirements: Dict[str, int]
-    ) -> Dict[str, int]:
-        """
-        Convert bar requirements to minute requirements per timeframe.
-
-        Args:
-            bar_requirements: Dict[timeframe, bars_needed]
-
-        Returns:
-            Dict[timeframe, minutes_needed]
-
-        Raises:
-            NotImplementedError: If timeframe requires weekend logic
-        """
-        if not bar_requirements:
-            raise ValueError("bar_requirements cannot be empty")
-
-        minute_requirements = {}
-
-        for timeframe, bars_needed in bar_requirements.items():
-            # Validate timeframe doesn't require weekend logic
-            MarketCalendar.validate_timeframe_for_weekends(timeframe)
-
-            # Convert bars to minutes
-            minutes_per_bar = TimeframeConfig.get_minutes(timeframe)
-            minutes_needed = bars_needed * minutes_per_bar
-
-            minute_requirements[timeframe] = minutes_needed
-
-            vLog.debug(
-                f"Timeframe {timeframe}: {bars_needed} bars × {minutes_per_bar} min/bar "
-                f"= {minutes_needed} minutes"
-            )
-
-        return minute_requirements
-
-    def _check_weekend_overlap(
-        self,
-        warmup_start: datetime,
-        test_start: datetime,
-        bar_requirements: Dict[str, int]
-    ) -> None:
-        """
-        Check if warmup period spans weekend and log info.
-
-        For intraday timeframes, weekend overlap is OK - we'll use Friday's data.
-        For daily+ timeframes, this is blocked in validate_timeframe_for_weekends.
-
-        Args:
-            warmup_start: When warmup begins
-            test_start: When test begins
-            bar_requirements: Original bar requirements
-        """
-        spans_weekend, weekend_days = MarketCalendar.spans_weekend(
-            warmup_start, test_start
-        )
-
-        if spans_weekend:
-            vLog.info(
-                f"ℹ️  Warmup period spans {weekend_days} weekend day(s)"
-            )
-            vLog.info(
-                f"   → Will use available data from previous trading days (standard practice)"
-            )
-
-    def _df_to_ticks(self, df: pd.DataFrame, symbol) -> List[TickData]:
-        """Convert DataFrame to list of TickData objects"""
-        ticks = []
-
-        for _, row in df.iterrows():
-            tick = TickData(
-                timestamp=(
-                    row["timestamp"].isoformat()
-                    if hasattr(row["timestamp"], "isoformat")
-                    else str(row["timestamp"])
-                ),
-                symbol=symbol,
-                bid=float(row["bid"]),
-                ask=float(row["ask"]),
-                volume=float(row.get("volume", 0)),
-            )
-            ticks.append(tick)
-
-        return ticks
 
     def _df_to_tick_iterator(self, df: pd.DataFrame, symbol) -> Iterator[TickData]:
         """Convert DataFrame to tick iterator (memory efficient)"""
@@ -297,3 +184,136 @@ class TickDataPreparator:
                 ask=float(row["ask"]),
                 volume=float(row.get("volume", 0)),
             )
+
+    def _validate_and_prepare_tick_mode(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        test_start: datetime,
+        max_test_ticks: int,
+        scenario_name: str
+    ) -> Iterator[TickData]:
+        """
+        Modus A: Tick-limited mode validation and preparation.
+
+        Takes first N ticks from test_start, validates count availability.
+
+        Args:
+            df: Full DataFrame (timezone-naive)
+            symbol: Trading symbol
+            test_start: Test start timestamp (timezone-naive)
+            max_test_ticks: Required tick count
+            scenario_name: Scenario name for error messages
+
+        Returns:
+            Tick iterator with exactly max_test_ticks (or less if insufficient)
+
+        Raises:
+            ValueError: If insufficient ticks available
+        """
+        # Get all ticks from test_start onwards
+        test_df = df[df['timestamp'] >= test_start]
+
+        # Take first N ticks
+        test_df = test_df.iloc[:max_test_ticks]
+
+        # Validate we got enough ticks
+        if len(test_df) < max_test_ticks:
+            raise InsufficientTickDataError(
+                scenario_name=scenario_name,
+                required_ticks=max_test_ticks,
+                available_ticks=len(test_df),
+                start_date=test_start,
+                symbol=symbol
+            )
+
+        vLog.info(f"✅ Tick-limited mode: {len(test_df):,} ticks ready")
+
+        # Convert to iterator
+        return self._df_to_tick_iterator(test_df, symbol)
+
+    def _validate_and_prepare_timespan_mode(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        test_start: datetime,
+        test_end: datetime,
+        warmup_bar_requirements: Dict[str, int],
+        scenario_name: str
+    ) -> Iterator[TickData]:
+        """
+        Modus B: Timespan mode validation and preparation.
+
+        Validates tick availability in timespan and checks for critical gaps.
+
+        Args:
+            df: Full DataFrame (timezone-naive)
+            symbol: Trading symbol
+            test_start: Test start timestamp (timezone-naive)
+            test_end: Test end timestamp (timezone-naive)
+            warmup_bar_requirements: Warmup requirements (for gap threshold)
+            scenario_name: Scenario name for error messages
+
+        Returns:
+            Tick iterator with all ticks in timespan
+
+        Raises:
+            ValueError: If no ticks in timespan or critical gaps detected
+        """
+        # Filter to test timespan
+        test_df = df[(df['timestamp'] >= test_start)
+                     & (df['timestamp'] <= test_end)]
+
+        # Validate we have ticks
+        if test_df.empty:
+            raise NoTicksInTimespanError(
+                scenario_name=scenario_name,
+                symbol=symbol,
+                test_start=test_start,
+                test_end=test_end
+            )
+
+        # === GAP VALIDATION ===
+        # Get smallest timeframe requirement (defines gap tolerance)
+        smallest_tf = min(
+            warmup_bar_requirements.keys(),
+            key=lambda tf: TimeframeConfig.get_minutes(tf)
+        )
+        min_bar_seconds = TimeframeConfig.get_minutes(smallest_tf) * 60
+
+        # Get coverage report for gap analysis
+        coverage = self.data_worker.index_manager.get_coverage_report(symbol)
+
+        # Filter critical gaps in test period
+        critical_gaps = [
+            gap for gap in coverage.gaps
+            if gap.gap_seconds > min_bar_seconds  # Größer als kleinster Bar
+            and gap.gap_seconds > 60  # Ignore gaps < 1 minute
+            # Im Test-Zeitraum
+            and gap.file1.end_time.replace(tzinfo=None) >= test_start
+            and gap.file2.start_time.replace(tzinfo=None) <= test_end
+        ]
+
+        if critical_gaps:
+            # Build error message
+            gap_details = "\n".join([
+                f"   • {gap.duration_human} gap: "
+                f"{gap.file1.end_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{gap.file2.start_time.strftime('%H:%M')}"
+                for gap in critical_gaps[:5]  # Show first 5
+            ])
+
+            raise CriticalGapError(
+                scenario_name=scenario_name,
+                symbol=symbol,
+                test_start=test_start,
+                test_end=test_end,
+                gaps=critical_gaps,
+                smallest_timeframe=smallest_tf
+            )
+
+        vLog.info(
+            f"✅ Timespan mode: {len(test_df):,} ticks in period, no critical gaps")
+
+        # Convert to iterator
+        return self._df_to_tick_iterator(test_df, symbol)

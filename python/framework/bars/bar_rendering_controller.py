@@ -21,6 +21,7 @@ class BarRenderingController:
         self._workers = []
         self._required_timeframes = set()
         self._warmup_data = {}
+        self._warmup_quality_metrics = {}  # NEW: Store quality metrics
 
     def register_workers(self, workers):
         """Register workers and analyze requirements"""
@@ -43,10 +44,10 @@ class BarRenderingController:
         return self._warmup_data.get(timeframe, [])
 
     def get_bar_history(
-        self, symbol: str, timeframe: str, count: int = 50
+        self, symbol: str, timeframe: str
     ) -> List[Bar]:
         """Get bar history (completed bars)"""
-        return self.bar_renderer.get_bar_history(symbol, timeframe, count)
+        return self.bar_renderer.get_bar_history(symbol, timeframe)
 
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar"""
@@ -124,3 +125,32 @@ class BarRenderingController:
             }
         """
         return self._warmup_quality_metrics
+
+    def get_all_bar_history(self, symbol: str) -> Dict[str, List[Bar]]:
+        """
+        Get all loaded warmup bars per timeframe.
+
+        This returns exactly the bars that were loaded during warmup,
+        avoiding hardcoded limits like "last 100 bars".
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Dict[timeframe, List[Bar]] - All warmup bars per timeframe
+
+        Example:
+            {
+                'M5': [Bar(...), Bar(...), ...],   # 14 bars
+                'M30': [Bar(...), Bar(...), ...]   # 20 bars
+            }
+        """
+        result = {}
+
+        for timeframe in self._warmup_data.keys():
+            # Get exactly the number of bars we loaded for warmup
+            result[timeframe] = self.bar_renderer.get_bar_history(
+                symbol, timeframe
+            )
+
+        return result

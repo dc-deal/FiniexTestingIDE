@@ -9,6 +9,7 @@ from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
+from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
 
@@ -111,7 +112,7 @@ class ScenarioConfigLoader:
             # ============================================
             # NEU: DATE VALIDATION & MODE DETECTION
             # ============================================
-            self._validate_and_fix_scenario_dates(scenario_data)
+            self._validate_scenario_dates(scenario_data)
 
             scenario = TestScenario(
                 name=scenario_data['name'],
@@ -187,25 +188,27 @@ class ScenarioConfigLoader:
 
         return merged
 
-    def _validate_and_fix_scenario_dates(
+    def _validate_scenario_dates(
         self,
         scenario_data: Dict[str, Any]
     ) -> None:
         """
-        Validate scenario date range and execution mode.
+            Validate scenario date range and log execution mode.
 
-        Handles 4 cases:
-        A) max_ticks set + valid dates → INFO (tick-limited mode)
-        B) max_ticks null + valid dates → INFO (timespan mode)
-        C) max_ticks null + invalid dates → ERROR (critical config error)
-        D) max_ticks set + invalid dates → WARNING + Auto-Fix
+            NO AUTO-FIX! Just validation and mode logging.
 
-        Args:
-            scenario_data: Scenario dict (will be modified in-place for Case D)
+            Cases:
+            A) max_ticks set + valid dates → INFO (tick-limited mode)
+            B) max_ticks null + valid dates → INFO (timespan mode)
+            C) max_ticks null + invalid dates → ERROR (critical config error)
+            D) max_ticks set + invalid dates → ERROR (invalid config)
 
-        Raises:
-            ValueError: If dates invalid in timespan mode (Case C)
-        """
+            Args:
+                scenario_data: Scenario dict (read-only)
+
+            Raises:
+                ValueError: If dates are invalid
+            """
         start_date_str = scenario_data['start_date']
         end_date_str = scenario_data['end_date']
         max_ticks = scenario_data.get('max_ticks')
@@ -217,23 +220,12 @@ class ScenarioConfigLoader:
 
         # Check date validity
         if end_dt < start_dt:
-            if max_ticks:
-                # Case D: max_ticks set + invalid timespan → WARNING + Auto-Fix
-                vLog.warning(
-                    f"⚠️  Scenario '{name}': end_date < start_date "
-                    f"({end_date_str} < {start_date_str})"
-                )
-                vLog.warning(
-                    f"   → Auto-correcting: end_date = start_date (tick-limited mode)"
-                )
-                scenario_data['end_date'] = scenario_data['start_date']
-            else:
-                # Case C: Timespan mode + invalid dates → ERROR
-                raise ValueError(
-                    f"❌ Scenario '{name}': Invalid date range!\n"
-                    f"   end_date ({end_date_str}) is BEFORE start_date ({start_date_str})\n"
-                    f"   This is only valid when max_ticks is set."
-                )
+            raise InvalidDateRangeError(
+                scenario_name=name,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                max_ticks=max_ticks
+            )
         else:
             # Valid dates - log execution mode
             if max_ticks:
