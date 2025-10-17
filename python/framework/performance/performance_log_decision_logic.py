@@ -5,7 +5,7 @@ Tracks performance metrics for decision logic
 
 from typing import Dict, Any
 
-from python.framework.types import Decision
+from python.framework.types.global_types import Decision
 
 
 class PerformanceLogDecisionLogic:

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from python.framework.types import Bar, TickData, TimeframeConfig
+from python.framework.types.global_types import Bar, TickData, TimeframeConfig
 
 vLog = setup_logging(name="StrategyRunner")
 

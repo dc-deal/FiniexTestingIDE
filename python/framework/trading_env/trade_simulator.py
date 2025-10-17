@@ -22,7 +22,7 @@ TradeSimulator = OrderExecutionEngine + PortfolioManager + BrokerConfig
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
-from python.framework.types import TickData
+from python.framework.types.global_types import TickData
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position, AccountInfo
 from .order_execution_engine import OrderExecutionEngine

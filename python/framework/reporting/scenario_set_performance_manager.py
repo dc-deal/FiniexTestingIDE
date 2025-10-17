@@ -70,6 +70,15 @@ class ScenarioPerformanceStats:
     execution_stats: Dict[str, Any] = field(default_factory=dict)
     cost_breakdown: Dict[str, Any] = field(default_factory=dict)
 
+    # NEW: Profiling data from tick loop
+    # Structure:
+    # {
+    #     'profile_times': {'trade_simulator': 123.45, 'bar_rendering': 67.89, ...},
+    #     'profile_counts': {'trade_simulator': 100, 'bar_rendering': 100, ...},
+    #     'total_per_tick': 456.78
+    # }
+    profiling_data: Dict[str, Any] = field(default_factory=dict)
+
 
 class ScenarioSetPerformanceManager:
     """

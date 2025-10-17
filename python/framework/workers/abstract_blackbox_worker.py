@@ -6,8 +6,8 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from python.framework.types import (Bar, TickData,
-                                    WorkerResult, WorkerState, WorkerType)
+from python.framework.types.global_types import (Bar, TickData,
+                                                 WorkerResult, WorkerState, WorkerType)
 
 
 class AbstractBlackboxWorker(ABC):

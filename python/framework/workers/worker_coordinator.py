@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types import Bar, Decision, TickData, WorkerState
+from python.framework.types.global_types import Bar, Decision, TickData, WorkerState
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 from python.framework.performance.performance_log_coordinator import \

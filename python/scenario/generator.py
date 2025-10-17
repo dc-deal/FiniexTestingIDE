@@ -9,7 +9,7 @@ from datetime import timedelta
 import pandas as pd
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
-from python.framework.types import TestScenario
+from python.framework.types.global_types import TestScenario
 from python.data_worker.data_loader.core import TickDataLoader
 
 vLog = setup_logging(name="ScenarioGenerator")

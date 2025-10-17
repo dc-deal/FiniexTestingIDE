@@ -115,7 +115,7 @@ Here's the minimal structure for a custom worker:
 ```python
 # python/workers/user/my_indicator.py
 from python.framework.workers.abstract_blackbox_worker import AbstractBlackboxWorker
-from python.framework.types import WorkerContract, WorkerType
+from python.framework.types.global_types import WorkerContract, WorkerType
 
 class MyIndicatorWorker(AbstractBlackboxWorker):
     

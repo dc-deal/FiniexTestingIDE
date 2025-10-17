@@ -2,9 +2,9 @@
 FiniexTestingIDE - Batch Summary
 Main orchestrator for all batch execution summaries
 
-REFACTORED (C#003):
-- Uses ScenarioSetPerformanceManager for all stats (including portfolio)
-- No longer requires TradeSimulator reference
+UPDATED:
+- Added ProfilingSummary for performance profiling
+- Extended render_all() to include profiling section
 
 Architecture:
 - BatchSummary orchestrates all sub-summaries
@@ -14,6 +14,8 @@ Architecture:
 
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
+from python.framework.reporting.profiling_summary import ProfilingSummary
+from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
@@ -25,9 +27,8 @@ class BatchSummary:
     """
     Main summary orchestrator for batch execution results.
 
-    REFACTORED (C#003):
-    - Receives ScenarioSetPerformanceManager + TradeSimulator
-    - No longer uses batch_results dict
+    UPDATED:
+    - Added ProfilingSummary for tick loop profiling
     """
 
     def __init__(
@@ -45,9 +46,12 @@ class BatchSummary:
         self.performance_log = performance_log
         self.app_config = app_config
 
-        # Initialize sub-summaries (portfolio_summary now uses performance_log)
+        # Initialize sub-summaries
         self.portfolio_summary = PortfolioSummary(performance_log)
         self.performance_summary = PerformanceSummary(performance_log)
+        self.profiling_summary = ProfilingSummary(performance_log)  # NEW
+        self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
+            performance_log)  # NEW
 
         # Renderer for unified console output
         self.renderer = ConsoleRenderer()
@@ -62,6 +66,8 @@ class BatchSummary:
         3. Portfolio summaries (per scenario + aggregated)
         4. Performance details (per scenario + aggregated)
         5. Bottleneck analysis
+        6. Profiling analysis (NEW)
+        7. Worker decision breakdown (NEW)
         """
         # Header
         self.renderer.section_header("🎉 EXECUTION RESULTS")
@@ -87,6 +93,22 @@ class BatchSummary:
         self.performance_summary.render_per_scenario(self.renderer)
         self.performance_summary.render_aggregated(self.renderer)
         self.performance_summary.render_bottleneck_analysis(self.renderer)
+
+        # === NEW: Profiling Analysis ===
+        self.renderer.section_separator()
+        self.renderer.print_bold("⚡ PROFILING ANALYSIS")
+        self.renderer.section_separator()
+        self.profiling_summary.render_per_scenario(self.renderer)
+        self.profiling_summary.render_aggregated(self.renderer)
+        self.profiling_summary.render_bottleneck_analysis(self.renderer)
+
+        # === NEW: Worker Decision Breakdown ===
+        self.renderer.section_separator()
+        self.renderer.print_bold("🔍 WORKER DECISION BREAKDOWN")
+        self.renderer.section_separator()
+        self.worker_decision_breakdown.render_per_scenario(self.renderer)
+        self.worker_decision_breakdown.render_aggregated(self.renderer)
+        self.worker_decision_breakdown.render_overhead_analysis(self.renderer)
 
         # Footer
         self.renderer.print_separator(width=120)
