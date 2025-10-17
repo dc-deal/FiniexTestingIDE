@@ -446,6 +446,7 @@ class BatchOrchestrator:
                 except Exception as e:
                     vLog.error(
                         f"Order execution failed: \n{traceback.format_exc()}")
+                    raise
 
             # ===== LIVE STATS: Periodic update every 100 ticks =====
             if tick_count % 100 == 0:
