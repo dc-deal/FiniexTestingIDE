@@ -2,6 +2,11 @@
 FiniexTestingIDE - Data Preparator
 Prepares tick data for testing with warmup/test split
 Uses timestamp-based loading for precise data requirements
+
+PERFORMANCE OPTIMIZED:
+- Timestamps are parsed ONCE during iterator creation
+- TickData objects get datetime instead of string
+- Eliminates 20,000+ pd.to_datetime() calls in bar rendering
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
@@ -107,7 +112,7 @@ class TickDataPreparator:
         # === LOAD DATA ===
         df = self.data_worker.load_symbol_data(
             symbol=symbol,
-            start_date=test_start.isoformat(),  # ← CHANGED: Start from test_start!
+            start_date=test_start.isoformat(),
             end_date=load_end.isoformat(),
             use_cache=True,
             data_mode=data_mode
@@ -171,14 +176,21 @@ class TickDataPreparator:
         return test_iterator, total_test_ticks
 
     def _df_to_tick_iterator(self, df: pd.DataFrame, symbol) -> Iterator[TickData]:
-        """Convert DataFrame to tick iterator (memory efficient)"""
+        """
+        Convert DataFrame to tick iterator (memory efficient)
+
+        PERFORMANCE OPTIMIZED:
+        - Timestamp is already datetime from pandas
+        - No string conversion needed
+        - TickData gets native datetime object
+        """
         for _, row in df.iterrows():
+            # row["timestamp"] is already pd.Timestamp (datetime-like)
+            # Convert to native Python datetime for consistency
+            timestamp_dt = row["timestamp"].to_pydatetime()
+
             yield TickData(
-                timestamp=(
-                    row["timestamp"].isoformat()
-                    if hasattr(row["timestamp"], "isoformat")
-                    else str(row["timestamp"])
-                ),
+                timestamp=timestamp_dt,  # datetime object, not string!
                 symbol=symbol,
                 bid=float(row["bid"]),
                 ask=float(row["ask"]),
@@ -299,7 +311,6 @@ class TickDataPreparator:
         ]
 
         if critical_gaps:
-            # Build error message
             raise CriticalGapError(
                 scenario_name=scenario_name,
                 symbol=symbol,

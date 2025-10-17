@@ -330,7 +330,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 confidence=0.0,
                 reason="Missing worker results",
                 price=tick.mid,
-                timestamp=tick.timestamp,
+                timestamp=tick.timestamp.isoformat(),
             )
 
         # Extract indicator values
@@ -357,7 +357,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                     confidence=confidence,
                     reason=reason,
                     price=tick.mid,
-                    timestamp=tick.timestamp,
+                    timestamp=tick.timestamp.isoformat(),
                 )
 
         # Check for SELL signal (OR logic - either indicator is enough)
@@ -380,7 +380,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                     confidence=confidence,
                     reason=reason,
                     price=tick.mid,
-                    timestamp=tick.timestamp,
+                    timestamp=tick.timestamp.isoformat(),
                 )
 
         # No signal
@@ -389,7 +389,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             confidence=0.5,
             reason="No extreme indicator values",
             price=tick.mid,
-            timestamp=tick.timestamp,
+            timestamp=tick.timestamp.isoformat(),
         )
 
     def _calculate_buy_confidence(
