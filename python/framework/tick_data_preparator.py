@@ -150,7 +150,7 @@ class TickDataPreparator:
         # === DISPATCH TO MODE-SPECIFIC VALIDATION ===
         if max_test_ticks:
             # Modus A: Tick-limited mode
-            test_iterator = self._validate_and_prepare_tick_mode(
+            test_iterator, total_test_ticks = self._validate_and_prepare_tick_mode(
                 df=df,
                 symbol=symbol,
                 test_start=test_start_naive,
@@ -159,7 +159,7 @@ class TickDataPreparator:
             )
         else:
             # Modus B: Timespan mode
-            test_iterator = self._validate_and_prepare_timespan_mode(
+            test_iterator, total_test_ticks = self._validate_and_prepare_timespan_mode(
                 df=df,
                 symbol=symbol,
                 test_start=test_start_naive,
@@ -168,7 +168,7 @@ class TickDataPreparator:
                 scenario_name=scenario_name
             )
 
-        return test_iterator
+        return test_iterator, total_test_ticks
 
     def _df_to_tick_iterator(self, df: pd.DataFrame, symbol) -> Iterator[TickData]:
         """Convert DataFrame to tick iterator (memory efficient)"""
@@ -227,10 +227,14 @@ class TickDataPreparator:
                 symbol=symbol
             )
 
-        vLog.info(f"✅ Tick-limited mode: {len(test_df):,} ticks ready")
+        total_test_ticks = len(test_df)
+
+        vLog.info(f"✅ Tick-limited mode: {total_test_ticks:,} ticks ready")
+
+        tick_iterator = self._df_to_tick_iterator(test_df, symbol)
 
         # Convert to iterator
-        return self._df_to_tick_iterator(test_df, symbol)
+        return tick_iterator, total_test_ticks
 
     def _validate_and_prepare_timespan_mode(
         self,
@@ -296,13 +300,6 @@ class TickDataPreparator:
 
         if critical_gaps:
             # Build error message
-            gap_details = "\n".join([
-                f"   • {gap.duration_human} gap: "
-                f"{gap.file1.end_time.strftime('%Y-%m-%d %H:%M')} → "
-                f"{gap.file2.start_time.strftime('%H:%M')}"
-                for gap in critical_gaps[:5]  # Show first 5
-            ])
-
             raise CriticalGapError(
                 scenario_name=scenario_name,
                 symbol=symbol,
@@ -312,8 +309,12 @@ class TickDataPreparator:
                 smallest_timeframe=smallest_tf
             )
 
+        total_test_ticks = len(test_df)
+
         vLog.info(
-            f"✅ Timespan mode: {len(test_df):,} ticks in period, no critical gaps")
+            f"✅ Timespan mode: {total_test_ticks:,} ticks in period, no critical gaps")
+
+        tick_iterator = self._df_to_tick_iterator(test_df, symbol)
 
         # Convert to iterator
-        return self._df_to_tick_iterator(test_df, symbol)
+        return tick_iterator, total_test_ticks
