@@ -13,7 +13,7 @@ from python.framework.exceptions.data_validation_errors import InvalidDateRangeE
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
 
-from python.framework.types import TestScenario
+from python.framework.types.global_types import TestScenario
 
 vLog = setup_logging(name="StrategyRunner")
 

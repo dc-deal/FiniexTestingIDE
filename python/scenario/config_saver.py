@@ -19,7 +19,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 import json
 
-from python.framework.types import TestScenario
+from python.framework.types.global_types import TestScenario
 
 vLog = setup_logging(name="ScenarioConfigSaver")
 

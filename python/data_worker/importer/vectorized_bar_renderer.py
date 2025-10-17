@@ -20,7 +20,7 @@ import pandas as pd
 import numpy as np
 
 from python.components.logger.bootstrap_logger import setup_logging
-from python.framework.types import TimeframeConfig
+from python.framework.types.global_types import TimeframeConfig
 
 vLog = setup_logging(name="BarRenderer")
 

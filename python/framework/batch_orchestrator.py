@@ -22,7 +22,7 @@ from python.components.logger.bootstrap_logger import get_logger
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
-from python.framework.types import TestScenario, TickData, TimeframeConfig
+from python.framework.types.global_types import TestScenario, TickData, TimeframeConfig
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
 from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
@@ -495,33 +495,11 @@ class BatchOrchestrator:
             ticks_processed += 1
             tick_count += 1
 
-        # === PROFILING REPORT ===
-        vLog.info("\n" + "=" * 80)
-        vLog.info("🔬 PROFILING REPORT (100 TICKS)")
-        vLog.info("=" * 80)
-
-        total_time = profile_times['total_per_tick']
-
-        for operation in ['trade_simulator', 'bar_rendering', 'bar_history',
-                          'worker_decision', 'order_execution', 'stats_update']:
-            if operation in profile_times and profile_times[operation] > 0:
-                op_time = profile_times[operation]
-                op_count = profile_counts[operation]
-                avg_time = op_time / op_count if op_count > 0 else 0
-                percentage = (op_time / total_time *
-                              100) if total_time > 0 else 0
-
-                vLog.info(
-                    f"{operation:20s}: {op_time:8.2f}ms total  |  "
-                    f"{avg_time:6.3f}ms avg  |  "
-                    f"{op_count:4d} calls  |  "
-                    f"{percentage:5.1f}%"
-                )
-
-        vLog.info("-" * 80)
-        vLog.info(
-            f"{'TOTAL':20s}: {total_time:8.2f}ms  |  {total_time/100:6.3f}ms per tick")
-        vLog.info("=" * 80 + "\n")
+        profiling_data = {
+            'profile_times': dict(profile_times),
+            'profile_counts': dict(profile_counts),
+            'total_per_tick': profile_times.get('total_per_tick', 0.0)
+        }
 
         # BEFORE collecting statistics - cleanup pending orders
         open_positions = scenario_trade_simulator.get_open_positions()
@@ -570,7 +548,8 @@ class BatchOrchestrator:
             sample_signals=signals[:10],
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,
-            cost_breakdown=cost_breakdown
+            cost_breakdown=cost_breakdown,
+            profiling_data=profiling_data
         )
 
         # Write to ScenarioSetPerformanceManager (thread-safe)

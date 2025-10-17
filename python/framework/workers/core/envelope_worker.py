@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types import Bar, TickData, WorkerResult, WorkerType
+from python.framework.types.global_types import Bar, TickData, WorkerResult, WorkerType
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 

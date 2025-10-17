@@ -33,7 +33,7 @@ from rich.layout import Layout
 from rich import box
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.framework.types import TestScenario
+from python.framework.types.global_types import TestScenario
 
 
 class LiveProgressDisplay:

@@ -7,7 +7,7 @@ import pandas as pd
 
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.bars.bar_warmup_manager import BarWarmupManager
-from python.framework.types import Bar, TickData, TimeframeConfig
+from python.framework.types.global_types import Bar, TickData, TimeframeConfig
 
 vLog = get_logger()
 
