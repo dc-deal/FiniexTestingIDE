@@ -105,11 +105,11 @@ class BarRenderer:
             history.popleft()
 
     def get_bar_history(
-        self, symbol: str, timeframe: str, count: int = 50
+        self, symbol: str, timeframe: str
     ) -> List[Bar]:
         """Get historical bars"""
         history = self.completed_bars[timeframe][symbol]
-        return list(history)[-count:] if len(history) >= count else list(history)
+        return list(history)
 
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
         """Get current bar for symbol/timeframe"""

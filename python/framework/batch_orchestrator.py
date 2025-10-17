@@ -388,10 +388,7 @@ class BatchOrchestrator:
 
             # Bar rendering
             current_bars = bar_orchestrator.process_tick(tick)
-            bar_history = {
-                tf: bar_orchestrator.get_bar_history(scenario.symbol, tf, 100)
-                for tf in scenario_requirement["all_timeframes"]
-            }
+            bar_history = bar_orchestrator.get_all_bar_history(scenario.symbol)
 
             # Process decision through orchestrator
             decision = orchestrator.process_tick(

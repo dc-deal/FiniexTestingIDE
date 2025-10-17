@@ -14,8 +14,6 @@ from python.framework.batch_orchestrator import BatchOrchestrator
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.configuration import AppConfigLoader
 
