@@ -8,6 +8,7 @@ EXTENDED (Phase 1a):
 - Live scenario tracking with real-time updates
 """
 
+from collections import defaultdict
 import re
 import threading
 import pandas as pd
@@ -398,30 +399,55 @@ class BatchOrchestrator:
 
         vLog.info(f"🚀 Starting Tick Loop")
 
+        # Insert BEFORE the tick loop (line ~398):
+
+        # Profiling counters
+        profile_times = defaultdict(float)
+        profile_counts = defaultdict(int)
+        tick_count = 0
+
+        # Replace the existing tick loop with this:
         for tick in test_iterator:
-            # Update scenario-specific TradeSimulator with current tick prices
+            tick_start = time.perf_counter()
+
+            # === 1. Trade Simulator Update ===
+            t1 = time.perf_counter()
             scenario_trade_simulator.update_prices(tick)
+            t2 = time.perf_counter()
+            profile_times['trade_simulator'] += (t2 - t1) * 1000
+            profile_counts['trade_simulator'] += 1
 
-            # Bar rendering
+            # === 2. Bar Rendering ===
+            t3 = time.perf_counter()
             current_bars = bar_orchestrator.process_tick(tick)
-            bar_history = bar_orchestrator.get_all_bar_history(scenario.symbol)
+            t4 = time.perf_counter()
+            profile_times['bar_rendering'] += (t4 - t3) * 1000
+            profile_counts['bar_rendering'] += 1
 
-            # Process decision through orchestrator
+            # === 3. Bar History Retrieval ===
+            t5 = time.perf_counter()
+            bar_history = bar_orchestrator.get_all_bar_history(scenario.symbol)
+            t6 = time.perf_counter()
+            profile_times['bar_history'] += (t6 - t5) * 1000
+            profile_counts['bar_history'] += 1
+
+            # === 4. Worker Processing + Decision ===
+            t7 = time.perf_counter()
             decision = orchestrator.process_tick(
                 tick=tick, current_bars=current_bars, bar_history=bar_history
             )
+            t8 = time.perf_counter()
+            profile_times['worker_decision'] += (t8 - t7) * 1000
+            profile_counts['worker_decision'] += 1
 
-            ticks_processed += 1
-            tick_count += 1
-
-            # REFACTORED: Decision Logic executes orders via DecisionTradingAPI
+            # === 5. Order Execution (if any) ===
             order_result = None
             if decision and decision.action != "FLAT":
+                t9 = time.perf_counter()
                 try:
                     order_result = decision_logic.execute_decision(
                         decision, tick)
 
-                    # Track successful orders as signals
                     if order_result and order_result.status == OrderStatus.PENDING:
                         signals.append({
                             **decision.to_dict(),
@@ -435,26 +461,67 @@ class BatchOrchestrator:
                         if decision.action == "SELL":
                             signals_gen_sell += 1
 
-                        # ===== LIVE STATS: Update after trade execution =====
                         self.performance_log.update_live_stats(
                             scenario_index=scenario_index,
                             ticks_processed=tick_count,
                             portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
                             account_info=scenario_trade_simulator.get_account_info()
                         )
-
                 except Exception as e:
                     vLog.error(
                         f"Order execution failed: \n{traceback.format_exc()}")
 
-            # ===== LIVE STATS: Periodic update every 100 ticks =====
+                t10 = time.perf_counter()
+                profile_times['order_execution'] += (t10 - t9) * 1000
+                profile_counts['order_execution'] += 1
+
+            # === 6. Periodic Stats Update ===
             if tick_count % 100 == 0:
+                t11 = time.perf_counter()
                 self.performance_log.update_live_stats(
                     scenario_index=scenario_index,
                     ticks_processed=tick_count,
                     portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
                     account_info=scenario_trade_simulator.get_account_info()
                 )
+                t12 = time.perf_counter()
+                profile_times['stats_update'] += (t12 - t11) * 1000
+                profile_counts['stats_update'] += 1
+
+            # Total tick time
+            tick_end = time.perf_counter()
+            profile_times['total_per_tick'] += (tick_end - tick_start) * 1000
+
+            ticks_processed += 1
+            tick_count += 1
+
+        # === PROFILING REPORT ===
+        vLog.info("\n" + "=" * 80)
+        vLog.info("🔬 PROFILING REPORT (100 TICKS)")
+        vLog.info("=" * 80)
+
+        total_time = profile_times['total_per_tick']
+
+        for operation in ['trade_simulator', 'bar_rendering', 'bar_history',
+                          'worker_decision', 'order_execution', 'stats_update']:
+            if operation in profile_times and profile_times[operation] > 0:
+                op_time = profile_times[operation]
+                op_count = profile_counts[operation]
+                avg_time = op_time / op_count if op_count > 0 else 0
+                percentage = (op_time / total_time *
+                              100) if total_time > 0 else 0
+
+                vLog.info(
+                    f"{operation:20s}: {op_time:8.2f}ms total  |  "
+                    f"{avg_time:6.3f}ms avg  |  "
+                    f"{op_count:4d} calls  |  "
+                    f"{percentage:5.1f}%"
+                )
+
+        vLog.info("-" * 80)
+        vLog.info(
+            f"{'TOTAL':20s}: {total_time:8.2f}ms  |  {total_time/100:6.3f}ms per tick")
+        vLog.info("=" * 80 + "\n")
 
         # BEFORE collecting statistics - cleanup pending orders
         open_positions = scenario_trade_simulator.get_open_positions()

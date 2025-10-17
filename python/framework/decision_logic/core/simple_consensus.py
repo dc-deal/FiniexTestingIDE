@@ -326,7 +326,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 confidence=0.0,
                 reason="Missing worker results",
                 price=tick.mid,
-                timestamp=tick.timestamp,
+                timestamp=tick.timestamp.isoformat(),
             )
 
         # Extract indicator values
@@ -350,7 +350,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     confidence=confidence,
                     reason=f"RSI={rsi_value:.1f} (oversold) + Envelope={envelope_position:.2f} (lower)",
                     price=tick.mid,
-                    timestamp=tick.timestamp,
+                    timestamp=tick.timestamp.isoformat(),
                 )
 
         # Check for SELL signal (consensus required)
@@ -367,7 +367,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     confidence=confidence,
                     reason=f"RSI={rsi_value:.1f} (overbought) + Envelope={envelope_position:.2f} (upper)",
                     price=tick.mid,
-                    timestamp=tick.timestamp,
+                    timestamp=tick.timestamp.isoformat(),
                 )
 
         # No clear signal - stay flat
@@ -376,7 +376,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             confidence=0.5,
             reason="No consensus signal",
             price=tick.mid,
-            timestamp=tick.timestamp,
+            timestamp=tick.timestamp.isoformat(),
         )
 
     def _calculate_buy_confidence(

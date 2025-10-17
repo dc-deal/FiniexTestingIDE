@@ -39,48 +39,6 @@ class BarWarmupManager:
 
         return dict(warmup_requirements)
 
-    def _render_historical_bars(
-        self, tick_data: pd.DataFrame, timeframe: str, symbol: str
-    ) -> List[Bar]:
-        """Render historical bars from tick data"""
-        bars = []
-        current_bar = None
-
-        for _, tick in tick_data.iterrows():
-            timestamp = pd.to_datetime(tick["timestamp"])
-            mid_price = (tick["bid"] + tick["ask"]) / 2.0
-            volume = tick.get("volume", 0)
-
-            bar_start_time = TimeframeConfig.get_bar_start_time(
-                timestamp, timeframe)
-
-            if (
-                current_bar is None
-                or pd.to_datetime(current_bar.timestamp) != bar_start_time
-            ):
-                if current_bar is not None:
-                    current_bar.is_complete = True
-                    bars.append(current_bar)
-
-                current_bar = Bar(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    timestamp=bar_start_time.isoformat(),
-                    open=0,
-                    high=0,
-                    low=0,
-                    close=0,
-                    volume=0,
-                )
-
-            current_bar.update_with_tick(mid_price, volume)
-
-        if current_bar is not None:
-            current_bar.is_complete = True
-            bars.append(current_bar)
-
-        return bars
-
     def load_bars_from_parquet(
         self,
         symbol: str,

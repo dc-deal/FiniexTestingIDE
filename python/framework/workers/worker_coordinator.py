@@ -373,6 +373,7 @@ class WorkerCoordinator:
                 except Exception as e:
                     vLog.error(f"❌ Worker '{name}' failed: {e}")
                     worker.set_state(WorkerState.ERROR)
+                    raise
 
     def _process_workers_parallel(
         self,
@@ -432,6 +433,7 @@ class WorkerCoordinator:
                 vLog.error(
                     f"❌ Worker '{name}' failed: \n{traceback.format_exc()}")
                 worker.set_state(WorkerState.ERROR)
+                raise
 
         # Calculate time saved by parallelization
         parallel_time_ms = (time.perf_counter() - overall_start) * 1000
