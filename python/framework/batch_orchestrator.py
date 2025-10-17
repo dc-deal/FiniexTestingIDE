@@ -12,8 +12,8 @@ import re
 import threading
 import pandas as pd
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 import traceback
 from typing import Any, Dict, List
 
@@ -37,6 +37,14 @@ from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.reporting.scenario_set_performance_manager import (
     ScenarioSetPerformanceManager,
     ScenarioPerformanceStats
+)
+
+from python.framework.exceptions.data_validation_errors import (
+    DataValidationError,
+    InsufficientTickDataError,
+    CriticalGapError,
+    NoDataAvailableError,
+    InvalidDateRangeError
 )
 
 # NEW (Phase 1a): Live Progress Display
@@ -347,15 +355,22 @@ class BatchOrchestrator:
         )
 
         # Preparator converts bars to minutes internally
-        test_iterator = preparator.prepare_test_and_warmup_split(
-            symbol=scenario.symbol,
-            warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
-            test_start=test_start,
-            test_end=test_end,
-            max_test_ticks=scenario.max_ticks,
-            data_mode=scenario.data_mode,
-            scenario_name=scenario.name
-        )
+        try:
+            test_iterator = preparator.prepare_test_and_warmup_split(
+                symbol=scenario.symbol,
+                warmup_bar_requirements=scenario_requirement["warmup_by_timeframe"],
+                test_start=test_start,
+                test_end=test_end,
+                max_test_ticks=scenario.max_ticks,
+                data_mode=scenario.data_mode,
+                scenario_name=scenario.name
+            )
+        except DataValidationError as e:
+            # Catch all data validation errors and format nicely
+            vLog.validation_error(
+                message=str(e),
+                context=e.get_context()
+            )
 
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)

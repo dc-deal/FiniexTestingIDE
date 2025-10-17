@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
-from python.framework.exceptions import InsufficientWarmupDataError
+from python.framework.exceptions.warmup_errors import InsufficientWarmupDataError
 from python.framework.types import Bar, TickData, TimeframeConfig
 from pathlib import Path
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager

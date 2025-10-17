@@ -5,16 +5,20 @@ Uses timestamp-based loading for precise data requirements
 """
 
 from python.components.logger.bootstrap_logger import setup_logging
-from python.framework.utils.market_calendar import MarketCalendar
-from python.framework.exceptions import InsufficientHistoricalDataError
-from typing import Iterator, List, Tuple, Dict
+from typing import Iterator, Dict
 from datetime import datetime, timedelta
+from python.framework.exceptions.data_validation_errors import (
+    InsufficientTickDataError,
+    CriticalGapError,
+    NoDataAvailableError,
+    NoTicksInTimespanError
+)
 
 import pandas as pd
 
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.exceptions.warmup_errors import InsufficientHistoricalDataError
 from python.framework.types import TickData, TimeframeConfig
-from python.framework.utils.time_utils import format_duration
 
 vLog = setup_logging(name="StrategyRunner")
 
@@ -110,8 +114,11 @@ class TickDataPreparator:
         )
 
         if df.empty:
-            raise ValueError(
-                f"No data available for {symbol} from {test_start}")
+            raise NoDataAvailableError(
+                symbol=symbol,
+                start_date=test_start,
+                load_end=load_end
+            )
 
         vLog.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
 
@@ -212,11 +219,12 @@ class TickDataPreparator:
 
         # Validate we got enough ticks
         if len(test_df) < max_test_ticks:
-            raise ValueError(
-                f"❌ Scenario '{scenario_name}': Insufficient tick data!\n"
-                f"   Required: {max_test_ticks:,} ticks\n"
-                f"   Available: {len(test_df):,} ticks from {test_start}\n"
-                f"   Symbol: {symbol}"
+            raise InsufficientTickDataError(
+                scenario_name=scenario_name,
+                required_ticks=max_test_ticks,
+                available_ticks=len(test_df),
+                start_date=test_start,
+                symbol=symbol
             )
 
         vLog.info(f"✅ Tick-limited mode: {len(test_df):,} ticks ready")
@@ -258,10 +266,11 @@ class TickDataPreparator:
 
         # Validate we have ticks
         if test_df.empty:
-            raise ValueError(
-                f"❌ Scenario '{scenario_name}': No ticks in test period!\n"
-                f"   Timespan: {test_start} → {test_end}\n"
-                f"   Symbol: {symbol}"
+            raise NoTicksInTimespanError(
+                scenario_name=scenario_name,
+                symbol=symbol,
+                test_start=test_start,
+                test_end=test_end
             )
 
         # === GAP VALIDATION ===
@@ -294,16 +303,13 @@ class TickDataPreparator:
                 for gap in critical_gaps[:5]  # Show first 5
             ])
 
-            raise ValueError(
-                f"❌ Scenario '{scenario_name}': Critical gaps in test period!\n"
-                f"   Symbol: {symbol}\n"
-                f"   Timespan: {test_start} → {test_end}\n"
-                f"   Smallest timeframe: {smallest_tf} ({min_bar_seconds}s bars)\n"
-                f"\n"
-                f"   GAPS > {min_bar_seconds}s found:\n"
-                f"{gap_details}\n"
-                f"\n"
-                f"   → Bar rendering will be corrupted by these gaps!"
+            raise CriticalGapError(
+                scenario_name=scenario_name,
+                symbol=symbol,
+                test_start=test_start,
+                test_end=test_end,
+                gaps=critical_gaps,
+                smallest_timeframe=smallest_tf
             )
 
         vLog.info(

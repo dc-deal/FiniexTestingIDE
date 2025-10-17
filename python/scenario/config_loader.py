@@ -9,6 +9,7 @@ from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
+from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
 
@@ -219,20 +220,12 @@ class ScenarioConfigLoader:
 
         # Check date validity
         if end_dt < start_dt:
-            # BOTH cases are now errors - no auto-fix!
-            if max_ticks:
-                raise ValueError(
-                    f"❌ Scenario '{name}': Invalid date range!\n"
-                    f"   end_date ({end_date_str}) is BEFORE start_date ({start_date_str})\n"
-                    f"   In tick-limited mode, end_date is ignored but must still be >= start_date.\n"
-                    f"   Suggestion: Set end_date = start_date or later."
-                )
-            else:
-                raise ValueError(
-                    f"❌ Scenario '{name}': Invalid date range!\n"
-                    f"   end_date ({end_date_str}) is BEFORE start_date ({start_date_str})\n"
-                    f"   In timespan mode, end_date must be after start_date."
-                )
+            raise InvalidDateRangeError(
+                scenario_name=name,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                max_ticks=max_ticks
+            )
         else:
             # Valid dates - log execution mode
             if max_ticks:

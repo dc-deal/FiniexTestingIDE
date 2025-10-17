@@ -191,10 +191,6 @@ class AggressiveTrend(AbstractDecisionLogic):
         for pending in pending_orders:
             pending_dir = self._normalize_direction(pending["direction"])
             if pending_dir == new_direction_str:
-                vLog.debug(
-                    f"⏳ Already have pending {new_direction_str} order "
-                    f"(ID: {pending['order_id']}, {pending['ticks_remaining']} ticks remaining) - skipping"
-                )
                 return None
 
         # ============================================
