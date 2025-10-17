@@ -1,9 +1,10 @@
 FROM python:3.12-slim
 
-# Git installieren
+# System-Pakete installieren (Git, Build-Tools und htop für Monitoring)
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    htop \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
