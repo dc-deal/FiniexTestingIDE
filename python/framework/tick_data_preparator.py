@@ -159,7 +159,7 @@ class TickDataPreparator:
         first_tick_naive = first_tick.replace(tzinfo=None) if hasattr(
             first_tick, 'tzinfo') and first_tick.tzinfo else first_tick
 
-        if first_tick_naive > warmup_start_naive:
+        if first_tick_naive > test_start_naive:
             raise InsufficientHistoricalDataError(
                 required_start=warmup_start_naive,
                 first_available=first_tick_naive,
