@@ -50,7 +50,7 @@ class LiveProgressDisplay:
     def __init__(self,
                  performance_manager: ScenarioSetPerformanceManager,
                  scenarios: List[TestScenario],
-                 update_interval: float = 0.5):
+                 update_interval: float = 0.3):
         """
         Initialize live progress display.
 

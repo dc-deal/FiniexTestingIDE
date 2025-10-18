@@ -476,7 +476,7 @@ class BatchOrchestrator:
                 profile_counts['order_execution'] += 1
 
             # === 6. Periodic Stats Update ===
-            if tick_count % 100 == 0:
+            if tick_count % 500 == 0:
                 t11 = time.perf_counter()
                 self.performance_log.update_live_stats(
                     scenario_index=scenario_index,
