@@ -182,6 +182,17 @@
             "program": "${workspaceFolder}/python/scenario/generate_scenarios.py",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        // ====================================================
+        // 🔬 FIELD STUDYS, PoC
+        // ====================================================
+        {
+            "name": "🔬 GIL Benchmark - Threading vs Multiprocessing",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/gil_benchmark/threading_vs_multiprocessing.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }
