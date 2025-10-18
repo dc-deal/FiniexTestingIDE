@@ -268,87 +268,79 @@ class ProfilingSummary:
         """Render single scenario's profiling breakdown."""
         # Header
         print(f"{renderer.bold('Scenario:')} {renderer.blue(profile.scenario_name)}")
-        print(f"{renderer.gray('Total Ticks:')} {profile.total_ticks:,}  |  "
-              f"{renderer.gray('Avg per Tick:')} {profile.avg_time_per_tick_ms:.3f}ms  |  "
-              f"{renderer.gray('Total Time:')} {profile.total_time_ms:.2f}ms")
+        print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,}  |  "
+              f"{renderer.gray('Avg/Tick:')} {profile.avg_time_per_tick_ms:.3f}ms  |  "
+              f"{renderer.gray('Total:')} {profile.total_time_ms:.2f}ms")
         print()
 
         # Operations table
         if not profile.operations:
-            print("  No operation data available")
+            print("  No data")
             return
 
-        # Table header
-        header = f"{'Operation':<22} {'Total Time':<15} {'Avg Time':<15} {'Calls':<10} {'% of Total':<12}"
+        # Header
+        header = f"{'Operation':<22} {'Total':<15} {'Avg':<15} {'Calls':<10} {'%':<10}"
         print(renderer.bold(header))
-        print("-" * 80)
+        print("-" * 75)
 
-        # Table rows
+        # Rows
         for op in profile.operations:
-            # Color-code based on percentage
+            # Color-code
             if op.percentage >= 40:
                 color_func = renderer.red
             elif op.percentage >= 20:
                 color_func = renderer.yellow
             else:
-                def color_func(x): return x  # No color
+                def color_func(x): return x
 
             op_name = color_func(f"{op.operation_name:<22}")
-            total_time = f"{op.total_time_ms:>10.2f}ms"
-            avg_time = f"{op.avg_time_ms:>10.3f}ms"
+            total = f"{op.total_time_ms:>10.2f}ms"
+            avg = f"{op.avg_time_ms:>10.3f}ms"
             calls = f"{op.call_count:>8,}"
-            percentage = color_func(f"{op.percentage:>8.1f}%")
+            pct = color_func(f"{op.percentage:>6.1f}%")
 
-            print(
-                f"{op_name} {total_time:<15} {avg_time:<15} {calls:<10} {percentage:<12}")
+            print(f"{op_name} {total:<15} {avg:<15} {calls:<10} {pct:<10}")
 
-        # Bottleneck highlight
+        # Bottleneck
         if profile.bottleneck_operation:
             print()
-            print(f"  {renderer.red('🔥 Bottleneck:')} "
-                  f"{renderer.bold(profile.bottleneck_operation)} "
+            print(f"  {renderer.red('🔥')} {renderer.bold(profile.bottleneck_operation)} "
                   f"({profile.bottleneck_percentage:.1f}%)")
 
     def _render_aggregated_details(self, renderer):
         """Render aggregated profiling statistics."""
         metrics = self.profiling_metrics
 
-        # Summary stats
-        print(f"{renderer.bold('Total Scenarios:')} {metrics.total_scenarios}")
-        print(
-            f"{renderer.bold('Total Ticks Processed:')} {metrics.total_ticks_processed:,}")
-        print(
-            f"{renderer.bold('Total Execution Time:')} {metrics.total_execution_time_ms / 1000:.2f}s")
-        print(f"{renderer.bold('Average Tick Time:')} {metrics.avg_tick_time_ms:.3f}ms")
+        # Summary
+        print(f"{renderer.bold('Scenarios:')} {metrics.total_scenarios}  |  "
+              f"{renderer.bold('Ticks:')} {metrics.total_ticks_processed:,}  |  "
+              f"{renderer.bold('Time:')} {metrics.total_execution_time_ms / 1000:.2f}s  |  "
+              f"{renderer.bold('Avg/Tick:')} {metrics.avg_tick_time_ms:.3f}ms")
         print()
 
-        # Most common bottleneck
+        # Bottleneck
         if metrics.most_common_bottleneck:
-            frequency = metrics.bottleneck_frequency[metrics.most_common_bottleneck]
-            percentage = (frequency / metrics.total_scenarios * 100)
-
-            print(f"{renderer.red('🔥 Most Common Bottleneck:')} "
-                  f"{renderer.bold(metrics.most_common_bottleneck)} "
-                  f"({frequency}/{metrics.total_scenarios} scenarios, {percentage:.0f}%)")
+            freq = metrics.bottleneck_frequency[metrics.most_common_bottleneck]
+            pct = (freq / metrics.total_scenarios * 100)
+            print(f"{renderer.red('🔥')} {renderer.bold(metrics.most_common_bottleneck)} "
+                  f"({freq}/{metrics.total_scenarios}, {pct:.0f}%)")
             print()
 
-        # Per-operation averages across all scenarios
+        # Per-operation averages
         self._render_cross_scenario_averages(renderer)
 
     def _render_cross_scenario_averages(self, renderer):
         """Render average operation times across all scenarios."""
-        # Aggregate operation stats
+        # Aggregate
         operation_totals = {}
         operation_counts = {}
 
         for profile in self.profiling_metrics.scenario_profiles:
             for op in profile.operations:
                 name = op.operation_name
-
                 if name not in operation_totals:
                     operation_totals[name] = 0.0
                     operation_counts[name] = 0
-
                 operation_totals[name] += op.avg_time_ms
                 operation_counts[name] += 1
 
@@ -358,42 +350,36 @@ class ProfilingSummary:
             avg = operation_totals[name] / operation_counts[name]
             operation_averages.append((name, avg))
 
-        # Sort by average time (highest first)
         operation_averages.sort(key=lambda x: x[1], reverse=True)
 
-        # Render table
-        print(renderer.bold("Average Operation Times (across all scenarios):"))
+        # Table
+        print(renderer.bold("Avg Operation Times:"))
         print()
 
-        header = f"{'Operation':<25} {'Avg Time per Call':<20}"
+        header = f"{'Operation':<25} {'Avg/Call':<15}"
         print(renderer.bold(header))
-        print("-" * 50)
+        print("-" * 42)
 
         for name, avg_time in operation_averages:
-            # Color-code based on time
+            # Color
             if avg_time >= 1.0:
                 color_func = renderer.red
             elif avg_time >= 0.5:
                 color_func = renderer.yellow
             else:
-                def color_func(x): return x  # No color
+                def color_func(x): return x
 
             op_name = color_func(f"{name:<25}")
-            time_str = color_func(f"{avg_time:>15.3f}ms")
-
-            print(f"{op_name} {time_str:<20}")
+            time_str = color_func(f"{avg_time:>12.3f}ms")
+            print(f"{op_name} {time_str:<15}")
 
     def _render_bottleneck_details(self, renderer):
         """Render detailed bottleneck analysis."""
         metrics = self.profiling_metrics
 
         if not metrics.bottleneck_frequency:
-            print("  No bottleneck data available")
+            print("  No data")
             return
-
-        # Bottleneck frequency table
-        print(renderer.bold("Bottleneck Frequency:"))
-        print()
 
         # Sort by frequency
         sorted_bottlenecks = sorted(
@@ -402,90 +388,23 @@ class ProfilingSummary:
             reverse=True
         )
 
-        header = f"{'Operation':<25} {'Scenarios':<15} {'Percentage':<15}"
+        header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10}"
         print(renderer.bold(header))
-        print("-" * 60)
+        print("-" * 52)
 
         for operation, count in sorted_bottlenecks:
-            percentage = (count / metrics.total_scenarios * 100)
+            pct = (count / metrics.total_scenarios * 100)
 
-            # Color-code based on frequency
-            if percentage >= 50:
+            # Color
+            if pct >= 50:
                 color_func = renderer.red
-            elif percentage >= 25:
+            elif pct >= 25:
                 color_func = renderer.yellow
             else:
-                def color_func(x): return x  # No color
+                def color_func(x): return x
 
             op_name = color_func(f"{operation:<25}")
             count_str = f"{count}/{metrics.total_scenarios}"
-            percentage_str = color_func(f"{percentage:>10.1f}%")
+            pct_str = color_func(f"{pct:>6.1f}%")
 
-            print(f"{op_name} {count_str:<15} {percentage_str:<15}")
-
-        print()
-
-        # Optimization recommendations
-        self._render_optimization_recommendations(renderer)
-
-    def _render_optimization_recommendations(self, renderer):
-        """Render optimization recommendations based on bottlenecks."""
-        metrics = self.profiling_metrics
-
-        if not metrics.most_common_bottleneck:
-            return
-
-        print(renderer.bold(renderer.yellow("💡 Optimization Recommendations:")))
-        print()
-
-        bottleneck = metrics.most_common_bottleneck
-        recommendations = self._get_recommendations_for_bottleneck(bottleneck)
-
-        for idx, rec in enumerate(recommendations, 1):
-            print(f"  {idx}. {rec}")
-
-    def _get_recommendations_for_bottleneck(self, bottleneck: str) -> List[str]:
-        """Get optimization recommendations for a specific bottleneck."""
-        recommendations = {
-            'worker_decision': [
-                "Consider reducing indicator calculation complexity",
-                "Cache repeated calculations within decision logic",
-                "Use parallel worker execution if not already enabled",
-                "Profile individual worker performance to identify slow workers"
-            ],
-            'bar_rendering': [
-                "Consider reducing number of timeframes",
-                "Optimize bar aggregation logic",
-                "Check if synthetic bar generation is necessary",
-                "Review bar storage efficiency"
-            ],
-            'bar_history': [
-                "Optimize bar history retrieval (use views instead of copies)",
-                "Consider reducing lookback period if possible",
-                "Check if all timeframes are actually needed",
-                "Profile memory access patterns"
-            ],
-            'order_execution': [
-                "Simplify order validation logic",
-                "Reduce logging verbosity in order execution",
-                "Check if order execution is overly complex",
-                "Consider batching order updates"
-            ],
-            'trade_simulator': [
-                "Optimize price update logic",
-                "Reduce position management overhead",
-                "Check if portfolio calculations can be cached",
-                "Profile individual simulator methods"
-            ],
-            'stats_update': [
-                "Reduce stats update frequency (already at 100 ticks)",
-                "Defer non-critical stat calculations",
-                "Consider async stats updates",
-                "Profile stat calculation methods"
-            ]
-        }
-
-        return recommendations.get(
-            bottleneck,
-            ["Profile this operation in detail to identify specific bottlenecks"]
-        )
+            print(f"{op_name} {count_str:<15} {pct_str:<10}")
