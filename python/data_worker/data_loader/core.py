@@ -230,8 +230,9 @@ class TickDataLoader:
                 source_files[source_file] = file
 
             except Exception as e:
-                vLog.warning(
+                vLog.error(
                     f"Could not check {file.name} for duplicates: {e}")
+                raise
 
         return None
 

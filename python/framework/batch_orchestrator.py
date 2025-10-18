@@ -1,11 +1,9 @@
 """
-FiniexTestingIDE - Batch Orchestrator (REFACTORED)
+FiniexTestingIDE - Batch Orchestrator (SYNCHRONIZED PARALLEL START)
 Universal entry point for 1-1000+ test scenarios
 
-EXTENDED (Phase 1a):
-- Live progress display integration
-- Buffered logging for clean output
-- Live scenario tracking with real-time updates
+NEW: Synchronized tick loop start in parallel mode
+All threads wait at barrier before entering tick loop
 """
 
 from collections import defaultdict
@@ -16,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import traceback
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.components.logger.bootstrap_logger import get_logger
 from python.data_worker.data_loader.core import TickDataLoader
@@ -59,12 +57,10 @@ class BatchOrchestrator:
     Universal orchestrator for batch strategy testing.
     Handles 1 to 1000+ scenarios with same code path.
 
-    Now fully config-driven thanks to Worker and DecisionLogic factories.
-    Each scenario is completely independent with its own requirements.
-
-    EXTENDED (Phase 1a):
-    - Live progress display during execution
-    - Buffered logging for clean output
+    NEW: Synchronized parallel execution
+    - All threads prepare independently
+    - Wait at barrier before tick loop
+    - Start tick processing simultaneously
     """
 
     def __init__(
@@ -92,6 +88,9 @@ class BatchOrchestrator:
         # Initialize Factories
         self.worker_factory = WorkerFactory()
         self.decision_logic_factory = DecisionLogicFactory()
+
+        # NEW: Synchronization barrier for parallel mode
+        self.tick_loop_barrier: Optional[threading.Barrier] = None
 
         vLog.debug(
             f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)")
@@ -160,8 +159,9 @@ class BatchOrchestrator:
             readable_index = scenario_index + 1
 
             try:
+                # No barrier needed in sequential mode
                 result = self._execute_single_scenario(
-                    scenario, scenario_index)
+                    scenario, scenario_index, barrier=None)
                 results.append(result)
 
             except Exception as e:
@@ -179,11 +179,26 @@ class BatchOrchestrator:
         """
         Execute scenarios in parallel using threads (not processes).
 
+        NEW: Synchronized tick loop start
+        - Create barrier for N scenarios
+        - All threads prepare independently
+        - All threads wait at barrier before tick loop
+        - All tick loops start simultaneously
+
         EXTENDED (Phase 1a):
         - Enable buffered logging
         - Start live progress display
         - Flush logs after completion
         """
+        # ===== NEW: Create Barrier for Synchronized Start =====
+        num_scenarios = len(self.scenarios)
+        self.tick_loop_barrier = threading.Barrier(
+            num_scenarios,
+            action=self._barrier_action  # Called when all threads reach barrier
+        )
+        vLog.debug(
+            f"🔒 Created barrier for {num_scenarios} scenarios - synchronized tick loop start enabled")
+
         # ===== Phase 1a: Setup Live Display =====
         vLog.enable_buffering()
         live_display = LiveProgressDisplay(
@@ -202,7 +217,8 @@ class BatchOrchestrator:
                 executor.submit(
                     self._execute_single_scenario,
                     scenario,
-                    idx
+                    idx,
+                    barrier=self.tick_loop_barrier  # Pass barrier to each thread
                 ): idx
                 for idx, scenario in enumerate(self.scenarios)
             }
@@ -227,15 +243,38 @@ class BatchOrchestrator:
         live_display.stop()
         vLog.flush_buffer()
 
+        # Clear barrier
+        self.tick_loop_barrier = None
+
         return results
+
+    def _barrier_action(self):
+        """
+        Called by the barrier when all threads have reached it.
+        This is executed by ONE thread only (the last one to arrive).
+        
+        Perfect moment to log that all scenarios are ready to start.
+        """
+        vLog.info("🚦 All scenarios ready - starting synchronized tick processing")
 
     def _execute_single_scenario(
         self,
         scenario: TestScenario,
-        scenario_index: int
+        scenario_index: int,
+        barrier: Optional[threading.Barrier] = None
     ) -> Dict[str, Any]:
         """
         Execute single test scenario.
+
+        NEW: Barrier synchronization
+        - Prepares all data independently
+        - Waits at barrier before tick loop (if barrier provided)
+        - Starts tick processing when all threads ready
+
+        Args:
+            scenario: Test scenario to execute
+            scenario_index: Index in scenario list
+            barrier: Optional barrier for synchronized start in parallel mode
 
         REFACTORED:
         - Creates scenario-specific TradeSimulator (thread-safe)
@@ -332,9 +371,7 @@ class BatchOrchestrator:
             f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
         )
 
-        # 9. Calculate per-scenario requirements
-        scenario_requirement = self._calculate_scenario_requirements(workers)
-        # 10. Prepare data using timestamp-based warmup
+        # 9. Prepare data using timestamp-based warmup
         preparator = TickDataPreparator(self.data_worker)
 
         # Parse test period timestamps
@@ -389,7 +426,36 @@ class BatchOrchestrator:
         self.performance_log.set_live_status(
             scenario_index=scenario_index, status="running")
 
-        # 11. Execute test loop
+        # =============================================================================
+        # NEW: BARRIER SYNCHRONIZATION POINT
+        # =============================================================================
+        # Wait here until ALL scenarios have finished preparation
+        # This ensures all tick loops start at the same time
+        # =============================================================================
+        if barrier is not None:
+            vLog.debug(
+                f"⏸️  Scenario {scenario_index} ready - waiting at barrier for other scenarios...")
+            
+            try:
+                # Wait for all threads to reach this point
+                barrier.wait(timeout=300)  # 5 minute timeout for safety
+                
+                vLog.debug(
+                    f"🚀 Barrier released - starting tick loop for scenario {scenario_index}")
+                
+            except threading.BrokenBarrierError:
+                vLog.error(
+                    f"❌ Barrier broken - another scenario failed during preparation")
+                raise
+            except Exception as e:
+                vLog.error(
+                    f"❌ Barrier wait failed: {e}")
+                raise
+
+        # =============================================================================
+        # START TICK LOOP (synchronized if barrier was used)
+        # =============================================================================
+
         signals = []
         tick_count = 0
         ticks_processed = 0
@@ -399,14 +465,10 @@ class BatchOrchestrator:
 
         vLog.info(f"🚀 Starting Tick Loop")
 
-        # Insert BEFORE the tick loop (line ~398):
-
         # Profiling counters
         profile_times = defaultdict(float)
         profile_counts = defaultdict(int)
-        tick_count = 0
 
-        # Replace the existing tick loop with this:
         for tick in test_iterator:
             tick_start = time.perf_counter()
 

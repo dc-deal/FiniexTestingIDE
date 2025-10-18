@@ -1,6 +1,45 @@
 {
     "version": "0.2.0",
     "configurations": [
+        {
+            "name": "strat_local",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/strategy_runner.py",
+            "args": [],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}" // <-- DAS HIER HINZUFÜGEN
+            }
+        },
+        {
+            "name": "strat_localtick_index",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}" // <-- DAS HIER HINZUFÜGEN
+            }
+        },
+        {
+            "name": "strat_localbar_index",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}" // <-- DAS HIER HINZUFÜGEN
+            }
+        },
         // ====================================================
         // 📊 DATA PIPELINE
         // ====================================================
