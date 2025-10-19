@@ -8,11 +8,11 @@
 
 **Vision:** Parameter-centric testing platform for trading strategies with focus on reproducible results and IP protection.
 
-**Current Phase:** MVP Foundation Complete - Performance Validation Next
+**Current Phase:** MVP Foundation - Performance Optimizations Complete
 
 ---
 
-## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.8)
+## 🎯 MVP Status - What's Already Working (Pre-Alpha V0.9.0)
 
 ### ✅ Data Pipeline (Production-Ready)
 - **MQL5 TickCollector v1.03** - Live tick collection with error classification
@@ -22,6 +22,47 @@
 - **Data Modes** - Clean/Realistic/Raw for different test scenarios
 
 **Sample Output:** [AUDUSD Ticks](./data/samples/AUDUSD_20250916_223859_ticks.json)
+
+### ✅ Bar Pre-Rendering & Indexing (NEW in V0.9.0) 🚀
+**Massive warmup speedup: 100ms vs 60s**
+
+- **Vectorized Bar Generation** - Pre-render bars from all tick data using pandas
+- **Parquet Bar Files** - One file per symbol/timeframe (M1, M5, M15, M30, H1, H4, D1)
+- **Bar Index System** - O(1) file selection for instant warmup loading
+- **Fast Warmup Path** - Load pre-rendered bars instead of rendering from ticks
+- **Automatic Rendering** - Runs after tick import or manually via `bar_importer.py`
+
+**Performance Impact:**
+- **Before:** 60+ seconds warmup (rendering bars from ticks)
+- **After:** <100ms warmup (loading from parquet)
+- **~600x faster** warmup for typical scenarios
+
+**Technical Details:**
+- Uses `pandas.resample()` for vectorized bar generation
+- Hybrid bar detection for incomplete periods
+- Gap handling with synthetic bar insertion
+- Optimized data types (float32) for memory efficiency
+
+### ✅ Live Execution Monitoring (NEW in V0.9.0) 📊
+**Real-time progress display during strategy execution**
+
+- **Rich Console UI** - Live updating progress bars with system resources
+- **Per-Scenario Stats** - Progress, P&L, trades, execution time
+- **System Resources** - CPU/RAM monitoring, running/completed scenario count
+- **Thread-Safe Updates** - 300ms refresh rate, no terminal flicker
+- **Synchronized Start** - Barrier ensures all scenarios start tick processing simultaneously
+
+**Live Display Example:**
+```
+╭───────────────────────────────────────────── 🔬 Strategy Execution Progress ─────────────────────────────────────────────╮
+│ ⚡ System Resources │ CPU:   0.6% │ RAM:   3.1/31.0 GB │ Running: 0/2 │ Completed: 2/2                                   │
+│                                                                                                                          │
+│  ✅  GBPUSD_window_01      ████████████████████   29.4s │ $   9,660 ($-340.29)                                           │
+│                            100.0%                Trades: 106 (2W / 104L)                                                 │
+│  ✅  GBPUSD_window_02      ████████████████████   29.1s │ $   9,867 ($-132.59)                                           │
+│                            100.0%                Trades: 64 (3W / 61L)                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 ### ✅ Testing Framework (Functional)
 - **Batch Orchestrator** - Multi-scenario testing (sequential + parallel)
@@ -43,12 +84,20 @@
 - **Per-Scenario Requirements** - Each scenario calculates its own warmup requirements
 - **Dynamic Loading** - Hot-loading of USER/ workers without restart
 
-### ✅ Enhanced Performance Logging (NEW in V0.7.1) 📊
+### ✅ Enhanced Performance Logging & Profiling (V0.7.1 → V0.9.0) 📊
 - **Comprehensive Metrics** - Per-worker, per-scenario, and aggregated performance stats
 - **Parallel Efficiency Tracking** - Real-time measurement of parallelization benefits
 - **Bottleneck Analysis** - Automatic detection of slowest components
 - **Decision Logic Metrics** - Separate tracking for strategy decision time
 - **Batch Mode Clarity** - Clear indication of batch vs. scenario parallelization
+- **Tick Loop Profiling** - Operation-level breakdown (worker_decision, bar_rendering, etc.)
+- **Overhead Analysis** - Worker execution vs coordination overhead visualization
+
+**Performance Optimizations (V0.9.0):**
+- Fixed massive datetime/pandas bottleneck in tick iteration (20,000+ eliminated pd.to_datetime calls)
+- Bar history caching (100-200x fewer dict rebuilds during tick loop)
+- Optimized bar rendering with timestamp pre-parsing
+- Streamlined performance reports with visual breakdowns
 
 ### ✅ Order Execution System (NEW in V0.8 - Issue #003 COMPLETED) 🎯
 **Deterministic order execution with realistic broker delays**
@@ -102,20 +151,75 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 
 ---
 
+## 📁 Project Structure (Pre-Alpha V0.9.0)
+
+```
+FiniexTestingIDE/
+├── mql5/
+│   └── TickCollector.mq5          # Live tick collection
+├── python/
+│   ├── data_worker/               # Data pipeline
+│   │   ├── tick_importer.py       # JSON → Parquet conversion
+│   │   ├── bar_importer.py        # Pre-render bars from ticks (NEW)
+│   │   ├── scenario_generator.py  # Auto-generate test configs
+│   │   └── data_loader/           # Parquet index managers
+│   ├── framework/                 # Core framework (MVP stable)
+│   │   ├── bar_renderer/          # Multi-timeframe bar generation
+│   │   ├── workers/               # Worker system + coordinator
+│   │   ├── decision_logic/        # Strategy logic (factory-based)
+│   │   ├── factories/             # Worker/Logic factories (V0.7)
+│   │   ├── performance/           # Performance logging system (V0.7.1)
+│   │   ├── reporting/             # Batch summaries + profiling (V0.9)
+│   │   ├── trading/               # Trade simulation (V0.8)
+│   │   │   ├── order_execution_engine.py    # Order lifecycle
+│   │   │   ├── portfolio_manager.py         # Balance/positions
+│   │   │   └── decision_trading_api.py      # Public API
+│   │   └── types.py               # Shared type definitions
+│   ├── components/                # UI components (NEW V0.9)
+│   │   ├── display/               # Live progress display
+│   │   └── logger/                # Visual console logger
+│   ├── workers/                   # Concrete workers
+│   │   ├── core/                  # Built-in (RSI, SMA, Envelope)
+│   │   ├── user/                  # Custom open-source
+│   │   └── blackbox/              # IP-protected (git-ignored)
+│   ├── decision_logic/            # Concrete strategies
+│   │   ├── core/                  # Built-in (SimpleConsensus)
+│   │   ├── user/                  # Custom open-source
+│   │   └── blackbox/              # IP-protected (git-ignored)
+│   ├── orchestrator/              # Batch testing
+│   │   └── batch_orchestrator.py  # Multi-scenario execution
+│   ├── experiments/               # Research & benchmarks (NEW)
+│   │   └── gil_benchmark/         # Threading vs multiprocessing study
+│   └── tests/                     # Test suite (planned)
+├── configs/
+│   ├── app_config.json            # App-wide settings
+│   └── scenario_sets/             # Test scenario definitions
+└── data/
+    ├── raw/                       # MQL5 JSON exports
+    ├── processed/                 # Parquet files (ticks + bars)
+    └── cache/                     # Temporary files
+```
+
+---
+
 ## 🚧 MVP Roadmap - What's Coming
 
-### 📋 Core Issue C#001: Logging & TUI (Low Priority)
+### 📋 Core Issue C#001: Logging & TUI (🚧 In Progress)
 **Goal:** Structured logging and live TUI dashboard
 
-- [ ] Logging module (Print → Logger migration)
-- [ ] TUI dashboard with `rich` (Scenarios + Performance + Logs)
-- [ ] Error pinning (persistent warnings/errors display)
+**Completed (V0.9.0):**
+- ✅ Live progress display with rich console UI
+- ✅ Visual console logger with buffered mode
+- ✅ Thread-safe logging with scenario grouping
+- ✅ Custom error types (validation_error, config_error, hard_error)
+
+**Remaining:**
 - [ ] Log file output with rotation
 - [ ] CLI scripting foundation (headless mode, programmatic access)
 
-**Effort:** 1-2 days  
-**Priority:** Low (Nice-to-have, polish)  
-**Related:** Issue #27 (Performance Logging parameter hierarchy)
+**Effort:** 1-2 days remaining  
+**Priority:** Low (Polish)  
+**Status:** Partially complete - core features done
 
 ---
 
@@ -150,10 +254,17 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 
 ---
 
-### 📋 Core Issue C#004: Performance Validation & Benchmarking (HIGH Priority) 🚀
+### 📋 Core Issue C#004: Performance Validation & Benchmarking (🚧 In Progress)
 **Goal:** Validate performance-first architecture and establish production readiness
 
-**POC for Scalability (3-4 days):**
+**Completed (V0.9.0):**
+- ✅ Tick loop profiling with operation-level breakdown
+- ✅ Bottleneck analysis and visualization
+- ✅ Performance regression detection framework
+- ✅ Worker decision overhead analysis
+- ✅ GIL benchmark experiment (threading vs multiprocessing study)
+
+**Remaining:**
 
 **A) Benchmarking Suite**
 - [ ] Batch testing: 10 scenarios @ 1,000 ticks in <60s (8 cores)
@@ -161,18 +272,7 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 - [ ] Memory profiling: <8GB for 100k ticks, no leaks
 - [ ] Linear scaling validation: 16 cores → 2x faster
 
-**B) Performance Profiling**
-- [ ] Integrate `cProfile` (optional activation)
-- [ ] Hotspot detection (functions using >10% time)
-- [ ] Memory profiler integration
-- [ ] Auto-generate bottleneck reports
-
-**C) Regression Testing**
-- [ ] Baseline performance metrics (JSON)
-- [ ] Automatic comparison on every run
-- [ ] Alert if performance degrades >20%
-
-**D) Documentation**
+**B) Documentation**
 - [ ] Performance guide (cores, memory, best practices)
 - [ ] Benchmark results in README (vs MT5 comparison)
 - [ ] Scalability charts
@@ -182,9 +282,9 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 - **User confidence**: "Is this tool fast enough?"
 - **Design validation**: Architecture can scale to production workloads
 
-**Status:** **NEXT** - Critical for MVP validation  
-**Effort:** 3-4 days  
-**Priority:** HIGH (MVP blocker)
+**Status:** **In Progress** - Profiling infrastructure complete, benchmarks remaining  
+**Effort:** 1-2 days remaining  
+**Priority:** HIGH (MVP validation)
 
 ---
 
@@ -280,11 +380,11 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 
 ## 📊 MVP Timeline
 
-**Core Path (Critical):** ~9-12 days
+**Core Path (Critical):** ~6-8 days remaining
 
 1. ✅ **C#003** (4-5 days) → **COMPLETED** - Trade simulation ✅
-2. **C#004** (3-4 days) → **NEXT** - Performance validation 🚀 POC
-3. **C#001** (1-2 days) - Logging & TUI (Low priority polish)
+2. 🚧 **C#004** (1-2 days remaining) → **In Progress** - Performance validation
+3. 🚧 **C#001** (<1 day remaining) - Logging & TUI polish
 
 **Optional Path (If time permits):** +2-3 days
 
@@ -295,11 +395,77 @@ Order Submitted → PENDING (API delay) → PENDING (Execution delay) → EXECUT
 5. **C#006** (2-3 days + 1-2 days refactor) - Code Guidelines & CI 📏 FOUNDATION
 6. **C#007** (2-3 days) - Automated Test System 🧪 FOUNDATION
 
-**Total Estimated:** 9-25 days (2-5 weeks) depending on optional features
+**Total Estimated:** 6-18 days (1-4 weeks) depending on optional features
 
 **Critical for MVP Release:** C#003 ✅ + C#004 (Trade Simulation + Performance Validation)
 
 **Decision Point:** Assess schedule after C#004 completion
+
+---
+
+## 🗃️ Architecture Overview
+
+### System Architecture (V0.9.0)
+```
+MQL5 TickCollector → JSON → Parquet (Quality-Aware)
+                                ↓
+                    Data Loader (Multi-Mode: Clean/Realistic/Raw)
+                                ↓
+                    ┌─────────────────────────────────┐
+                    │  Bar Pre-Rendering (NEW V0.9)   │
+                    ├─────────────────────────────────┤
+                    │  VectorizedBarRenderer          │
+                    │  ParquetBarsIndexManager        │
+                    │  Bar warmup: <100ms vs 60s      │
+                    └─────────────────────────────────┘
+                                ↓
+                    Scenario Config (decision_logic_type + worker_types)
+                                ↓
+                    ┌─────────────────────────────────┐
+                    │  Factory Layer (V0.7)           │
+                    ├─────────────────────────────────┤
+                    │  Worker Factory                 │
+                    │  DecisionLogic Factory          │
+                    └─────────────────────────────────┘
+                                ↓
+                    Batch Orchestrator (Multi-Scenario)
+                                ↓
+                    ┌─────────────────────────────────┐
+                    │  Live Monitoring (NEW V0.9)     │
+                    ├─────────────────────────────────┤
+                    │  LiveProgressDisplay            │
+                    │  Real-time stats & progress     │
+                    └─────────────────────────────────┘
+                                ↓
+                    Worker Coordinator (Parallel Workers)
+                                ↓
+                    Decision Logic (Injected Strategy)
+                                ↓
+                    ┌─────────────────────────────────┐
+                    │  Trade Simulator (V0.8)         │
+                    ├─────────────────────────────────┤
+                    │  Order Execution Engine         │
+                    │  Portfolio Manager              │
+                    │  Risk Management                │
+                    └─────────────────────────────────┘
+                                ↓
+                    ┌─────────────────────────────────┐
+                    │  Performance Analysis (V0.9)    │
+                    ├─────────────────────────────────┤
+                    │  Profiling & Bottleneck         │
+                    │  Worker Decision Breakdown      │
+                    │  Aggregated Reports             │
+                    └─────────────────────────────────┘
+                                ↓
+                    Results & Performance Metrics
+```
+
+**Key Components:**
+- **Bar Pre-Rendering** - Vectorized bar generation with parquet storage (600x faster warmup)
+- **Live Progress Display** - Real-time monitoring with rich console UI
+- **Performance Profiling** - Operation-level breakdown and bottleneck analysis
+- **Factory Architecture** - Dynamic loading of workers and decision logics
+- **Trade Simulator** - Realistic order execution with seeded randomness
 
 ---
 
@@ -332,13 +498,15 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
      python python/data_worker/tick_importer.py
      ```
    - JSON data will be automatically converted to Parquet with quality scores
+   - **NEW:** Bars are automatically pre-rendered after tick import
 
 **5. Run trading strategy**
    - **In VS Code:** Start launch configuration **"🔬 Strategy Runner - Batch - Entry"**
    - **Or via command line:**
      ```bash
-     python python/strategy_runner_enhanced.py
+     python python/strategy_runner.py
      ```
+   - **NEW:** Watch live progress display during execution!
 
 **That's it!** The strategy is now running with real market data.
 
@@ -346,344 +514,37 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
 - Create your own scenarios in `configs/scenario_sets/`
 - Use the **"📝 Scenario Generator"** to automatically generate scenarios from your data
 - Adjust parameters in scenario configs (RSI, Envelope, etc.)
-- Create your own workers/decision logics under `USER/` namespace
+- Experiment with parallel execution settings
 
 ---
 
 ### Python Environment
+
+**Docker Setup (Recommended):**
 ```bash
 # Start Docker container
 docker-compose up -d
 docker-compose exec finiex-dev bash -i
 
-# Run test
-python python/strategy_runner_enhanced.py
+# Run strategy test
+python python/strategy_runner.py
 ```
 
-### Current Test Output (V0.8)
-```
-============================================================
-                    🎉 EXECUTION RESULTS                     
-============================================================
-✅ Success: True  |  📊 Scenarios: 1  |  ⏱️  Time: 10.93s
-⚙️  Batch Mode: Sequential
-------------------------------------------------------------
-SCENARIO DETAILS
-------------------------------------------------------------
-┌────────────────────────────────────┐
-│ 📋 EURUSD_window_02                 │
-│ Symbol: EURUSD                     │
-│ Ticks: 4,000                       │
-│ Signals: 10 (0.2%)                 │
-│ Buy/Sell: 5/5                      │
-│ Worker/Calls: 2/0                  │
-│ Decisions: 4000                    │
-└────────────────────────────────────┘
+**Development Tools:**
+- Python 3.12
+- VS Code with Remote Containers support
+- Jupyter notebook (available at http://localhost:8888)
+- Git configuration mounted from host
 
-------------------------------------------------------------
-💰 PORTFOLIO & TRADING RESULTS
-------------------------------------------------------------
-
-┌────────────────────────────────────┐
-│ 💰 EURUSD_window_02                 │
-│ Trades: 5 (5W/0L)                  │
-│ Win Rate: 100.0%                   │
-│ P&L: +$21.37                       │
-│ Spread: $12.43                     │
-│ Orders: 10                         │
-└────────────────────────────────────┘
-
-
-------------------------------------------------------------
-📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)
-------------------------------------------------------------
-
-   📈 TRADING SUMMARY:
-      Total Trades: 5  |  Win/Loss: 5W/0L  |  Win Rate: 100.0%
-      Total P&L: $21.37  |  Profit: $21.37  |  Loss: $0.00
-      Profit Factor: 0.00
-
-   📋 ORDER EXECUTION:
-      Orders Sent: 10  |  Executed: 10  |  Rejected: 0
-      Execution Rate: 100.0%
-
-   💸 COST BREAKDOWN:
-      Spread Cost: $12.43  |  Commission: $0.00  |  Swap: $0.00
-      Total Costs: $12.43
-
-------------------------------------------------------------
-📊 PERFORMANCE DETAILS (PER SCENARIO)
-------------------------------------------------------------
-------------------------------------------------------------
-📊 SCENARIO PERFORMANCE: EURUSD_window_02
-   Workers: 2 workers (Parallel)  |  Ticks: 4,000  |  Calls: 8,000  |  Decisions: 4000
-
-   📊 WORKER DETAILS:
-      RSI              Calls:  4000  |  Avg:  0.138ms  |  Range:  0.066- 0.400ms  |  Total:   552.73ms
-      Envelope         Calls:  4000  |  Avg:  0.053ms  |  Range:  0.004- 0.710ms  |  Total:   213.48ms
-
-   ⚡ PARALLEL EFFICIENCY:
-      Time saved:     0.00ms total  |  Avg/tick:  0.000ms  |  Status: ≈ Equal
-
-   🧠 DECISION LOGIC: simple_consensus (CORE/simple_consensus)
-      Decisions: 4000  |  Avg:  0.011ms  |  Range:  0.006- 0.138ms  |  Total:    45.67ms
-
-
-------------------------------------------------------------
-📊 AGGREGATED SUMMARY (ALL SCENARIOS)
-------------------------------------------------------------
-
-   📈 OVERALL:
-      Total Ticks: 4,000  |  Total Signals: 10  |  Total Decisions: 4,000
-
-   👷 WORKERS (AGGREGATED):
-      RSI              Total Calls:   4000  |  Total Time:   552.73ms  |  Avg:  0.138ms  |  Scenario Avg:  0.138ms
-      Envelope         Total Calls:   4000  |  Total Time:   213.48ms  |  Avg:  0.053ms  |  Scenario Avg:  0.053ms
-
-   🧠 DECISION LOGIC (AGGREGATED):
-      Total Decisions: 4000  |  Total Time:    45.67ms  |  Avg:  0.011ms  |  Scenario Avg:  0.011ms
-
-
-------------------------------------------------------------
-⚠️  BOTTLENECK ANALYSIS (Worst Performers)
-------------------------------------------------------------
-
-   🐌 SLOWEST SCENARIO:
-      EURUSD_window_02  |  Avg/tick: 0.203ms  |  Total: 811.88ms
-      → This scenario took the longest time per tick
-
-   🐌 SLOWEST WORKER:
-      RSI  |  Avg: 0.138ms (across all scenarios)
-      → Worst in scenario 'EURUSD_window_02': 0.138ms
-
-   💡 RECOMMENDATIONS:
-      ✅ All components performing well! No major bottlenecks detected.
-
-
-------------------------------------------------------------------------------------------------------------------------
- 11s 344ms - StrategyRunner            - INFO    - ✅ All tests passed!
-```
+**Container Features:**
+- Hot-reload code changes (volume mounted)
+- Pre-installed dependencies (pandas, pyarrow, numpy, rich)
+- Jupyter for data exploration
+- htop for system monitoring
 
 ---
 
-## 🗃️ Architecture Overview
-
-### Current System (V0.8)
-```
-MQL5 TickCollector → JSON → Parquet (Quality-Aware)
-                                ↓
-                    Data Loader (Multi-Mode: Clean/Realistic/Raw)
-                                ↓
-                    Scenario Config (decision_logic_type + worker_types)
-                                ↓
-                    ┌─────────────────────────────────┐
-                    │  Factory Layer (NEW in V0.7)    │
-                    ├─────────────────────────────────┤
-                    │  Worker Factory                 │
-                    │  DecisionLogic Factory          │
-                    └─────────────────────────────────┘
-                                ↓
-                    Batch Orchestrator (Multi-Scenario)
-                                ↓
-                    Worker Coordinator (Parallel Workers)
-                                ↓
-                    Decision Logic (Injected Strategy)
-                                ↓
-                    ┌─────────────────────────────────┐
-                    │  Trade Simulator (V0.8)         │
-                    ├─────────────────────────────────┤
-                    │  Order Execution Engine         │
-                    │  Portfolio Manager              │
-                    │  Risk Management                │
-                    └─────────────────────────────────┘
-                                ↓
-                    Results & Performance Metrics
-```
-
-### Post-MVP (Issue #004+)
-```
-Decision Logic → Trade Simulator → Performance Validation
-                        ↓
-                Event Bus → Advanced Analytics
-```
-
----
-
-## 📁 Project Structure (Pre-Alpha V0.8)
-
-```
-FiniexTestingIDE/
-├── mql5/
-│   └── TickCollector.mq5          # Live tick collection
-├── python/
-│   ├── data_worker/               # Data pipeline
-│   │   ├── tick_importer.py       # JSON → Parquet conversion
-│   │   └── scenario_generator.py  # Auto-generate test configs
-│   ├── framework/                 # Core framework (MVP stable)
-│   │   ├── bar_renderer/          # Multi-timeframe bar generation
-│   │   ├── workers/               # Worker system + coordinator
-│   │   ├── decision_logic/        # Strategy logic (factory-based)
-│   │   ├── factories/             # Worker/Logic factories (V0.7)
-│   │   ├── performance/           # Performance logging system (V0.7.1)
-│   │   ├── trading/               # Trade simulation (V0.8)
-│   │   │   ├── order_execution_engine.py    # Order lifecycle
-│   │   │   ├── portfolio_manager.py         # Balance/positions
-│   │   │   └── decision_trading_api.py      # Public API
-│   │   └── types.py               # Shared type definitions
-│   ├── workers/                   # Concrete workers
-│   │   ├── core/                  # Built-in (RSI, SMA, Envelope)
-│   │   ├── user/                  # Custom open-source
-│   │   └── blackbox/              # IP-protected (git-ignored)
-│   ├── decision_logic/            # Concrete strategies
-│   │   ├── core/                  # Built-in (SimpleConsensus)
-│   │   ├── user/                  # Custom open-source
-│   │   └── blackbox/              # IP-protected (git-ignored)
-│   ├── orchestrator/              # Batch testing
-│   │   └── batch_orchestrator.py  # Multi-scenario execution
-│   └── tests/                     # Test suite
-│       └── test_strategy_runner.py # Integration tests
-├── data/
-│   ├── raw/                       # JSON tick data
-│   ├── processed/                 # Parquet databases
-│   └── samples/                   # Sample data for demo
-├── configs/
-│   ├── app_config.json           # Global application settings
-│   ├── brokers/                  # Broker configurations
-│   │   └── mt5/                  # MetaTrader 5 configs
-│   └── scenarios/                # Test scenario configs
-├── notebooks/                     # Jupyter analysis tools
-└── docs/                          # Documentation
-```
-
----
-
-## 🔧 Configuration Example (V0.8)
-
-### New Factory-Compatible Config Structure
-
-```json
-{
-  "version": "1.0",
-  "scenario_set_name": "EURUSD_3_windows",
-  "created": "2025-10-12T08:41:31.685102",
-  "global": {
-    "data_mode": "realistic",
-    "strategy_config": {
-      "decision_logic_type": "CORE/aggressive_trend",
-      "worker_instances": {
-        "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
-      },
-      "workers": {
-        "rsi_fast": {
-          "period": 14,
-          "timeframe": "M5"
-        },
-        "envelope_main": {
-          "period": 20,
-          "deviation": 0.02,
-          "timeframe": "M5"
-        }
-      },
-      "decision_logic_config": {
-        "rsi_oversold": 30,
-        "rsi_overbought": 70,
-        "min_confidence": 0.6
-      }
-    },
-    "execution_config": {
-      "parallel_workers": true,
-      "worker_parallel_threshold_ms": 1.0,
-      "adaptive_parallelization": true,
-      "log_performance_stats": true
-    },
-    "trade_simulator_config": {
-      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-      "initial_balance": 10000,
-      "currency": "EUR"
-    }
-  },
-  "scenarios": [
-    {
-      "name": "EURUSD_window_01",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-17T13:00:00+00:00",
-      "end_date": "2025-09-19T16:00:00+00:00",
-      "max_ticks": 1000,
-      "data_mode": "realistic",
-      "enabled": false,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURUSD_window_02",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-19T13:00:00+00:00",
-      "end_date": "2025-09-21T16:00:00+00:00",
-      "max_ticks": 1000,
-      "data_mode": "realistic",
-      "enabled": true,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURUSD_window_03",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-21T13:00:00+00:00",
-      "end_date": "2025-09-23T16:00:00+00:00",
-      "max_ticks": 1000,
-      "data_mode": "realistic",
-      "enabled": false,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    }
-  ]
-}
-```
-
-### Key Changes in V0.7:
-- ✅ `decision_logic_type` - Explicit strategy selection
-- ✅ `worker_types` - Array of workers to use (CORE/USER/BLACKBOX)
-- ✅ `workers` - Nested config per worker with namespace prefix
-- ✅ `decision_logic_config` - Strategy-specific parameters
-- ✅ Each scenario calculates own requirements (no global contract)
-
----
-
-## 🎯 Core Concepts
-
-### First-Level Parallelism Paradigm
-
-**Vision:** Workers are the atomic, parallel computation units of the system. All work happens on **one level** - there are no nested sub-workers or hidden dependencies.
-
-#### Two Fixed Layers:
-
-```
-┌───────────────────────────────────────────────┐
-│  WORKER LAYER (Parallel Execution)              │
-│  ├── RSI Worker (Compute)                       │
-│  ├── Envelope Worker (Compute)                  │
-│  ├── News API Worker (API, Long-Running)        │
-│  └── AI Panic Detector (Event, Always-On)       │
-└───────────────────────────────────────────────┘
-                    ↓
-┌───────────────────────────────────────────────┐
-│  DECISION LAYER (Orchestration)                 │
-│  └── DecisionLogic (aggregates all results)     │
-└───────────────────────────────────────────────┘
-```
-
-**Key Principles:**
-- ✅ **Workers are atomic** - No sub-workers, no hidden dependencies
-- ✅ **One level of parallelism** - All workers on same hierarchy
-- ✅ **DecisionLogic orchestrates** - Aggregation happens one level higher
-
-**Result:** Maximum parallelism, complete transparency, easy debugging through clear responsibilities.
-
----
+## 💡 Unique Selling Points
 
 ### Parameter-Centric Development
 **Problem:** 80% of development time is spent on parameter tuning, but existing tools are code-centric.
@@ -713,7 +574,7 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 
 **Unique Advantage:** Competitors require code modifications for strategy variations. Finiex enables systematic parameter space exploration through pure configuration.
 
-**Post-MVP: Parameter Intelligence (C#008-A)** - Planned diagnostic system that validates algo fundamentals, identifies failure points (missed trades, false signals), and recommends which hardcoded values should become tunable parameters. See [Issue C#008-A](link-to-issue) for detailed diagnostics framework.
+**Post-MVP: Parameter Intelligence (C#008-A)** - Planned diagnostic system that validates algo fundamentals, identifies failure points (missed trades, false signals), and recommends which hardcoded values should become tunable parameters.
 
 ---
 
@@ -721,9 +582,11 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 **Problem:** Backtesting tools are either fast but unrealistic (MT5) or realistic but slow (institutional platforms).
 
 **Solution:** Multi-layer performance optimization from the ground up:
-- **CPU Scaling:** Linear performance gains with cores (4 cores = 4x faster)
-- **Memory Efficiency:** Apache Arrow + lazy loading for minimal footprint
-- **Smart Parallelization:** Only when beneficial (automated threshold detection)
+- **Bar Pre-Rendering** - 600x faster warmup (100ms vs 60s) via vectorized parquet loading
+- **CPU Scaling** - Linear performance gains with cores (4 cores = 4x faster)
+- **Memory Efficiency** - Apache Arrow + lazy loading for minimal footprint
+- **Smart Parallelization** - Only when beneficial (automated threshold detection)
+- **Optimized Tick Processing** - Eliminated datetime bottlenecks, bar history caching
 
 **Validation:** Core Issue C#004 establishes benchmarks proving Finiex beats MT5 in speed while maintaining 80-90% realism of institutional tools. Quality-Aware Data adds a unique edge competitors lack.
 
@@ -830,7 +693,7 @@ Trade logic runs on M1, but trend filters from M30/H1 influence decisions throug
 
 **Maintainer:** Frank Krätzig ([dc-deal](https://github.com/dc-deal))
 
-**Status:** Active MVP development - Core Issue C#003 completed ✅, C#004 next
+**Status:** Active MVP development - C#003 completed ✅, C#004 in progress 🚧
 
 **Contributing:**
 - ✅ Custom workers: Add to `python/workers/user/`
@@ -850,4 +713,4 @@ Thank you to everyone supporting this project!
 
 *Building the foundation for parameter-centric trading strategy development - one issue at a time.*
 
-**Latest:** Pre-Alpha V0.8 - MVP Foundation Complete ✅
+**Latest:** Pre-Alpha V0.9.0 - Live Display + Performance Optimizations ✅
