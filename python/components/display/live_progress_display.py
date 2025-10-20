@@ -8,6 +8,8 @@ Features:
 - Thread-based polling (500ms updates)
 - Flicker-free display using rich.live
 - Graceful shutdown
+- Fully typed with LiveScenarioStats (no more dict access!)
+- Type-safe status handling with ScenarioStatus enum
 
 Usage:
     # In BatchOrchestrator
@@ -34,6 +36,7 @@ from rich import box
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.types.global_types import TestScenario
+from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
@@ -59,7 +62,7 @@ class LiveProgressDisplay:
         Args:
             performance_manager: ScenarioSetPerformanceManager instance
             scenarios: List of scenarios to track
-            update_interval: Update interval in seconds (default: 0.5)
+            update_interval: Update interval in seconds (default: 0.3)
         """
         self.performance_manager = performance_manager
         self.scenarios = scenarios
@@ -74,7 +77,7 @@ class LiveProgressDisplay:
         self.console = Console()
         self._live: Optional[Live] = None
 
-    def start(self):
+    def start(self) -> None:
         """Start the live display thread."""
         with self._lock:
             if self._running:
@@ -85,7 +88,7 @@ class LiveProgressDisplay:
                 target=self._update_loop, daemon=True)
             self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the live display thread."""
         # Final render BEFORE stopping
         if self._live:
@@ -105,7 +108,7 @@ class LiveProgressDisplay:
         if self._live:
             self._live.stop()
 
-    def _update_loop(self):
+    def _update_loop(self) -> None:
         """Main update loop running in thread."""
         with Live(self._render(), console=self.console, refresh_per_second=2) as live:
             self._live = live
@@ -156,20 +159,21 @@ class LiveProgressDisplay:
             box=box.ROUNDED
         )
 
-    def _build_overhead(self, all_stats: List[dict]) -> str:
+    def _build_overhead(self, all_stats: List[LiveScenarioStats]) -> str:
         """
         Build overhead resource line.
 
         Args:
-            all_stats: List of scenario stats
+            all_stats: List of LiveScenarioStats objects
 
         Returns:
             Formatted string with system resources
         """
-        # Count scenarios
-        running_count = sum(1 for s in all_stats if s['status'] == 'running')
+        # Count scenarios by status
+        running_count = sum(
+            1 for s in all_stats if s.status == ScenarioStatus.RUNNING)
         completed_count = sum(
-            1 for s in all_stats if s['status'] == 'completed')
+            1 for s in all_stats if s.status == ScenarioStatus.COMPLETED)
         total_count = len(self.scenarios)
 
         # System resources
@@ -194,12 +198,12 @@ class LiveProgressDisplay:
 
         return overhead
 
-    def _build_scenario_table(self, all_stats: List[dict]) -> Table:
+    def _build_scenario_table(self, all_stats: List[LiveScenarioStats]) -> Table:
         """
         Build scenario progress table.
 
         Args:
-            all_stats: List of scenario stats
+            all_stats: List of LiveScenarioStats objects
 
         Returns:
             Rich Table with scenario progress bars
@@ -221,45 +225,29 @@ class LiveProgressDisplay:
         # Add scenario rows
         for stats in all_stats:
             # Truncate scenario name
-            name = stats['scenario_name']
+            name = stats.scenario_name
             if len(name) > name_length-2:
                 name = name[:name_length-5] + "..."
 
-            # Status icon
-            name_color = "white"
-            match stats['status']:
-                case "completed":
-                    icon = "✅"
-                    name_color = "green"
-                case "warmup":
-                    icon = "🔥"
-                case _:
-                    icon = "🔬"
-                    name_color = "cyan"
+            # Status-based icon and color
+            icon, name_color = self._get_status_display(stats.status)
 
-            # Progress bar
-            progress_percent = stats['progress_percent']
-            bar_width = 20
-            filled = int((progress_percent / 100.0) * bar_width)
-            bar = "█" * filled + "░" * (bar_width - filled)
-            progress_text = f"{bar} {progress_percent:>5.1f}%"
-            if stats['status'] == "warmup":
-                progress_text = f"[yellow]Warming up...[/yellow]"
+            # Progress bar and text
+            progress_text = self._build_progress_text(stats)
 
             # Stats
-            elapsed = stats['elapsed_time']
-            portfolio_value = stats['portfolio_value']
+            portfolio_value = stats.portfolio_value
+            total_trades = stats.total_trades
+            winning = stats.winning_trades
+            losing = stats.losing_trades
 
-            total_trades = stats["total_trades"]
-            winning = stats["winning_trades"]
-            losing = stats["losing_trades"]
             trades = ""
-            if stats['status'] != "warmup":
+            # Only show trades when not in initial states
+            if stats.status not in (ScenarioStatus.INITIALIZED, ScenarioStatus.WARMUP):
                 trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
 
             # Format P/L
-            # Assuming 10k start capital
-            pnl = stats['portfolio_value'] - stats['initial_balance']
+            pnl = stats.portfolio_value - stats.initial_balance
             if pnl >= 0:
                 pnl_color = "green"
                 pnl_sign = "+"
@@ -268,7 +256,6 @@ class LiveProgressDisplay:
                 pnl_sign = ""
 
             stats_text = (
-                f"[yellow]{elapsed:>5.1f}s[/yellow] │ "
                 f"[{pnl_color}]${portfolio_value:>8,.0f}[/{pnl_color}] "
                 f"[dim]({pnl_sign}${pnl:>6,.2f})[/dim] \n"
                 f"[blue]{trades}[/blue]"
@@ -283,6 +270,59 @@ class LiveProgressDisplay:
             )
 
         return table
+
+    def _get_status_display(self, status: ScenarioStatus) -> tuple[str, str]:
+        """
+        Get icon and color for a scenario status.
+
+        Args:
+            status: ScenarioStatus enum value
+
+        Returns:
+            Tuple of (icon, name_color)
+        """
+        match status:
+            case ScenarioStatus.INITIALIZED:
+                return "⏸️", "dim"
+            case ScenarioStatus.WARMUP:
+                return "🔥", "yellow"
+            case ScenarioStatus.WARMUP_COMPLETE:
+                return "🔥", "dim"
+            case ScenarioStatus.RUNNING:
+                return "🔬", "cyan"
+            case ScenarioStatus.COMPLETED:
+                return "✅", "green"
+            case ScenarioStatus.FINISHED_WITH_ERROR:
+                return "❌", "red"
+            case _:
+                return "❓", "white"
+
+    def _build_progress_text(self, stats: LiveScenarioStats) -> str:
+        """
+        Build progress bar and text based on scenario status.
+
+        Args:
+            stats: LiveScenarioStats object
+
+        Returns:
+            Formatted progress string
+        """
+        # Status-specific messages for non-running states
+        match stats.status:
+            case ScenarioStatus.INITIALIZED:
+                return "[dim]Initializing...[/dim]"
+            case ScenarioStatus.WARMUP:
+                return "[dim]Warming up...[/dim]"
+            case ScenarioStatus.WARMUP_COMPLETE:
+                return "[green]Warmup complete[/green]"
+
+        # For RUNNING and COMPLETED: show progress bar
+        progress_percent = stats.progress_percent
+        bar_width = 20
+        filled = int((progress_percent / 100.0) * bar_width)
+        bar = "█" * filled + "░" * (bar_width - filled)
+
+        return f"{bar} {progress_percent:>5.1f}%"
 
     def format_scenario_name(self, name: str, max_length: int = 10) -> str:
         """

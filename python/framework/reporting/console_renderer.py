@@ -187,7 +187,7 @@ class ConsoleRenderer:
         Render scenarios in grid layout.
 
         Args:
-            scenarios: List of ScenarioPerformanceStats objects
+            scenarios: List of Scenario objects
             columns: Number of columns in grid
             box_width: Width of each box
         """
@@ -220,8 +220,6 @@ class ConsoleRenderer:
         """
         Create box lines for single scenario.
 
-        Args:
-            scenario: ScenarioPerformanceStats object
         """
         scenario_name = scenario.scenario_name[:28]
         symbol = scenario.symbol

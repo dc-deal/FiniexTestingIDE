@@ -21,6 +21,8 @@ from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.types.global_types import TestScenario, TickData, TimeframeConfig
+from python.framework.types.live_stats_types import ScenarioStatus
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
 from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
@@ -34,8 +36,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager,
-    ScenarioPerformanceStats
+    ScenarioSetPerformanceManager
 )
 
 from python.framework.exceptions.data_validation_errors import (
@@ -167,6 +168,8 @@ class BatchOrchestrator:
             except Exception as e:
                 vLog.error(
                     f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
+                self.performance_log.set_live_status(
+                    scenario_index=scenario_index, status=ScenarioStatus.FINISHED_WITH_ERROR)
                 results.append({"error": str(e), "scenario": scenario.name})
 
         # ===== Phase 1a: Cleanup =====
@@ -234,6 +237,8 @@ class BatchOrchestrator:
                 except Exception as e:
                     vLog.error(
                         f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}")
+                    self.performance_log.set_live_status(
+                        scenario_index=idx, status=ScenarioStatus.FINISHED_WITH_ERROR)
                     results[idx] = {
                         "error": str(e),
                         "scenario": self.scenarios[idx].name
@@ -287,6 +292,14 @@ class BatchOrchestrator:
         # Setup Log for this scenario
         vLog.start_scenario_logging(scenario_index, scenario.name)
 
+        # ===== LIVE STATS: Update total ticks after ticks are known. =====
+        # as early as possible.
+        self.performance_log.start_scenario_tracking(
+            scenario_index=scenario_index,
+            scenario_name=scenario.name,
+            symbol=scenario.symbol
+        )
+
         # Set thread name for debugging
         current_thread = threading.current_thread()
         original_thread_name = current_thread.name
@@ -302,6 +315,10 @@ class BatchOrchestrator:
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_trade_simulator = self._create_trade_simulator_for_scenario(
             scenario)
+
+        self.performance_log.set_portfolio_balance(
+            scenario_index,
+            scenario_trade_simulator.portfolio.initial_balance)
 
         # 2. Create Workers using Worker Factory
         strategy_config = scenario.strategy_config
@@ -381,6 +398,8 @@ class BatchOrchestrator:
         vLog.debug(
             f"📊 Scenario warmup bar requirements: {scenario_requirement['warmup_by_timeframe']}"
         )
+        self.performance_log.set_live_status(
+            scenario_index=scenario_index, status=ScenarioStatus.WARMUP)
 
         # Preparator converts bars to minutes internally
         # read tick count of data, because you can't rely on max_ticks (gaps, timespan)
@@ -401,15 +420,7 @@ class BatchOrchestrator:
                 context=e.get_context()
             )
 
-        # ===== LIVE STATS: Update total ticks after ticks are known. =====
-        # as early as possible.
-        self.performance_log.start_scenario_tracking(
-            scenario_index=scenario_index,
-            scenario_name=scenario.name,
-            total_ticks=total_test_ticks,
-            initial_balance=scenario_trade_simulator.portfolio.initial_balance,
-            symbol=scenario.symbol
-        )
+        self.performance_log.set_total_ticks(scenario_index, total_test_ticks)
 
         # 10. Setup bar rendering
         bar_orchestrator = BarRenderingController(self.data_worker)
@@ -424,7 +435,7 @@ class BatchOrchestrator:
 
         # Last startup live log after warmup phase.
         self.performance_log.set_live_status(
-            scenario_index=scenario_index, status="running")
+            scenario_index=scenario_index, status=ScenarioStatus.WARMUP_COMPLETE)
 
         # =============================================================================
         # NEW: BARRIER SYNCHRONIZATION POINT
@@ -464,6 +475,10 @@ class BatchOrchestrator:
         signals_gen_sell = 0
 
         vLog.info(f"🚀 Starting Tick Loop")
+
+        # Last startup live log after warmup phase.
+        self.performance_log.set_live_status(
+            scenario_index=scenario_index, status=ScenarioStatus.RUNNING)
 
         # Profiling counters
         profile_times = defaultdict(float)

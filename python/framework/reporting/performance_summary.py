@@ -4,7 +4,7 @@ Worker and decision logic performance rendering
 
 REFACTORED (C#003):
 - Uses ScenarioSetPerformanceManager instead of batch_results dict
-- Reads ScenarioPerformanceStats objects
+- Reads Scenario objects
 
 Renders:
 - Per-scenario worker performance (call counts, timings, parallel efficiency)

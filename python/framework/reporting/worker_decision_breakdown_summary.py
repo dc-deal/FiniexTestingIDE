@@ -5,12 +5,12 @@ Pure data output, no recommendations or suggestions.
 
 from typing import List, Dict, Any, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager,
-    ScenarioPerformanceStats
+    ScenarioSetPerformanceManager
 )
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 
 
 class WorkerDecisionBreakdownSummary:

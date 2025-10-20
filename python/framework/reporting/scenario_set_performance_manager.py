@@ -19,6 +19,8 @@ Architecture:
 EXTENDED (Phase 1a):
 - get_live_scenario_stats() for real-time progress display
 - Thread-safe partial data access during execution
+- Fully typed with LiveScenarioStats class (no more dicts!)
+- ScenarioStatus enum for type-safe state management
 """
 
 import threading
@@ -27,57 +29,8 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
 from python.framework.trading_env.portfolio_manager import AccountInfo
-
-
-@dataclass
-class ScenarioPerformanceStats:
-    """
-    Performance statistics for a single scenario.
-
-    Contains all performance data that was previously in batch_results dict.
-    """
-    # Scenario metadata
-    scenario_index: int  # Original position in scenario array
-    scenario_name: str
-    symbol: str
-
-    # Execution stats
-    ticks_processed: int
-    signals_generated: int
-    signals_gen_buy: int
-    signals_gen_sell: int
-    signal_rate: float
-    success: bool
-    portfolio_value: float
-    initial_balance: float
-    elapsed_time: float
-
-    # Worker statistics
-    worker_statistics: Dict[str, Any]
-
-    # Decision logic
-    decision_logic_name: str
-
-    # Scenario requirement
-    scenario_requirement: Dict[str, Any]
-
-    # Optional: First 10 signals for inspection
-    sample_signals: List[Dict] = field(default_factory=list)
-
-    # Portfolio & Trading Stats (per scenario)
-    # Each scenario gets its own TradeSimulator, stats stored here
-    portfolio_stats: Dict[str, Any] = field(default_factory=dict)
-    execution_stats: Dict[str, Any] = field(default_factory=dict)
-    cost_breakdown: Dict[str, Any] = field(default_factory=dict)
-
-    # NEW: Profiling data from tick loop
-    # Structure:
-    # {
-    #     'profile_times': {'trade_simulator': 123.45, 'bar_rendering': 67.89, ...},
-    #     'profile_counts': {'trade_simulator': 100, 'bar_rendering': 100, ...},
-    #     'total_per_tick': 456.78
-    # }
-    profiling_data: Dict[str, Any] = field(default_factory=dict)
+from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 
 
 class ScenarioSetPerformanceManager:
@@ -116,11 +69,11 @@ class ScenarioSetPerformanceManager:
         self._execution_time = 0.0
         self._success = True
 
-        # Live tracking (for progress display)
-        self._live_stats: Dict[int, Dict[str, Any]] = {}
+        # Live tracking (for progress display) - NOW TYPED!
+        self._live_stats: Dict[int, LiveScenarioStats] = {}
         self._scenario_start_times: Dict[int, float] = {}
 
-    def set_metadata(self, execution_time: float, success: bool):
+    def set_metadata(self, execution_time: float, success: bool) -> None:
         """
         Set batch-level metadata.
 
@@ -146,7 +99,7 @@ class ScenarioSetPerformanceManager:
                 'total_scenarios': len(self._scenarios)
             }
 
-    def add_scenario_stats(self, scenario_index: int, stats: ScenarioPerformanceStats):
+    def add_scenario_stats(self, scenario_index: int, stats: ScenarioPerformanceStats) -> None:
         """
         Add performance stats for a completed scenario.
 
@@ -179,9 +132,10 @@ class ScenarioSetPerformanceManager:
     # NEW (Phase 1a): Live Progress Tracking
     # ============================================
 
-    def start_scenario_tracking(self, scenario_index: int, scenario_name: str,
-                                initial_balance: float,
-                                total_ticks: int, symbol: str):
+    def start_scenario_tracking(self,
+                                scenario_index: int,
+                                scenario_name: str,
+                                symbol: str) -> None:
         """
         Begin live tracking for a scenario.
         Call this when scenario execution starts.
@@ -189,37 +143,70 @@ class ScenarioSetPerformanceManager:
         Args:
             scenario_index: Scenario array index
             scenario_name: Scenario name
-            total_ticks: Expected total ticks to process
             symbol: Trading symbol
         """
         with self._lock:
             self._scenario_start_times[scenario_index] = time.time()
-            self._live_stats[scenario_index] = {
-                'scenario_name': scenario_name,
-                'symbol': symbol,
-                'total_ticks': total_ticks,
-                'ticks_processed': 0,
-                'progress_percent': 0,
-                'total_trades': 0,
-                'winning_trades': 0,
-                'losing_trades': 0,
-                'portfolio_value': initial_balance,  # Default starting capital
-                'initial_balance': initial_balance,
-                'status': 'warmup'
-            }
+            self._live_stats[scenario_index] = LiveScenarioStats(
+                scenario_name=scenario_name,
+                symbol=symbol,
+                total_ticks=0,
+                ticks_processed=0,
+                progress_percent=0.0,
+                total_trades=0,
+                winning_trades=0,
+                losing_trades=0,
+                portfolio_value=0.0,
+                initial_balance=0.0,
+                status=ScenarioStatus.INITIALIZED
+            )
 
-    def set_live_status(self, scenario_index: int, status: str = "warmup"):
+    def set_live_status(self, scenario_index: int, status: ScenarioStatus) -> None:
+        """
+        Set the status of a running scenario.
+
+        Args:
+            scenario_index: Scenario array index
+            status: New status (ScenarioStatus enum)
+        """
         with self._lock:
             if scenario_index not in self._live_stats:
                 return
 
-            stats = self._live_stats[scenario_index]
-            stats['status'] = status
+            self._live_stats[scenario_index].status = status
 
-    def update_live_stats(self, scenario_index: int,
+    def set_total_ticks(self, scenario_index: int, total_ticks: int) -> None:
+        """
+        Set the total number of ticks for a scenario.
+
+        Args:
+            scenario_index: Scenario array index
+            total_ticks: Total ticks to process
+        """
+        with self._lock:
+            if scenario_index not in self._live_stats:
+                return
+            self._live_stats[scenario_index].total_ticks = total_ticks
+
+    def set_portfolio_balance(self, scenario_index: int, initial_balance: float) -> None:
+        """
+        Set the initial portfolio balance for a scenario.
+
+        Args:
+            scenario_index: Scenario array index
+            initial_balance: Starting balance
+        """
+        with self._lock:
+            if scenario_index not in self._live_stats:
+                return
+            self._live_stats[scenario_index].initial_balance = initial_balance
+            self._live_stats[scenario_index].portfolio_value = initial_balance
+
+    def update_live_stats(self,
+                          scenario_index: int,
                           ticks_processed: Optional[int] = None,
-                          portfolio_stats: Dict = None,
-                          account_info: AccountInfo = None):
+                          portfolio_stats: Optional[Dict[str, Any]] = None,
+                          account_info: Optional[AccountInfo] = None) -> None:
         """
         Update live statistics during scenario execution.
         Thread-safe, can be called from worker threads.
@@ -227,32 +214,34 @@ class ScenarioSetPerformanceManager:
         Args:
             scenario_index: Scenario array index
             ticks_processed: Current tick count (optional)
-            trades_count: Current trade count (optional)
-            portfolio_value: Current portfolio value (optional)
+            portfolio_stats: Portfolio statistics dict (optional)
+            account_info: Account information object (optional)
         """
         with self._lock:
             if scenario_index not in self._live_stats:
                 return
 
             stats = self._live_stats[scenario_index]
-            total_ticks = stats['total_ticks']
-            if ticks_processed is not None:
-                stats['ticks_processed'] = ticks_processed
-            if total_ticks is not None and total_ticks > 0:
-                progress_percent = ticks_processed / total_ticks * 100
-                stats['progress_percent'] = progress_percent
-                if (progress_percent >= 100):
-                    stats['status'] = 'completed'
-            if portfolio_stats is not None:
-                stats['total_trades'] = portfolio_stats['total_trades']
-                stats['winning_trades'] = portfolio_stats['winning_trades']
-                stats['losing_trades'] = portfolio_stats['losing_trades']
-            if account_info is not None:
-                stats['portfolio_value'] = account_info.equity
-            if total_ticks is not None:
-                stats['total_ticks'] = total_ticks
 
-    def get_live_scenario_stats(self, scenario_index: int) -> Optional[Dict[str, Any]]:
+            if ticks_processed is not None:
+                stats.ticks_processed = ticks_processed
+
+            if stats.total_ticks > 0:
+                progress_percent = (stats.ticks_processed /
+                                    stats.total_ticks) * 100.0
+                stats.progress_percent = progress_percent
+                if progress_percent >= 100:
+                    stats.status = ScenarioStatus.COMPLETED
+
+            if portfolio_stats is not None:
+                stats.total_trades = portfolio_stats.get('total_trades', 0)
+                stats.winning_trades = portfolio_stats.get('winning_trades', 0)
+                stats.losing_trades = portfolio_stats.get('losing_trades', 0)
+
+            if account_info is not None:
+                stats.portfolio_value = account_info.equity
+
+    def get_live_scenario_stats(self, scenario_index: int) -> Optional[LiveScenarioStats]:
         """
         Get live statistics for a running scenario.
         Used by LiveProgressDisplay for real-time updates.
@@ -261,77 +250,46 @@ class ScenarioSetPerformanceManager:
             scenario_index: Scenario array index
 
         Returns:
-            Dict with live stats or None if scenario not tracked:
-            {
-                'scenario_name': str,
-                'symbol': str,
-                'total_ticks': int,
-                'ticks_processed': int,
-                'progress_percent': float,
-                'elapsed_time': float,
-                'total_trades': int,
-                'portfolio_value': float,
-                'status': str  # 'running' or 'completed' or 'warmup'
-            }
+            LiveScenarioStats object or None if scenario not tracked
         """
         with self._lock:
-            # Check if completed
+            # Check if completed - convert to LiveScenarioStats for consistency
             if scenario_index in self._scenarios:
                 scenario_status_object = self._scenarios[scenario_index]
-                return {
-                    'scenario_name': scenario_status_object.scenario_name,
-                    'symbol': scenario_status_object.symbol,
-                    'total_ticks': scenario_status_object.ticks_processed,
-                    'ticks_processed': scenario_status_object.ticks_processed,
-                    'progress_percent': 100.0,
-                    'elapsed_time': scenario_status_object.elapsed_time,  # Not tracked for completed
-                    'total_trades': scenario_status_object.portfolio_stats.get('total_trades', 0),
-                    'winning_trades': scenario_status_object.portfolio_stats.get('winning_trades', 0),
-                    'losing_trades': scenario_status_object.portfolio_stats.get('losing_trades', 0),
-                    'portfolio_value': scenario_status_object.portfolio_value,
-                    'initial_balance': scenario_status_object.initial_balance,
-                    'status': 'completed'
-                }
+                return LiveScenarioStats(
+                    scenario_name=scenario_status_object.scenario_name,
+                    symbol=scenario_status_object.symbol,
+                    total_ticks=scenario_status_object.ticks_processed,
+                    ticks_processed=scenario_status_object.ticks_processed,
+                    progress_percent=100.0,
+                    total_trades=scenario_status_object.portfolio_stats.get(
+                        'total_trades', 0),
+                    winning_trades=scenario_status_object.portfolio_stats.get(
+                        'winning_trades', 0),
+                    losing_trades=scenario_status_object.portfolio_stats.get(
+                        'losing_trades', 0),
+                    portfolio_value=scenario_status_object.portfolio_value,
+                    initial_balance=scenario_status_object.initial_balance,
+                    status=ScenarioStatus.COMPLETED
+                )
 
             # Check if running
             if scenario_index not in self._live_stats:
                 return None
 
-            stats = self._live_stats[scenario_index]
-            start_time = self._scenario_start_times.get(
-                scenario_index, time.time())
-            elapsed = time.time() - start_time
+            # Return the live stats object directly (it's already a LiveScenarioStats)
+            return self._live_stats[scenario_index]
 
-            progress = 0.0
-            if stats['total_ticks'] > 0:
-                progress = (stats['ticks_processed'] /
-                            stats['total_ticks']) * 100.0
-
-            return {
-                'scenario_name': stats['scenario_name'],
-                'symbol': stats['symbol'],
-                'total_ticks': stats['total_ticks'],
-                'ticks_processed': stats['ticks_processed'],
-                'progress_percent': progress,
-                'elapsed_time': elapsed,
-                'total_trades': stats['total_trades'],
-                'winning_trades': stats['winning_trades'],
-                'losing_trades':  stats['losing_trades'],
-                'portfolio_value': stats['portfolio_value'],
-                'initial_balance': stats['initial_balance'],
-                'status': stats['status']
-            }
-
-    def get_all_live_stats(self) -> List[Dict[str, Any]]:
+    def get_all_live_stats(self) -> List[LiveScenarioStats]:
         """
         Get live stats for all tracked scenarios.
         Used by LiveProgressDisplay to show all running scenarios.
 
         Returns:
-            List of scenario stats dicts (see get_live_scenario_stats)
+            List of LiveScenarioStats objects
         """
         with self._lock:
-            all_stats = []
+            all_stats: List[LiveScenarioStats] = []
 
             # Get all scenario indices (both running and completed)
             all_indices = set(self._live_stats.keys()) | set(
@@ -340,7 +298,6 @@ class ScenarioSetPerformanceManager:
             for idx in sorted(all_indices):
                 stats = self.get_live_scenario_stats(idx)
                 if stats:
-                    stats['scenario_index'] = idx
                     all_stats.append(stats)
 
             return all_stats
