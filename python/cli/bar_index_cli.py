@@ -13,11 +13,11 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
-from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
-vLog = setup_logging(name="BarIndexCLI")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class BarIndexCLI:

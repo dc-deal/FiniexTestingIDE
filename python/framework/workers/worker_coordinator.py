@@ -14,7 +14,6 @@ ARCHITECTURE CHANGE (Performance Logging V0.7):
 """
 
 import traceback
-from python.components.logger.bootstrap_logger import setup_logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
@@ -27,7 +26,8 @@ from python.framework.workers.abstract_blackbox_worker import \
 from python.framework.performance.performance_log_coordinator import \
     PerformanceLogCoordinator
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class WorkerCoordinator:

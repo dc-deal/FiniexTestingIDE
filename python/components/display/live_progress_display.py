@@ -13,9 +13,9 @@ Usage:
     # In BatchOrchestrator
     display = LiveProgressDisplay(performance_log, scenarios)
     display.start()
-    
+
     # ... run scenarios ...
-    
+
     display.stop()
 """
 
@@ -34,6 +34,8 @@ from rich import box
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.types.global_types import TestScenario
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class LiveProgressDisplay:
@@ -117,8 +119,8 @@ class LiveProgressDisplay:
                     time.sleep(self.update_interval)
 
                 except Exception as e:
-                    print(f"\n❌ CRITICAL ERROR in LiveProgressDisplay:")
-                    print(traceback.format_exc())
+                    vLog.error(f"\n❌ CRITICAL ERROR in LiveProgressDisplay:")
+                    vLog.error(traceback.format_exc())
 
                     # Stop display and re-raise
                     self._running = False

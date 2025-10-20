@@ -35,7 +35,6 @@ This logic requires two workers:
 """
 
 import traceback
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import \
@@ -48,7 +47,8 @@ from python.framework.trading_env.order_types import (
     OrderResult
 )
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class SimpleConsensus(AbstractDecisionLogic):

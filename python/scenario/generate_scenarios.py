@@ -16,14 +16,14 @@ Usage:
 """
 
 import traceback
-from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 
 from python.data_worker.data_loader.core import TickDataLoader
 from python.scenario.config_saver import ScenarioConfigSaver
 from python.scenario.generator import ScenarioGenerator
 
-vLog = setup_logging(name="ScenarioGenerator")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 ts_config_global = {
     "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",

@@ -11,10 +11,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
 
-vLog = setup_logging(name="BarIndexReport")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class BarIndexReportGenerator:

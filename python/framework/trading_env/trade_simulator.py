@@ -546,9 +546,9 @@ class TradeSimulator:
             executed = [o for o in history if o.is_success]
             rejected = [o for o in history if o.is_rejected]
 
-            print(f"Total orders: {len(history)}")
-            print(f"Executed: {len(executed)}")
-            print(f"Rejected: {len(rejected)}")
+            vLog.info(f"Total orders: {len(history)}")
+            vLog.info(f"Executed: {len(executed)}")
+            vLog.info(f"Rejected: {len(rejected)}")
         """
         return self._order_history.copy()
 
@@ -565,10 +565,10 @@ class TradeSimulator:
             closed = trading_env.get_closed_positions()
 
             for pos in closed:
-                print(f"Position {pos.position_id}:")
-                print(f"  P&L: {pos.unrealized_pnl:.2f}")
-                print(f"  Spread: {pos.get_spread_cost():.2f}")
-                print(f"  Duration: {pos.close_time - pos.entry_time}")
+                vLog.info(f"Position {pos.position_id}:")
+                vLog.info(f"  P&L: {pos.unrealized_pnl:.2f}")
+                vLog.info(f"  Spread: {pos.get_spread_cost():.2f}")
+                vLog.info(f"  Duration: {pos.close_time - pos.entry_time}")
         """
         return self.portfolio.get_closed_positions()
 

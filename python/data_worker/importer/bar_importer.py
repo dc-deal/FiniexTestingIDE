@@ -24,13 +24,13 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.importer.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
 
 
-vLog = setup_logging(name="BarImporter")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class BarImporter:

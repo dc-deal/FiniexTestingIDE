@@ -252,7 +252,7 @@ class BatchOrchestrator:
         """
         Called by the barrier when all threads have reached it.
         This is executed by ONE thread only (the last one to arrive).
-        
+
         Perfect moment to log that all scenarios are ready to start.
         """
         vLog.info("🚦 All scenarios ready - starting synchronized tick processing")
@@ -435,14 +435,14 @@ class BatchOrchestrator:
         if barrier is not None:
             vLog.debug(
                 f"⏸️  Scenario {scenario_index} ready - waiting at barrier for other scenarios...")
-            
+
             try:
                 # Wait for all threads to reach this point
                 barrier.wait(timeout=300)  # 5 minute timeout for safety
-                
+
                 vLog.debug(
                     f"🚀 Barrier released - starting tick loop for scenario {scenario_index}")
-                
+
             except threading.BrokenBarrierError:
                 vLog.error(
                     f"❌ Barrier broken - another scenario failed during preparation")

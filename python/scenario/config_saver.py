@@ -13,7 +13,6 @@ FIXED (C#003):
 - Proper override detection for all config sections
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
@@ -21,7 +20,8 @@ import json
 
 from python.framework.types.global_types import TestScenario
 
-vLog = setup_logging(name="ScenarioConfigSaver")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ScenarioConfigSaver:

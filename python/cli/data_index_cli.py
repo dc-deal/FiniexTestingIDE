@@ -19,11 +19,11 @@ from datetime import datetime
 import traceback
 import pandas as pd
 
-from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.data_worker.importer.tick_importer import TickDataImporter
 
-vLog = setup_logging(name="DataIndexCLI")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class DataIndexCLI:

@@ -3,7 +3,6 @@ FiniexTestingIDE - Scenario Config System
 Auto-Generator (REFACTORED for Worker Instance System)
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 import pandas as pd
@@ -12,7 +11,8 @@ from python.data_worker.data_loader.analytics import TickDataAnalyzer
 from python.framework.types.global_types import TestScenario
 from python.data_worker.data_loader.core import TickDataLoader
 
-vLog = setup_logging(name="ScenarioGenerator")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ScenarioGenerator:
