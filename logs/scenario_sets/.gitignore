@@ -1,0 +1,14 @@
+# FiniexTestingIDE - Logs Directory
+# Ignore all generated log files and run directories
+
+# Ignore everything in this directory
+*
+
+# Except this .gitignore file
+!.gitignore
+
+# This ensures that:
+# - All run directories (timestamp-based) are ignored
+# - All log files (global.log, scenario_*.log) are ignored
+# - All config snapshots (config.json) are ignored
+# - The directory structure remains in git, but content is ignored

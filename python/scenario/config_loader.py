@@ -75,7 +75,7 @@ class ScenarioConfigLoader:
             if not is_enabled:
                 disabled_count += 1
                 vLog.debug(
-                    f"⊗ Skipping disabled scenario: {scenario_data['name']}")
+                    f"🔻 Skipping disabled scenario: {scenario_data['name']}")
                 continue  # Skip disabled
 
             # Merge strategy config

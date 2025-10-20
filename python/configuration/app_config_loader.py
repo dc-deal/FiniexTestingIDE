@@ -2,6 +2,7 @@
 FiniexTestingIDE - Application Configuration Loader
 Centralized app config management
 
+UPDATED: Log level validation with LogLevel enum
 """
 
 import json
@@ -9,6 +10,8 @@ import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+from python.framework.types.log_level import LogLevel
 
 # Use standard logging to avoid circular import
 logger = logging.getLogger("AppConfigLoader")
@@ -20,7 +23,6 @@ class AppConfigLoader:
 
     Loads and provides access to app_config.json settings.
     Singleton pattern ensures config is loaded only once.
-
     """
 
     _instance: Optional['AppConfigLoader'] = None
@@ -75,8 +77,7 @@ class AppConfigLoader:
         return {
             "version": "1.0",
             "development": {
-                "dev_mode": False,
-                "debug_logging": False
+                "dev_mode": False
             },
             "execution": {
                 "default_parallel_scenarios": True,
@@ -89,7 +90,12 @@ class AppConfigLoader:
                 "show_worker_details": True,
                 "show_decision_logic_details": True,
                 "warn_on_parameter_override": True,
-                "log_level": "INFO"
+                "log_level": LogLevel.INFO
+            },
+            "file_logging": {
+                "enabled": True,
+                "log_level": LogLevel.DEBUG,
+                "log_root_path": "logs/scenario_sets"
             },
             "importer": {
                 "move_processed_files": True,
@@ -149,6 +155,21 @@ class AppConfigLoader:
         """
         config = cls.get_config()
         return config.get("logging", {})
+
+    @classmethod
+    def get_file_logging_config(cls) -> Dict[str, Any]:
+        """
+        Get file logging configuration.
+
+        Returns:
+            File logging config dict
+        """
+        config = cls.get_config()
+        return config.get("file_logging", {
+            "enabled": True,
+            "log_level": LogLevel.INFO,
+            "log_root_path": "logs/scenario_sets"
+        })
 
     @classmethod
     def get_paths_config(cls) -> Dict[str, Any]:
@@ -239,7 +260,67 @@ class AppConfigLoader:
         return logging_config.get("warn_on_parameter_override", True)
 
     # ============================================
-    # NEW (V0.7): Migrated from config.py
+    # NEW: Log Level Methods (Validated)
+    # ============================================
+
+    @classmethod
+    def get_console_log_level(cls) -> str:
+        """
+        Get console log level (validated).
+
+        Returns:
+            Validated log level string (DEBUG, INFO, WARNING, ERROR)
+        """
+        logging_config = cls.get_logging_config()
+        raw_level = logging_config.get("log_level")
+        try:
+            return LogLevel.validate(raw_level)
+        except ValueError as e:
+            logger.warning(
+                f"Invalid console log level in config: {e}. Using INFO.")
+            return LogLevel.INFO
+
+    @classmethod
+    def is_file_logging_enabled(cls) -> bool:
+        """
+        Check if file logging is enabled.
+
+        Returns:
+            True if file logging is enabled
+        """
+        file_config = cls.get_file_logging_config()
+        return file_config.get("enabled", True)
+
+    @classmethod
+    def get_file_log_level(cls) -> str:
+        """
+        Get file log level (validated).
+
+        Returns:
+            Validated log level string (DEBUG, INFO, WARNING, ERROR)
+        """
+        file_config = cls.get_file_logging_config()
+        raw_level = file_config.get("log_level", LogLevel.DEBUG)
+        try:
+            return LogLevel.validate(raw_level)
+        except ValueError as e:
+            logger.warning(
+                f"Invalid file log level in config: {e}. Using DEBUG.")
+            return LogLevel.DEBUG
+
+    @classmethod
+    def get_file_log_root_path(cls) -> str:
+        """
+        Get file log root path.
+
+        Returns:
+            File log root path string
+        """
+        file_config = cls.get_file_logging_config()
+        return file_config.get("log_root_path", "logs/scenario_sets")
+
+    # ============================================
+    # Development Config
     # ============================================
 
     @classmethod
@@ -272,23 +353,8 @@ class AppConfigLoader:
         Returns:
             True if dev mode is enabled
         """
-
-        # Config file
         dev_config = cls.get_development_config()
         return dev_config.get("dev_mode", False)
-
-    @classmethod
-    def get_debug_logging(cls) -> bool:
-        """
-        Get debug logging setting.
-
-        Returns:
-            True if debug logging is enabled
-        """
-
-        # Config file
-        dev_config = cls.get_development_config()
-        return dev_config.get("debug_logging", False)
 
     @classmethod
     def get_move_processed_files(cls) -> bool:
@@ -298,8 +364,6 @@ class AppConfigLoader:
         Returns:
             True if processed files should be moved
         """
-
-        # Config file
         importer_config = cls.get_importer_config()
         return importer_config.get("move_processed_files", True)
 
@@ -308,12 +372,9 @@ class AppConfigLoader:
         """
         Get delete on error setting.
 
-
         Returns:
             True if files should be deleted on error
         """
-
-        # Config file
         importer_config = cls.get_importer_config()
         return importer_config.get("delete_on_error", False)
 
