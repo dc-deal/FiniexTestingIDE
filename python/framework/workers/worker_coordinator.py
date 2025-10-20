@@ -490,18 +490,6 @@ class WorkerCoordinator:
         # Get the full performance snapshot
         return self.performance_log.get_snapshot()
 
-    def get_performance_snapshot(self) -> Dict[str, Any]:
-        """
-        Get live performance snapshot.
-
-        NEW (V0.7): Optimized for frequent polling (TUI updates).
-        Minimal overhead, designed for 300ms refresh rates.
-
-        Returns:
-            Dict with current performance metrics
-        """
-        return self.performance_log.get_snapshot()
-
     def cleanup(self):
         """
         Cleanup resources.
