@@ -21,14 +21,14 @@ EXTENDED (Phase 1a):
 - Thread-safe partial data access during execution
 - Fully typed with LiveScenarioStats class (no more dicts!)
 - ScenarioStatus enum for type-safe state management
+- FULLY TYPED: Uses typed stats objects instead of dicts
 """
 
 import threading
 import time
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, field
 
-from python.framework.trading_env.portfolio_manager import AccountInfo
+from python.framework.types.trading_env_types import AccountInfo, PortfolioStats
 from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 
@@ -63,7 +63,7 @@ class ScenarioSetPerformanceManager:
         # get_all_live_stats() hält den Lock und ruft intern get_live_scenario_stats() auf,
         # die auch den Lock will → Deadlock.
         # RLock = Reentrant Lock erlaubt dem gleichen Thread den Lock mehrfach zu nehmen.
-        self._lock = threading.RLock()  # <-- CHANGED from Lock to RLock
+        self._lock = threading.RLock()
 
         # Metadata
         self._execution_time = 0.0
@@ -205,7 +205,7 @@ class ScenarioSetPerformanceManager:
     def update_live_stats(self,
                           scenario_index: int,
                           ticks_processed: Optional[int] = None,
-                          portfolio_stats: Optional[Dict[str, Any]] = None,
+                          portfolio_stats: Optional[PortfolioStats] = None,
                           account_info: Optional[AccountInfo] = None) -> None:
         """
         Update live statistics during scenario execution.
@@ -214,7 +214,7 @@ class ScenarioSetPerformanceManager:
         Args:
             scenario_index: Scenario array index
             ticks_processed: Current tick count (optional)
-            portfolio_stats: Portfolio statistics dict (optional)
+            portfolio_stats: Portfolio statistics object (optional)
             account_info: Account information object (optional)
         """
         with self._lock:
@@ -234,9 +234,9 @@ class ScenarioSetPerformanceManager:
                     stats.status = ScenarioStatus.COMPLETED
 
             if portfolio_stats is not None:
-                stats.total_trades = portfolio_stats.get('total_trades', 0)
-                stats.winning_trades = portfolio_stats.get('winning_trades', 0)
-                stats.losing_trades = portfolio_stats.get('losing_trades', 0)
+                stats.total_trades = portfolio_stats.total_trades
+                stats.winning_trades = portfolio_stats.winning_trades
+                stats.losing_trades = portfolio_stats.losing_trades
 
             if account_info is not None:
                 stats.portfolio_value = account_info.equity
@@ -262,12 +262,9 @@ class ScenarioSetPerformanceManager:
                     total_ticks=scenario_status_object.ticks_processed,
                     ticks_processed=scenario_status_object.ticks_processed,
                     progress_percent=100.0,
-                    total_trades=scenario_status_object.portfolio_stats.get(
-                        'total_trades', 0),
-                    winning_trades=scenario_status_object.portfolio_stats.get(
-                        'winning_trades', 0),
-                    losing_trades=scenario_status_object.portfolio_stats.get(
-                        'losing_trades', 0),
+                    total_trades=scenario_status_object.portfolio_stats.total_trades,
+                    winning_trades=scenario_status_object.portfolio_stats.winning_trades,
+                    losing_trades=scenario_status_object.portfolio_stats.losing_trades,
                     portfolio_value=scenario_status_object.portfolio_value,
                     initial_balance=scenario_status_object.initial_balance,
                     status=ScenarioStatus.COMPLETED
