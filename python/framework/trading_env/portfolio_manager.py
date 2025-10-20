@@ -7,6 +7,7 @@ EXTENDED FEATURES:
 - Cost tracking (spread, commission, swap)
 - Closed positions history
 - Performance statistics with fee breakdown
+- FULLY TYPED: All return types use dataclasses (no more dicts!)
 """
 
 from dataclasses import dataclass, field
@@ -14,8 +15,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
 
-from .order_types import OrderDirection
+from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee, SpreadFee, SwapFee, CommissionFee
+from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
 
 
 class PositionStatus(Enum):
@@ -59,7 +61,7 @@ class Position:
     close_time: Optional[datetime] = None
     close_price: Optional[float] = None
 
-    def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int):
+    def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
         """
         Update current price and recalculate unrealized P&L.
 
@@ -86,7 +88,7 @@ class Position:
 
         self.unrealized_pnl = gross_pnl - total_fees
 
-    def add_fee(self, fee: AbstractTradingFee):
+    def add_fee(self, fee: AbstractTradingFee) -> None:
         """Add fee to position"""
         self.fees.append(fee)
 
@@ -126,24 +128,6 @@ class Position:
         return self.status == PositionStatus.OPEN
 
 
-@dataclass
-class AccountInfo:
-    """Account information snapshot"""
-    balance: float
-    equity: float
-    margin_used: float
-    free_margin: float
-    margin_level: float
-
-    # Position stats
-    open_positions: int
-    total_lots: float
-
-    # Account config
-    currency: str
-    leverage: int
-
-
 class PortfolioManager:
     """
     Portfolio Manager - Tracks account state and positions.
@@ -153,6 +137,7 @@ class PortfolioManager:
     - Closed positions history
     - Cost breakdown (spread/commission/swap)
     - Enhanced performance statistics
+    - FULLY TYPED: Returns dataclasses instead of dicts
     """
 
     def __init__(
@@ -343,7 +328,7 @@ class PortfolioManager:
         self,
         current_prices: Dict[str, tuple[float, float]],
         symbol_specs: Dict[str, Dict]
-    ):
+    ) -> None:
         """Update all open positions with current prices"""
         for position in self.open_positions.values():
             if position.symbol in current_prices:
@@ -444,25 +429,30 @@ class PortfolioManager:
         return account.margin_level < self.stop_out_level
 
     # ============================================
-    # Cost Tracking (EXTENDED)
+    # Cost Tracking (EXTENDED & TYPED)
     # ============================================
 
-    def get_cost_breakdown(self) -> Dict[str, float]:
+    def get_cost_breakdown(self) -> CostBreakdown:
         """
         Get breakdown of all trading costs.
 
-        NEW METHOD for cost analysis.
+        NEW: Returns strongly-typed CostBreakdown instead of dict.
 
         Returns:
-            Dict with total_spread_cost, total_commission, total_swap, total_fees
+            CostBreakdown with total_spread_cost, total_commission, total_swap, total_fees
         """
-        return self._cost_tracking.copy()
+        return CostBreakdown(
+            total_spread_cost=self._cost_tracking["total_spread_cost"],
+            total_commission=self._cost_tracking["total_commission"],
+            total_swap=self._cost_tracking["total_swap"],
+            total_fees=self._cost_tracking["total_fees"]
+        )
 
     # ============================================
-    # Statistics
+    # Statistics (TYPED)
     # ============================================
 
-    def _update_statistics(self, realized_pnl: float):
+    def _update_statistics(self, realized_pnl: float) -> None:
         """Update trading statistics after position close"""
         self._statistics["total_trades"] += 1
 
@@ -483,33 +473,44 @@ class PortfolioManager:
         if drawdown > self._statistics["max_drawdown"]:
             self._statistics["max_drawdown"] = drawdown
 
-    def get_statistics(self) -> Dict:
+    def get_portfolio_statistics(self) -> PortfolioStats:
         """
         Get portfolio statistics with fee breakdown.
 
-        EXTENDED: Now includes cost breakdown.
+        EXTENDED & TYPED: Returns PortfolioStats dataclass instead of dict.
         """
-        stats = self._statistics.copy()
-
         # Calculate win rate
-        if stats["total_trades"] > 0:
-            stats["win_rate"] = stats["winning_trades"] / stats["total_trades"]
+        total_trades = self._statistics["total_trades"]
+        if total_trades > 0:
+            win_rate = self._statistics["winning_trades"] / total_trades
         else:
-            stats["win_rate"] = 0.0
+            win_rate = 0.0
 
         # Calculate profit factor
-        if stats["total_loss"] > 0:
-            stats["profit_factor"] = stats["total_profit"] / stats["total_loss"]
+        total_loss = self._statistics["total_loss"]
+        total_profit = self._statistics["total_profit"]
+        if total_loss > 0:
+            profit_factor = total_profit / total_loss
         else:
-            stats["profit_factor"] = 0.0 if stats["total_profit"] == 0 else float(
-                'inf')
+            profit_factor = 0.0 if total_profit == 0 else float('inf')
 
-        # EXTENDED: Add cost breakdown
-        stats.update(self._cost_tracking)
+        return PortfolioStats(
+            total_trades=self._statistics["total_trades"],
+            winning_trades=self._statistics["winning_trades"],
+            losing_trades=self._statistics["losing_trades"],
+            total_profit=self._statistics["total_profit"],
+            total_loss=self._statistics["total_loss"],
+            max_drawdown=self._statistics["max_drawdown"],
+            max_equity=self._statistics["max_equity"],
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            total_spread_cost=self._cost_tracking["total_spread_cost"],
+            total_commission=self._cost_tracking["total_commission"],
+            total_swap=self._cost_tracking["total_swap"],
+            total_fees=self._cost_tracking["total_fees"]
+        )
 
-        return stats
-
-    def reset(self):
+    def reset(self) -> None:
         """Reset portfolio to initial state"""
         self.balance = self.initial_balance
         self.realized_pnl = 0.0

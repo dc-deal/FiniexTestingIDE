@@ -1,11 +1,13 @@
 """
 FiniexTestingIDE - Performance Log Decision Logic
 Tracks performance metrics for decision logic
+
+FULLY TYPED: Returns DecisionLogicPerformanceStats dataclass instead of dict.
+UNIQUE KEYWORDS: 'logic_*' for type/name, 'decision_*' for metrics.
 """
 
-from typing import Dict, Any
-
 from python.framework.types.global_types import Decision
+from python.framework.types.performance_stats_types import DecisionLogicPerformanceStats
 
 
 class PerformanceLogDecisionLogic:
@@ -35,12 +37,13 @@ class PerformanceLogDecisionLogic:
         self.min_time_ms = float('inf')
         self.max_time_ms = 0.0
 
-    def record(self, execution_time_ms: float, decision: Decision):
+    def record(self, execution_time_ms: float, decision: Decision) -> None:
         """
         Record a single execution time.
 
         Args:
             execution_time_ms: Execution time in milliseconds
+            decision: Decision object to track action counts
         """
         self.decision_count += 1
         if decision.action == "BUY":
@@ -61,28 +64,34 @@ class PerformanceLogDecisionLogic:
             return 0.0
         return self.total_time_ms / self.decision_count
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> DecisionLogicPerformanceStats:
         """
         Get performance statistics snapshot.
 
-        Returns:
-            Dict with all performance metrics
-        """
-        return {
-            "decision_logic_type": self.decision_logic_type,
-            "decision_logic_name": self.decision_logic_name,
-            "decision_count": self.decision_count,
-            "buy_decision_count": self.buy_decision_count,
-            "sell_decision_count": self.sell_decision_count,
-            "total_time_ms": round(self.total_time_ms, 3),
-            "avg_time_ms": round(self.get_avg_time_ms(), 3),
-            "min_time_ms": round(self.min_time_ms, 3) if self.min_time_ms != float('inf') else 0.0,
-            "max_time_ms": round(self.max_time_ms, 3),
-        }
+        FULLY TYPED: Returns DecisionLogicPerformanceStats dataclass.
+        UNIQUE KEYWORDS: 'logic_*' for type/name, 'decision_*' for metrics.
 
-    def reset(self):
+        Returns:
+            DecisionLogicPerformanceStats with all performance metrics
+        """
+        return DecisionLogicPerformanceStats(
+            logic_type=self.decision_logic_type,
+            logic_name=self.decision_logic_name,
+            decision_count=self.decision_count,
+            decision_buy_count=self.buy_decision_count,
+            decision_sell_count=self.sell_decision_count,
+            decision_total_time_ms=round(self.total_time_ms, 3),
+            decision_avg_time_ms=round(self.get_avg_time_ms(), 3),
+            decision_min_time_ms=round(
+                self.min_time_ms, 3) if self.min_time_ms != float('inf') else 0.0,
+            decision_max_time_ms=round(self.max_time_ms, 3)
+        )
+
+    def reset(self) -> None:
         """Reset all metrics to initial state."""
         self.decision_count = 0
+        self.buy_decision_count = 0
+        self.sell_decision_count = 0
         self.total_time_ms = 0.0
         self.min_time_ms = float('inf')
         self.max_time_ms = 0.0

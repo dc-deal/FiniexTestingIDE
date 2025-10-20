@@ -27,13 +27,13 @@ Example Config:
 """
 
 import importlib
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class DecisionLogicFactory:

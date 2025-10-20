@@ -8,6 +8,8 @@ CREATED (New):
 - Identifies performance bottlenecks
 - Cross-scenario performance comparison
 
+FULLY TYPED: Removed incorrect worker_statistics dict access.
+
 Architecture:
 - Uses ScenarioSetPerformanceManager for profiling data
 - Creates TickLoopProfile from raw profiling data
@@ -16,14 +18,14 @@ Architecture:
 
 from typing import List, Dict, Any, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager,
-    ScenarioPerformanceStats
+    ScenarioSetPerformanceManager
 )
 from python.framework.types.performance_metrics_types import (
     TickLoopProfile,
     OperationProfile,
     ProfilingMetrics
 )
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 
 
 class ProfilingSummary:
@@ -135,8 +137,8 @@ class ProfilingSummary:
         """
         Extract TickLoopProfile from ScenarioPerformanceStats.
 
-        Checks if scenario has profiling data in worker_statistics
-        or as a separate field.
+        FIXED: Removed incorrect worker_statistics dict access.
+        profiling_data is a separate field on ScenarioPerformanceStats.
 
         Args:
             scenario: ScenarioPerformanceStats object
@@ -144,23 +146,10 @@ class ProfilingSummary:
         Returns:
             TickLoopProfile or None if no profiling data
         """
-        # Check if profiling data exists in worker_statistics
-        worker_stats = scenario.worker_statistics
-
-        # Look for profiling data (could be in different places)
-        # Option 1: Direct profiling field (if added to ScenarioPerformanceStats)
+        # profiling_data is a direct field on ScenarioPerformanceStats
         if hasattr(scenario, 'profiling_data') and scenario.profiling_data:
             return self._build_profile_from_dict(
                 scenario.profiling_data,
-                scenario.scenario_index,
-                scenario.scenario_name,
-                scenario.ticks_processed
-            )
-
-        # Option 2: In worker_statistics
-        if 'profiling' in worker_stats:
-            return self._build_profile_from_dict(
-                worker_stats['profiling'],
                 scenario.scenario_index,
                 scenario.scenario_name,
                 scenario.ticks_processed

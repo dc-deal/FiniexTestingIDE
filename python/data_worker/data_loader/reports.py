@@ -8,15 +8,13 @@ Location: python/data_worker/reports.py
 import traceback
 
 import pandas as pd
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import Dict
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
 from python.data_worker.data_loader.core import TickDataLoader
-from python.components.logger.bootstrap_logger import setup_logging
 
-setup_logging(name="StrategyRunner")
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class TickDataReporter:

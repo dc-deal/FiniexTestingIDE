@@ -5,22 +5,20 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with setup_logging()
 """
 
+from python.configuration import AppConfigLoader
+from python.scenario.config_loader import ScenarioConfigLoader
+from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
+from python.framework.reporting.batch_summary import BatchSummary
+from python.framework.exceptions.data_validation_errors import DataValidationError
+from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.batch_orchestrator import BatchOrchestrator
 import os
 import platform
 import sys
 import traceback
 
-from python.framework.batch_orchestrator import BatchOrchestrator
-from python.data_worker.data_loader.core import TickDataLoader
-from python.framework.exceptions.data_validation_errors import DataValidationError
-from python.framework.reporting.batch_summary import BatchSummary
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.scenario.config_loader import ScenarioConfigLoader
-from python.configuration import AppConfigLoader
-
-# ENTRY POINT: Initialize logger (only here!)
-from python.components.logger.bootstrap_logger import setup_logging
-vLog = setup_logging(name="FiniexTestingIDE")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 def run_strategy_test() -> dict:

@@ -15,7 +15,8 @@ from python.configuration.app_config_loader import AppConfigLoader
 
 from python.framework.types.global_types import TestScenario
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ScenarioConfigLoader:

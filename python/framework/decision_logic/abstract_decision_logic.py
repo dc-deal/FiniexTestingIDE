@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.global_types import Bar, Decision, TickData, WorkerResult
-from python.framework.trading_env.order_types import OrderType, OrderResult
+from python.framework.types.order_types import OrderType, OrderResult
 
 
 class AbstractDecisionLogic(ABC):
@@ -258,19 +258,6 @@ class AbstractDecisionLogic(ABC):
             trading_api: Validated DecisionTradingAPI instance
         """
         self.trading_api = trading_api
-
-    # ============================================
-    # Statistics & Helpers (unchanged)
-    # ============================================
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get decision logic statistics.
-
-        Returns:
-            Dict with decision counts and performance metrics
-        """
-        return self._statistics.copy()
 
     def _update_statistics(self, decision: Decision, order_result: Optional[OrderResult] = None):
         """

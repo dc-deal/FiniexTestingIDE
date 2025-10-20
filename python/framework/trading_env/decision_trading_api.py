@@ -31,7 +31,7 @@ FUTURE NOTES:
 from typing import Any, Dict, List, Optional
 
 from .trade_simulator import TradeSimulator
-from .order_types import (
+from ..types.order_types import (
     OrderType,
     OrderDirection,
     OrderResult,

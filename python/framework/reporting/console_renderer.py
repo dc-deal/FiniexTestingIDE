@@ -9,6 +9,8 @@ Provides:
 - Formatted text output
 
 CRITICAL: All box rendering accounts for ANSI color codes in string length.
+FULLY TYPED: Works with typed dataclasses instead of dicts.
+FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 """
 
 import re
@@ -187,7 +189,7 @@ class ConsoleRenderer:
         Render scenarios in grid layout.
 
         Args:
-            scenarios: List of ScenarioPerformanceStats objects
+            scenarios: List of Scenario objects
             columns: Number of columns in grid
             box_width: Width of each box
         """
@@ -220,8 +222,8 @@ class ConsoleRenderer:
         """
         Create box lines for single scenario.
 
-        Args:
-            scenario: ScenarioPerformanceStats object
+        FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+        FIXED: Direct attribute access instead of .get()
         """
         scenario_name = scenario.scenario_name[:28]
         symbol = scenario.symbol
@@ -229,18 +231,15 @@ class ConsoleRenderer:
         signals = scenario.signals_generated
         rate = scenario.signal_rate
 
-        # Worker stats
-        worker_calls = 0
+        # Worker stats - FIXED: Direct attribute access!
+        batch_stats = scenario.worker_statistics  # BatchPerformanceStats object
+        total_workers = batch_stats.total_workers
+        total_worker_calls = batch_stats.total_worker_calls
+
+        # Decision logic stats
         decisions = 0
-        total_workers = 0
-        if scenario.worker_statistics:
-            stats = scenario.worker_statistics
-            worker_statistics = scenario.worker_statistics.get(
-                'worker_statistics')
-            worker_calls = worker_statistics.get('worker_calls', 0)
-            total_workers = worker_statistics.get('total_workers', 0)
-            decisions = stats.get('decision_logic_statistics', {}).get(
-                'decision_count', 0)
+        if batch_stats.decision_logic:
+            decisions = batch_stats.decision_logic.decision_count
 
         # Create content lines
         lines = [
@@ -290,28 +289,44 @@ class ConsoleRenderer:
             print()  # Empty line between rows
 
     def _create_portfolio_box(self, scenario: Dict, box_width: int) -> List[str]:
-        """Create box lines for portfolio stats."""
+        """
+        Create box lines for portfolio stats.
+
+        FULLY TYPED: Works with typed dataclasses instead of dicts.
+        """
         scenario_name = scenario.get('scenario_set_name', 'Unknown')[:28]
 
-        portfolio_stats = scenario.get('portfolio_statistics', {})
-        execution_stats = scenario.get('execution_statistics', {})
-        cost_breakdown = scenario.get('cost_breakdown', {})
+        portfolio_stats = scenario.get('portfolio_statistics')
+        execution_stats = scenario.get('execution_statistics')
+        cost_breakdown = scenario.get('cost_breakdown')
 
-        # Extract stats
-        total_trades = portfolio_stats.get('total_trades', 0)
-        winning = portfolio_stats.get('winning_trades', 0)
-        losing = portfolio_stats.get('losing_trades', 0)
-        win_rate = portfolio_stats.get('win_rate', 0.0)
+        # Handle case where stats might be None
+        if not portfolio_stats or not execution_stats or not cost_breakdown:
+            lines = [
+                f"💰 {scenario_name}",
+                "No statistics available",
+                "",
+                "",
+                "",
+                ""
+            ]
+            return self.render_box(lines, box_width)
+
+        # Extract stats (direct attribute access for typed dataclasses)
+        total_trades = portfolio_stats.total_trades
+        winning = portfolio_stats.winning_trades
+        losing = portfolio_stats.losing_trades
+        win_rate = portfolio_stats.win_rate
 
         # Calculate P&L
-        total_profit = portfolio_stats.get('total_profit', 0.0)
-        total_loss = portfolio_stats.get('total_loss', 0.0)
+        total_profit = portfolio_stats.total_profit
+        total_loss = portfolio_stats.total_loss
         total_pnl = total_profit - total_loss
 
         # Costs
-        spread_cost = cost_breakdown.get('total_spread_cost', 0.0)
-        orders_sent = execution_stats.get('orders_sent', 0)
-        orders_executed = execution_stats.get('orders_executed', 0)
+        spread_cost = cost_breakdown.total_spread_cost
+        orders_sent = execution_stats.orders_sent
+        orders_executed = execution_stats.orders_executed
 
         # Format P&L with color
         if total_pnl >= 0:

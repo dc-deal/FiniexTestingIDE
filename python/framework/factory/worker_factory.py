@@ -31,13 +31,13 @@ Example Config:
 
 import importlib
 import json
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import Any, Dict, List, Type
 
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class WorkerFactory:

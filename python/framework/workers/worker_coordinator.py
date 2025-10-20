@@ -14,7 +14,6 @@ ARCHITECTURE CHANGE (Performance Logging V0.7):
 """
 
 import traceback
-from python.components.logger.bootstrap_logger import setup_logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
@@ -22,12 +21,14 @@ from typing import Any, Dict, List
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.global_types import Bar, Decision, TickData, WorkerState
+from python.framework.types.performance_stats_types import BatchPerformanceStats
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 from python.framework.performance.performance_log_coordinator import \
     PerformanceLogCoordinator
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class WorkerCoordinator:
@@ -479,28 +480,6 @@ class WorkerCoordinator:
         UNCHANGED - This method works exactly as before.
         """
         return self._worker_results.copy()
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get coordinator statistics.
-
-        ENHANCED (V0.7): Now returns comprehensive performance metrics
-        from PerformanceLogCoordinator.
-        """
-        # Get the full performance snapshot
-        return self.performance_log.get_snapshot()
-
-    def get_performance_snapshot(self) -> Dict[str, Any]:
-        """
-        Get live performance snapshot.
-
-        NEW (V0.7): Optimized for frequent polling (TUI updates).
-        Minimal overhead, designed for 300ms refresh rates.
-
-        Returns:
-            Dict with current performance metrics
-        """
-        return self.performance_log.get_snapshot()
 
     def cleanup(self):
         """

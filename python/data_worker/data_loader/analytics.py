@@ -5,7 +5,6 @@ Symbol analysis, metadata extraction, and statistics
 Location: python/data_worker/analytics.py
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
@@ -15,7 +14,8 @@ import pyarrow.parquet as pq
 
 from python.data_worker.data_loader.core import TickDataLoader
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class TickDataAnalyzer:

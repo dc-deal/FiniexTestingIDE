@@ -1,4 +1,3 @@
-# Lines 1-15 - Update imports and docstring
 """
 FiniexTestingIDE - Portfolio Summary
 Trading and portfolio statistics rendering
@@ -7,12 +6,13 @@ REFACTORED (C#003):
 - Uses ScenarioSetPerformanceManager instead of TradeSimulator
 - Reads portfolio stats from ScenarioPerformanceStats
 - Supports per-scenario AND aggregated portfolio display
+- FULLY TYPED: Uses dataclass attributes instead of dict.get()
 
 Rendered in BOX format matching scenario details.
 """
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
 
 
 class PortfolioSummary:
@@ -21,6 +21,7 @@ class PortfolioSummary:
 
     REFACTORED (C#003):
     - Uses ScenarioSetPerformanceManager for portfolio data (per scenario + aggregated)
+    - FULLY TYPED: Direct attribute access instead of dict.get()
     """
 
     def __init__(self, performance_log: ScenarioSetPerformanceManager):
@@ -43,11 +44,7 @@ class PortfolioSummary:
         """
         scenarios = self.performance_log.get_all_scenarios()
 
-        # Render each scenario's portfolio in BOX format
-        # ==========================================
-        # CRITICAL: Convert to dict format!
-        # ==========================================
-        # Der renderer.render_portfolio_grid() erwartet Dicts!
+        # Convert to dict format for renderer (renderer expects dicts)
         scenario_dicts = []
         for scenario in scenarios:
             scenario_dict = {
@@ -58,9 +55,7 @@ class PortfolioSummary:
             }
             scenario_dicts.append(scenario_dict)
 
-        # ==========================================
-        # USE GRID RENDERER! (same as scenario details)
-        # ==========================================
+        # Use grid renderer
         print()
         renderer.render_portfolio_grid(
             scenarios=scenario_dicts,
@@ -87,7 +82,7 @@ class PortfolioSummary:
         aggregated_execution = self._aggregate_execution_stats(scenarios)
         aggregated_costs = self._aggregate_cost_breakdown(scenarios)
 
-        if aggregated_portfolio.get('total_trades', 0) == 0:
+        if aggregated_portfolio.total_trades == 0:
             return
 
         print()
@@ -103,16 +98,22 @@ class PortfolioSummary:
         )
         print()
 
-    def _render_aggregated_details(self, portfolio_stats, execution_stats, cost_breakdown, renderer):
+    def _render_aggregated_details(
+        self,
+        portfolio_stats: PortfolioStats,
+        execution_stats: ExecutionStats,
+        cost_breakdown: CostBreakdown,
+        renderer
+    ):
         """Render detailed aggregated portfolio stats."""
         # Trading summary
-        total_trades = portfolio_stats.get('total_trades', 0)
-        winning_trades = portfolio_stats.get('winning_trades', 0)
-        losing_trades = portfolio_stats.get('losing_trades', 0)
-        win_rate = portfolio_stats.get('win_rate', 0.0)
+        total_trades = portfolio_stats.total_trades
+        winning_trades = portfolio_stats.winning_trades
+        losing_trades = portfolio_stats.losing_trades
+        win_rate = portfolio_stats.win_rate
 
-        total_profit = portfolio_stats.get('total_profit', 0.0)
-        total_loss = portfolio_stats.get('total_loss', 0.0)
+        total_profit = portfolio_stats.total_profit
+        total_loss = portfolio_stats.total_loss
         total_pnl = total_profit - total_loss
 
         print(f"\n{renderer.bold('   📈 TRADING SUMMARY:')}")
@@ -128,7 +129,7 @@ class PortfolioSummary:
               f"Loss: ${total_loss:.2f}")
 
         # Profit factor
-        profit_factor = portfolio_stats.get('profit_factor', 0.0)
+        profit_factor = portfolio_stats.profit_factor
         if profit_factor == float('inf'):
             pf_str = "∞ (no losses)"
         else:
@@ -136,9 +137,9 @@ class PortfolioSummary:
         print(f"      Profit Factor: {pf_str}")
 
         # Order execution
-        orders_sent = execution_stats.get('orders_sent', 0)
-        orders_executed = execution_stats.get('orders_executed', 0)
-        orders_rejected = execution_stats.get('orders_rejected', 0)
+        orders_sent = execution_stats.orders_sent
+        orders_executed = execution_stats.orders_executed
+        orders_rejected = execution_stats.orders_rejected
 
         print(f"\n{renderer.bold('   📋 ORDER EXECUTION:')}")
         print(f"      Orders Sent: {orders_sent}  |  "
@@ -150,9 +151,9 @@ class PortfolioSummary:
             print(f"      Execution Rate: {exec_rate:.1%}")
 
         # Cost breakdown
-        spread_cost = cost_breakdown.get('total_spread_cost', 0.0)
-        commission = cost_breakdown.get('total_commission', 0.0)
-        swap = cost_breakdown.get('total_swap', 0.0)
+        spread_cost = cost_breakdown.total_spread_cost
+        commission = cost_breakdown.total_commission
+        swap = cost_breakdown.total_swap
         total_costs = spread_cost + commission + swap
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
@@ -161,54 +162,73 @@ class PortfolioSummary:
               f"Swap: ${swap:.2f}")
         print(f"      Total Costs: ${total_costs:.2f}")
 
-    def _aggregate_portfolio_stats(self, scenarios) -> dict:
+    def _aggregate_portfolio_stats(self, scenarios) -> PortfolioStats:
         """Aggregate portfolio stats from all scenarios."""
         total_trades = 0
         winning_trades = 0
         losing_trades = 0
         total_profit = 0.0
         total_loss = 0.0
+        total_spread_cost = 0.0
+        total_commission = 0.0
+        total_swap = 0.0
 
         for scenario in scenarios:
             stats = scenario.portfolio_stats
-            total_trades += stats.get('total_trades', 0)
-            winning_trades += stats.get('winning_trades', 0)
-            losing_trades += stats.get('losing_trades', 0)
-            total_profit += stats.get('total_profit', 0.0)
-            total_loss += stats.get('total_loss', 0.0)
+            total_trades += stats.total_trades
+            winning_trades += stats.winning_trades
+            losing_trades += stats.losing_trades
+            total_profit += stats.total_profit
+            total_loss += stats.total_loss
+            total_spread_cost += stats.total_spread_cost
+            total_commission += stats.total_commission
+            total_swap += stats.total_swap
 
         win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-        profit_factor = total_profit / total_loss if total_loss > 0 else 0.0
+        profit_factor = total_profit / total_loss if total_loss > 0 else (
+            0.0 if total_profit == 0 else float('inf'))
 
-        return {
-            'total_trades': total_trades,
-            'winning_trades': winning_trades,
-            'losing_trades': losing_trades,
-            'win_rate': win_rate,
-            'total_profit': total_profit,
-            'total_loss': total_loss,
-            'profit_factor': profit_factor
-        }
+        return PortfolioStats(
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            total_profit=total_profit,
+            total_loss=total_loss,
+            max_drawdown=0.0,  # Not aggregated
+            max_equity=0.0,     # Not aggregated
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            total_spread_cost=total_spread_cost,
+            total_commission=total_commission,
+            total_swap=total_swap,
+            total_fees=total_spread_cost + total_commission + total_swap
+        )
 
-    def _aggregate_execution_stats(self, scenarios) -> dict:
+    def _aggregate_execution_stats(self, scenarios) -> ExecutionStats:
         """Aggregate execution stats from all scenarios."""
         orders_sent = 0
         orders_executed = 0
         orders_rejected = 0
+        total_commission = 0.0
+        total_spread_cost = 0.0
 
         for scenario in scenarios:
             stats = scenario.execution_stats
-            orders_sent += stats.get('orders_sent', 0)
-            orders_executed += stats.get('orders_executed', 0)
-            orders_rejected += stats.get('orders_rejected', 0)
+            orders_sent += stats.orders_sent
+            orders_executed += stats.orders_executed
+            orders_rejected += stats.orders_rejected
+            total_commission += stats.total_commission
+            total_spread_cost += stats.total_spread_cost
 
-        return {
-            'orders_sent': orders_sent,
-            'orders_executed': orders_executed,
-            'orders_rejected': orders_rejected
-        }
+        return ExecutionStats(
+            orders_sent=orders_sent,
+            orders_executed=orders_executed,
+            orders_rejected=orders_rejected,
+            total_commission=total_commission,
+            total_spread_cost=total_spread_cost
+        )
 
-    def _aggregate_cost_breakdown(self, scenarios) -> dict:
+    def _aggregate_cost_breakdown(self, scenarios) -> CostBreakdown:
         """Aggregate cost breakdown from all scenarios."""
         total_spread_cost = 0.0
         total_commission = 0.0
@@ -216,13 +236,13 @@ class PortfolioSummary:
 
         for scenario in scenarios:
             costs = scenario.cost_breakdown
-            total_spread_cost += costs.get('total_spread_cost', 0.0)
-            total_commission += costs.get('total_commission', 0.0)
-            total_swap += costs.get('total_swap', 0.0)
+            total_spread_cost += costs.total_spread_cost
+            total_commission += costs.total_commission
+            total_swap += costs.total_swap
 
-        return {
-            'total_spread_cost': total_spread_cost,
-            'total_commission': total_commission,
-            'total_swap': total_swap,
-            'total_fees': total_spread_cost + total_commission + total_swap
-        }
+        return CostBreakdown(
+            total_spread_cost=total_spread_cost,
+            total_commission=total_commission,
+            total_swap=total_swap,
+            total_fees=total_spread_cost + total_commission + total_swap
+        )

@@ -1,11 +1,16 @@
 """
 FiniexTestingIDE - Performance Log Coordinator
 Coordinates performance logging for workers and decision logic
+
+FULLY TYPED: Returns BatchPerformanceStats instead of dict.
+REMOVED: get_full_report() - not needed anymore.
 """
 
-from typing import Dict, Any, List
+from typing import Dict
+
 from python.framework.performance.performance_log_worker import PerformanceLogWorker
 from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
+from python.framework.types.performance_stats_types import BatchPerformanceStats
 
 
 class PerformanceLogCoordinator:
@@ -76,7 +81,7 @@ class PerformanceLogCoordinator:
         )
         return self.decision_logic_log
 
-    def record_parallel_time_saved(self, time_saved_ms: float):
+    def record_parallel_time_saved(self, time_saved_ms: float) -> None:
         """
         Record time saved by parallel execution.
 
@@ -85,52 +90,53 @@ class PerformanceLogCoordinator:
         """
         self.parallel_time_saved_ms += time_saved_ms
 
-    def increment_ticks(self):
+    def increment_ticks(self) -> None:
         """Increment tick counter."""
         self.ticks_processed += 1
 
-    def get_snapshot(self) -> Dict[str, Any]:
+    def get_snapshot(self) -> BatchPerformanceStats:
         """
         Get a live snapshot of all performance metrics.
 
+        FULLY TYPED: Returns BatchPerformanceStats dataclass.
         This method is designed for minimal overhead so it can be called
         frequently (e.g., every 300ms for TUI updates).
 
         Returns:
-            Dict with complete performance snapshot
+            BatchPerformanceStats with complete performance snapshot
         """
-        snapshot = {
-            "scenario_name": self.scenario_name,
-            "ticks_processed": self.ticks_processed,
-            "parallel_mode": self.parallel_workers,
-            "worker_statistics": {
-                "total_workers": len(self.worker_logs),
-                "total_calls": sum(log.call_count for log in self.worker_logs.values()),
-                "workers": {}
-            },
-        }
-
-        # Add worker stats
+        # Collect worker stats
+        workers_dict = {}
         for worker_name, log in self.worker_logs.items():
-            snapshot["worker_statistics"]["workers"][worker_name] = log.get_stats()
+            workers_dict[worker_name] = log.get_stats()
 
-        # Add parallel stats if applicable
-        if self.parallel_workers:
-            avg_saved = 0.0
-            if self.ticks_processed > 0:
-                avg_saved = self.parallel_time_saved_ms / self.ticks_processed
+        # Calculate parallel stats
+        avg_saved = 0.0
+        if self.ticks_processed > 0:
+            avg_saved = self.parallel_time_saved_ms / self.ticks_processed
 
-            snapshot["worker_statistics"]["parallel_stats"] = {
-                "total_time_saved_ms": round(self.parallel_time_saved_ms, 2),
-                "avg_saved_per_tick_ms": round(avg_saved, 3),
-                "status": self._get_parallel_status(self.parallel_time_saved_ms)
-            }
+        parallel_status = self._get_parallel_status(
+            self.parallel_time_saved_ms)
 
-        # Add decision logic stats
+        # Get decision logic stats
+        decision_logic_stats = None
         if self.decision_logic_log:
-            snapshot["decision_logic_statistics"] = self.decision_logic_log.get_stats()
+            decision_logic_stats = self.decision_logic_log.get_stats()
 
-        return snapshot
+        # Build BatchPerformanceStats
+        return BatchPerformanceStats(
+            scenario_name=self.scenario_name,
+            ticks_processed=self.ticks_processed,
+            parallel_mode=self.parallel_workers,
+            total_workers=len(self.worker_logs),
+            total_worker_calls=sum(
+                log.call_count for log in self.worker_logs.values()),
+            workers=workers_dict,
+            parallel_time_saved_ms=round(self.parallel_time_saved_ms, 2),
+            parallel_avg_saved_per_tick_ms=round(avg_saved, 3),
+            parallel_status=parallel_status,
+            decision_logic=decision_logic_stats
+        )
 
     def _get_parallel_status(self, time_saved_ms: float) -> str:
         """
@@ -145,36 +151,11 @@ class PerformanceLogCoordinator:
         if time_saved_ms > 0.01:
             return "✅ Faster"
         elif time_saved_ms < -0.01:
-            return "⚠️  Slower"
+            return "⚠️ Slower"
         else:
             return "≈ Equal"
 
-    def get_full_report(self) -> Dict[str, Any]:
-        """
-        Get complete performance report.
-
-        This is a more expensive operation that includes additional
-        analysis and formatting. Use for final reports, not live updates.
-
-        Returns:
-            Dict with comprehensive performance data
-        """
-        report = self.get_snapshot()
-
-        # Add summary statistics
-        total_worker_time = sum(
-            log.total_time_ms for log in self.worker_logs.values())
-        total_decision_time = self.decision_logic_log.total_time_ms if self.decision_logic_log else 0.0
-
-        report["summary"] = {
-            "total_worker_time_ms": round(total_worker_time, 2),
-            "total_decision_time_ms": round(total_decision_time, 2),
-            "total_processing_time_ms": round(total_worker_time + total_decision_time, 2),
-        }
-
-        return report
-
-    def reset(self):
+    def reset(self) -> None:
         """Reset all performance metrics."""
         for log in self.worker_logs.values():
             log.reset()

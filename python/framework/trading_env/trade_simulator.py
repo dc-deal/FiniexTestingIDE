@@ -17,16 +17,19 @@ TradeSimulator = OrderExecutionEngine + PortfolioManager + BrokerConfig
 - Engine: Handles order delays (PENDING state)
 - Portfolio: Manages positions and balance
 - Broker: Provides spreads, symbols, capabilities
+
+FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
 """
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
 from python.framework.types.global_types import TickData
+from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, ExecutionStats, CostBreakdown
 from .broker_config import BrokerConfig
-from .portfolio_manager import PortfolioManager, Position, AccountInfo
+from .portfolio_manager import PortfolioManager, Position
 from .order_execution_engine import OrderExecutionEngine
-from .order_types import (
+from ..types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -102,7 +105,7 @@ class TradeSimulator:
     # Price Updates
     # ============================================
 
-    def update_prices(self, tick: TickData):
+    def update_prices(self, tick: TickData) -> None:
         """
         Update prices and process pending orders.
 
@@ -132,13 +135,6 @@ class TradeSimulator:
         }
 
         self.portfolio.update_positions(self._current_prices, symbol_specs)
-
-    def get_current_price(self, symbol: str) -> Tuple[float, float]:
-        """Get current bid/ask prices"""
-        if symbol not in self._current_prices:
-            raise ValueError(f"No price data available for {symbol}")
-
-        return self._current_prices[symbol]
 
     def get_current_price(self, symbol: str) -> tuple[float, float]:
         """
@@ -546,9 +542,9 @@ class TradeSimulator:
             executed = [o for o in history if o.is_success]
             rejected = [o for o in history if o.is_rejected]
 
-            print(f"Total orders: {len(history)}")
-            print(f"Executed: {len(executed)}")
-            print(f"Rejected: {len(rejected)}")
+            vLog.info(f"Total orders: {len(history)}")
+            vLog.info(f"Executed: {len(executed)}")
+            vLog.info(f"Rejected: {len(rejected)}")
         """
         return self._order_history.copy()
 
@@ -565,10 +561,10 @@ class TradeSimulator:
             closed = trading_env.get_closed_positions()
 
             for pos in closed:
-                print(f"Position {pos.position_id}:")
-                print(f"  P&L: {pos.unrealized_pnl:.2f}")
-                print(f"  Spread: {pos.get_spread_cost():.2f}")
-                print(f"  Duration: {pos.close_time - pos.entry_time}")
+                vLog.info(f"Position {pos.position_id}:")
+                vLog.info(f"  P&L: {pos.unrealized_pnl:.2f}")
+                vLog.info(f"  Spread: {pos.get_spread_cost():.2f}")
+                vLog.info(f"  Duration: {pos.close_time - pos.entry_time}")
         """
         return self.portfolio.get_closed_positions()
 
@@ -589,37 +585,24 @@ class TradeSimulator:
         return self.broker.get_symbol_info(symbol)
 
     # ============================================
-    # Statistics (EXTENDED)
+    # Statistics (EXTENDED & TYPED)
     # ============================================
 
-    def get_execution_stats(self) -> Dict:
+    def get_execution_stats(self) -> ExecutionStats:
         """
         Get order execution statistics.
 
-        EXTENDED: Now includes total_spread_cost.
+        EXTENDED & TYPED: Returns ExecutionStats dataclass instead of dict.
         """
-        return self._execution_stats.copy()
+        return ExecutionStats(
+            orders_sent=self._execution_stats["orders_sent"],
+            orders_executed=self._execution_stats["orders_executed"],
+            orders_rejected=self._execution_stats["orders_rejected"],
+            total_commission=self._execution_stats["total_commission"],
+            total_spread_cost=self._execution_stats["total_spread_cost"]
+        )
 
-    def get_portfolio_stats(self) -> Dict:
-        """
-        Get portfolio performance statistics with fee breakdown.
-
-        EXTENDED: Includes spread/commission/swap costs.
-        """
-        return self.portfolio.get_statistics()
-
-    def get_cost_breakdown(self) -> Dict:
-        """
-        Get detailed cost breakdown.
-
-        NEW METHOD for cost analysis.
-
-        Returns:
-            Dict with total_spread_cost, total_commission, total_swap
-        """
-        return self.portfolio.get_cost_breakdown()
-
-    def reset(self):
+    def reset(self) -> None:
         """Reset simulator to initial state"""
         self.portfolio.reset()
         self._current_prices.clear()

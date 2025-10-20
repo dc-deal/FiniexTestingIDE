@@ -1,20 +1,26 @@
 """
 FiniexTestingIDE - Worker Decision Breakdown Summary (Facts Only)
 Pure data output, no recommendations or suggestions.
+
+FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import List, Dict, Any, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager,
-    ScenarioPerformanceStats
+    ScenarioSetPerformanceManager
 )
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 
 
 class WorkerDecisionBreakdownSummary:
-    """Worker decision breakdown - facts only."""
+    """
+    Worker decision breakdown - facts only.
+
+    FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+    """
 
     def __init__(self, performance_log: ScenarioSetPerformanceManager):
         self.performance_log = performance_log
@@ -63,7 +69,11 @@ class WorkerDecisionBreakdownSummary:
     def _build_breakdown_for_scenario(
         self, scenario: ScenarioPerformanceStats
     ) -> Optional[WorkerDecisionBreakdown]:
-        """Build breakdown for single scenario."""
+        """
+        Build breakdown for single scenario.
+
+        FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+        """
         profiling_data = scenario.profiling_data
         if not profiling_data:
             return None
@@ -74,20 +84,26 @@ class WorkerDecisionBreakdownSummary:
         if total_worker_decision_ms == 0:
             return None
 
-        worker_stats = scenario.worker_statistics
-        worker_data = worker_stats.get('worker_statistics', {})
-        workers = worker_data.get('workers', {})
+        # Access BatchPerformanceStats directly
+        batch_stats = scenario.worker_statistics
 
-        worker_execution_ms = 0.0
-        worker_breakdown = {}
-        for worker_name, worker_perf in workers.items():
-            worker_time = worker_perf.get('total_time_ms', 0.0)
-            worker_execution_ms += worker_time
-            worker_breakdown[worker_name] = worker_time
+        # Calculate worker execution time from WorkerPerformanceStats objects
+        worker_execution_ms = sum(
+            w.worker_total_time_ms for w in batch_stats.workers.values()
+        )
 
-        decision_stats = worker_stats.get('decision_logic_statistics', {})
-        decision_logic_ms = decision_stats.get('total_time_ms', 0.0)
+        # Build worker breakdown dict
+        worker_breakdown = {
+            name: perf.worker_total_time_ms
+            for name, perf in batch_stats.workers.items()
+        }
 
+        # Get decision logic time
+        decision_logic_ms = 0.0
+        if batch_stats.decision_logic:
+            decision_logic_ms = batch_stats.decision_logic.decision_total_time_ms
+
+        # Calculate coordination overhead
         coordination_overhead_ms = total_worker_decision_ms - \
             worker_execution_ms - decision_logic_ms
         coordination_overhead_ms = max(0.0, coordination_overhead_ms)
@@ -112,7 +128,7 @@ class WorkerDecisionBreakdownSummary:
 
         # Component breakdown
         print(renderer.bold("Components:"))
-        print("┌─────────────────────────────────────────────────────────┐")
+        print("┌────────────────────────────────────────────────────────┐")
 
         bar_workers = self._create_bar(breakdown.worker_execution_pct)
         color = renderer.green if breakdown.worker_execution_pct > 50 else renderer.yellow
@@ -129,7 +145,7 @@ class WorkerDecisionBreakdownSummary:
         print(f"│ Coordination Overhead {breakdown.coordination_overhead_ms:>7.2f}ms  {bar_overhead}  "
               f"{color(f'{breakdown.coordination_overhead_pct:>5.1f}%')} {indicator}│")
 
-        print("└─────────────────────────────────────────────────────────┘")
+        print("└────────────────────────────────────────────────────────┘")
         print()
 
         # Workers

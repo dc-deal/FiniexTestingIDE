@@ -9,7 +9,6 @@ PERFORMANCE OPTIMIZED:
 - Eliminates 20,000+ pd.to_datetime() calls in bar rendering
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from typing import Iterator, Dict
 from datetime import datetime, timedelta
 from python.framework.exceptions.data_validation_errors import (
@@ -25,7 +24,8 @@ from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.exceptions.warmup_errors import InsufficientHistoricalDataError
 from python.framework.types.global_types import TickData, TimeframeConfig
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class TickDataPreparator:

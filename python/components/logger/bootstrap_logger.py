@@ -35,16 +35,13 @@ def setup_logging(name: str = "FiniexTestingIDE") -> VisualConsoleLogger:
 def get_logger() -> VisualConsoleLogger:
     """
     Gibt die globale Logger-Instanz zurück.
+    Auto-Init
     Sollte in allen Files außer Entry Points verwendet werden.
 
     Returns:
         VisualConsoleLogger Instanz
-
-    Raises:
-        RuntimeError: Falls setup_logging() noch nicht aufgerufen wurde
+e
     """
     if _logger_instance is None:
-        raise RuntimeError(
-            "Logger not initialized! Call setup_logging() in your entry point first."
-        )
+        setup_logging()
     return _logger_instance

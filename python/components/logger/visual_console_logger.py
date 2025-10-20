@@ -51,7 +51,7 @@ class VisualConsoleLogger:
     - hard_error(): Critical code errors (WITH stack trace)
     """
 
-    def __init__(self, name: str = "FiniexTestingIDE"):
+    def __init__(self, name):
         self.name = name
         self.start_time = datetime.now()
 
@@ -396,24 +396,6 @@ class VisualConsoleLogger:
         """Output section separator (NOT buffered - for reports only)"""
         print(f"{char * width}")
 
-    def print_results_table(self, batch_results=None):
-        """
-        DEPRECATED (C#003): Result rendering moved to reporting/ package.
-
-        Use BatchSummary directly instead:
-            from python.framework.reporting.batch_summary import BatchSummary
-            summary = BatchSummary(performance_log, app_config)
-            summary.render_all()
-
-        This method is kept for backward compatibility but does nothing.
-        """
-        import warnings
-        warnings.warn(
-            "print_results_table() is deprecated. Use BatchSummary directly.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-
 
 class VisualLogFormatter(logging.Formatter):
     """
@@ -454,18 +436,6 @@ class VisualLogFormatter(logging.Formatter):
         else:
             time_display = f"   {elapsed_ms:>3}ms  "
 
-        # Extract class name and optionally prefix with C/
-        logger_name = record.name
-        if '.' in logger_name:
-            class_name = logger_name.split('.')[-1]
-            # Detection: Capital letter at start = class
-            if class_name and class_name[0].isupper():
-                display_name = f"C/{class_name}"
-            else:
-                display_name = class_name
-        else:
-            display_name = logger_name
-
         # Color for level
         level_color = self.level_colors.get(record.levelno, ColorCodes.RESET)
         level_name = record.levelname
@@ -473,7 +443,6 @@ class VisualLogFormatter(logging.Formatter):
         # Formatting
         formatted = (
             f"{ColorCodes.GRAY}{time_display}{ColorCodes.RESET} - "
-            f"{ColorCodes.GRAY}{display_name:<25}{ColorCodes.RESET} - "
             f"{level_color}{level_name:<7}{ColorCodes.RESET} - "
             f"{record.getMessage()}"
         )

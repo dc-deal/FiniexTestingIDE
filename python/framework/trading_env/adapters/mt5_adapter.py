@@ -8,7 +8,7 @@ Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
 
 from typing import Dict, Any, Optional
 from .base_adapter import IOrderCapabilities
-from python.framework.trading_env.order_types import (
+from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
     LimitOrder,

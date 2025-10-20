@@ -21,7 +21,8 @@ from python.framework.reporting.coverage_report import (
     IndexEntry
 )
 
-vLog = setup_logging(name="ParquetIndexManager")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ParquetIndexManager:

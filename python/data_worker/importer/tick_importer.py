@@ -22,7 +22,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration import AppConfigLoader
-from python.components.logger.bootstrap_logger import setup_logging
 from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
@@ -32,8 +31,8 @@ from python.data_worker.data_loader.exceptions import (
     DuplicateReport
 )
 
-setup_logging(name="StrategyRunner")
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class TickDataImporter:

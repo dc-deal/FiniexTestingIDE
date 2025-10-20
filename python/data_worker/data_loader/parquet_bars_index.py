@@ -17,9 +17,8 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.components.logger.bootstrap_logger import setup_logging
-
-vLog = setup_logging(name="BarIndexManager")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ParquetBarsIndexManager:

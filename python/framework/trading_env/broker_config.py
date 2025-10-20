@@ -14,7 +14,7 @@ from enum import Enum
 from .adapters.base_adapter import IOrderCapabilities
 from .adapters.mt5_adapter import MT5Adapter
 from .adapters.kraken_adapter import KrakenAdapter, KRAKEN_ENABLED
-from .order_types import (
+from ..types.order_types import (
     OrderCapabilities,
     MarketOrder,
     LimitOrder,

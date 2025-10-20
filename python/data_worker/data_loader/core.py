@@ -5,7 +5,6 @@ FiniexTestingIDE Data Loader - Core Module
  mt5/ticks/EURUSD/*.parquet
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from datetime import timezone
 from pathlib import Path
 from typing import List, Optional
@@ -21,7 +20,8 @@ from python.data_worker.data_loader.exceptions import (
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class TickDataLoader:

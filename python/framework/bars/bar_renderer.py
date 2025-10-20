@@ -8,7 +8,6 @@ PERFORMANCE OPTIMIZED:
 - Expected speedup: 50-70% reduction in bar rendering time
 """
 
-from python.components.logger.bootstrap_logger import setup_logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
@@ -17,7 +16,8 @@ import pandas as pd
 
 from python.framework.types.global_types import Bar, TickData, TimeframeConfig
 
-vLog = setup_logging(name="StrategyRunner")
+from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class BarRenderer:
