@@ -25,7 +25,7 @@ from python.framework.types.live_stats_types import ScenarioStatus
 from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.configuration import AppConfigLoader
-from python.framework.trading_env.order_types import OrderStatus, OrderType, OrderDirection
+from python.framework.types.order_types import OrderStatus, OrderType, OrderDirection
 
 # Factory Imports
 from python.framework.factory.worker_factory import WorkerFactory

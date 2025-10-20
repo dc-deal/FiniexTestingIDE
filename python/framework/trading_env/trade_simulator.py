@@ -29,7 +29,7 @@ from python.framework.types.trading_env_types import AccountInfo, PortfolioStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
 from .order_execution_engine import OrderExecutionEngine
-from .order_types import (
+from ..types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,

@@ -48,7 +48,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.global_types import Bar, Decision, TickData, WorkerResult
-from python.framework.trading_env.order_types import (
+from python.framework.types.order_types import (
     OrderStatus,
     OrderType,
     OrderDirection,

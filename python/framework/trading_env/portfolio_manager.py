@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
 
-from .order_types import OrderDirection
+from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee, SpreadFee, SwapFee, CommissionFee
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
 
