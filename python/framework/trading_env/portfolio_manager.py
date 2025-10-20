@@ -473,7 +473,7 @@ class PortfolioManager:
         if drawdown > self._statistics["max_drawdown"]:
             self._statistics["max_drawdown"] = drawdown
 
-    def get_statistics(self) -> PortfolioStats:
+    def get_portfolio_statistics(self) -> PortfolioStats:
         """
         Get portfolio statistics with fee breakdown.
 

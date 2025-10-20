@@ -1,9 +1,12 @@
 """
 FiniexTestingIDE - Performance Log Worker
 Tracks performance metrics for individual workers
+
+FULLY TYPED: Returns WorkerPerformanceStats dataclass instead of dict.
+UNIQUE KEYWORDS: All fields prefixed with 'worker_' for searchability.
 """
 
-from typing import Dict, Any
+from python.framework.types.performance_stats_types import WorkerPerformanceStats
 
 
 class PerformanceLogWorker:
@@ -31,7 +34,7 @@ class PerformanceLogWorker:
         self.min_time_ms = float('inf')
         self.max_time_ms = 0.0
 
-    def record(self, execution_time_ms: float):
+    def record(self, execution_time_ms: float) -> None:
         """
         Record a single execution time.
 
@@ -53,24 +56,28 @@ class PerformanceLogWorker:
             return 0.0
         return self.total_time_ms / self.call_count
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> WorkerPerformanceStats:
         """
         Get performance statistics snapshot.
 
-        Returns:
-            Dict with all performance metrics
-        """
-        return {
-            "worker_type": self.worker_type,
-            "worker_name": self.worker_name,
-            "call_count": self.call_count,
-            "total_time_ms": round(self.total_time_ms, 3),
-            "avg_time_ms": round(self.get_avg_time_ms(), 3),
-            "min_time_ms": round(self.min_time_ms, 3) if self.min_time_ms != float('inf') else 0.0,
-            "max_time_ms": round(self.max_time_ms, 3),
-        }
+        FULLY TYPED: Returns WorkerPerformanceStats dataclass.
+        UNIQUE KEYWORDS: All fields prefixed with 'worker_'.
 
-    def reset(self):
+        Returns:
+            WorkerPerformanceStats with all performance metrics
+        """
+        return WorkerPerformanceStats(
+            worker_type=self.worker_type,
+            worker_name=self.worker_name,
+            worker_call_count=self.call_count,
+            worker_total_time_ms=round(self.total_time_ms, 3),
+            worker_avg_time_ms=round(self.get_avg_time_ms(), 3),
+            worker_min_time_ms=round(
+                self.min_time_ms, 3) if self.min_time_ms != float('inf') else 0.0,
+            worker_max_time_ms=round(self.max_time_ms, 3)
+        )
+
+    def reset(self) -> None:
         """Reset all metrics to initial state."""
         self.call_count = 0
         self.total_time_ms = 0.0

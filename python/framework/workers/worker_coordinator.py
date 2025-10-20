@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.global_types import Bar, Decision, TickData, WorkerState
+from python.framework.types.performance_stats_types import BatchPerformanceStats
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 from python.framework.performance.performance_log_coordinator import \
@@ -479,16 +480,6 @@ class WorkerCoordinator:
         UNCHANGED - This method works exactly as before.
         """
         return self._worker_results.copy()
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get coordinator statistics.
-
-        ENHANCED (V0.7): Now returns comprehensive performance metrics
-        from PerformanceLogCoordinator.
-        """
-        # Get the full performance snapshot
-        return self.performance_log.get_snapshot()
 
     def cleanup(self):
         """

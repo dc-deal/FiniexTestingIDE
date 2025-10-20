@@ -10,6 +10,7 @@ Provides:
 
 CRITICAL: All box rendering accounts for ANSI color codes in string length.
 FULLY TYPED: Works with typed dataclasses instead of dicts.
+FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 """
 
 import re
@@ -220,6 +221,9 @@ class ConsoleRenderer:
     def _create_scenario_box(self, scenario, box_width: int) -> List[str]:
         """
         Create box lines for single scenario.
+
+        FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+        FIXED: Direct attribute access instead of .get()
         """
         scenario_name = scenario.scenario_name[:28]
         symbol = scenario.symbol
@@ -227,18 +231,15 @@ class ConsoleRenderer:
         signals = scenario.signals_generated
         rate = scenario.signal_rate
 
-        # Worker stats
-        worker_calls = 0
+        # Worker stats - FIXED: Direct attribute access!
+        batch_stats = scenario.worker_statistics  # BatchPerformanceStats object
+        total_workers = batch_stats.total_workers
+        total_worker_calls = batch_stats.total_worker_calls
+
+        # Decision logic stats
         decisions = 0
-        total_workers = 0
-        if scenario.worker_statistics:
-            stats = scenario.worker_statistics
-            worker_statistics = scenario.worker_statistics.get(
-                'worker_statistics')
-            worker_calls = worker_statistics.get('worker_calls', 0)
-            total_workers = worker_statistics.get('total_workers', 0)
-            decisions = stats.get('decision_logic_statistics', {}).get(
-                'decision_count', 0)
+        if batch_stats.decision_logic:
+            decisions = batch_stats.decision_logic.decision_count
 
         # Create content lines
         lines = [

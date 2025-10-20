@@ -259,19 +259,6 @@ class AbstractDecisionLogic(ABC):
         """
         self.trading_api = trading_api
 
-    # ============================================
-    # Statistics & Helpers (unchanged)
-    # ============================================
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get decision logic statistics.
-
-        Returns:
-            Dict with decision counts and performance metrics
-        """
-        return self._statistics.copy()
-
     def _update_statistics(self, decision: Decision, order_result: Optional[OrderResult] = None):
         """
         Update internal statistics after decision.

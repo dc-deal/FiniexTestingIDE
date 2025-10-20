@@ -541,7 +541,7 @@ class BatchOrchestrator:
                         self.performance_log.update_live_stats(
                             scenario_index=scenario_index,
                             ticks_processed=tick_count,
-                            portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+                            portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
                             account_info=scenario_trade_simulator.get_account_info()
                         )
                 except Exception as e:
@@ -558,7 +558,7 @@ class BatchOrchestrator:
                 self.performance_log.update_live_stats(
                     scenario_index=scenario_index,
                     ticks_processed=tick_count,
-                    portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+                    portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
                     account_info=scenario_trade_simulator.get_account_info()
                 )
                 t12 = time.perf_counter()
@@ -589,16 +589,16 @@ class BatchOrchestrator:
         # ============================================
         # Collect statistics
         # ============================================
-        worker_stats = orchestrator.get_statistics()
-        portfolio_stats = scenario_trade_simulator.get_portfolio_stats()
+        worker_stats = orchestrator.performance_log.get_snapshot()
+        portfolio_stats = scenario_trade_simulator.portfolio.get_portfolio_statistics()
         execution_stats = scenario_trade_simulator.get_execution_stats()
-        cost_breakdown = scenario_trade_simulator.get_cost_breakdown()
+        cost_breakdown = scenario_trade_simulator.portfolio.get_cost_breakdown()
 
         # ===== LIVE STATS: Final update with completed stats =====
         self.performance_log.update_live_stats(
             scenario_index=scenario_index,
             ticks_processed=tick_count,
-            portfolio_stats=scenario_trade_simulator.get_portfolio_stats(),
+            portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
             account_info=scenario_trade_simulator.get_account_info()
         )
         elapsed = vLog.get_scenario_elapsed_time(scenario_index)

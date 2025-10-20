@@ -6,6 +6,8 @@ REFACTORED (C#003):
 - Uses ScenarioSetPerformanceManager instead of batch_results dict
 - Reads Scenario objects
 
+FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
+
 Renders:
 - Per-scenario worker performance (call counts, timings, parallel efficiency)
 - Per-scenario decision logic performance
@@ -23,6 +25,7 @@ class PerformanceSummary:
 
     REFACTORED (C#003):
     - Uses ScenarioSetPerformanceManager for data access
+    - FULLY TYPED: Direct attribute access instead of .get()
     """
 
     def __init__(self, performance_log: ScenarioSetPerformanceManager):
@@ -87,7 +90,7 @@ class PerformanceSummary:
 
         print()
         renderer.section_separator()
-        print(f"{renderer.bold(renderer.red('⚠️  BOTTLENECK ANALYSIS'))} "
+        print(f"{renderer.bold(renderer.red('⚠️ BOTTLENECK ANALYSIS'))} "
               f"{renderer.gray('(Worst Performers)')}")
         renderer.section_separator()
 
@@ -98,18 +101,20 @@ class PerformanceSummary:
         """Render performance for single scenario."""
         renderer.section_separator()
 
-        stats = scenario.worker_statistics
+        # Access BatchPerformanceStats directly
+        batch_stats = scenario.worker_statistics
         ticks_processed = scenario.ticks_processed
-        parallel_mode = stats.get('parallel_mode', False)
+        parallel_mode = batch_stats.parallel_mode
 
-        worker_stats = stats.get('worker_statistics', {})
-        total_workers = worker_stats.get('total_workers', 0)
-        total_calls = worker_stats.get('total_calls', 0)
+        total_workers = batch_stats.total_workers
+        total_calls = batch_stats.total_worker_calls
 
-        decision_stats = stats.get('decision_logic_statistics', {})
-        decisions_made = decision_stats.get('decision_count', 0)
-        buy_signal_count = decision_stats.get('buy_signal_count', 0)
-        sell_signal_count = decision_stats.get('sell_signal_count', 0)
+        # Decision logic stats
+        decision_stats = batch_stats.decision_logic
+        decisions_made = decision_stats.decision_count if decision_stats else 0
+        buy_signal_count = decision_stats.decision_buy_count if decision_stats else 0
+        sell_signal_count = decision_stats.decision_sell_count if decision_stats else 0
+
         # Header
         mode_str = renderer.green(
             "Parallel") if parallel_mode else renderer.yellow("Sequential")
@@ -120,16 +125,15 @@ class PerformanceSummary:
               f"Decisions: {decisions_made}")
 
         # Per-worker details
-        if 'workers' in worker_stats:
+        if batch_stats.workers:
             print(f"\n{renderer.bold('   📊 WORKER DETAILS:')}")
 
-            workers = worker_stats['workers']
-            for worker_name, worker_perf in workers.items():
-                call_count = worker_perf.get('call_count', 0)
-                avg_time = worker_perf.get('avg_time_ms', 0)
-                min_time = worker_perf.get('min_time_ms', 0)
-                max_time = worker_perf.get('max_time_ms', 0)
-                total_time = worker_perf.get('total_time_ms', 0)
+            for worker_name, worker_perf in batch_stats.workers.items():
+                call_count = worker_perf.worker_call_count
+                avg_time = worker_perf.worker_avg_time_ms
+                min_time = worker_perf.worker_min_time_ms
+                max_time = worker_perf.worker_max_time_ms
+                total_time = worker_perf.worker_total_time_ms
 
                 print(f"      {renderer.blue(f'{worker_name:15}')}  "
                       f"Calls: {call_count:>5}  |  "
@@ -138,11 +142,10 @@ class PerformanceSummary:
                       f"Total: {total_time:>8.2f}ms")
 
         # Parallel efficiency
-        if parallel_mode and 'parallel_stats' in worker_stats:
-            pstats = worker_stats['parallel_stats']
-            time_saved = pstats.get('total_time_saved_ms', 0)
-            avg_saved = pstats.get('avg_saved_per_tick_ms', 0)
-            status = pstats.get('status', 'N/A')
+        if parallel_mode:
+            time_saved = batch_stats.parallel_time_saved_ms
+            avg_saved = batch_stats.parallel_avg_saved_per_tick_ms
+            status = batch_stats.parallel_status
 
             print(f"\n{renderer.bold('   ⚡ PARALLEL EFFICIENCY:')}")
             print(f"      Time saved: {time_saved:>8.2f}ms total  |  "
@@ -151,12 +154,12 @@ class PerformanceSummary:
 
         # Decision logic
         if decision_stats:
-            logic_name = decision_stats.get('decision_logic_name', 'Unknown')
-            logic_type = decision_stats.get('decision_logic_type', 'Unknown')
-            avg_time = decision_stats.get('avg_time_ms', 0)
-            min_time = decision_stats.get('min_time_ms', 0)
-            max_time = decision_stats.get('max_time_ms', 0)
-            total_time = decision_stats.get('total_time_ms', 0)
+            logic_name = decision_stats.logic_name
+            logic_type = decision_stats.logic_type
+            avg_time = decision_stats.decision_avg_time_ms
+            min_time = decision_stats.decision_min_time_ms
+            max_time = decision_stats.decision_max_time_ms
+            total_time = decision_stats.decision_total_time_ms
 
             print(
                 f"\n{renderer.bold('   🧠 DECISION LOGIC:')} {logic_name} ({logic_type})")
@@ -183,13 +186,12 @@ class PerformanceSummary:
             aggregated['total_signals'] += scenario.signals_generated
 
             # Worker stats
-            stats = scenario.worker_statistics
-            aggregated['total_decisions'] += stats.get(
-                'decision_logic_statistics', {}).get('decision_count', 0)
+            batch_stats = scenario.worker_statistics
+            if batch_stats.decision_logic:
+                aggregated['total_decisions'] += batch_stats.decision_logic.decision_count
 
             # Per-worker aggregation
-            workers = stats.get('worker_statistics', {}).get('workers', {})
-            for worker_name, worker_perf in workers.items():
+            for worker_name, worker_perf in batch_stats.workers.items():
                 if worker_name not in aggregated['worker_aggregates']:
                     aggregated['worker_aggregates'][worker_name] = {
                         'calls': 0,
@@ -197,26 +199,18 @@ class PerformanceSummary:
                         'times': []
                     }
 
-                aggregated['worker_aggregates'][worker_name]['calls'] += worker_perf.get(
-                    'call_count', 0)
-                aggregated['worker_aggregates'][worker_name]['total_time'] += worker_perf.get(
-                    'total_time_ms', 0)
-
-                avg_time = worker_perf.get('avg_time_ms', 0)
-                if avg_time > 0:
-                    aggregated['worker_aggregates'][worker_name]['times'].append(
-                        avg_time)
+                aggregated['worker_aggregates'][worker_name]['calls'] += worker_perf.worker_call_count
+                aggregated['worker_aggregates'][worker_name]['total_time'] += worker_perf.worker_total_time_ms
+                aggregated['worker_aggregates'][worker_name]['times'].append(
+                    worker_perf.worker_avg_time_ms)
 
             # Decision logic aggregation
-            decision_stats = stats.get('decision_logic_statistics', {})
-            aggregated['decision_aggregates']['calls'] += decision_stats.get(
-                'decision_count', 0)
-            aggregated['decision_aggregates']['total_time'] += decision_stats.get(
-                'total_time_ms', 0)
-
-            avg_time = decision_stats.get('avg_time_ms', 0)
-            if avg_time > 0:
-                aggregated['decision_aggregates']['times'].append(avg_time)
+            if batch_stats.decision_logic:
+                decision_stats = batch_stats.decision_logic
+                aggregated['decision_aggregates']['calls'] += decision_stats.decision_count
+                aggregated['decision_aggregates']['total_time'] += decision_stats.decision_total_time_ms
+                aggregated['decision_aggregates']['times'].append(
+                    decision_stats.decision_avg_time_ms)
 
         return aggregated
 
@@ -277,16 +271,12 @@ class PerformanceSummary:
         for scenario in self.all_scenarios:
             scenario_name = scenario.scenario_name
             ticks = scenario.ticks_processed
-            stats = scenario.worker_statistics
+            batch_stats = scenario.worker_statistics
 
             # Calculate scenario avg time per tick
-            total_worker_time = 0
-            workers = stats.get('worker_statistics', {}).get('workers', {})
-            for worker_perf in workers.values():
-                total_worker_time += worker_perf.get('total_time_ms', 0)
-
-            decision_stats = stats.get('decision_logic_statistics', {})
-            total_decision_time = decision_stats.get('total_time_ms', 0)
+            total_worker_time = sum(
+                w.worker_total_time_ms for w in batch_stats.workers.values())
+            total_decision_time = batch_stats.decision_logic.decision_total_time_ms if batch_stats.decision_logic else 0.0
 
             total_time = total_worker_time + total_decision_time
             avg_time_per_tick = total_time / ticks if ticks > 0 else 0
@@ -300,29 +290,30 @@ class PerformanceSummary:
                 }
 
             # Collect worker times
-            for worker_name, worker_perf in workers.items():
-                avg_time = worker_perf.get('avg_time_ms', 0)
+            for worker_name, worker_perf in batch_stats.workers.items():
+                avg_time = worker_perf.worker_avg_time_ms
                 if worker_name not in worker_times:
                     worker_times[worker_name] = []
                 worker_times[worker_name].append((scenario_name, avg_time))
 
             # Collect decision logic times
-            logic_name = decision_stats.get('decision_logic_name', 'Unknown')
-            avg_time = decision_stats.get('avg_time_ms', 0)
-            if logic_name not in decision_logic_times:
-                decision_logic_times[logic_name] = []
-            decision_logic_times[logic_name].append((scenario_name, avg_time))
+            if batch_stats.decision_logic:
+                logic_name = batch_stats.decision_logic.logic_name
+                avg_time = batch_stats.decision_logic.decision_avg_time_ms
+                if logic_name not in decision_logic_times:
+                    decision_logic_times[logic_name] = []
+                decision_logic_times[logic_name].append(
+                    (scenario_name, avg_time))
 
             # Check parallel efficiency
-            if 'parallel_stats' in stats.get('worker_statistics', {}):
-                pstats = stats['worker_statistics']['parallel_stats']
-                time_saved = pstats.get('total_time_saved_ms', 0)
+            if batch_stats.parallel_mode:
+                time_saved = batch_stats.parallel_time_saved_ms
                 if time_saved < worst_parallel_saved:
                     worst_parallel_saved = time_saved
                     bottlenecks['worst_parallel'] = {
                         'name': scenario_name,
                         'time_saved': time_saved,
-                        'status': pstats.get('status', 'N/A')
+                        'status': batch_stats.parallel_status
                     }
 
         # Find worst worker
@@ -358,7 +349,7 @@ class PerformanceSummary:
         # Slowest scenario
         if bottlenecks['slowest_scenario']:
             scenario = bottlenecks['slowest_scenario']
-            print(f"{renderer.bold('   🐌 SLOWEST SCENARIO:')}")
+            print(f"{renderer.bold('   🌶 SLOWEST SCENARIO:')}")
             avg_str = renderer.red(f"{scenario['avg_time_per_tick']:.3f}ms")
             print(f"      {renderer.red(scenario['name'])}  |  "
                   f"Avg/tick: {avg_str}  |  "
@@ -369,7 +360,7 @@ class PerformanceSummary:
         # Slowest worker
         if bottlenecks['slowest_worker']:
             worker = bottlenecks['slowest_worker']
-            print(f"\n{renderer.bold('   🐌 SLOWEST WORKER:')}")
+            print(f"\n{renderer.bold('   🌶 SLOWEST WORKER:')}")
             avg_str = renderer.red(f"{worker['avg_time']:.3f}ms")
             print(f"      {renderer.red(worker['name'])}  |  "
                   f"Avg: {avg_str} (across all scenarios)")
@@ -381,7 +372,7 @@ class PerformanceSummary:
         # Slowest decision logic
         if bottlenecks['slowest_decision_logic'] and bottlenecks['slowest_decision_logic']['avg_time'] > 0.5:
             logic = bottlenecks['slowest_decision_logic']
-            print(f"\n{renderer.bold('   🐌 SLOWEST DECISION LOGIC:')}")
+            print(f"\n{renderer.bold('   🌶 SLOWEST DECISION LOGIC:')}")
             avg_str = renderer.red(f"{logic['avg_time']:.3f}ms")
             print(f"      {renderer.red(logic['name'])}  |  "
                   f"Avg: {avg_str} (across all scenarios)")
@@ -391,7 +382,7 @@ class PerformanceSummary:
         # Worst parallel efficiency
         if bottlenecks['worst_parallel'] and bottlenecks['worst_parallel']['time_saved'] < 0:
             parallel = bottlenecks['worst_parallel']
-            print(f"\n{renderer.bold('   🐌 WORST PARALLEL EFFICIENCY:')}")
+            print(f"\n{renderer.bold('   🌶 WORST PARALLEL EFFICIENCY:')}")
             time_saved_str = renderer.red(f"{parallel['time_saved']:.2f}ms")
             print(f"      {renderer.red(parallel['name'])}  |  "
                   f"Time saved: {time_saved_str}  |  "

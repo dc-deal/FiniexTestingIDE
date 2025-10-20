@@ -602,25 +602,6 @@ class TradeSimulator:
             total_spread_cost=self._execution_stats["total_spread_cost"]
         )
 
-    def get_portfolio_stats(self) -> PortfolioStats:
-        """
-        Get portfolio performance statistics with fee breakdown.
-
-        EXTENDED & TYPED: Returns PortfolioStats dataclass instead of dict.
-        """
-        return self.portfolio.get_statistics()
-
-    def get_cost_breakdown(self) -> CostBreakdown:
-        """
-        Get detailed cost breakdown.
-
-        NEW & TYPED: Returns CostBreakdown dataclass instead of dict.
-
-        Returns:
-            CostBreakdown with total_spread_cost, total_commission, total_swap
-        """
-        return self.portfolio.get_cost_breakdown()
-
     def reset(self) -> None:
         """Reset simulator to initial state"""
         self.portfolio.reset()
