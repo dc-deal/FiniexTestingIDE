@@ -9,6 +9,9 @@ Contains:
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
+
+from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
 class ScenarioStatus(Enum):
@@ -65,3 +68,4 @@ class LiveScenarioStats:
     portfolio_value: float = 0.0
     initial_balance: float = 0.0
     status: ScenarioStatus = ScenarioStatus.INITIALIZED
+    scenario_trade_simulator: Optional[TradeSimulator] = None

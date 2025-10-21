@@ -315,10 +315,10 @@ class BatchOrchestrator:
         # 1. Create isolated TradeSimulator for THIS scenario
         scenario_trade_simulator = self._create_trade_simulator_for_scenario(
             scenario)
-
-        self.performance_log.set_portfolio_balance(
+        # set
+        self.performance_log.set_trade_simulator(
             scenario_index,
-            scenario_trade_simulator.portfolio.initial_balance)
+            scenario_trade_simulator)
 
         # 2. Create Workers using Worker Factory
         strategy_config = scenario.strategy_config
@@ -540,9 +540,7 @@ class BatchOrchestrator:
 
                         self.performance_log.update_live_stats(
                             scenario_index=scenario_index,
-                            ticks_processed=tick_count,
-                            portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
-                            account_info=scenario_trade_simulator.get_account_info()
+                            ticks_processed=tick_count
                         )
                 except Exception as e:
                     vLog.error(
@@ -557,9 +555,7 @@ class BatchOrchestrator:
                 t11 = time.perf_counter()
                 self.performance_log.update_live_stats(
                     scenario_index=scenario_index,
-                    ticks_processed=tick_count,
-                    portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
-                    account_info=scenario_trade_simulator.get_account_info()
+                    ticks_processed=tick_count
                 )
                 t12 = time.perf_counter()
                 profile_times['stats_update'] += (t12 - t11) * 1000
@@ -597,9 +593,7 @@ class BatchOrchestrator:
         # ===== LIVE STATS: Final update with completed stats =====
         self.performance_log.update_live_stats(
             scenario_index=scenario_index,
-            ticks_processed=tick_count,
-            portfolio_stats=scenario_trade_simulator.portfolio.get_portfolio_statistics(),
-            account_info=scenario_trade_simulator.get_account_info()
+            ticks_processed=tick_count
         )
         elapsed = vLog.get_scenario_elapsed_time(scenario_index)
 
