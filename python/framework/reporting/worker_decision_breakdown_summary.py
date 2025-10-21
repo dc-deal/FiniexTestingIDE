@@ -2,10 +2,15 @@
 FiniexTestingIDE - Worker Decision Breakdown Summary (Facts Only)
 Pure data output, no recommendations or suggestions.
 
+REFACTORED:
+- Uses typed ProfilingData instead of Dict[str, Any]
+- Clean direct property access: profiling_data.get_operation_time()
+- No more nested dict navigation
+
 FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
     ScenarioSetPerformanceManager
 )
@@ -20,6 +25,7 @@ class WorkerDecisionBreakdownSummary:
     Worker decision breakdown - facts only.
 
     FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+    REFACTORED: Uses typed ProfilingData for clean access.
     """
 
     def __init__(self, performance_log: ScenarioSetPerformanceManager):
@@ -72,14 +78,17 @@ class WorkerDecisionBreakdownSummary:
         """
         Build breakdown for single scenario.
 
-        FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
+        REFACTORED: Uses typed ProfilingData for clean access.
+        No more: profiling_data.get('profile_times', {}).get('worker_decision', 0.0)
+        Now: profiling_data.get_operation_time('worker_decision')
         """
-        profiling_data = scenario.profiling_data
-        if not profiling_data:
+        # Check if profiling data exists
+        if not scenario.profiling_data:
             return None
 
-        profile_times = profiling_data.get('profile_times', {})
-        total_worker_decision_ms = profile_times.get('worker_decision', 0.0)
+        # Get total worker_decision time using typed access
+        total_worker_decision_ms = scenario.profiling_data.get_operation_time(
+            'worker_decision')
 
         if total_worker_decision_ms == 0:
             return None
@@ -128,7 +137,7 @@ class WorkerDecisionBreakdownSummary:
 
         # Component breakdown
         print(renderer.bold("Components:"))
-        print("┌────────────────────────────────────────────────────────┐")
+        print("┌────────────────────────────────────────────────────┐")
 
         bar_workers = self._create_bar(breakdown.worker_execution_pct)
         color = renderer.green if breakdown.worker_execution_pct > 50 else renderer.yellow
@@ -145,7 +154,7 @@ class WorkerDecisionBreakdownSummary:
         print(f"│ Coordination Overhead {breakdown.coordination_overhead_ms:>7.2f}ms  {bar_overhead}  "
               f"{color(f'{breakdown.coordination_overhead_pct:>5.1f}%')} {indicator}│")
 
-        print("└────────────────────────────────────────────────────────┘")
+        print("└────────────────────────────────────────────────────┘")
         print()
 
         # Workers

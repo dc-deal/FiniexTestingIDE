@@ -2,21 +2,19 @@
 FiniexTestingIDE - Profiling Summary
 Performance profiling and bottleneck analysis reporting
 
-CREATED (New):
-- Renders profiling data from batch_orchestrator
-- Shows per-operation timing breakdowns
-- Identifies performance bottlenecks
-- Cross-scenario performance comparison
-
-FULLY TYPED: Removed incorrect worker_statistics dict access.
+REFACTORED:
+- Uses typed ProfilingData instead of Dict[str, Any]
+- Removed _build_profile_from_dict (no longer needed!)
+- Clean direct property access instead of nested dict navigation
+- Simplified _extract_profile_from_scenario
 
 Architecture:
 - Uses ScenarioSetPerformanceManager for profiling data
-- Creates TickLoopProfile from raw profiling data
+- Creates TickLoopProfile from typed ProfilingData
 - Renders via ConsoleRenderer
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
     ScenarioSetPerformanceManager
 )
@@ -137,8 +135,8 @@ class ProfilingSummary:
         """
         Extract TickLoopProfile from ScenarioPerformanceStats.
 
-        FIXED: Removed incorrect worker_statistics dict access.
-        profiling_data is a separate field on ScenarioPerformanceStats.
+        REFACTORED: Direct typed access to profiling_data.
+        No more nested dict navigation!
 
         Args:
             scenario: ScenarioPerformanceStats object
@@ -146,87 +144,25 @@ class ProfilingSummary:
         Returns:
             TickLoopProfile or None if no profiling data
         """
-        # profiling_data is a direct field on ScenarioPerformanceStats
-        if hasattr(scenario, 'profiling_data') and scenario.profiling_data:
-            return self._build_profile_from_dict(
-                scenario.profiling_data,
-                scenario.scenario_index,
-                scenario.scenario_name,
-                scenario.ticks_processed
-            )
+        # Check if profiling data exists
+        if not scenario.profiling_data:
+            return None
 
-        # No profiling data found
-        return None
+        profiling = scenario.profiling_data  # Typed ProfilingData!
 
-    def _build_profile_from_dict(
-        self,
-        profiling_dict: Dict[str, Any],
-        scenario_index: int,
-        scenario_name: str,
-        total_ticks: int
-    ) -> TickLoopProfile:
-        """
-        Build TickLoopProfile from raw profiling dictionary.
-
-        Expected dict structure (from batch_orchestrator):
-        {
-            'profile_times': {
-                'trade_simulator': float (ms),
-                'bar_rendering': float (ms),
-                ...
-            },
-            'profile_counts': {
-                'trade_simulator': int,
-                'bar_rendering': int,
-                ...
-            },
-            'total_per_tick': float (ms)
-        }
-
-        Args:
-            profiling_dict: Raw profiling data
-            scenario_index: Scenario index
-            scenario_name: Scenario name
-            total_ticks: Total ticks processed
-
-        Returns:
-            TickLoopProfile object
-        """
-        profile_times = profiling_dict.get('profile_times', {})
-        profile_counts = profiling_dict.get('profile_counts', {})
-        total_time = profile_times.get('total_per_tick', 0.0)
-
-        # Build operation profiles
+        # Build operation profiles from typed data
         operations = []
 
-        operation_names = [
-            'trade_simulator',
-            'bar_rendering',
-            'bar_history',
-            'worker_decision',
-            'order_execution',
-            'stats_update'
-        ]
-
-        for op_name in operation_names:
-            if op_name not in profile_times:
-                continue
-
-            op_time = profile_times[op_name]
-            op_count = profile_counts.get(op_name, 0)
-
-            if op_count == 0:
-                continue
-
-            avg_time = op_time / op_count
-            percentage = (op_time / total_time *
-                          100) if total_time > 0 else 0.0
+        for op_name, timing in profiling.operations.items():
+            # Calculate percentage
+            percentage = (timing.total_time_ms / profiling.total_per_tick_ms * 100) \
+                if profiling.total_per_tick_ms > 0 else 0.0
 
             operations.append(OperationProfile(
                 operation_name=op_name,
-                total_time_ms=op_time,
-                call_count=op_count,
-                avg_time_ms=avg_time,
+                total_time_ms=timing.total_time_ms,  # Direct property access!
+                call_count=timing.call_count,  # Direct property access!
+                avg_time_ms=timing.avg_time_ms,  # Property from OperationTiming!
                 percentage=percentage
             ))
 
@@ -234,12 +170,13 @@ class ProfilingSummary:
         operations.sort(key=lambda op: op.percentage, reverse=True)
 
         return TickLoopProfile(
-            scenario_index=scenario_index,
-            scenario_name=scenario_name,
-            total_ticks=total_ticks,
+            scenario_index=scenario.scenario_index,
+            scenario_name=scenario.scenario_name,
+            total_ticks=scenario.ticks_processed,
             operations=operations,
-            total_time_ms=total_time,
-            avg_time_per_tick_ms=total_time / total_ticks if total_ticks > 0 else 0.0
+            total_time_ms=profiling.total_per_tick_ms,
+            avg_time_per_tick_ms=profiling.total_per_tick_ms / scenario.ticks_processed
+            if scenario.ticks_processed > 0 else 0.0
         )
 
     def _build_profiling_metrics(self) -> ProfilingMetrics:
@@ -254,7 +191,13 @@ class ProfilingSummary:
         return metrics
 
     def _render_scenario_profile(self, profile: TickLoopProfile, renderer):
-        """Render single scenario's profiling breakdown."""
+        """
+        Render single scenario's profiling breakdown.
+
+        Uses smart coloring:
+        - Expected operations (worker_decision, order_execution) → green/yellow
+        - Infrastructure operations → yellow/red when ≥15%
+        """
         # Header
         print(f"{renderer.bold('Scenario:')} {renderer.blue(profile.scenario_name)}")
         print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,}  |  "
@@ -267,6 +210,9 @@ class ProfilingSummary:
             print("  No data")
             return
 
+        # Expected operations (strategy work - high % is GOOD!)
+        EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
+
         # Header
         header = f"{'Operation':<22} {'Total':<15} {'Avg':<15} {'Calls':<10} {'%':<10}"
         print(renderer.bold(header))
@@ -274,13 +220,24 @@ class ProfilingSummary:
 
         # Rows
         for op in profile.operations:
-            # Color-code
-            if op.percentage >= 40:
-                color_func = renderer.red
-            elif op.percentage >= 20:
-                color_func = renderer.yellow
+            is_expected = op.operation_name in EXPECTED_OPERATIONS
+
+            if is_expected:
+                # Expected operation - positive coloring
+                if op.percentage >= 50:
+                    color_func = renderer.green  # Good - strategy is working!
+                elif op.percentage >= 20:
+                    color_func = renderer.yellow
+                else:
+                    def color_func(x): return x
             else:
-                def color_func(x): return x
+                # Infrastructure operation - warning at 15%+
+                if op.percentage >= 40:
+                    color_func = renderer.red  # Critical - infrastructure too slow!
+                elif op.percentage >= 15:
+                    color_func = renderer.yellow  # Optimize - should investigate
+                else:
+                    def color_func(x): return x
 
             op_name = color_func(f"{op.operation_name:<22}")
             total = f"{op.total_time_ms:>10.2f}ms"
@@ -293,7 +250,11 @@ class ProfilingSummary:
         # Bottleneck
         if profile.bottleneck_operation:
             print()
-            print(f"  {renderer.red('🔥')} {renderer.bold(profile.bottleneck_operation)} "
+            # Icon based on whether it's expected
+            is_expected_bottleneck = profile.bottleneck_operation in EXPECTED_OPERATIONS
+            icon = renderer.green(
+                '✅') if is_expected_bottleneck else renderer.red('🔥')
+            print(f"  {icon} {renderer.bold(profile.bottleneck_operation)} "
                   f"({profile.bottleneck_percentage:.1f}%)")
 
     def _render_aggregated_details(self, renderer):
@@ -363,37 +324,84 @@ class ProfilingSummary:
             print(f"{op_name} {time_str:<15}")
 
     def _render_bottleneck_details(self, renderer):
-        """Render detailed bottleneck analysis."""
+        """
+        Render detailed bottleneck analysis.
+
+        Shows ALL operations with their bottleneck frequency.
+        Distinguishes between:
+        - Expected bottlenecks (strategy work) - marked with ✅
+        - Problematic bottlenecks (infrastructure) - marked with ⚠️
+        - No bottleneck (0%) - marked with -
+        """
         metrics = self.profiling_metrics
 
-        if not metrics.bottleneck_frequency:
+        if not self.profiling_metrics.scenario_profiles:
             print("  No data")
             return
 
-        # Sort by frequency
-        sorted_bottlenecks = sorted(
-            metrics.bottleneck_frequency.items(),
-            key=lambda x: x[1],
-            reverse=True
+        # Expected bottlenecks (strategy work - this is GOOD!)
+        EXPECTED_BOTTLENECKS = {
+            'worker_decision',  # Strategy logic execution
+            'order_execution'   # Active trading (with caution)
+        }
+
+        # Collect ALL operations from all scenarios
+        all_operations = set()
+        for profile in self.profiling_metrics.scenario_profiles:
+            for op in profile.operations:
+                all_operations.add(op.operation_name)
+
+        # Build stats for each operation
+        operation_stats = {}
+        for op_name in all_operations:
+            bottleneck_count = metrics.bottleneck_frequency.get(op_name, 0)
+            operation_stats[op_name] = bottleneck_count
+
+        # Sort by frequency (highest first), then alphabetically
+        sorted_operations = sorted(
+            operation_stats.items(),
+            # Negative for descending, then alphabetical
+            key=lambda x: (-x[1], x[0])
         )
 
-        header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10}"
+        header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10} {'Status':<15}"
         print(renderer.bold(header))
-        print("-" * 52)
+        print("-" * 68)
 
-        for operation, count in sorted_bottlenecks:
-            pct = (count / metrics.total_scenarios * 100)
+        for operation, count in sorted_operations:
+            pct = (count / metrics.total_scenarios *
+                   100) if metrics.total_scenarios > 0 else 0.0
 
-            # Color
-            if pct >= 50:
-                color_func = renderer.red
-            elif pct >= 25:
-                color_func = renderer.yellow
-            else:
+            # Determine if expected or problematic
+            is_expected = operation in EXPECTED_BOTTLENECKS
+
+            if count == 0:
+                # No bottleneck - neutral
                 def color_func(x): return x
+                status = "-"
+            elif is_expected:
+                # Expected bottleneck - positive coloring
+                if pct >= 50:
+                    color_func = renderer.green  # Good - strategy is working!
+                else:
+                    color_func = renderer.yellow
+                status = "✅ Expected"
+            else:
+                # Problematic bottleneck - infrastructure should be fast
+                # 15%+ is worth investigating for infrastructure
+                if pct >= 40:
+                    color_func = renderer.red
+                    status = "⚠️  Critical"
+                elif pct >= 15:
+                    color_func = renderer.yellow
+                    status = "⚠️  Optimize"
+                else:
+                    def color_func(x): return x
+                    status = "⚠️  Review"
 
             op_name = color_func(f"{operation:<25}")
             count_str = f"{count}/{metrics.total_scenarios}"
-            pct_str = color_func(f"{pct:>6.1f}%")
+            pct_str = color_func(
+                f"{pct:>6.1f}%") if count > 0 else f"{pct:>6.1f}%"
 
-            print(f"{op_name} {count_str:<15} {pct_str:<10}")
+            print(f"{op_name} {count_str:<15} {pct_str:<10} {status:<15}")

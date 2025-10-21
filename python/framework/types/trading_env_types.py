@@ -118,7 +118,7 @@ class CostBreakdown:
         total_swap: Overnight interest (can be negative/positive)
         total_fees: Sum of all costs
     """
-    total_spread_cost: float
-    total_commission: float
-    total_swap: float
-    total_fees: float
+    total_spread_cost: float = 0
+    total_commission: float = 0
+    total_swap: float = 0
+    total_fees: float = 0

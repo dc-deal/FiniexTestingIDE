@@ -2,25 +2,17 @@
 # python/framework/trading_env/trade_simulator.py
 # ============================================
 """
-FiniexTestingIDE - Trade Simulator
+FiniexTestingIDE - Trade Simulator (REFACTORED)
 Simulates broker trading environment with realistic execution
 
-Core Responsibilities:
-- Order execution with realistic delays (MVP: tick-based)
-- Portfolio management (positions, P&L)
-- Price updates and spread calculations
-- Trading fee simulation
-- Account queries for Decision Logic
-
-Architecture:
-TradeSimulator = OrderExecutionEngine + PortfolioManager + BrokerConfig
-- Engine: Handles order delays (PENDING state)
-- Portfolio: Manages positions and balance
-- Broker: Provides spreads, symbols, capabilities
-
-FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
+REFACTORED CHANGES:
+- Direct attributes for execution stats (_orders_sent, _orders_executed, etc.)
+- Always-copy public API (using replace())
+- Cleaner, more maintainable code structure
+- FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
 """
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -48,6 +40,8 @@ class TradeSimulator:
 
     Uses OrderExecutionEngine for realistic delays (Issue #003).
     Orders go through PENDING → EXECUTED lifecycle.
+
+    REFACTORED: Uses direct attributes for execution statistics.
     """
 
     def __init__(
@@ -76,6 +70,7 @@ class TradeSimulator:
             currency=currency,
             leverage=leverage
         )
+
         # Current market prices
         # symbol: (bid, ask)
         self._current_prices: Dict[str, Tuple[float, float]] = {}
@@ -92,14 +87,12 @@ class TradeSimulator:
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
-        # Execution statistics
-        self._execution_stats = {
-            "orders_sent": 0,
-            "orders_executed": 0,
-            "orders_rejected": 0,
-            "total_commission": 0.0,
-            "total_spread_cost": 0.0,
-        }
+        # REFACTORED: Execution statistics as direct attributes
+        self._orders_sent = 0
+        self._orders_executed = 0
+        self._orders_rejected = 0
+        self._total_commission = 0.0
+        self._total_spread_cost = 0.0
 
     # ============================================
     # Price Updates
@@ -164,8 +157,9 @@ class TradeSimulator:
         Send order to broker simulation.
 
         EXTENDED: Automatically attaches SpreadFee from live tick data.
+        REFACTORED: Uses direct attributes for stats.
         """
-        self._execution_stats["orders_sent"] += 1
+        self._orders_sent += 1
 
         # Generate order ID
         self._order_counter += 1
@@ -174,7 +168,7 @@ class TradeSimulator:
         # Validate order
         is_valid, error = self.broker.validate_order(symbol, lots)
         if not is_valid:
-            self._execution_stats["orders_rejected"] += 1
+            self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.INVALID_LOT_SIZE,
@@ -185,7 +179,7 @@ class TradeSimulator:
 
         # Check symbol tradeable
         if not self.broker.is_symbol_tradeable(symbol):
-            self._execution_stats["orders_rejected"] += 1
+            self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.SYMBOL_NOT_TRADEABLE,
@@ -203,7 +197,7 @@ class TradeSimulator:
                 order_id, symbol, direction, lots, **kwargs)
         else:
             # Extended orders - MVP: Not implemented
-            self._execution_stats["orders_rejected"] += 1
+            self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
@@ -231,7 +225,7 @@ class TradeSimulator:
         # Pre-validate margin
         estimated_margin = lots * 100000 * 0.01
         if self.portfolio.get_free_margin() < estimated_margin:
-            self._execution_stats["orders_rejected"] += 1
+            self._orders_rejected += 1
             return create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.INSUFFICIENT_MARGIN,
@@ -288,14 +282,17 @@ class TradeSimulator:
             tick_value=tick_value,
             digits=digits
         )
-        self._execution_stats["total_spread_cost"] += spread_fee.cost
+
+        # REFACTORED: Update direct attributes
+        self._total_spread_cost += spread_fee.cost
+
         # Check margin available
         margin_required = self.broker.calculate_margin(
             pending_order.symbol, pending_order.lots)
         free_margin = self.portfolio.get_free_margin()
 
         if margin_required > free_margin:
-            self._execution_stats["orders_rejected"] += 1
+            self._orders_rejected += 1
             return create_rejection_result(
                 order_id=pending_order.order_id,
                 reason=RejectionReason.INSUFFICIENT_MARGIN,
@@ -334,8 +331,8 @@ class TradeSimulator:
             }
         )
 
-        # Update statistics
-        self._execution_stats["orders_executed"] += 1
+        # REFACTORED: Update direct attributes
+        self._orders_executed += 1
         self._order_history.append(result)
 
     def _execute_limit_order(
@@ -347,7 +344,7 @@ class TradeSimulator:
         **kwargs
     ) -> OrderResult:
         """Execute limit order (MVP: Not implemented)"""
-        self._execution_stats["orders_rejected"] += 1
+        self._orders_rejected += 1
         return create_rejection_result(
             order_id=order_id,
             reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
@@ -453,7 +450,11 @@ class TradeSimulator:
     # ============================================
 
     def get_account_info(self) -> AccountInfo:
-        """Get current account information"""
+        """
+        Get current account information.
+
+        Returns copy (safe for external use).
+        """
         return self.portfolio.get_account_info()
 
     def get_open_positions(self) -> List[Position]:
@@ -516,7 +517,7 @@ class TradeSimulator:
         return self.portfolio.balance
 
     def get_equity(self) -> float:
-        """Get account equity"""
+        """Get account equity (balance + unrealized P&L)"""
         return self.portfolio.get_equity()
 
     def get_free_margin(self) -> float:
@@ -585,21 +586,22 @@ class TradeSimulator:
         return self.broker.get_symbol_info(symbol)
 
     # ============================================
-    # Statistics (EXTENDED & TYPED)
+    # Statistics (REFACTORED & TYPED)
     # ============================================
 
     def get_execution_stats(self) -> ExecutionStats:
         """
         Get order execution statistics.
 
-        EXTENDED & TYPED: Returns ExecutionStats dataclass instead of dict.
+        REFACTORED: Creates new ExecutionStats from direct attributes.
+        Always returns new object (safe for external use).
         """
         return ExecutionStats(
-            orders_sent=self._execution_stats["orders_sent"],
-            orders_executed=self._execution_stats["orders_executed"],
-            orders_rejected=self._execution_stats["orders_rejected"],
-            total_commission=self._execution_stats["total_commission"],
-            total_spread_cost=self._execution_stats["total_spread_cost"]
+            orders_sent=self._orders_sent,
+            orders_executed=self._orders_executed,
+            orders_rejected=self._orders_rejected,
+            total_commission=self._total_commission,
+            total_spread_cost=self._total_spread_cost
         )
 
     def reset(self) -> None:
@@ -609,13 +611,12 @@ class TradeSimulator:
         self._order_counter = 0
         self._order_history.clear()  # EXTENDED
 
-        self._execution_stats = {
-            "orders_sent": 0,
-            "orders_executed": 0,
-            "orders_rejected": 0,
-            "total_commission": 0.0,
-            "total_spread_cost": 0.0,
-        }
+        # REFACTORED: Reset direct attributes
+        self._orders_sent = 0
+        self._orders_executed = 0
+        self._orders_rejected = 0
+        self._total_commission = 0.0
+        self._total_spread_cost = 0.0
 
     def __repr__(self) -> str:
         """String representation"""

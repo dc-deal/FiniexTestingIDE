@@ -28,6 +28,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats
 from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
@@ -158,8 +159,25 @@ class ScenarioSetPerformanceManager:
                 losing_trades=0,
                 portfolio_value=0.0,
                 initial_balance=0.0,
-                status=ScenarioStatus.INITIALIZED
+                status=ScenarioStatus.INITIALIZED,
+                scenario_trade_simulator=None
             )
+
+    def set_trade_simulator(self, scenario_index: int, scenario_trade_simulator: TradeSimulator):
+        """
+        Set the T5rade Im for this scenario.
+
+        Args:
+            scenario_index: Scenario array index
+            scenario_trade_simulator: New Trade Sim for this scenario
+        """
+        if scenario_index not in self._live_stats:
+            return
+
+        initial_balance = scenario_trade_simulator.portfolio.initial_balance
+        self._live_stats[scenario_index].scenario_trade_simulator = scenario_trade_simulator
+        self._live_stats[scenario_index].initial_balance = initial_balance
+        self._live_stats[scenario_index].portfolio_value = initial_balance
 
     def set_live_status(self, scenario_index: int, status: ScenarioStatus) -> None:
         """
@@ -204,9 +222,7 @@ class ScenarioSetPerformanceManager:
 
     def update_live_stats(self,
                           scenario_index: int,
-                          ticks_processed: Optional[int] = None,
-                          portfolio_stats: Optional[PortfolioStats] = None,
-                          account_info: Optional[AccountInfo] = None) -> None:
+                          ticks_processed: Optional[int] = None):
         """
         Update live statistics during scenario execution.
         Thread-safe, can be called from worker threads.
@@ -233,13 +249,11 @@ class ScenarioSetPerformanceManager:
                 if progress_percent >= 100:
                     stats.status = ScenarioStatus.COMPLETED
 
-            if portfolio_stats is not None:
-                stats.total_trades = portfolio_stats.total_trades
-                stats.winning_trades = portfolio_stats.winning_trades
-                stats.losing_trades = portfolio_stats.losing_trades
-
-            if account_info is not None:
-                stats.portfolio_value = account_info.equity
+            if stats.scenario_trade_simulator is not None:
+                stats.total_trades = stats.scenario_trade_simulator.portfolio.get_total_trades()
+                stats.winning_trades = stats.scenario_trade_simulator.portfolio.get_winning_trades()
+                stats.losing_trades = stats.scenario_trade_simulator.portfolio.get_losing_trades()
+                stats.portfolio_value = stats.scenario_trade_simulator.portfolio.get_equity()
 
     def get_live_scenario_stats(self, scenario_index: int) -> Optional[LiveScenarioStats]:
         """

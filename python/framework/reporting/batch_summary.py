@@ -19,7 +19,6 @@ from python.framework.reporting.worker_decision_breakdown_summary import WorkerD
 from python.framework.reporting.console_renderer import ConsoleRenderer
 
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
-from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.configuration import AppConfigLoader
 
 
