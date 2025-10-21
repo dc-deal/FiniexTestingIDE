@@ -191,7 +191,13 @@ class ProfilingSummary:
         return metrics
 
     def _render_scenario_profile(self, profile: TickLoopProfile, renderer):
-        """Render single scenario's profiling breakdown."""
+        """
+        Render single scenario's profiling breakdown.
+
+        Uses smart coloring:
+        - Expected operations (worker_decision, order_execution) → green/yellow
+        - Infrastructure operations → yellow/red when ≥15%
+        """
         # Header
         print(f"{renderer.bold('Scenario:')} {renderer.blue(profile.scenario_name)}")
         print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,}  |  "
@@ -204,6 +210,9 @@ class ProfilingSummary:
             print("  No data")
             return
 
+        # Expected operations (strategy work - high % is GOOD!)
+        EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
+
         # Header
         header = f"{'Operation':<22} {'Total':<15} {'Avg':<15} {'Calls':<10} {'%':<10}"
         print(renderer.bold(header))
@@ -211,13 +220,24 @@ class ProfilingSummary:
 
         # Rows
         for op in profile.operations:
-            # Color-code
-            if op.percentage >= 40:
-                color_func = renderer.red
-            elif op.percentage >= 20:
-                color_func = renderer.yellow
+            is_expected = op.operation_name in EXPECTED_OPERATIONS
+
+            if is_expected:
+                # Expected operation - positive coloring
+                if op.percentage >= 50:
+                    color_func = renderer.green  # Good - strategy is working!
+                elif op.percentage >= 20:
+                    color_func = renderer.yellow
+                else:
+                    def color_func(x): return x
             else:
-                def color_func(x): return x
+                # Infrastructure operation - warning at 15%+
+                if op.percentage >= 40:
+                    color_func = renderer.red  # Critical - infrastructure too slow!
+                elif op.percentage >= 15:
+                    color_func = renderer.yellow  # Optimize - should investigate
+                else:
+                    def color_func(x): return x
 
             op_name = color_func(f"{op.operation_name:<22}")
             total = f"{op.total_time_ms:>10.2f}ms"
@@ -230,7 +250,11 @@ class ProfilingSummary:
         # Bottleneck
         if profile.bottleneck_operation:
             print()
-            print(f"  {renderer.red('🔥')} {renderer.bold(profile.bottleneck_operation)} "
+            # Icon based on whether it's expected
+            is_expected_bottleneck = profile.bottleneck_operation in EXPECTED_OPERATIONS
+            icon = renderer.green(
+                '✅') if is_expected_bottleneck else renderer.red('🔥')
+            print(f"  {icon} {renderer.bold(profile.bottleneck_operation)} "
                   f"({profile.bottleneck_percentage:.1f}%)")
 
     def _render_aggregated_details(self, renderer):
@@ -300,37 +324,84 @@ class ProfilingSummary:
             print(f"{op_name} {time_str:<15}")
 
     def _render_bottleneck_details(self, renderer):
-        """Render detailed bottleneck analysis."""
+        """
+        Render detailed bottleneck analysis.
+
+        Shows ALL operations with their bottleneck frequency.
+        Distinguishes between:
+        - Expected bottlenecks (strategy work) - marked with ✅
+        - Problematic bottlenecks (infrastructure) - marked with ⚠️
+        - No bottleneck (0%) - marked with -
+        """
         metrics = self.profiling_metrics
 
-        if not metrics.bottleneck_frequency:
+        if not self.profiling_metrics.scenario_profiles:
             print("  No data")
             return
 
-        # Sort by frequency
-        sorted_bottlenecks = sorted(
-            metrics.bottleneck_frequency.items(),
-            key=lambda x: x[1],
-            reverse=True
+        # Expected bottlenecks (strategy work - this is GOOD!)
+        EXPECTED_BOTTLENECKS = {
+            'worker_decision',  # Strategy logic execution
+            'order_execution'   # Active trading (with caution)
+        }
+
+        # Collect ALL operations from all scenarios
+        all_operations = set()
+        for profile in self.profiling_metrics.scenario_profiles:
+            for op in profile.operations:
+                all_operations.add(op.operation_name)
+
+        # Build stats for each operation
+        operation_stats = {}
+        for op_name in all_operations:
+            bottleneck_count = metrics.bottleneck_frequency.get(op_name, 0)
+            operation_stats[op_name] = bottleneck_count
+
+        # Sort by frequency (highest first), then alphabetically
+        sorted_operations = sorted(
+            operation_stats.items(),
+            # Negative for descending, then alphabetical
+            key=lambda x: (-x[1], x[0])
         )
 
-        header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10}"
+        header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10} {'Status':<15}"
         print(renderer.bold(header))
-        print("-" * 52)
+        print("-" * 68)
 
-        for operation, count in sorted_bottlenecks:
-            pct = (count / metrics.total_scenarios * 100)
+        for operation, count in sorted_operations:
+            pct = (count / metrics.total_scenarios *
+                   100) if metrics.total_scenarios > 0 else 0.0
 
-            # Color
-            if pct >= 50:
-                color_func = renderer.red
-            elif pct >= 25:
-                color_func = renderer.yellow
-            else:
+            # Determine if expected or problematic
+            is_expected = operation in EXPECTED_BOTTLENECKS
+
+            if count == 0:
+                # No bottleneck - neutral
                 def color_func(x): return x
+                status = "-"
+            elif is_expected:
+                # Expected bottleneck - positive coloring
+                if pct >= 50:
+                    color_func = renderer.green  # Good - strategy is working!
+                else:
+                    color_func = renderer.yellow
+                status = "✅ Expected"
+            else:
+                # Problematic bottleneck - infrastructure should be fast
+                # 15%+ is worth investigating for infrastructure
+                if pct >= 40:
+                    color_func = renderer.red
+                    status = "⚠️  Critical"
+                elif pct >= 15:
+                    color_func = renderer.yellow
+                    status = "⚠️  Optimize"
+                else:
+                    def color_func(x): return x
+                    status = "⚠️  Review"
 
             op_name = color_func(f"{operation:<25}")
             count_str = f"{count}/{metrics.total_scenarios}"
-            pct_str = color_func(f"{pct:>6.1f}%")
+            pct_str = color_func(
+                f"{pct:>6.1f}%") if count > 0 else f"{pct:>6.1f}%"
 
-            print(f"{op_name} {count_str:<15} {pct_str:<10}")
+            print(f"{op_name} {count_str:<15} {pct_str:<10} {status:<15}")
