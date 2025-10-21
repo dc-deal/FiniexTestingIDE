@@ -28,7 +28,7 @@ from python.framework.types.orchestrator_types import (
     ScenarioExecutorDependencies,
     ScenarioExecutionResult
 )
-from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
+from python.framework.types.scenario_set_performance_types import ProfilingData, ScenarioPerformanceStats
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
 from python.framework.utils.thread_utils import sanitize_thread_name
 from python.framework.utils.trade_simulator_creator import create_trade_simulator_for_scenario
@@ -418,11 +418,11 @@ class ScenarioExecutor:
 
                 tick_count += 1
 
-            profiling_data = {
-                'profile_times': dict(profile_times),
-                'profile_counts': dict(profile_counts),
-                'total_per_tick': profile_times.get('total_per_tick', 0.0)
-            }
+            # Build typed ProfilingData from raw dicts (after loop completes)
+            profiling_data = ProfilingData.from_dicts(
+                dict(profile_times),
+                dict(profile_counts)
+            )
 
             # BEFORE collecting statistics - cleanup pending orders
             open_positions = self.trade_simulator.get_open_positions()

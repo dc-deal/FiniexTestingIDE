@@ -2,21 +2,19 @@
 FiniexTestingIDE - Profiling Summary
 Performance profiling and bottleneck analysis reporting
 
-CREATED (New):
-- Renders profiling data from batch_orchestrator
-- Shows per-operation timing breakdowns
-- Identifies performance bottlenecks
-- Cross-scenario performance comparison
-
-FULLY TYPED: Removed incorrect worker_statistics dict access.
+REFACTORED:
+- Uses typed ProfilingData instead of Dict[str, Any]
+- Removed _build_profile_from_dict (no longer needed!)
+- Clean direct property access instead of nested dict navigation
+- Simplified _extract_profile_from_scenario
 
 Architecture:
 - Uses ScenarioSetPerformanceManager for profiling data
-- Creates TickLoopProfile from raw profiling data
+- Creates TickLoopProfile from typed ProfilingData
 - Renders via ConsoleRenderer
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from python.framework.reporting.scenario_set_performance_manager import (
     ScenarioSetPerformanceManager
 )
@@ -137,8 +135,8 @@ class ProfilingSummary:
         """
         Extract TickLoopProfile from ScenarioPerformanceStats.
 
-        FIXED: Removed incorrect worker_statistics dict access.
-        profiling_data is a separate field on ScenarioPerformanceStats.
+        REFACTORED: Direct typed access to profiling_data.
+        No more nested dict navigation!
 
         Args:
             scenario: ScenarioPerformanceStats object
@@ -146,87 +144,25 @@ class ProfilingSummary:
         Returns:
             TickLoopProfile or None if no profiling data
         """
-        # profiling_data is a direct field on ScenarioPerformanceStats
-        if hasattr(scenario, 'profiling_data') and scenario.profiling_data:
-            return self._build_profile_from_dict(
-                scenario.profiling_data,
-                scenario.scenario_index,
-                scenario.scenario_name,
-                scenario.ticks_processed
-            )
+        # Check if profiling data exists
+        if not scenario.profiling_data:
+            return None
 
-        # No profiling data found
-        return None
+        profiling = scenario.profiling_data  # Typed ProfilingData!
 
-    def _build_profile_from_dict(
-        self,
-        profiling_dict: Dict[str, Any],
-        scenario_index: int,
-        scenario_name: str,
-        total_ticks: int
-    ) -> TickLoopProfile:
-        """
-        Build TickLoopProfile from raw profiling dictionary.
-
-        Expected dict structure (from batch_orchestrator):
-        {
-            'profile_times': {
-                'trade_simulator': float (ms),
-                'bar_rendering': float (ms),
-                ...
-            },
-            'profile_counts': {
-                'trade_simulator': int,
-                'bar_rendering': int,
-                ...
-            },
-            'total_per_tick': float (ms)
-        }
-
-        Args:
-            profiling_dict: Raw profiling data
-            scenario_index: Scenario index
-            scenario_name: Scenario name
-            total_ticks: Total ticks processed
-
-        Returns:
-            TickLoopProfile object
-        """
-        profile_times = profiling_dict.get('profile_times', {})
-        profile_counts = profiling_dict.get('profile_counts', {})
-        total_time = profile_times.get('total_per_tick', 0.0)
-
-        # Build operation profiles
+        # Build operation profiles from typed data
         operations = []
 
-        operation_names = [
-            'trade_simulator',
-            'bar_rendering',
-            'bar_history',
-            'worker_decision',
-            'order_execution',
-            'stats_update'
-        ]
-
-        for op_name in operation_names:
-            if op_name not in profile_times:
-                continue
-
-            op_time = profile_times[op_name]
-            op_count = profile_counts.get(op_name, 0)
-
-            if op_count == 0:
-                continue
-
-            avg_time = op_time / op_count
-            percentage = (op_time / total_time *
-                          100) if total_time > 0 else 0.0
+        for op_name, timing in profiling.operations.items():
+            # Calculate percentage
+            percentage = (timing.total_time_ms / profiling.total_per_tick_ms * 100) \
+                if profiling.total_per_tick_ms > 0 else 0.0
 
             operations.append(OperationProfile(
                 operation_name=op_name,
-                total_time_ms=op_time,
-                call_count=op_count,
-                avg_time_ms=avg_time,
+                total_time_ms=timing.total_time_ms,  # Direct property access!
+                call_count=timing.call_count,  # Direct property access!
+                avg_time_ms=timing.avg_time_ms,  # Property from OperationTiming!
                 percentage=percentage
             ))
 
@@ -234,12 +170,13 @@ class ProfilingSummary:
         operations.sort(key=lambda op: op.percentage, reverse=True)
 
         return TickLoopProfile(
-            scenario_index=scenario_index,
-            scenario_name=scenario_name,
-            total_ticks=total_ticks,
+            scenario_index=scenario.scenario_index,
+            scenario_name=scenario.scenario_name,
+            total_ticks=scenario.ticks_processed,
             operations=operations,
-            total_time_ms=total_time,
-            avg_time_per_tick_ms=total_time / total_ticks if total_ticks > 0 else 0.0
+            total_time_ms=profiling.total_per_tick_ms,
+            avg_time_per_tick_ms=profiling.total_per_tick_ms / scenario.ticks_processed
+            if scenario.ticks_processed > 0 else 0.0
         )
 
     def _build_profiling_metrics(self) -> ProfilingMetrics:
