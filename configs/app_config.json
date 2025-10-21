@@ -2,8 +2,7 @@
     "version": "1.0",
     "description": "FiniexTestingIDE - Application Configuration",
     "development": {
-        "dev_mode": false,
-        "debug_logging": true
+        "dev_mode": false
     },
     "execution": {
         "default_parallel_scenarios": true,
@@ -16,7 +15,12 @@
         "show_worker_details": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,
-        "log_level": "DEBUG"
+        "log_level": "INFO"
+    },
+    "file_logging": {
+        "enabled": true,
+        "log_level": "DEBUG",
+        "log_root_path": "logs/scenario_sets"
     },
     "importer": {
         "move_processed_files": true,

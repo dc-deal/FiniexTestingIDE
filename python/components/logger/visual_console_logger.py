@@ -7,6 +7,11 @@ PHASE 1a (Live Progress):
 - Custom error types (validation_error, config_error, hard_error)
 - Automatic flush on critical errors
 - Thread-safe buffering
+
+PHASE 1b (File Logging):
+- Integrated file logging with log level filtering
+- Automatic config snapshot
+- Performance-optimized batch writes
 """
 
 import logging
@@ -15,7 +20,12 @@ import traceback
 import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
+
 from python.configuration import AppConfigLoader
+from python.framework.types.log_level import LogLevel
+# Create global file logger
+from python.components.logger.file_logger import FileLogger
+from pathlib import Path
 
 
 class ColorCodes:
@@ -38,6 +48,7 @@ class VisualConsoleLogger:
     - Buffered mode for clean live progress display
     - Scenario-grouped log output
     - Custom error types with smart handling
+    - Integrated file logging with log level filtering
 
     BUFFERING & SCENARIOS:
     - Call enable_buffering() to buffer all logs (for live progress)
@@ -45,13 +56,19 @@ class VisualConsoleLogger:
     - Call flush_buffer() to output all logs grouped by scenario
     - Critical errors (validation, config, hard) auto-flush and exit
 
+    FILE LOGGING:
+    - Call attach_scenario_set(name) to enable file logging
+    - Logs are written to file on flush_buffer()
+    - Automatic config snapshot
+    - Separate log level filtering for file
+
     ERROR TYPES:
     - validation_error(): Parameter/input validation errors (no stack trace)
     - config_error(): Configuration file errors (no stack trace)
     - hard_error(): Critical code errors (WITH stack trace)
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
         self.start_time = datetime.now()
 
@@ -71,8 +88,23 @@ class VisualConsoleLogger:
         # Logging Setup
         self._setup_custom_logger()
 
-        # App Config
+        # App Config (cached singleton)
         self.app_config = AppConfigLoader()
+
+        # Console log level (validated)
+        raw_console_level = self.app_config.get_console_log_level()
+        self.console_log_level = LogLevel.validate(raw_console_level)
+
+        # File logging (lazy initialization per run)
+        self.global_file_logger = None
+        # scenario_index -> FileLogger
+        self._scenario_file_loggers: Dict[int, Any] = {}
+        self.run_timestamp = None
+        self.run_dir = None
+        self.file_logging_enabled = self.app_config.is_file_logging_enabled()
+        if self.file_logging_enabled:
+            self.file_log_level = self.app_config.get_file_log_level()
+            self.file_log_root = self.app_config.get_file_log_root_path()
 
     def _setup_custom_logger(self):
         """Configure Python logging with custom formatter"""
@@ -119,16 +151,65 @@ class VisualConsoleLogger:
     def start_scenario_logging(self, scenario_index: int, scenario_name: str):
         """Start logging for a new scenario."""
         # Set THREAD-LOCAL scenario index
-        self._thread_local.scenario_index = scenario_index  # <-- CHANGED
+        self._thread_local.scenario_index = scenario_index
 
         with self._buffer_lock:
             self._scenario_start_times[scenario_index] = datetime.now()
             self._scenario_names[scenario_index] = scenario_name
 
+            # NEW: Create scenario-specific FileLogger
+            if self.file_logging_enabled and self.run_dir is not None:
+                from python.components.logger.file_logger import FileLogger
+                self._scenario_file_loggers[scenario_index] = FileLogger(
+                    log_type="scenario",
+                    run_dir=self.run_dir,
+                    scenario_index=scenario_index,
+                    scenario_name=scenario_name,
+                    log_level=self.file_log_level
+                )
+
+    # ============================================
+    # File Logging Integration
+    # ============================================
+
+    def attach_scenario_set(self, scenario_set_name: str):
+        """
+        Attach file logger for this scenario set.
+        Creates run directory and global file logger.
+        Called from strategy_runner after loading config.
+
+        Args:
+            scenario_set_name: Scenario config filename (e.g., "eurusd_3_windows.json")
+        """
+        if not self.file_logging_enabled:
+            return
+
+        # Generate run timestamp (used for all files in this run)
+        self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create run directory path
+        scenario_base_name = scenario_set_name.replace('.json', '')
+        self.run_dir = Path(self.file_log_root) / \
+            scenario_base_name / self.run_timestamp
+
+        # Create run directory
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        source_config_path = Path("configs/scenario_sets") / scenario_set_name
+
+        self.global_file_logger = FileLogger(
+            log_type="global",
+            run_dir=self.run_dir,
+            log_level=self.file_log_level,
+            source_config_path=source_config_path
+        )
+
     def flush_buffer(self):
         """
         Flush all buffered logs to console, grouped by scenario.
         Each scenario gets its own header and relative timestamps (starting at 0ms).
+
+        NEW: Also writes to file logger if attached.
         """
         with self._buffer_lock:
             if not self._log_buffer:
@@ -142,59 +223,60 @@ class VisualConsoleLogger:
                 logs_by_scenario[scenario_index].append(
                     (level, message, logger_name, elapsed_ms))
 
-            # Output each scenario block
+            # ============================================
+            # CONSOLE OUTPUT
+            # ============================================
             root_logger = logging.getLogger()
-            if not root_logger.handlers:
-                return
+            if root_logger.handlers:
+                handler = root_logger.handlers[0]
 
-            handler = root_logger.handlers[0]
-
-            for scenario_index in sorted(logs_by_scenario.keys(), key=lambda x: (x is None, x)):
-                # Print scenario header
-                if scenario_index is not None:
-                    scenario_name = self._scenario_names.get(
-                        scenario_index, f"Scenario {scenario_index}")
-                    self._print_scenario_header(scenario_index, scenario_name)
-                else:
-                    # Logs without scenario (global logs)
-                    print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-                    print(
-                        f"{ColorCodes.BOLD}{'GLOBAL LOGS'.center(60)}{ColorCodes.RESET}")
-                    print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-
-                # Get scenario start time for relative timestamps
-                scenario_start = self._scenario_start_times.get(
-                    scenario_index, self.start_time)
-
-                # Output logs for this scenario with relative time
-                for level, message, logger_name, original_elapsed_ms in logs_by_scenario[scenario_index]:
-                    # Calculate relative time from scenario start
+                for scenario_index in sorted(logs_by_scenario.keys(), key=lambda x: (x is None, x)):
+                    # Print scenario header
                     if scenario_index is not None:
-                        # Reconstruct original log time
-                        original_time = self.start_time + \
-                            timedelta(milliseconds=original_elapsed_ms)
-                        # Calculate relative to scenario start
-                        relative_ms = int(
-                            (original_time - scenario_start).total_seconds() * 1000)
+                        scenario_name = self._scenario_names.get(
+                            scenario_index, f"Scenario {scenario_index}")
+                        self._print_scenario_header(
+                            scenario_index, scenario_name)
                     else:
-                        relative_ms = original_elapsed_ms
+                        # Logs without scenario (global logs)
+                        print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+                        print(
+                            f"{ColorCodes.BOLD}{'GLOBAL LOGS'.center(60)}{ColorCodes.RESET}")
+                        print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
-                    # Create LogRecord
-                    record = logging.LogRecord(
-                        name=logger_name or self.name,
-                        level=getattr(logging, level),
-                        pathname="(buffered)",
-                        lineno=0,
-                        msg=message,
-                        args=(),
-                        exc_info=None
-                    )
+                    # Get scenario start time for relative timestamps
+                    scenario_start = self._scenario_start_times.get(
+                        scenario_index, self.start_time)
 
-                    # Store relative time for formatter
-                    record.elapsed_ms_buffered = relative_ms
+                    # Output logs for this scenario with relative time
+                    for level, message, logger_name, original_elapsed_ms in logs_by_scenario[scenario_index]:
+                        # Calculate relative time from scenario start
+                        if scenario_index is not None:
+                            # Reconstruct original log time
+                            original_time = self.start_time + \
+                                timedelta(milliseconds=original_elapsed_ms)
+                            # Calculate relative to scenario start
+                            relative_ms = int(
+                                (original_time - scenario_start).total_seconds() * 1000)
+                        else:
+                            relative_ms = original_elapsed_ms
 
-                    # Emit through handler
-                    handler.emit(record)
+                        # Create LogRecord
+                        record = logging.LogRecord(
+                            name=logger_name or self.name,
+                            level=getattr(logging, level),
+                            pathname="(buffered)",
+                            lineno=0,
+                            msg=message,
+                            args=(),
+                            exc_info=None
+                        )
+
+                        # Store relative time for formatter
+                        record.elapsed_ms_buffered = relative_ms
+
+                        # Emit through handler
+                        handler.emit(record)
 
             # Clear buffer
             self._log_buffer.clear()
@@ -208,7 +290,7 @@ class VisualConsoleLogger:
         print(f"{ColorCodes.BOLD}{header_text.center(60)}{ColorCodes.RESET}")
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
-    def _log_or_buffer(self, level: str, message: str, logger_name: Optional[str] = None):
+    def _log_or_buffer(self, level: str, message: str):
         """
         Internal: Either log directly or buffer based on mode.
 
@@ -218,30 +300,45 @@ class VisualConsoleLogger:
             logger_name: Optional logger name
         """
         with self._buffer_lock:
-            if self._buffered_mode:
-                # Calculate elapsed_ms NOW (relative to logger start)
-                elapsed_ms = int(
-                    (datetime.now() - self.start_time).total_seconds() * 1000)
+            # Calculate elapsed_ms NOW (relative to logger start)
+            elapsed_ms = int(
+                (datetime.now() - self.start_time).total_seconds() * 1000)
 
-                # Tag with current scenario index (if set)
-                scenario_index = getattr(
-                    self._thread_local, 'scenario_index', None)
+            # Tag with current scenario index (if set)
+            scenario_index = getattr(
+                self._thread_local, 'scenario_index', None)
 
-                # Buffer the log with scenario tag
-                self._log_buffer.append(
-                    (level, message, logger_name, elapsed_ms, scenario_index))
-            else:
-                # Direct output
-                logger = logging.getLogger(logger_name or self.name)
+            # CRITICAL: Write to file LIVE (global or scenario-specific)
+            if LogLevel.should_log(level, self.file_log_level):
+                if scenario_index is None:
+                    # Global log → write to global file logger
+                    if self.global_file_logger:
+                        self.global_file_logger.write_live_log(
+                            level, message, elapsed_ms)
+                else:
+                    # Scenario log → write to scenario-specific file logger
+                    if scenario_index in self._scenario_file_loggers:
+                        self._scenario_file_loggers[scenario_index].write_live_log(
+                            level, message, elapsed_ms)
 
-                if level == 'INFO':
-                    logger.info(message)
-                elif level == 'WARNING':
-                    logger.warning(message)
-                elif level == 'ERROR':
-                    logger.error(message)
-                elif level == 'DEBUG':
-                    logger.debug(message)
+            if LogLevel.should_log(level, self.console_log_level):
+                # Now handle console output (buffered or direct)
+                if self._buffered_mode:
+                    # Buffer the log with scenario tag
+                    self._log_buffer.append(
+                        (level, message, self.name, elapsed_ms, scenario_index))
+                else:
+                    # Direct output
+                    logger = logging.getLogger(self.name)
+
+                    if level == LogLevel.INFO:
+                        logger.info(message)
+                    elif level == LogLevel.WARNING:
+                        logger.warning(message)
+                    elif level == LogLevel.ERROR:
+                        logger.error(message)
+                    elif level == LogLevel.DEBUG:
+                        logger.debug(message)
 
     def get_scenario_elapsed_time(self, scenario_index: int) -> Optional[float]:
         """
@@ -261,26 +358,24 @@ class VisualConsoleLogger:
             return (datetime.now() - start_time).total_seconds()
 
     # ============================================
-    # Standard Logging Methods (Buffer-Aware)
+    # Standard Logging Methods (Buffer-Aware + Log Level Filtering)
     # ============================================
 
-    def info(self, message: str, logger_name: Optional[str] = None):
-        """Log INFO message (respects buffering)"""
-        self._log_or_buffer('INFO', message, logger_name)
+    def info(self, message: str):
+        """Log INFO message (respects buffering and log level)"""
+        self._log_or_buffer(LogLevel.INFO, message)
 
-    def warning(self, message: str, logger_name: Optional[str] = None):
-        """Log WARNING message (respects buffering)"""
-        self._log_or_buffer('WARNING', message, logger_name)
+    def warning(self, message: str):
+        """Log WARNING message (respects buffering and log level)"""
+        self._log_or_buffer(LogLevel.WARNING, message)
 
-    def error(self, message: str, logger_name: Optional[str] = None):
-        """Log ERROR message (respects buffering)"""
-        self._log_or_buffer('ERROR', message, logger_name)
+    def error(self, message: str):
+        """Log ERROR message (respects buffering and log level)"""
+        self._log_or_buffer(LogLevel.ERROR, message)
 
-    def debug(self, message: str, logger_name: Optional[str] = None):
-        """Log DEBUG message (respects buffering)"""
-        if not self.app_config.get_debug_logging():
-            return
-        self._log_or_buffer('DEBUG', message, logger_name)
+    def debug(self, message: str):
+        """Log DEBUG message (respects buffering and log level)"""
+        self._log_or_buffer(LogLevel.DEBUG, message)
 
     # ============================================
     # Critical Error Types (Always Flush + Exit)
@@ -300,6 +395,7 @@ class VisualConsoleLogger:
         Behavior:
             - Flushes all buffered logs
             - Prints formatted error message
+            - Writes error to file log
             - Exits with code 1
         """
         self.flush_buffer()
@@ -315,6 +411,13 @@ class VisualConsoleLogger:
                 print(f"  {key}: {value}")
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
+
+        # Write to file log
+        if self.file_logger:
+            self.file_logger.write_error_footer(
+                "VALIDATION ERROR", message, context)
+            self.file_logger.close()
+
         sys.exit(1)
 
     def config_error(self, message: str, file_path: Optional[str] = None):
@@ -331,6 +434,7 @@ class VisualConsoleLogger:
         Behavior:
             - Flushes all buffered logs
             - Prints formatted error message
+            - Writes error to file log
             - Exits with code 1
         """
         self.flush_buffer()
@@ -345,6 +449,14 @@ class VisualConsoleLogger:
             print(f"\n{ColorCodes.YELLOW}File: {file_path}{ColorCodes.RESET}")
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
+
+        # Write to file log
+        if self.file_logger:
+            context = {"file_path": file_path} if file_path else None
+            self.file_logger.write_error_footer(
+                "CONFIGURATION ERROR", message, context)
+            self.file_logger.close()
+
         sys.exit(1)
 
     def hard_error(self, message: str, exception: Optional[Exception] = None):
@@ -361,6 +473,7 @@ class VisualConsoleLogger:
         Behavior:
             - Flushes all buffered logs
             - Prints formatted error with full stack trace
+            - Writes error to file log
             - Exits with code 1
         """
         self.flush_buffer()
@@ -377,9 +490,17 @@ class VisualConsoleLogger:
             print(f"{ColorCodes.YELLOW}Details: {str(exception)}{ColorCodes.RESET}")
 
         print(f"\n{ColorCodes.YELLOW}Stack Trace:{ColorCodes.RESET}")
-        print(traceback.format_exc())
+        stack_trace = traceback.format_exc()
+        print(stack_trace)
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
+
+        # Write to file log
+        if self.file_logger:
+            error_msg = f"{message}\n\nException: {type(exception).__name__}\nDetails: {str(exception)}\n\nStack Trace:\n{stack_trace}" if exception else message
+            self.file_logger.write_error_footer("CRITICAL ERROR", error_msg)
+            self.file_logger.close()
+
         sys.exit(1)
 
     # ============================================
