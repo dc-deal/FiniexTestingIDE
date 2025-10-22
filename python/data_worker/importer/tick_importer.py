@@ -10,7 +10,6 @@ Version: 1.3 (UTC Conversion with Manual Offset Support)
 """
 
 import json
-from python.components.logger.bootstrap_logger import setup_logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path

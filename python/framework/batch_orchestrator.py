@@ -109,7 +109,6 @@ class BatchOrchestrator:
         vLog.info(
             f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)"
         )
-        vLog.section_separator()
         start_time = time.time()
 
         # Get batch mode from app_config.json
@@ -150,7 +149,6 @@ class BatchOrchestrator:
         - Live display shows progress
         """
         # ===== Phase 1a: Setup Live Display =====
-        vLog.enable_buffering()
         live_display = LiveProgressDisplay(
             self.performance_log,
             self.scenarios
@@ -229,7 +227,8 @@ class BatchOrchestrator:
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        vLog.flush_buffer()
+        for scenario in self.scenarios:
+            scenario.logger.flush_buffer()
 
         return results
 
@@ -250,7 +249,6 @@ class BatchOrchestrator:
         4. Return results for all scenarios (success + failures)
         """
         # ===== Phase 1a: Setup Live Display =====
-        vLog.enable_buffering()
         live_display = LiveProgressDisplay(
             self.performance_log,
             self.scenarios
@@ -322,7 +320,8 @@ class BatchOrchestrator:
         if not successful_executors:
             vLog.error("❌ No scenarios prepared successfully - batch failed")
             live_display.stop()
-            vLog.flush_buffer()
+            for scenario in self.scenarios:
+                scenario.logger.flush_buffer()
             return results
 
         vLog.info(
@@ -384,7 +383,8 @@ class BatchOrchestrator:
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        vLog.flush_buffer()
+        for scenario in self.scenarios:
+            scenario.logger.flush_buffer()
 
         return results
 
@@ -462,23 +462,23 @@ class BatchOrchestrator:
 
         # Wait at barrier
         try:
-            vLog.debug(
+            self.scenarios[scenario_index].logger.debug(
                 f"⏸️  Scenario {readable_index} ready - waiting at barrier..."
             )
             barrier.wait(timeout=300)  # 5 minute timeout
-            vLog.debug(
+            self.scenarios[scenario_index].logger.debug(
                 f"🚀 Barrier released - starting tick loop for scenario {readable_index}"
             )
 
         except threading.BrokenBarrierError:
-            vLog.error(
+            self.scenarios[scenario_index].logger.error(
                 f"❌ Barrier broken for scenario {readable_index} - "
                 f"another scenario failed"
             )
             raise
 
         except Exception as e:
-            vLog.error(
+            self.scenarios[scenario_index].logger.error(
                 f"❌ Barrier wait failed for scenario {readable_index}: {e}"
             )
             raise

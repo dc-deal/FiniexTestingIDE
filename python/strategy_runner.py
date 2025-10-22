@@ -54,11 +54,6 @@ def run_strategy_test():
         config_loader = ScenarioConfigLoader()
 
         scenario_set_name = "eurusd_3_windows.json"
-        # ============================================================
-        # NEW: Attach File Logger EARLY (before more logs!)
-        # ============================================================
-        vLog.attach_scenario_set(scenario_set_name)
-
         scenarios = config_loader.load_config(scenario_set_name)
 
         vLog.info(
@@ -116,20 +111,10 @@ def run_strategy_test():
 
         # Print to console (with colors)
         print(summary_with_colors, end='')
-
         # Strip ANSI codes for file logging
-        if vLog.global_file_logger:
+        if vLog.file_logger:
             summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
-            vLog.global_file_logger.write_summary(summary_clean)
-
-        # ============================================
-        # Close ALL file loggers
-        # ============================================
-        if vLog.global_file_logger:
-            vLog.global_file_logger.close()
-
-        for scenario_logger in vLog._scenario_file_loggers.values():
-            scenario_logger.close()
+            vLog.file_logger.write_summary(summary_clean)
 
     except DataValidationError as e:
         vLog.validation_error(

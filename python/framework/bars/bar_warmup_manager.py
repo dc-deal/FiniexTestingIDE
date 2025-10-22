@@ -1,26 +1,24 @@
 import time
-from python.components.logger.bootstrap_logger import get_logger
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.exceptions.warmup_errors import InsufficientWarmupDataError
 from python.framework.types.global_types import Bar, TickData, TimeframeConfig
 from pathlib import Path
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
 
 
-vLog = get_logger()
-
-
 class BarWarmupManager:
     """Manages historical data warmup for workers"""
 
-    def __init__(self, data_worker, data_dir: Path = "./data/processed/"):
+    def __init__(self, data_worker, logger: ScenarioLogger, data_dir: Path = "./data/processed/"):
         self.data_worker = data_worker
         self.data_dir = Path(data_dir)
+        self.logger = logger
 
     def calculate_required_warmup(self, workers) -> Dict[str, int]:
         """Calculate maximum warmup time per timeframe"""
@@ -62,10 +60,12 @@ class BarWarmupManager:
         Raises:
             InsufficientWarmupDataError: If bars not found or insufficient
         """
-        vLog.info(f"📊 Loading warmup bars from pre-rendered parquet files...")
+        self.logger.info(
+            f"📊 Loading warmup bars from pre-rendered parquet files...")
 
         # Initialize bar index
-        bar_index = ParquetBarsIndexManager(Path(self.data_dir))
+        bar_index = ParquetBarsIndexManager(
+            logger=self.logger, data_dir=Path(self.data_dir))
         bar_index.build_index()
 
         historical_bars = {}
@@ -131,7 +131,7 @@ class BarWarmupManager:
 
             historical_bars[timeframe] = bars
 
-            vLog.debug(
+            self.logger.debug(
                 f"✅ Loaded {len(bars)} {timeframe} bars from parquet "
                 f"(required: {bars_needed})"
             )
@@ -141,7 +141,7 @@ class BarWarmupManager:
             [f"{tf}:{len(bars)}" for tf, bars in historical_bars.items()]
         )
 
-        vLog.info(
+        self.logger.info(
             f"🔥 Warmup complete: {total_bars} bars loaded from parquet "
             f"({timeframe_details})"
         )

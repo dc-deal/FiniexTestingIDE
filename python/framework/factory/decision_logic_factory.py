@@ -29,6 +29,7 @@ Example Config:
 import importlib
 from typing import Any, Dict, Optional, Type
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 
@@ -117,6 +118,7 @@ class DecisionLogicFactory:
     def create_logic(
         self,
         logic_type: str,
+        logger: ScenarioLogger,
         logic_config: Dict[str, Any] = None
     ) -> AbstractDecisionLogic:
         """
@@ -152,10 +154,11 @@ class DecisionLogicFactory:
         # REFACTORED: No trading_env parameter
         logic_instance = logic_class(
             name=logic_name,
+            logger=logger,
             config=logic_config
         )
 
-        vLog.debug(
+        logger.debug(
             f"✓ Created decision logic: {logic_type} with {len(logic_config)} config values"
         )
 
@@ -163,6 +166,7 @@ class DecisionLogicFactory:
 
     def create_logic_from_strategy_config(
         self,
+        logger: ScenarioLogger,
         strategy_config: Dict[str, Any]
     ) -> AbstractDecisionLogic:
         """
@@ -207,6 +211,7 @@ class DecisionLogicFactory:
         # Create decision logic
         return self.create_logic(
             logic_type=logic_type,
+            logger=logger,
             logic_config=logic_config
         )
 

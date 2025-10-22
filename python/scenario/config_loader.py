@@ -5,10 +5,10 @@ Config Loader (FIXED: Deep copy prevents config mutation)
 
 import copy  # CRITICAL: For deep copying nested structures
 import json
-from python.components.logger.bootstrap_logger import setup_logging
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
@@ -125,7 +125,8 @@ class ScenarioConfigLoader:
                 strategy_config=scenario_strategy,
                 execution_config=scenario_execution,
                 # NEW: Add trade_simulator_config to TestScenario
-                trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None
+                trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
+                logger=ScenarioLogger(scenario_data['name'])
             )
             scenarios.append(scenario)
 

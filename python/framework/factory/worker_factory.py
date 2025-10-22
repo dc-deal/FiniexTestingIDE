@@ -33,6 +33,7 @@ import importlib
 import json
 from typing import Any, Dict, List, Type
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -122,7 +123,9 @@ class WorkerFactory:
         self,
         instance_name: str,
         worker_type: str,
-        worker_config: Dict[str, Any] = None
+        logger: ScenarioLogger,
+        worker_config: Dict[str, Any] = None,
+
     ) -> AbstractBlackboxWorker:
         """
         Create a worker instance with validation.
@@ -172,10 +175,11 @@ class WorkerFactory:
         # Step 5: Instantiate worker ONCE with merged parameters
         worker_instance = worker_class(
             name=instance_name,
-            parameters=merged_params
+            logger=logger,
+            parameters=merged_params,
         )
 
-        vLog.debug(
+        logger.debug(
             f"✓ Created worker: {instance_name} ({worker_type}) "
             f"with {len(merged_params)} parameters"
         )
@@ -184,7 +188,8 @@ class WorkerFactory:
 
     def create_workers_from_config(
         self,
-        strategy_config: Dict[str, Any]
+        strategy_config: Dict[str, Any],
+        logger: ScenarioLogger
     ) -> Dict[str, AbstractBlackboxWorker]:
         """
         Create all workers from strategy configuration.
@@ -233,6 +238,7 @@ class WorkerFactory:
                 worker_instance = self.create_worker(
                     instance_name=instance_name,
                     worker_type=worker_type,
+                    logger=logger,
                     worker_config=worker_config
                 )
 
@@ -244,7 +250,7 @@ class WorkerFactory:
                 raise ValueError(
                     f"Worker creation failed for {instance_name} ({worker_type}): {e}")
 
-        vLog.debug(
+        logger.debug(
             f"✓ Created {len(created_workers)} workers: "
             f"{list(created_workers.keys())}"
         )

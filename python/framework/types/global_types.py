@@ -10,7 +10,9 @@ PERFORMANCE OPTIMIZED:
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from python.components.logger.scenario_logger import ScenarioLogger
 
 
 class WorkerState(Enum):
@@ -136,6 +138,7 @@ class TestScenario:
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
+    logger: ScenarioLogger = None
 
     # ============================================
     # STRATEGY PARAMETERS

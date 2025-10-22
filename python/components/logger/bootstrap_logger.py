@@ -1,47 +1,51 @@
+
+from python.components.logger.global_logger import GlobalLogger
+from typing import Optional
+
 """
-FiniexTestingIDE - Zentrales Logger Setup
-Einmal aufrufen, überall verfügbar
+FiniexTestingIDE - Bootstrap Logger (Factory)
+Provides singleton GlobalLogger instance
 
-USAGE:
-- Entry Points (strategy_runner.py): setup_logging(name="FiniexTestingIDE")
-- All other files: get_logger()
+This module now acts as a factory for the GlobalLogger.
+For other modules, nothing changes - they still use get_logger().
+
+Usage:
+    from python.components.logger.bootstrap_logger import get_logger
+    logger = get_logger()
+    logger.info("Application started")
 """
 
-from python.components.logger.visual_console_logger import VisualConsoleLogger
 
-# Globale Logger-Instanz
-_logger_instance = None
+# Singleton instance
+_logger_instance: Optional[GlobalLogger] = None
 
 
-def setup_logging(name: str = "FiniexTestingIDE") -> VisualConsoleLogger:
+def get_logger(name: str = "FiniexTestingIDE") -> GlobalLogger:
     """
-    Initialisiert VisualConsoleLogger für das gesamte Projekt.
-    Muss einmal am Start jedes Entry-Points aufgerufen werden.
+    Get or create GlobalLogger singleton.
 
     Args:
-        name: Logger-Name (default: FiniexTestingIDE)
+        name: Logger name (default: "FiniexTestingIDE")
 
     Returns:
-        VisualConsoleLogger Instanz
+        GlobalLogger singleton instance
     """
     global _logger_instance
 
     if _logger_instance is None:
-        _logger_instance = VisualConsoleLogger(name=name)
+        _logger_instance = GlobalLogger(name=name)
 
     return _logger_instance
 
 
-def get_logger() -> VisualConsoleLogger:
+def reset_logger():
     """
-    Gibt die globale Logger-Instanz zurück.
-    Auto-Init
-    Sollte in allen Files außer Entry Points verwendet werden.
+    Reset logger singleton (primarily for testing).
 
-    Returns:
-        VisualConsoleLogger Instanz
-e
+    Forces creation of new logger instance on next get_logger() call.
     """
-    if _logger_instance is None:
-        setup_logging()
-    return _logger_instance
+    global _logger_instance
+
+    if _logger_instance is not None:
+        _logger_instance.close()
+        _logger_instance = None

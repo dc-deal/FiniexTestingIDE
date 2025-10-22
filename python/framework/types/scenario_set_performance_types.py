@@ -153,7 +153,6 @@ class ScenarioPerformanceStats:
     success: bool
     portfolio_value: float
     initial_balance: float
-    elapsed_time: float
 
     # Worker statistics
     worker_statistics: Dict[str, Any]

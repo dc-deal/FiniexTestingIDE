@@ -10,7 +10,6 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
-from python.components.logger.bootstrap_logger import get_logger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.data_validation_errors import DataValidationError
 from python.framework.exceptions.scenario_execution_errors import (
@@ -33,8 +32,6 @@ from python.framework.utils.scenario_requirements import calculate_scenario_requ
 from python.framework.utils.thread_utils import sanitize_thread_name
 from python.framework.utils.trade_simulator_creator import create_trade_simulator_for_scenario
 from python.framework.workers.worker_coordinator import WorkerCoordinator
-
-vLog = get_logger()
 
 
 class ScenarioExecutor:
@@ -76,7 +73,7 @@ class ScenarioExecutor:
         self.trade_simulator = None
         self.decision_logic = None
         self.test_iterator = None
-        self.bar_orchestrator: Optional[BarRenderingController] = None
+        self.bar_rendering_controller: Optional[BarRenderingController] = None
         self.total_test_ticks: int = 0
         self.scenario_requirements = None
 
@@ -116,9 +113,6 @@ class ScenarioExecutor:
             self.scenario = scenario
             self.scenario_index = scenario_index
 
-            # Setup logging for this scenario
-            vLog.start_scenario_logging(scenario_index, scenario.name)
-
             # Initialize live tracking
             self.deps.performance_log.start_scenario_tracking(
                 scenario_index=scenario_index,
@@ -133,7 +127,7 @@ class ScenarioExecutor:
                 scenario.name, max_length=13)
             current_thread.name = f"Scen_{scenario_index}_{safe_scenario_name}"
 
-            vLog.debug(
+            scenario.logger.debug(
                 f"🧵 Thread renamed: {self.original_thread_name} → {current_thread.name}"
             )
 
@@ -149,23 +143,26 @@ class ScenarioExecutor:
 
             try:
                 workers_dict = self.deps.worker_factory.create_workers_from_config(
-                    strategy_config
+                    strategy_config,
+                    logger=scenario.logger  # Logger aus Scenario durchreichen!
                 )
                 workers = list(workers_dict.values())
-                vLog.debug(f"✓ Created {len(workers)} workers from config")
+                scenario.logger.debug(
+                    f"✓ Created {len(workers)} workers from config")
             except Exception as e:
-                vLog.error(f"Failed to create workers: {e}")
+                scenario.logger.error(f"Failed to create workers: {e}")
                 raise ValueError(f"Worker creation failed: {e}")
 
             # 3. Create DecisionLogic (WITHOUT trading API yet)
             try:
                 self.decision_logic = self.deps.decision_logic_factory.create_logic_from_strategy_config(
-                    strategy_config
+                    strategy_config=strategy_config,
+                    logger=scenario.logger  # Logger aus Scenario durchreichen!
                 )
-                vLog.debug(
+                scenario.logger.debug(
                     f"✓ Created decision logic: {self.decision_logic.name}")
             except Exception as e:
-                vLog.error(f"Failed to create decision logic: {e}")
+                scenario.logger.error(f"Failed to create decision logic: {e}")
                 raise ValueError(f"Decision logic creation failed: {e}")
 
             # 4. Create and validate DecisionTradingAPI
@@ -175,19 +172,20 @@ class ScenarioExecutor:
                     trade_simulator=self.trade_simulator,
                     required_order_types=required_order_types
                 )
-                vLog.debug(
+                scenario.logger.debug(
                     f"✓ DecisionTradingAPI validated for order types: "
                     f"{[t.value for t in required_order_types]}"
                 )
             except ValueError as e:
-                vLog.error(f"Order type validation failed: {e}")
+                scenario.logger.error(f"Order type validation failed: {e}")
                 raise ValueError(
                     f"Broker does not support required order types: {e}"
                 )
 
             # 5. Inject DecisionTradingAPI into Decision Logic
             self.decision_logic.set_trading_api(trading_api)
-            vLog.debug("✓ DecisionTradingAPI injected into Decision Logic")
+            scenario.logger.debug(
+                "✓ DecisionTradingAPI injected into Decision Logic")
 
             # 6. Calculate per-scenario requirements
             self.scenario_requirements = calculate_scenario_requirements(
@@ -211,18 +209,19 @@ class ScenarioExecutor:
             )
             self.orchestrator.initialize()
 
-            vLog.debug(
+            scenario.logger.debug(
                 f"✅ Orchestrator initialized: {len(workers)} workers + {self.decision_logic.name}"
             )
 
             # 9. Prepare data using timestamp-based warmup
-            preparator = TickDataPreparator(self.deps.data_worker)
+            preparator = TickDataPreparator(
+                self.deps.data_worker, scenario.logger)
 
             # Parse test period timestamps
             test_start = datetime.fromisoformat(scenario.start_date)
             test_end = datetime.fromisoformat(scenario.end_date)
 
-            vLog.debug(
+            scenario.logger.debug(
                 f"📊 Scenario warmup bar requirements: "
                 f"{self.scenario_requirements.warmup_by_timeframe}"
             )
@@ -243,7 +242,7 @@ class ScenarioExecutor:
                 )
             except DataValidationError as e:
                 # Catch all data validation errors and format nicely
-                vLog.validation_error(
+                scenario.logger.validation_error(
                     message=str(e),
                     context=e.get_context()
                 )
@@ -254,16 +253,16 @@ class ScenarioExecutor:
             )
 
             # 10. Setup bar rendering
-            self.bar_orchestrator = BarRenderingController(
-                self.deps.data_worker)
-            self.bar_orchestrator.register_workers(workers)
-            self.bar_orchestrator.prepare_warmup_from_parquet_bars(
+            self.bar_rendering_controller = BarRenderingController(
+                self.deps.data_worker, scenario.logger)
+            self.bar_rendering_controller.register_workers(workers)
+            self.bar_rendering_controller.prepare_warmup_from_parquet_bars(
                 symbol=scenario.symbol,
                 test_start_time=test_start
             )
 
             # Print Bar Quality Metrics - Synthetic bar impact on data
-            print_warmup_quality_metrics(self.bar_orchestrator)
+            print_warmup_quality_metrics(self.bar_rendering_controller)
 
             # Mark warmup complete
             self.deps.performance_log.set_live_status(
@@ -271,14 +270,14 @@ class ScenarioExecutor:
                 status=ScenarioStatus.WARMUP_COMPLETE
             )
 
-            vLog.debug(
+            scenario.logger.debug(
                 f"✅ Scenario {scenario_index} preparation complete - ready for tick loop"
             )
 
         except Exception as e:
             # Wrap any error in ScenarioPreparationError
             error_msg = f"Scenario {scenario_index} preparation failed: {str(e)}"
-            vLog.error(f"❌ {error_msg}\n{traceback.format_exc()}")
+            scenario.logger.error(f"❌ {error_msg}\n{traceback.format_exc()}")
             raise ScenarioPreparationError(error_msg) from e
 
     def execute_tick_loop(self) -> ScenarioExecutionResult:
@@ -317,7 +316,7 @@ class ScenarioExecutor:
             signals_gen_buy = 0
             signals_gen_sell = 0
 
-            vLog.info(f"🚀 Starting Tick Loop")
+            self.scenario.logger.info(f"🚀 Starting Tick Loop")
 
             # Update status to running
             self.deps.performance_log.set_live_status(
@@ -341,14 +340,14 @@ class ScenarioExecutor:
 
                 # === 2. Bar Rendering ===
                 t3 = time.perf_counter()
-                current_bars = self.bar_orchestrator.process_tick(tick)
+                current_bars = self.bar_rendering_controller.process_tick(tick)
                 t4 = time.perf_counter()
                 profile_times['bar_rendering'] += (t4 - t3) * 1000
                 profile_counts['bar_rendering'] += 1
 
                 # === 3. Bar History Retrieval ===
                 t5 = time.perf_counter()
-                bar_history = self.bar_orchestrator.get_all_bar_history(
+                bar_history = self.bar_rendering_controller.get_all_bar_history(
                     self.scenario.symbol
                 )
                 t6 = time.perf_counter()
@@ -392,7 +391,7 @@ class ScenarioExecutor:
                                 ticks_processed=tick_count
                             )
                     except Exception as e:
-                        vLog.error(
+                        self.scenario.logger.error(
                             f"Order execution failed: \n{traceback.format_exc()}"
                         )
 
@@ -427,7 +426,7 @@ class ScenarioExecutor:
             # BEFORE collecting statistics - cleanup pending orders
             open_positions = self.trade_simulator.get_open_positions()
             if open_positions:
-                vLog.warning(
+                self.scenario.logger.warning(
                     f"⚠️ {len(open_positions)} positions remain open - auto-closing"
                 )
                 for pos in open_positions:
@@ -446,7 +445,6 @@ class ScenarioExecutor:
                 scenario_index=self.scenario_index,
                 ticks_processed=tick_count
             )
-            elapsed = vLog.get_scenario_elapsed_time(self.scenario_index)
 
             # ============================================
             # Build ScenarioPerformanceStats object
@@ -458,7 +456,6 @@ class ScenarioExecutor:
                 initial_balance=self.trade_simulator.portfolio.initial_balance,
                 symbol=self.scenario.symbol,
                 ticks_processed=tick_count,
-                elapsed_time=elapsed,
                 signals_generated=len(signals),
                 signals_gen_buy=signals_gen_buy,
                 signals_gen_sell=signals_gen_sell,
@@ -494,7 +491,8 @@ class ScenarioExecutor:
         except Exception as e:
             # Wrap any error in ScenarioExecutionError
             error_msg = f"Scenario {self.scenario_index} execution failed: {str(e)}"
-            vLog.error(f"❌ {error_msg}\n{traceback.format_exc()}")
+            self.scenario.logger.error(
+                f"❌ {error_msg}\n{traceback.format_exc()}")
 
             # Mark as failed in performance log
             self.deps.performance_log.set_live_status(
@@ -537,7 +535,7 @@ class ScenarioExecutor:
 
         # Barrier synchronization (if parallel mode)
         if barrier is not None:
-            vLog.debug(
+            self.scenario.logger.debug(
                 f"⏸️  Scenario {scenario_index} ready - waiting at barrier for other scenarios..."
             )
 
@@ -545,17 +543,17 @@ class ScenarioExecutor:
                 # Wait for all threads to reach this point
                 barrier.wait(timeout=300)  # 5 minute timeout for safety
 
-                vLog.debug(
+                self.scenario.logger.debug(
                     f"🚀 Barrier released - starting tick loop for scenario {scenario_index}"
                 )
 
             except threading.BrokenBarrierError:
-                vLog.error(
+                self.scenario.logger.error(
                     f"❌ Barrier broken - another scenario failed during preparation"
                 )
                 raise
             except Exception as e:
-                vLog.error(f"❌ Barrier wait failed: {e}")
+                self.scenario.logger.error(f"❌ Barrier wait failed: {e}")
                 raise
 
         # Phase 2: Execute tick loop

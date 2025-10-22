@@ -37,6 +37,7 @@ This logic requires two workers:
 import traceback
 from typing import Any, Dict, List, Optional
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.global_types import Bar, Decision, TickData, WorkerResult
@@ -46,9 +47,6 @@ from python.framework.types.order_types import (
     OrderDirection,
     OrderResult
 )
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
 
 
 class SimpleConsensus(AbstractDecisionLogic):
@@ -70,8 +68,9 @@ class SimpleConsensus(AbstractDecisionLogic):
 
     def __init__(
         self,
-        name: str = "simple_consensus",
-        config: Dict[str, Any] = None
+        name,
+        logger: ScenarioLogger,
+        config: Dict[str, Any]
     ):
         """
         Initialize Simple Consensus logic.
@@ -82,7 +81,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             name: Logic identifier
             config: Configuration dict with thresholds
         """
-        super().__init__(name, config)
+        super().__init__(name, logger, config)
 
         # Configuration with defaults
         self.rsi_oversold = self.get_config_value("rsi_oversold", 30)
@@ -97,7 +96,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self.min_free_margin = self.get_config_value("min_free_margin", 1000)
         self.lot_size = self.get_config_value("lot_size", 0.1)
 
-        vLog.debug(
+        self.logger.debug(
             f"SimpleConsensus initialized: "
             f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
             f"Envelope({self.envelope_lower}/{self.envelope_upper}), "
@@ -166,7 +165,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         # Check if trading API is available
         if not self.trading_api:
-            vLog.warning("Trading API not available - cannot execute decision")
+            self.logger.warning(
+                "Trading API not available - cannot execute decision")
             return None
 
         # ============================================
@@ -194,7 +194,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 position = open_positions[0]
                 position_dir_str = self._normalize_direction(
                     position.direction)
-                vLog.info(
+                self.logger.info(
                     f"📍 FLAT signal - closing {position_dir_str} position "
                     f"(ID: {position.position_id})"
                 )
@@ -215,17 +215,17 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # Same direction? Skip (we already have what the strategy wants)
             if current_dir_str == new_direction_str:
-                # vLog.debug(
+                # self.logger.debug(
                 #     f"⏭️  Already holding {new_direction_str} position "
                 #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
                 # )
                 return None
 
             # Opposite direction? Close old position (signal reversal)
-            vLog.info(
+            self.logger.info(
                 f"🔄 Signal reversal detected: {current_dir_str} → {new_direction_str}"
             )
-            vLog.info(
+            self.logger.info(
                 f"   Closing {current_dir_str} position "
                 f"(ID: {current_position.position_id})"
             )
@@ -240,7 +240,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         account = self.trading_api.get_account_info()
 
         if account.free_margin < self.min_free_margin:
-            vLog.info(
+            self.logger.info(
                 f"Insufficient free margin: {account.free_margin:.2f} "
                 f"< {self.min_free_margin} - skipping trade"
             )
@@ -258,12 +258,12 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
-                vLog.info(
+                self.logger.info(
                     f"⏳ Order submitted: {new_direction_str} {self.lot_size} lots "
                     f"(ID: {order_result.order_id}) - awaiting execution"
                 )
             elif order_result.is_rejected:
-                vLog.warning(
+                self.logger.warning(
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"
                 )
@@ -271,7 +271,8 @@ class SimpleConsensus(AbstractDecisionLogic):
             return order_result
 
         except Exception as e:
-            vLog.error(f"❌ Order execution failed: \n{traceback.format_exc()}")
+            self.logger.error(
+                f"❌ Order execution failed: \n{traceback.format_exc()}")
             return None
 
     # ============================================
