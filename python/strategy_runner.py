@@ -23,7 +23,7 @@ from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
 
-def run_strategy_test() -> dict:
+def run_strategy_test():
     """
     Main strategy testing function with visual output
     """
@@ -94,7 +94,7 @@ def run_strategy_test() -> dict:
         )
 
         # Run test
-        results = orchestrator.run()
+        orchestrator.run()
 
         # ============================================
         # NEW (C#003): Direct Reporting via BatchSummary
@@ -131,8 +131,6 @@ def run_strategy_test() -> dict:
         for scenario_logger in vLog._scenario_file_loggers.values():
             scenario_logger.close()
 
-        return results
-
     except DataValidationError as e:
         vLog.validation_error(
             message=str(e),
@@ -156,4 +154,4 @@ if __name__ == "__main__":
     """Entry point"""
 
     # Run test
-    results = run_strategy_test()
+    run_strategy_test()

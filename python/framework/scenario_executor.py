@@ -24,7 +24,7 @@ from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.global_types import TestScenario
 from python.framework.types.live_stats_types import ScenarioStatus
 from python.framework.types.order_types import OrderStatus
-from python.framework.types.orchestrator_types import (
+from python.framework.types.scenario_types import (
     ScenarioExecutorDependencies,
     ScenarioExecutionResult
 )
@@ -483,12 +483,12 @@ class ScenarioExecutor:
                 threading.current_thread().name = self.original_thread_name
 
             # Return result
-            execution_time = time.time() - start_time
+            scenario_execution_time_ms = (time.time() - start_time) * 1000.0
             return ScenarioExecutionResult(
                 success=True,
                 scenario_name=self.scenario.name,
                 scenario_index=self.scenario_index,
-                execution_time=execution_time
+                scenario_execution_time_ms=scenario_execution_time_ms
             )
 
         except Exception as e:
