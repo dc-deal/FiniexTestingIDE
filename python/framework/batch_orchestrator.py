@@ -17,9 +17,9 @@ from typing import Any, Dict, List
 from python.components.logger.bootstrap_logger import get_logger
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.scenario_executor import ScenarioExecutor
-from python.framework.types.global_types import TestScenario
+from python.framework.types.global_types import BatchExecutionSummary, TestScenario
 from python.framework.types.live_stats_types import ScenarioStatus
-from python.framework.types.orchestrator_types import (
+from python.framework.types.scenario_types import (
     ScenarioExecutorDependencies,
     ScenarioExecutionResult
 )
@@ -99,7 +99,7 @@ class BatchOrchestrator:
             f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
         )
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> BatchExecutionSummary:
         """
         Execute all scenarios.
 
@@ -122,22 +122,22 @@ class BatchOrchestrator:
             results = self._run_sequential()
 
         # Aggregate results
-        execution_time = time.time() - start_time
+        summary_execution_time = time.time() - start_time
 
         # Set metadata in ScenarioSetPerformanceManager
         self.performance_log.set_metadata(
-            execution_time=execution_time,
+            summary_execution_time=summary_execution_time,
             success=True
         )
 
-        summary = {
-            "success": True,
-            "scenarios_count": len(self.scenarios),
-            "execution_time": execution_time,
-            "scenario_results": results,
-        }
+        summary = BatchExecutionSummary(
+            success=True,
+            scenarios_count=len(self.scenarios),
+            summary_execution_time=summary_execution_time
+        )
 
-        vLog.debug(f"✅ Batch execution completed in {execution_time:.2f}s")
+        vLog.debug(
+            f"✅ Batch execution completed in {summary_execution_time:.2f}s")
         return summary
 
     def _run_sequential(self) -> List[ScenarioExecutionResult]:

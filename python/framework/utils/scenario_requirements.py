@@ -5,7 +5,7 @@ Calculates warmup and timeframe requirements from workers
 
 from typing import List
 
-from python.framework.types.orchestrator_types import ScenarioRequirements
+from python.framework.types.scenario_types import ScenarioRequirements
 
 
 def calculate_scenario_requirements(workers: List) -> ScenarioRequirements:

@@ -256,3 +256,11 @@ class TimeframeConfig:
         bar_duration = timedelta(minutes=cls.get_minutes(timeframe))
         bar_end = bar_start + bar_duration
         return current_time >= bar_end
+
+
+@dataclass
+class BatchExecutionSummary:
+    """Summary of batch execution results."""
+    success: bool
+    scenarios_count: int
+    summary_execution_time: float

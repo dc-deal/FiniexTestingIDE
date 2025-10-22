@@ -29,9 +29,9 @@ import time
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.trade_simulator import TradeSimulator
-from python.framework.types.trading_env_types import AccountInfo, PortfolioStats
-from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
+from python.framework.types.global_types import BatchExecutionSummary
 from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
+from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 
 
 class ScenarioSetPerformanceManager:
@@ -47,7 +47,7 @@ class ScenarioSetPerformanceManager:
         perf_log.add_scenario_stats(scenario_index=0, stats=stats)
 
         # After batch execution
-        perf_log.set_metadata(execution_time=10.5, success=True)
+        perf_log.set_metadata(summary_execution_time=10.5, success=True)
 
         # In reporting
         all_stats = perf_log.get_all_scenarios()
@@ -67,38 +67,35 @@ class ScenarioSetPerformanceManager:
         self._lock = threading.RLock()
 
         # Metadata
-        self._execution_time = 0.0
+        self._summary_execution_time = 0.0
         self._success = True
 
         # Live tracking (for progress display) - NOW TYPED!
         self._live_stats: Dict[int, LiveScenarioStats] = {}
         self._scenario_start_times: Dict[int, float] = {}
 
-    def set_metadata(self, execution_time: float, success: bool) -> None:
+    def set_metadata(self, summary_execution_time: float, success: bool) -> None:
         """
         Set batch-level metadata.
 
         Args:
-            execution_time: Total execution time in seconds
+            summary_execution_time: Total execution time in seconds
             success: Overall success status
         """
         with self._lock:
-            self._execution_time = execution_time
+            self._summary_execution_time = summary_execution_time
             self._success = success
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> BatchExecutionSummary:
         """
         Get batch-level metadata.
-
-        Returns:
-            Dict with execution_time, success, total_scenarios
         """
         with self._lock:
-            return {
-                'execution_time': self._execution_time,
-                'success': self._success,
-                'total_scenarios': len(self._scenarios)
-            }
+            return BatchExecutionSummary(
+                summary_execution_time=self._summary_execution_time,
+                success=self._success,
+                scenarios_count=len(self._scenarios)
+            )
 
     def add_scenario_stats(self, scenario_index: int, stats: ScenarioPerformanceStats) -> None:
         """
