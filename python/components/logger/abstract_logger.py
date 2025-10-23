@@ -13,11 +13,15 @@ Subclasses must implement:
 - _get_timestamp() - Timestamp format (datetime vs elapsed time)
 """
 
+from datetime import datetime
+from pathlib import Path
 import sys
 import traceback
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from python.components.logger.file_logger import FileLogger
+from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.types.log_level import LogLevel
 
 
@@ -47,7 +51,7 @@ class AbstractLogger(ABC):
     - _get_timestamp() - Different timestamp formats
     """
 
-    def __init__(self, name: str, console_log_level: str = LogLevel.INFO):
+    def __init__(self, name: str, run_dir: Optional[Path] = None):
         """
         Initialize abstract logger.
 
@@ -56,11 +60,36 @@ class AbstractLogger(ABC):
             console_log_level: Minimum log level for console output
         """
         self.name = name
+
+        # Load config for log levels
+        config = AppConfigLoader.get_config()
+        console_log_level = config.get('logging', {}).get(
+            'console_log_level', LogLevel.INFO)
+
         self.console_log_level = console_log_level.upper()
 
-        # Validate log level
+        # Timing
+        self.start_time = datetime.now()
+
+        # Console buffering
+        # [(level, formatted_line)]
+        self.console_buffer: List[Tuple[str, str]] = []
+
+        # File logging config
+        self.file_logging_enabled = config.get(
+            'file_logging', {}).get('enabled', False)
+        self.file_log_level = config.get('file_logging', {}).get(
+            'log_level', LogLevel.DEBUG)
+        self.file_log_root = config.get(
+            'file_logging', {}).get('log_root_path', 'logs')
+
+        # Validate log level from config str
         if not LogLevel.validate(self.console_log_level):
             raise ValueError(f"Invalid log level: {self.console_log_level}")
+
+        # File logger instance (created on first use)
+        self.file_logger: Optional[FileLogger] = None
+        self.run_dir = run_dir
 
     @abstractmethod
     def _log(self, level: str, message: str):

@@ -57,7 +57,7 @@ class TickDataLoader:
         data_mode: str = "realistic",
         use_cache: bool = True,
         detect_artificial_duplicates: bool = True,
-        logger: AbstractLogger = get_logger()
+        logger: AbstractLogger = vLog
     ) -> pd.DataFrame:
         """
         Load tick data for a symbol with optional date filtering.

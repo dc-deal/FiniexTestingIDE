@@ -16,8 +16,8 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
-from python.framework.types.global_types import TickData
-from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, ExecutionStats, CostBreakdown
+from python.framework.types.tick_types import TickData
+from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
 from .order_execution_engine import OrderExecutionEngine

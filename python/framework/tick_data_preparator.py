@@ -23,7 +23,8 @@ import pandas as pd
 
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.exceptions.warmup_errors import InsufficientHistoricalDataError
-from python.framework.types.global_types import TickData, TimeframeConfig
+from python.framework.types.tick_types import TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class TickDataPreparator:

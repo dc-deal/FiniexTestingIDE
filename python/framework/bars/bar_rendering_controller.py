@@ -7,7 +7,8 @@ import pandas as pd
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.bars.bar_warmup_manager import BarWarmupManager
-from python.framework.types.global_types import Bar, TickData, TimeframeConfig
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class BarRenderingController:

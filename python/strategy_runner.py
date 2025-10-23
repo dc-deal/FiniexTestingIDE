@@ -53,11 +53,11 @@ def run_strategy_test():
         # ============================================================
         config_loader = ScenarioConfigLoader()
 
-        scenario_set_name = "eurusd_3_windows.json"
-        scenarios = config_loader.load_config(scenario_set_name)
+        scenario_set_json = "eurusd_3_windows.json"
+        scenario_set = config_loader.load_config(scenario_set_json)
 
         vLog.info(
-            f"📂 Loaded scenario set: {scenario_set_name} ({len(scenarios)} scenarios)"
+            f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_set.scenarios)} scenarios)"
         )
 
         # ============================================================
@@ -82,7 +82,7 @@ def run_strategy_test():
         # Execute Batch via Orchestrator
         # ============================================================
         orchestrator = BatchOrchestrator(
-            scenarios,
+            scenario_set,
             data_worker,
             app_config_loader,
             performance_log

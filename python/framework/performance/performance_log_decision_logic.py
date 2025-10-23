@@ -6,7 +6,7 @@ FULLY TYPED: Returns DecisionLogicPerformanceStats dataclass instead of dict.
 UNIQUE KEYWORDS: 'logic_*' for type/name, 'decision_*' for metrics.
 """
 
-from python.framework.types.global_types import Decision
+from python.framework.types.decision_logic_types import Decision
 from python.framework.types.performance_stats_types import DecisionLogicPerformanceStats
 
 

@@ -18,9 +18,11 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.types.global_types import Bar, Decision, TickData, WorkerResult
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.decision_logic_types import Decision
 from python.framework.types.order_types import OrderType, OrderResult
 from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.worker_types import WorkerResult
 
 
 class AbstractDecisionLogic(ABC):

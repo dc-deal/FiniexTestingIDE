@@ -3,12 +3,12 @@ FiniexTestingIDE - Trade Simulator Creator
 Creates isolated TradeSimulator instances for scenarios
 """
 
-from python.framework.types.global_types import TestScenario
+from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trade_simulator import TradeSimulator
 
 
-def create_trade_simulator_for_scenario(scenario: TestScenario) -> TradeSimulator:
+def create_trade_simulator_for_scenario(scenario: SingleScenario) -> TradeSimulator:
     """
     Create isolated TradeSimulator for a scenario.
 
@@ -23,7 +23,7 @@ def create_trade_simulator_for_scenario(scenario: TestScenario) -> TradeSimulato
     - currency: Account currency (default: "EUR")
 
     Args:
-        scenario: TestScenario with trade_simulator_config
+        scenario: SingleScenario with trade_simulator_config
 
     Returns:
         TradeSimulator instance configured for this scenario
@@ -32,7 +32,7 @@ def create_trade_simulator_for_scenario(scenario: TestScenario) -> TradeSimulato
         ValueError: If broker_config_path not specified
 
     Example:
-        >>> scenario = TestScenario(
+        >>> scenario = SingleScenario(
         ...     trade_simulator_config={
         ...         "broker_config_path": "./configs/brokers/mt5/ic_markets.json",
         ...         "initial_balance": 5000.0,

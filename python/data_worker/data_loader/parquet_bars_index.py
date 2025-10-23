@@ -19,6 +19,7 @@ import pyarrow.parquet as pq
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.components.logger.bootstrap_logger import get_logger
+vLog = get_logger()
 
 
 class ParquetBarsIndexManager:
@@ -31,7 +32,7 @@ class ParquetBarsIndexManager:
     - Enables fast bar file selection
     """
 
-    def __init__(self, data_dir: Path,  logger: AbstractLogger = get_logger()):
+    def __init__(self, data_dir: Path,  logger: AbstractLogger = vLog):
         """
         Initialize bar index manager.
 

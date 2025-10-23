@@ -8,7 +8,7 @@ from datetime import timedelta
 import pandas as pd
 
 from python.data_worker.data_loader.analytics import TickDataAnalyzer
-from python.framework.types.global_types import TestScenario
+from python.framework.types.scenario_set_types import SingleScenario
 from python.data_worker.data_loader.core import TickDataLoader
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -63,7 +63,7 @@ class ScenarioGenerator:
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,
         **kwargs
-    ) -> List[TestScenario]:
+    ) -> List[SingleScenario]:
         """
         Generate scenarios for a symbol using different strategies.
 
@@ -82,7 +82,7 @@ class ScenarioGenerator:
             **kwargs: Strategy-specific parameters
 
         Returns:
-            List of generated TestScenario objects
+            List of generated SingleScenario objects
         """
         # Default to RSI + Envelope workers if not specified
         if worker_instances is None:
@@ -147,7 +147,7 @@ class ScenarioGenerator:
             decision_logic_config: DecisionLogic config (optional)
 
         Returns:
-            Strategy config dict ready for TestScenario
+            Strategy config dict ready for SingleScenario
         """
         # Build workers config with defaults if not provided
         if workers_config is None:
@@ -200,7 +200,7 @@ class ScenarioGenerator:
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,
         **kwargs
-    ) -> List[TestScenario]:
+    ) -> List[SingleScenario]:
         """
         Generate scenarios for multiple symbols.
 
@@ -219,7 +219,7 @@ class ScenarioGenerator:
             **kwargs: Passed to generation strategy
 
         Returns:
-            List of TestScenario objects
+            List of SingleScenario objects
         """
         if symbols is None:
             symbols = self.data_loader.list_available_symbols()
@@ -256,7 +256,7 @@ class ScenarioGenerator:
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[TestScenario]:
+    ) -> List[SingleScenario]:
         """
         Generate scenarios by splitting data into time windows.
 
@@ -342,7 +342,7 @@ class ScenarioGenerator:
             window_end = window_end.replace(
                 hour=end_hour, minute=0, second=0, microsecond=0)
 
-            scenario = TestScenario(
+            scenario = SingleScenario(
                 symbol=symbol,
                 start_date=window_start.isoformat(),
                 end_date=window_end.isoformat(),
@@ -370,7 +370,7 @@ class ScenarioGenerator:
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[TestScenario]:
+    ) -> List[SingleScenario]:
         """
         Generate scenarios based on volatility periods.
 
@@ -396,7 +396,7 @@ class ScenarioGenerator:
         strategy_config: Optional[Dict[str, Any]] = None,
         execution_config: Optional[Dict[str, Any]] = None,
         trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[TestScenario]:
+    ) -> List[SingleScenario]:
         """
         Generate scenarios based on trading sessions.
 

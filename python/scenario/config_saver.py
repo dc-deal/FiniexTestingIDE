@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Scenario Config Saver
-Saves TestScenario objects to JSON configuration files
+Saves SingleScenario objects to JSON configuration files
 
 REFACTORED (Worker Instance System):
 - Uses worker_instances dict instead of worker_types array
@@ -18,7 +18,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 import json
 
-from python.framework.types.global_types import TestScenario
+from python.framework.types.scenario_set_types import SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -26,7 +26,7 @@ vLog = get_logger()
 
 class ScenarioConfigSaver:
     """
-    Saves TestScenario objects to JSON config files.
+    Saves SingleScenario objects to JSON config files.
 
     REFACTORED (Worker Instance System): Properly handles worker_instances
     and workers dict with instance names as keys.
@@ -44,7 +44,7 @@ class ScenarioConfigSaver:
 
     def save_config(
         self,
-        scenarios: List[TestScenario],
+        scenarios: List[SingleScenario],
         output_filename: str,
         scenario_set_name: str = None
     ):
@@ -59,7 +59,7 @@ class ScenarioConfigSaver:
         3. Save in hierarchical structure with minimal redundancy
 
         Args:
-            scenarios: List of TestScenario objects
+            scenarios: List of SingleScenario objects
             output_filename: Output filename (e.g., "eurusd_3_windows.json")
             scenario_set_name: Optional name (defaults to filename without .json)
         """
@@ -126,7 +126,7 @@ class ScenarioConfigSaver:
 
     def _build_scenario_dict(
         self,
-        scenario: TestScenario,
+        scenario: SingleScenario,
         global_strategy: Dict[str, Any],
         global_execution: Dict[str, Any],
         global_trade_simulator: Dict[str, Any]
@@ -138,7 +138,7 @@ class ScenarioConfigSaver:
         as architecture (global only) and workers as parameters (can override).
 
         Args:
-            scenario: TestScenario to convert
+            scenario: SingleScenario to convert
             global_strategy: Global strategy config for comparison
             global_execution: Global execution config for comparison
             global_trade_simulator: Global trade simulator config for comparison
@@ -291,7 +291,7 @@ class ScenarioConfigSaver:
 
     def save_single_scenario(
         self,
-        scenario: TestScenario,
+        scenario: SingleScenario,
         output_filename: str
     ):
         """
@@ -301,7 +301,7 @@ class ScenarioConfigSaver:
         The scenario becomes both global and the only scenario in the set.
 
         Args:
-            scenario: TestScenario to save
+            scenario: SingleScenario to save
             output_filename: Output filename
         """
         self.save_config(

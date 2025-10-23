@@ -43,23 +43,7 @@ class GlobalLogger(AbstractLogger):
         Args:
             name: Logger name (default: "FiniexTestingIDE")
         """
-        # Load config for log levels
-        config = AppConfigLoader.get_config()
-        console_log_level = config.get('logging', {}).get(
-            'console_log_level', LogLevel.INFO)
-
-        super().__init__(name=name, console_log_level=console_log_level)
-
-        # File logging config
-        self.file_logging_enabled = config.get(
-            'file_logging', {}).get('enabled', False)
-        self.file_log_level = config.get('file_logging', {}).get(
-            'log_level', LogLevel.DEBUG)
-        self.file_log_root = config.get(
-            'file_logging', {}).get('log_root_path', 'logs')
-
-        # File logger instance (created on first use)
-        self.file_logger: Optional[FileLogger] = None
+        super().__init__(name=name)
 
         # Setup Python's logging system for console output
         self._setup_console_logging()

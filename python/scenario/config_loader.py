@@ -8,12 +8,14 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
+from python.components.logger.global_logger import GlobalLogger
 from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.exceptions.configuration_errors import ScenarioSetConfigurationError
 from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
 
-from python.framework.types.global_types import TestScenario
+from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -35,7 +37,7 @@ class ScenarioConfigLoader:
         self.config_path = Path(config_path)
         self.config_path.mkdir(parents=True, exist_ok=True)
 
-    def load_config(self, config_file: str) -> List[TestScenario]:
+    def load_config(self, config_file: str) -> ScenarioSet:
         """
         Load scenarios from JSON config file
 
@@ -43,7 +45,7 @@ class ScenarioConfigLoader:
             config_file: Config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
-            List of TestScenario objects
+            List of SingleScenario objects
         """
         config_path = self.config_path / config_file
 
@@ -67,8 +69,16 @@ class ScenarioConfigLoader:
         app_config = AppConfigLoader()
         warn_on_override = app_config.should_warn_on_override()
 
-        scenarios = []
+        scenarios: List[SingleScenario] = []
         disabled_count = 0
+
+        scenario_set_name = config.get('scenario_set_name', [])
+        if not scenario_set_name:
+            raise ScenarioSetConfigurationError(
+                file_name=config_path,
+                reason="Property 'scenario_set_name' is missing in JSON root.",
+                sceanrio_set_configuration=config)
+
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
             is_enabled = scenario_data.get('enabled', True)  # Default: True
@@ -115,7 +125,7 @@ class ScenarioConfigLoader:
             # ============================================
             self._validate_scenario_dates(scenario_data)
 
-            scenario = TestScenario(
+            scenario = SingleScenario(
                 name=scenario_data['name'],
                 symbol=scenario_data['symbol'],
                 start_date=scenario_data['start_date'],
@@ -124,7 +134,7 @@ class ScenarioConfigLoader:
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,
                 execution_config=scenario_execution,
-                # NEW: Add trade_simulator_config to TestScenario
+                # NEW: Add trade_simulator_config to SingleScenario
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
                 logger=ScenarioLogger(scenario_data['name'])
             )
@@ -134,7 +144,10 @@ class ScenarioConfigLoader:
             vLog.info(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
-        return scenarios
+        return ScenarioSet(
+            scenario_set_name=scenario_set_name,
+            scenarios=scenarios,
+            logger=GlobalLogger(name=scenario_set_name))
 
     def _deep_merge_strategy_configs(
         self,

@@ -9,8 +9,8 @@ Characteristics:
 - One instance per scenario
 
 Usage:
-    # Created automatically by TestScenario
-    scenario = TestScenario(...)
+    # Created automatically by SingleScenario
+    scenario = SingleScenario(...)
     scenario.logger.info("Worker initialized")
     
     # Flush at end
@@ -46,31 +46,7 @@ class ScenarioLogger(AbstractLogger):
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
             run_dir: Directory for log files (created if None)
         """
-        # Load config for log levels
-        config = AppConfigLoader.get_config()
-        console_log_level = config.get('logging', {}).get(
-            'console_log_level', LogLevel.INFO)
-
-        super().__init__(name=scenario_name, console_log_level=console_log_level)
-
-        # Timing
-        self.start_time = datetime.now()
-
-        # Console buffering
-        # [(level, formatted_line)]
-        self.console_buffer: List[Tuple[str, str]] = []
-
-        # File logging config
-        self.file_logging_enabled = config.get(
-            'file_logging', {}).get('enabled', False)
-        self.file_log_level = config.get('file_logging', {}).get(
-            'log_level', LogLevel.DEBUG)
-        self.file_log_root = config.get(
-            'file_logging', {}).get('log_root_path', 'logs')
-
-        # File logger instance (created on first use)
-        self.file_logger: Optional[FileLogger] = None
-        self.run_dir = run_dir
+        super().__init__(name=scenario_name, run_dir=run_dir)
 
     def _get_timestamp(self) -> str:
         """

@@ -15,7 +15,8 @@ from typing import Dict, List, Optional, Set, Tuple
 import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.framework.types.global_types import Bar, TickData, TimeframeConfig
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class BarRenderer:

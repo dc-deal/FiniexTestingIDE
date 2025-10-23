@@ -19,8 +19,6 @@ import json
 import pandas as pd
 import numpy as np
 
-from python.framework.types.global_types import TimeframeConfig
-
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 

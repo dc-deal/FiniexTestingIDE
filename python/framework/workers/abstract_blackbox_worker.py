@@ -7,8 +7,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from python.framework.performance.performance_log_worker import PerformanceLogWorker
-from python.framework.types.global_types import (Bar, TickData,
-                                                 WorkerResult, WorkerState, WorkerType)
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import (
+    WorkerResult, WorkerState, WorkerType)
 from python.components.logger.scenario_logger import ScenarioLogger
 
 

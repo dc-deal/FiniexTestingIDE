@@ -7,7 +7,8 @@ import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.exceptions.warmup_errors import InsufficientWarmupDataError
-from python.framework.types.global_types import Bar, TickData, TimeframeConfig
+from python.framework.types.tick_types import Bar
+from python.framework.types.timeframe_types import TimeframeConfig
 from pathlib import Path
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
 

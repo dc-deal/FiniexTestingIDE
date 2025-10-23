@@ -20,10 +20,10 @@ from python.framework.exceptions.scenario_execution_errors import (
 from python.framework.reporting.warmup_quality_reporter import print_warmup_quality_metrics
 from python.framework.tick_data_preparator import TickDataPreparator
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.types.global_types import TestScenario
 from python.framework.types.live_stats_types import ScenarioStatus
 from python.framework.types.order_types import OrderStatus
-from python.framework.types.scenario_types import (
+from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.batch_executor_types import (
     ScenarioExecutorDependencies,
     ScenarioExecutionResult
 )
@@ -67,7 +67,7 @@ class ScenarioExecutor:
         self.deps = dependencies
 
         # State - set during prepare_scenario()
-        self.scenario: Optional[TestScenario] = None
+        self.scenario: Optional[SingleScenario] = None
         self.scenario_index: Optional[int] = None
         self.orchestrator: Optional[WorkerCoordinator] = None
         self.trade_simulator = None
@@ -82,7 +82,7 @@ class ScenarioExecutor:
 
     def prepare_scenario(
         self,
-        scenario: TestScenario,
+        scenario: SingleScenario,
         scenario_index: int
     ) -> None:
         """
@@ -101,7 +101,7 @@ class ScenarioExecutor:
         All scenarios must complete preparation before tick loop starts.
 
         Args:
-            scenario: TestScenario to prepare
+            scenario: SingleScenario to prepare
             scenario_index: Index in scenario list
 
         Raises:
@@ -504,7 +504,7 @@ class ScenarioExecutor:
 
     def execute(
         self,
-        scenario: TestScenario,
+        scenario: SingleScenario,
         scenario_index: int,
         barrier: Optional[threading.Barrier] = None
     ) -> ScenarioExecutionResult:
@@ -519,7 +519,7 @@ class ScenarioExecutor:
         This is the main entry point for executing a scenario.
 
         Args:
-            scenario: TestScenario to execute
+            scenario: SingleScenario to execute
             scenario_index: Index in scenario list
             barrier: Optional barrier for synchronized start in parallel mode
 

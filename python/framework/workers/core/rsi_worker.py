@@ -3,7 +3,8 @@ from typing import Any, Dict, List
 import numpy as np
 
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.framework.types.global_types import Bar, TickData, WorkerResult, WorkerType
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 

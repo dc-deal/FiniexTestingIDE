@@ -29,8 +29,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.trade_simulator import TradeSimulator
-from python.framework.types.global_types import BatchExecutionSummary
-from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
+from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats, BatchExecutionPerformanceData
 from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 
 
@@ -51,7 +50,7 @@ class ScenarioSetPerformanceManager:
 
         # In reporting
         all_stats = perf_log.get_all_scenarios()
-        metadata = perf_log.get_metadata()
+        batch_performance_data = perf_log.get_batch_perfromance_data()
 
         # Live Progress Display
         live_stats = perf_log.get_live_scenario_stats(scenario_index=0)
@@ -86,12 +85,12 @@ class ScenarioSetPerformanceManager:
             self._summary_execution_time = summary_execution_time
             self._success = success
 
-    def get_metadata(self) -> BatchExecutionSummary:
+    def get_batch_perfromance_data(self) -> BatchExecutionPerformanceData:
         """
         Get batch-level metadata.
         """
         with self._lock:
-            return BatchExecutionSummary(
+            return BatchExecutionPerformanceData(
                 summary_execution_time=self._summary_execution_time,
                 success=self._success,
                 scenarios_count=len(self._scenarios)

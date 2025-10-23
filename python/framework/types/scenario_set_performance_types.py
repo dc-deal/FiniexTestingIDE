@@ -202,3 +202,11 @@ class ScenarioPerformanceStats:
     # REFACTORED: Fully typed profiling data
     # Built after tick loop completes (ProfilingData.from_dicts)
     profiling_data: Optional[ProfilingData] = None
+
+
+@dataclass
+class BatchExecutionPerformanceData:
+    """Summary of batch execution performance results."""
+    success: bool
+    scenarios_count: int
+    summary_execution_time: float
