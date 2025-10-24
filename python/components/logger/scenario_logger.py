@@ -57,6 +57,7 @@ class ScenarioLogger(AbstractLogger):
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
 
+        self.run_dir = None
         if self.file_logging_enabled:
             # Create default run directory
             self.run_dir = Path(self.file_log_root) / \
