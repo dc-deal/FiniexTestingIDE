@@ -1,27 +1,27 @@
-from python.components.logger.bootstrap_logger import get_logger
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.bars.bar_warmup_manager import BarWarmupManager
-from python.framework.types.global_types import Bar, TickData, TimeframeConfig
-
-vLog = get_logger()
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class BarRenderingController:
     """Main orchestrator for bar rendering system"""
 
-    def __init__(self, data_worker):
-        self.bar_renderer = BarRenderer()
-        self.warmup_manager = BarWarmupManager(data_worker)
+    def __init__(self, data_worker, logger: ScenarioLogger):
+        self.bar_renderer = BarRenderer(logger)
+        self.warmup_manager = BarWarmupManager(data_worker, logger)
         self._workers = []
         self._required_timeframes = set()
         self._warmup_data = {}
         self._warmup_quality_metrics = {}
+        self.logger = logger
 
         # PERFORMANCE OPTIMIZATION: Bar history caching
         self._cached_bar_history = None
@@ -33,7 +33,7 @@ class BarRenderingController:
         self._required_timeframes = self.bar_renderer.get_required_timeframes(
             workers)
 
-        vLog.debug(
+        self.logger.debug(
             f"Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}"
         )
 
@@ -89,7 +89,8 @@ class BarRenderingController:
 
         # === TRY PARQUET FIRST (NEW!) ===
         try:
-            vLog.info(f"🚀 Attempting to load warmup bars from parquet...")
+            self.logger.info(
+                f"🚀 Attempting to load warmup bars from parquet...")
             warmup_result = self.warmup_manager.load_bars_from_parquet(
                 symbol=symbol,
                 warmup_requirements=warmup_requirements,
@@ -100,9 +101,9 @@ class BarRenderingController:
             self._warmup_data = warmup_result['historical_bars']
             self._warmup_quality_metrics = warmup_result['quality_metrics']
 
-            vLog.info(f"✅ Warmup bars loaded from parquet files!")
+            self.logger.info(f"✅ Warmup bars loaded from parquet files!")
         except Exception as e:
-            vLog.error(f"⚠️  Could not load bars from parquet: {e}")
+            self.logger.error(f"⚠️  Could not load bars from parquet: {e}")
             raise
 
         # Initialize the bar renderer's history with these warmup bars
@@ -113,7 +114,7 @@ class BarRenderingController:
         # Detailed logging per timeframe
         total_bars = sum(len(bars) for bars in self._warmup_data.values())
 
-        vLog.info(
+        self.logger.info(
             f"🔥 Warmup complete: {total_bars} bars ready "
         )
 

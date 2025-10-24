@@ -15,7 +15,6 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.components.logger.bootstrap_logger import setup_logging
 from python.framework.reporting.coverage_report import (
     TimeRangeCoverageReport,
     IndexEntry

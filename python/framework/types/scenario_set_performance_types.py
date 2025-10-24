@@ -153,7 +153,6 @@ class ScenarioPerformanceStats:
     success: bool
     portfolio_value: float
     initial_balance: float
-    elapsed_time: float
 
     # Worker statistics
     worker_statistics: Dict[str, Any]
@@ -203,3 +202,11 @@ class ScenarioPerformanceStats:
     # REFACTORED: Fully typed profiling data
     # Built after tick loop completes (ProfilingData.from_dicts)
     profiling_data: Optional[ProfilingData] = None
+
+
+@dataclass
+class BatchExecutionPerformanceData:
+    """Summary of batch execution performance results."""
+    success: bool
+    scenarios_count: int
+    summary_execution_time: float

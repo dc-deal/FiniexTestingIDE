@@ -11,6 +11,7 @@ PERFORMANCE OPTIMIZED:
 
 from typing import Iterator, Dict
 from datetime import datetime, timedelta
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.exceptions.data_validation_errors import (
     InsufficientTickDataError,
     CriticalGapError,
@@ -22,10 +23,8 @@ import pandas as pd
 
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.exceptions.warmup_errors import InsufficientHistoricalDataError
-from python.framework.types.global_types import TickData, TimeframeConfig
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.types.tick_types import TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class TickDataPreparator:
@@ -36,7 +35,7 @@ class TickDataPreparator:
     for precise warmup data requirements.
     """
 
-    def __init__(self, data_worker: TickDataLoader):
+    def __init__(self, data_worker: TickDataLoader, logger: ScenarioLogger):
         """
         Initialize preparator
 
@@ -44,6 +43,7 @@ class TickDataPreparator:
             data_worker: TickDataLoader instance
         """
         self.data_worker = data_worker
+        self.logger = logger
 
     def get_symbol_info(self, symbol: str) -> dict:
         """Get symbol information"""
@@ -85,22 +85,23 @@ class TickDataPreparator:
                 InsufficientHistoricalDataError: If no ticks at test_start
                 ValueError: If insufficient ticks or critical gaps
             """
-        vLog.info(f"📊 Preparing data for {symbol}")
+        self.logger.info(f"📊 Preparing data for {symbol}")
 
         # === MODE DETECTION ===
         if max_test_ticks:
-            vLog.info(f"└─Mode: Tick-limited ({max_test_ticks:,} ticks)")
-            vLog.info(
+            self.logger.info(
+                f"└─Mode: Tick-limited ({max_test_ticks:,} ticks)")
+            self.logger.info(
                 f"└─Start: {test_start.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             duration = test_end - test_start
             hours = int(duration.total_seconds() // 3600)
             minutes = int((duration.total_seconds() % 3600) // 60)
-            vLog.info(f"└─Mode: Timespan ({hours}h {minutes}m)")
-            vLog.info(
+            self.logger.info(f"└─Mode: Timespan ({hours}h {minutes}m)")
+            self.logger.info(
                 f"└─Period: {test_start.strftime('%Y-%m-%d %H:%M:%S')} → {test_end.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        vLog.info(f"└─Data mode: {data_mode}")
+        self.logger.info(f"└─Data mode: {data_mode}")
 
         # === DETERMINE LOAD WINDOW ===
         if max_test_ticks:
@@ -115,7 +116,8 @@ class TickDataPreparator:
             start_date=test_start.isoformat(),
             end_date=load_end.isoformat(),
             use_cache=True,
-            data_mode=data_mode
+            data_mode=data_mode,
+            logger=self.logger
         )
 
         if df.empty:
@@ -125,7 +127,7 @@ class TickDataPreparator:
                 load_end=load_end
             )
 
-        vLog.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
+        self.logger.debug(f"✅ Loaded {len(df):,} ticks for {symbol}")
 
         # === NORMALIZE TIMESTAMPS ===
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -241,7 +243,8 @@ class TickDataPreparator:
 
         total_test_ticks = len(test_df)
 
-        vLog.info(f"✅ Tick-limited mode: {total_test_ticks:,} ticks ready")
+        self.logger.info(
+            f"✅ Tick-limited mode: {total_test_ticks:,} ticks ready")
 
         tick_iterator = self._df_to_tick_iterator(test_df, symbol)
 
@@ -322,7 +325,7 @@ class TickDataPreparator:
 
         total_test_ticks = len(test_df)
 
-        vLog.info(
+        self.logger.info(
             f"✅ Timespan mode: {total_test_ticks:,} ticks in period, no critical gaps")
 
         tick_iterator = self._df_to_tick_iterator(test_df, symbol)

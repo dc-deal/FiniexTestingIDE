@@ -12,6 +12,7 @@ from typing import List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
+from python.components.logger.abstract_logger import AbstractLogger
 from python.data_worker.data_loader.exceptions import (
     ArtificialDuplicateException,
     DuplicateReport,
@@ -56,6 +57,7 @@ class TickDataLoader:
         data_mode: str = "realistic",
         use_cache: bool = True,
         detect_artificial_duplicates: bool = True,
+        logger: AbstractLogger = vLog
     ) -> pd.DataFrame:
         """
         Load tick data for a symbol with optional date filtering.
@@ -69,7 +71,7 @@ class TickDataLoader:
         cache_key = f"{symbol}_{start_date}_{end_date}_{data_mode}"
 
         if use_cache and cache_key in self._symbol_cache:
-            vLog.debug(f"📦 Cache hit for {cache_key}")
+            logger.debug(f"📦 Cache hit for {cache_key}")
             return self._symbol_cache[cache_key].copy()
 
         # Index-based file selection (works transparently with new structure)
@@ -83,20 +85,20 @@ class TickDataLoader:
             all_files_count = len(self.index_manager.index.get(symbol, []))
 
             if files:
-                vLog.info(
+                logger.info(
                     f"📊 Loading {len(files)}/{all_files_count} files for {symbol} "
                     f"({MarketCalendar.format_time_range(start_date, end_date)})"
                 )
             else:
-                vLog.warning(f"No files found for {symbol} in date range")
+                logger.warning(f"No files found for {symbol} in date range")
                 return pd.DataFrame()
         else:
             # No date filter: load all files
             files = self._get_symbol_files(symbol)
-            vLog.info(f"📊 Loading all {len(files)} files for {symbol}")
+            logger.info(f"📊 Loading all {len(files)} files for {symbol}")
 
         if not files:
-            vLog.warning(f"No Parquet files found for {symbol}")
+            logger.warning(f"No Parquet files found for {symbol}")
             return pd.DataFrame()
 
         # Optional: Detect artificial duplicates
@@ -126,16 +128,16 @@ class TickDataLoader:
             if duplicates_removed > 0:
                 duplicate_percentage = (
                     duplicates_removed / initial_count) * 100
-                vLog.info(
+                logger.info(
                     f"🔁 Removed {duplicates_removed:,} natural duplicates ")
-                vLog.info(
+                logger.info(
                     f"from {initial_count:,} total ticks ({duplicate_percentage:.2f}% of data) [data_mode={data_mode}]"
                 )
             else:
-                vLog.info(
+                logger.info(
                     f"🔁 No natural duplicates found in {initial_count:,} ticks")
         else:
-            vLog.info(
+            logger.info(
                 f"🔁 Keeping all ticks including natural duplicates [data_mode={data_mode}]"
             )
 
@@ -147,7 +149,7 @@ class TickDataLoader:
         if use_cache:
             self._symbol_cache[cache_key] = combined_df.copy()
 
-        vLog.info(f"✅ Loaded: {len(combined_df):,} ticks for {symbol}")
+        logger.info(f"✅ Loaded: {len(combined_df):,} ticks for {symbol}")
         return combined_df
 
     # =========================================================================
@@ -166,7 +168,7 @@ class TickDataLoader:
         files = list(self.data_dir.glob(pattern))
         return sorted(files)
 
-    def _check_artificial_duplicates(self, files: List[Path]) -> Optional[DuplicateReport]:
+    def _check_artificial_duplicates(self, files: List[Path], logger: AbstractLogger = vLog) -> Optional[DuplicateReport]:
         """Check for artificial duplicates via Parquet metadata [UNCHANGED]"""
         if not files:
             return None
@@ -184,13 +186,13 @@ class TickDataLoader:
                 if source_file in source_files:
                     existing_file = source_files[source_file]
 
-                    vLog.error(
+                    logger.error(
                         f"❌ ARTIFICIAL DUPLICATE DETECTED!")
-                    vLog.error(
+                    logger.error(
                         f"   Source: {source_file}")
-                    vLog.error(
+                    logger.error(
                         f"   File 1: {existing_file.name}")
-                    vLog.error(
+                    logger.error(
                         f"   File 2: {file.name}")
 
                     duplicate_files = [existing_file, file]
@@ -230,7 +232,7 @@ class TickDataLoader:
                 source_files[source_file] = file
 
             except Exception as e:
-                vLog.error(
+                logger.error(
                     f"Could not check {file.name} for duplicates: {e}")
                 raise
 

@@ -7,7 +7,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types.global_types import Bar, TickData, WorkerResult, WorkerType
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -15,7 +17,7 @@ from python.framework.workers.abstract_blackbox_worker import \
 class EnvelopeWorker(AbstractBlackboxWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
-    def __init__(self, name, parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters, logger: ScenarioLogger, **kwargs):
         """
         Initialize Envelope worker.
 
@@ -28,7 +30,7 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         - deviation: Band deviation multiplier (default: 0.02)
         - timeframe: Timeframe to use (default: "M5")
         """
-        super().__init__(name, parameters)
+        super().__init__(name, parameters, logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 20)

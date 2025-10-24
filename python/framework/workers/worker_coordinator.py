@@ -20,15 +20,16 @@ from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types.global_types import Bar, Decision, TickData, WorkerState
+from python.framework.types.decision_logic_types import Decision
+from python.framework.types.tick_types import Bar, TickData
+
+from python.framework.types.worker_types import (
+    WorkerState)
 from python.framework.types.performance_stats_types import BatchPerformanceStats
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 from python.framework.performance.performance_log_coordinator import \
     PerformanceLogCoordinator
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
 
 
 class WorkerCoordinator:
@@ -61,6 +62,15 @@ class WorkerCoordinator:
             parallel_workers: Enable parallel worker execution (None = auto-detect)
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
             scenario_name: Name of the scenario being executed
+
+            Der WorkerCoordinator selbst bekommt KEINEN separaten Logger-Parameter,
+            weil er bereits die DecisionLogic bekommt, die einen Logger hat.
+
+            Der Coordinator nutzt einfach den Logger der DecisionLogic für seine Logs.
+            Das macht Sinn weil:
+            - Coordinator läuft im Kontext eines Scenarios
+            - DecisionLogic hat bereits den richtigen ScenarioLogger
+            - Vermeidet doppelte Logger-Übergabe
         """
         # ============================================
         # NEW (Issue 2): Injected dependencies
@@ -69,6 +79,9 @@ class WorkerCoordinator:
             worker.name: worker for worker in workers
         }
         self.decision_logic = decision_logic
+        # Get logger from decision_logic (already has ScenarioLogger)
+        self.logger = decision_logic.logger  # NEU: Logger-Referenz!
+
         self.strategy_config = strategy_config
 
         # Validate that decision logic has all required workers
@@ -128,7 +141,7 @@ class WorkerCoordinator:
         decision_logic.set_performance_logger(decision_perf_logger)
 
         # Log configuration
-        vLog.debug(
+        decision_logic.logger.debug(
             f"WorkerCoordinator config: "
             f"workers={len(self.workers)}, "
             f"decision_logic={decision_logic.name}, "
@@ -246,7 +259,7 @@ class WorkerCoordinator:
             )
             raise ValueError(error_msg)
 
-        vLog.debug(
+        self.logger.debug(
             f"✓ DecisionLogic requirements validated: "
             f"{len(required_instances)} worker instances"
         )
@@ -257,17 +270,17 @@ class WorkerCoordinator:
 
     def initialize(self):
         """Initialize coordinator and all workers"""
-        vLog.debug(
+        self.logger.debug(
             f"🔧 Initializing WorkerCoordinator with {len(self.workers)} workers "
             f"(parallel: {self.parallel_workers})"
         )
 
         for name, worker in self.workers.items():
             worker.set_state(WorkerState.READY)
-            vLog.debug(f"  ✓ Worker '{name}' ready")
+            self.logger.debug(f"  ✓ Worker '{name}' ready")
 
         self.is_initialized = True
-        vLog.debug(
+        self.logger.debug(
             f"✅ WorkerCoordinator initialized with DecisionLogic: {self.decision_logic.name}")
 
     def process_tick(
@@ -372,7 +385,7 @@ class WorkerCoordinator:
                         worker.performance_logger.record(computation_time_ms)
 
                 except Exception as e:
-                    vLog.error(f"❌ Worker '{name}' failed: {e}")
+                    self.logger.error(f"❌ Worker '{name}' failed: {e}")
                     worker.set_state(WorkerState.ERROR)
                     raise
 
@@ -431,7 +444,7 @@ class WorkerCoordinator:
                     worker.performance_logger.record(computation_time_ms)
 
             except Exception as e:
-                vLog.error(
+                self.logger.error(
                     f"❌ Worker '{name}' failed: \n{traceback.format_exc()}")
                 worker.set_state(WorkerState.ERROR)
                 raise
@@ -487,12 +500,12 @@ class WorkerCoordinator:
 
         UNCHANGED - Cleanup works exactly as before.
         """
-        vLog.info("🧹 Cleaning up WorkerCoordinator...")
+        self.logger.info("🧹 Cleaning up WorkerCoordinator...")
 
         # Shutdown thread pool
         if self._thread_pool:
             self._thread_pool.shutdown(wait=True)
-            vLog.debug("  ✓ Thread pool shutdown")
+            self.logger.debug("  ✓ Thread pool shutdown")
 
         for worker in self.workers.values():
             worker.set_state(WorkerState.IDLE)
@@ -503,5 +516,5 @@ class WorkerCoordinator:
         # Log final statistics
         if self.parallel_workers:
             total_saved = self._statistics["parallel_execution_time_saved_ms"]
-            vLog.info(
+            self.logger.info(
                 f"📊 Total time saved by parallelization: {total_saved:.2f}ms")

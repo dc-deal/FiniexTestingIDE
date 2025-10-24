@@ -8,7 +8,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types.global_types import Bar, TickData, WorkerResult, WorkerType
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -19,7 +21,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
     Simuliert komplexe Berechnungen (z.B. ML-Model, FFT, etc.)
     """
 
-    def __init__(self, name, parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict, logger: ScenarioLogger, **kwargs):
         """
         Args:
             name: Worker name
@@ -33,7 +35,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         Optional parameters:
             - artificial_load_ms: CPU load duration (default: 5.0ms)
         """
-        super().__init__(name, parameters)
+        super().__init__(name, parameters, logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 14)
@@ -141,7 +143,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
     Simuliert komplexe Band-Berechnungen.
     """
 
-    def __init__(self, name, parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict, logger: ScenarioLogger, **kwargs):
         """
         Args:
             name: Worker name
@@ -153,7 +155,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
             - timeframe: Timeframe (default: "M5")
             - artificial_load_ms: CPU load (default: 8.0ms)
         """
-        super().__init__(name, parameters)
+        super().__init__(name, parameters, logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 20)
@@ -267,7 +269,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
     Zusätzlicher Worker für bessere Parallelisierungs-Tests.
     """
 
-    def __init__(self, name, parameters: Dict = None, **kwargs):
+    def __init__(self, name, parameters: Dict, logger: ScenarioLogger, **kwargs):
         """
         Args:
             name: Worker name
@@ -280,7 +282,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
             - timeframe: Timeframe (default: "M5")
             - artificial_load_ms: CPU load (default: 6.0ms)
         """
-        super().__init__(name, parameters)
+        super().__init__(name, parameters, logger, **kwargs)
 
         params = parameters or {}
         self.fast = params.get('fast') or kwargs.get('fast', 12)

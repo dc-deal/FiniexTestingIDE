@@ -41,7 +41,7 @@ __all__ = [
     'BrokerConfig',
     'BrokerType',
     'TradeSimulator',
-    'DecisionTradingAPI',  # NEW
+    'DecisionTradingAPI',
     'OrderExecutionEngine',
     'PortfolioManager',
     'Position',

@@ -14,16 +14,15 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from python.framework.types.global_types import Bar, TickData, TimeframeConfig
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.timeframe_types import TimeframeConfig
 
 
 class BarRenderer:
     """Core bar renderer for all timeframes"""
 
-    def __init__(self):
+    def __init__(self, logger: ScenarioLogger):
         self.current_bars: Dict[str, Dict[str, Bar]] = defaultdict(
             dict
         )  # {timeframe: {symbol: bar}}
@@ -31,6 +30,7 @@ class BarRenderer:
             lambda: defaultdict(deque)
         )
         self._last_tick_time: Optional[datetime] = None
+        self.logger = logger
 
     def get_required_timeframes(self, workers) -> Set[str]:
         """Collect all required timeframes from workers"""
@@ -170,7 +170,7 @@ class BarRenderer:
         for bar in bars:
             self.completed_bars[timeframe][symbol].append(bar)
 
-        vLog.debug(
+        self.logger.debug(
             f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
         )
 

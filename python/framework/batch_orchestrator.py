@@ -8,18 +8,18 @@ REFACTORED: Clean separation of concerns
 - Barrier synchronization only for successfully prepared scenarios
 """
 
+from dataclasses import dataclass
 import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
 
-from python.components.logger.bootstrap_logger import get_logger
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.scenario_executor import ScenarioExecutor
-from python.framework.types.global_types import BatchExecutionSummary, TestScenario
+from python.framework.types.batch_executor_types import BatchExecutionSummary
 from python.framework.types.live_stats_types import ScenarioStatus
-from python.framework.types.scenario_types import (
+from python.framework.types.batch_executor_types import (
     ScenarioExecutorDependencies,
     ScenarioExecutionResult
 )
@@ -31,15 +31,13 @@ from python.framework.exceptions.scenario_execution_errors import (
     ScenarioPreparationError,
     ScenarioExecutionError
 )
-
+from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
 # Factory Imports
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 
 # NEW (Phase 1a): Live Progress Display
 from python.components.display.live_progress_display import LiveProgressDisplay
-
-vLog = get_logger()
 
 
 class BatchOrchestrator:
@@ -60,7 +58,7 @@ class BatchOrchestrator:
 
     def __init__(
         self,
-        scenarios: List[TestScenario],
+        scenario_set: ScenarioSet,
         data_worker: TickDataLoader,
         app_config: AppConfigLoader,
         performance_log: ScenarioSetPerformanceManager,
@@ -74,14 +72,18 @@ class BatchOrchestrator:
             app_config: Application configuration
             performance_log: Statistics collection container
         """
-        self.scenarios = scenarios
+        self.scenario_set = scenario_set
         self.data_worker = data_worker
         self.appConfig = app_config
         self.performance_log = performance_log
 
+        # start global Log
+        self.scenario_set.logger.reset_start_time("Batch Init")
+
         # Initialize Factories
         self.worker_factory = WorkerFactory()
-        self.decision_logic_factory = DecisionLogicFactory()
+        self.decision_logic_factory = DecisionLogicFactory(
+            logger=self.scenario_set.logger)
 
         # Create dependency container for ScenarioExecutor
         self.dependencies = ScenarioExecutorDependencies(
@@ -95,8 +97,8 @@ class BatchOrchestrator:
         # Track last executor for debugging
         self._last_executor = None
 
-        vLog.debug(
-            f"📦 BatchOrchestrator initialized with {len(scenarios)} scenario(s)"
+        self.scenario_set.logger.debug(
+            f"📦 BatchOrchestrator initialized with {len(scenario_set.scenarios)} scenario(s)"
         )
 
     def run(self) -> BatchExecutionSummary:
@@ -106,20 +108,21 @@ class BatchOrchestrator:
         Returns:
             Aggregated results from all scenarios
         """
-        vLog.info(
-            f"🚀 Starting batch execution ({len(self.scenarios)} scenarios)"
+        self.scenario_set.logger.info(
+            f"🚀 Starting batch execution ({len(self.scenario_set.scenarios)} scenarios)"
         )
-        vLog.section_separator()
         start_time = time.time()
 
         # Get batch mode from app_config.json
         run_parallel = self.appConfig.get_default_parallel_scenarios()
 
         # Execute scenarios
-        if run_parallel and len(self.scenarios) > 1:
+        if run_parallel and len(self.scenario_set.scenarios) > 1:
             results = self._run_parallel()
         else:
             results = self._run_sequential()
+
+        self.scenario_set.flush_set_buffer()
 
         # Aggregate results
         summary_execution_time = time.time() - start_time
@@ -132,11 +135,12 @@ class BatchOrchestrator:
 
         summary = BatchExecutionSummary(
             success=True,
-            scenarios_count=len(self.scenarios),
-            summary_execution_time=summary_execution_time
+            scenarios_count=len(self.scenario_set.scenarios),
+            summary_execution_time=summary_execution_time,
+            summary_list=results
         )
 
-        vLog.debug(
+        self.scenario_set.logger.debug(
             f"✅ Batch execution completed in {summary_execution_time:.2f}s")
         return summary
 
@@ -150,17 +154,16 @@ class BatchOrchestrator:
         - Live display shows progress
         """
         # ===== Phase 1a: Setup Live Display =====
-        vLog.enable_buffering()
         live_display = LiveProgressDisplay(
             self.performance_log,
-            self.scenarios
+            self.scenario_set.scenarios
         )
         live_display.start()
 
         # ===== Execute Scenarios =====
         results = []
 
-        for scenario_index, scenario in enumerate(self.scenarios):
+        for scenario_index, scenario in enumerate(self.scenario_set.scenarios):
             readable_index = scenario_index + 1
 
             try:
@@ -177,7 +180,7 @@ class BatchOrchestrator:
                 results.append(result)
 
             except ScenarioPreparationError as e:
-                vLog.error(
+                self.scenario_set.logger.error(
                     f"❌ Scenario {readable_index} preparation failed: {str(e)}"
                 )
                 self.performance_log.set_live_status(
@@ -194,7 +197,7 @@ class BatchOrchestrator:
                 )
 
             except ScenarioExecutionError as e:
-                vLog.error(
+                self.scenario_set.logger.error(
                     f"❌ Scenario {readable_index} execution failed: {str(e)}"
                 )
                 self.performance_log.set_live_status(
@@ -211,7 +214,7 @@ class BatchOrchestrator:
                 )
 
             except Exception as e:
-                vLog.error(
+                self.scenario_set.logger.error(
                     f"❌ Scenario {readable_index} failed: \n{traceback.format_exc()}"
                 )
                 self.performance_log.set_live_status(
@@ -229,7 +232,6 @@ class BatchOrchestrator:
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        vLog.flush_buffer()
 
         return results
 
@@ -250,23 +252,23 @@ class BatchOrchestrator:
         4. Return results for all scenarios (success + failures)
         """
         # ===== Phase 1a: Setup Live Display =====
-        vLog.enable_buffering()
         live_display = LiveProgressDisplay(
             self.performance_log,
-            self.scenarios
+            self.scenario_set.scenarios
         )
         live_display.start()
 
         max_workers = self.appConfig.get_default_max_parallel_scenarios()
 
         # Results array (maintains order)
-        results = [None] * len(self.scenarios)
+        results = [None] * len(self.scenario_set.scenarios)
 
         # Track successful preparations
         successful_executors = []  # List of (executor, scenario_index)
 
         # ===== PHASE 1: Parallel Preparation =====
-        vLog.info("📋 Phase 1: Preparing all scenarios in parallel...")
+        self.scenario_set.logger.info(
+            "📋 Phase 1: Preparing all scenarios in parallel...")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor_pool:
             # Submit all preparation tasks
@@ -276,7 +278,7 @@ class BatchOrchestrator:
                     scenario,
                     idx
                 ): idx
-                for idx, scenario in enumerate(self.scenarios)
+                for idx, scenario in enumerate(self.scenario_set.scenarios)
             }
 
             # Collect preparation results
@@ -289,21 +291,21 @@ class BatchOrchestrator:
                     if executor is not None:
                         # Preparation successful
                         successful_executors.append((executor, idx))
-                        vLog.debug(
+                        self.scenario_set.logger.debug(
                             f"✓ Scenario {readable_index} prepared successfully"
                         )
                     else:
                         # Preparation failed (already logged in _prepare_scenario_safe)
                         results[idx] = ScenarioExecutionResult(
                             success=False,
-                            scenario_name=self.scenarios[idx].name,
+                            scenario_name=self.scenario_set.scenarios[idx].name,
                             scenario_index=idx,
                             error="Preparation failed"
                         )
 
                 except Exception as e:
                     # Unexpected error during preparation
-                    vLog.error(
+                    self.scenario_set.logger.error(
                         f"❌ Scenario {readable_index} preparation error: "
                         f"\n{traceback.format_exc()}"
                     )
@@ -313,36 +315,37 @@ class BatchOrchestrator:
                     )
                     results[idx] = ScenarioExecutionResult(
                         success=False,
-                        scenario_name=self.scenarios[idx].name,
+                        scenario_name=self.scenario_set.scenarios[idx].name,
                         scenario_index=idx,
                         error=str(e)
                     )
 
         # ===== Check if any scenarios prepared successfully =====
         if not successful_executors:
-            vLog.error("❌ No scenarios prepared successfully - batch failed")
+            self.scenario_set.logger.error(
+                "❌ No scenarios prepared successfully - batch failed")
             live_display.stop()
-            vLog.flush_buffer()
             return results
 
-        vLog.info(
+        self.scenario_set.logger.info(
             f"✅ Phase 1 complete: {len(successful_executors)} of "
-            f"{len(self.scenarios)} scenarios prepared successfully"
+            f"{len(self.scenario_set.scenarios)} scenarios prepared successfully"
         )
 
         # ===== PHASE 2: Synchronized Tick Loop Execution =====
-        vLog.info("🚦 Phase 2: Executing tick loops with synchronized start...")
+        self.scenario_set.logger.info(
+            "🚦 Phase 2: Executing tick loops with synchronized start...")
 
         # Create barrier ONLY for successful scenarios
         num_successful = len(successful_executors)
         barrier = threading.Barrier(
             num_successful,
-            action=lambda: vLog.info(
+            action=lambda: self.scenario_set.logger.info(
                 f"🚦 All {num_successful} scenarios ready - starting synchronized tick processing"
             )
         )
 
-        vLog.debug(
+        self.scenario_set.logger.debug(
             f"🔒 Created barrier for {num_successful} successfully prepared scenarios"
         )
 
@@ -367,7 +370,7 @@ class BatchOrchestrator:
                     results[idx] = result
 
                 except Exception as e:
-                    vLog.error(
+                    self.scenario_set.logger.error(
                         f"❌ Scenario {readable_index} execution failed: "
                         f"\n{traceback.format_exc()}"
                     )
@@ -377,20 +380,19 @@ class BatchOrchestrator:
                     )
                     results[idx] = ScenarioExecutionResult(
                         success=False,
-                        scenario_name=self.scenarios[idx].name,
+                        scenario_name=self.scenario_set.scenarios[idx].name,
                         scenario_index=idx,
                         error=str(e)
                     )
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        vLog.flush_buffer()
 
         return results
 
     def _prepare_scenario_safe(
         self,
-        scenario: TestScenario,
+        scenario: SingleScenario,
         scenario_index: int
     ) -> ScenarioExecutor:
         """
@@ -400,7 +402,7 @@ class BatchOrchestrator:
         Logs errors but does not raise to prevent blocking other scenarios.
 
         Args:
-            scenario: TestScenario to prepare
+            scenario: SingleScenario to prepare
             scenario_index: Index in scenario list
 
         Returns:
@@ -414,7 +416,7 @@ class BatchOrchestrator:
 
         except ScenarioPreparationError as e:
             readable_index = scenario_index + 1
-            vLog.error(
+            self.scenario_set.logger.error(
                 f"❌ Scenario {readable_index} preparation failed: {str(e)}"
             )
             self.performance_log.set_live_status(
@@ -425,7 +427,7 @@ class BatchOrchestrator:
 
         except Exception as e:
             readable_index = scenario_index + 1
-            vLog.error(
+            self.scenario_set.logger.error(
                 f"❌ Scenario {readable_index} preparation error: "
                 f"\n{traceback.format_exc()}"
             )
@@ -462,23 +464,23 @@ class BatchOrchestrator:
 
         # Wait at barrier
         try:
-            vLog.debug(
+            self.scenario_set.scenarios[scenario_index].logger.debug(
                 f"⏸️  Scenario {readable_index} ready - waiting at barrier..."
             )
             barrier.wait(timeout=300)  # 5 minute timeout
-            vLog.debug(
+            self.scenario_set.scenarios[scenario_index].logger.debug(
                 f"🚀 Barrier released - starting tick loop for scenario {readable_index}"
             )
 
         except threading.BrokenBarrierError:
-            vLog.error(
+            self.scenario_set.scenarios[scenario_index].logger.error(
                 f"❌ Barrier broken for scenario {readable_index} - "
                 f"another scenario failed"
             )
             raise
 
         except Exception as e:
-            vLog.error(
+            self.scenario_set.scenarios[scenario_index].logger.error(
                 f"❌ Barrier wait failed for scenario {readable_index}: {e}"
             )
             raise

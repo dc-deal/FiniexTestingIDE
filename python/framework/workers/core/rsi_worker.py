@@ -2,7 +2,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from python.framework.types.global_types import Bar, TickData, WorkerResult, WorkerType
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
 
@@ -10,7 +12,7 @@ from python.framework.workers.abstract_blackbox_worker import \
 class RSIWorker(AbstractBlackboxWorker):
     """RSI computation worker - Bar-based computation"""
 
-    def __init__(self, name: str, parameters: Dict = None, **kwargs):
+    def __init__(self, name: str, parameters: Dict, logger: ScenarioLogger, **kwargs):
         """
         Initialize RSI worker.
 
@@ -22,7 +24,7 @@ class RSIWorker(AbstractBlackboxWorker):
         - period: RSI calculation period
         - timeframe: Timeframe to use
         """
-        super().__init__(name, parameters)
+        super().__init__(name, parameters, logger, **kwargs)
 
         # Extract parameters from dict or kwargs
         params = parameters or {}

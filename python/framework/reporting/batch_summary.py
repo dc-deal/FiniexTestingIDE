@@ -114,11 +114,11 @@ class BatchSummary:
 
     def _render_basic_stats(self):
         """Render basic execution statistics (top-level summary)."""
-        metadata = self.performance_log.get_metadata()
+        batch_performance_data = self.performance_log.get_batch_perfromance_data()
 
-        success = metadata.success
-        scenarios_count = metadata.scenarios_count
-        exec_time = metadata.summary_execution_time
+        success = batch_performance_data.success
+        scenarios_count = batch_performance_data.scenarios_count
+        exec_time = batch_performance_data.summary_execution_time
 
         # Check parallel mode
         batch_parallel = self.app_config.get_default_parallel_scenarios()

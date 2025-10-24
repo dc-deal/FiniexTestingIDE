@@ -6,8 +6,11 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from python.framework.types.global_types import (Bar, TickData,
-                                                 WorkerResult, WorkerState, WorkerType)
+from python.framework.performance.performance_log_worker import PerformanceLogWorker
+from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.worker_types import (
+    WorkerResult, WorkerState, WorkerType)
+from python.components.logger.scenario_logger import ScenarioLogger
 
 
 class AbstractBlackboxWorker(ABC):
@@ -17,21 +20,34 @@ class AbstractBlackboxWorker(ABC):
     Workers compute indicators/signals based on bar data
     """
 
-    def __init__(self, name: str, parameters: Dict[str, Any] = None):
+    def __init__(
+        self,
+        name: str,
+        logger: ScenarioLogger,
+        parameters: Dict[str, Any] = None,
+    ):
         """
-        Initialize worker
+        Initialize worker.
 
         Args:
             name: Worker name/identifier
             parameters: Worker-specific parameters
+            logger: ScenarioLogger instance (REQUIRED)
+
+        Raises:
+            ValueError: If logger is None
         """
+        if logger is None:
+            raise ValueError(f"Worker '{name}' requires a logger instance")
+
         self.name = name
         self.parameters = parameters or {}
         self.state = WorkerState.IDLE
         self._last_result = None
 
-        # NEW: Performance logging (set by WorkerCoordinator)
-        self.performance_logger: Optional['PerformanceLogWorker'] = None
+        # Loggers
+        self.logger = logger  # NEU: ScenarioLogger
+        self.performance_logger: Optional[PerformanceLogWorker] = None
 
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:

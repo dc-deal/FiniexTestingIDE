@@ -6,6 +6,7 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
 from python.configuration import AppConfigLoader
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.reporting.batch_summary import BatchSummary
@@ -27,6 +28,14 @@ def run_strategy_test():
     """
     Main strategy testing function with visual output
     """
+
+    # ============================================================
+    # System Info
+    # ============================================================
+    vLog.info(
+        f"System: {platform.system()} {platform.release()}")
+    vLog.info(f"Python: {platform.python_version()}")
+    vLog.info(f"CPU Count: {os.cpu_count()}")
 
     vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
 
@@ -53,25 +62,12 @@ def run_strategy_test():
         # ============================================================
         config_loader = ScenarioConfigLoader()
 
-        scenario_set_name = "eurusd_3_windows.json"
-        # ============================================================
-        # NEW: Attach File Logger EARLY (before more logs!)
-        # ============================================================
-        vLog.attach_scenario_set(scenario_set_name)
-
-        scenarios = config_loader.load_config(scenario_set_name)
+        scenario_set_json = "eurusd_3_windows.json"
+        scenario_set = config_loader.load_config(scenario_set_json)
 
         vLog.info(
-            f"📂 Loaded scenario set: {scenario_set_name} ({len(scenarios)} scenarios)"
+            f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_set.scenarios)} scenarios)"
         )
-
-        # ============================================================
-        # System Info (logged AFTER file logger is attached)
-        # ============================================================
-        vLog.info(
-            f"System: {platform.system()} {platform.release()}")
-        vLog.info(f"Python: {platform.python_version()}")
-        vLog.info(f"CPU Count: {os.cpu_count()}")
 
         # ============================================================
         # Initialize Data Worker
@@ -87,14 +83,14 @@ def run_strategy_test():
         # Execute Batch via Orchestrator
         # ============================================================
         orchestrator = BatchOrchestrator(
-            scenarios,
+            scenario_set,
             data_worker,
             app_config_loader,
             performance_log
         )
 
         # Run test
-        orchestrator.run()
+        batch_execution_summary = orchestrator.run()
 
         # ============================================
         # NEW (C#003): Direct Reporting via BatchSummary
@@ -114,22 +110,11 @@ def run_strategy_test():
         sys.stdout = old_stdout
         summary_with_colors = summary_capture.getvalue()
 
-        # Print to console (with colors)
-        print(summary_with_colors, end='')
-
-        # Strip ANSI codes for file logging
-        if vLog.global_file_logger:
-            summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
-            vLog.global_file_logger.write_summary(summary_clean)
-
-        # ============================================
-        # Close ALL file loggers
-        # ============================================
-        if vLog.global_file_logger:
-            vLog.global_file_logger.close()
-
-        for scenario_logger in vLog._scenario_file_loggers.values():
-            scenario_logger.close()
+        # Print summary in console
+        print(summary_with_colors)
+        # print in scenario
+        summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
+        scenario_set.printed_summary_logger.info(summary_clean)
 
     except DataValidationError as e:
         vLog.validation_error(

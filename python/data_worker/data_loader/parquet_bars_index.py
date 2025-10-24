@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
+from python.components.logger.abstract_logger import AbstractLogger
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
@@ -31,7 +32,7 @@ class ParquetBarsIndexManager:
     - Enables fast bar file selection
     """
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path,  logger: AbstractLogger = vLog):
         """
         Initialize bar index manager.
 
@@ -42,12 +43,14 @@ class ParquetBarsIndexManager:
         self.index_file = self.data_dir / ".parquet_bars_index.json"
         # {symbol: {timeframe: entry}}
         self.index: Dict[str, Dict[str, Dict]] = {}
+        self.logger = logger
 
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
 
-    def build_index(self, force_rebuild: bool = False) -> None:
+    def build_index(self,
+                    force_rebuild: bool = False) -> None:
         """
         Build or load index from bar parquet files.
 
@@ -59,11 +62,11 @@ class ParquetBarsIndexManager:
         # Check if rebuild needed
         if not force_rebuild and not self.needs_rebuild():
             self.load_index()
-            vLog.info(
+            self.logger.info(
                 f"📚 Loaded existing bar index ({len(self.index)} symbols)")
             return
 
-        vLog.info("🔍 Scanning bar files for index...")
+        self.logger.info("🔍 Scanning bar files for index...")
         start_time = time.time()
 
         # Scan pattern: */bars/**/*.parquet
@@ -71,7 +74,7 @@ class ParquetBarsIndexManager:
         bar_files = list(self.data_dir.glob("*/bars/**/*_BARS.parquet"))
 
         if not bar_files:
-            vLog.warning(f"No bar files found in {self.data_dir}")
+            self.logger.warning(f"No bar files found in {self.data_dir}")
             self.index = {}
             return
 
@@ -88,14 +91,14 @@ class ParquetBarsIndexManager:
                 self.index[symbol][timeframe] = entry
 
             except Exception as e:
-                vLog.warning(f"Failed to index {bar_file.name}: {e}")
+                self.logger.warning(f"Failed to index {bar_file.name}: {e}")
 
         # Save index
         self.save_index()
 
         elapsed = time.time() - start_time
         total_entries = sum(len(tfs) for tfs in self.index.values())
-        vLog.info(
+        self.logger.info(
             f"✅ Bar index built: {total_entries} timeframes across "
             f"{len(self.index)} symbols in {elapsed:.2f}s"
         )
@@ -174,7 +177,8 @@ class ParquetBarsIndexManager:
             newest_bar = max(f.stat().st_mtime for f in bar_files)
 
             if newest_bar > index_mtime:
-                vLog.info("📋 Bar index outdated - newer bar files found")
+                self.logger.info(
+                    "📋 Bar index outdated - newer bar files found")
                 return True
 
         return False
@@ -207,11 +211,11 @@ class ParquetBarsIndexManager:
             >>> bars = pd.read_parquet(bar_file)  # Load M5 bars instantly!
         """
         if symbol not in self.index:
-            vLog.warning(f"Symbol '{symbol}' not found in bar index")
+            self.logger.warning(f"Symbol '{symbol}' not found in bar index")
             return None
 
         if timeframe not in self.index[symbol]:
-            vLog.warning(
+            self.logger.warning(
                 f"Timeframe '{timeframe}' not found for {symbol} in bar index"
             )
             return None
@@ -249,7 +253,7 @@ class ParquetBarsIndexManager:
         with open(self.index_file, 'w') as f:
             json.dump(index_data, f, indent=2)
 
-        vLog.debug(f"💾 Bar index saved to {self.index_file}")
+        self.logger.debug(f"💾 Bar index saved to {self.index_file}")
 
     def load_index(self) -> None:
         """Load index from JSON file"""
@@ -258,7 +262,7 @@ class ParquetBarsIndexManager:
                 data = json.load(f)
                 self.index = data['symbols']
         except Exception as e:
-            vLog.warning(f"Failed to load bar index: {e}")
+            self.logger.warning(f"Failed to load bar index: {e}")
             self.index = {}
 
     # =========================================================================

@@ -29,11 +29,9 @@ Example Config:
 import importlib
 from typing import Any, Dict, Optional, Type
 
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.components.logger.abstract_logger import AbstractLogger
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 
 
 class DecisionLogicFactory:
@@ -50,13 +48,14 @@ class DecisionLogicFactory:
     4. Validation and error handling
     """
 
-    def __init__(self):
+    def __init__(self, logger: AbstractLogger):
         """
         Initialize decision logic factory with empty registry.
 
         The registry is populated lazily when decision logics are requested.
         This avoids import overhead for unused strategies.
         """
+        self.logger = logger
         self._registry: Dict[str, Type[AbstractDecisionLogic]] = {}
         self._load_core_logics()
 
@@ -80,11 +79,11 @@ class DecisionLogicFactory:
             self._registry["CORE/simple_consensus"] = SimpleConsensus
             self._registry["CORE/aggressive_trend"] = AggressiveTrend
 
-            vLog.debug(
+            self.logger.debug(
                 f"Core decision logics registered: {list(self._registry.keys())}"
             )
         except ImportError as e:
-            vLog.warning(f"Failed to load core decision logics: {e}")
+            self.logger.warning(f"Failed to load core decision logics: {e}")
 
     def register_logic(
         self,
@@ -111,12 +110,13 @@ class DecisionLogicFactory:
             )
 
         self._registry[logic_type] = logic_class
-        vLog.debug(
+        self.logger.debug(
             f"Registered decision logic: {logic_type} → {logic_class.__name__}")
 
     def create_logic(
         self,
         logic_type: str,
+        logger: ScenarioLogger,
         logic_config: Dict[str, Any] = None
     ) -> AbstractDecisionLogic:
         """
@@ -152,10 +152,11 @@ class DecisionLogicFactory:
         # REFACTORED: No trading_env parameter
         logic_instance = logic_class(
             name=logic_name,
+            logger=logger,
             config=logic_config
         )
 
-        vLog.debug(
+        logger.debug(
             f"✓ Created decision logic: {logic_type} with {len(logic_config)} config values"
         )
 
@@ -163,6 +164,7 @@ class DecisionLogicFactory:
 
     def create_logic_from_strategy_config(
         self,
+        logger: ScenarioLogger,
         strategy_config: Dict[str, Any]
     ) -> AbstractDecisionLogic:
         """
@@ -207,6 +209,7 @@ class DecisionLogicFactory:
         # Create decision logic
         return self.create_logic(
             logic_type=logic_type,
+            logger=logger,
             logic_config=logic_config
         )
 
@@ -289,7 +292,8 @@ class DecisionLogicFactory:
             # Register for future use
             self._registry[logic_type] = logic_class
 
-            vLog.info(f"Dynamically loaded decision logic: {logic_type}")
+            self.logger.info(
+                f"Dynamically loaded decision logic: {logic_type}")
             return logic_class
 
         except (ImportError, AttributeError) as e:
