@@ -42,8 +42,7 @@ class FileLogger:
         log_type: str,
         run_dir: Path,
         scenario_name: Optional[str] = None,  # scenario_index ENTFERNT!
-        log_level: str = LogLevel.DEBUG,
-        source_config_path: Optional[Path] = None
+        log_level: str = LogLevel.DEBUG
     ):
         """
         Initialize file logger.
@@ -53,7 +52,6 @@ class FileLogger:
             run_dir: Directory for log files
             scenario_name: Scenario name (for scenario logs)
             log_level: Minimum log level to write
-            source_config_path: Path to source config (for global logs)
         """
         self.log_type = log_type
         self.run_dir = run_dir
@@ -102,29 +100,6 @@ class FileLogger:
         self.file_handle.write(header)
         self.file_handle.flush()
 
-    def _copy_config_snapshot(self):
-        """Copy scenario config file as snapshot (global only)."""
-        if self.config_copied or not self.source_config_path:
-            return
-
-        try:
-            if self.source_config_path.exists():
-                shutil.copy2(self.source_config_path,
-                             self.config_snapshot_path)
-                self.config_copied = True
-            else:
-                # Log warning in file
-                if self.file_handle:
-                    self.file_handle.write(
-                        f"⚠️  WARNING: Config file not found for snapshot: {self.source_config_path}\n\n"
-                    )
-        except Exception as e:
-            # Log error in file
-            if self.file_handle:
-                self.file_handle.write(
-                    f"❌ ERROR: Failed to copy config snapshot: {e}\n\n"
-                )
-
     def write_log(self, level: str, message: str, timestamp: str):
         """
         Write log entry to file.
@@ -150,22 +125,3 @@ class FileLogger:
         except Exception as e:
             # Fail silently - don't break execution on file write errors
             print(f"Warning: Failed to write to log file: {e}")
-
-    def write_summary(self, summary_text: str):
-        """
-        Write batch summary to log file (global only).
-
-        Args:
-            summary_text: Formatted summary text (ANSI codes already stripped)
-        """
-        if self.log_type != "global":
-            return  # Only global log gets summary
-
-        try:
-            self.file_handle.write('\n')
-            self.file_handle.write(summary_text)
-            self.file_handle.write('\n')
-            self.file_handle.flush()
-        except Exception as e:
-            # Fail silently - don't break execution on file write errors
-            print(f"Warning: Failed to write summary to log file: {e}")

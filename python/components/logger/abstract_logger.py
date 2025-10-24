@@ -51,7 +51,7 @@ class AbstractLogger(ABC):
     - _get_timestamp() - Different timestamp formats
     """
 
-    def __init__(self, name: str, run_dir: Optional[Path] = None):
+    def __init__(self, name: str):
         """
         Initialize abstract logger.
 
@@ -86,10 +86,6 @@ class AbstractLogger(ABC):
         # Validate log level from config str
         if not LogLevel.validate(self.console_log_level):
             raise ValueError(f"Invalid log level: {self.console_log_level}")
-
-        # File logger instance (created on first use)
-        self.file_logger: Optional[FileLogger] = None
-        self.run_dir = run_dir
 
     @abstractmethod
     def _log(self, level: str, message: str):

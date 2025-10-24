@@ -18,6 +18,7 @@ from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 vLog = get_logger()
 
 
@@ -79,6 +80,8 @@ class ScenarioConfigLoader:
                 reason="Property 'scenario_set_name' is missing in JSON root.",
                 sceanrio_set_configuration=config)
 
+        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
             is_enabled = scenario_data.get('enabled', True)  # Default: True
@@ -136,18 +139,40 @@ class ScenarioConfigLoader:
                 execution_config=scenario_execution,
                 # NEW: Add trade_simulator_config to SingleScenario
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
-                logger=ScenarioLogger(scenario_data['name'])
+                logger=ScenarioLogger(
+                    scenario_set_name=scenario_set_name,
+                    scenario_name=scenario_data['name'],
+                    run_timestamp=run_timestamp
+                )
             )
             scenarios.append(scenario)
 
         if disabled_count > 0:
             vLog.info(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
+
+        scenario_set_logger = ScenarioLogger(scenario_set_name=scenario_set_name,
+                                             scenario_name='global',
+                                             run_timestamp=run_timestamp
+                                             )
+
+        # copy file snapshot to log folder
+        scenario_set_utils = ScenarioSetUtils(
+            config_snapshot_path=config_path,
+            scenario_log_path=scenario_set_logger.get_log_dir(),
+        )
+        scenario_set_utils.copy_config_snapshot()
+
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
         return ScenarioSet(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
-            logger=GlobalLogger(name=scenario_set_name))
+            logger=scenario_set_logger,
+            printed_summary_logger=ScenarioLogger(scenario_set_name=scenario_set_name,
+                                                  scenario_name='summary',
+                                                  run_timestamp=run_timestamp
+                                                  )
+        )
 
     def _deep_merge_strategy_configs(
         self,

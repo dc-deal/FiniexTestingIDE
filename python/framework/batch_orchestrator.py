@@ -77,6 +77,9 @@ class BatchOrchestrator:
         self.appConfig = app_config
         self.performance_log = performance_log
 
+        # start global Log
+        self.scenario_set.logger.reset_start_time("Batch Init")
+
         # Initialize Factories
         self.worker_factory = WorkerFactory()
         self.decision_logic_factory = DecisionLogicFactory(
@@ -118,6 +121,8 @@ class BatchOrchestrator:
             results = self._run_parallel()
         else:
             results = self._run_sequential()
+
+        self.scenario_set.flush_set_buffer()
 
         # Aggregate results
         summary_execution_time = time.time() - start_time
@@ -227,8 +232,6 @@ class BatchOrchestrator:
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        for scenario in self.scenario_set.scenarios:
-            scenario.logger.flush_buffer()
 
         return results
 
@@ -322,8 +325,6 @@ class BatchOrchestrator:
             self.scenario_set.logger.error(
                 "❌ No scenarios prepared successfully - batch failed")
             live_display.stop()
-            for scenario in self.scenario_set.scenarios:
-                scenario.logger.flush_buffer()
             return results
 
         self.scenario_set.logger.info(
@@ -386,8 +387,6 @@ class BatchOrchestrator:
 
         # ===== Phase 1a: Cleanup =====
         live_display.stop()
-        for scenario in self.scenario_set.scenarios:
-            scenario.logger.flush_buffer()
 
         return results
 

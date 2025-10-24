@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+import shutil
 from typing import Any, Dict, List, Optional, Tuple
 from python.components.logger.scenario_logger import ScenarioLogger
 
@@ -65,13 +66,25 @@ class SingleScenario:
             }
 
 
-@dataclass
 class ScenarioSet:
     """
         Test scenario set configuration for batch testing
         Describes a full scenario Set.
         The Logger logs globally & scenario-specific (files)
     """
-    scenario_set_name: str
-    logger: ScenarioLogger
-    scenarios: List[SingleScenario]
+
+    def __init__(self,
+                 scenario_set_name: str,
+                 logger: ScenarioLogger,
+                 scenarios: List[SingleScenario],
+                 printed_summary_logger: ScenarioLogger = None
+                 ):
+        self.scenario_set_name = scenario_set_name
+        self.logger = logger
+        self.scenarios = scenarios
+        self.printed_summary_logger = printed_summary_logger
+
+    def flush_set_buffer(self):
+        self.logger.flush_buffer()
+        for scenario in self.scenarios:
+            scenario.logger.flush_buffer()

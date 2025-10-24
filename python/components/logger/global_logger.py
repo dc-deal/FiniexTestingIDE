@@ -23,6 +23,7 @@ from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
 from python.components.logger.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
 from python.configuration import AppConfigLoader
+from python.components.logger.file_logger import FileLogger
 
 
 class GlobalLogger(AbstractLogger):
@@ -44,6 +45,16 @@ class GlobalLogger(AbstractLogger):
             name: Logger name (default: "FiniexTestingIDE")
         """
         super().__init__(name=name)
+        if self.file_logging_enabled:
+            # Create global log directory
+            log_dir = Path(self.file_log_root)
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+            self.file_logger = FileLogger(
+                log_type="global",
+                run_dir=log_dir,
+                log_level=self.file_log_level
+            )
 
         # Setup Python's logging system for console output
         self._setup_console_logging()
@@ -118,22 +129,9 @@ class GlobalLogger(AbstractLogger):
             message: Log message (plain text, no colors)
             timestamp: DateTime timestamp
         """
-        # Lazy-create file logger
-        if self.file_logger is None:
-            from python.components.logger.file_logger import FileLogger
-
-            # Create global log directory
-            log_dir = Path(self.file_log_root)
-            log_dir.mkdir(parents=True, exist_ok=True)
-
-            self.file_logger = FileLogger(
-                log_type="global",
-                run_dir=log_dir,
-                log_level=self.file_log_level
-            )
-
-        # Write to file (plain text format with DateTime)
-        self.file_logger.write_log(level, message, timestamp)
+        if self.file_logger is not None:
+            # Write to file (plain text format with DateTime)
+            self.file_logger.write_log(level, message, timestamp)
 
     def flush_buffer(self):
         """

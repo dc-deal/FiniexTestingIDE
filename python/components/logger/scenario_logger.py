@@ -25,6 +25,8 @@ from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
 from python.components.logger.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
 from python.configuration import AppConfigLoader
+from python.components.logger.file_logger import FileLogger
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
 class ScenarioLogger(AbstractLogger):
@@ -38,7 +40,11 @@ class ScenarioLogger(AbstractLogger):
     - Automatic flush on errors
     """
 
-    def __init__(self, scenario_name: str, run_dir: Optional[Path] = None):
+    def __init__(self,
+                 scenario_set_name: str,
+                 scenario_name: str,
+                 run_timestamp: datetime
+                 ):
         """
         Initialize scenario logger.
 
@@ -46,7 +52,32 @@ class ScenarioLogger(AbstractLogger):
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
             run_dir: Directory for log files (created if None)
         """
-        super().__init__(name=scenario_name, run_dir=run_dir)
+        super().__init__(name=scenario_name)
+
+        self.scenario_set_name = scenario_set_name
+        self.run_timestamp = run_timestamp
+
+        if self.file_logging_enabled:
+            # Create default run directory
+            self.run_dir = Path(self.file_log_root) / \
+                self.scenario_set_name / self.run_timestamp
+
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+
+            self.file_logger = FileLogger(
+                log_type="scenario",
+                run_dir=self.run_dir,
+                scenario_name=self.name,
+                log_level=self.file_log_level
+            )
+
+    def get_log_dir(self):
+        return self.run_dir
+
+    def reset_start_time(self, prepare_hint: str):
+        self.start_time = datetime.now()
+        self._log(LogLevel.DEBUG, "🚀 Starting Scenario " +
+                  self.name+" Log Timer ("+prepare_hint+").")
 
     def _get_timestamp(self) -> str:
         """
@@ -101,28 +132,9 @@ class ScenarioLogger(AbstractLogger):
             message: Log message (plain text, no colors)
             timestamp: Elapsed time timestamp
         """
-        # Lazy-create file logger
-        if self.file_logger is None:
-            from python.components.logger.file_logger import FileLogger
-
-            # Determine run directory
-            if self.run_dir is None:
-                # Create default run directory
-                run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                self.run_dir = Path(self.file_log_root) / \
-                    self.name / run_timestamp
-
-            self.run_dir.mkdir(parents=True, exist_ok=True)
-
-            self.file_logger = FileLogger(
-                log_type="scenario",
-                run_dir=self.run_dir,
-                scenario_name=self.name,
-                log_level=self.file_log_level
-            )
-
-        # Write to file (plain text format with elapsed time)
-        self.file_logger.write_log(level, message, timestamp)
+        if self.file_logger is not None:
+            # Write to file (plain text format with elapsed time)
+            self.file_logger.write_log(level, message, timestamp)
 
     def flush_buffer(self):
         """

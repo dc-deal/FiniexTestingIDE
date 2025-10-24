@@ -6,6 +6,7 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
 from python.configuration import AppConfigLoader
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.reporting.batch_summary import BatchSummary
@@ -27,6 +28,14 @@ def run_strategy_test():
     """
     Main strategy testing function with visual output
     """
+
+    # ============================================================
+    # System Info
+    # ============================================================
+    vLog.info(
+        f"System: {platform.system()} {platform.release()}")
+    vLog.info(f"Python: {platform.python_version()}")
+    vLog.info(f"CPU Count: {os.cpu_count()}")
 
     vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
 
@@ -61,14 +70,6 @@ def run_strategy_test():
         )
 
         # ============================================================
-        # System Info (logged AFTER file logger is attached)
-        # ============================================================
-        vLog.info(
-            f"System: {platform.system()} {platform.release()}")
-        vLog.info(f"Python: {platform.python_version()}")
-        vLog.info(f"CPU Count: {os.cpu_count()}")
-
-        # ============================================================
         # Initialize Data Worker
         # ============================================================
         data_worker = TickDataLoader()
@@ -89,7 +90,7 @@ def run_strategy_test():
         )
 
         # Run test
-        orchestrator.run()
+        batch_execution_summary = orchestrator.run()
 
         # ============================================
         # NEW (C#003): Direct Reporting via BatchSummary
@@ -109,12 +110,11 @@ def run_strategy_test():
         sys.stdout = old_stdout
         summary_with_colors = summary_capture.getvalue()
 
-        # Print to console (with colors)
-        print(summary_with_colors, end='')
-        # Strip ANSI codes for file logging
-        if vLog.file_logger:
-            summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
-            vLog.file_logger.write_summary(summary_clean)
+        # Print summary in console
+        print(summary_with_colors)
+        # print in scenario
+        summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
+        scenario_set.printed_summary_logger.info(summary_clean)
 
     except DataValidationError as e:
         vLog.validation_error(

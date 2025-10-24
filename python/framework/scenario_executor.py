@@ -113,6 +113,9 @@ class ScenarioExecutor:
             self.scenario = scenario
             self.scenario_index = scenario_index
 
+            # start global Log
+            self.scenario.logger.reset_start_time("Preperation")
+
             # Initialize live tracking
             self.deps.performance_log.start_scenario_tracking(
                 scenario_index=scenario_index,
