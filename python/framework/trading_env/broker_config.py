@@ -391,10 +391,3 @@ class BrokerConfig:
 
         # Fallback: No margin calculation available
         return 0.0
-
-    def __repr__(self) -> str:
-        """String representation"""
-        return (
-            f"BrokerConfig(broker='{self._broker_name}', "
-            f"type='{self.broker_type.value}')"
-        )

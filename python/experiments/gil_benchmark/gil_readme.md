@@ -105,7 +105,7 @@ def _run_parallel(self):
 
 ✅ Each scenario gets its own `TradeSimulator` instance  
 ✅ Each scenario gets its own `WorkerCoordinator` instance  
-✅ Results collected via `ScenarioSetPerformanceManager` (thread-safe)  
+✅ Results collected via `BatchExecutionSummary` (thread-safe)  
 ✅ No shared mutable state between scenarios
 
 This means the switch should be **straightforward**!

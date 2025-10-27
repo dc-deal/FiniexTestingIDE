@@ -62,7 +62,7 @@ class ScenarioConfigLoader:
         global_config = config.get('global', {})
         global_strategy = global_config.get('strategy_config', {})
         global_execution = global_config.get('execution_config', {})
-        # NEW: Parse global trade_simulator_config
+        # Parse global trade_simulator_config
         global_trade_simulator = global_config.get(
             'trade_simulator_config', {})
 
@@ -101,7 +101,7 @@ class ScenarioConfigLoader:
             if scenario_data.get('execution_config'):
                 scenario_execution.update(scenario_data['execution_config'])
 
-            # NEW: Merge trade_simulator_config (global + scenario-specific)
+            # Merge trade_simulator_config (global + scenario-specific)
             scenario_trade_simulator = {**global_trade_simulator}
             if scenario_data.get('trade_simulator_config'):
                 scenario_trade_simulator.update(
@@ -137,7 +137,7 @@ class ScenarioConfigLoader:
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,
                 execution_config=scenario_execution,
-                # NEW: Add trade_simulator_config to SingleScenario
+                # Add trade_simulator_config to SingleScenario
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
                 logger=ScenarioLogger(
                     scenario_set_name=scenario_set_name,

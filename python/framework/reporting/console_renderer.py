@@ -16,6 +16,8 @@ FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 import re
 from typing import Any, Dict, List
 
+from python.framework.types.process_data_types import ProcessResult
+
 
 class ConsoleRenderer:
     """
@@ -184,7 +186,7 @@ class ConsoleRenderer:
     # Grid Rendering
     # ============================================
 
-    def render_scenario_grid(self, scenarios, columns: int = 3, box_width: int = 38):
+    def render_scenario_grid(self, scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
         """
         Render scenarios in grid layout.
 
@@ -218,28 +220,21 @@ class ConsoleRenderer:
 
             print()  # Empty line between rows
 
-    def _create_scenario_box(self, scenario, box_width: int) -> List[str]:
+    def _create_scenario_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
         Create box lines for single scenario.
 
         FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
         FIXED: Direct attribute access instead of .get()
         """
+        performance_stats = scenario.tick_loop_results.performance_stats
         scenario_name = scenario.scenario_name[:28]
         symbol = scenario.symbol
-        ticks = scenario.ticks_processed
-        signals = scenario.signals_generated
-        rate = scenario.signal_rate
-
-        # Worker stats - FIXED: Direct attribute access!
-        batch_stats = scenario.worker_statistics  # BatchPerformanceStats object
-        total_workers = batch_stats.total_workers
-        total_worker_calls = batch_stats.total_worker_calls
-
-        # Decision logic stats
-        decisions = 0
-        if batch_stats.decision_logic:
-            decisions = batch_stats.decision_logic.decision_count
+        ticks = performance_stats.ticks_processed
+        signals = performance_stats.decision_logic.decision_count
+        buys = performance_stats.decision_logic.decision_buy_count
+        sells = performance_stats.decision_logic.decision_sell_count
+        rate = ticks/signals
 
         # Create content lines
         lines = [
@@ -247,9 +242,9 @@ class ConsoleRenderer:
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
             f"Signals: {signals} ({rate:.1%})",
-            f"Buy/Sell: {scenario.signals_gen_buy}/{scenario.signals_gen_sell}",
-            f"Worker: {total_workers}",
-            f"Decisions: {decisions}"
+            f"Buy/Sell: {buys}/{sells}",
+            f"Worker: {scenario.tick_loop_results.performance_stats.total_workers}",
+            f"Decisions: {scenario.tick_loop_results.performance_stats.decision_logic.decision_count}"
         ]
 
         return self.render_box(lines, box_width)

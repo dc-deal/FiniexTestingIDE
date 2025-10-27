@@ -1,11 +1,13 @@
 """
 FiniexTestingIDE - Scenario Requirements Calculator
 Calculates warmup and timeframe requirements from workers
+
 """
 
-from typing import List
-
+from typing import Dict, List, Any
 from python.framework.types.scenario_types import ScenarioRequirements
+from python.framework.factory.worker_factory import WorkerFactory
+from python.components.logger.abstract_logger import AbstractLogger
 
 
 def calculate_scenario_requirements(workers: List) -> ScenarioRequirements:
@@ -32,7 +34,8 @@ def calculate_scenario_requirements(workers: List) -> ScenarioRequirements:
         >>> workers = [rsi_worker, macd_worker, ema_worker]
         >>> reqs = calculate_scenario_requirements(workers)
         >>> print(reqs.max_warmup_bars)  # 200
-        >>> print(reqs.all_timeframes)   # ['1m', '5m', '15m']
+        >>> print(reqs.all_timeframes)   # ['M5', 'M30']
+        >>> print(reqs.warmup_by_timeframe)  # {'M5': 14, 'M30': 20}
     """
     # Collect warmup requirements and timeframes directly from workers
     all_warmup_reqs = []

@@ -79,7 +79,7 @@ class BatchPerformanceStats:
     Parallel execution metrics are integrated (no nested object).
 
     This is the top-level container returned by WorkerCoordinator.get_statistics()
-    and stored in ScenarioPerformanceStats.worker_statistics.
+    and stored in ScenarioPerformanceStats.tick_loop_results.performance_stats.
 
     Attributes:
         scenario_name: Name of the scenario
@@ -99,7 +99,6 @@ class BatchPerformanceStats:
         # Decision logic (integrated, not nested)
         decision_logic: DecisionLogicPerformanceStats or None
     """
-    scenario_name: str
     ticks_processed: int
     parallel_mode: bool
 

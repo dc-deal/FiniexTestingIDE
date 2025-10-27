@@ -130,7 +130,7 @@ class WorkerFactory:
         """
         Create a worker instance with validation.
 
-        REFACTORED: Keine temp_instance mehr - nutzt classmethods!
+        Keine temp_instance mehr - nutzt classmethods!
 
         New Flow:
         1. Resolve worker class

@@ -260,7 +260,7 @@ class AppConfigLoader:
         return logging_config.get("warn_on_parameter_override", True)
 
     # ============================================
-    # NEW: Log Level Methods (Validated)
+    # Log Level Methods (Validated)
     # ============================================
 
     @classmethod

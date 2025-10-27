@@ -18,7 +18,7 @@
         "log_level": "INFO"
     },
     "file_logging": {
-        "enabled": true,
+        "enabled": false,
         "log_level": "DEBUG",
         "log_root_path": "logs/scenario_sets"
     },

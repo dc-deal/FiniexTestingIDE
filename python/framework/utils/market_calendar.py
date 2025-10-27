@@ -2,7 +2,7 @@
 Market Calendar - Forex Market Hours and Weekend Detection
 Handles market open/close times and weekend gaps
 
-EXTENDED (C#002): Comprehensive weekend analysis and gap classification
+EXTENDED  Comprehensive weekend analysis and gap classification
 """
 
 from datetime import datetime, timedelta
@@ -28,7 +28,7 @@ class MarketCalendar:
     Forex market hours: Monday 00:00 UTC - Friday 23:59 UTC
     Closed: Saturday and Sunday
 
-    EXTENDED (C#002): Added detailed weekend statistics and gap classification
+    EXTENDED  Added detailed weekend statistics and gap classification
     """
 
     @staticmethod
@@ -150,7 +150,7 @@ class MarketCalendar:
         return current
 
     # =========================================================================
-    # NEW (C#002): EXTENDED WEEKEND ANALYSIS
+    # EXTENDED WEEKEND ANALYSIS
     # =========================================================================
 
     @staticmethod
@@ -158,7 +158,7 @@ class MarketCalendar:
         """
         Get detailed weekend statistics for a time range.
 
-        Refactored from TickDataAnalyzer._count_weekends() for central location.
+         from TickDataAnalyzer._count_weekends() for central location.
 
         Args:
             start: Start timestamp

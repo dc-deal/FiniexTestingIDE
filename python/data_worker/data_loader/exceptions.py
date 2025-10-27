@@ -61,7 +61,7 @@ class DuplicateReport:
 
         # File details with data_collector paths
         for i, file in enumerate(self.duplicate_files, 1):
-            # NEW (C#003b): Extract and display data_collector path
+            # Extract and display data_collector path
             relative_path = str(file).split(
                 'data/processed/')[-1] if 'data/processed/' in str(file) else file.name
 
@@ -74,14 +74,14 @@ class DuplicateReport:
                 ""
             ])
 
-        # NEW (C#003b): Metadata Comparison Section with data_collector
+        # Metadata Comparison Section with data_collector
         lines.extend([
             "📋 Parquet Metadata Comparison:",
             ""
         ])
 
         # Compare each metadata field across all files
-        # NEW (C#003b): Added data_collector to comparison fields
+        # Added data_collector to comparison fields
         metadata_fields = [
             "source_file", "symbol", "data_collector", "broker", "collector_version",
             "tick_count", "processed_at"
@@ -94,7 +94,7 @@ class DuplicateReport:
             # Format the comparison
             status = "✅ IDENTICAL" if is_identical else "⚠️  DIFFERENT"
 
-            # NEW (C#003b): Special highlighting for data_collector field
+            # Special highlighting for data_collector field
             if field == "data_collector":
                 if not is_identical:
                     status = "⚠️  CROSS-COLLECTOR DUPLICATE!"
@@ -117,7 +117,7 @@ class DuplicateReport:
             ""
         ])
 
-        # NEW (C#003b): Enhanced severity assessment considering data_collector
+        # Enhanced severity assessment considering data_collector
         metadata_identical = self._are_metadata_identical()
         collectors = [meta.get('data_collector', 'unknown')
                       for meta in self.metadata]
@@ -142,7 +142,7 @@ class DuplicateReport:
             ""
         ])
 
-        # NEW (C#003b): Enhanced recommendations considering data_collector
+        # Enhanced recommendations considering data_collector
         lines.extend([
             "💡 Recommended Actions:",
         ])
@@ -192,7 +192,7 @@ class DuplicateReport:
         processed_at is excluded because it changes on re-import
         data_collector is excluded because cross-collector duplicates are still duplicates
         """
-        # NEW (C#003b): Exclude data_collector from comparison
+        # Exclude data_collector from comparison
         critical_fields = ["source_file", "symbol",
                            "broker", "collector_version", "tick_count"]
 

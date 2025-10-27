@@ -41,9 +41,6 @@ class LiveScenarioStats:
     """
     Real-time statistics for a running scenario.
 
-    Used by ScenarioSetPerformanceManager to track live execution progress.
-    Replaces the previous Dict[str, Any] approach with a strongly-typed class.
-
     Attributes:
         scenario_name: Name of the scenario
         symbol: Trading symbol (e.g., "EURUSD")

@@ -2,7 +2,7 @@
 TimeRangeCoverageReport - Data Continuity Analysis
 Validates time range coverage and detects gaps in tick data
 
-NEW (C#002): Gap detection and human-readable coverage reports
+NEW  Gap detection and human-readable coverage reports
 """
 
 from dataclasses import dataclass

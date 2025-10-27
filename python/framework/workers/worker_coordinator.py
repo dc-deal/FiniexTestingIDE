@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Worker Coordinator (REFACTORED)
+FiniexTestingIDE - Worker Coordinator ()
 Coordinates multiple workers and delegates decision-making to DecisionLogic
 
 ARCHITECTURE CHANGE (Issue 2):
@@ -73,7 +73,7 @@ class WorkerCoordinator:
             - Vermeidet doppelte Logger-Übergabe
         """
         # ============================================
-        # NEW (Issue 2): Injected dependencies
+        # Injected dependencies
         # ============================================
         self.workers: Dict[str, AbstractBlackboxWorker] = {
             worker.name: worker for worker in workers
@@ -115,10 +115,9 @@ class WorkerCoordinator:
         )
 
         # ============================================
-        # NEW (V0.7): Performance Logging Integration
+        # Performance Logging Integration
         # ============================================
         self.performance_log = PerformanceLogCoordinator(
-            scenario_name=scenario_name,
             parallel_workers=self.parallel_workers
         )
 
@@ -327,7 +326,7 @@ class WorkerCoordinator:
             )
 
         # ============================================
-        # NEW (Issue 2): Delegate to DecisionLogic
+        # Delegate to DecisionLogic
         # ============================================
         # Time decision logic execution
         decision_start = time.perf_counter()
@@ -380,7 +379,7 @@ class WorkerCoordinator:
                     worker.set_state(WorkerState.READY)
                     self._statistics["worker_calls"] += 1
 
-                    # NEW (V0.7): Record worker performance
+                    # Record worker performance
                     if worker.performance_logger:
                         worker.performance_logger.record(computation_time_ms)
 
@@ -439,7 +438,7 @@ class WorkerCoordinator:
                 # Track sequential time for comparison
                 sequential_time_estimate += computation_time_ms
 
-                # NEW (V0.7): Record worker performance
+                # Record worker performance
                 if worker.performance_logger:
                     worker.performance_logger.record(computation_time_ms)
 
@@ -455,7 +454,7 @@ class WorkerCoordinator:
 
         if time_saved > 0:
             self._statistics["parallel_execution_time_saved_ms"] += time_saved
-            # NEW (V0.7): Record parallel performance
+            # Record parallel performance
             self.performance_log.record_parallel_time_saved(time_saved)
 
     def _compute_worker(
@@ -495,17 +494,10 @@ class WorkerCoordinator:
         return self._worker_results.copy()
 
     def cleanup(self):
-        """
-        Cleanup resources.
-
-        UNCHANGED - Cleanup works exactly as before.
-        """
-        self.logger.info("🧹 Cleaning up WorkerCoordinator...")
-
-        # Shutdown thread pool
+        """Clean up resources."""
         if self._thread_pool:
             self._thread_pool.shutdown(wait=True)
-            self.logger.debug("  ✓ Thread pool shutdown")
+            self._thread_pool = None
 
         for worker in self.workers.values():
             worker.set_state(WorkerState.IDLE)

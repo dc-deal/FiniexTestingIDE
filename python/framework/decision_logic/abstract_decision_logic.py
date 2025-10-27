@@ -1,8 +1,8 @@
 """
-FiniexTestingIDE - Abstract Decision Logic (REFACTORED)
+FiniexTestingIDE - Abstract Decision Logic ()
 Base class for all decision logic implementations
 
-REFACTORED:
+:
 - Added get_required_order_types() as abstractmethod
 - Added execute_decision() as abstractmethod
 - Added set_trading_api() for API injection after validation
@@ -37,7 +37,7 @@ class AbstractDecisionLogic(ABC):
     - DecisionLogic orchestrates results (second level)
     - No sub-workers, no hidden dependencies
 
-    REFACTORED Architecture:
+     Architecture:
     1. get_required_order_types() declares needed order types
     2. BatchOrchestrator validates against broker capabilities
     3. DecisionTradingAPI is injected after validation
@@ -112,7 +112,7 @@ class AbstractDecisionLogic(ABC):
         }
 
     # ============================================
-    # REFACTORED: New abstractmethods
+    # New abstractmethods
     # ============================================
 
     @abstractmethod
@@ -256,7 +256,7 @@ class AbstractDecisionLogic(ABC):
         pass
 
     # ============================================
-    # REFACTORED: API Injection
+    # API Injection
     # ============================================
 
     def set_trading_api(self, trading_api: DecisionTradingAPI):

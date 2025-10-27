@@ -1,29 +1,16 @@
 """
 FiniexTestingIDE - Profiling Summary
 Performance profiling and bottleneck analysis reporting
-
-REFACTORED:
-- Uses typed ProfilingData instead of Dict[str, Any]
-- Removed _build_profile_from_dict (no longer needed!)
-- Clean direct property access instead of nested dict navigation
-- Simplified _extract_profile_from_scenario
-
-Architecture:
-- Uses ScenarioSetPerformanceManager for profiling data
-- Creates TickLoopProfile from typed ProfilingData
-- Renders via ConsoleRenderer
 """
 
-from typing import List, Optional
-from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager
-)
+from typing import Any, Dict, List, Optional
 from python.framework.types.performance_metrics_types import (
     TickLoopProfile,
     OperationProfile,
     ProfilingMetrics
 )
-from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult, ProcessTickLoopResult
+from python.framework.types.scenario_set_performance_types import ProfilingData
 
 
 class ProfilingSummary:
@@ -38,15 +25,17 @@ class ProfilingSummary:
     - Optimization recommendations
     """
 
-    def __init__(self, performance_log: ScenarioSetPerformanceManager):
+    def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]
+                 ):
         """
         Initialize profiling summary.
 
         Args:
             performance_log: Performance statistics container
         """
-        self.performance_log = performance_log
-        self.all_scenarios = performance_log.get_all_scenarios()
+        self.batch_execution_summary = batch_execution_summary
+        self.profiling_data_map = profiling_data_map
+        self.all_scenarios = batch_execution_summary.scenario_list
 
         # Build profiling metrics from scenarios
         self.profiling_metrics = self._build_profiling_metrics()
@@ -130,12 +119,10 @@ class ProfilingSummary:
         print()
 
     def _extract_profile_from_scenario(
-        self, scenario: ScenarioPerformanceStats
+        self, scenario: ProcessResult
     ) -> Optional[TickLoopProfile]:
         """
-        Extract TickLoopProfile from ScenarioPerformanceStats.
-
-        REFACTORED: Direct typed access to profiling_data.
+        Direct typed access to profiling_data.
         No more nested dict navigation!
 
         Args:
@@ -144,14 +131,10 @@ class ProfilingSummary:
         Returns:
             TickLoopProfile or None if no profiling data
         """
-        # Check if profiling data exists
-        if not scenario.profiling_data:
-            return None
-
-        profiling = scenario.profiling_data  # Typed ProfilingData!
-
         # Build operation profiles from typed data
         operations = []
+
+        profiling = self.profiling_data_map.get(scenario.scenario_index)
 
         for op_name, timing in profiling.operations.items():
             # Calculate percentage
@@ -168,15 +151,16 @@ class ProfilingSummary:
 
         # Sort by percentage (highest first)
         operations.sort(key=lambda op: op.percentage, reverse=True)
+        ticks_processed = scenario.tick_loop_results.performance_stats.ticks_processed
 
         return TickLoopProfile(
             scenario_index=scenario.scenario_index,
             scenario_name=scenario.scenario_name,
-            total_ticks=scenario.ticks_processed,
+            total_ticks=ticks_processed,
             operations=operations,
             total_time_ms=profiling.total_per_tick_ms,
-            avg_time_per_tick_ms=profiling.total_per_tick_ms / scenario.ticks_processed
-            if scenario.ticks_processed > 0 else 0.0
+            avg_time_per_tick_ms=profiling.total_per_tick_ms / ticks_processed
+            if ticks_processed > 0 else 0.0
         )
 
     def _build_profiling_metrics(self) -> ProfilingMetrics:
@@ -184,7 +168,8 @@ class ProfilingSummary:
         metrics = ProfilingMetrics()
 
         for scenario in self.all_scenarios:
-            profile = self._extract_profile_from_scenario(scenario)
+            profile = self._extract_profile_from_scenario(
+                scenario)
             if profile:
                 metrics.add_scenario_profile(profile)
 

@@ -23,7 +23,7 @@ class PerformanceLogCoordinator:
     This is the central access point for performance metrics.
     """
 
-    def __init__(self, scenario_name: str, parallel_workers: bool = False):
+    def __init__(self, parallel_workers: bool = False):
         """
         Initialize performance coordinator.
 
@@ -31,7 +31,6 @@ class PerformanceLogCoordinator:
             scenario_name: Name of the scenario being tracked
             parallel_workers: Whether workers run in parallel mode
         """
-        self.scenario_name = scenario_name
         self.parallel_workers = parallel_workers
 
         # Performance loggers
@@ -125,7 +124,6 @@ class PerformanceLogCoordinator:
 
         # Build BatchPerformanceStats
         return BatchPerformanceStats(
-            scenario_name=self.scenario_name,
             ticks_processed=self.ticks_processed,
             parallel_mode=self.parallel_workers,
             total_workers=len(self.worker_logs),

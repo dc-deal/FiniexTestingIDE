@@ -149,7 +149,7 @@ class TickDataAnalyzer:
         """
         Count weekends between two dates.
 
-        REFACTORED (C#002): Now uses MarketCalendar.get_weekend_statistics()
+          Now uses MarketCalendar.get_weekend_statistics()
         for consistency across codebase.
 
         Args:

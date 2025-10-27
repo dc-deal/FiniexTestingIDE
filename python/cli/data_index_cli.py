@@ -2,7 +2,7 @@
 FiniexTestingIDE - Data Index CLI
 Command-line tools for Parquet index management and tick data import
 
-NEW: Import command with UTC offset support (explicit sign required)
+Import command with UTC offset support (explicit sign required)
 
 Usage:
     python python/cli/data_index_cli.py import [--override] [--time-offset +N/-N]

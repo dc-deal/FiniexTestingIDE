@@ -99,7 +99,7 @@ class KrakenAdapter(IOrderCapabilities):
 
         Kraken features:
         - Common: Market, Limit
-        - Extended: StopLimit, Iceberg
+        - StopLimit, Iceberg
         - NOT supported: Stop (Kraken uses StopLimit instead)
         """
         return OrderCapabilities(

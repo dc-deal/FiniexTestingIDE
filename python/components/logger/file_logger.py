@@ -125,3 +125,18 @@ class FileLogger:
         except Exception as e:
             # Fail silently - don't break execution on file write errors
             print(f"Warning: Failed to write to log file: {e}")
+
+    def close(self):
+        """
+        Close file handle.
+
+        CRITICAL: Must be called to prevent ProcessPool shutdown delays!
+        Open file handles prevent process termination - Python waits ~11s for timeout.
+        """
+        if self.file_handle:
+            try:
+                self.file_handle.flush()
+                self.file_handle.close()
+                self.file_handle = None
+            except Exception as e:
+                print(f"Warning: Failed to close log file: {e}")

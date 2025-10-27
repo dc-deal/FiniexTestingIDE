@@ -2,10 +2,10 @@
 # python/framework/decision_logic/core/aggressive_trend.py
 # ============================================
 """
-FiniexTestingIDE - Aggressive Trend Decision Logic (REFACTORED + FIXED)
+FiniexTestingIDE - Aggressive Trend Decision Logic ( + FIXED)
 Alternative implementation demonstrating different trading philosophy
 
-REFACTORED:
+:
 - Implements get_required_order_types() → [OrderType.MARKET]
 - Implements execute_decision() → Market orders with margin checks
 - Uses DecisionTradingAPI instead of TradeSimulator directly
@@ -86,7 +86,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         Initialize Aggressive Trend logic.
 
-        REFACTORED: No longer accepts trading_env parameter.
+        No longer accepts trading_env parameter.
 
         Args:
             name: Logic identifier
@@ -113,7 +113,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         )
 
     # ============================================
-    # REFACTORED: New abstractmethods
+    # New abstractmethods
     # ============================================
 
     def get_required_order_types(self) -> List[OrderType]:
@@ -179,7 +179,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             return None
 
         # ============================================
-        # NEW: Get BOTH positions AND pending orders
+        # Get BOTH positions AND pending orders
         # ============================================
         open_positions = self.trading_api.get_open_positions()
         pending_orders = self.trading_api.get_pending_orders()

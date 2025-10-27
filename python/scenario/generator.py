@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Scenario Config System
-Auto-Generator (REFACTORED for Worker Instance System)
+Auto-Generator ( for Worker Instance System)
 """
 
 from typing import List, Dict, Any, Optional
@@ -19,9 +19,9 @@ class ScenarioGenerator:
     """
     Generates test scenarios automatically from available data.
 
-    REFACTORED (Worker Instance System): Now generates worker_instances
+     (Worker Instance System): Now generates worker_instances
     with instance names and supports multiple instances per type.
-    NEW (C#003): Supports trade_simulator_config for all generation strategies.
+    NEW  Supports trade_simulator_config for all generation strategies.
     """
 
     def __init__(self, data_loader: TickDataLoader):
@@ -67,8 +67,8 @@ class ScenarioGenerator:
         """
         Generate scenarios for a symbol using different strategies.
 
-        REFACTORED (Worker Instance System): Uses worker_instances dict.
-        NEW (C#003): Added trade_simulator_config parameter.
+         (Worker Instance System): Uses worker_instances dict.
+        NEW  Added trade_simulator_config parameter.
 
         Args:
             symbol: Trading symbol
@@ -204,8 +204,8 @@ class ScenarioGenerator:
         """
         Generate scenarios for multiple symbols.
 
-        REFACTORED (Worker Instance System): Uses worker_instances dict.
-        NEW (C#003): Added trade_simulator_config parameter.
+         (Worker Instance System): Uses worker_instances dict.
+        NEW  Added trade_simulator_config parameter.
 
         Args:
             symbols: List of symbols (None = all available)
@@ -260,8 +260,8 @@ class ScenarioGenerator:
         """
         Generate scenarios by splitting data into time windows.
 
-        REFACTORED (Worker Instance System): Uses worker_instances dict.
-        NEW (C#003): Added trade_simulator_config parameter.
+         (Worker Instance System): Uses worker_instances dict.
+        NEW  Added trade_simulator_config parameter.
 
         Args:
             symbol: Trading symbol
@@ -377,7 +377,7 @@ class ScenarioGenerator:
         TODO: Implement volatility detection.
         For now, falls back to time_windows.
 
-        NEW (C#003): Added trade_simulator_config parameter.
+        NEW  Added trade_simulator_config parameter.
         """
         vLog.warning(
             f"Volatility-based generation not yet implemented. Using time_windows.")
@@ -403,7 +403,7 @@ class ScenarioGenerator:
         TODO: Implement session-based generation.
         For now, falls back to time_windows.
 
-        NEW (C#003): Added trade_simulator_config parameter.
+        NEW  Added trade_simulator_config parameter.
         """
         vLog.warning(
             f"Session-based generation not yet implemented. Using time_windows.")

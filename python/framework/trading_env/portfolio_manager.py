@@ -1,8 +1,8 @@
 """
-FiniexTestingIDE - Portfolio Manager (REFACTORED)
+FiniexTestingIDE - Portfolio Manager ()
 Tracks account balance, equity, open positions, and P&L with full fee tracking
 
-REFACTORED CHANGES:
+ CHANGES:
 - Direct attributes for statistics (_total_trades, _winning_trades, etc.)
 - CostBreakdown object instead of dict for _cost_tracking
 - Always-copy public API (using replace())
@@ -31,7 +31,7 @@ class Position:
     """
     Open trading position with full fee tracking.
 
-    EXTENDED: Now includes List[AbstractTradingFee] for all costs.
+    Now includes List[AbstractTradingFee] for all costs.
     """
     position_id: str
     symbol: str
@@ -44,7 +44,7 @@ class Position:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
 
-    # EXTENDED: Fee objects (polymorphic)
+    # Fee objects (polymorphic)
     fees: List[AbstractTradingFee] = field(default_factory=list)
 
     # Current state
@@ -131,7 +131,7 @@ class PortfolioManager:
     """
     Portfolio Manager - Tracks account state and positions.
 
-    REFACTORED:
+    :
     - Direct attributes for statistics (no nested _statistics object)
     - CostBreakdown object for _cost_tracking (separate concern)
     - Always-copy public API for safety
@@ -164,10 +164,10 @@ class PortfolioManager:
         # Position counter
         self._position_counter = 0
 
-        # REFACTORED: Cost tracking as CostBreakdown object
+        # Cost tracking as CostBreakdown object
         self._cost_tracking = CostBreakdown()
 
-        # REFACTORED: Statistics as direct attributes (no nested object)
+        # Statistics as direct attributes (no nested object)
         self._total_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0
@@ -195,7 +195,7 @@ class PortfolioManager:
         """
         Open new position.
 
-        EXTENDED: Accepts entry_fee (typically SpreadFee).
+        Accepts entry_fee (typically SpreadFee).
         """
         # Generate position ID
         self._position_counter += 1
@@ -215,11 +215,11 @@ class PortfolioManager:
             magic_number=magic_number
         )
 
-        # EXTENDED: Attach entry fee
+        # Attach entry fee
         if entry_fee:
             position.add_fee(entry_fee)
 
-            # REFACTORED: Update cost tracking object
+            # Update cost tracking object
             from .trading_fees import FeeType
             if entry_fee.fee_type == FeeType.SPREAD:
                 self._cost_tracking.total_spread_cost += entry_fee.cost
@@ -242,18 +242,18 @@ class PortfolioManager:
         """
         Close position and realize P&L.
 
-        EXTENDED: Accepts exit_fee (commission or final swap).
+        Accepts exit_fee (commission or final swap).
         """
         if position_id not in self.open_positions:
             raise ValueError(f"Position {position_id} not found")
 
         position = self.open_positions[position_id]
 
-        # EXTENDED: Attach exit fee if provided
+        # Attach exit fee if provided
         if exit_fee:
             position.add_fee(exit_fee)
 
-            # REFACTORED: Update cost tracking object
+            # Update cost tracking object
             from .trading_fees import FeeType
             if exit_fee.fee_type == FeeType.COMMISSION:
                 self._cost_tracking.total_commission += exit_fee.cost
@@ -359,7 +359,7 @@ class PortfolioManager:
         """
         Get current account information.
 
-        REFACTORED: Always returns copy (safe for external use).
+        Always returns copy (safe for external use).
         """
         # Calculate total unrealized P&L
         unrealized_pnl = sum(
@@ -435,14 +435,14 @@ class PortfolioManager:
         return account.margin_level < self.stop_out_level
 
     # ============================================
-    # Cost Tracking (REFACTORED & TYPED)
+    # Cost Tracking ( & TYPED)
     # ============================================
 
     def get_cost_breakdown(self) -> CostBreakdown:
         """
         Get breakdown of all trading costs.
 
-        REFACTORED: Returns immutable copy (safe for external use).
+        Returns immutable copy (safe for external use).
 
         Returns:
             CostBreakdown with total_spread_cost, total_commission, total_swap, total_fees
@@ -450,14 +450,14 @@ class PortfolioManager:
         return replace(self._cost_tracking)
 
     # ============================================
-    # Statistics (REFACTORED & TYPED)
+    # Statistics ( & TYPED)
     # ============================================
 
     def _update_statistics(self, realized_pnl: float) -> None:
         """
         Update trading statistics after position close.
 
-        REFACTORED: Uses direct attributes instead of dict.
+        Uses direct attributes instead of dict.
         """
         self._total_trades += 1
 
@@ -482,7 +482,7 @@ class PortfolioManager:
         """
         Get portfolio statistics with fee breakdown.
 
-        REFACTORED: Creates new PortfolioStats from direct attributes.
+        Creates new PortfolioStats from direct attributes.
         Always returns new object (safe for external use).
         """
         # Calculate win rate
@@ -521,10 +521,10 @@ class PortfolioManager:
         self.closed_positions.clear()
         self._position_counter = 0
 
-        # REFACTORED: Reset cost tracking object
+        # Reset cost tracking object
         self._cost_tracking = CostBreakdown()
 
-        # REFACTORED: Reset direct attributes
+        # Reset direct attributes
         self._total_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0

@@ -2,13 +2,13 @@
 FiniexTestingIDE - Scenario Config Saver
 Saves SingleScenario objects to JSON configuration files
 
-REFACTORED (Worker Instance System):
+ (Worker Instance System):
 - Uses worker_instances dict instead of worker_types array
 - worker_instances only in global (architecture)
 - workers can be overridden per scenario (parameters only)
 - Proper cascade support for new structure
 
-FIXED (C#003):
+FIXED 
 - trade_simulator_config support in save/load
 - Proper override detection for all config sections
 """
@@ -28,7 +28,7 @@ class ScenarioConfigSaver:
     """
     Saves SingleScenario objects to JSON config files.
 
-    REFACTORED (Worker Instance System): Properly handles worker_instances
+     (Worker Instance System): Properly handles worker_instances
     and workers dict with instance names as keys.
     """
 
@@ -51,7 +51,7 @@ class ScenarioConfigSaver:
         """
         Save scenarios to JSON config file.
 
-        REFACTORED (Worker Instance System): Uses worker_instances dict.
+         (Worker Instance System): Uses worker_instances dict.
 
         Strategy:
         1. Extract global config from first scenario
@@ -134,7 +134,7 @@ class ScenarioConfigSaver:
         """
         Build scenario dict with only overrides vs global.
 
-        REFACTORED (Worker Instance System): Properly handles worker_instances
+         (Worker Instance System): Properly handles worker_instances
         as architecture (global only) and workers as parameters (can override).
 
         Args:
