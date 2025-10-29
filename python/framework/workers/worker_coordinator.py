@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision
-from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.market_data_types import Bar, TickData
 
 from python.framework.types.worker_types import (
     WorkerState)

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
-from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.market_data_types import Bar, TickData
 
 
 # ============================================================================

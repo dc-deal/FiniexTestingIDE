@@ -24,7 +24,7 @@ from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.trading_env.trade_simulator import TradeSimulator
-from python.framework.types.tick_types import TickData
+from python.framework.types.market_data_types import TickData
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.components.logger.scenario_logger import ScenarioLogger

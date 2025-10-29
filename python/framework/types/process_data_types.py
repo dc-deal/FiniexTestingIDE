@@ -20,7 +20,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.performance_stats_types import BatchPerformanceStats
 from python.framework.types.scenario_set_types import SingleScenario
-from python.framework.types.tick_types import TickData
+from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import CostBreakdown, ExecutionStats, PortfolioStats
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 

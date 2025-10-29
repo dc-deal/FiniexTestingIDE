@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
-from python.framework.types.tick_types import TickData
+from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position

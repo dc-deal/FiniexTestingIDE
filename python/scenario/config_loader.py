@@ -139,11 +139,6 @@ class ScenarioConfigLoader:
                 execution_config=scenario_execution,
                 # Add trade_simulator_config to SingleScenario
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
-                logger=ScenarioLogger(
-                    scenario_set_name=scenario_set_name,
-                    scenario_name=scenario_data['name'],
-                    run_timestamp=run_timestamp
-                )
             )
             scenarios.append(scenario)
 

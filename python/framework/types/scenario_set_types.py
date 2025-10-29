@@ -26,7 +26,6 @@ class SingleScenario:
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
-    logger: ScenarioLogger = None
 
     # ============================================
     # STRATEGY PARAMETERS

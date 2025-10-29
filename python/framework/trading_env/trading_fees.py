@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
-from python.framework.types.tick_types import TickData
+from python.framework.types.market_data_types import TickData
 
 
 class FeeType(Enum):
