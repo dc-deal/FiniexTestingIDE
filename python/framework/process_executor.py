@@ -8,6 +8,7 @@ import traceback
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
+from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
@@ -54,8 +55,17 @@ def process_main(
     """
     try:
         start_time = time.time()
+        # === CREATE SCENARIO LOGGER ===
+        # CORRECTED: Use shared run_timestamp from BatchOrchestrator
+        scenario_logger = ScenarioLogger(
+            scenario_set_name=config.scenario_set_name,
+            scenario_name=config.name,
+            run_timestamp=config.run_timestamp
+        )
+
         # === STARTUP PREPARATION ===
-        prepared_objects = process_startup_preparation(config, shared_data)
+        prepared_objects = process_startup_preparation(
+            config, shared_data, scenario_logger)
         scenario_logger = prepared_objects.scenario_logger
         scenario_logger.debug(
             f"🔄 Process preperation finished")
@@ -101,7 +111,8 @@ def process_main(
 
 def process_startup_preparation(
     config: ProcessScenarioConfig,
-    shared_data: ProcessDataPackage
+    shared_data: ProcessDataPackage,
+    scenario_logger: ScenarioLogger
 ) -> ProcessPreparedDataObjects:
     """
     Create all objects needed in subprocess.
@@ -123,13 +134,6 @@ def process_startup_preparation(
     Returns:
         Dictionary with all prepared objects
     """
-    # === CREATE SCENARIO LOGGER ===
-    # CORRECTED: Use shared run_timestamp from BatchOrchestrator
-    scenario_logger = ScenarioLogger(
-        scenario_set_name=config.scenario_set_name,
-        scenario_name=config.name,
-        run_timestamp=config.run_timestamp
-    )
 
     scenario_logger.info(f"🚀 Starting scenario: {config.name}")
 

@@ -114,23 +114,23 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
+import time
+from datetime import datetime
+import traceback
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from typing import Dict, List
+from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
+from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
+from python.framework.process_executor import ProcessExecutor, process_main
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.configuration import AppConfigLoader
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult
+from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+import sys
 import os
 from python.framework.factory.worker_factory import WorkerFactory
-import sys
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult
-from python.configuration import AppConfigLoader
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.framework.process_executor import ProcessExecutor, process_main
-from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
-from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
-from python.data_worker.data_loader.core import TickDataLoader
-from typing import Dict, List
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-import traceback
-from datetime import datetime
-import time
 
 # Auto-detect if debugger is attached
 DEBUGGER_ACTIVE = (
@@ -339,8 +339,8 @@ class BatchOrchestrator:
                 scenario=scenario,
                 app_config=self.appConfig,
                 scenario_index=idx,
-                scenario_set_name=self.scenario_set_name,  # CORRECTED
-                run_timestamp=self.run_timestamp            # CORRECTED
+                scenario_set_name=self.scenario_set_name,
+                run_timestamp=self.scenario_set.logger.get_run_timestamp()
             )
 
             # Execute
@@ -410,8 +410,8 @@ class BatchOrchestrator:
                     scenario=scenario,
                     app_config=self.appConfig,
                     scenario_index=idx,
-                    scenario_set_name=self.scenario_set_name,  # CORRECTED
-                    run_timestamp=self.run_timestamp            # CORRECTED
+                    scenario_set_name=self.scenario_set_name,
+                    run_timestamp=self.scenario_set.logger.get_run_timestamp()
                 )
 
                 # Submit to executor

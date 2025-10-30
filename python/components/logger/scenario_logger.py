@@ -69,6 +69,9 @@ class ScenarioLogger(AbstractLogger):
                 log_level=self.file_log_level
             )
 
+    def get_run_timestamp(self):
+        return self.run_timestamp
+
     def get_log_dir(self):
         return self.run_dir
 
