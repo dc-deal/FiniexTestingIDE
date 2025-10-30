@@ -12,6 +12,7 @@ from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.order_types import OrderStatus
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
@@ -255,8 +256,6 @@ def execute_tick_loop(
     # Performance profiling
     profile_times = defaultdict(float)
     profile_counts = defaultdict(int)
-
-    signals = []
     tick_count = 0
 
     scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
@@ -300,34 +299,24 @@ def execute_tick_loop(
         profile_times['worker_decision'] += (t8 - t7) * 1000
         profile_counts['worker_decision'] += 1
 
-        # === 5. Order Execution (if any) ===
-        if decision and decision.action != "FLAT":
-            t9 = time.perf_counter()
-            try:
-                order_result = decision_logic.execute_decision(
-                    decision, tick
-                )
+        # === 5. Order Execution ===
+        t9 = time.perf_counter()
+        try:
+            decision_logic.execute_decision(
+                decision, tick
+            )
+            # self.deps.performance_log.update_live_stats(
+            #     scenario_index=self.scenario_index,
+            #     ticks_processed=tick_count
+            # )
+        except Exception as e:
+            scenario_logger.error(
+                f"Order execution failed: \n{traceback.format_exc()}"
+            )
 
-                if order_result and order_result.status == OrderStatus.PENDING:
-                    signals.append({
-                        **decision.to_dict(),
-                        'order_id': order_result.order_id,
-                        'executed_price': order_result.executed_price,
-                        'lot_size': order_result.executed_lots
-                    })
-
-                    # self.deps.performance_log.update_live_stats(
-                    #     scenario_index=self.scenario_index,
-                    #     ticks_processed=tick_count
-                    # )
-            except Exception as e:
-                scenario_logger.error(
-                    f"Order execution failed: \n{traceback.format_exc()}"
-                )
-
-            t10 = time.perf_counter()
-            profile_times['order_execution'] += (t10 - t9) * 1000
-            profile_counts['order_execution'] += 1
+        t10 = time.perf_counter()
+        profile_times['order_execution'] += (t10 - t9) * 1000
+        profile_counts['order_execution'] += 1
 
         # === 6. Periodic Stats Update ===
         # if tick_count % 500 == 0:
@@ -346,27 +335,24 @@ def execute_tick_loop(
             tick_end - tick_start) * 1000
 
     scenario_logger.info(
-        f"✅ Tick loop completed: {tick_count:,} ticks, {len(signals)} signals")
+        f"✅ Tick loop completed: {tick_count:,} ticks")
 
-    # close opten trades
+    # === CLOSE OPEN TRADES ===
     trade_simulator.close_all_remaining_orders()
 
-    scenario_logger.info(
-        f"✅ Tick loop completed: {tick_count:,} ticks, {len(signals)} signals")
-
     # === CLEANUP COORDINATOR ===
-    scenario_logger.info(
-        f"[CLEANUP] {config.name} calling cleanup at {time.time()}")
     coordinator.cleanup()
     scenario_logger.debug("✅ Coordinator cleanup completed")
 
     # === GET RESULTS ===
+    decision_statistics = decision_logic.get_statistics()
     performance_stats = coordinator.performance_log.get_snapshot()
     portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
     execution_stats = trade_simulator.get_execution_stats()
     cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
 
     return ProcessTickLoopResult(
+        decision_statistics=decision_statistics,
         performance_stats=performance_stats,
         portfolio_stats=portfolio_stats,
         execution_stats=execution_stats,

@@ -30,6 +30,8 @@ FUTURE NOTES:
 
 from typing import Any, Dict, List, Optional
 
+from python.framework.trading_env.order_execution_engine import PendingOrder
+
 from .trade_simulator import TradeSimulator
 from ..types.order_types import (
     OrderType,
@@ -159,7 +161,7 @@ class DecisionTradingAPI:
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             order_type: OrderType.MARKET or OrderType.LIMIT (MVP)
-            direction: OrderDirection.BUY or OrderDirection.SELL
+            direction: OrderDirection.LONG or OrderDirection.SHORT
             lots: Position size
             **kwargs: Optional params (stop_loss, take_profit, price for limit)
 
@@ -170,7 +172,7 @@ class DecisionTradingAPI:
             result = self.trading_api.send_order(
                 symbol="EURUSD",
                 order_type=OrderType.MARKET,
-                direction=OrderDirection.BUY,
+                direction=OrderDirection.LONG,
                 lots=0.1,
                 stop_loss=1.0950,
                 take_profit=1.1050
@@ -241,7 +243,7 @@ class DecisionTradingAPI:
 
         return all_positions
 
-    def get_pending_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_pending_orders(self, symbol: Optional[str] = None) -> List[PendingOrder]:
         """
         Get list of pending orders waiting for execution.
 

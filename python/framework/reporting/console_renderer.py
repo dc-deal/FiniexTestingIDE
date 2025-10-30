@@ -228,28 +228,43 @@ class ConsoleRenderer:
         FIXED: Direct attribute access instead of .get()
         """
         performance_stats = scenario.tick_loop_results.performance_stats
+        portfolio_stats = scenario.tick_loop_results.portfolio_stats
+        decision_statistics = scenario.tick_loop_results.decision_statistics
         scenario_name = scenario.scenario_name[:28]
         symbol = scenario.symbol
         ticks = performance_stats.ticks_processed
-        signals = performance_stats.decision_logic.decision_count
-        buys = performance_stats.decision_logic.decision_buy_count
-        sells = performance_stats.decision_logic.decision_sell_count
-        rate = ticks/signals
+        nfSig = decision_statistics.buy_signals + decision_statistics.sell_signals
+        buys = decision_statistics.buy_signals
+        sells = decision_statistics.sell_signals
+        flats = decision_statistics.flat_signals
+
+        rate = 100
+        if ticks > 0:
+            rate = nfSig / ticks
+
+        action_trades = portfolio_stats.total_long_trades
+        long_trades = portfolio_stats.total_short_trades
+        short_trades = portfolio_stats.total_short_trades
+        rate_trades = 100
+        if ticks > 0:
+            rate_trades = action_trades / ticks
 
         # Create content lines
         lines = [
             f"📋 {scenario_name}",
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
-            f"Signals: {signals} ({rate:.1%})",
-            f"Buy/Sell: {buys}/{sells}",
+            f"Non-Flat Sign.: {nfSig} ({rate:.1%})",
+            f"B/S/F: {buys}/{sells}/{flats}",
+            f"Trades: {action_trades} ({rate_trades:.1%})",
+            f"Long/Short: {long_trades}/{short_trades}",
             f"Worker: {scenario.tick_loop_results.performance_stats.total_workers}",
             f"Decisions: {scenario.tick_loop_results.performance_stats.decision_logic.decision_count}"
         ]
 
         return self.render_box(lines, box_width)
 
-    def render_portfolio_grid(self, scenarios: List[Dict], columns: int = 3, box_width: int = 38):
+    def render_portfolio_grid(self,  scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
         """
         Render portfolio stats in grid layout.
 
@@ -283,17 +298,16 @@ class ConsoleRenderer:
 
             print()  # Empty line between rows
 
-    def _create_portfolio_box(self, scenario: Dict, box_width: int) -> List[str]:
+    def _create_portfolio_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
         Create box lines for portfolio stats.
 
         FULLY TYPED: Works with typed dataclasses instead of dicts.
         """
-        scenario_name = scenario.get('scenario_set_name', 'Unknown')[:28]
-
-        portfolio_stats = scenario.get('portfolio_statistics')
-        execution_stats = scenario.get('execution_statistics')
-        cost_breakdown = scenario.get('cost_breakdown')
+        scenario_name = scenario.scenario_name[:28]
+        portfolio_stats = scenario.tick_loop_results.portfolio_stats
+        execution_stats = scenario.tick_loop_results.execution_stats
+        cost_breakdown = scenario.tick_loop_results.cost_breakdown
 
         # Handle case where stats might be None
         if not portfolio_stats or not execution_stats or not cost_breakdown:

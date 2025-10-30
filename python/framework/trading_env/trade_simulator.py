@@ -21,7 +21,7 @@ from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
-from .order_execution_engine import OrderExecutionEngine
+from .order_execution_engine import OrderExecutionEngine, PendingOrder
 from ..types.order_types import (
     OrderType,
     OrderDirection,
@@ -238,7 +238,7 @@ class TradeSimulator:
         # Submit to execution engine
         engine_order_id = self.execution_engine.submit_order(
             symbol=symbol,
-            direction=direction.value,
+            direction=direction,
             lots=lots,
             current_tick=self._tick_counter,
             **kwargs
@@ -250,7 +250,7 @@ class TradeSimulator:
             status=OrderStatus.PENDING,
             metadata={
                 "symbol": symbol,
-                "direction": direction.value,
+                "direction": direction,
                 "lots": lots,
                 "submitted_at_tick": self._tick_counter
             }
@@ -269,9 +269,9 @@ class TradeSimulator:
         bid, ask = self.get_current_price(pending_order.symbol)
 
         # Determine entry price
-        if pending_order.direction == "BUY":
+        if pending_order.direction == OrderDirection.LONG:
             entry_price = ask
-        else:
+        if pending_order.direction == OrderDirection.SHORT:
             entry_price = bid
 
         # Calculate spread fee
@@ -411,7 +411,7 @@ class TradeSimulator:
             bid, ask = self.get_current_price(position.symbol)
 
             # Determine close price
-            if position.direction == OrderDirection.BUY:
+            if position.direction == OrderDirection.LONG:
                 close_price = bid
             else:
                 close_price = ask
@@ -476,52 +476,26 @@ class TradeSimulator:
         """Get all open positions"""
         return self.portfolio.get_open_positions()
 
-    def get_pending_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_pending_orders(self, symbol: Optional[str] = None) -> List[PendingOrder]:
         """
         Get list of pending orders waiting for execution.
 
-        Returns orders that are submitted but not yet filled.
-        This is CRITICAL for preventing duplicate order submissions.
-
         Args:
-            symbol: Filter by symbol (None = all pending orders)
+            symbol: Optional symbol filter (e.g. "EURUSD")
 
         Returns:
-            List of pending order info dicts with:
-            - order_id: Unique identifier
-            - symbol: Trading symbol
-            - direction: "BUY" or "SELL"
-            - lots: Position size
-            - placed_at_tick: When order was submitted
-            - fill_at_tick: When order will be executed
-            - ticks_remaining: Ticks until execution
-
-        Example:
-            pending = self.get_pending_orders("EURUSD")
-            if len(pending) >= 5:
-                return None  # Too many pending orders
+            List of PendingOrder objects, optionally filtered by symbol
         """
-        pending_list = []
+        # Hole alle pending orders als Liste
+        all_pending: List[PendingOrder] = list(
+            self.execution_engine.pending_orders.values())
 
-        for order_id, pending_order in self.execution_engine.pending_orders.items():
-            # Filter by symbol if specified
-            if symbol and pending_order.symbol != symbol:
-                continue
+        # Wenn kein Symbol-Filter, gib alle zurück
+        if symbol is None:
+            return all_pending
 
-            # Calculate remaining ticks
-            ticks_remaining = pending_order.fill_at_tick - self._tick_counter
-
-            pending_list.append({
-                "order_id": order_id,
-                "symbol": pending_order.symbol,
-                "direction": pending_order.direction,
-                "lots": pending_order.lots,
-                "placed_at_tick": pending_order.placed_at_tick,
-                "fill_at_tick": pending_order.fill_at_tick,
-                "ticks_remaining": max(0, ticks_remaining)
-            })
-
-        return pending_list
+        # Filtere nach Symbol
+        return [order for order in all_pending if order.symbol == symbol]
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""
