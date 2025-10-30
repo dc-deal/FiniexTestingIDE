@@ -12,8 +12,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Tuple
 
-from python.framework.types.scenario_types import ScenarioExecutionResult
-
 
 class TimeframeConfig:
     """

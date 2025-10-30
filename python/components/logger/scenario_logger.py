@@ -10,23 +10,19 @@ Characteristics:
 
 Usage:
     # Created automatically by SingleScenario
-    scenario = SingleScenario(...)
     scenario.logger.info("Worker initialized")
     
     # Flush at end
     scenario.logger.flush_buffer()
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Optional
 
 from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
 from python.components.logger.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
-from python.configuration import AppConfigLoader
 from python.components.logger.file_logger import FileLogger
-from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
 class ScenarioLogger(AbstractLogger):
@@ -58,6 +54,7 @@ class ScenarioLogger(AbstractLogger):
         self.run_timestamp = run_timestamp
 
         self.run_dir = None
+        self.file_logger = None
         if self.file_logging_enabled:
             # Create default run directory
             self.run_dir = Path(self.file_log_root) / \
@@ -71,6 +68,9 @@ class ScenarioLogger(AbstractLogger):
                 scenario_name=self.name,
                 log_level=self.file_log_level
             )
+
+    def get_run_timestamp(self):
+        return self.run_timestamp
 
     def get_log_dir(self):
         return self.run_dir

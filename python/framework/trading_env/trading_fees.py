@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
-from python.framework.types.tick_types import TickData
+from python.framework.types.market_data_types import TickData
 
 
 class FeeType(Enum):
@@ -79,13 +79,10 @@ class AbstractTradingFee(ABC):
         """Get human-readable fee name"""
         return self.fee_type.value.replace('_', ' ').title()
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(cost={self.cost:.2f}, status={self.status.value})"
-
-
 # ============================================
 # Concrete Fee Types
 # ============================================
+
 
 @dataclass
 class SpreadFee(AbstractTradingFee):

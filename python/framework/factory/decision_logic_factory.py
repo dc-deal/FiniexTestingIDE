@@ -1,8 +1,8 @@
 """
-FiniexTestingIDE - Decision Logic Factory (REFACTORED)
+FiniexTestingIDE - Decision Logic Factory ()
 Config-driven decision logic instantiation with namespace support
 
-REFACTORED:
+:
 - create_logic() no longer accepts trading_env parameter
 - create_logic_from_strategy_config() no longer accepts trading_env
 - DecisionTradingAPI is injected later via set_trading_api()
@@ -122,7 +122,7 @@ class DecisionLogicFactory:
         """
         Create a decision logic instance from configuration.
 
-        REFACTORED: No longer accepts trading_env parameter.
+        No longer accepts trading_env parameter.
         DecisionTradingAPI is injected later via set_trading_api().
 
         This is the main entry point for decision logic creation. It:
@@ -149,7 +149,7 @@ class DecisionLogicFactory:
         logic_name = self._extract_logic_name(logic_type)
 
         # Step 3: Instantiate logic with config only
-        # REFACTORED: No trading_env parameter
+        # No trading_env parameter
         logic_instance = logic_class(
             name=logic_name,
             logger=logger,
@@ -170,7 +170,7 @@ class DecisionLogicFactory:
         """
         Create decision logic from complete strategy configuration.
 
-        REFACTORED: No longer accepts trading_env parameter.
+        No longer accepts trading_env parameter.
         DecisionTradingAPI is injected later via set_trading_api().
 
         This is the batch creation method used by orchestrator.

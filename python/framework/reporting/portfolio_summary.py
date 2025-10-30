@@ -2,56 +2,42 @@
 FiniexTestingIDE - Portfolio Summary
 Trading and portfolio statistics rendering
 
-REFACTORED (C#003):
-- Uses ScenarioSetPerformanceManager instead of TradeSimulator
-- Reads portfolio stats from ScenarioPerformanceStats
-- Supports per-scenario AND aggregated portfolio display
-- FULLY TYPED: Uses dataclass attributes instead of dict.get()
-
 Rendered in BOX format matching scenario details.
 """
 
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
+from typing import List
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult
 from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
 
 
 class PortfolioSummary:
     """
     Portfolio and trading statistics summary.
-
-    REFACTORED (C#003):
-    - Uses ScenarioSetPerformanceManager for portfolio data (per scenario + aggregated)
-    - FULLY TYPED: Direct attribute access instead of dict.get()
     """
 
-    def __init__(self, performance_log: ScenarioSetPerformanceManager):
+    def __init__(self, batch_execution_summary: BatchExecutionSummary):
         """
         Initialize portfolio summary.
-
-        Args:
-            performance_log: ScenarioSetPerformanceManager instance with portfolio stats
         """
-        self.performance_log = performance_log
+        self.batch_execution_summary = batch_execution_summary
 
     def render_per_scenario(self, renderer):
         """
         Render portfolio stats per scenario in BOX format.
 
-        Now reads from ScenarioPerformanceStats (each has own portfolio_stats).
-
         Args:
             renderer: ConsoleRenderer instance
         """
-        scenarios = self.performance_log.get_all_scenarios()
+        scenarios = self.batch_execution_summary.scenario_list
 
         # Convert to dict format for renderer (renderer expects dicts)
         scenario_dicts = []
         for scenario in scenarios:
             scenario_dict = {
                 'scenario_set_name': scenario.scenario_name,
-                'portfolio_statistics': scenario.portfolio_stats,
-                'execution_statistics': scenario.execution_stats,
-                'cost_breakdown': scenario.cost_breakdown
+                'portfolio_statistics': scenario.tick_loop_results.portfolio_stats,
+                'execution_statistics': scenario.tick_loop_results.execution_stats,
+                'cost_breakdown': scenario.tick_loop_results.cost_breakdown
             }
             scenario_dicts.append(scenario_dict)
 
@@ -66,13 +52,10 @@ class PortfolioSummary:
     def render_aggregated(self, renderer):
         """
         Render aggregated portfolio stats across ALL scenarios.
-
-        Aggregates portfolio_stats from all ScenarioPerformanceStats.
-
         Args:
             renderer: ConsoleRenderer instance
         """
-        scenarios = self.performance_log.get_all_scenarios()
+        scenarios = self.batch_execution_summary.scenario_list
 
         if not scenarios:
             return
@@ -162,7 +145,7 @@ class PortfolioSummary:
               f"Swap: ${swap:.2f}")
         print(f"      Total Costs: ${total_costs:.2f}")
 
-    def _aggregate_portfolio_stats(self, scenarios) -> PortfolioStats:
+    def _aggregate_portfolio_stats(self, scenarios: List[ProcessResult]) -> PortfolioStats:
         """Aggregate portfolio stats from all scenarios."""
         total_trades = 0
         winning_trades = 0
@@ -174,7 +157,7 @@ class PortfolioSummary:
         total_swap = 0.0
 
         for scenario in scenarios:
-            stats = scenario.portfolio_stats
+            stats = scenario.tick_loop_results.portfolio_stats
             total_trades += stats.total_trades
             winning_trades += stats.winning_trades
             losing_trades += stats.losing_trades
@@ -204,7 +187,7 @@ class PortfolioSummary:
             total_fees=total_spread_cost + total_commission + total_swap
         )
 
-    def _aggregate_execution_stats(self, scenarios) -> ExecutionStats:
+    def _aggregate_execution_stats(self, scenarios: List[ProcessResult]) -> ExecutionStats:
         """Aggregate execution stats from all scenarios."""
         orders_sent = 0
         orders_executed = 0
@@ -213,7 +196,7 @@ class PortfolioSummary:
         total_spread_cost = 0.0
 
         for scenario in scenarios:
-            stats = scenario.execution_stats
+            stats = scenario.tick_loop_results.execution_stats
             orders_sent += stats.orders_sent
             orders_executed += stats.orders_executed
             orders_rejected += stats.orders_rejected
@@ -228,14 +211,14 @@ class PortfolioSummary:
             total_spread_cost=total_spread_cost
         )
 
-    def _aggregate_cost_breakdown(self, scenarios) -> CostBreakdown:
+    def _aggregate_cost_breakdown(self, scenarios: List[ProcessResult]) -> CostBreakdown:
         """Aggregate cost breakdown from all scenarios."""
         total_spread_cost = 0.0
         total_commission = 0.0
         total_swap = 0.0
 
         for scenario in scenarios:
-            costs = scenario.cost_breakdown
+            costs = scenario.tick_loop_results.cost_breakdown
             total_spread_cost += costs.total_spread_cost
             total_commission += costs.total_commission
             total_swap += costs.total_swap

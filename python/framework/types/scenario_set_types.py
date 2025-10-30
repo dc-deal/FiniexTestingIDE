@@ -26,7 +26,6 @@ class SingleScenario:
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
-    logger: ScenarioLogger = None
 
     # ============================================
     # STRATEGY PARAMETERS
@@ -34,10 +33,10 @@ class SingleScenario:
     # Strategy-Logic (→ WorkerCoordinator sammelt Requirements & dessen Parameter)
     strategy_config: Dict[str, Any] = field(default_factory=dict)
 
-    # NEW: Execution-Optimization (→ Framework)
+    # Execution-Optimization (→ Framework)
     execution_config: Optional[Dict[str, Any]] = None
 
-    # NEW: TradeSimulator configuration (per scenario)
+    # TradeSimulator configuration (per scenario)
     # Allows each scenario to have different balance/currency/leverage
     trade_simulator_config: Optional[Dict[str, Any]] = None
 
@@ -65,6 +64,24 @@ class SingleScenario:
                 "log_performance_stats": True,  # Log timing statistics
             }
 
+    def to_config_string_for_display(self) -> str:
+        """
+        Display string for scenario configuration.
+
+        NOTE: Actual config creation is in ProcessScenarioConfig.from_scenario()
+        This is just for display/debugging purposes.
+
+        Returns:
+            Human-readable config summary
+        """
+        return (
+            f"Scenario: {self.name}\n"
+            f"  Symbol: {self.symbol}\n"
+            f"  Period: {self.start_date} → {self.end_date}\n"
+            f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"
+            f"  Enabled: {self.enabled}"
+        )
+
 
 class ScenarioSet:
     """
@@ -83,8 +100,3 @@ class ScenarioSet:
         self.logger = logger
         self.scenarios = scenarios
         self.printed_summary_logger = printed_summary_logger
-
-    def flush_set_buffer(self):
-        self.logger.flush_buffer()
-        for scenario in self.scenarios:
-            scenario.logger.flush_buffer()

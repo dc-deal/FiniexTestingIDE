@@ -227,7 +227,7 @@ class VectorizedBarRenderer:
         - For missing periods: insert synthetic bar with OHLC = last_close
         - Mark as 'synthetic' or 'hybrid' with appropriate metadata
 
-        NEW: Detects hybrid bars (partial data) and logs all filled gaps!
+        Detects hybrid bars (partial data) and logs all filled gaps!
 
         Args:
             bars_df: Real bars from ticks

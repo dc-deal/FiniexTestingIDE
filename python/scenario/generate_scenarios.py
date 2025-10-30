@@ -2,7 +2,7 @@
 FiniexTestingIDE - Scenario Generator CLI
 Generates test scenario configs from available data
 
-REFACTORED (Worker Instance System): Now generates configs with
+ (Worker Instance System): Now generates configs with
 worker_instances dict (instance_name → worker_type) and workers
 dict indexed by instance names.
 
@@ -42,10 +42,10 @@ def generate_single_symbol(
     """
     Generate scenarios for a single symbol.
 
-    REFACTORED (Worker Instance System): Uses worker_instances dict
+     (Worker Instance System): Uses worker_instances dict
     with instance names as keys.
 
-    NEW (C#003): Added optional trade_simulator_config parameter.
+    NEW  Added optional trade_simulator_config parameter.
 
     Args:
         symbol: Trading symbol (e.g., "EURUSD")
@@ -106,7 +106,7 @@ def generate_single_symbol(
             "log_performance_stats": True,
         },
 
-        # NEW (C#003): TradeSimulator config (optional)
+        # TradeSimulator config (optional)
         trade_simulator_config=trade_simulator_config or ts_config_global
     )
 
@@ -125,8 +125,8 @@ def generate_multi_symbol(
     """
     Generate scenarios for multiple symbols.
 
-    REFACTORED (Worker Instance System): Uses worker_instances dict.
-    NEW (C#003): Added optional trade_simulator_config parameter.
+     (Worker Instance System): Uses worker_instances dict.
+    NEW  Added optional trade_simulator_config parameter.
 
     Args:
         symbols: List of symbols (None = all available)
@@ -155,7 +155,7 @@ def generate_multi_symbol(
             "parallel_workers": True,
         },
 
-        # NEW (C#003): TradeSimulator config (optional)
+        # TradeSimulator config (optional)
         trade_simulator_config=trade_simulator_config or ts_config_global
     )
 
@@ -171,7 +171,7 @@ def generate_quick_test():
     """
     Generate a quick test config for debugging.
 
-    REFACTORED (Worker Instance System): Uses worker_instances dict.
+     (Worker Instance System): Uses worker_instances dict.
     Fast execution, minimal scenarios, sequential mode.
     """
     loader = TickDataLoader("./data/processed/")
@@ -214,7 +214,7 @@ def generate_heavy_batch():
     """
     Generate a heavy batch config for performance testing.
 
-    REFACTORED (Worker Instance System): Uses heavy worker instances.
+     (Worker Instance System): Uses heavy worker instances.
 
     This configuration is designed for stress-testing parallelization:
     - Heavy Workers simulate CPU-intensive computations (ML, FFT, etc.)
@@ -390,12 +390,12 @@ def generate_dual_rsi_strategy():
 
 
 # ============================================
-# NEW (C#003): TradeSimulator Config Examples
+# radeSimulator Config Examples
 # ============================================
 
 def generate_with_custom_balance():
     """
-    NEW (C#003): Generate scenarios with custom TradeSimulator config.
+    Generate scenarios with custom TradeSimulator config.
 
     Demonstrates:
     - Setting different initial balance for all scenarios (5k instead of 10k)
@@ -445,7 +445,7 @@ def generate_with_custom_balance():
 
 def generate_per_scenario_balance():
     """
-    NEW (C#003): Advanced example - Different balance per scenario.
+    NEW  Advanced example - Different balance per scenario.
 
     Shows how to manually create scenarios with different
     TradeSimulator configs for each scenario.
@@ -505,10 +505,10 @@ if __name__ == "__main__":
     """
     Main entry point - generates various scenario configs.
 
-    REFACTORED (Worker Instance System): All generators now use
+     (Worker Instance System): All generators now use
     worker_instances dict with instance names as keys.
 
-    NEW (C#003): Added examples for custom TradeSimulator configurations.
+    NEW  Added examples for custom TradeSimulator configurations.
     """
     vLog.info("=" * 70)
     vLog.info("🚀 FiniexTestingIDE - Scenario Generator")
@@ -536,7 +536,7 @@ if __name__ == "__main__":
         vLog.info("📝 Generating dual RSI strategy (multiple instances)...")
         generate_dual_rsi_strategy()
 
-        # NEW (C#003): TradeSimulator config examples
+        # TradeSimulator config examples
         vLog.info("📝 Generating with custom balance (5k USD)...")
         generate_with_custom_balance()
 

@@ -1,34 +1,105 @@
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+"""
+FiniexTestingIDE - Bar Rendering Controller (WARMUP INJECTION FIX)
+Main orchestrator for bar rendering system
 
-import pandas as pd
+CORRECTIONS:
+- inject_warmup_bars() now properly initializes bar history
+- Uses symbol from config (not bar_dict) as single source of truth
+- Correctly fills _warmup_data for get_all_bar_history()
+- Explicitly invalidates cache after warmup injection
+- Calls bar_renderer.initialize_historical_bars() for each timeframe
+- deserialize_bars_batch() moved here to avoid circular import
+"""
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
-from python.framework.bars.bar_warmup_manager import BarWarmupManager
-from python.framework.types.tick_types import Bar, TickData
-from python.framework.types.timeframe_types import TimeframeConfig
+from python.framework.types.market_data_types import Bar, TickData
+
+
+# ============================================================================
+# BAR DESERIALIZATION (Top-level function)
+# ============================================================================
+
+
+def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> List[Bar]:
+    """
+    Deserialize bar dicts from shared_data into Bar objects.
+
+    Converts Pandas-based bar data to framework Bar objects:
+    - Pandas Timestamp → ISO string
+    - float tick_count → int
+    - Drops extra fields (bar_type, synthetic_fields, reason)
+
+    Args:
+        symbol: Trading symbol from config (authoritative source)
+        bars_tuple: Tuple of bar dicts (immutable, CoW-friendly)
+
+    Returns:
+        List of Bar objects for BarRenderer
+    """
+    result = []
+    for bar_dict in bars_tuple:
+        timestamp_str = bar_dict['timestamp'].isoformat()
+
+        bar = Bar(
+            symbol=symbol,
+            timeframe=bar_dict['timeframe'],
+            timestamp=timestamp_str,
+            open=float(bar_dict['open']),
+            high=float(bar_dict['high']),
+            low=float(bar_dict['low']),
+            close=float(bar_dict['close']),
+            volume=float(bar_dict['volume']),
+            tick_count=int(bar_dict['tick_count']),
+            is_complete=True
+        )
+        result.append(bar)
+
+    return result
 
 
 class BarRenderingController:
-    """Main orchestrator for bar rendering system"""
+    """
+    Main orchestrator for bar rendering system.
 
-    def __init__(self, data_worker, logger: ScenarioLogger):
+    Manages:
+    - Bar rendering via BarRenderer
+    - Warmup bar injection
+    - Bar history caching for performance
+    - Worker registration and requirements
+    """
+
+    def __init__(self, logger: ScenarioLogger):
+        """
+        Initialize bar rendering controller.
+
+        Args:
+            logger: ScenarioLogger for this scenario
+        """
         self.bar_renderer = BarRenderer(logger)
-        self.warmup_manager = BarWarmupManager(data_worker, logger)
         self._workers = []
         self._required_timeframes = set()
-        self._warmup_data = {}
+        self._warmup_data = {}  # Stores warmup bars for get_all_bar_history()
         self._warmup_quality_metrics = {}
         self.logger = logger
 
         # PERFORMANCE OPTIMIZATION: Bar history caching
+        # Cache is built on first get_all_bar_history() call
+        # and invalidated whenever a bar closes
         self._cached_bar_history = None
-        self._cache_is_valid = False
+        self._cache_is_valid = False  # Starts invalid (no cache yet)
 
     def register_workers(self, workers):
-        """Register workers and analyze requirements"""
+        """
+        Register workers and analyze their bar requirements.
+
+        Workers specify which timeframes they need (e.g., RSI needs M5).
+        This determines which bars need to be rendered.
+
+        Args:
+            workers: List of worker instances
+        """
         self._workers = workers
         self._required_timeframes = self.bar_renderer.get_required_timeframes(
             workers)
@@ -43,6 +114,9 @@ class BarRenderingController:
 
         OPTIMIZED: Returns info about which bars were closed to enable caching.
 
+        Args:
+            tick_data: Current tick to process
+
         Returns:
             Dict[timeframe, Bar] - Updated current bars
         """
@@ -51,6 +125,7 @@ class BarRenderingController:
         )
 
         # Invalidate cache if any bar was closed
+        # Cache rebuild happens on next get_all_bar_history() call
         if any(closed_bars.values()):
             self._cache_is_valid = False
 
@@ -59,87 +134,40 @@ class BarRenderingController:
     def get_bar_history(
         self, symbol: str, timeframe: str
     ) -> List[Bar]:
-        """Get bar history (completed bars)"""
+        """
+        Get bar history (completed bars) for specific timeframe.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe (e.g., "M5")
+
+        Returns:
+            List of completed Bar objects
+        """
         return self.bar_renderer.get_bar_history(symbol, timeframe)
 
     def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
-        """Get current bar"""
-        return self.bar_renderer.get_current_bar(symbol, timeframe)
-
-    def prepare_warmup_from_parquet_bars(
-        self,
-        symbol: str,
-        test_start_time: datetime
-    ):
         """
-        Prepare warmup data - TRIES PARQUET FIRST, falls back to tick rendering.
-
-        NEW BEHAVIOR:
-        1. Try to load bars from pre-rendered parquet files (FAST!)
-        2. If that fails, fall back to rendering from ticks (SLOW)
+        Get current (incomplete) bar for specific timeframe.
 
         Args:
-            symbol: Trading symbol (e.g., "EURUSD")
-            warmup_ticks: Pre-loaded warmup ticks from TickDataPreparator
-            test_start_time: When the actual test begins
+            symbol: Trading symbol
+            timeframe: Timeframe (e.g., "M5")
+
+        Returns:
+            Current Bar object or None if no bar yet
         """
-        warmup_requirements = self.warmup_manager.calculate_required_warmup(
-            self._workers
-        )
-
-        # === TRY PARQUET FIRST (NEW!) ===
-        try:
-            self.logger.info(
-                f"🚀 Attempting to load warmup bars from parquet...")
-            warmup_result = self.warmup_manager.load_bars_from_parquet(
-                symbol=symbol,
-                warmup_requirements=warmup_requirements,
-                test_start_time=test_start_time
-            )
-
-            # Extract data from result dict
-            self._warmup_data = warmup_result['historical_bars']
-            self._warmup_quality_metrics = warmup_result['quality_metrics']
-
-            self.logger.info(f"✅ Warmup bars loaded from parquet files!")
-        except Exception as e:
-            self.logger.error(f"⚠️  Could not load bars from parquet: {e}")
-            raise
-
-        # Initialize the bar renderer's history with these warmup bars
-        for timeframe, bars in self._warmup_data.items():
-            self.bar_renderer.initialize_historical_bars(
-                symbol, timeframe, bars)
-
-        # Detailed logging per timeframe
-        total_bars = sum(len(bars) for bars in self._warmup_data.values())
-
-        self.logger.info(
-            f"🔥 Warmup complete: {total_bars} bars ready "
-        )
-
-        # Invalidate cache after warmup initialization
-        self._cache_is_valid = False
+        return self.bar_renderer.get_current_bar(symbol, timeframe)
 
     def get_warmup_quality_metrics(self) -> Dict:
         """
         Get quality metrics for warmup bars.
 
-        Returns:
-            Dict[timeframe, quality_stats] with synthetic/hybrid/real counts
+        Quality metrics include counts of synthetic/hybrid/real bars.
+        Used for debugging and validation.
 
-        Example:
-            {
-                'M5': {
-                    'total': 200,
-                    'synthetic': 15,
-                    'hybrid': 8,
-                    'real': 177,
-                    'synthetic_pct': 7.5,
-                    'hybrid_pct': 4.0,
-                    'real_pct': 88.5
-                }
-            }
+        Returns:
+            Dict[timeframe, quality_stats] with bar type breakdowns
         """
         return self._warmup_quality_metrics
 
@@ -148,7 +176,7 @@ class BarRenderingController:
         Get all loaded warmup bars per timeframe.
 
         PERFORMANCE OPTIMIZED:
-        This method now caches the bar history dict and only rebuilds it when
+        This method caches the bar history dict and only rebuilds when
         a bar is closed. This eliminates thousands of unnecessary dict rebuilds
         and list copies during the tick loop.
 
@@ -159,16 +187,17 @@ class BarRenderingController:
             symbol: Trading symbol
 
         Returns:
-            Dict[timeframe, deque[Bar]] - All historical bars per timeframe
+            Dict[timeframe, List[Bar]] - All historical bars per timeframe
 
         Note:
-            Returns deque references, not copies. Workers must not modify the history.
+            Returns cached references. Workers must not modify the history.
         """
         # Return cached version if still valid
         if self._cache_is_valid and self._cached_bar_history is not None:
             return self._cached_bar_history
 
-        # Rebuild cache
+        # Rebuild cache from _warmup_data
+        # _warmup_data is filled by inject_warmup_bars() at startup
         self._cached_bar_history = {
             timeframe: self.bar_renderer.get_bar_history(symbol, timeframe)
             for timeframe in self._warmup_data.keys()
@@ -177,3 +206,51 @@ class BarRenderingController:
         self._cache_is_valid = True
 
         return self._cached_bar_history
+
+    def inject_warmup_bars(
+        self,
+        symbol: str,
+        warmup_bars: Dict[str, Tuple[Any, ...]]
+    ) -> None:
+        """
+        Inject prepared warmup bars WITHOUT validation.
+
+        REPLACES: prepare_warmup_from_parquet_bars() in ProcessPool mode.
+
+        Three critical operations:
+        1. Store warmup_bars in _warmup_data (for get_all_bar_history())
+        2. Convert bar dicts to Bar objects (via deserialize_bars_batch)
+        3. Initialize bar_renderer history (fills completed_bars deque)
+
+        NO VALIDATION: Trusts SharedDataPreparator's pre-filtering.
+
+        Args:
+            symbol: Trading symbol from config.symbol (authoritative)
+            warmup_bars: {timeframe: tuple_of_bar_dicts}
+
+        Example:
+            warmup_bars = {'M5': (...), 'M30': (...)}
+            controller.inject_warmup_bars('EURUSD', warmup_bars)
+        """
+        # 1. Store metadata for get_all_bar_history()
+        self._warmup_data = warmup_bars
+
+        # 2. Convert bar dicts to Bar objects and initialize renderer
+        for timeframe, bars_tuple in warmup_bars.items():
+            # Deserialize using top-level function (no import needed)
+            bars_list = deserialize_bars_batch(symbol, bars_tuple)
+
+            # 3. Initialize bar history in BarRenderer
+            self.bar_renderer.initialize_historical_bars(
+                symbol=symbol,
+                timeframe=timeframe,
+                bars=bars_list
+            )
+
+        # 4. Explicitly invalidate cache after injection
+        self._cache_is_valid = False
+
+        self.logger.debug(
+            f"✅ Injected warmup bars: "
+            f"{', '.join(f'{tf}:{len(warmup_bars[tf])}' for tf in warmup_bars)}"
+        )

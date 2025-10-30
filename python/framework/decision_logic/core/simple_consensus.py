@@ -1,8 +1,8 @@
 """
-FiniexTestingIDE - Simple Consensus Decision Logic (REFACTORED)
+FiniexTestingIDE - Simple Consensus Decision Logic ()
 Reference implementation of RSI + Envelope consensus strategy
 
-REFACTORED:
+:
 - Implements get_required_order_types() → [OrderType.MARKET]
 - Implements execute_decision() → Market orders with margin checks
 - Uses DecisionTradingAPI instead of TradeSimulator directly
@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision
 
 from python.framework.types.order_types import (
@@ -78,7 +78,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         Initialize Simple Consensus logic.
 
-        REFACTORED: No longer accepts trading_env parameter.
+        No longer accepts trading_env parameter.
 
         Args:
             name: Logic identifier
@@ -107,7 +107,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         )
 
     # ============================================
-    # REFACTORED: New abstractmethods
+    # New abstractmethods
     # ============================================
 
     def get_required_order_types(self) -> List[OrderType]:
@@ -173,7 +173,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             return None
 
         # ============================================
-        # NEW: Get BOTH positions AND pending orders
+        # Get BOTH positions AND pending orders
         # ============================================
         open_positions = self.trading_api.get_open_positions()
         pending_orders = self.trading_api.get_pending_orders()

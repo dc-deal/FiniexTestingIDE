@@ -2,10 +2,10 @@
 # python/framework/trading_env/trade_simulator.py
 # ============================================
 """
-FiniexTestingIDE - Trade Simulator (REFACTORED)
+FiniexTestingIDE - Trade Simulator ()
 Simulates broker trading environment with realistic execution
 
-REFACTORED CHANGES:
+ CHANGES:
 - Direct attributes for execution stats (_orders_sent, _orders_executed, etc.)
 - Always-copy public API (using replace())
 - Cleaner, more maintainable code structure
@@ -16,7 +16,8 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
-from python.framework.types.tick_types import TickData
+from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
@@ -41,7 +42,7 @@ class TradeSimulator:
     Uses OrderExecutionEngine for realistic delays (Issue #003).
     Orders go through PENDING → EXECUTED lifecycle.
 
-    REFACTORED: Uses direct attributes for execution statistics.
+    Uses direct attributes for execution statistics.
     """
 
     def __init__(
@@ -49,7 +50,8 @@ class TradeSimulator:
         broker_config: BrokerConfig,
         initial_balance: float = 10000,
         currency: str = "EUR",
-        seeds: Optional[Dict[str, int]] = None
+        seeds: Optional[Dict[str, int]] = None,
+        logger: AbstractLogger = None
     ):
         """
         Initialize trade simulator.
@@ -61,6 +63,7 @@ class TradeSimulator:
             seeds: Seeds for order execution delays (from config)
         """
         self.broker = broker_config
+        self.logger = logger
 
         # Create portfolio manager
         leverage = self.broker.get_max_leverage()
@@ -82,12 +85,12 @@ class TradeSimulator:
         # Internal state
         self._order_counter = 0
 
-        # EXTENDED: Order history (all orders)
+        # Order history (all orders)
         self._order_history: List[OrderResult] = []
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
-        # REFACTORED: Execution statistics as direct attributes
+        # Execution statistics as direct attributes
         self._orders_sent = 0
         self._orders_executed = 0
         self._orders_rejected = 0
@@ -156,8 +159,8 @@ class TradeSimulator:
         """
         Send order to broker simulation.
 
-        EXTENDED: Automatically attaches SpreadFee from live tick data.
-        REFACTORED: Uses direct attributes for stats.
+        Automatically attaches SpreadFee from live tick data.
+        Uses direct attributes for stats.
         """
         self._orders_sent += 1
 
@@ -204,7 +207,7 @@ class TradeSimulator:
                 message=f"Order type {order_type} not implemented in MVP"
             )
 
-        # EXTENDED: Store in order history
+        # Store in order history
         self._order_history.append(result)
 
         return result
@@ -272,7 +275,7 @@ class TradeSimulator:
             entry_price = bid
 
         # Calculate spread fee
-        # EXTENDED: Create SpreadFee from LIVE tick data
+        # Create SpreadFee from LIVE tick data
         symbol_info = self.broker.get_symbol_info(pending_order.symbol)
         tick_value = symbol_info.get('tick_value', 1.0)
         digits = symbol_info.get('digits', 5)
@@ -283,7 +286,7 @@ class TradeSimulator:
             digits=digits
         )
 
-        # REFACTORED: Update direct attributes
+        # Update direct attributes
         self._total_spread_cost += spread_fee.cost
 
         # Check margin available
@@ -331,7 +334,7 @@ class TradeSimulator:
             }
         )
 
-        # REFACTORED: Update direct attributes
+        # Update direct attributes
         self._orders_executed += 1
         self._order_history.append(result)
 
@@ -352,7 +355,7 @@ class TradeSimulator:
         )
 
     # ============================================
-    # Position Management (EXTENDED)
+    # Position Management
     # ============================================
 
     def modify_position(
@@ -433,7 +436,7 @@ class TradeSimulator:
                 }
             )
 
-            # EXTENDED: Add to order history
+            # Add to order history
             self._order_history.append(result)
 
             return result
@@ -444,6 +447,18 @@ class TradeSimulator:
                 reason=RejectionReason.BROKER_ERROR,
                 message=str(e)
             )
+
+    def close_all_remaining_orders(self):
+        """ 
+            BEFORE collecting statistics - cleanup pending orders
+        """
+        open_positions = self.get_open_positions()
+        if open_positions:
+            self.logger.warning(
+                f"⚠️ {len(open_positions)} positions remain open - auto-closing"
+            )
+            for pos in open_positions:
+                self.close_position(pos.position_id)
 
     # ============================================
     # Account Queries
@@ -525,7 +540,7 @@ class TradeSimulator:
         return self.portfolio.get_free_margin()
 
     # ============================================
-    # Order History (EXTENDED)
+    # Order History
     # ============================================
 
     def get_order_history(self) -> List[OrderResult]:
@@ -586,14 +601,14 @@ class TradeSimulator:
         return self.broker.get_symbol_info(symbol)
 
     # ============================================
-    # Statistics (REFACTORED & TYPED)
+    # Statistics ( & TYPED)
     # ============================================
 
     def get_execution_stats(self) -> ExecutionStats:
         """
         Get order execution statistics.
 
-        REFACTORED: Creates new ExecutionStats from direct attributes.
+        Creates new ExecutionStats from direct attributes.
         Always returns new object (safe for external use).
         """
         return ExecutionStats(
@@ -611,21 +626,9 @@ class TradeSimulator:
         self._order_counter = 0
         self._order_history.clear()  # EXTENDED
 
-        # REFACTORED: Reset direct attributes
+        # Reset direct attributes
         self._orders_sent = 0
         self._orders_executed = 0
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
-
-    def __repr__(self) -> str:
-        """String representation"""
-        account = self.get_account_info()
-        return (
-            f"TradeSimulator("
-            f"broker='{self.broker.get_broker_name()}', "
-            f"balance={account.balance:.2f}, "
-            f"equity={account.equity:.2f}, "
-            f"positions={account.open_positions}"
-            f")"
-        )

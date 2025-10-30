@@ -87,7 +87,7 @@ class MT5Adapter(IOrderCapabilities):
 
         MT5 supports:
         - Common: Market, Limit
-        - Extended: Stop, StopLimit
+        - Stop, StopLimit
         - No support for: TrailingStop (requires live connection), Iceberg
         """
         return OrderCapabilities(

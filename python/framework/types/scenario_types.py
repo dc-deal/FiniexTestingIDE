@@ -26,24 +26,3 @@ class ScenarioRequirements:
     all_timeframes: List[str]
     warmup_by_timeframe: Dict[str, int]
     total_workers: int
-
-
-@dataclass
-class ScenarioExecutionResult:
-    """
-    Result from executing a single scenario.
-
-    Returned after complete scenario execution (warmup + tick loop).
-
-    Attributes:
-        success: Whether scenario executed successfully
-        scenario_name: Name of the executed scenario
-        scenario_index: Index in scenario list
-        error: Error message if execution failed
-        execution_time: Total execution time in seconds
-    """
-    success: bool
-    scenario_name: str
-    scenario_index: int
-    error: Optional[str] = None
-    scenario_execution_time_ms: Optional[float] = None

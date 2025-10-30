@@ -12,14 +12,15 @@ Architecture:
 - Uses ConsoleRenderer for unified output
 """
 
+from typing import Any, Dict
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
-
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.configuration import AppConfigLoader
+from python.framework.types.process_data_types import BatchExecutionSummary
+from python.framework.types.scenario_set_performance_types import ProfilingData
 
 
 class BatchSummary:
@@ -32,7 +33,7 @@ class BatchSummary:
 
     def __init__(
         self,
-        performance_log: ScenarioSetPerformanceManager,
+        batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigLoader
     ):
         """
@@ -42,18 +43,40 @@ class BatchSummary:
             performance_log: Performance statistics container (includes portfolio stats)
             app_config: AppConfigLoader instance
         """
-        self.performance_log = performance_log
+        self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config
 
         # Initialize sub-summaries
-        self.portfolio_summary = PortfolioSummary(performance_log)
-        self.performance_summary = PerformanceSummary(performance_log)
-        self.profiling_summary = ProfilingSummary(performance_log)  # NEW
+        self.portfolio_summary = PortfolioSummary(batch_execution_summary)
+        self.performance_summary = PerformanceSummary(batch_execution_summary)
+
+        # this must happen only onece, due the "pop" mechanic in ProfilingData.from_dicts
+        profiling_data_map = self.build_profiling_data_map(
+            batch_execution_summary)
+
+        self.profiling_summary = ProfilingSummary(
+            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
-            performance_log)  # NEW
+            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
 
         # Renderer for unified console output
         self.renderer = ConsoleRenderer()
+
+    def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
+        # Build ProfilingData für alle Scenarios
+
+        profiling_data_map = {}
+
+        for scenario in batch_execution_summary.scenario_list:
+            # Check if profiling data exists
+            if not scenario.tick_loop_results.profiling_data:
+                return {}
+            profiling = ProfilingData.from_dicts(
+                scenario.tick_loop_results.profiling_data.profile_times,
+                scenario.tick_loop_results.profiling_data.profile_counts
+            )
+            profiling_data_map[scenario.scenario_index] = profiling
+        return profiling_data_map
 
     def render_all(self):
         """
@@ -93,7 +116,7 @@ class BatchSummary:
         self.performance_summary.render_aggregated(self.renderer)
         self.performance_summary.render_bottleneck_analysis(self.renderer)
 
-        # === NEW: Profiling Analysis ===
+        # === Profiling Analysis ===
         self.renderer.section_separator()
         self.renderer.print_bold("⚡ PROFILING ANALYSIS")
         self.renderer.section_separator()
@@ -101,7 +124,7 @@ class BatchSummary:
         self.profiling_summary.render_aggregated(self.renderer)
         self.profiling_summary.render_bottleneck_analysis(self.renderer)
 
-        # === NEW: Worker Decision Breakdown ===
+        # === Worker Decision Breakdown ===
         self.renderer.section_separator()
         self.renderer.print_bold("🔍 WORKER DECISION BREAKDOWN")
         self.renderer.section_separator()
@@ -114,7 +137,7 @@ class BatchSummary:
 
     def _render_basic_stats(self):
         """Render basic execution statistics (top-level summary)."""
-        batch_performance_data = self.performance_log.get_batch_perfromance_data()
+        batch_performance_data = self.batch_execution_summary
 
         success = batch_performance_data.success
         scenarios_count = batch_performance_data.scenarios_count
@@ -144,7 +167,7 @@ class BatchSummary:
 
     def _render_scenario_grid(self):
         """Render scenario details in grid format."""
-        all_scenarios = self.performance_log.get_all_scenarios()
+        all_scenarios = self.batch_execution_summary.scenario_list
 
         if not all_scenarios:
             print("No scenario results available")

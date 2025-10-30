@@ -2,10 +2,10 @@
 # python/framework/utils/parameter_override_detector.py
 # ============================================
 """
-FiniexTestingIDE - Parameter Override Detector (REFACTORED)
+FiniexTestingIDE - Parameter Override Detector ()
 Central config management for cascade detection and override extraction
 
-REFACTORED (V0.8):
+ (V0.8):
 - ✅ detect_overrides() - Find differences between global/scenario
 - ✅ format_overrides_for_display() - Pretty print for logs
 - ✅ extract_overrides_for_save() - NEW! Get only overrides for JSON save
@@ -201,7 +201,7 @@ class ParameterOverrideDetector:
             full_path = f"{path}.{key}"
 
             if key not in global_dict:
-                # New parameter in scenario (not in global)
+                # parameter in scenario (not in global)
                 overrides.append((full_path, None, scenario_value))
                 continue
 

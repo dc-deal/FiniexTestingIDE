@@ -8,7 +8,6 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 from python.configuration import AppConfigLoader
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.scenario.config_loader import ScenarioConfigLoader
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.exceptions.data_validation_errors import DataValidationError
 from python.data_worker.data_loader.core import TickDataLoader
@@ -75,29 +74,22 @@ def run_strategy_test():
         data_worker = TickDataLoader()
 
         # ============================================================
-        # Initialize Performance Log (NEW: C#003)
-        # ============================================================
-        performance_log = ScenarioSetPerformanceManager()
-
-        # ============================================================
         # Execute Batch via Orchestrator
         # ============================================================
         orchestrator = BatchOrchestrator(
             scenario_set,
             data_worker,
-            app_config_loader,
-            performance_log
+            app_config_loader
         )
 
         # Run test
         batch_execution_summary = orchestrator.run()
 
         # ============================================
-        # NEW (C#003): Direct Reporting via BatchSummary
         # Capture output for file logging
         # ============================================
         summary = BatchSummary(
-            performance_log=performance_log,
+            batch_execution_summary=batch_execution_summary,
             app_config=app_config_loader
         )
 

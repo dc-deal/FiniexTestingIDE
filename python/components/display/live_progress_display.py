@@ -34,7 +34,6 @@ from rich.panel import Panel
 from rich.layout import Layout
 from rich import box
 
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
 from python.components.logger.bootstrap_logger import get_logger
@@ -53,18 +52,16 @@ class LiveProgressDisplay:
     """
 
     def __init__(self,
-                 performance_manager: ScenarioSetPerformanceManager,
                  scenarios: List[SingleScenario],
                  update_interval: float = 0.3):
         """
         Initialize live progress display.
 
         Args:
-            performance_manager: ScenarioSetPerformanceManager instance
             scenarios: List of scenarios to track
             update_interval: Update interval in seconds (default: 0.3)
         """
-        self.performance_manager = performance_manager
+        # self.performance_manager = performance_manager
         self.scenarios = scenarios
         self.update_interval = update_interval
 

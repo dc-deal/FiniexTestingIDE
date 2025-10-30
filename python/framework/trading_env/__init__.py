@@ -5,7 +5,7 @@ Trade simulation, broker adapters, and portfolio management
 This package provides the trading execution layer that bridges
 decision logic with simulated (or live) broker execution.
 
-REFACTORED:
+:
 - Added DecisionTradingAPI as public interface for Decision Logics
 """
 

@@ -2,7 +2,7 @@
 FiniexTestingIDE - Worker Decision Breakdown Summary (Facts Only)
 Pure data output, no recommendations or suggestions.
 
-REFACTORED:
+:
 - Uses typed ProfilingData instead of Dict[str, Any]
 - Clean direct property access: profiling_data.get_operation_time()
 - No more nested dict navigation
@@ -10,14 +10,12 @@ REFACTORED:
 FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
-from typing import List, Optional
-from python.framework.reporting.scenario_set_performance_manager import (
-    ScenarioSetPerformanceManager
-)
+from typing import Any, Dict, List, Optional
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
-from python.framework.types.scenario_set_performance_types import ScenarioPerformanceStats
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult, ProcessTickLoopResult
+from python.framework.types.scenario_set_performance_types import ProfilingData
 
 
 class WorkerDecisionBreakdownSummary:
@@ -25,12 +23,13 @@ class WorkerDecisionBreakdownSummary:
     Worker decision breakdown - facts only.
 
     FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
-    REFACTORED: Uses typed ProfilingData for clean access.
+    Uses typed ProfilingData for clean access.
     """
 
-    def __init__(self, performance_log: ScenarioSetPerformanceManager):
-        self.performance_log = performance_log
-        self.all_scenarios = performance_log.get_all_scenarios()
+    def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]):
+        self.batch_execution_summary = batch_execution_summary
+        self.profiling_data_map = profiling_data_map
+        self.scenario_list = batch_execution_summary.scenario_list
         self.breakdowns = self._build_breakdowns()
 
     def render_per_scenario(self, renderer):
@@ -66,35 +65,34 @@ class WorkerDecisionBreakdownSummary:
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
         """Build breakdowns from scenarios."""
         breakdowns = []
-        for scenario in self.all_scenarios:
-            breakdown = self._build_breakdown_for_scenario(scenario)
+        for scenario in self.scenario_list:
+            breakdown = self._build_breakdown_for_scenario(
+                scenario)
             if breakdown:
                 breakdowns.append(breakdown)
         return breakdowns
 
     def _build_breakdown_for_scenario(
-        self, scenario: ScenarioPerformanceStats
+        self, scenario: ProcessResult
     ) -> Optional[WorkerDecisionBreakdown]:
         """
         Build breakdown for single scenario.
 
-        REFACTORED: Uses typed ProfilingData for clean access.
+        Uses typed ProfilingData for clean access.
         No more: profiling_data.get('profile_times', {}).get('worker_decision', 0.0)
         Now: profiling_data.get_operation_time('worker_decision')
         """
-        # Check if profiling data exists
-        if not scenario.profiling_data:
-            return None
+        profiling = self.profiling_data_map.get(scenario.scenario_index)
 
         # Get total worker_decision time using typed access
-        total_worker_decision_ms = scenario.profiling_data.get_operation_time(
+        total_worker_decision_ms = profiling.get_operation_time(
             'worker_decision')
 
         if total_worker_decision_ms == 0:
             return None
 
         # Access BatchPerformanceStats directly
-        batch_stats = scenario.worker_statistics
+        batch_stats = scenario.tick_loop_results.performance_stats
 
         # Calculate worker execution time from WorkerPerformanceStats objects
         worker_execution_ms = sum(
@@ -121,7 +119,7 @@ class WorkerDecisionBreakdownSummary:
             scenario_index=scenario.scenario_index,
             scenario_name=scenario.scenario_name,
             total_time_ms=total_worker_decision_ms,
-            total_ticks=scenario.ticks_processed,
+            total_ticks=scenario.tick_loop_results.performance_stats.ticks_processed,
             worker_execution_ms=worker_execution_ms,
             decision_logic_ms=decision_logic_ms,
             coordination_overhead_ms=coordination_overhead_ms,

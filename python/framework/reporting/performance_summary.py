@@ -2,8 +2,8 @@
 FiniexTestingIDE - Performance Summary
 Worker and decision logic performance rendering
 
-REFACTORED (C#003):
-- Uses ScenarioSetPerformanceManager instead of batch_results dict
+ 
+- Uses BatchExecutionSummary instead of batch_results dict
 - Reads Scenario objects
 
 FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
@@ -15,28 +15,29 @@ Renders:
 - Bottleneck analysis (worst performers)
 """
 
-from python.framework.reporting.scenario_set_performance_manager import ScenarioSetPerformanceManager
 from typing import Any, Dict, List
+
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult
 
 
 class PerformanceSummary:
     """
     Worker and decision logic performance summary.
 
-    REFACTORED (C#003):
-    - Uses ScenarioSetPerformanceManager for data access
+
+    - Uses BatchExecutionSummary for data access
     - FULLY TYPED: Direct attribute access instead of .get()
     """
 
-    def __init__(self, performance_log: ScenarioSetPerformanceManager):
+    def __init__(self, batch_execution_summary: BatchExecutionSummary):
         """
         Initialize performance summary.
 
         Args:
             performance_log: Performance statistics container
         """
-        self.performance_log = performance_log
-        self.all_scenarios = performance_log.get_all_scenarios()
+        self.batch_execution_summary = batch_execution_summary
+        self.all_scenarios = batch_execution_summary.scenario_list
 
     def render_per_scenario(self, renderer):
         """
@@ -97,13 +98,14 @@ class PerformanceSummary:
         self._render_bottleneck_details(bottlenecks, renderer)
         print()
 
-    def _render_scenario_performance(self, scenario, renderer):
+    def _render_scenario_performance(self, scenario: ProcessResult, renderer):
         """Render performance for single scenario."""
         renderer.section_separator()
 
         # Access BatchPerformanceStats directly
-        batch_stats = scenario.worker_statistics
-        ticks_processed = scenario.ticks_processed
+        tick_loop_results = scenario.tick_loop_results
+        batch_stats = tick_loop_results.performance_stats
+        ticks_processed = batch_stats.ticks_processed
         parallel_mode = batch_stats.parallel_mode
 
         total_workers = batch_stats.total_workers
@@ -181,17 +183,17 @@ class PerformanceSummary:
         }
 
         for scenario in self.all_scenarios:
+            performance_stats = scenario.tick_loop_results.performance_stats
             # Basic stats
-            aggregated['total_ticks'] += scenario.ticks_processed
-            aggregated['total_signals'] += scenario.signals_generated
+            aggregated['total_ticks'] += performance_stats.ticks_processed
+            aggregated['total_signals'] += performance_stats.decision_logic.decision_count
 
             # Worker stats
-            batch_stats = scenario.worker_statistics
-            if batch_stats.decision_logic:
-                aggregated['total_decisions'] += batch_stats.decision_logic.decision_count
+            if performance_stats.decision_logic:
+                aggregated['total_decisions'] += performance_stats.decision_logic.decision_count
 
             # Per-worker aggregation
-            for worker_name, worker_perf in batch_stats.workers.items():
+            for worker_name, worker_perf in performance_stats.workers.items():
                 if worker_name not in aggregated['worker_aggregates']:
                     aggregated['worker_aggregates'][worker_name] = {
                         'calls': 0,
@@ -205,8 +207,8 @@ class PerformanceSummary:
                     worker_perf.worker_avg_time_ms)
 
             # Decision logic aggregation
-            if batch_stats.decision_logic:
-                decision_stats = batch_stats.decision_logic
+            if performance_stats.decision_logic:
+                decision_stats = performance_stats.decision_logic
                 aggregated['decision_aggregates']['calls'] += decision_stats.decision_count
                 aggregated['decision_aggregates']['total_time'] += decision_stats.decision_total_time_ms
                 aggregated['decision_aggregates']['times'].append(
@@ -269,14 +271,14 @@ class PerformanceSummary:
         worst_parallel_saved = float('inf')
 
         for scenario in self.all_scenarios:
+            performance_stats = scenario.tick_loop_results.performance_stats
             scenario_name = scenario.scenario_name
-            ticks = scenario.ticks_processed
-            batch_stats = scenario.worker_statistics
+            ticks = performance_stats.ticks_processed
 
             # Calculate scenario avg time per tick
             total_worker_time = sum(
-                w.worker_total_time_ms for w in batch_stats.workers.values())
-            total_decision_time = batch_stats.decision_logic.decision_total_time_ms if batch_stats.decision_logic else 0.0
+                w.worker_total_time_ms for w in performance_stats.workers.values())
+            total_decision_time = performance_stats.decision_logic.decision_total_time_ms if performance_stats.decision_logic else 0.0
 
             total_time = total_worker_time + total_decision_time
             avg_time_per_tick = total_time / ticks if ticks > 0 else 0
@@ -290,30 +292,30 @@ class PerformanceSummary:
                 }
 
             # Collect worker times
-            for worker_name, worker_perf in batch_stats.workers.items():
+            for worker_name, worker_perf in performance_stats.workers.items():
                 avg_time = worker_perf.worker_avg_time_ms
                 if worker_name not in worker_times:
                     worker_times[worker_name] = []
                 worker_times[worker_name].append((scenario_name, avg_time))
 
             # Collect decision logic times
-            if batch_stats.decision_logic:
-                logic_name = batch_stats.decision_logic.logic_name
-                avg_time = batch_stats.decision_logic.decision_avg_time_ms
+            if performance_stats.decision_logic:
+                logic_name = performance_stats.decision_logic.logic_name
+                avg_time = performance_stats.decision_logic.decision_avg_time_ms
                 if logic_name not in decision_logic_times:
                     decision_logic_times[logic_name] = []
                 decision_logic_times[logic_name].append(
                     (scenario_name, avg_time))
 
             # Check parallel efficiency
-            if batch_stats.parallel_mode:
-                time_saved = batch_stats.parallel_time_saved_ms
+            if performance_stats.parallel_mode:
+                time_saved = performance_stats.parallel_time_saved_ms
                 if time_saved < worst_parallel_saved:
                     worst_parallel_saved = time_saved
                     bottlenecks['worst_parallel'] = {
                         'name': scenario_name,
                         'time_saved': time_saved,
-                        'status': batch_stats.parallel_status
+                        'status': performance_stats.parallel_status
                     }
 
         # Find worst worker

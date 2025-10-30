@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.framework.types.tick_types import Bar, TickData
+from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.timeframe_types import TimeframeConfig
 
 
@@ -118,6 +118,10 @@ class BarRenderer:
     def _archive_completed_bar(self, symbol: str, timeframe: str, bar: Bar):
         """Archive completed bar to history"""
         max_history = 1000
+        self.logger.debug(
+            f"📊 {bar.symbol} {bar.timeframe} archived | "
+            f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
+        )
         history = self.completed_bars[timeframe][symbol]
 
         history.append(bar)
