@@ -311,6 +311,9 @@ class ProcessResult:
     # Data from the tick loop
     tick_loop_results: ProcessTickLoopResult = None
 
+    # logger lines to print after scenario run.
+    scenario_logger_buffer: list[tuple[str, str]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -320,7 +323,7 @@ class ProcessResult:
             'execution_time_ms': self.execution_time_ms,
             'error_type': self.error_type,
             'error_message': self.error_message,
-            'traceback': self.traceback
+            'traceback': self.traceback,
         }
 
 

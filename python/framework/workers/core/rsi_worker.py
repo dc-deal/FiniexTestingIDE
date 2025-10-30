@@ -24,7 +24,7 @@ class RSIWorker(AbstractBlackboxWorker):
         - period: RSI calculation period
         - timeframe: Timeframe to use
         """
-        super().__init__(name, parameters, logger, **kwargs)
+        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         # Extract parameters from dict or kwargs
         params = parameters or {}
@@ -92,15 +92,9 @@ class RSIWorker(AbstractBlackboxWorker):
 
         # Get bar history for our timeframe
         bars = bar_history.get(self.timeframe, [])
-
-        if len(bars) < self.period + 1:
-            return WorkerResult(
-                worker_name=self.name,
-                value=50.0,
-                confidence=0.0,
-                metadata={"insufficient_bars": True,
-                          "bars_available": len(bars)},
-            )
+        current_bar = current_bars.get(self.timeframe, [])
+        if current_bars:
+            bars = list(bars) + [current_bar]
 
         # Extract close prices from bars
         close_prices = np.array(

@@ -30,7 +30,7 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         - deviation: Band deviation multiplier (default: 0.02)
         - timeframe: Timeframe to use (default: "M5")
         """
-        super().__init__(name, parameters, logger, **kwargs)
+        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 20)
@@ -108,18 +108,9 @@ class EnvelopeWorker(AbstractBlackboxWorker):
 
         # Get bar history for our timeframe
         bars = bar_history.get(self.timeframe, [])
-
-        if len(bars) < self.period:
-            return WorkerResult(
-                worker_name=self.name,
-                value={"upper": 0, "middle": 0, "lower": 0},
-                confidence=0.0,
-                metadata={
-                    "insufficient_bars": True,
-                    "bars_available": len(bars),
-                    "bars_needed": self.period,
-                },
-            )
+        current_bar = current_bars.get(self.timeframe, [])
+        if current_bars:
+            bars = list(bars) + [current_bar]
 
         # Extract close prices from bars
         close_prices = np.array([bar.close for bar in bars[-self.period:]])

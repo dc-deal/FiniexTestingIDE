@@ -270,14 +270,6 @@ class BatchOrchestrator:
         else:
             results = self._run_sequential()
 
-        # ========================================================================
-        # FINALIZATION
-        # ========================================================================
-        self.scenario_set.logger.info(
-            f"🕐 Flush Global Buffer : {time.time()}")
-        self.scenario_set.logger.flush_buffer()
-        self.scenario_set.logger.close()
-
         # Check for failures
         self.scenario_set.logger.info(
             f"🕐 Scenario error check  : {time.time()}")

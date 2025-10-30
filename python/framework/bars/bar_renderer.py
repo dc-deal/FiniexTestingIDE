@@ -118,6 +118,12 @@ class BarRenderer:
     def _archive_completed_bar(self, symbol: str, timeframe: str, bar: Bar):
         """Archive completed bar to history"""
         max_history = 1000
+
+        # ============ DEBUG START ============
+        self.logger.debug(
+            f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
+        # ============ DEBUG END ============
+
         self.logger.debug(
             f"📊 {bar.symbol} {bar.timeframe} archived | "
             f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
@@ -125,6 +131,11 @@ class BarRenderer:
         history = self.completed_bars[timeframe][symbol]
 
         history.append(bar)
+
+        # ============ DEBUG START ============
+        self.logger.debug(f"   History size AFTER append: {len(history)}")
+        # ============ DEBUG END ============
+
         if len(history) > max_history:
             history.popleft()
 

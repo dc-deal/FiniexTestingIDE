@@ -64,7 +64,7 @@ class AbstractLogger(ABC):
         # Load config for log levels
         config = AppConfigLoader.get_config()
         console_log_level = config.get('logging', {}).get(
-            'console_log_level', LogLevel.INFO)
+            'log_level', LogLevel.INFO)
 
         self.console_log_level = console_log_level.upper()
 
@@ -249,6 +249,50 @@ class AbstractLogger(ABC):
         sys.exit(1)
 
     # ============================================
+    # Buffer Serialization / Cross-Process Support
+    # ============================================
+
+    def get_buffer(self) -> list[tuple[str, str]]:
+        """
+        Return a serializable copy of the console buffer.
+
+        This makes it safe to pass across processes (e.g. via ProcessPoolExecutor).
+        """
+        # Ensure all entries are plain strings
+        return [(str(level), str(line)) for level, line in self.console_buffer]
+
+    def set_buffer(self, buffer: list[tuple[str, str]]):
+        """
+        Replace the current console buffer with a provided list.
+        """
+        if not isinstance(buffer, list):
+            raise ValueError("Expected a list of (level, line) tuples.")
+        self.console_buffer = [(str(level), str(line))
+                               for level, line in buffer]
+
+    @staticmethod
+    def print_buffer(buffer: list[tuple[str, str]], scenario_name: str = None):
+        """
+        Print a buffer that was obtained via get_buffer().
+
+        Can be used in the parent process after collecting logs from workers.
+        """
+        if not buffer:
+            print("(empty log buffer)")
+            return
+        print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+        if scenario_name:
+            print(
+                f"{ColorCodes.BOLD}{(' SCENARIO '+scenario_name).center(60)}{ColorCodes.RESET}")
+        else:
+            print(
+                f"{ColorCodes.BOLD}{' SCENARIO LOG BUFFER '.center(60)}{ColorCodes.RESET}")
+        print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+        for level, line in buffer:
+            print(line)
+        print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+
+    # ============================================
     # Helper Methods
     # ============================================
 
@@ -276,9 +320,5 @@ class AbstractLogger(ABC):
         """
         color = self._get_color_for_level(level)
         reset = ColorCodes.RESET
-
-        # Compact class name (last part only)
-        simple_name = self.name.split(
-            '.')[-1] if '.' in self.name else self.name
 
         return f"{timestamp} {color}{level:8}{reset} | {message}"

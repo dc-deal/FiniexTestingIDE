@@ -143,7 +143,7 @@ class ScenarioConfigLoader:
             scenarios.append(scenario)
 
         if disabled_count > 0:
-            vLog.info(
+            vLog.debug(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
 
         scenario_set_logger = ScenarioLogger(scenario_set_name=scenario_set_name,
