@@ -67,13 +67,13 @@ class Position:
         P&L calculation includes all accumulated fees.
         """
         # Use appropriate price based on position direction
-        if self.direction == OrderDirection.BUY:
+        if self.direction == OrderDirection.LONG:
             self.current_price = bid  # Close at bid
         else:
             self.current_price = ask  # Close at ask
 
         # Calculate price difference in points
-        if self.direction == OrderDirection.BUY:
+        if self.direction == OrderDirection.LONG:
             price_diff = self.current_price - self.entry_price
         else:
             price_diff = self.entry_price - self.current_price
@@ -169,6 +169,8 @@ class PortfolioManager:
 
         # Statistics as direct attributes (no nested object)
         self._total_trades = 0
+        self._total_long_trades = 0
+        self._total_short_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0
         self._total_profit = 0.0
@@ -279,7 +281,7 @@ class PortfolioManager:
         del self.open_positions[position_id]
 
         # Update statistics
-        self._update_statistics(realized_pnl)
+        self._update_statistics(position, realized_pnl)
 
         return realized_pnl
 
@@ -453,13 +455,18 @@ class PortfolioManager:
     # Statistics ( & TYPED)
     # ============================================
 
-    def _update_statistics(self, realized_pnl: float) -> None:
+    def _update_statistics(self, position: Position, realized_pnl: float) -> None:
         """
         Update trading statistics after position close.
 
         Uses direct attributes instead of dict.
         """
         self._total_trades += 1
+
+        if position.direction == OrderDirection.LONG:
+            self._total_long_trades += 1
+        if position.direction == OrderDirection.SHORT:
+            self._total_short_trades += 1
 
         if realized_pnl > 0:
             self._winning_trades += 1
@@ -499,6 +506,8 @@ class PortfolioManager:
 
         return PortfolioStats(
             total_trades=self._total_trades,
+            total_long_trades=self._total_long_trades,
+            total_short_trades=self._total_short_trades,
             winning_trades=self._winning_trades,
             losing_trades=self._losing_trades,
             total_profit=self._total_profit,
@@ -526,6 +535,8 @@ class PortfolioManager:
 
         # Reset direct attributes
         self._total_trades = 0
+        self._total_long_trades = 0
+        self._total_short_trades = 0
         self._winning_trades = 0
         self._losing_trades = 0
         self._total_profit = 0.0

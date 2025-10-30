@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types.decision_logic_types import Decision
+from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_data_types import Bar, TickData
 
 from python.framework.types.worker_types import (
@@ -50,8 +50,7 @@ class WorkerCoordinator:
         decision_logic: AbstractDecisionLogic,
         strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
-        parallel_threshold_ms: float = 1.0,
-        scenario_name: str = "unknown_scenario",
+        parallel_threshold_ms: float = 1.0
     ):
         """
         Initialize coordinator with injected workers and decision logic.
@@ -346,7 +345,7 @@ class WorkerCoordinator:
                 decision_time_ms, decision)
 
         # Update statistics
-        if decision and decision.action != "FLAT":
+        if decision and decision.action != DecisionLogicAction.FLAT:
             self._statistics["decisions_made"] += 1
 
         return decision

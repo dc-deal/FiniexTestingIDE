@@ -1,12 +1,14 @@
 """
-FiniexTestingIDE - Abstract Decision Logic ()
+FiniexTestingIDE - Abstract Decision Logic (Refactored)
 Base class for all decision logic implementations
 
-:
+CHANGES:
 - Added get_required_order_types() as abstractmethod
-- Added execute_decision() as abstractmethod
+- Added execute_decision() as abstractmethod (Template Method pattern)
 - Added set_trading_api() for API injection after validation
 - Removed trading_env parameter (replaced by DecisionTradingAPI)
+- REFACTORED: _statistics is now DecisionLogicStatistics dataclass (type-safe)
+- REFACTORED: Uses DecisionLogicAction enum instead of string comparisons
 
 Decision Logic orchestrates worker results into trading decisions AND executes them.
 This layer is separate from worker coordination - it focuses purely
@@ -19,7 +21,11 @@ from typing import Any, Dict, List, Optional
 from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import Decision
+from python.framework.types.decision_logic_types import (
+    Decision,
+    DecisionLogicAction,
+    DecisionLogicStatistics
+)
 from python.framework.types.order_types import OrderType, OrderResult
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.worker_types import WorkerResult
@@ -37,7 +43,7 @@ class AbstractDecisionLogic(ABC):
     - DecisionLogic orchestrates results (second level)
     - No sub-workers, no hidden dependencies
 
-     Architecture:
+    Architecture:
     1. get_required_order_types() declares needed order types
     2. BatchOrchestrator validates against broker capabilities
     3. DecisionTradingAPI is injected after validation
@@ -60,11 +66,17 @@ class AbstractDecisionLogic(ABC):
             def compute(self, tick, worker_results, bars, history):
                 rsi = worker_results["RSI"].value
                 if rsi < 30:
-                    return Decision(action="BUY", confidence=0.8)
-                return Decision(action="FLAT", confidence=0.5)
+                    return Decision(
+                        action=DecisionLogicAction.BUY,
+                        confidence=0.8
+                    )
+                return Decision(
+                    action=DecisionLogicAction.FLAT,
+                    confidence=0.5
+                )
 
             def _execute_decision_impl(self, decision, tick):
-                if decision.action == "BUY":
+                if decision.action == DecisionLogicAction.BUY:
                     account = self.trading_api.get_account_info()
                     if account.free_margin < 1000:
                         return None
@@ -83,8 +95,8 @@ class AbstractDecisionLogic(ABC):
 
         Args:
             name: Decision logic name
-            config: Logic-specific configuration
             logger: ScenarioLogger instance (REQUIRED)
+            config: Logic-specific configuration
 
         Raises:
             ValueError: If logger is None
@@ -97,19 +109,12 @@ class AbstractDecisionLogic(ABC):
         self.config = config or {}
 
         # API and loggers
-        self.trading_api = None
-        self.logger = logger  # NEU: ScenarioLogger
+        self.trading_api: Optional[DecisionTradingAPI] = None
+        self.logger = logger
         self.performance_logger: Optional[PerformanceLogDecisionLogic] = None
 
-        # Statistics
-        self._statistics = {
-            "decisions_made": 0,
-            "buy_signals": 0,
-            "sell_signals": 0,
-            "flat_signals": 0,
-            "orders_executed": 0,
-            "orders_rejected": 0
-        }
+        # Statistics - now fully typed dataclass
+        self._statistics = DecisionLogicStatistics()
 
     # ============================================
     # New abstractmethods
@@ -158,7 +163,7 @@ class AbstractDecisionLogic(ABC):
         order_result = self._execute_decision_impl(decision, tick)
 
         # Automatically update statistics
-        self._update_statistics(decision, order_result)
+        self._update_decision_statistics(decision, order_result)
 
         return order_result
 
@@ -183,7 +188,7 @@ class AbstractDecisionLogic(ABC):
 
         Example:
             def _execute_decision_impl(self, decision, tick):
-                if decision.action == "BUY":
+                if decision.action == DecisionLogicAction.BUY:
                     account = self.trading_api.get_account_info()
                     if account.free_margin < 1000:
                         return None  # Not enough margin
@@ -191,7 +196,7 @@ class AbstractDecisionLogic(ABC):
                     return self.trading_api.send_order(
                         symbol=tick.symbol,
                         order_type=OrderType.MARKET,
-                        direction=OrderDirection.BUY,
+                        direction=OrderDirection.LONG,
                         lots=0.1
                     )
                 return None
@@ -226,7 +231,7 @@ class AbstractDecisionLogic(ABC):
         "rsi_fast": "CORE/rsi", config cannot use "CORE/macd" instead.
 
         Returns:
-            Dict[instance_name, worker_type] - The exact worker
+            Dict[instance_name, worker_type] - The exact worker instances
         """
         pass
 
@@ -259,7 +264,7 @@ class AbstractDecisionLogic(ABC):
     # API Injection
     # ============================================
 
-    def set_trading_api(self, trading_api: DecisionTradingAPI):
+    def set_trading_api(self, trading_api: DecisionTradingAPI) -> None:
         """
         Inject DecisionTradingAPI after validation.
 
@@ -271,31 +276,46 @@ class AbstractDecisionLogic(ABC):
         """
         self.trading_api = trading_api
 
-    def _update_statistics(self, decision: Decision, order_result: Optional[OrderResult] = None):
+    def _update_decision_statistics(
+        self,
+        decision: Decision,
+        order_result: Optional[OrderResult] = None
+    ) -> None:
         """
         Update internal statistics after decision.
 
         Called automatically by execute_decision() template method.
+        Now uses typed DecisionLogicStatistics dataclass.
 
         Args:
             decision: Decision that was made
             order_result: OrderResult if trade was executed (can be None)
         """
-        self._statistics["decisions_made"] += 1
+        self._statistics.decisions_made += 1
 
-        if decision.action == "BUY":
-            self._statistics["buy_signals"] += 1
-        elif decision.action == "SELL":
-            self._statistics["sell_signals"] += 1
-        elif decision.action == "FLAT":
-            self._statistics["flat_signals"] += 1
+        # Track signal type using enum comparison
+        if decision.action == DecisionLogicAction.BUY:
+            self._statistics.buy_signals += 1
+        elif decision.action == DecisionLogicAction.SELL:
+            self._statistics.sell_signals += 1
+        elif decision.action == DecisionLogicAction.FLAT:
+            self._statistics.flat_signals += 1
 
         # Track order execution
         if order_result:
             if order_result.is_success:
-                self._statistics["orders_executed"] += 1
+                self._statistics.orders_executed += 1
             elif order_result.is_rejected:
-                self._statistics["orders_rejected"] += 1
+                self._statistics.orders_rejected += 1
+
+    def get_statistics(self) -> DecisionLogicStatistics:
+        """
+        Get current statistics.
+
+        Returns:
+            DecisionLogicStatistics instance with current counters
+        """
+        return self._statistics
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """
@@ -312,7 +332,7 @@ class AbstractDecisionLogic(ABC):
         """
         return self.config.get(key, default)
 
-    def set_performance_logger(self, logger: 'PerformanceLogDecisionLogic'):
+    def set_performance_logger(self, logger: PerformanceLogDecisionLogic) -> None:
         """
         Set performance logger for this decision logic.
 

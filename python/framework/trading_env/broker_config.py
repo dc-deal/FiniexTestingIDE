@@ -52,7 +52,7 @@ class BrokerConfig:
         margin = config.calculate_margin("EURUSD", 0.1)
 
         # Create orders
-        order = config.create_market_order("EURUSD", OrderDirection.BUY, 0.1)
+        order = config.create_market_order("EURUSD", OrderDirection.LONG, 0.1)
     """
 
     def __init__(self, broker_type: BrokerType, adapter: IOrderCapabilities):

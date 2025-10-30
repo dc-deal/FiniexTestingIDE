@@ -30,21 +30,10 @@ class PortfolioSummary:
         """
         scenarios = self.batch_execution_summary.scenario_list
 
-        # Convert to dict format for renderer (renderer expects dicts)
-        scenario_dicts = []
-        for scenario in scenarios:
-            scenario_dict = {
-                'scenario_set_name': scenario.scenario_name,
-                'portfolio_statistics': scenario.tick_loop_results.portfolio_stats,
-                'execution_statistics': scenario.tick_loop_results.execution_stats,
-                'cost_breakdown': scenario.tick_loop_results.cost_breakdown
-            }
-            scenario_dicts.append(scenario_dict)
-
         # Use grid renderer
         print()
         renderer.render_portfolio_grid(
-            scenarios=scenario_dicts,
+            scenarios=scenarios,
             columns=3,      # 3 boxes per row
             box_width=38    # Same width as scenario boxes
         )
@@ -93,6 +82,8 @@ class PortfolioSummary:
         total_trades = portfolio_stats.total_trades
         winning_trades = portfolio_stats.winning_trades
         losing_trades = portfolio_stats.losing_trades
+        long_trades = portfolio_stats.total_long_trades
+        short_trades = portfolio_stats.total_short_trades
         win_rate = portfolio_stats.win_rate
 
         total_profit = portfolio_stats.total_profit
@@ -100,7 +91,7 @@ class PortfolioSummary:
         total_pnl = total_profit - total_loss
 
         print(f"\n{renderer.bold('   📈 TRADING SUMMARY:')}")
-        print(f"      Total Trades: {total_trades}  |  "
+        print(f"      Total Trades: {total_trades} (L/S: {long_trades}/{short_trades}) |  "
               f"Win/Loss: {winning_trades}W/{losing_trades}L  |  "
               f"Win Rate: {win_rate:.1%}")
 
@@ -148,6 +139,8 @@ class PortfolioSummary:
     def _aggregate_portfolio_stats(self, scenarios: List[ProcessResult]) -> PortfolioStats:
         """Aggregate portfolio stats from all scenarios."""
         total_trades = 0
+        total_long_trades = 0
+        total_short_trades = 0
         winning_trades = 0
         losing_trades = 0
         total_profit = 0.0
@@ -173,6 +166,8 @@ class PortfolioSummary:
 
         return PortfolioStats(
             total_trades=total_trades,
+            total_long_trades=total_long_trades,
+            total_short_trades=total_short_trades,
             winning_trades=winning_trades,
             losing_trades=losing_trades,
             total_profit=total_profit,

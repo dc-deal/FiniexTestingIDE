@@ -35,6 +35,8 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from python.framework.types.order_types import OrderDirection
+
 
 # ============================================
 # Seeded Delay Generator
@@ -92,7 +94,7 @@ class PendingOrder:
 
     # Original order data for execution
     symbol: str
-    direction: str  # "BUY" or "SELL"
+    direction: OrderDirection  # "long" or "short"
     lots: float
     order_kwargs: Dict  # stop_loss, take_profit, comment, etc.
 
@@ -172,7 +174,7 @@ class OrderExecutionEngine:
     def submit_order(
         self,
         symbol: str,
-        direction: str,
+        direction: OrderDirection,
         lots: float,
         current_tick: int,
         **kwargs
@@ -185,7 +187,7 @@ class OrderExecutionEngine:
 
         Args:
             symbol: Trading symbol
-            direction: "BUY" or "SELL"
+            direction: "long" or "short"
             lots: Position size
             current_tick: Current tick number
             **kwargs: Additional order parameters (SL, TP, comment)

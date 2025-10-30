@@ -68,6 +68,8 @@ class PortfolioStats:
         total_fees: Sum of all trading costs
     """
     total_trades: int
+    total_long_trades: int
+    total_short_trades: int
     winning_trades: int
     losing_trades: int
     total_profit: float

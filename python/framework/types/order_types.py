@@ -34,8 +34,12 @@ class OrderType(Enum):
 
 class OrderDirection(Enum):
     """Order direction (Buy or Sell)"""
-    BUY = "buy"
-    SELL = "sell"
+    LONG = "long"
+    SHORT = "short"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
 
 
 class OrderStatus(Enum):

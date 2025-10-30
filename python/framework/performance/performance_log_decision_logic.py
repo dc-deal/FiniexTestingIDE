@@ -6,7 +6,7 @@ FULLY TYPED: Returns DecisionLogicPerformanceStats dataclass instead of dict.
 UNIQUE KEYWORDS: 'logic_*' for type/name, 'decision_*' for metrics.
 """
 
-from python.framework.types.decision_logic_types import Decision
+from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.performance_stats_types import DecisionLogicPerformanceStats
 
 
@@ -46,9 +46,9 @@ class PerformanceLogDecisionLogic:
             decision: Decision object to track action counts
         """
         self.decision_count += 1
-        if decision.action == "BUY":
+        if decision.action == DecisionLogicAction.BUY:
             self.buy_decision_count += 1
-        if decision.action == "SELL":
+        if decision.action == DecisionLogicAction.BUY:
             self.sell_decision_count += 1
         self.total_time_ms += execution_time_ms
 
