@@ -160,14 +160,16 @@ class ScenarioLogger(AbstractLogger):
         # Clear buffer
         self.console_buffer.clear()
 
-    def close(self):
+    def close(self, flush_buffer: bool = False):
         """
         Close logger and flush any remaining buffers.
 
         Call at end of scenario execution.
         """
         # Flush console buffer
-        self.flush_buffer()
+        if flush_buffer:
+            self.flush_buffer()
+        self.console_buffer.clear()
 
         # Close file logger
         if self.file_logger:

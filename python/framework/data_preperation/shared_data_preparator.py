@@ -391,7 +391,11 @@ class SharedDataPreparator:
                     )
 
                 # Convert to records and tuple
+                # Force UTC timezone before serialization
+                warmup_bars_df['timestamp'] = warmup_bars_df['timestamp'].dt.tz_convert(
+                    'UTC')
                 bars_list = warmup_bars_df.to_dict('records')
+
                 key = (symbol, timeframe, req.start_time)
                 bars_data[key] = tuple(bars_list)
                 bar_counts[key] = len(bars_list)

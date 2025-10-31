@@ -80,6 +80,9 @@ def process_main(
         # === BUILD RESULT ===
         # logger.run_timestamp - start
 
+        log_buffer = scenario_logger.get_buffer()
+        scenario_logger.close()
+
         result = ProcessResult(
             success=True,
             scenario_name=config.name,
@@ -87,18 +90,20 @@ def process_main(
             scenario_index=config.scenario_index,
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
+            scenario_logger_buffer=log_buffer
         )
-
-        scenario_logger.info(f"🕐 Before flush: {time.time()}")
-        scenario_logger.flush_buffer()
-        scenario_logger.close()
-
-        scenario_logger.info(
+        scenario_logger.debug(
             f"🕐 {config.name} returning at {time.time()}")
         return result
 
     except Exception as e:
         # Error handling: Return error details for logging
+        log_buffer = None
+        try:
+            # try to fetch Log, if possible.
+            log_buffer = scenario_logger.get_buffer()
+        except:
+            pass
         return ProcessResult(
             success=False,
             scenario_name=config.name,
@@ -106,7 +111,8 @@ def process_main(
             scenario_index=config.scenario_index,
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
+            scenario_logger_buffer=log_buffer
         )
 
 
@@ -190,20 +196,54 @@ def process_startup_preparation(
     bar_rendering_controller = BarRenderingController(
         logger=scenario_logger)
     bar_rendering_controller.register_workers(workers)
-
-    # Get warmup bars from shared_data
-    # CORRECTED: No validation - trusts SharedDataPreparator filtering
     warmup_bars = {}
     for key, bars_tuple in shared_data.bars.items():
         symbol, timeframe, start_time = key
 
+        # Debug: Vergleich
+        symbol_match = symbol == config.symbol
+        time_match = start_time == config.start_time
+
         # Only inject bars matching this scenario
-        if symbol == config.symbol and start_time == config.start_time:
+        if symbol_match and time_match:
+            scenario_logger.debug(
+                f"🔍 [DEBUG] Checking: ({symbol}, {timeframe}, {start_time})"
+            )
+            scenario_logger.debug(
+                f"  symbol_match: {symbol_match} ({symbol} == {config.symbol})"
+            )
+            scenario_logger.debug(
+                f"  time_match: {time_match} ({start_time} == {config.start_time})"
+            )
+            scenario_logger.debug(f"  ✅ MATCH! Adding {len(bars_tuple)} bars")
             warmup_bars[timeframe] = bars_tuple
 
-    # Inject warmup bars (no validation)
+    scenario_logger.debug(
+        f"🔍 [DEBUG] Result: {len(warmup_bars)} timeframes collected")
+    scenario_logger.debug("=" * 80)
+
+    # Inject warmup bars
     bar_rendering_controller.inject_warmup_bars(
         symbol=config.symbol, warmup_bars=warmup_bars)
+
+    # Check: Wurden die Bars korrekt deserialisiert?
+    for timeframe in warmup_bars.keys():
+        bar_history = bar_rendering_controller.get_bar_history(
+            config.symbol, timeframe)
+        scenario_logger.debug(
+            f"📊 Bar History for {timeframe}: {len(bar_history)} bars"
+        )
+        if len(bar_history) > 0:
+            first_bar = bar_history[0]
+            last_bar = bar_history[-1]
+            scenario_logger.debug(
+                f"  First: {first_bar.timestamp} (open={first_bar.open})"
+            )
+            scenario_logger.debug(
+                f"  Last:  {last_bar.timestamp} (open={last_bar.open})"
+            )
+        else:
+            scenario_logger.debug(f"  ❌ EMPTY BAR HISTORY!")
 
     scenario_logger.debug(
         f"✅ Injected warmup bars: "

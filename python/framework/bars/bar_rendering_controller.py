@@ -127,6 +127,11 @@ class BarRenderingController:
         # Invalidate cache if any bar was closed
         # Cache rebuild happens on next get_all_bar_history() call
         if any(closed_bars.values()):
+            # ============ DEBUG START ============
+            self.logger.debug(
+                f"🔍 [CACHE INVALIDATED] Bars closed: {closed_bars}")
+            # ============ DEBUG END ============
+
             self._cache_is_valid = False
 
         return current_bars

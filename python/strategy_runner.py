@@ -5,6 +5,8 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
+import time
+from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration import AppConfigLoader
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.scenario.config_loader import ScenarioConfigLoader
@@ -84,6 +86,16 @@ def run_strategy_test():
 
         # Run test
         batch_execution_summary = orchestrator.run()
+
+        # ========================================================================
+        # Logger Flush. Run does not decide weather to Console log Run.
+        # ========================================================================
+        vLog.info(
+            f"🕐 Flush Global Buffer")
+        scenario_set.logger.close(True)
+        for process_result in batch_execution_summary.scenario_list:
+            AbstractLogger.print_buffer(
+                process_result.scenario_logger_buffer, process_result.scenario_name)
 
         # ============================================
         # Capture output for file logging

@@ -35,7 +35,7 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
         Optional parameters:
             - artificial_load_ms: CPU load duration (default: 5.0ms)
         """
-        super().__init__(name, parameters, logger, **kwargs)
+        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 14)
@@ -87,14 +87,9 @@ class HeavyRSIWorker(AbstractBlackboxWorker):
 
         # === NORMALE RSI BERECHNUNG ===
         bars = bar_history.get(self.timeframe, [])
-
-        if len(bars) < self.period + 1:
-            return WorkerResult(
-                worker_name=self.name,
-                value=50.0,
-                confidence=0.0,
-                metadata={"insufficient_bars": True},
-            )
+        current_bar = current_bars.get(self.timeframe, [])
+        if current_bars:
+            bars = list(bars) + [current_bar]
 
         close_prices = np.array(
             [bar.close for bar in bars[-(self.period + 1):]])
@@ -155,7 +150,7 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
             - timeframe: Timeframe (default: "M5")
             - artificial_load_ms: CPU load (default: 8.0ms)
         """
-        super().__init__(name, parameters, logger, **kwargs)
+        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         params = parameters or {}
         self.period = params.get('period') or kwargs.get('period', 20)
@@ -209,13 +204,9 @@ class HeavyEnvelopeWorker(AbstractBlackboxWorker):
 
         # === NORMALE ENVELOPE BERECHNUNG ===
         bars = bar_history.get(self.timeframe, [])
-
-        if len(bars) < self.period:
-            return WorkerResult(
-                worker_1=self.name,
-                value={"upper": 0, "middle": 0, "lower": 0},
-                confidence=0.0,
-            )
+        current_bar = current_bars.get(self.timeframe, [])
+        if current_bars:
+            bars = list(bars) + [current_bar]
 
         close_prices = np.array([bar.close for bar in bars[-self.period:]])
         middle = np.mean(close_prices)
@@ -282,7 +273,7 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
             - timeframe: Timeframe (default: "M5")
             - artificial_load_ms: CPU load (default: 6.0ms)
         """
-        super().__init__(name, parameters, logger, **kwargs)
+        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         params = parameters or {}
         self.fast = params.get('fast') or kwargs.get('fast', 12)
@@ -334,13 +325,9 @@ class HeavyMACDWorker(AbstractBlackboxWorker):
 
         # === SIMPLE MACD BERECHNUNG ===
         bars = bar_history.get(self.timeframe, [])
-
-        if len(bars) < self.slow:
-            return WorkerResult(
-                worker_name=self.name,
-                value={"macd": 0.0, "signal": 0.0, "histogram": 0.0},
-                confidence=0.0,
-            )
+        current_bar = current_bars.get(self.timeframe, [])
+        if current_bars:
+            bars = list(bars) + [current_bar]
 
         prices = np.array([bar.close for bar in bars])
 
