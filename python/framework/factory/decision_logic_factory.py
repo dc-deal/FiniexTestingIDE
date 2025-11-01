@@ -157,7 +157,7 @@ class DecisionLogicFactory:
         )
 
         logger.debug(
-            f"✓ Created decision logic: {logic_type} with {len(logic_config)} config values"
+            f"✅ Created decision logic: {logic_type} with {len(logic_config)} config values"
         )
 
         return logic_instance

@@ -155,9 +155,9 @@ class SharedDataPreparator:
                 )
 
             # Store as tuple (immutable, CoW-friendly)
-            ticks_data[req.symbol] = tuple(ticks)
-            tick_counts[req.symbol] = count
-            tick_ranges[req.symbol] = time_range
+            ticks_data[req.scenario_name] = tuple(ticks)
+            tick_counts[req.scenario_name] = count
+            tick_ranges[req.scenario_name] = time_range
 
             vLog.info(
                 f"  ✅ {count:,} ticks loaded ({time_range[0]} → {time_range[1]})")

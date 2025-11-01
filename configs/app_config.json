@@ -15,10 +15,10 @@
         "show_worker_details": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,
-        "log_level": "INFO"
+        "log_level": "DEBUG"
     },
     "file_logging": {
-        "enabled": false,
+        "enabled": true,
         "log_level": "DEBUG",
         "log_root_path": "logs/scenario_sets"
     },

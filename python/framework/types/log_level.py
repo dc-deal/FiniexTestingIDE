@@ -19,6 +19,7 @@ class LogLevel:
     Log level definitions and validation.
     Thread-safe, case-insensitive validation.
     """
+    VERBOSE = "VERBOSE"
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -26,6 +27,7 @@ class LogLevel:
 
     # Priority for filtering (higher = more important)
     _PRIORITY = {
+        "VERBOSE": 0,
         "DEBUG": 10,
         "INFO": 20,
         "WARNING": 30,

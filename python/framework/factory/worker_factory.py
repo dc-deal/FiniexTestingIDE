@@ -180,7 +180,7 @@ class WorkerFactory:
         )
 
         logger.debug(
-            f"✓ Created worker: {instance_name} ({worker_type}) "
+            f"✅ Created worker: {instance_name} ({worker_type}) "
             f"with {len(merged_params)} parameters"
         )
 
@@ -251,7 +251,7 @@ class WorkerFactory:
                     f"Worker creation failed for {instance_name} ({worker_type}): {e}")
 
         logger.debug(
-            f"✓ Created {len(created_workers)} workers: "
+            f"✅ Created {len(created_workers)} workers: "
             f"{list(created_workers.keys())}"
         )
 

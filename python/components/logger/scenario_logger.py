@@ -75,10 +75,8 @@ class ScenarioLogger(AbstractLogger):
     def get_log_dir(self):
         return self.run_dir
 
-    def reset_start_time(self, prepare_hint: str):
+    def reset_start_time(self):
         self.start_time = datetime.now()
-        self._log(LogLevel.DEBUG, "🚀 Starting Scenario " +
-                  self.name+" Log Timer ("+prepare_hint+").")
 
     def _get_timestamp(self) -> str:
         """
@@ -93,9 +91,9 @@ class ScenarioLogger(AbstractLogger):
         milliseconds = int((total_seconds - seconds) * 1000)
         return f"[{seconds:3d}s {milliseconds:3d}ms]"
 
-    def _log(self, level: str, message: str):
+    def _log_console_implementation(self, level: str, message: str, timestamp: str) -> str:
         """
-        Log message with buffered console and direct file output.
+            Format Message for Scenario Log.
 
         Console: Buffered (flush at end)
         File: Direct write (no buffer)
@@ -104,15 +102,10 @@ class ScenarioLogger(AbstractLogger):
             level: Log level (INFO, DEBUG, WARNING, ERROR)
             message: Log message
         """
-        timestamp = self._get_timestamp()
         formatted_line = self._format_log_line(level, message, timestamp)
-
-        # Console output (BUFFERED)
+        # Console output (BUFFERED) - for scenario loggers.
         self._add_to_console_buffer(level, formatted_line)
-
-        # File output (DIRECT - if enabled)
-        if self.file_logging_enabled and LogLevel.should_log(level, self.file_log_level):
-            self._write_to_file(level, message, timestamp)
+        return formatted_line
 
     def _add_to_console_buffer(self, level: str, formatted_line: str):
         """

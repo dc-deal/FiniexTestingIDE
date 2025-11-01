@@ -251,7 +251,8 @@ def process_startup_preparation(
     )
 
     # Ticks deserialisieren
-    ticks = deserialize_ticks_batch(symbol, shared_data.ticks[symbol])
+    ticks = process_deserialize_ticks_batch(
+        scenario_config=config, ticks_tuple_list=shared_data.ticks)
     scenario_logger.debug(
         f"🔄 De-Serialization of {len(ticks):,} ticks finished")
 
@@ -297,6 +298,19 @@ def execute_tick_loop(
     profile_times = defaultdict(float)
     profile_counts = defaultdict(int)
     tick_count = 0
+
+    # === DEBUG: TICK RANGE INFO ===
+    scenario_logger.debug(f"🔍 [DEBUG] Tick loop starting")
+    scenario_logger.debug(f"  Total ticks: {len(ticks)}")
+    scenario_logger.debug(f"  TradeSimulator ID: {id(trade_simulator)}")
+    scenario_logger.debug(f"  Portfolio ID: {id(trade_simulator.portfolio)}")
+    if len(ticks) > 0:
+        first_tick = ticks[0]
+        last_tick = ticks[-1]
+        scenario_logger.debug(
+            f"  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}")
+        scenario_logger.debug(
+            f"  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}")
 
     scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
 
@@ -391,6 +405,12 @@ def execute_tick_loop(
     execution_stats = trade_simulator.get_execution_stats()
     cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
 
+    total_profit = portfolio_stats.total_profit
+    total_loss = portfolio_stats.total_loss
+    total_pnl = total_profit - total_loss
+    scenario_logger.debug(
+        f"💰 Portfolio P&L: {total_pnl}")
+
     return ProcessTickLoopResult(
         decision_statistics=decision_statistics,
         performance_stats=performance_stats,
@@ -459,12 +479,16 @@ def prepare_trade_simulator_for_scenario(logger: ScenarioLogger, config: Process
     return trade_simulator
 
 
-def deserialize_ticks_batch(symbol: str, ticks_tuple: Tuple[Any, ...]) -> List[TickData]:
+def process_deserialize_ticks_batch(scenario_config: ProcessScenarioConfig, ticks_tuple_list: Dict[str, Tuple[Any, ...]]) -> List[TickData]:
     """
     Optimierte Batch-Deserialisierung für große Tick-Mengen.
 
     Nutzt list comprehension für bessere Performance.
     """
+    ticks_tuple = ticks_tuple_list[scenario_config.name]
+    if not ticks_tuple:
+        raise KeyError(
+            f"Ticks for scenario {scenario_config.name} could not be found in sharded data for process (ticks)")
     result = []
     for tick_data in ticks_tuple:
         if isinstance(tick_data, TickData):
@@ -476,7 +500,7 @@ def deserialize_ticks_batch(symbol: str, ticks_tuple: Tuple[Any, ...]) -> List[T
 
             result.append(TickData(
                 timestamp=ts,
-                symbol=symbol,
+                symbol=scenario_config.symbol,
                 bid=float(tick_data['bid']),
                 ask=float(tick_data['ask']),
                 volume=float(tick_data.get('volume', 0.0))

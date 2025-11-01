@@ -31,6 +31,7 @@ class ColorCodes:
     YELLOW = '\033[93m'
     BLUE = '\033[94m'
     GREEN = '\033[92m'
+    PURPLE = '\033[95m'  # für VERBOSE
     GRAY = '\033[90m'
     BOLD = '\033[1m'
     RESET = '\033[0m'
@@ -88,7 +89,7 @@ class AbstractLogger(ABC):
             raise ValueError(f"Invalid log level: {self.console_log_level}")
 
     @abstractmethod
-    def _log(self, level: str, message: str):
+    def _log_console_implementation(self, level: str, message: str) -> str:
         """
         Core logging method - must be implemented by subclasses.
 
@@ -131,25 +132,30 @@ class AbstractLogger(ABC):
     # Public Logging API
     # ============================================
 
-    def info(self, message: str):
-        """Log INFO message (respects log level filtering)"""
-        if LogLevel.should_log(LogLevel.INFO, self.console_log_level):
-            self._log(LogLevel.INFO, message)
+    def should_logLevel(self, level: LogLevel):
+        should_log_console = self._should_log_console(level)
+        should_log_file = self._should_log_file(level)
+        return should_log_console or should_log_file
+
+    def verbose(self, message: str):
+        """Log VERBOSE message - All Logs also Tick / Order Data"""
+        self._process_log(LogLevel.VERBOSE, message)
 
     def debug(self, message: str):
-        """Log DEBUG message (respects log level filtering)"""
-        if LogLevel.should_log(LogLevel.DEBUG, self.console_log_level):
-            self._log(LogLevel.DEBUG, message)
+        """Log DEBUG message Many Logs - also minor log events"""
+        self._process_log(LogLevel.DEBUG, message)
+
+    def info(self, message: str):
+        """Log INFO message (respects log level filtering)"""
+        self._process_log(LogLevel.INFO, message)
 
     def warning(self, message: str):
         """Log WARNING message (respects log level filtering)"""
-        if LogLevel.should_log(LogLevel.WARNING, self.console_log_level):
-            self._log(LogLevel.WARNING, message)
+        self._process_log(LogLevel.WARNING, message)
 
     def error(self, message: str):
         """Log ERROR message (respects log level filtering)"""
-        if LogLevel.should_log(LogLevel.ERROR, self.console_log_level):
-            self._log(LogLevel.ERROR, message)
+        self._process_log(LogLevel.ERROR, message)
 
     # ============================================
     # Critical Error Methods (Auto-Flush + Exit)
@@ -296,15 +302,35 @@ class AbstractLogger(ABC):
     # Helper Methods
     # ============================================
 
+    def _should_log_console(self, logLevel: LogLevel) -> bool:
+        return LogLevel.should_log(logLevel, self.console_log_level)
+
+    def _should_log_file(self, logLevel: LogLevel) -> bool:
+        return self.file_logging_enabled and LogLevel.should_log(logLevel, self.file_log_level)
+
     def _get_color_for_level(self, level: str) -> str:
         """Get ANSI color code for log level"""
         color_map = {
+            LogLevel.VERBOSE: ColorCodes.PURPLE,
             LogLevel.DEBUG: ColorCodes.GRAY,
             LogLevel.INFO: ColorCodes.BLUE,
             LogLevel.WARNING: ColorCodes.YELLOW,
             LogLevel.ERROR: ColorCodes.RED
         }
         return color_map.get(level, ColorCodes.RESET)
+
+    def _process_log(self, level: LogLevel, message: str):
+        should_log_console = self._should_log_console(level)
+        should_log_file = self._should_log_file(level)
+        if should_log_console or should_log_file:
+            timestamp_implemenration = self._get_timestamp()
+            # something has to be logged.
+            formatted_line_implementation = self._log_console_implementation(
+                level, message, timestamp_implemenration)
+            # File output (DIRECT - if enabled)
+            if should_log_file:
+                self._write_to_file(
+                    level, message, timestamp_implemenration)
 
     def _format_log_line(self, level: str, message: str, timestamp: str) -> str:
         """

@@ -85,6 +85,7 @@ class AggregateScenarioDataRequirements:
                 end_time = end_time.replace(tzinfo=timezone.utc)
 
         tick_req = TickRequirement(
+            scenario_name=scenario.name,
             symbol=scenario.symbol,
             start_time=start_time,
             end_time=end_time,
@@ -121,6 +122,7 @@ class AggregateScenarioDataRequirements:
         # Convert to BarRequirements for aggregation
         for timeframe, warmup_count in scenario_reqs.warmup_by_timeframe.items():
             bar_req = BarRequirement(
+                scenario_name=scenario.name,
                 symbol=scenario.symbol,
                 timeframe=timeframe,
                 warmup_count=warmup_count,
@@ -151,12 +153,6 @@ class AggregateScenarioDataRequirements:
             f"from {self._scenario_count} scenarios"
         )
 
-        # Deduplicate tick requirements
-        # self._deduplicate_tick_requirements()
-
-        # Deduplicate bar requirements
-        # self._deduplicate_bar_requirements()
-
         vLog.info(
             f"✅ After deduplication: "
             f"{len(self.requirements.tick_requirements)} tick loads, "
@@ -164,81 +160,3 @@ class AggregateScenarioDataRequirements:
         )
 
         return self.requirements
-
-    def _deduplicate_tick_requirements(self) -> None:
-        """
-        Deduplicate tick requirements by merging overlapping ranges.
-
-        STRATEGY:
-        - Group by symbol
-        - Merge overlapping time ranges
-        - Handle both tick-limited and timespan modes
-        """
-        # Group by symbol
-        by_symbol: Dict[str, List[TickRequirement]] = {}
-        for req in self.requirements.tick_requirements:
-            if req.symbol not in by_symbol:
-                by_symbol[req.symbol] = []
-            by_symbol[req.symbol].append(req)
-
-        # Merge overlapping ranges per symbol
-        deduplicated = []
-        for symbol, reqs in by_symbol.items():
-            # Sort by start_time
-            reqs.sort(key=lambda r: r.start_time)
-
-            # Simple merge: Take MIN(start) and MAX(end)
-            min_start = min(r.start_time for r in reqs)
-
-            # Handle end_time (None for tick-limited mode)
-            end_times = [r.end_time for r in reqs if r.end_time is not None]
-            max_end = max(end_times) if end_times else None
-
-            # Aggregate max_ticks (for tick-limited scenarios)
-            max_ticks_values = [
-                r.max_ticks for r in reqs if r.max_ticks is not None]
-            total_max_ticks = max(
-                max_ticks_values) if max_ticks_values else None
-
-            merged = TickRequirement(
-                symbol=symbol,
-                start_time=min_start,
-                end_time=max_end,
-                max_ticks=total_max_ticks,
-                start_readable=min_start.strftime(
-                    "%Y-%m-%d %H:%M:%S"),
-                end_readable=max_end.strftime(
-                    "%Y-%m-%d %H:%M:%S"),
-            )
-            deduplicated.append(merged)
-
-        self.requirements.tick_requirements = deduplicated
-
-    def _deduplicate_bar_requirements(self) -> None:
-        """
-        Deduplicate bar requirements.
-
-        STRATEGY:
-        - Group by (symbol, timeframe, start_time)
-        - Take maximum warmup_count for each group
-        """
-        # Group by (symbol, timeframe, start_time)
-        by_key: Dict[Tuple[str, str, datetime], int] = {}
-
-        for req in self.requirements.bar_requirements:
-            key = (req.symbol, req.timeframe, req.start_time)
-            by_key[key] = max(by_key.get(key, 0), req.warmup_count)
-
-        # Rebuild deduplicated list
-        deduplicated = []
-        for (symbol, timeframe, start_time), warmup_count in by_key.items():
-            deduplicated.append(BarRequirement(
-                symbol=symbol,
-                timeframe=timeframe,
-                warmup_count=warmup_count,
-                start_time=start_time,
-                start_readable=start_time.strftime(
-                    "%Y-%m-%d %H:%M:%S"),
-            ))
-
-        self.requirements.bar_requirements = deduplicated

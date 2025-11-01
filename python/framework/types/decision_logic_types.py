@@ -70,3 +70,14 @@ class Decision:
     price: float = 0.0                # Price at decision time
     timestamp: str = ""               # ISO format UTC timestamp
     metadata: Dict[str, Any] = field(default_factory=dict)  # Additional data
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict with enum as string value for JSON serialization"""
+        return {
+            "action": self.action.value,  # Enum -> string
+            "confidence": self.confidence,
+            "reason": self.reason,
+            "price": self.price,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata
+        }
