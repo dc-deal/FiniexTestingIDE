@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logger.trading_environment_logger import TradingEnvironmentLogger
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
@@ -48,10 +49,10 @@ class TradeSimulator:
     def __init__(
         self,
         broker_config: BrokerConfig,
-        initial_balance: float = 10000,
-        currency: str = "EUR",
+        initial_balance: float,
+        currency: str,
+        logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
-        logger: AbstractLogger = None
     ):
         """
         Initialize trade simulator.
@@ -96,6 +97,8 @@ class TradeSimulator:
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
+
+        self.trade_logger = TradingEnvironmentLogger(logger)
 
     # ============================================
     # Price Updates

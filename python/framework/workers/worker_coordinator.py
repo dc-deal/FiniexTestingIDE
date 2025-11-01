@@ -1,18 +1,10 @@
 """
 FiniexTestingIDE - Worker Coordinator ()
 Coordinates multiple workers and delegates decision-making to DecisionLogic
-
-ARCHITECTURE CHANGE (Issue 2):
-- Workers are now injected (created by Factory)
-- DecisionLogic is now injected (no hardcoded strategy)
-- Coordinator only coordinates, doesn't decide
-
-ARCHITECTURE CHANGE (Performance Logging V0.7):
-- Integrated PerformanceLogCoordinator for comprehensive metrics
-- Automatic performance tracking for workers and decision logic
-- No changes needed in concrete worker/logic classes
 """
 
+from dataclasses import asdict
+import json
 import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,10 +12,12 @@ from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
+from python.framework.logger.coordinator_tick_logger import CoordinatorTickLogger
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_data_types import Bar, TickData
 
 from python.framework.types.worker_types import (
+    WorkerResult,
     WorkerState)
 from python.framework.types.performance_stats_types import BatchPerformanceStats
 from python.framework.workers.abstract_blackbox_worker import \
@@ -87,13 +81,7 @@ class WorkerCoordinator:
         self._validate_decision_logic_requirements()
 
         self.is_initialized = False
-        self._worker_results = {}
-        self._statistics = {
-            "ticks_processed": 0,
-            "decisions_made": 0,
-            "worker_calls": 0,
-            "parallel_execution_time_saved_ms": 0.0,
-        }
+        self._worker_results: Dict[str, WorkerResult] = {}
 
         # Parallelization configuration
         if parallel_workers is None:
@@ -112,6 +100,11 @@ class WorkerCoordinator:
             if self.parallel_workers
             else None
         )
+
+        # ============================================
+        # Optimized Tick Logger
+        # ============================================
+        self.tick_logger = CoordinatorTickLogger(logger=self.logger)
 
         # ============================================
         # Performance Logging Integration
@@ -258,7 +251,7 @@ class WorkerCoordinator:
             raise ValueError(error_msg)
 
         self.logger.debug(
-            f"✓ DecisionLogic requirements validated: "
+            f"✅ DecisionLogic requirements validated: "
             f"{len(required_instances)} worker instances"
         )
 
@@ -275,7 +268,7 @@ class WorkerCoordinator:
 
         for name, worker in self.workers.items():
             worker.set_state(WorkerState.READY)
-            self.logger.debug(f"  ✓ Worker '{name}' ready")
+            self.logger.debug(f"  ✅ Worker '{name}' ready")
 
         self.is_initialized = True
         self.logger.debug(
@@ -290,13 +283,6 @@ class WorkerCoordinator:
         """
         Process tick through all workers and generate decision.
 
-        ARCHITECTURE CHANGE (Issue 2):
-        - Workers compute their indicators (unchanged)
-        - DecisionLogic generates the trading decision (NEW!)
-
-        ARCHITECTURE CHANGE (V0.7):
-        - Performance metrics automatically tracked
-
         Args:
             tick: Current tick data
             current_bars: Current bars per timeframe
@@ -308,7 +294,6 @@ class WorkerCoordinator:
         if not self.is_initialized:
             raise RuntimeError("Coordinator not initialized")
 
-        self._statistics["ticks_processed"] += 1
         self.performance_log.increment_ticks()
         bar_history = bar_history or {}
 
@@ -337,16 +322,23 @@ class WorkerCoordinator:
             bar_history=bar_history
         )
 
+        # ============================================
+        # OPTIMIZED LOGGING (NEW - with caching)
+        # ============================================
+        self.tick_logger.log_tick_data(
+            tick=tick,
+            worker_results=self._worker_results,
+            current_bars=current_bars,
+            bar_history=bar_history,
+            decision=decision
+        )
+
         decision_time_ms = (time.perf_counter() - decision_start) * 1000
 
         # Record decision logic performance
         if self.decision_logic.performance_logger:
             self.decision_logic.performance_logger.record(
                 decision_time_ms, decision)
-
-        # Update statistics
-        if decision and decision.action != DecisionLogicAction.FLAT:
-            self._statistics["decisions_made"] += 1
 
         return decision
 
@@ -376,7 +368,6 @@ class WorkerCoordinator:
 
                     self._worker_results[name] = result
                     worker.set_state(WorkerState.READY)
-                    self._statistics["worker_calls"] += 1
 
                     # Record worker performance
                     if worker.performance_logger:
@@ -432,7 +423,6 @@ class WorkerCoordinator:
 
                 self._worker_results[name] = result
                 worker.set_state(WorkerState.READY)
-                self._statistics["worker_calls"] += 1
 
                 # Track sequential time for comparison
                 sequential_time_estimate += computation_time_ms
@@ -452,7 +442,6 @@ class WorkerCoordinator:
         time_saved = sequential_time_estimate - parallel_time_ms
 
         if time_saved > 0:
-            self._statistics["parallel_execution_time_saved_ms"] += time_saved
             # Record parallel performance
             self.performance_log.record_parallel_time_saved(time_saved)
 
@@ -484,7 +473,7 @@ class WorkerCoordinator:
             raise RuntimeError(
                 f"Worker {worker.name} computation failed: {e}") from e
 
-    def get_worker_results(self) -> Dict[str, Any]:
+    def get_worker_results(self) -> Dict[str, WorkerResult]:
         """
         Get all current worker results.
 
@@ -503,9 +492,3 @@ class WorkerCoordinator:
 
         self._worker_results.clear()
         self.is_initialized = False
-
-        # Log final statistics
-        if self.parallel_workers:
-            total_saved = self._statistics["parallel_execution_time_saved_ms"]
-            self.logger.info(
-                f"📊 Total time saved by parallelization: {total_saved:.2f}ms")

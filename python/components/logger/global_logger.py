@@ -81,20 +81,15 @@ class GlobalLogger(AbstractLogger):
         """
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def _log(self, level: str, message: str):
+    def _log_console_implementation(self, level: str, message: str, timestamp: str) -> str:
         """
-        Log message directly to console and file.
-
-        No buffering - writes immediately.
-
+          Format Message for Global Log
         Args:
             level: Log level (INFO, DEBUG, WARNING, ERROR)
             message: Log message
         """
-        timestamp = self._get_timestamp()
         formatted_line = self._format_log_line(level, message, timestamp)
-
-        # Console output (direct)
+        # Console output (direct) - only in global context.
         self._write_to_console(level, formatted_line)
 
         # File output (if enabled)

@@ -14,7 +14,7 @@ class TickData:
     - Parsing happens once during data loading, not during bar rendering
     - Expected speedup: 50-70% in bar rendering operations
     """
-    timestamp: datetime  # Changed from str to datetime!
+    timestamp: datetime
     symbol: str
     bid: float
     ask: float
@@ -24,6 +24,17 @@ class TickData:
     def mid(self) -> float:
         """Mid price between bid/ask"""
         return (self.bid + self.ask) / 2.0
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization"""
+        return {
+            'timestamp': self.timestamp.isoformat(),
+            'symbol': self.symbol,
+            'bid': self.bid,
+            'ask': self.ask,
+            'volume': self.volume,
+            'mid': self.mid
+        }
 
 
 @dataclass

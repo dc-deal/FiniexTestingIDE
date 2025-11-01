@@ -171,7 +171,9 @@ class BatchOrchestrator:
         self.appConfig = app_config
 
         # start global Log
-        self.scenario_set.logger.reset_start_time("Batch Init")
+        self.scenario_set.logger.reset_start_time()
+        self.scenario_set.logger.info("🚀 Starting Scenario " +
+                                      self.scenario_set.scenario_set_name+" Log Timer (Batch Init).")
 
         # Initialize Factories
         self.worker_factory = WorkerFactory()

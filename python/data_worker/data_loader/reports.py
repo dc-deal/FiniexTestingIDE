@@ -109,11 +109,11 @@ class TickDataReporter:
             end_date=end_dt,
         )
 
-        vLog.info(f"✓ Loaded:      {len(df):,} ticks")
+        vLog.info(f"✅ Loaded:      {len(df):,} ticks")
         vLog.info(
-            f"✓ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
+            f"✅ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
         vLog.info(
-            f"✓ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
+            f"✅ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
         )
         vLog.info(f"\n📋 Sample Data (first 3 ticks):")
         vLog.info(df.head(3).to_string())
