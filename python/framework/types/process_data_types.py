@@ -7,6 +7,7 @@ CORRECTIONS:
 - scenario_set_name: For logger initialization
 - run_timestamp: Shared timestamp across all processes
 - warmup_requirements: REMOVED (validation skipped)
+- account_currency: Changed from 'currency' for clarity (auto-detection support)
 """
 
 from dataclasses import dataclass, field
@@ -137,6 +138,7 @@ class ProcessScenarioConfig:
     - scenario_set_name: For logger initialization
     - run_timestamp: Shared across all processes
     - warmup_requirements: REMOVED (validation skipped)
+    - account_currency: Changed from 'currency' (supports "auto" detection)
     """
     # === IDENTITY ===
     name: str
@@ -165,9 +167,10 @@ class ProcessScenarioConfig:
     scenario_set_name: str = ""
     run_timestamp: str = ""
 
+    # === TRADING SIMULATOR CONFIG ===
     broker_config_path: str = '',
     initial_balance: float = 0,
-    currency: str = ''
+    account_currency: str = ''  # Changed from 'currency' - supports "auto"
 
     @staticmethod
     def from_scenario(
@@ -183,6 +186,7 @@ class ProcessScenarioConfig:
         CORRECTED:
         - Uses complete strategy_config (for worker creation)
         - Adds scenario_set_name and run_timestamp
+        - Reads 'account_currency' from trade_simulator_config
 
         Args:
             scenario: SingleScenario object
@@ -219,7 +223,9 @@ class ProcessScenarioConfig:
             'broker_config_path')
         initial_balance = scenario.trade_simulator_config.get(
             'initial_balance')
-        currency = scenario.trade_simulator_config.get('currency')
+        # Changed: Read 'account_currency' instead of 'currency'
+        account_currency = scenario.trade_simulator_config.get(
+            'account_currency', 'auto')
 
         return ProcessScenarioConfig(
             name=scenario.name,
@@ -237,7 +243,7 @@ class ProcessScenarioConfig:
             run_timestamp=run_timestamp,           # CORRECTED: Added
             broker_config_path=broker_config_path,
             initial_balance=initial_balance,
-            currency=currency
+            account_currency=account_currency  # Changed from 'currency'
         )
 
 
@@ -297,6 +303,7 @@ class ProcessResult:
     success: bool = False
     scenario_name: str = ''
     symbol: str = ''
+    account_currency: str = ''  # Account currency (auto-detected or explicit)
     scenario_index: int = ''
 
     # === EXECUTION TIME ===
@@ -322,6 +329,7 @@ class ProcessResult:
             'success': self.success,
             'scenario_name': self.scenario_name,
             'scenario_index': self.scenario_index,
+            'account_currency': self.account_currency,
             'execution_time_ms': self.execution_time_ms,
             'error_type': self.error_type,
             'error_message': self.error_message,

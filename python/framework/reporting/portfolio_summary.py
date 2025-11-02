@@ -6,6 +6,7 @@ Rendered in BOX format matching scenario details.
 """
 
 from typing import List
+from python.framework.types.currency_codes import format_currency_simple, get_currency_symbol
 from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult
 from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
 
@@ -96,11 +97,15 @@ class PortfolioSummary:
               f"Win Rate: {win_rate:.1%}")
 
         pnl_color = renderer.green if total_pnl >= 0 else renderer.red
-        pnl_str = pnl_color(f"${total_pnl:.2f}")
+        # Get currency from portfolio stats
+        currency = portfolio_stats.currency
+
+        pnl_color = renderer.green if total_pnl >= 0 else renderer.red
+        pnl_str = pnl_color(format_currency_simple(total_pnl, currency))
 
         print(f"      Total P&L: {pnl_str}  |  "
-              f"Profit: ${total_profit:.2f}  |  "
-              f"Loss: ${total_loss:.2f}")
+              f"Profit: {format_currency_simple(total_profit, currency)}  |  "
+              f"Loss: {format_currency_simple(total_loss, currency)}")
 
         # Profit factor
         profit_factor = portfolio_stats.profit_factor
@@ -129,12 +134,14 @@ class PortfolioSummary:
         commission = cost_breakdown.total_commission
         swap = cost_breakdown.total_swap
         total_costs = spread_cost + commission + swap
+        currency = cost_breakdown.currency
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f"      Spread Cost: ${spread_cost:.2f}  |  "
-              f"Commission: ${commission:.2f}  |  "
-              f"Swap: ${swap:.2f}")
-        print(f"      Total Costs: ${total_costs:.2f}")
+        print(f"      Spread Cost: {format_currency_simple(spread_cost, currency)}  |  "
+              f"Commission: {format_currency_simple(commission, currency)}  |  "
+              f"Swap: {format_currency_simple(swap, currency)}")
+        print(
+            f"      Total Costs: {format_currency_simple(total_costs, currency)}")
 
     def _aggregate_portfolio_stats(self, scenarios: List[ProcessResult]) -> PortfolioStats:
         """Aggregate portfolio stats from all scenarios."""
@@ -179,7 +186,9 @@ class PortfolioSummary:
             total_spread_cost=total_spread_cost,
             total_commission=total_commission,
             total_swap=total_swap,
-            total_fees=total_spread_cost + total_commission + total_swap
+            total_fees=total_spread_cost + total_commission + total_swap,
+            # Use first scenario's currency - multi currency aggregation not supportet yet (feature Gate MVP)
+            currency=scenarios[0].tick_loop_results.portfolio_stats.currency
         )
 
     def _aggregate_execution_stats(self, scenarios: List[ProcessResult]) -> ExecutionStats:
@@ -222,5 +231,7 @@ class PortfolioSummary:
             total_spread_cost=total_spread_cost,
             total_commission=total_commission,
             total_swap=total_swap,
-            total_fees=total_spread_cost + total_commission + total_swap
+            total_fees=total_spread_cost + total_commission + total_swap,
+            # Use first scenario's currency - multi currency aggregation not supportet yet (feature Gate MVP)
+            currency=scenarios[0].tick_loop_results.portfolio_stats.currency
         )

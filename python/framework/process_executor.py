@@ -12,6 +12,7 @@ from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.order_types import OrderStatus
 from python.framework.types.process_data_types import (
@@ -189,7 +190,7 @@ def process_startup_preparation(
 
     scenario_logger.debug(
         f"✅ Created trade simulator: "
-        f"{config.initial_balance} {config.currency}"
+        f"{config.initial_balance} {config.account_currency}"
     )
 
     # === CREATE BAR RENDERING CONTROLLER ===
@@ -408,8 +409,9 @@ def execute_tick_loop(
     total_profit = portfolio_stats.total_profit
     total_loss = portfolio_stats.total_loss
     total_pnl = total_profit - total_loss
+    currency = portfolio_stats.currency
     scenario_logger.debug(
-        f"💰 Portfolio P&L: {total_pnl}")
+        f"💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}")
 
     return ProcessTickLoopResult(
         decision_statistics=decision_statistics,
@@ -443,11 +445,22 @@ def prepare_trade_simulator_for_scenario(logger: ScenarioLogger, config: Process
 
     # Create broker config
     broker_config = BrokerConfig.from_json(broker_config_path)
+
+    # Log currency configuration before TradeSimulator creation
+    logger.info(
+        f"💱 Trade Simulator Configuration:\n"
+        f"   Symbol: {config.symbol}\n"
+        f"   Account Currency: {config.account_currency}\n"
+        f"   Initial Balance: {config.initial_balance}"
+    )
+
     # Create NEW TradeSimulator for this scenario
+    # Pass account_currency (supports "auto") and symbol for auto-detection
     trade_simulator = TradeSimulator(
         broker_config=broker_config,
         initial_balance=config.initial_balance,
-        currency=config.currency,
+        account_currency=config.account_currency,  # Changed from 'currency'
+        symbol=config.symbol,  # NEW: Required for auto-detection
         logger=logger
     )
 

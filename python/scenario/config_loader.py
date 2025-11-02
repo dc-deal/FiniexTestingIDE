@@ -14,6 +14,7 @@ from python.framework.exceptions.configuration_errors import ScenarioSetConfigur
 from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_loader import AppConfigLoader
+from python.framework.validators.scenario_validator import ScenarioValidator
 
 from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
 
@@ -145,6 +146,20 @@ class ScenarioConfigLoader:
         if disabled_count > 0:
             vLog.debug(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
+
+        # === CURRENCY VALIDATION ===
+        # Validate that all scenarios use same quote currency (for MVP)
+        if scenarios:
+            try:
+                detected_currency = ScenarioValidator.validate_currency_consistency(
+                    scenarios)
+                vLog.info(
+                    f"✅ Currency validation passed: All scenarios use {detected_currency} as quote currency"
+                )
+            except ValueError as e:
+                # Re-raise with enhanced error message
+                vLog.error(f"❌ Currency validation failed:\n{str(e)}")
+                raise
 
         scenario_set_logger = ScenarioLogger(scenario_set_name=scenario_set_name,
                                              scenario_name='global',

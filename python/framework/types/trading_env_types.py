@@ -66,6 +66,7 @@ class PortfolioStats:
         total_commission: Total commission paid
         total_swap: Total swap paid/received
         total_fees: Sum of all trading costs
+        currency: Account currency for all monetary values
     """
     total_trades: int
     total_long_trades: int
@@ -82,6 +83,7 @@ class PortfolioStats:
     total_commission: float
     total_swap: float
     total_fees: float
+    currency: str  # Account currency (e.g., "USD", "EUR", "JPY")
 
 
 @dataclass
@@ -124,3 +126,4 @@ class CostBreakdown:
     total_commission: float = 0
     total_swap: float = 0
     total_fees: float = 0
+    currency: str = ''  # Account currency (e.g., "USD", "EUR", "JPY")

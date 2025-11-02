@@ -7,6 +7,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 - CostBreakdown object instead of dict for _cost_tracking
 - Always-copy public API (using replace())
 - Cleaner, more maintainable code structure
+- CURRENCY: Changed 'currency' to 'account_currency' for clarity
 """
 
 from dataclasses import dataclass, field, replace
@@ -136,19 +137,29 @@ class PortfolioManager:
     - CostBreakdown object for _cost_tracking (separate concern)
     - Always-copy public API for safety
     - FULLY TYPED: Returns dataclasses instead of dicts
+    - CURRENCY: Uses 'account_currency' instead of 'currency' for clarity
     """
 
     def __init__(
         self,
         initial_balance: float,
-        currency: str = "USD",
+        account_currency: str = "USD",  # Changed from 'currency'
         leverage: int = 100,
         margin_call_level: float = 50.0,
         stop_out_level: float = 20.0
     ):
-        """Initialize portfolio manager"""
+        """
+        Initialize portfolio manager.
+
+        Args:
+            initial_balance: Starting balance
+            account_currency: Account currency (e.g., "USD", "EUR", "JPY")
+            leverage: Account leverage
+            margin_call_level: Margin call threshold percentage
+            stop_out_level: Stop out threshold percentage
+        """
         self.initial_balance = initial_balance
-        self.currency = currency
+        self.account_currency = account_currency  # Changed from 'currency'
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
@@ -251,11 +262,11 @@ class PortfolioManager:
 
         position = self.open_positions[position_id]
 
-        # Attach exit fee if provided
+        # Add exit fee if provided
         if exit_fee:
             position.add_fee(exit_fee)
 
-            # Update cost tracking object
+            # Update cost tracking
             from .trading_fees import FeeType
             if exit_fee.fee_type == FeeType.COMMISSION:
                 self._cost_tracking.total_commission += exit_fee.cost
@@ -264,14 +275,14 @@ class PortfolioManager:
 
             self._cost_tracking.total_fees += exit_fee.cost
 
-        # Calculate final P&L (includes all fees)
+        # Calculate final P&L (unrealized_pnl already includes fees)
         realized_pnl = position.unrealized_pnl
 
         # Update balance
         self.balance += realized_pnl
         self.realized_pnl += realized_pnl
 
-        # Update position metadata
+        # Mark position as closed
         position.status = PositionStatus.CLOSED
         position.close_time = datetime.now()
         position.close_price = exit_price
@@ -397,7 +408,7 @@ class PortfolioManager:
             margin_level=margin_level,
             open_positions=len(self.open_positions),
             total_lots=total_lots,
-            currency=self.currency,
+            currency=self.account_currency,  # Changed from 'currency'
             leverage=self.leverage
         )
 
@@ -519,7 +530,8 @@ class PortfolioManager:
             total_spread_cost=self._cost_tracking.total_spread_cost,
             total_commission=self._cost_tracking.total_commission,
             total_swap=self._cost_tracking.total_swap,
-            total_fees=self._cost_tracking.total_fees
+            total_fees=self._cost_tracking.total_fees,
+            currency=self.account_currency  # Account currency
         )
 
     def reset(self) -> None:
