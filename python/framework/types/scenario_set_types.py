@@ -8,12 +8,15 @@ PERFORMANCE OPTIMIZED:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 from python.components.logger.scenario_logger import ScenarioLogger
+from python.components.logger.system_info_writer import write_system_version_parameters
+from python.configuration.app_config_loader import AppConfigLoader
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
 @dataclass
@@ -83,20 +86,66 @@ class SingleScenario:
         )
 
 
-class ScenarioSet:
-    """
-        Test scenario set configuration for batch testing
-        Describes a full scenario Set.
-        The Logger logs globally & scenario-specific (files)
-    """
+@dataclass
+class LoadedScenarioConfig:
+    """Result of config loading - raw data before ScenarioSet creation"""
+    scenario_set_name: str
+    scenarios: List[SingleScenario]
+    config_path: Path
 
-    def __init__(self,
-                 scenario_set_name: str,
-                 logger: ScenarioLogger,
-                 scenarios: List[SingleScenario],
-                 printed_summary_logger: ScenarioLogger = None
-                 ):
-        self.scenario_set_name = scenario_set_name
-        self.logger = logger
-        self.scenarios = scenarios
-        self.printed_summary_logger = printed_summary_logger
+
+class ScenarioSet:
+    """Self-contained scenario set with its own logging infrastructure"""
+
+    def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigLoader):
+
+        self.scenario_set_name = scenario_config.scenario_set_name
+        self.scenarios = scenario_config.scenarios
+        self.config_path = scenario_config.config_path
+        self.app_config = app_config
+
+        # ScenarioSet erstellt SEINE EIGENEN Logger
+        self._run_timestamp = datetime.now(
+            timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+        self.logger = ScenarioLogger(
+            scenario_set_name=self.scenario_set_name,
+            scenario_name='global_log',
+            run_timestamp=self._run_timestamp
+        )
+        self.printed_summary_logger = ScenarioLogger(
+            scenario_set_name=self.scenario_set_name,
+            scenario_name='summary',
+            run_timestamp=self._run_timestamp
+        )
+
+    @property
+    def run_timestamp(self) -> str:
+        """Expose run_timestamp for easy access"""
+        return self._run_timestamp
+
+    def copy_config_snapshot(self, config_source_path: Path) -> None:
+        """
+        Copy config snapshot to log directory.
+        Call explicitly before execution starts.
+        """
+        # copy file snapshot to log folder
+        scenario_set_utils = ScenarioSetUtils(
+            config_snapshot_path=self.config_path,
+            scenario_log_path=self.logger.get_log_dir(),
+        )
+        scenario_set_utils.copy_config_snapshot()
+
+    def write_scenario_system_info_log(self):
+        # ============================================================
+        # Write System Information for Performance Tracking
+        # ============================================================
+        if self.app_config.get_logging_write_system_info():
+            system_info_logger = ScenarioLogger(
+                scenario_set_name=self.scenario_set_name,
+                scenario_name='system_info',
+                run_timestamp=self.logger.get_run_timestamp()
+            )
+
+            write_system_version_parameters(system_info_logger)
+            system_info_logger.close(flush_buffer=True)

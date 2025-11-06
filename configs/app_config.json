@@ -12,6 +12,7 @@
     },
     "logging": {
         "performance_tracking": true,
+        "write_system_info": true,
         "show_worker_details": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,

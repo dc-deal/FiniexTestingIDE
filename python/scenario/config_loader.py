@@ -16,7 +16,7 @@ from python.framework.utils.parameter_override_detector import ParameterOverride
 from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.validators.scenario_validator import ScenarioValidator
 
-from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
@@ -125,7 +125,7 @@ class ScenarioConfigLoader:
             )
 
             # ============================================
-            # NEU: DATE VALIDATION & MODE DETECTION
+            # DATE VALIDATION & MODE DETECTION
             # ============================================
             self._validate_scenario_dates(scenario_data)
 
@@ -161,27 +161,13 @@ class ScenarioConfigLoader:
                 vLog.error(f"❌ Currency validation failed:\n{str(e)}")
                 raise
 
-        scenario_set_logger = ScenarioLogger(scenario_set_name=scenario_set_name,
-                                             scenario_name='global',
-                                             run_timestamp=run_timestamp
-                                             )
-
-        # copy file snapshot to log folder
-        scenario_set_utils = ScenarioSetUtils(
-            config_snapshot_path=config_path,
-            scenario_log_path=scenario_set_logger.get_log_dir(),
-        )
-        scenario_set_utils.copy_config_snapshot()
-
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
-        return ScenarioSet(
+
+        # ScenarioSet erstellt SELBST seine Logger
+        return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
-            logger=scenario_set_logger,
-            printed_summary_logger=ScenarioLogger(scenario_set_name=scenario_set_name,
-                                                  scenario_name='summary',
-                                                  run_timestamp=run_timestamp
-                                                  )
+            config_path=config_path
         )
 
     def _deep_merge_strategy_configs(

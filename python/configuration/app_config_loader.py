@@ -157,6 +157,17 @@ class AppConfigLoader:
         return config.get("logging", {})
 
     @classmethod
+    def get_logging_write_system_info(cls) -> Dict[str, Any]:
+        """
+        Get logging configuration.
+
+        Returns:
+            Logging config dict
+        """
+        config = cls.get_config()
+        return config.get('logging', {}).get('write_system_info', False)
+
+    @classmethod
     def get_file_logging_config(cls) -> Dict[str, Any]:
         """
         Get file logging configuration.

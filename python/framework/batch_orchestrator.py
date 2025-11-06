@@ -114,8 +114,8 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
-import time
 from datetime import datetime
+import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Dict, List
@@ -129,8 +129,8 @@ from python.framework.types.process_data_types import BatchExecutionSummary, Pro
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 import sys
-import os
 from python.framework.factory.worker_factory import WorkerFactory
+import os
 
 # Auto-detect if debugger is attached
 DEBUGGER_ACTIVE = (
@@ -187,12 +187,12 @@ class BatchOrchestrator:
         self.scenario_set_name = self.scenario_set.scenario_set_name
 
         # CORRECTED: Create shared run_timestamp for all processes
-        self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.logger_start_time_format = self.scenario_set.logger.get_run_timestamp()
 
         self.scenario_set.logger.debug(
             f"📦 BatchOrchestrator initialized: "
             f"scenario_set='{self.scenario_set_name}', "
-            f"run_timestamp='{self.run_timestamp}', "
+            f"run_timestamp='{self.logger_start_time_format}', "
             f"{len(scenario_set.scenarios)} scenario(s)"
         )
 
@@ -217,7 +217,7 @@ class BatchOrchestrator:
         self.scenario_set.logger.info(
             f"🚀 Starting batch execution "
             f"({len(self.scenario_set.scenarios)} scenarios, "
-            f"run_timestamp={self.run_timestamp})"
+            f"run_timestamp={self.logger_start_time_format})"
         )
         start_time = time.time()
 
