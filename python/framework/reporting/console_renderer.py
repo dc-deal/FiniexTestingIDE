@@ -16,6 +16,7 @@ FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 import re
 from typing import Any, Dict, List
 
+from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.process_data_types import ProcessResult
 
 
@@ -337,11 +338,16 @@ class ConsoleRenderer:
         orders_sent = execution_stats.orders_sent
         orders_executed = execution_stats.orders_executed
 
-        # Format P&L with color
+        # Get currency from portfolio stats
+        currency = portfolio_stats.currency
+
+        # Format P&L with color and currency
         if total_pnl >= 0:
-            pnl_str = self.green(f"+${total_pnl:.2f}")
+            pnl_str = self.green(
+                f"+{format_currency_simple(total_pnl, currency)}")
         else:
-            pnl_str = self.red(f"${total_pnl:.2f}")
+            pnl_str = self.red(
+                f"{format_currency_simple(total_pnl, currency)}")
 
         # Create content lines
         if total_trades > 0:
@@ -350,7 +356,7 @@ class ConsoleRenderer:
                 f"Trades: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
                 f"P&L: {pnl_str}",
-                f"Spread: ${spread_cost:.2f}",
+                f"Spread: {format_currency_simple(spread_cost, currency)}",
                 f"Orders: {orders_executed}/{orders_sent}"
             ]
         else:

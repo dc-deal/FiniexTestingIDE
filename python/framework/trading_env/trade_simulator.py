@@ -10,6 +10,7 @@ Simulates broker trading environment with realistic execution
 - Always-copy public API (using replace())
 - Cleaner, more maintainable code structure
 - FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
+- CURRENCY: account_currency with auto-detection from symbol
 """
 
 from dataclasses import replace
@@ -44,13 +45,18 @@ class TradeSimulator:
     Orders go through PENDING → EXECUTED lifecycle.
 
     Uses direct attributes for execution statistics.
+
+    CURRENCY HANDLING:
+    - Supports "auto" detection: account_currency = symbol quote currency
+    - Logs currency operations for transparency
     """
 
     def __init__(
         self,
         broker_config: BrokerConfig,
         initial_balance: float,
-        currency: str,
+        account_currency: str,  # Changed from 'currency', supports "auto"
+        symbol: str,  # NEW: Required for auto-detection
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
     ):
@@ -60,18 +66,52 @@ class TradeSimulator:
         Args:
             broker_config: Broker configuration with spreads and capabilities
             initial_balance: Starting account balance
-            currency: Account currency
+            account_currency: Account currency (or "auto" for symbol-based detection)
+            symbol: Trading symbol (required for auto-detection)
+            logger: Logger instance
             seeds: Seeds for order execution delays (from config)
         """
         self.broker = broker_config
         self.logger = logger
+
+        # === CURRENCY AUTO-DETECTION ===
+        # If account_currency is "auto", extract from symbol (last 3 chars)
+        if account_currency == "auto":
+            # Validate symbol format
+            if len(symbol) != 6:
+                raise ValueError(
+                    f"Invalid symbol format for auto-detection: '{symbol}'. "
+                    f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
+                )
+
+            detected_currency = symbol[-3:].upper()
+
+            # Log currency auto-detection with explanation
+            logger.warning(
+                f"💱 CURRENCY AUTO-DETECTION: Symbol '{symbol}' → Account Currency '{detected_currency}'\n"
+                f"   Explanation: Quote currency (last 3 chars of symbol) used as account currency.\n"
+                f"   This means all P&L calculations will be in {detected_currency}.\n"
+                f"   tick_value from broker config is assumed to be in {detected_currency}."
+            )
+
+            account_currency = detected_currency
+        else:
+            # Explicit currency provided - just log it
+            logger.info(
+                f"💱 Account Currency: {account_currency} (explicit configuration)"
+            )
+            raise ValueError(
+                "Explicit Configuration not yet supported. Feature Gate MVP")
+
+        # Store final account currency
+        self.account_currency = account_currency
 
         # Create portfolio manager
         leverage = self.broker.get_max_leverage()
 
         self.portfolio = PortfolioManager(
             initial_balance=initial_balance,
-            currency=currency,
+            account_currency=account_currency,  # Changed from 'currency'
             leverage=leverage
         )
 
@@ -349,7 +389,11 @@ class TradeSimulator:
         lots: float,
         **kwargs
     ) -> OrderResult:
-        """Execute limit order (MVP: Not implemented)"""
+        """
+        Execute limit order.
+
+        MVP: Not implemented yet.
+        """
         self._orders_rejected += 1
         return create_rejection_result(
             order_id=order_id,
