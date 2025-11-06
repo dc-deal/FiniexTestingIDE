@@ -5,10 +5,9 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
-import time
 from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration import AppConfigLoader
-from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.exceptions.data_validation_errors import DataValidationError
@@ -29,18 +28,17 @@ def run_strategy_test():
     """
     Main strategy testing function with visual output
     """
-
-    # ============================================================
-    # System Info
-    # ============================================================
-    vLog.info(
-        f"System: {platform.system()} {platform.release()}")
-    vLog.info(f"Python: {platform.python_version()}")
-    vLog.info(f"CPU Count: {os.cpu_count()}")
-
-    vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
-
     try:
+        # ============================================================
+        # System Info
+        # ============================================================
+        vLog.info(
+            f"System: {platform.system()} {platform.release()}")
+        vLog.info(f"Python: {platform.python_version()}")
+        vLog.info(f"CPU Count: {os.cpu_count()}")
+
+        vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
+
         # ============================================================
         # Load Application Configuration
         # ============================================================
@@ -64,11 +62,28 @@ def run_strategy_test():
         config_loader = ScenarioConfigLoader()
 
         scenario_set_json = "eurusd_3_windows.json"
-        scenario_set = config_loader.load_config(scenario_set_json)
+        scenario_config_data = config_loader.load_config(scenario_set_json)
 
         vLog.info(
-            f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_set.scenarios)} scenarios)"
+            f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)"
         )
+
+        initialize_batch_and_run(scenario_config_data, app_config_loader)
+
+    except Exception as e:
+        vLog.hard_error(
+            f"Unexpected error during startup",
+            exception=e
+        )
+
+
+def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_config_loader: AppConfigLoader):
+    try:
+        # ScenarioSet erstellt sich selbst mit eigenen Loggern
+        scenario_set = ScenarioSet(scenario_config_data, app_config_loader)
+
+        vLog.info("📊 Writing system & version information...")
+        scenario_set.write_scenario_system_info_log()
 
         # ============================================================
         # Initialize Data Worker
