@@ -441,7 +441,7 @@ class MakerTakerFee(AbstractTradingFee):
 def create_spread_fee_from_tick(
     tick: TickData,
     lots: float,
-    tick_value: float,
+    tick_value: float = 1,
     digits: int = 5
 ) -> SpreadFee:
     """

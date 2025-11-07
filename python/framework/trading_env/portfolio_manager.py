@@ -246,7 +246,7 @@ class PortfolioManager:
 
         return position
 
-    def close_position(
+    def close_position_portfolio(
         self,
         position_id: str,
         exit_price: float,

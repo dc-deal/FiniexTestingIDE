@@ -12,7 +12,7 @@ decision logic with simulated (or live) broker execution.
 from .broker_config import BrokerConfig, BrokerType
 from .trade_simulator import TradeSimulator
 from .decision_trading_api import DecisionTradingAPI
-from .order_execution_engine import OrderExecutionEngine
+from .order_latency_simulator import OrderLatencySimulator
 from .portfolio_manager import PortfolioManager, Position, AccountInfo
 from ..types.order_types import (
     OrderType,
@@ -42,7 +42,7 @@ __all__ = [
     'BrokerType',
     'TradeSimulator',
     'DecisionTradingAPI',
-    'OrderExecutionEngine',
+    'OrderLatencySimulator',
     'PortfolioManager',
     'Position',
     'AccountInfo',
