@@ -9,10 +9,8 @@ PERFORMANCE OPTIMIZED:
 """
 
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
-
-import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
@@ -161,7 +159,7 @@ class BarRenderer:
         return self.current_bars[timeframe].get(symbol)
 
     def initialize_historical_bars(
-        self, symbol: str, timeframe: str, bars: List[Bar]
+        self, symbol: str, timeframe: str, bars: Tuple[Bar, ...]
     ) -> None:
         """
         Initialize the completed_bars history with warmup bars.

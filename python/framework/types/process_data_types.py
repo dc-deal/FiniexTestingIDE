@@ -94,6 +94,10 @@ class ProcessDataPackage:
 
     IMMUTABILITY: All collections are tuples for CoW optimization.
     Read-only access in subprocess = 0 memory copy overhead.
+    Reminder:
+    Python muss die Daten über pickle serialisieren, um sie zwischen Prozessen zu senden. 
+    Tuple: Python weiß "immutable" → kann aggressiver optimieren
+    List: Python weiß "mutabel" → muss defensiver sein beim Pickling
 
     METADATA: Minimal human-readable info for debugging/logging.
     NOT used in processing - only for monitoring.
@@ -258,7 +262,7 @@ class ProcessPreparedDataObjects:
     bar_rendering_controller: BarRenderingController = None
     decision_logic: AbstractDecisionLogic = None
     scenario_logger: ScenarioLogger = None
-    ticks: List[TickData] = None
+    ticks: Tuple[TickData, ...] = None
 
 
 @dataclass
