@@ -124,7 +124,7 @@ class ScenarioSet:
         """Expose run_timestamp for easy access"""
         return self._run_timestamp
 
-    def copy_config_snapshot(self, config_source_path: Path) -> None:
+    def copy_config_snapshot(self) -> None:
         """
         Copy config snapshot to log directory.
         Call explicitly before execution starts.

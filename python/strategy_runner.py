@@ -84,6 +84,7 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
 
         vLog.info("📊 Writing system & version information...")
         scenario_set.write_scenario_system_info_log()
+        scenario_set.copy_config_snapshot()
 
         # ============================================================
         # Initialize Data Worker

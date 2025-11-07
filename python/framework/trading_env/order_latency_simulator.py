@@ -212,7 +212,7 @@ class OrderLatencySimulator:
 
         self.logger.debug(
             f"  API delay: {api_delay} ticks, Exec delay: {exec_delay} ticks, "
-            f"Fill at tick: {current_tick + total_delay}"
+            f"Will fill at tick: {current_tick + total_delay}"
         )
 
         return order_id
