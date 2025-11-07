@@ -114,15 +114,14 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
-from datetime import datetime
 import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Dict, List
+from typing import List
 from python.data_worker.data_loader.core import TickDataLoader
 from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
 from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
-from python.framework.process_executor import ProcessExecutor, process_main
+from python.framework.process.process_main import ProcessExecutor, process_main
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.configuration import AppConfigLoader
 from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult

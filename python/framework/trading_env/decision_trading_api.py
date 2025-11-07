@@ -30,7 +30,7 @@ FUTURE NOTES:
 
 from typing import Any, Dict, List, Optional
 
-from python.framework.trading_env.order_execution_engine import PendingOrder
+from python.framework.trading_env.order_latency_simulator import PendingOrder
 
 from .trade_simulator import TradeSimulator
 from ..types.order_types import (
@@ -178,7 +178,7 @@ class DecisionTradingAPI:
                 take_profit=1.1050
             )
         """
-        return self._simulator.send_order(
+        return self._simulator.open_order_with_latency(
             symbol=symbol,
             order_type=order_type,
             direction=direction,
@@ -294,7 +294,7 @@ class DecisionTradingAPI:
         Returns:
             OrderResult with close execution details
         """
-        return self._simulator.close_position(position_id, lots)
+        return self._simulator.close_position_with_latency(position_id, lots)
     # ============================================
     # Public API: Broker Capabilities
     # ============================================

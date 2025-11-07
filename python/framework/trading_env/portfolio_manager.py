@@ -212,7 +212,7 @@ class PortfolioManager:
         """
         # Generate position ID
         self._position_counter += 1
-        position_id = f"pos_{self._position_counter}"
+        position_id = f"pos_{symbol.lower()}_{self._position_counter}"
 
         # Create position
         position = Position(
@@ -246,7 +246,7 @@ class PortfolioManager:
 
         return position
 
-    def close_position(
+    def close_position_portfolio(
         self,
         position_id: str,
         exit_price: float,

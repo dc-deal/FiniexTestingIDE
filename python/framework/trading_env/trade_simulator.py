@@ -12,18 +12,17 @@ Simulates broker trading environment with realistic execution
 - FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
 - CURRENCY: account_currency with auto-detection from symbol
 """
-
-from dataclasses import replace
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.logger.trading_environment_logger import TradingEnvironmentLogger
+from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
+from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
-from .order_execution_engine import OrderExecutionEngine, PendingOrder
 from ..types.order_types import (
     OrderType,
     OrderDirection,
@@ -119,9 +118,11 @@ class TradeSimulator:
         # symbol: (bid, ask)
         self._current_prices: Dict[str, Tuple[float, float]] = {}
 
-        # Order execution engine with deterministic delays
+        # Order latency simulator with deterministic delays
         seeds = seeds or {}
-        self.execution_engine = OrderExecutionEngine(seeds)
+        self.latency_simulator = OrderLatencySimulator(
+            seeds, logger
+        )
 
         # Internal state
         self._order_counter = 0
@@ -142,15 +143,16 @@ class TradeSimulator:
 
     # ============================================
     # Price Updates
+    # Running every Tick
     # ============================================
 
     def update_prices(self, tick: TickData) -> None:
         """
-        Update prices and process pending orders.
+        Update prices and process pending_order orders.
 
         Called by BatchOrchestrator on every tick to:
         1. Update current tick data
-        2. Process pending orders that are ready to fill
+        2. Process pending_order orders that are ready to fill
         3. Update portfolio with new prices (unrealized P&L)
 
         Args:
@@ -159,11 +161,14 @@ class TradeSimulator:
         self._current_tick = tick
         self._tick_counter += 1
 
-        # Process pending orders from execution engine
-        filled_orders = self.execution_engine.process_tick(self._tick_counter)
+        # Process pending_order orders from latency simulator
+        filled_orders = self.latency_simulator.process_tick(self._tick_counter)
 
         for pending_order in filled_orders:
-            self._fill_pending_order(pending_order)
+            if pending_order.order_action == PendingOrderAction.OPEN:
+                self._check_and_open_order_in_portfolio(pending_order)
+            elif pending_order.order_action == PendingOrderAction.CLOSE:
+                self._close_and_fill_order_in_portfolio(pending_order)
 
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
 
@@ -188,10 +193,10 @@ class TradeSimulator:
         return self._current_tick.bid, self._current_tick.ask
 
     # ============================================
-    # Order Execution
+    # Orders - Incomming
     # ============================================
-
-    def send_order(
+    # First stage: order incommoning and submit to delay engine
+    def open_order_with_latency(
         self,
         symbol: str,
         order_type: OrderType,
@@ -236,11 +241,25 @@ class TradeSimulator:
 
         # Execute based on order type
         if order_type == OrderType.MARKET:
-            result = self._execute_market_order(
-                order_id, symbol, direction, lots, **kwargs)
-        elif order_type == OrderType.LIMIT:
-            result = self._execute_limit_order(
-                order_id, symbol, direction, lots, **kwargs)
+            # Submit to execution engine
+            engine_order_id = self.latency_simulator.submit_open_order(
+                symbol=symbol,
+                direction=direction,
+                lots=lots,
+                current_tick=self._tick_counter,
+                **kwargs
+            )
+            # Return PENDING status
+            result = OrderResult(
+                order_id=engine_order_id,
+                status=OrderStatus.PENDING,
+                metadata={
+                    "symbol": symbol,
+                    "direction": direction,
+                    "lots": lots,
+                    "submitted_at_tick": self._tick_counter
+                }
+            )
         else:
             # Extended orders - MVP: Not implemented
             self._orders_rejected += 1
@@ -255,63 +274,20 @@ class TradeSimulator:
 
         return result
 
-    def _execute_market_order(
-        self,
-        order_id: str,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        **kwargs
-    ) -> OrderResult:
+    def _check_and_open_order_in_portfolio(self, pending_order: PendingOrder) -> None:
         """
-        Execute market order with delay.
+        Fill pending_order OPEN order (after delay).
 
-        Submits to execution engine, returns PENDING status immediately.
-        """
-        # Pre-validate margin
-        estimated_margin = lots * 100000 * 0.01
-        if self.portfolio.get_free_margin() < estimated_margin:
-            self._orders_rejected += 1
-            return create_rejection_result(
-                order_id=order_id,
-                reason=RejectionReason.INSUFFICIENT_MARGIN,
-                message=f"Insufficient margin: need ~{estimated_margin:.2f}"
-            )
-
-        # Submit to execution engine
-        engine_order_id = self.execution_engine.submit_order(
-            symbol=symbol,
-            direction=direction,
-            lots=lots,
-            current_tick=self._tick_counter,
-            **kwargs
-        )
-
-        # Return PENDING status
-        return OrderResult(
-            order_id=engine_order_id,
-            status=OrderStatus.PENDING,
-            metadata={
-                "symbol": symbol,
-                "direction": direction,
-                "lots": lots,
-                "submitted_at_tick": self._tick_counter
-            }
-        )
-
-    def _fill_pending_order(self, pending_order) -> None:
-        """
-        Fill pending order that has completed its delay.
-
-        Called by update_prices() for orders from execution engine.
+        Called by update_prices when order ready.
+        Creates position in portfolio.
 
         Args:
-            pending_order: PendingOrder from execution engine
+            pending_order: PendingOrder with order_action=PendingOrderAction.OPEN
         """
-        # Get current prices
+        # Get current price
         bid, ask = self.get_current_price(pending_order.symbol)
 
-        # Determine entry price
+       # Determine entry price
         if pending_order.direction == OrderDirection.LONG:
             entry_price = ask
         if pending_order.direction == OrderDirection.SHORT:
@@ -329,9 +305,6 @@ class TradeSimulator:
             digits=digits
         )
 
-        # Update direct attributes
-        self._total_spread_cost += spread_fee.cost
-
         # Check margin available
         margin_required = self.broker.calculate_margin(
             pending_order.symbol, pending_order.lots)
@@ -345,7 +318,7 @@ class TradeSimulator:
                 message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
             )
 
-        # Create position in portfolio
+        # Open position in portfolio
         position = self.portfolio.open_position(
             symbol=pending_order.symbol,
             direction=pending_order.direction,
@@ -358,7 +331,7 @@ class TradeSimulator:
             magic_number=pending_order.order_kwargs.get('magic_number', 0)
         )
 
-        # Create successful order result
+        # Create order result for history
         result = OrderResult(
             order_id=pending_order.order_id,
             status=OrderStatus.EXECUTED,
@@ -377,8 +350,9 @@ class TradeSimulator:
             }
         )
 
-        # Update direct attributes
+        # Update statistics
         self._orders_executed += 1
+        self._total_spread_cost += spread_fee.cost
         self._order_history.append(result)
 
     def _execute_limit_order(
@@ -439,73 +413,140 @@ class TradeSimulator:
             new_take_profit=new_take_profit
         )
 
-    def close_position(
+    # ============================================
+    # Close Commands
+    # ============================================
+
+    def close_position_with_latency(
         self,
         position_id: str,
         lots: Optional[float] = None
     ) -> OrderResult:
-        """Close position (full or partial)"""
-        try:
-            position = self.portfolio.get_position(position_id)
-            if not position:
-                return create_rejection_result(
-                    order_id=f"close_{position_id}",
-                    reason=RejectionReason.BROKER_ERROR,
-                    message=f"Position {position_id} not found"
-                )
+        """
+        Submit close position order with delay.
 
-            # Get current price
-            bid, ask = self.get_current_price(position.symbol)
+        Position will be closed after realistic broker latency.
 
-            # Determine close price
-            if position.direction == OrderDirection.LONG:
-                close_price = bid
-            else:
-                close_price = ask
+        Args:
+            position_id: Position to close
+            lots: Lots to close (None = close all)
 
-            # Close position
-            realized_pnl = self.portfolio.close_position(
-                position_id=position_id,
-                exit_price=close_price,
-                exit_fee=None  # MVP: No exit commission
-            )
-
-            result = OrderResult(
-                order_id=f"close_{position_id}",
-                status=OrderStatus.EXECUTED,
-                executed_price=close_price,
-                executed_lots=lots if lots else position.lots,
-                execution_time=datetime.now(),
-                commission=0.0,
-                metadata={
-                    "realized_pnl": realized_pnl,
-                    "position_id": position_id
-                }
-            )
-
-            # Add to order history
-            self._order_history.append(result)
-
-            return result
-
-        except Exception as e:
+        Returns:
+            OrderResult with PENDING status
+        """
+        # Check if position exists
+        position = self.portfolio.get_position(position_id)
+        if not position:
+            from datetime import datetime
             return create_rejection_result(
                 order_id=f"close_{position_id}",
                 reason=RejectionReason.BROKER_ERROR,
-                message=str(e)
+                message=f"Position {position_id} not found"
             )
+
+        # Submit close order to latency simulator
+        order_id = self.latency_simulator.submit_close_order(
+            position_id=position_id,
+            current_tick=self._tick_counter,
+            close_lots=lots
+        )
+
+        # Return PENDING result (order not filled yet!)
+        from datetime import datetime
+        return OrderResult(
+            order_id=order_id,
+            status=OrderStatus.PENDING,
+            executed_price=None,
+            executed_lots=lots if lots else position.lots,
+            execution_time=datetime.now(),
+            commission=0.0,
+            metadata={
+                "position_id": position_id,
+                "awaiting_fill": True
+            }
+        )
+
+    def _close_and_fill_order_in_portfolio(self, pending_order: PendingOrder) -> None:
+        """
+        Fill pending_order CLOSE order (after delay).
+
+        Called by update_prices when close order ready.
+        Closes position in portfolio.
+
+        Args:
+            pending_order: PendingOrder with order_action=PendingOrderAction.CLOSE
+        """
+        # Get position
+        position = self.portfolio.get_position(pending_order.position_id)
+        if not position:
+            self.logger.warning(
+                f"⚠️ Close order {pending_order.order_id} failed: "
+                f"Position {pending_order.position_id} not found"
+            )
+            return
+
+        # Get current price
+        bid, ask = self.get_current_price(position.symbol)
+
+        # Determine close price based on position direction
+        if position.direction == OrderDirection.LONG:
+            close_price = bid  # Sell at bid
+        else:
+            close_price = ask  # Buy back at ask
+
+        # Close position
+        realized_pnl = self.portfolio.close_position_portfolio(
+            position_id=pending_order.position_id,
+            exit_price=close_price,
+            exit_fee=None  # MVP: No exit commission
+        )
+
+        # Log close execution
+        self.logger.debug(
+            f"💰 Position closed: {pending_order.position_id} "
+            f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
+        )
+
+        # Create order result for history
+        from datetime import datetime
+        result = OrderResult(
+            order_id=pending_order.order_id,
+            status=OrderStatus.EXECUTED,
+            executed_price=close_price,
+            executed_lots=pending_order.close_lots if pending_order.close_lots else position.lots,
+            execution_time=datetime.now(),
+            commission=0.0,
+            metadata={
+                "realized_pnl": realized_pnl,
+                "position_id": pending_order.position_id
+            }
+        )
+
+        self._order_history.append(result)
 
     def close_all_remaining_orders(self):
         """ 
-            BEFORE collecting statistics - cleanup pending orders
+            BEFORE collecting statistics - cleanup pending_order orders
         """
+        # get portfolio open positions
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
                 f"⚠️ {len(open_positions)} positions remain open - auto-closing"
             )
+            # Make shure all open positions get a close in the latency chain.
             for pos in open_positions:
-                self.close_position(pos.position_id)
+                self.close_position_with_latency(position_id=pos.position_id)
+
+            # execute all pending positions which are CLOSE
+            open_pending = self.latency_simulator.get_pending_orders()
+            for pending in open_pending:
+                if pending.order_action == PendingOrderAction.CLOSE:
+                    self._close_and_fill_order_in_portfolio(pending)
+
+        # clear all remaining orders ...
+        # (for example recently opened orders - which did not make their way into the portfolio)
+        self.latency_simulator.clear_pending()
 
     # ============================================
     # Account Queries
@@ -525,7 +566,7 @@ class TradeSimulator:
 
     def get_pending_orders(self, symbol: Optional[str] = None) -> List[PendingOrder]:
         """
-        Get list of pending orders waiting for execution.
+        Get list of pending_order orders waiting for execution.
 
         Args:
             symbol: Optional symbol filter (e.g. "EURUSD")
@@ -533,9 +574,9 @@ class TradeSimulator:
         Returns:
             List of PendingOrder objects, optionally filtered by symbol
         """
-        # Hole alle pending orders als Liste
-        all_pending: List[PendingOrder] = list(
-            self.execution_engine.pending_orders.values())
+        # Hole alle pending_order orders als Liste
+        all_pending = self.latency_simulator.get_pending_orders(
+        )
 
         # Wenn kein Symbol-Filter, gib alle zurück
         if symbol is None:

@@ -15,48 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.types.market_data_types import Bar, TickData
-
-
-# ============================================================================
-# BAR DESERIALIZATION (Top-level function)
-# ============================================================================
-
-
-def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> List[Bar]:
-    """
-    Deserialize bar dicts from shared_data into Bar objects.
-
-    Converts Pandas-based bar data to framework Bar objects:
-    - Pandas Timestamp → ISO string
-    - float tick_count → int
-    - Drops extra fields (bar_type, synthetic_fields, reason)
-
-    Args:
-        symbol: Trading symbol from config (authoritative source)
-        bars_tuple: Tuple of bar dicts (immutable, CoW-friendly)
-
-    Returns:
-        List of Bar objects for BarRenderer
-    """
-    result = []
-    for bar_dict in bars_tuple:
-        timestamp_str = bar_dict['timestamp'].isoformat()
-
-        bar = Bar(
-            symbol=symbol,
-            timeframe=bar_dict['timeframe'],
-            timestamp=timestamp_str,
-            open=float(bar_dict['open']),
-            high=float(bar_dict['high']),
-            low=float(bar_dict['low']),
-            close=float(bar_dict['close']),
-            volume=float(bar_dict['volume']),
-            tick_count=int(bar_dict['tick_count']),
-            is_complete=True
-        )
-        result.append(bar)
-
-    return result
+from python.framework.utils.process_deserialization_utils import deserialize_bars_batch
 
 
 class BarRenderingController:

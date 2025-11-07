@@ -243,8 +243,8 @@ class ConsoleRenderer:
         if ticks > 0:
             rate = nfSig / ticks
 
-        action_trades = portfolio_stats.total_long_trades
-        long_trades = portfolio_stats.total_short_trades
+        action_trades = portfolio_stats.total_trades
+        long_trades = portfolio_stats.total_long_trades
         short_trades = portfolio_stats.total_short_trades
         rate_trades = 100
         if ticks > 0:

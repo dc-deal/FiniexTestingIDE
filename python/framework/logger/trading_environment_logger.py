@@ -18,7 +18,7 @@ from dataclasses import asdict
 
 from python.framework.types.order_types import OrderDirection, OrderStatus
 from python.framework.types.decision_logic_types import Decision
-from python.framework.trading_env.order_execution_engine import PendingOrder
+from python.framework.types.latency_simulator_types import PendingOrder
 
 
 class TradingEnvironmentLogger:
@@ -310,10 +310,13 @@ class TradingEnvironmentLogger:
             "order_id": pending_order.order_id,
             "placed_at_tick": pending_order.placed_at_tick,
             "fill_at_tick": pending_order.fill_at_tick,
+            "order_action": pending_order.order_action,
             "symbol": pending_order.symbol,
-            "direction": pending_order.direction.value,
+            "direction": pending_order.direction.value if pending_order.direction else None,
             "lots": pending_order.lots,
-            "order_kwargs": pending_order.order_kwargs
+            "order_kwargs": pending_order.order_kwargs,
+            "position_id": pending_order.position_id,
+            "close_lots": pending_order.close_lots
         }
 
     @staticmethod

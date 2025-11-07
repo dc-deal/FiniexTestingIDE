@@ -246,7 +246,8 @@ class ParquetIndexManager:
             'total_ticks': sum(e['tick_count'] for e in entries),
             'total_size_mb': sum(e['file_size_mb'] for e in entries),
             'start_time': entries[0]['start_time'],
-            'end_time': entries[-1]['end_time']
+            'end_time': entries[-1]['end_time'],
+            'files': [e['file'] for e in entries]
         }
 
     # =========================================================================

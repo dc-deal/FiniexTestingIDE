@@ -1,8 +1,8 @@
 # ============================================
-# python/framework/trading_env/order_execution_engine.py
+# python/framework/trading_env/reproducible_order_latency_simulator.py
 # ============================================
 """
-FiniexTestingIDE - Order Execution Engine
+FiniexTestingIDE - Reproducible Order Latency Simulator
 Deterministic order delay simulation with seeded randomness
 
 MVP Design:
@@ -10,6 +10,7 @@ MVP Design:
 - Seeded random delays for reproducibility
 - PENDING → EXECUTED lifecycle
 - Always FILL (no rejections except margin)
+- Support for OPEN and CLOSE orders with same delay system
 
 Post-MVP Extensions:
 - MS-based delays with tick timestamp mapping
@@ -18,9 +19,9 @@ Post-MVP Extensions:
 - Market impact simulation
 
 Architecture:
-The OrderExecutionEngine sits between DecisionTradingAPI and Portfolio,
-simulating realistic broker execution delays while maintaining deterministic
-behavior through seeds for testing reproducibility.
+The OrderLatencySimulator sits between DecisionTradingAPI and 
+Portfolio, simulating realistic broker execution delays while maintaining 
+deterministic behavior through seeds for testing reproducibility.
 
 Design Philosophy:
 Real brokers have two delay stages:
@@ -32,9 +33,10 @@ reproducible order execution patterns.
 """
 
 import random
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.order_types import OrderDirection
 
 
@@ -77,33 +79,10 @@ class SeededDelayGenerator:
 
 
 # ============================================
-# Pending Order Data
+# Reproducible Order Latency Simulator
 # ============================================
 
-@dataclass
-class PendingOrder:
-    """
-    Order waiting to be filled.
-
-    Contains all information needed to execute the order once
-    the delay period has elapsed.
-    """
-    order_id: str
-    placed_at_tick: int
-    fill_at_tick: int
-
-    # Original order data for execution
-    symbol: str
-    direction: OrderDirection  # "long" or "short"
-    lots: float
-    order_kwargs: Dict  # stop_loss, take_profit, comment, etc.
-
-
-# ============================================
-# Order Execution Engine
-# ============================================
-
-class OrderExecutionEngine:
+class OrderLatencySimulator:
     """
     Manages order lifecycle with deterministic delays.
 
@@ -120,32 +99,41 @@ class OrderExecutionEngine:
     Usage:
         # In TradeSimulator.__init__
         seeds = config.get('trade_simulator_seeds', {})
-        self.execution_engine = OrderExecutionEngine(seeds)
+        self.latency_simulator = OrderLatencySimulator(
+            seeds, logger
+        )
 
         # When order placed
-        order_id = self.execution_engine.submit_order(
+        order_id = self.latency_simulator.submit_open_order(
             order_data, current_tick
         )
 
         # Every tick
-        filled_orders = self.execution_engine.process_tick(tick_number)
+        filled_orders = self.latency_simulator.process_tick(tick_number)
         for order in filled_orders:
             self._fill_order(order)
     """
 
-    def __init__(self, seeds: Dict[str, int]):
+    def __init__(
+        self,
+        seeds: Dict[str, int],
+        logger: AbstractLogger
+    ):
         """
-        Initialize execution engine with seeds.
+        Initialize latency simulator with seeds and logger.
 
         Args:
             seeds: Dictionary with seed values:
                 - api_latency_seed: Seed for API delay generator
                 - market_execution_seed: Seed for execution delay generator
+            logger: Logger instance for tracking order flow
 
         Default seeds used if not provided:
             - api_latency_seed: 42
             - market_execution_seed: 123
         """
+        self.logger = logger
+
         # Extract seeds with defaults
         api_seed = seeds.get('api_latency_seed', 42)
         exec_seed = seeds.get('market_execution_seed', 123)
@@ -166,12 +154,12 @@ class OrderExecutionEngine:
         )
 
         # Pending orders waiting to be filled
-        self.pending_orders: Dict[str, PendingOrder] = {}
+        self._pending_orders: Dict[str, PendingOrder] = {}
 
         # Order counter for unique IDs
         self._order_counter = 0
 
-    def submit_order(
+    def submit_open_order(
         self,
         symbol: str,
         direction: OrderDirection,
@@ -180,7 +168,7 @@ class OrderExecutionEngine:
         **kwargs
     ) -> str:
         """
-        Submit order for execution with delay.
+        Submit OPEN order for execution with delay.
 
         Order enters PENDING state and will be filled after
         combined API + execution delay.
@@ -205,14 +193,77 @@ class OrderExecutionEngine:
         order_id = f"ord_{self._order_counter}"
 
         # Store pending order
-        self.pending_orders[order_id] = PendingOrder(
+        self._pending_orders[order_id] = PendingOrder(
             order_id=order_id,
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
+            order_action=PendingOrderAction.OPEN,
             symbol=symbol,
             direction=direction,
             lots=lots,
             order_kwargs=kwargs
+        )
+
+        # Log order reception
+        self.logger.info(
+            f"📨 Order received: {order_id} ({direction.value} {lots} lots) "
+            f"- latency: {total_delay} ticks"
+        )
+
+        self.logger.debug(
+            f"  API delay: {api_delay} ticks, Exec delay: {exec_delay} ticks, "
+            f"Will fill at tick: {current_tick + total_delay}"
+        )
+
+        return order_id
+
+    def submit_close_order(
+        self,
+        position_id: str,
+        current_tick: int,
+        close_lots: Optional[float] = None
+    ) -> str:
+        """
+        Submit CLOSE order for execution with delay.
+
+        Close orders use same delay system as open orders for realism.
+
+        Args:
+            position_id: Position to close
+            current_tick: Current tick number
+            close_lots: Lots to close (None = close all)
+
+        Returns:
+            order_id: Unique identifier for this close order
+        """
+        # Generate delays (same system as open orders)
+        api_delay = self.api_delay_gen.next()
+        exec_delay = self.exec_delay_gen.next()
+        total_delay = api_delay + exec_delay
+
+        # Create unique order ID
+        self._order_counter += 1
+        order_id = f"close_{self._order_counter}"
+
+        # Store pending close order
+        self._pending_orders[order_id] = PendingOrder(
+            order_id=order_id,
+            placed_at_tick=current_tick,
+            fill_at_tick=current_tick + total_delay,
+            order_action=PendingOrderAction.CLOSE,
+            position_id=position_id,
+            close_lots=close_lots
+        )
+
+        # Log close order reception
+        self.logger.info(
+            f"📨 Close order received: {position_id} "
+            f"- latency: {total_delay} ticks"
+        )
+
+        self.logger.debug(
+            f"  API delay: {api_delay} ticks, Exec delay: {exec_delay} ticks, "
+            f"Fill at tick: {current_tick + total_delay}"
         )
 
         return order_id
@@ -234,14 +285,21 @@ class OrderExecutionEngine:
         to_remove = []
 
         # Find orders ready to fill
-        for order_id, pending in self.pending_orders.items():
+        for order_id, pending in self._pending_orders.items():
             if pending.fill_at_tick <= tick_number:
                 to_fill.append(pending)
                 to_remove.append(order_id)
 
+                # Log order ready for fill
+                actual_latency = tick_number - pending.placed_at_tick
+                self.logger.debug(
+                    f"✅ Order ready: {order_id} ({pending.order_action}) "
+                    f"- actual latency: {actual_latency} ticks"
+                )
+
         # Remove filled orders from pending
         for order_id in to_remove:
-            del self.pending_orders[order_id]
+            del self._pending_orders[order_id]
 
         return to_fill
 
@@ -251,7 +309,15 @@ class OrderExecutionEngine:
 
         Useful for debugging and statistics.
         """
-        return len(self.pending_orders)
+        return len(self._pending_orders)
+
+    def get_pending_orders(self) -> List[PendingOrder]:
+        """
+        Get number of pending orders.
+
+        Useful for debugging and statistics.
+        """
+        return list(self._pending_orders.values())
 
     def clear_pending(self) -> None:
         """
@@ -260,4 +326,10 @@ class OrderExecutionEngine:
         Used when scenario ends to prevent orders from
         previous scenarios leaking into next scenario.
         """
-        self.pending_orders.clear()
+        if self._pending_orders:
+            count = len(self._pending_orders)
+            self.logger.warning(
+                f"⚠️ Clearing {count} pending order(s) at scenario end"
+            )
+
+        self._pending_orders.clear()
