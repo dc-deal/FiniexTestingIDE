@@ -7,6 +7,8 @@ Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
 """
 
 from typing import Dict, Any, Optional
+
+from python.framework.types.market_data_types import TickData
 from .base_adapter import IOrderCapabilities
 from python.framework.types.order_types import (
     OrderCapabilities,
@@ -15,6 +17,13 @@ from python.framework.types.order_types import (
     StopOrder,
     StopLimitOrder,
     OrderDirection,
+)
+from python.framework.types.broker_types import (
+    SymbolSpecification,
+    BrokerSpecification,
+    SwapMode,
+    MarginMode,
+    extract_currencies_from_symbol
 )
 
 
@@ -282,13 +291,13 @@ class MT5Adapter(IOrderCapabilities):
         """
         # Check symbol exists
         if symbol not in self.broker_config['symbols']:
-            return False, f"Symbol {symbol} not found in broker configuration"
+            raise f"Symbol {symbol} not found in broker configuration"
 
         symbol_info = self.broker_config['symbols'][symbol]
 
         # Check trading allowed
         if not symbol_info.get('trade_allowed', False):
-            return False, f"Trading not allowed for {symbol}"
+            raise f"Trading not allowed for {symbol}"
 
         # Use common lot size validation
         return self._validate_lot_size(symbol, lots)
@@ -297,21 +306,129 @@ class MT5Adapter(IOrderCapabilities):
     # Symbol Information
     # ============================================
 
-    def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
-        Get MT5 symbol specifications.
+        Get fully typed symbol specification.
+
+        Returns static symbol properties as typed dataclass.
+        Does NOT include dynamic market data (tick_value, bid/ask).
+
+        Args:
+            symbol: Trading symbol (e.g., "GBPUSD")
 
         Returns:
-            Dict with volume_min, volume_max, volume_step, tick_size, etc.
+            SymbolSpecification with all static properties
 
         Raises:
             ValueError: If symbol not found
+
+        Example:
+            spec = adapter.get_symbol_specification("GBPUSD")
+            print(f"Min lot: {spec.volume_min}")
+            print(f"Quote currency: {spec.quote_currency}")
         """
         if symbol not in self.broker_config['symbols']:
             raise ValueError(
                 f"Symbol {symbol} not found in broker configuration")
 
-        return self.broker_config['symbols'][symbol]
+        raw = self.broker_config['symbols'][symbol]
+
+        # Extract currencies from symbol name
+        base, quote, margin = extract_currencies_from_symbol(symbol)
+
+        # Parse swap mode
+        swap_mode_str = raw.get('swap_mode', 'points').lower()
+        try:
+            swap_mode = SwapMode(swap_mode_str)
+        except ValueError:
+            swap_mode = SwapMode.POINTS  # Default fallback
+
+        return SymbolSpecification(
+            # Identity
+            symbol=symbol,
+            description=raw.get('description', ''),
+
+            # Trading Limits
+            volume_min=raw.get('volume_min', 0.01),
+            volume_max=raw.get('volume_max', 100.0),
+            volume_step=raw.get('volume_step', 0.01),
+            volume_limit=raw.get('volume_limit', 0.0),
+
+            # Price Properties
+            tick_size=raw.get('tick_size', 0.00001),
+            digits=raw.get('digits', 5),
+            contract_size=raw.get('contract_size', 100000),
+
+            # Currency Information
+            base_currency=base,
+            quote_currency=quote,
+            margin_currency=margin,
+
+            # Trading Permissions
+            trade_allowed=raw.get('trade_allowed', False),
+
+            # Swap Configuration
+            swap_mode=swap_mode,
+            swap_long=raw.get('swap_long', 0.0),
+            swap_short=raw.get('swap_short', 0.0),
+            swap_rollover3days=raw.get('swap_rollover3days', 3),
+
+            # Order Restrictions
+            stops_level=raw.get('stops_level', 0),
+            freeze_level=raw.get('freeze_level', 0)
+        )
+
+    def get_broker_specification(self) -> BrokerSpecification:
+        """
+        Get fully typed broker specification.
+
+        Returns static broker properties as typed dataclass.
+
+        Returns:
+            BrokerSpecification with all static broker properties
+
+        Example:
+            spec = adapter.get_broker_specification()
+            print(f"Leverage: 1:{spec.leverage}")
+            print(f"Margin call: {spec.margin_call_level}%")
+        """
+        broker_info = self.broker_config.get('broker_info', {})
+        account_info = self.broker_config.get('account_info', {})
+
+        # Parse margin mode
+        margin_mode_str = broker_info.get(
+            'margin_mode', 'retail_hedging').lower()
+        try:
+            margin_mode = MarginMode(margin_mode_str)
+        except ValueError:
+            margin_mode = MarginMode.RETAIL_HEDGING  # Default fallback
+
+        return BrokerSpecification(
+            # Broker Identity
+            company=broker_info.get('company', 'Unknown Broker'),
+            server=broker_info.get('server', 'Unknown Server'),
+            broker_type='mt5_forex',
+
+            # Account Type
+            trade_mode=broker_info.get('trade_mode', 'demo'),
+            account_currency=account_info.get('currency', 'USD'),
+
+            # Leverage & Margin
+            leverage=broker_info.get('leverage', 100),
+            margin_mode=margin_mode,
+            margin_call_level=broker_info.get('margin_call_level', 50.0),
+            stopout_level=broker_info.get('stopout_level', 20.0),
+            stopout_mode=broker_info.get('stopout_mode', 'percent'),
+
+            # Trading Permissions
+            trade_allowed=self.broker_config.get(
+                'trading_permissions', {}).get('trade_allowed', True),
+            expert_allowed=self.broker_config.get(
+                'trading_permissions', {}).get('expert_allowed', True),
+            hedging_allowed=broker_info.get('hedging_allowed', False),
+            limit_orders=self.broker_config.get(
+                'trading_permissions', {}).get('limit_orders', 0)
+        )
 
     # ============================================
     # MT5-Specific Features
@@ -324,7 +441,8 @@ class MT5Adapter(IOrderCapabilities):
     def calculate_margin_required(
         self,
         symbol: str,
-        lots: float
+        lots: float,
+        tick: TickData
     ) -> float:
         """
         Calculate required margin for order.
@@ -339,10 +457,10 @@ class MT5Adapter(IOrderCapabilities):
         Returns:
             Required margin in account currency
         """
-        symbol_info = self.get_symbol_info(symbol)
+        symbol_spec = self.get_symbol_specification(symbol)
 
-        contract_size = symbol_info.get('contract_size', 100000)
-        current_price = symbol_info.get('bid', 1.0)
+        contract_size = symbol_spec.contract_size
+        current_price = tick.bid
 
         # Calculate margin
         margin = (lots * contract_size * current_price) / self._leverage
@@ -351,8 +469,8 @@ class MT5Adapter(IOrderCapabilities):
 
     def get_spread_points(self, symbol: str) -> int:
         """Get current spread in points"""
-        symbol_info = self.get_symbol_info(symbol)
-        return symbol_info.get('spread_current', 0)
+        symbol_spec = self.get_symbol_specification(symbol)
+        return symbol_spec.spread_current
 
     def get_commission_per_lot(self, symbol: str) -> float:
         """

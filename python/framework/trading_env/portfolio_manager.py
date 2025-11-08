@@ -15,6 +15,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
 
+from python.framework.types.broker_types import DynamicSymbolData, SymbolSpecification
+
 from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee, SpreadFee, SwapFee, CommissionFee
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
@@ -331,16 +333,33 @@ class PortfolioManager:
     def update_positions(
         self,
         current_prices: Dict[str, tuple[float, float]],
-        symbol_specs: Dict[str, Dict]
+        symbol_specs: Dict[str, DynamicSymbolData]
     ) -> None:
-        """Update all open positions with current prices"""
+        '''
+        Update all open positions with current prices.
+
+        Args:
+            current_prices: Dict[symbol, (bid, ask)]
+            symbol_specs: Dict[symbol, DynamicSymbolData] with:
+                - specification: Static SymbolSpecification
+                - tick_value: Dynamic value calculated by TradeSimulator
+
+        Note:
+            tick_value is calculated dynamically by TradeSimulator based on
+            account currency and current market price. It is NOT the static
+            value from broker config.
+        '''
         for position in self.open_positions.values():
             if position.symbol in current_prices:
                 bid, ask = current_prices[position.symbol]
-                specs = symbol_specs.get(position.symbol, {})
+                dynamic_data = symbol_specs.get(position.symbol)
 
-                tick_value = specs.get('tick_value', 1.0)
-                digits = specs.get('digits', 5)
+                if dynamic_data is None:
+                    continue  # Skip if no data available
+
+                # Extract from typed object
+                tick_value = dynamic_data.tick_value
+                digits = dynamic_data.digits
 
                 position.update_current_price(bid, ask, tick_value, digits)
 

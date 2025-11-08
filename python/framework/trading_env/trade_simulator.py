@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
+from python.framework.types.broker_types import DynamicSymbolData, SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
@@ -99,8 +100,6 @@ class TradeSimulator:
             logger.info(
                 f"💱 Account Currency: {account_currency} (explicit configuration)"
             )
-            raise ValueError(
-                "Explicit Configuration not yet supported. Feature Gate MVP")
 
         # Store final account currency
         self.account_currency = account_currency
@@ -170,11 +169,23 @@ class TradeSimulator:
 
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
 
-        # Update all positions
-        symbol_specs = {
-            sym: self.broker.get_symbol_info(sym)
-            for sym in self._current_prices.keys()
-        }
+        # Update all positions with DYNAMIC tick_value (TYPED)
+        symbol_specs: Dict[str, DynamicSymbolData] = {}
+        for sym in self._current_prices.keys():
+            # Get static symbol specification
+            spec = self.broker.get_symbol_specification(sym)
+
+            # Calculate dynamic tick_value for current market conditions
+            bid, ask = self._current_prices[sym]
+            current_price = (bid + ask) / 2.0  # Use mid price
+
+            tick_value = self._calculate_tick_value(spec, current_price)
+
+            # Create typed DynamicSymbolData object
+            symbol_specs[sym] = DynamicSymbolData(
+                specification=spec,
+                tick_value=tick_value
+            )
 
         self.portfolio.update_positions(self._current_prices, symbol_specs)
 
@@ -299,21 +310,34 @@ class TradeSimulator:
         if pending_order.direction == OrderDirection.SHORT:
             entry_price = bid
 
-        # Calculate spread fee
-        # Create SpreadFee from LIVE tick data
-        symbol_info = self.broker.get_symbol_info(pending_order.symbol)
-        tick_value = symbol_info.get('tick_value', 1.0)
-        digits = symbol_info.get('digits', 5)
+        # Calculate spread fee with DYNAMIC tick_value
+        # Get static symbol specification
+        symbol_spec = self.broker.get_symbol_specification(
+            pending_order.symbol)
+        # Calculate tick_value dynamically
+        tick_value = self._calculate_tick_value(
+            symbol_spec,
+            self._current_tick.mid
+        )
         spread_fee = create_spread_fee_from_tick(
             tick=self._current_tick,
             lots=pending_order.lots,
             tick_value=tick_value,
-            digits=digits
+            digits=symbol_spec.digits
+        )
+        # Log tick_value calculation for transparency
+        self.logger.debug(
+            f"💱 tick_value calculation: "
+            f"Account={self.account_currency}, "
+            f"Symbol={symbol_spec.symbol} "
+            f"(Base={symbol_spec.base_currency}, Quote={symbol_spec.quote_currency}), "
+            f"Price={self._current_tick.mid:.5f}, "
+            f"tick_value={tick_value:.5f}"
         )
 
         # Check margin available
         margin_required = self.broker.calculate_margin(
-            pending_order.symbol, pending_order.lots)
+            pending_order.symbol, pending_order.lots, self._current_tick)
         free_margin = self.portfolio.get_free_margin()
 
         if margin_required > free_margin:
@@ -623,6 +647,72 @@ class TradeSimulator:
         return self.portfolio.get_free_margin()
 
     # ============================================
+    # Dynamic Calculations"
+    # ============================================
+    def _calculate_tick_value(
+        self,
+        symbol_spec: SymbolSpecification,
+        current_price: float
+    ) -> float:
+        """
+        Calculate tick_value dynamically based on account currency and current price.
+
+        tick_value represents the value of 1 point movement at 1 standard lot
+        in the account currency.
+
+        Calculation Logic:
+        - If Account Currency == Quote Currency: tick_value = 1.0 (no conversion)
+        - If Account Currency == Base Currency: tick_value = 1.0 / current_price
+        - Cross Currency: Not supported in MVP (raises NotImplementedError)
+
+        Args:
+            symbol_spec: Static symbol specification
+            current_price: Current market price (mid/bid/ask)
+
+        Returns:
+            tick_value for P&L calculations
+
+        Raises:
+            NotImplementedError: If cross-currency conversion needed
+
+        Example:
+            GBPUSD with Account=USD:
+            → tick_value = 1.0 (Quote matches Account)
+
+            GBPUSD with Account=GBP:
+            → tick_value = 1.0 / 1.33000 = 0.7519
+
+            GBPUSD with Account=JPY:
+            → NotImplementedError (needs USDJPY rate)
+        """
+        # Quote Currency matches Account Currency
+        # Example: GBPUSD with Account=USD
+        if self.account_currency == symbol_spec.quote_currency:
+            return 1.0  # No conversion needed
+
+        # Base Currency matches Account Currency
+        # Example: GBPUSD with Account=GBP
+        elif self.account_currency == symbol_spec.base_currency:
+            if current_price <= 0:
+                raise ValueError(
+                    f"Invalid price for tick_value calculation: {current_price}"
+                )
+            return 1.0 / current_price
+
+        # Cross Currency - Not supported in MVP
+        else:
+            raise NotImplementedError(
+                f"Cross-currency conversion not supported (MVP restriction): "
+                f"Account Currency: {self.account_currency}, "
+                f"Symbol: {symbol_spec.symbol} "
+                f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})\n"
+                f"Supported configurations:\n"
+                f"  - Account Currency == Quote Currency (e.g., GBPUSD with USD account)\n"
+                f"  - Account Currency == Base Currency (e.g., GBPUSD with GBP account)\n"
+                f"For cross-currency, external exchange rates would be required (Post-MVP)."
+            )
+
+    # ============================================
     # Order History
     # ============================================
 
@@ -679,9 +769,9 @@ class TradeSimulator:
         """Get broker order capabilities"""
         return self.broker.get_order_capabilities()
 
-    def get_symbol_info(self, symbol: str) -> Dict:
+    def get_symbol_spec(self, symbol: str) -> SymbolSpecification:
         """Get symbol specifications"""
-        return self.broker.get_symbol_info(symbol)
+        return self.broker.get_symbol_specification(symbol)
 
     # ============================================
     # Statistics ( & TYPED)
