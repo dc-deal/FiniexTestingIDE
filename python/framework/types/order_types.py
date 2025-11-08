@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from python.framework.utils.process_deserialization_utils import serialize_value
+
 
 # ============================================
 # Order Type Enums
@@ -227,35 +229,48 @@ class OrderResult:
     order_id: str
     status: OrderStatus
 
-    # Execution details (if executed)
     executed_price: Optional[float] = None
     executed_lots: Optional[float] = None
     execution_time: Optional[datetime] = None
 
-    # Commission and fees
     commission: float = 0.0
     swap: float = 0.0
-
-    # Slippage (for market orders)
     slippage_points: float = 0.0
 
-    # Rejection details (if rejected)
     rejection_reason: Optional[RejectionReason] = None
     rejection_message: str = ""
 
-    # Broker-specific metadata
     broker_order_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_success(self) -> bool:
-        """Check if order was successfully executed"""
         return self.status in [OrderStatus.EXECUTED, OrderStatus.PARTIALLY_FILLED]
 
     @property
     def is_rejected(self) -> bool:
-        """Check if order was rejected"""
         return self.status == OrderStatus.REJECTED
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization"""
+        return {
+            'order_id': self.order_id,
+            'status': self.status.value,
+
+            'executed_price': self.executed_price,
+            'executed_lots': self.executed_lots,
+            'execution_time': self.execution_time.isoformat() if self.execution_time else None,
+
+            'commission': self.commission,
+            'swap': self.swap,
+            'slippage_points': self.slippage_points,
+
+            'rejection_reason': self.rejection_reason.value if self.rejection_reason else None,
+            'rejection_message': self.rejection_message,
+
+            'broker_order_id': self.broker_order_id,
+            'metadata': serialize_value(self.metadata),
+        }
 
 
 # ============================================

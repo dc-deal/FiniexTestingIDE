@@ -13,10 +13,10 @@ Simulates broker trading environment with realistic execution
 - CURRENCY: account_currency with auto-detection from symbol
 """
 from datetime import datetime
+import json
 from typing import Optional, List, Dict, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
-from python.framework.logger.trading_environment_logger import TradingEnvironmentLogger
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
@@ -139,8 +139,6 @@ class TradeSimulator:
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
 
-        self.trade_logger = TradingEnvironmentLogger(logger)
-
     # ============================================
     # Price Updates
     # Running every Tick
@@ -216,6 +214,8 @@ class TradeSimulator:
         self._order_counter += 1
         order_id = f"order_{self._order_counter}"
 
+        # Some checks which don't have to be made "at the broker" (after the delay)
+
         # Validate order
         is_valid, error = self.broker.validate_order(symbol, lots)
         if not is_valid:
@@ -284,6 +284,12 @@ class TradeSimulator:
         Args:
             pending_order: PendingOrder with order_action=PendingOrderAction.OPEN
         """
+        self.logger.info(
+            f"📋 Open Portfolio Position start - At Tick: {self._tick_counter}")
+        self.logger.verbose(
+            f"PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}")
+        self.logger.verbose(
+            f"CURRENT_TICK_AT_ORDER_OPEN: {json.dumps(self._current_tick.to_dict(), indent=2)}")
         # Get current price
         bid, ask = self.get_current_price(pending_order.symbol)
 
@@ -349,6 +355,10 @@ class TradeSimulator:
                 "filled_at_tick": self._tick_counter
             }
         )
+
+        self.logger.debug(f"Open Portfolio Position finished")
+        self.logger.verbose(
+            f"OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}")
 
         # Update statistics
         self._orders_executed += 1
@@ -476,6 +486,13 @@ class TradeSimulator:
         Args:
             pending_order: PendingOrder with order_action=PendingOrderAction.CLOSE
         """
+        self.logger.info(
+            f"📋 Close and Fill Order start - At Tick: {self._tick_counter}")
+        self.logger.verbose(
+            f"PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}")
+        self.logger.verbose(
+            f"CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}")
+
         # Get position
         position = self.portfolio.get_position(pending_order.position_id)
         if not position:
@@ -521,6 +538,10 @@ class TradeSimulator:
                 "position_id": pending_order.position_id
             }
         )
+
+        self.logger.debug(f"Close and Fill Order finished")
+        self.logger.verbose(
+            f"CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}")
 
         self._order_history.append(result)
 
