@@ -33,6 +33,7 @@ import importlib
 import json
 from typing import Any, Dict, List, Type
 
+from python.components.logger.abstract_logger import AbstractLogger
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.workers.abstract_blackbox_worker import \
     AbstractBlackboxWorker
@@ -50,13 +51,14 @@ class WorkerFactory:
     the complete lifecycle of worker creation.
     """
 
-    def __init__(self):
+    def __init__(self, logger: AbstractLogger):
         """
         Initialize worker factory with empty registry.
 
         The registry is populated on-demand when workers are requested.
         This lazy-loading approach avoids import overhead for unused workers.
         """
+        self._logger = logger
         self._registry: Dict[str, Type[AbstractBlackboxWorker]] = {}
         self._load_core_workers()
 
@@ -85,11 +87,11 @@ class WorkerFactory:
             self._registry["CORE/heavy_macd"] = HeavyMACDWorker
             self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
 
-            vLog.debug(
+            self._logger.debug(
                 f"Core workers registered: {list(self._registry.keys())}"
             )
         except ImportError as e:
-            vLog.warning(f"Failed to load core workers: {e}")
+            self._logger.warning(f"Failed to load core workers: {e}")
 
     def register_worker(
         self,
@@ -116,14 +118,13 @@ class WorkerFactory:
             )
 
         self._registry[worker_type] = worker_class
-        vLog.debug(
+        self._logger.debug(
             f"Registered worker: {worker_type} → {worker_class.__name__}")
 
     def create_worker(
         self,
         instance_name: str,
         worker_type: str,
-        logger: ScenarioLogger,
         worker_config: Dict[str, Any] = None,
 
     ) -> AbstractBlackboxWorker:
@@ -175,11 +176,11 @@ class WorkerFactory:
         # Step 5: Instantiate worker ONCE with merged parameters
         worker_instance = worker_class(
             name=instance_name,
-            logger=logger,
+            logger=self._logger,
             parameters=merged_params,
         )
 
-        logger.debug(
+        self._logger.debug(
             f"✅ Created worker: {instance_name} ({worker_type}) "
             f"with {len(merged_params)} parameters"
         )
@@ -188,8 +189,7 @@ class WorkerFactory:
 
     def create_workers_from_config(
         self,
-        strategy_config: Dict[str, Any],
-        logger: ScenarioLogger
+        strategy_config: Dict[str, Any]
     ) -> Dict[str, AbstractBlackboxWorker]:
         """
         Create all workers from strategy configuration.
@@ -238,19 +238,18 @@ class WorkerFactory:
                 worker_instance = self.create_worker(
                     instance_name=instance_name,
                     worker_type=worker_type,
-                    logger=logger,
                     worker_config=worker_config
                 )
 
                 created_workers[instance_name] = worker_instance
 
             except Exception as e:
-                vLog.error(
+                self._logger.error(
                     f"Failed to create worker {instance_name} ({worker_type}): {e}")
                 raise ValueError(
                     f"Worker creation failed for {instance_name} ({worker_type}): {e}")
 
-        logger.debug(
+        self._logger.debug(
             f"✅ Created {len(created_workers)} workers: "
             f"{list(created_workers.keys())}"
         )

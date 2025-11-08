@@ -39,10 +39,9 @@ def process_startup_preparation(
     scenario_logger.info(f"🚀 Starting scenario: {config.name}")
 
     # === CREATE WORKERS ===
-    worker_factory = WorkerFactory()
+    worker_factory = WorkerFactory(logger=scenario_logger)
     workers_dict = worker_factory.create_workers_from_config(
-        strategy_config=config.strategy_config,
-        logger=scenario_logger
+        strategy_config=config.strategy_config
     )
     workers = list(workers_dict.values())
 

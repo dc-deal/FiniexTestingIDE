@@ -47,7 +47,7 @@ class AggregateScenarioDataRequirements:
     def __init__(self):
         """Initialize empty requirements collector."""
         self.requirements = RequirementsMap()
-        self.worker_factory = WorkerFactory()
+        self.worker_factory = WorkerFactory(logger=vLog)
         self._scenario_count = 0
 
     def add_scenario(
@@ -98,10 +98,9 @@ class AggregateScenarioDataRequirements:
         # === BAR REQUIREMENTS (via Worker System) ===
         # Create workers temporarily
         # 1. Create workers temporarily
-        worker_factory = WorkerFactory()
+        worker_factory = WorkerFactory(logger=vLog)
         workers_dict = worker_factory.create_workers_from_config(
-            strategy_config=scenario.strategy_config,
-            logger=logger
+            strategy_config=scenario.strategy_config
         )
         workers = list(workers_dict.values())
 

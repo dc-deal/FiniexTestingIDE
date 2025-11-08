@@ -175,7 +175,7 @@ class BatchOrchestrator:
                                       self.scenario_set.scenario_set_name+" Log Timer (Batch Init).")
 
         # Initialize Factories
-        self.worker_factory = WorkerFactory()
+        self.worker_factory = WorkerFactory(logger=self.scenario_set.logger)
         self.decision_logic_factory = DecisionLogicFactory(
             logger=self.scenario_set.logger)
 
