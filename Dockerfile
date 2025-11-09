@@ -22,4 +22,5 @@ EXPOSE 8888
 # Daten-Ordner erstellen
 RUN mkdir -p /app/data/raw /app/data/processed
 
-CMD ["bash"]
+# Bash als interaktive Login-Shell setzen
+CMD ["/bin/bash", "-l"]

@@ -51,37 +51,6 @@ class AbstractDecisionLogic(ABC):
     5. execute_decision() executes trades (Template Method)
        - Calls _execute_decision_impl() (subclass implements this)
        - Automatically updates statistics
-
-    Example:
-        class SimpleConsensus(AbstractDecisionLogic):
-            def get_required_worker_instances(self):
-                return  {
-                    "rsi_fast": "CORE/rsi",
-                    "envelope_main": "CORE/envelope"
-                }
-
-            def get_required_order_types(self):
-                return [OrderType.MARKET]
-
-            def compute(self, tick, worker_results, bars, history):
-                rsi = worker_results["RSI"].value
-                if rsi < 30:
-                    return Decision(
-                        action=DecisionLogicAction.BUY,
-                        confidence=0.8
-                    )
-                return Decision(
-                    action=DecisionLogicAction.FLAT,
-                    confidence=0.5
-                )
-
-            def _execute_decision_impl(self, decision, tick):
-                if decision.action == DecisionLogicAction.BUY:
-                    account = self.trading_api.get_account_info()
-                    if account.free_margin < 1000:
-                        return None
-                    return self.trading_api.send_order(...)
-                return None
     """
 
     def __init__(
@@ -185,21 +154,6 @@ class AbstractDecisionLogic(ABC):
 
         Returns:
             OrderResult if order was sent, None if no trade
-
-        Example:
-            def _execute_decision_impl(self, decision, tick):
-                if decision.action == DecisionLogicAction.BUY:
-                    account = self.trading_api.get_account_info()
-                    if account.free_margin < 1000:
-                        return None  # Not enough margin
-
-                    return self.trading_api.send_order(
-                        symbol=tick.symbol,
-                        order_type=OrderType.MARKET,
-                        direction=OrderDirection.LONG,
-                        lots=0.1
-                    )
-                return None
         """
         pass
 

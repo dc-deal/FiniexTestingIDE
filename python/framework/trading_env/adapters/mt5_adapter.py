@@ -291,13 +291,14 @@ class MT5Adapter(IOrderCapabilities):
         """
         # Check symbol exists
         if symbol not in self.broker_config['symbols']:
-            raise f"Symbol {symbol} not found in broker configuration"
+            raise RuntimeError(
+                "Symbol {symbol} not found in broker configuration")
 
         symbol_info = self.broker_config['symbols'][symbol]
 
         # Check trading allowed
         if not symbol_info.get('trade_allowed', False):
-            raise f"Trading not allowed for {symbol}"
+            raise RuntimeError(f"Trading not allowed for {symbol}")
 
         # Use common lot size validation
         return self._validate_lot_size(symbol, lots)

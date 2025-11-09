@@ -10,124 +10,16 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 - CURRENCY: Changed 'currency' to 'account_currency' for clarity
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime
 from typing import Dict, List, Optional
-from enum import Enum
 
-from python.framework.types.broker_types import DynamicSymbolData, SymbolSpecification
+from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
-from .trading_fees import AbstractTradingFee, SpreadFee, SwapFee, CommissionFee
+from .trading_fees import AbstractTradingFee
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
-
-
-class PositionStatus(Enum):
-    """Position status"""
-    OPEN = "open"
-    CLOSED = "closed"
-    PARTIALLY_CLOSED = "partially_closed"
-
-
-@dataclass
-class Position:
-    """
-    Open trading position with full fee tracking.
-
-    Now includes List[AbstractTradingFee] for all costs.
-    """
-    position_id: str
-    symbol: str
-    direction: OrderDirection
-    lots: float
-    entry_price: float
-    entry_time: datetime
-
-    # Optional SL/TP
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-
-    # Fee objects (polymorphic)
-    fees: List[AbstractTradingFee] = field(default_factory=list)
-
-    # Current state
-    current_price: float = 0.0
-    unrealized_pnl: float = 0.0
-
-    # Status
-    status: PositionStatus = PositionStatus.OPEN
-
-    # Metadata
-    comment: str = ""
-    magic_number: int = 0
-    close_time: Optional[datetime] = None
-    close_price: Optional[float] = None
-
-    def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
-        """
-        Update current price and recalculate unrealized P&L.
-
-        P&L calculation includes all accumulated fees.
-        """
-        # Use appropriate price based on position direction
-        if self.direction == OrderDirection.LONG:
-            self.current_price = bid  # Close at bid
-        else:
-            self.current_price = ask  # Close at ask
-
-        # Calculate price difference in points
-        if self.direction == OrderDirection.LONG:
-            price_diff = self.current_price - self.entry_price
-        else:
-            price_diff = self.entry_price - self.current_price
-
-        # Convert to points
-        points = price_diff * (10 ** digits)
-
-        # Calculate P&L: points * tick_value * lots - all fees
-        gross_pnl = points * tick_value * self.lots
-        total_fees = self.get_total_fees()
-
-        self.unrealized_pnl = gross_pnl - total_fees
-
-    def add_fee(self, fee: AbstractTradingFee) -> None:
-        """Add fee to position"""
-        self.fees.append(fee)
-
-    def get_total_fees(self) -> float:
-        """Get sum of all fees attached to this position"""
-        return sum(fee.cost for fee in self.fees)
-
-    def get_fees_by_type(self, fee_type) -> List[AbstractTradingFee]:
-        """Get all fees of specific type"""
-        return [fee for fee in self.fees if fee.fee_type == fee_type]
-
-    def get_spread_cost(self) -> float:
-        """Get total spread cost"""
-        from .trading_fees import FeeType
-        spread_fees = self.get_fees_by_type(FeeType.SPREAD)
-        return sum(fee.cost for fee in spread_fees)
-
-    def get_commission_cost(self) -> float:
-        """Get total commission cost"""
-        from .trading_fees import FeeType
-        comm_fees = self.get_fees_by_type(FeeType.COMMISSION)
-        return sum(fee.cost for fee in comm_fees)
-
-    def get_swap_cost(self) -> float:
-        """Get total swap cost"""
-        from .trading_fees import FeeType
-        swap_fees = self.get_fees_by_type(FeeType.SWAP)
-        return sum(fee.cost for fee in swap_fees)
-
-    def get_margin_used(self, contract_size: float, leverage: int) -> float:
-        """Calculate margin used by this position"""
-        return (self.lots * contract_size * self.entry_price) / leverage
-
-    @property
-    def is_open(self) -> bool:
-        """Check if position is still open"""
-        return self.status == PositionStatus.OPEN
 
 
 class PortfolioManager:
@@ -171,6 +63,7 @@ class PortfolioManager:
         self.realized_pnl = 0.0
 
         # Positions
+        self._positions_dirty = False  # Performance: Lazy evaluation state
         self.open_positions: Dict[str, Position] = {}
         self.closed_positions: List[Position] = []
 
@@ -262,6 +155,9 @@ class PortfolioManager:
         if position_id not in self.open_positions:
             raise ValueError(f"Position {position_id} not found")
 
+        # Ensure position has latest P&L before closing
+        self._ensure_positions_updated()
+
         position = self.open_positions[position_id]
 
         # Add exit fee if provided
@@ -298,6 +194,10 @@ class PortfolioManager:
 
         return realized_pnl
 
+    # ============================================
+    # Performance - Caching
+    # ============================================
+
     def modify_position(
         self,
         position_id: str,
@@ -330,10 +230,11 @@ class PortfolioManager:
 
         return True
 
-    def update_positions(
+    def _update_positions(
         self,
         current_prices: Dict[str, tuple[float, float]],
-        symbol_specs: Dict[str, DynamicSymbolData]
+        symbol_specs: Dict[str, SymbolSpecification],
+        tick_values: Dict[str, float],
     ) -> None:
         '''
         Update all open positions with current prices.
@@ -353,15 +254,57 @@ class PortfolioManager:
             if position.symbol in current_prices:
                 bid, ask = current_prices[position.symbol]
                 dynamic_data = symbol_specs.get(position.symbol)
-
-                if dynamic_data is None:
-                    continue  # Skip if no data available
-
                 # Extract from typed object
-                tick_value = dynamic_data.tick_value
+                tick_value = tick_values[position.symbol]
                 digits = dynamic_data.digits
 
                 position.update_current_price(bid, ask, tick_value, digits)
+
+    def mark_dirty(
+        self,
+        current_prices: Dict[str, tuple[float, float]],
+        symbol_specs: Dict[str, SymbolSpecification],
+        tick_values: Dict[str, float],
+    ) -> None:
+        """
+        Mark positions as dirty (need update on next access).
+
+        This is called by TradeSimulator on every tick to record price changes
+        WITHOUT immediately updating all positions. Updates happen lazily when
+        account info is requested.
+
+        Performance: 
+        - Avoids O(N) position updates on every tick
+        - Updates only happen when DecisionLogic queries account state
+
+        Args:
+            current_prices: Current bid/ask prices per symbol
+            symbol_specs: Dynamic symbol data with tick_value
+        """
+        self._positions_dirty = True
+        self._cached_prices = current_prices
+        self._cached_symbol_specs = symbol_specs
+        self._cached_tick_values = tick_values
+
+    def _ensure_positions_updated(self) -> None:
+        """
+        Ensure positions are updated with latest prices (lazy evaluation).
+
+        Called automatically by methods that need current position values:
+        - get_account_info()
+        - close_position_portfolio()
+        - get_portfolio_statistics()
+
+        Performance:
+        - Only updates if _positions_dirty = True
+        - Reuses cached prices from mark_dirty()
+        """
+        if self._positions_dirty and self._cached_prices:
+            # Update all positions with cached data
+            self._update_positions(self._cached_prices,
+                                   self._cached_symbol_specs,
+                                   self._cached_tick_values)
+            self._positions_dirty = False
 
     def get_open_positions(self) -> List[Position]:
         """Get list of all open positions"""
@@ -393,6 +336,9 @@ class PortfolioManager:
 
         Always returns copy (safe for external use).
         """
+        # Ensure positions have latest prices (lazy update)
+        self._ensure_positions_updated()
+
         # Calculate total unrealized P&L
         unrealized_pnl = sum(
             pos.unrealized_pnl for pos in self.open_positions.values()
@@ -522,6 +468,9 @@ class PortfolioManager:
         Creates new PortfolioStats from direct attributes.
         Always returns new object (safe for external use).
         """
+        # Ensure positions have latest values for accurate stats
+        self._ensure_positions_updated()
+
         # Calculate win rate
         if self._total_trades > 0:
             win_rate = self._winning_trades / self._total_trades

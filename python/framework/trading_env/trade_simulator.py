@@ -18,7 +18,7 @@ from typing import Optional, List, Dict, Tuple
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.broker_types import DynamicSymbolData, SymbolSpecification
+from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
@@ -169,25 +169,24 @@ class TradeSimulator:
 
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
 
-        # Update all positions with DYNAMIC tick_value (TYPED)
-        symbol_specs: Dict[str, DynamicSymbolData] = {}
+        # Mark portfolio as dirty (lazy evaluation)
+        symbol_specs: Dict[str, SymbolSpecification] = {}
+        tick_values: Dict[str, float] = {}
         for sym in self._current_prices.keys():
             # Get static symbol specification
             spec = self.broker.get_symbol_specification(sym)
 
             # Calculate dynamic tick_value for current market conditions
             bid, ask = self._current_prices[sym]
-            current_price = (bid + ask) / 2.0  # Use mid price
-
-            tick_value = self._calculate_tick_value(spec, current_price)
+            current_price = (bid + ask) / 2.0
 
             # Create typed DynamicSymbolData object
-            symbol_specs[sym] = DynamicSymbolData(
-                specification=spec,
-                tick_value=tick_value
-            )
+            symbol_specs[sym] = spec
+            tick_values[sym] = self._calculate_tick_value(spec, current_price)
 
-        self.portfolio.update_positions(self._current_prices, symbol_specs)
+        # Mark dirty instead of immediate update (lazy evaluation)
+        self.portfolio.mark_dirty(
+            self._current_prices, symbol_specs, tick_values)
 
     def get_current_price(self, symbol: str) -> tuple[float, float]:
         """
