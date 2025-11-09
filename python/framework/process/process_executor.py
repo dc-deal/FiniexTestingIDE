@@ -5,7 +5,6 @@ Process-based scenario execution with ProcessPool support
 import time
 import traceback
 from collections import defaultdict
-from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
@@ -13,7 +12,7 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
     ProcessScenarioConfig,
 )
-from python.framework.utils.process_debug_info_utils import debug_tick_range_info
+from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 
 
 def execute_tick_loop(
@@ -49,7 +48,9 @@ def execute_tick_loop(
     profile_counts = defaultdict(int)
     tick_count = 0
 
-    debug_tick_range_info(prepared_objects)
+    tick_range_stats = get_tick_range_stats(prepared_objects)
+
+    scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
 
     # === TICK LOOP ===
     for tick in ticks:
@@ -155,5 +156,6 @@ def execute_tick_loop(
         execution_stats=execution_stats,
         cost_breakdown=cost_breakdown,
         profiling_data=ProcessProfileData(
-            profile_times=profile_times, profile_counts=profile_counts)
+            profile_times=profile_times, profile_counts=profile_counts),
+        tick_range_stats=tick_range_stats
     )

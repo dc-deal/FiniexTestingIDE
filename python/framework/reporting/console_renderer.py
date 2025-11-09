@@ -14,10 +14,11 @@ FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import List
+from datetime import datetime
 
 from python.framework.types.currency_codes import format_currency_simple
-from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.process_data_types import ProcessResult, TickRangeStats
 
 
 class ConsoleRenderer:
@@ -102,8 +103,6 @@ class ConsoleRenderer:
         """
         Remove ANSI color codes from string.
 
-        CRITICAL: Required for accurate string length calculations.
-
         Args:
             text: String potentially containing ANSI codes
 
@@ -128,8 +127,6 @@ class ConsoleRenderer:
     def pad_line(self, text: str, width: int) -> str:
         """
         Pad line to exact visual width.
-
-        CRITICAL: Accounts for ANSI codes in padding calculation.
 
         Args:
             text: String to pad (may contain ANSI codes)
@@ -157,8 +154,6 @@ class ConsoleRenderer:
         """
         Render symmetric box around lines.
 
-        CRITICAL: Fixed alignment bug - uses visual_length for padding.
-
         Args:
             lines: Lines of text (may contain ANSI codes)
             box_width: Total box width (including borders)
@@ -182,6 +177,75 @@ class ConsoleRenderer:
         box_lines.append(f"└{'─' * (box_width - 2)}┘")
 
         return box_lines
+
+    # ============================================
+    # Time Formatting
+    # ============================================
+
+    def format_tick_timespan(self, stats: TickRangeStats) -> str:
+        """
+        Format tick time range in human-readable format.
+
+        Args:
+            first_tick_time: First tick timestamp
+            last_tick_time: Last tick timestamp
+            tick_timespan_seconds: Duration in seconds
+
+        Returns:
+            Formatted time range string
+        """
+
+        if not stats.first_tick_time or not stats.last_tick_time:
+            return "N/A"
+
+        # Check if same day
+        same_day = stats.first_tick_time.date() == stats.last_tick_time.date()
+
+        if same_day:
+            # Same day: "20:00:00 → 20:30:28 (30m 28s)"
+            start_time = stats.first_tick_time.strftime("%H:%M:%S")
+            end_time = stats.last_tick_time.strftime("%H:%M:%S")
+            duration = self._format_duration(stats.tick_timespan_seconds)
+            return f"{start_time} → {end_time} ({duration})"
+        else:
+            # Different days: "Oct 09 20:00 → Oct 10 02:15 (6h 15m)"
+            start_time = stats.first_tick_time.strftime("%b %d %H:%M")
+            end_time = stats.last_tick_time.strftime("%b %d %H:%M")
+            duration = self._format_duration(stats.tick_timespan_seconds)
+            return f"{start_time} → {end_time} ({duration})"
+
+    def _format_duration(self, seconds: float) -> str:
+        """
+        Format duration in human-readable format.
+
+        Args:
+            seconds: Duration in seconds
+
+        Returns:
+            Formatted duration (e.g., "30m 28s", "2h 15m 32s")
+        """
+        if seconds < 60:
+            # Less than 1 minute: show seconds only
+            return f"{int(seconds)}s"
+
+        minutes = int(seconds // 60)
+        remaining_seconds = int(seconds % 60)
+
+        if minutes < 60:
+            # Less than 1 hour: show minutes and seconds
+            if remaining_seconds > 0:
+                return f"{minutes}m {remaining_seconds}s"
+            else:
+                return f"{minutes}m"
+
+        hours = minutes // 60
+        remaining_minutes = minutes % 60
+
+        # 1 hour or more: show hours and minutes (skip seconds for brevity)
+        if remaining_minutes > 0:
+            return f"{hours}h {remaining_minutes}m"
+        else:
+            return f"{hours}h"
 
     # ============================================
     # Grid Rendering
@@ -225,8 +289,12 @@ class ConsoleRenderer:
         """
         Create box lines for single scenario.
 
-        FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
-        FIXED: Direct attribute access instead of .get()
+        Args:
+            scenario: ProcessResult object
+            box_width: Width of box
+
+        Returns:
+            List of box lines
         """
         performance_stats = scenario.tick_loop_results.performance_stats
         portfolio_stats = scenario.tick_loop_results.portfolio_stats
@@ -244,23 +312,28 @@ class ConsoleRenderer:
             rate = nfSig / ticks
 
         action_trades = portfolio_stats.total_trades
-        long_trades = portfolio_stats.total_long_trades
-        short_trades = portfolio_stats.total_short_trades
         rate_trades = 100
         if ticks > 0:
             rate_trades = action_trades / ticks
+
+        # Format tick time range
+        tick_time_range = "N/A"
+        stats = scenario.tick_loop_results.tick_range_stats
+        first_tick_time = stats.first_tick_time
+        last_tick_time = stats.last_tick_time
+        if first_tick_time and last_tick_time:
+            tick_time_range = self.format_tick_timespan(stats)
 
         # Create content lines
         lines = [
             f"📋 {scenario_name}",
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
+            f"📅 {tick_time_range}",
             f"Non-Flat Sign.: {nfSig} ({rate:.1%})",
             f"B/S/F: {buys}/{sells}/{flats}",
-            f"Trades: {action_trades} ({rate_trades:.1%})",
-            f"Long/Short: {long_trades}/{short_trades}",
+            f"Trades requested: {action_trades} ({rate_trades:.1%})",
             f"Worker: {scenario.tick_loop_results.performance_stats.total_workers}",
-            f"Decisions: {scenario.tick_loop_results.performance_stats.decision_logic.decision_count}"
         ]
 
         return self.render_box(lines, box_width)
@@ -303,7 +376,12 @@ class ConsoleRenderer:
         """
         Create box lines for portfolio stats.
 
-        FULLY TYPED: Works with typed dataclasses instead of dicts.
+        Args:
+            scenario: ProcessResult object
+            box_width: Width of box
+
+        Returns:
+            List of box lines
         """
         scenario_name = scenario.scenario_name[:28]
         portfolio_stats = scenario.tick_loop_results.portfolio_stats
@@ -327,6 +405,8 @@ class ConsoleRenderer:
         winning = portfolio_stats.winning_trades
         losing = portfolio_stats.losing_trades
         win_rate = portfolio_stats.win_rate
+        long_trades = portfolio_stats.total_long_trades
+        short_trades = portfolio_stats.total_short_trades
 
         # Calculate P&L
         total_profit = portfolio_stats.total_profit
@@ -353,11 +433,12 @@ class ConsoleRenderer:
         if total_trades > 0:
             lines = [
                 f"💰 {scenario_name}",
-                f"Trades: {total_trades} ({winning}W/{losing}L)",
+                f"Trades executed: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
                 f"P&L: {pnl_str}",
                 f"Spread: {format_currency_simple(spread_cost, currency)}",
-                f"Orders: {orders_executed}/{orders_sent}"
+                f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
+                f"Long/Short: {long_trades}/{short_trades}",
             ]
         else:
             lines = [

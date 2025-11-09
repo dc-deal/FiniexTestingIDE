@@ -276,6 +276,17 @@ class ProcessProfileData:
 
 
 @dataclass
+class TickRangeStats:
+    """
+        Tick time range (internal tick timestamps)
+    """
+    tick_count: int = 0,
+    first_tick_time: Optional[datetime] = None,
+    last_tick_time: Optional[datetime] = None,
+    tick_timespan_seconds: Optional[float] = None
+
+
+@dataclass
 class ProcessTickLoopResult:
     """
         Result info from Tick Loop, after execution.
@@ -285,7 +296,8 @@ class ProcessTickLoopResult:
     portfolio_stats: PortfolioStats = None,
     execution_stats: ExecutionStats = None,
     cost_breakdown: CostBreakdown = None,
-    profiling_data: ProcessProfileData = None
+    profiling_data: ProcessProfileData = None,
+    tick_range_stats: TickRangeStats = None,
 
 
 # ============================================================================

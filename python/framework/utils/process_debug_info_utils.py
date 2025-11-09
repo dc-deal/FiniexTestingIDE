@@ -2,33 +2,54 @@ from typing import Any, Dict, Tuple
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.types.log_level import LogLevel
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
+from python.framework.types.process_data_types import (
+    ProcessPreparedDataObjects,
+    ProcessScenarioConfig,
+    TickRangeStats)
 
 
-def debug_tick_range_info(prepared_objects: ProcessPreparedDataObjects):
+def get_tick_range_stats(prepared_objects: ProcessPreparedDataObjects) -> TickRangeStats:
     """ 
     DEBUG: TICK RANGE INFO 
     """
     logger = prepared_objects.scenario_logger
-    if not logger.should_logLevel(LogLevel.DEBUG):
-        return
-
     trade_simulator = prepared_objects.trade_simulator
     ticks = prepared_objects.ticks
 
-    logger.debug(f"🔍 [DEBUG] Tick loop starting")
+    # === DEBUG: TICK RANGE INFO ===
+    logger.debug(f"🔍 Tick loop range info")
     logger.debug(f"  Total ticks: {len(ticks)}")
     logger.debug(f"  TradeSimulator ID: {id(trade_simulator)}")
     logger.debug(f"  Portfolio ID: {id(trade_simulator.portfolio)}")
-    if len(ticks) > 0:
+
+    # Extract tick time range
+    first_tick_time = None
+    last_tick_time = None
+    tick_timespan_seconds = None
+    tick_count = len(ticks)
+
+    if tick_count > 0:
         first_tick = ticks[0]
         last_tick = ticks[-1]
+        first_tick_time = first_tick.timestamp
+        last_tick_time = last_tick.timestamp
+
+        # Calculate timespan in seconds
+        if first_tick_time and last_tick_time:
+            tick_timespan_seconds = (
+                last_tick_time - first_tick_time).total_seconds()
+
         logger.debug(
             f"  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}")
         logger.debug(
             f"  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}")
 
-    logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
+    return TickRangeStats(
+        tick_count=tick_count,
+        first_tick_time=first_tick_time,
+        last_tick_time=last_tick_time,
+        tick_timespan_seconds=tick_timespan_seconds
+    )
 
 
 def debug_warmup_bars_check(warmup_bars: Dict[str, Tuple[Any, ...]],
