@@ -368,31 +368,50 @@ class TimeRangeCoverageReport:
 
             report.append(f"{'─'*60}")
 
+            gap_counter = 1
             for gap in weekend_gaps:
-                # Line 1: UTC times + gap duration (without seconds)
+                # 4-line format for better readability
                 utc_start = gap.file1.end_time.strftime('%Y-%m-%d %H:%M')
                 utc_end = gap.file2.start_time.strftime('%Y-%m-%d %H:%M')
-                report.append(
-                    f"📅 {utc_start} UTC → {utc_end} UTC ({gap.gap_hours:.1f}h)"
-                )
 
-                # Line 2: Berlin local time with validation
+                # Get Berlin times with validation
                 berlin_start, valid_start = self._format_berlin_time_with_validation(
                     gap.file1.end_time)
                 berlin_end, valid_end = self._format_berlin_time_with_validation(
                     gap.file2.start_time)
 
+                # Add Summer/Winter Time labels
+                berlin_tz = pytz.timezone(VALIDATION_TIMEZONE)
+                start_berlin_dt = gap.file1.end_time.astimezone(
+                    berlin_tz) if gap.file1.end_time.tzinfo else pytz.UTC.localize(gap.file1.end_time).astimezone(berlin_tz)
+                end_berlin_dt = gap.file2.start_time.astimezone(
+                    berlin_tz) if gap.file2.start_time.tzinfo else pytz.UTC.localize(gap.file2.start_time).astimezone(berlin_tz)
+
+                start_tz_name = start_berlin_dt.strftime('%Z')
+                end_tz_name = end_berlin_dt.strftime('%Z')
+
+                start_season = "Summer Time" if start_tz_name == "CEST" else "Winter Time"
+                end_season = "Summer Time" if end_tz_name == "CEST" else "Winter Time"
+
+                # Validation icon
                 validation_icon = "✅" if (valid_start and valid_end) else "❌"
 
+                # 4-line output
+                report.append(f"📅 Weekend Gap #{gap_counter}:")
                 report.append(
-                    f"   🇩🇪 {berlin_start} → {berlin_end} {validation_icon}")
+                    f"   Start:  {utc_start} UTC  →  {berlin_start}, {start_season}")
+                report.append(
+                    f"   End:    {utc_end} UTC  →  {berlin_end}, {end_season}")
+                report.append(
+                    f"   Gap:    {gap.gap_hours:.1f} hours  {validation_icon}")
 
                 # Add warning if validation fails
                 if not (valid_start and valid_end):
                     report.append(
-                        "      ⚠️  UTC offset validation failed - check import configuration!")
+                        "   ⚠️  UTC offset validation failed - check import configuration!")
 
                 report.append("")  # Empty line between gaps
+                gap_counter += 1
 
         # === SECTION 4: Detailed Gap List ===
         problematic_gaps = [g for g in self.gaps if g.category in [
