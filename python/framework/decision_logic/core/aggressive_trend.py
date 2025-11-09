@@ -199,7 +199,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             # Same direction? Skip (we already have what the strategy wants)
             if current_position.direction == new_direction:
                 # self.logger.debug(
-                #     f"⏭️  Already holding {new_direction_str} position "
+                #     f"⏭️  Already holding {new_direction} position "
                 #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
                 # )
                 return None

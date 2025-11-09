@@ -8,6 +8,7 @@ Ensures consistent order creation API across different broker types.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
+from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
 from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -236,19 +237,43 @@ class IOrderCapabilities(ABC):
     # ============================================
 
     @abstractmethod
-    def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
-        Get symbol specifications.
+        Get fully typed symbol specification.
 
-        Returns dict with:
-        - min_lot, max_lot, lot_step
-        - tick_size, digits
-        - contract_size
-        - spread_current
-        - trading_allowed
+        Returns static symbol properties as typed dataclass.
+        Does NOT include dynamic market data (tick_value, bid/ask).
+
+        Args:
+            symbol: Trading symbol (e.g., "GBPUSD")
+
+        Returns:
+            SymbolSpecification with all static properties
 
         Raises:
             ValueError: If symbol not found
+
+        Example:
+            spec = adapter.get_symbol_specification("GBPUSD")
+            print(f"Min lot: {spec.volume_min}")
+            print(f"Quote currency: {spec.quote_currency}")
+        """
+        pass
+
+    @abstractmethod
+    def get_broker_specification(self) -> BrokerSpecification:
+        """
+        Get fully typed broker specification.
+
+        Returns static broker properties as typed dataclass.
+
+        Returns:
+            BrokerSpecification with all static broker properties
+
+        Example:
+            spec = adapter.get_broker_specification()
+            print(f"Leverage: 1:{spec.leverage}")
+            print(f"Margin call: {spec.margin_call_level}%")
         """
         pass
 
@@ -267,13 +292,13 @@ class IOrderCapabilities(ABC):
         Can be reused by all adapters.
         """
         try:
-            symbol_info = self.get_symbol_info(symbol)
+            symbol_info = self.get_symbol_specification(symbol)
         except ValueError as e:
-            return False, str(e)
+            raise e
 
-        min_lot = symbol_info.get('volume_min', 0.01)
-        max_lot = symbol_info.get('volume_max', 100.0)
-        lot_step = symbol_info.get('volume_step', 0.01)
+        min_lot = symbol_info.volume_min
+        max_lot = symbol_info.volume_max
+        lot_step = symbol_info.volume_step
 
         # Check bounds
         if lots < min_lot:

@@ -13,6 +13,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.data_worker.data_loader.core import TickDataLoader
+from python.framework.utils.market_calendar import MarketCalendar
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -159,7 +160,6 @@ class TickDataAnalyzer:
         Returns:
             Dict with weekend statistics (same format as before)
         """
-        from python.framework.utils.market_calendar import MarketCalendar
 
         # Use centralized weekend analysis
         return MarketCalendar.get_weekend_statistics(start_date, end_date)

@@ -103,16 +103,6 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
         # Run test
         batch_execution_summary = orchestrator.run()
 
-        # ========================================================================
-        # Logger Flush. Run does not decide weather to Console log Run.
-        # ========================================================================
-        vLog.info(
-            f"🕐 Flush Global Buffer")
-        scenario_set.logger.close(True)
-        for process_result in batch_execution_summary.scenario_list:
-            AbstractLogger.print_buffer(
-                process_result.scenario_logger_buffer, process_result.scenario_name)
-
         # ============================================
         # Capture output for file logging
         # ============================================

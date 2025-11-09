@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Dict, Optional
 
 from python.framework.types.order_types import OrderDirection
+from python.framework.utils.process_deserialization_utils import serialize_value
 
 
 class PendingOrderAction(Enum):
@@ -52,3 +53,17 @@ class PendingOrder:
     # For CLOSE orders
     position_id: Optional[str] = None
     close_lots: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        return {
+            'order_id': self.order_id,
+            'placed_at_tick': self.placed_at_tick,
+            'fill_at_tick': self.fill_at_tick,
+            'order_action': self.order_action.value if self.order_action else None,
+            'symbol': self.symbol,
+            'direction': self.direction.value if self.direction else None,
+            'lots': self.lots,
+            'order_kwargs': serialize_value(self.order_kwargs),
+            'position_id': self.position_id,
+            'close_lots': self.close_lots,
+        }

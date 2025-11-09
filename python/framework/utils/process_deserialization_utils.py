@@ -1,5 +1,6 @@
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Tuple
 from python.framework.types.market_data_types import Bar, TickData
 
@@ -73,3 +74,22 @@ def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> Tuple[Ba
         result.append(bar)
 
     return tuple(result)
+
+
+def serialize_value(v):
+    """Safe recursive serializer for unknown structures."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float, str, bool)):
+        return v
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, Enum):
+        return v.value
+    if isinstance(v, dict):
+        return {k: serialize_value(val) for k, val in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [serialize_value(x) for x in v]
+
+    # Fallback: convert to string as last resort
+    return str(v)

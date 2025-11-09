@@ -7,6 +7,8 @@ Post-MVP: Full implementation with Kraken API integration
 """
 
 from typing import Dict, Any, Optional
+
+from python.framework.types.broker_types import SymbolSpecification
 from .base_adapter import IOrderCapabilities
 from python.framework.types.order_types import (
     OrderCapabilities,
@@ -222,7 +224,7 @@ class KrakenAdapter(IOrderCapabilities):
     # Symbol Information
     # ============================================
 
-    def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
         Get Kraken symbol specs (DUMMY).
 

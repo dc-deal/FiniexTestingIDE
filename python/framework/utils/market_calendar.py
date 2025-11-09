@@ -11,6 +11,8 @@ from enum import Enum
 
 import pytz
 
+from python.framework.types.market_types import WeekendClosureWindow
+
 
 class GapCategory(Enum):
     """Gap classification categories"""
@@ -30,6 +32,19 @@ class MarketCalendar:
 
     EXTENDED  Added detailed weekend statistics and gap classification
     """
+
+    # Weekend closure window configuration
+    WEEKEND_CLOSURE = WeekendClosureWindow()
+
+    @staticmethod
+    def get_weekend_closure_description() -> str:
+        """
+        Get human-readable description of expected weekend closure window.
+
+        Returns:
+            Formatted multi-line string describing market closure timing
+        """
+        return MarketCalendar.WEEKEND_CLOSURE.get_description()
 
     @staticmethod
     def is_market_open(timestamp: datetime) -> bool:
@@ -260,16 +275,16 @@ class MarketCalendar:
         start_day = start.weekday()
         end_day = end.weekday()
 
-        is_friday_evening = (
-            start_day == 4 and start.hour >= 20)  # Fr after 20:00
-        is_monday_morning = (end_day == 6 and end.hour <= 22)  # sunday
-
-        if is_friday_evening and is_monday_morning and 40 <= gap_hours <= 80:
+        # Primary pattern: Friday evening → Monday morning
+        if MarketCalendar.WEEKEND_CLOSURE.matches_primary_pattern(
+            start_day, start.hour, end_day, end.hour, gap_hours
+        ):
             return GapCategory.WEEKEND, f'✅ Normal weekend gap ({gap_hours:.1f}h)'
 
         # Alternative weekend pattern: Saturday → Monday
-        is_saturday = (start_day == 5)
-        if is_saturday and is_monday_morning and 24 <= gap_hours <= 50:
+        if MarketCalendar.WEEKEND_CLOSURE.matches_alternative_pattern(
+            start_day, end_day, end.hour, gap_hours
+        ):
             return GapCategory.WEEKEND, f'✅ Weekend gap (Sat→Mon, {gap_hours:.1f}h)'
 
         # 3. SHORT GAP (< 30 min)

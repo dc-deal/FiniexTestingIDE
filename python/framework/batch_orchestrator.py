@@ -114,22 +114,23 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
+import os
+from python.framework.factory.worker_factory import WorkerFactory
+import sys
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult
+from python.configuration import AppConfigLoader
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.framework.process.process_main import ProcessExecutor, process_main
+from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
+from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
+from python.data_worker.data_loader.core import TickDataLoader
+from python.components.logger.abstract_logger import AbstractLogger
+from typing import List
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import List
-from python.data_worker.data_loader.core import TickDataLoader
-from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
-from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
-from python.framework.process.process_main import ProcessExecutor, process_main
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.configuration import AppConfigLoader
-from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult
-from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-import sys
-from python.framework.factory.worker_factory import WorkerFactory
-import os
 
 # Auto-detect if debugger is attached
 DEBUGGER_ACTIVE = (
@@ -271,7 +272,21 @@ class BatchOrchestrator:
         else:
             results = self._run_sequential()
 
-        # Check for failures
+        # Set metadata in BatchExecutionSummary
+        summary_execution_time = time.time() - start_time
+        self.scenario_set.logger.info(
+            f"🕐 Create BatchExecutionSummary  : {time.time()}")
+
+        # build result and flush logs
+        summary = BatchExecutionSummary(
+            success=True,
+            scenarios_count=len(self.scenario_set.scenarios),
+            summary_execution_time=summary_execution_time,
+            scenario_list=results
+        )
+        self.flush_all_logs(summary)
+
+        # Error handling.
         self.scenario_set.logger.info(
             f"🕐 Scenario error check  : {time.time()}")
         failed_results = [r for r in results if not r.success]
@@ -279,22 +294,12 @@ class BatchOrchestrator:
             # Log failures but don't stop (scenarios are independent)
             for failed in failed_results:
                 self.scenario_set.logger.error(
-                    f"❌ Scenario failed: {failed.scenario_name} - {failed.error_message}"
+                    f"❌ Scenario failed - flushing Log: {failed.scenario_name} - {failed.error_message}"
                 )
+                self.scenario_set.logger.flush_buffer()
 
             # After all processing, raise comprehensive error
             raise BatchExecutionError(failed_results)
-
-        # Set metadata in BatchExecutionSummary
-        summary_execution_time = time.time() - start_time
-        self.scenario_set.logger.info(
-            f"🕐 Create BatchExecutionSummary  : {time.time()}")
-        summary = BatchExecutionSummary(
-            success=True,
-            scenarios_count=len(self.scenario_set.scenarios),
-            summary_execution_time=summary_execution_time,
-            scenario_list=results
-        )
 
         self.scenario_set.logger.info(
             f"✅ Batch execution completed in {summary_execution_time:.2f}s"
@@ -462,3 +467,12 @@ class BatchOrchestrator:
         self.scenario_set.logger.info(
             f"🕐 ProcessPoolExecutor shutdown complete! Time: {time.time()}")
         return results
+
+    def flush_all_logs(self, batch_execution_summary: BatchExecutionSummary = None):
+        """ 
+        Logger Flush. Run does not decide weather to Console log Run.
+        """
+        self.scenario_set.logger.close(True)
+        for process_result in batch_execution_summary.scenario_list:
+            AbstractLogger.print_buffer(
+                process_result.scenario_logger_buffer, process_result.scenario_name)

@@ -54,16 +54,6 @@ class DecisionTradingAPI:
     - Clean public API (only what Decision Logics need)
     - Framework retains full TradeSimulator access
     - Interface compatible with future FiniexAutoTrader integration
-
-    Usage:
-        # In BatchOrchestrator
-        required_types = decision_logic.get_required_order_types()
-        trading_api = DecisionTradingAPI(simulator, required_types)  # Validates!
-        decision_logic.set_trading_api(trading_api)
-
-        # In Decision Logic
-        account = self.trading_api.get_account_info()
-        result = self.trading_api.send_order(...)
     """
 
     def __init__(
@@ -203,11 +193,6 @@ class DecisionTradingAPI:
 
         Returns:
             AccountInfo dataclass with all account metrics
-
-        Example:
-            account = self.trading_api.get_account_info()
-            if account.free_margin < 1000:
-                return None  # Not enough margin for trade
         """
         return self._simulator.get_account_info()
 

@@ -112,10 +112,8 @@ def execute_tick_loop(
             #     ticks_processed=tick_count
             # )
         except Exception as e:
-            scenario_logger.error(
-                f"Order execution failed: \n{traceback.format_exc()}"
-            )
-            raise e
+            raise RuntimeError(
+                f"Order execution failed: {e} \n{traceback.format_exc()}")
 
         t10 = time.perf_counter()
         profile_times['order_execution'] += (t10 - t9) * 1000

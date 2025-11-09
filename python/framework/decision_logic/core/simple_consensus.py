@@ -196,7 +196,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             # Same direction? Skip (we already have what the strategy wants)
             if current_position.direction == new_direction:
                 # self.logger.debug(
-                #     f"⏭️  Already holding {new_direction_str} position "
+                #     f"⏭️  Already holding {new_direction} position "
                 #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
                 # )
                 return None
@@ -239,7 +239,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
                 self.logger.info(
-                    f"⏳ Order submitted: {new_direction_str} {self.lot_size} lots "
+                    f"⏳ Order submitted: {new_direction} {self.lot_size} lots "
                     f"(ID: {order_result.order_id}) - awaiting execution"
                 )
             elif order_result.is_rejected:

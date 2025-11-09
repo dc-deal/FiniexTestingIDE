@@ -8,8 +8,10 @@ Provides common interface for TradeSimulator regardless of broker type.
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from enum import Enum
+
+from python.framework.types.market_data_types import TickData
 
 from .adapters.base_adapter import IOrderCapabilities
 from .adapters.mt5_adapter import MT5Adapter
@@ -22,6 +24,10 @@ from ..types.order_types import (
     StopLimitOrder,
     IcebergOrder,
     OrderDirection,
+)
+from python.framework.types.broker_types import (
+    SymbolSpecification,
+    BrokerSpecification
 )
 
 
@@ -69,6 +75,12 @@ class BrokerConfig:
         # Cache adapter properties
         self._broker_name = adapter.get_broker_name()
         self._capabilities = adapter.get_order_capabilities()
+        self._symbol_specification: Dict[str, SymbolSpecification] = {}
+
+    def load_all_symbol_specs(self):
+        """
+            init all symbols broker delivers in symbols list.
+        """
 
     # ============================================
     # Factory Methods
@@ -208,43 +220,81 @@ class BrokerConfig:
     # Symbol Information
     # ============================================
 
-    def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
-        Get symbol specifications.
+        Get fully typed symbol specification.
+
+        Returns static symbol properties as typed dataclass.
+        Delegates to adapter for broker-specific implementation.
 
         Args:
-            symbol: Trading symbol
+            symbol: Trading symbol (e.g., "GBPUSD")
 
         Returns:
-            Dict with min/max lot, tick size, spread, etc.
+            SymbolSpecification with all static properties
+
+        Raises:
+            ValueError: If symbol not found
+
+        Example:
+            spec = broker_config.get_symbol_specification("GBPUSD")
+            is_valid, error = spec.validate_lot_size(0.1)
         """
-        return self.adapter.get_symbol_info(symbol)
+        symbol_spec = self._symbol_specification.get(symbol)
+
+        if symbol_spec is None:
+            symbol_spec = self.adapter.get_symbol_specification(symbol)
+            self._symbol_specification[symbol] = symbol_spec
+
+        return self._symbol_specification[symbol]
+
+    # ============================================
+    # NEUE METHODE HINZUFÜGEN
+    # Position: Nach get_symbol_specification()
+    # ============================================
+
+    def get_broker_specification(self) -> BrokerSpecification:
+        """
+        Get fully typed broker specification.
+
+        Returns static broker properties as typed dataclass.
+        Delegates to adapter for broker-specific implementation.
+
+        Returns:
+            BrokerSpecification with all static broker properties
+
+        Example:
+            spec = broker_config.get_broker_specification()
+            print(f"Account: {spec.company} ({spec.trade_mode})")
+            print(f"Leverage: 1:{spec.leverage}")
+        """
+        return self.adapter.get_broker_specification()
 
     def get_min_lot_size(self, symbol: str) -> float:
         """Get minimum lot size for symbol"""
-        info = self.get_symbol_info(symbol)
-        return info.get('volume_min', 0.01)
+        symbol_spec = self.get_symbol_specification(symbol)
+        return symbol_spec.volume_min
 
     def get_max_lot_size(self, symbol: str) -> float:
         """Get maximum lot size for symbol"""
-        info = self.get_symbol_info(symbol)
-        return info.get('volume_max', 100.0)
+        symbol_spec = self.get_symbol_specification(symbol)
+        return symbol_spec.volume_max
 
     def get_lot_step(self, symbol: str) -> float:
         """Get lot step increment for symbol"""
-        info = self.get_symbol_info(symbol)
-        return info.get('volume_step', 0.01)
+        symbol_spec = self.get_symbol_specification(symbol)
+        return symbol_spec.volume_step
 
     def get_tick_size(self, symbol: str) -> float:
         """Get minimum price movement for symbol"""
-        info = self.get_symbol_info(symbol)
-        return info.get('tick_size', 0.00001)
+        symbol_spec = self.get_symbol_specification(symbol)
+        return symbol_spec.tick_size
 
     def is_symbol_tradeable(self, symbol: str) -> bool:
         """Check if symbol is currently tradeable"""
         try:
-            info = self.get_symbol_info(symbol)
-            return info.get('trade_allowed', False)
+            symbol_spec = self.get_symbol_specification(symbol)
+            return symbol_spec.trade_allowed
         except ValueError:
             return False
 
@@ -372,7 +422,8 @@ class BrokerConfig:
     def calculate_margin(
         self,
         symbol: str,
-        lots: float
+        lots: float,
+        tick: TickData
     ) -> float:
         """
         Calculate required margin for order.
@@ -387,7 +438,7 @@ class BrokerConfig:
             Required margin in account currency
         """
         if hasattr(self.adapter, 'calculate_margin_required'):
-            return self.adapter.calculate_margin_required(symbol, lots)
+            return self.adapter.calculate_margin_required(symbol, lots, tick)
 
         # Fallback: No margin calculation available
         return 0.0
