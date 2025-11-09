@@ -6,6 +6,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
+from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check
 from python.framework.utils.process_deserialization_utils import process_deserialize_ticks_batch
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 
@@ -89,18 +90,19 @@ def process_startup_preparation(
     bar_rendering_controller = BarRenderingController(
         logger=scenario_logger)
     bar_rendering_controller.register_workers(workers)
+
     warmup_bars = {}
     for key, bars_tuple in shared_data.bars.items():
         symbol, timeframe, start_time = key
-
         # Debug: Vergleich
         symbol_match = symbol == config.symbol
         time_match = start_time == config.start_time
 
         # Only inject bars matching this scenario
         if symbol_match and time_match:
+
             scenario_logger.debug(
-                f"🔍 [DEBUG] Checking: ({symbol}, {timeframe}, {start_time})"
+                f"🔍 Checking: ({symbol}, {timeframe}, {start_time})"
             )
             scenario_logger.debug(
                 f"  symbol_match: {symbol_match} ({symbol} == {config.symbol})"
@@ -109,34 +111,19 @@ def process_startup_preparation(
                 f"  time_match: {time_match} ({start_time} == {config.start_time})"
             )
             scenario_logger.debug(f"  ✅ MATCH! Adding {len(bars_tuple)} bars")
+
             warmup_bars[timeframe] = bars_tuple
 
     scenario_logger.debug(
-        f"🔍 [DEBUG] Result: {len(warmup_bars)} timeframes collected")
-    scenario_logger.debug("=" * 80)
+        f"🔍 Result: {len(warmup_bars)} timeframes collected")
 
     # Inject warmup bars
     bar_rendering_controller.inject_warmup_bars(
         symbol=config.symbol, warmup_bars=warmup_bars)
-
-    # Check: Wurden die Bars korrekt deserialisiert?
-    for timeframe in warmup_bars.keys():
-        bar_history = bar_rendering_controller.get_bar_history(
-            config.symbol, timeframe)
-        scenario_logger.debug(
-            f"📊 Bar History for {timeframe}: {len(bar_history)} bars"
-        )
-        if len(bar_history) > 0:
-            first_bar = bar_history[0]
-            last_bar = bar_history[-1]
-            scenario_logger.debug(
-                f"  First: {first_bar.timestamp} (open={first_bar.open})"
-            )
-            scenario_logger.debug(
-                f"  Last:  {last_bar.timestamp} (open={last_bar.open})"
-            )
-        else:
-            scenario_logger.debug(f"  ❌ EMPTY BAR HISTORY!")
+    # debug bars from warmup
+    debug_warmup_bars_check(
+        warmup_bars=warmup_bars,
+        config=config, logger=scenario_logger, bar_rendering_controller=bar_rendering_controller)
 
     scenario_logger.debug(
         f"✅ Injected warmup bars: "

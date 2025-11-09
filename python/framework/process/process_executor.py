@@ -5,6 +5,7 @@ Process-based scenario execution with ProcessPool support
 import time
 import traceback
 from collections import defaultdict
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
@@ -12,6 +13,7 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
     ProcessScenarioConfig,
 )
+from python.framework.utils.process_debug_info_utils import debug_tick_range_info
 
 
 def execute_tick_loop(
@@ -47,20 +49,7 @@ def execute_tick_loop(
     profile_counts = defaultdict(int)
     tick_count = 0
 
-    # === DEBUG: TICK RANGE INFO ===
-    scenario_logger.debug(f"🔍 [DEBUG] Tick loop starting")
-    scenario_logger.debug(f"  Total ticks: {len(ticks)}")
-    scenario_logger.debug(f"  TradeSimulator ID: {id(trade_simulator)}")
-    scenario_logger.debug(f"  Portfolio ID: {id(trade_simulator.portfolio)}")
-    if len(ticks) > 0:
-        first_tick = ticks[0]
-        last_tick = ticks[-1]
-        scenario_logger.debug(
-            f"  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}")
-        scenario_logger.debug(
-            f"  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}")
-
-    scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
+    debug_tick_range_info(prepared_objects)
 
     # === TICK LOOP ===
     for tick in ticks:
