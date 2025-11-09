@@ -20,6 +20,8 @@ from python.framework.types.portfolio_types import Position, PositionStatus
 from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
+from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.types.market_data_types import TickData
 
 
 class PortfolioManager:
@@ -37,7 +39,8 @@ class PortfolioManager:
     def __init__(
         self,
         initial_balance: float,
-        account_currency: str = "USD",  # Changed from 'currency'
+        account_currency: str,
+        broker_config: BrokerConfig,
         leverage: int = 100,
         margin_call_level: float = 50.0,
         stop_out_level: float = 20.0
@@ -48,12 +51,14 @@ class PortfolioManager:
         Args:
             initial_balance: Starting balance
             account_currency: Account currency (e.g., "USD", "EUR", "JPY")
+            broker_config: Broker configuration (for symbol specifications)
             leverage: Account leverage
             margin_call_level: Margin call threshold percentage
             stop_out_level: Stop out threshold percentage
         """
         self.initial_balance = initial_balance
-        self.account_currency = account_currency  # Changed from 'currency'
+        self.account_currency = account_currency
+        self.broker_config = broker_config
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
@@ -83,6 +88,10 @@ class PortfolioManager:
         self._total_loss = 0.0
         self._max_drawdown = 0.0
         self._max_equity = initial_balance
+
+        # Current market state (lazy evaluation)
+        self._current_tick: Optional[TickData] = None
+        self._current_prices: Dict[str, tuple[float, float]] = {}
 
     # ============================================
     # Position Management
@@ -230,81 +239,89 @@ class PortfolioManager:
 
         return True
 
-    def _update_positions(
-        self,
-        current_prices: Dict[str, tuple[float, float]],
-        symbol_specs: Dict[str, SymbolSpecification],
-        tick_values: Dict[str, float],
-    ) -> None:
-        '''
-        Update all open positions with current prices.
-
-        Args:
-            current_prices: Dict[symbol, (bid, ask)]
-            symbol_specs: Dict[symbol, DynamicSymbolData] with:
-                - specification: Static SymbolSpecification
-                - tick_value: Dynamic value calculated by TradeSimulator
-
-        Note:
-            tick_value is calculated dynamically by TradeSimulator based on
-            account currency and current market price. It is NOT the static
-            value from broker config.
-        '''
-        for position in self.open_positions.values():
-            if position.symbol in current_prices:
-                bid, ask = current_prices[position.symbol]
-                dynamic_data = symbol_specs.get(position.symbol)
-                # Extract from typed object
-                tick_value = tick_values[position.symbol]
-                digits = dynamic_data.digits
-
-                position.update_current_price(bid, ask, tick_value, digits)
-
-    def mark_dirty(
-        self,
-        current_prices: Dict[str, tuple[float, float]],
-        symbol_specs: Dict[str, SymbolSpecification],
-        tick_values: Dict[str, float],
-    ) -> None:
+    def mark_dirty(self, tick: TickData):
         """
-        Mark positions as dirty (need update on next access).
-
-        This is called by TradeSimulator on every tick to record price changes
-        WITHOUT immediately updating all positions. Updates happen lazily when
-        account info is requested.
-
-        Performance: 
-        - Avoids O(N) position updates on every tick
-        - Updates only happen when DecisionLogic queries account state
+        Mark positions as needing update (LAZY EVALUATION).
 
         Args:
-            current_prices: Current bid/ask prices per symbol
-            symbol_specs: Dynamic symbol data with tick_value
+            tick: Current tick data with bid/ask prices
         """
         self._positions_dirty = True
-        self._cached_prices = current_prices
-        self._cached_symbol_specs = symbol_specs
-        self._cached_tick_values = tick_values
+        self._current_tick = tick
+        self._current_prices[tick.symbol] = (tick.bid, tick.ask)
+
+    def _calculate_tick_value(
+        self,
+        symbol_spec: SymbolSpecification,
+        current_price: float
+    ) -> float:
+        """
+        Calculate tick_value dynamically.
+
+        Args:
+            symbol_spec: Static symbol specification
+            current_price: Current market price
+
+        Returns:
+            tick_value for P&L calculations
+        """
+        # Quote Currency matches Account Currency
+        if self.account_currency == symbol_spec.quote_currency:
+            return 1.0
+
+        # Base Currency matches Account Currency
+        elif self.account_currency == symbol_spec.base_currency:
+            if current_price <= 0:
+                raise ValueError(
+                    f"Invalid price for tick_value calculation: {current_price}"
+                )
+            return 1.0 / current_price
+
+        # Cross Currency - Not supported
+        else:
+            raise NotImplementedError(
+                f"Cross-currency conversion not supported: "
+                f"Account: {self.account_currency}, "
+                f"Symbol: {symbol_spec.symbol} "
+                f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})"
+            )
 
     def _ensure_positions_updated(self) -> None:
         """
-        Ensure positions are updated with latest prices (lazy evaluation).
-
-        Called automatically by methods that need current position values:
-        - get_account_info()
-        - close_position_portfolio()
-        - get_portfolio_statistics()
+        Ensure positions are updated with latest prices (LAZY EVALUATION).
 
         Performance:
         - Only updates if _positions_dirty = True
-        - Reuses cached prices from mark_dirty()
+        - Builds symbol specs on-demand (not every tick!)
         """
-        if self._positions_dirty and self._cached_prices:
-            # Update all positions with cached data
-            self._update_positions(self._cached_prices,
-                                   self._cached_symbol_specs,
-                                   self._cached_tick_values)
-            self._positions_dirty = False
+        if not self._positions_dirty:
+            return
+
+        # Update all positions with current prices
+        for position in self.open_positions.values():
+            symbol = position.symbol
+
+            # Skip if no price data for this symbol yet
+            if symbol not in self._current_prices:
+                continue
+
+            # Get cached symbol spec (BrokerConfig already caches!)
+            spec = self.broker_config.get_symbol_specification(symbol)
+
+            # Calculate tick_value
+            bid, ask = self._current_prices[symbol]
+            current_price = (bid + ask) / 2.0
+            tick_value = self._calculate_tick_value(spec, current_price)
+
+            # Update position P&L
+            position.update_current_price(
+                bid=bid,
+                ask=ask,
+                tick_value=tick_value,
+                digits=spec.digits
+            )
+
+        self._positions_dirty = False
 
     def get_open_positions(self) -> List[Position]:
         """Get list of all open positions"""
@@ -373,7 +390,7 @@ class PortfolioManager:
             margin_level=margin_level,
             open_positions=len(self.open_positions),
             total_lots=total_lots,
-            currency=self.account_currency,  # Changed from 'currency'
+            currency=self.account_currency,
             leverage=self.leverage
         )
 
