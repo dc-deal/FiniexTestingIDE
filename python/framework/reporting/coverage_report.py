@@ -3,6 +3,7 @@ TimeRangeCoverageReport - Data Continuity Analysis
 Validates time range coverage and detects gaps in tick data
 
 NEW  Gap detection and human-readable coverage reports
+UPDATED  Weekend gap listing with Berlin local time conversion
 """
 
 from dataclasses import dataclass
@@ -10,7 +11,10 @@ from datetime import datetime
 from typing import List, Dict
 from pathlib import Path
 
+import pytz
+
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
+from python.framework.types.market_types import VALIDATION_TIMEZONE
 
 
 @dataclass
@@ -71,6 +75,7 @@ class TimeRangeCoverageReport:
     - Weekend vs. data loss classification
     - Human-readable reports
     - Actionable recommendations
+    - Weekend gap listing with Berlin local time
     """
 
     def __init__(self, symbol: str, files: List[IndexEntry]):
@@ -180,6 +185,93 @@ class TimeRangeCoverageReport:
 
         return recommendations
 
+    def _format_berlin_time(self, dt: datetime) -> str:
+        """
+        Convert UTC datetime to Berlin local time with timezone label and offset.
+
+        Args:
+            dt: UTC datetime
+
+        Returns:
+            Formatted string like "Fri 23:00 CEST (UTC+2)"
+        """
+        berlin_tz = pytz.timezone('Europe/Berlin')
+
+        # Ensure UTC timezone
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+
+        # Convert to Berlin time
+        berlin_time = dt.astimezone(berlin_tz)
+
+        # Get timezone name (CEST or CET) and offset
+        tz_name = berlin_time.strftime('%Z')
+
+        # Calculate UTC offset in hours
+        offset_seconds = berlin_time.utcoffset().total_seconds()
+        offset_hours = int(offset_seconds / 3600)
+        offset_str = f"UTC+{offset_hours}" if offset_hours >= 0 else f"UTC{offset_hours}"
+
+        # Format: "Fri 23:00 CEST (UTC+2)"
+        weekday = berlin_time.strftime('%a')
+        time_str = berlin_time.strftime('%H:%M')
+
+        return f"{weekday} {time_str} {tz_name} ({offset_str})"
+
+    def _validate_utc_offset(self, utc_dt: datetime, berlin_dt: datetime, expected_offset_hours: int) -> bool:
+        """
+        Validate that UTC to Berlin conversion matches expected offset.
+
+        Args:
+            utc_dt: Original UTC datetime
+            berlin_dt: Converted Berlin datetime
+            expected_offset_hours: Expected offset in hours (1 or 2)
+
+        Returns:
+            True if offset is correct
+        """
+        # Calculate what the Berlin hour should be
+        expected_berlin_hour = (utc_dt.hour + expected_offset_hours) % 24
+        actual_berlin_hour = berlin_dt.hour
+
+        return expected_berlin_hour == actual_berlin_hour
+
+    def _format_berlin_time_with_validation(self, dt: datetime) -> tuple[str, bool]:
+        """
+        Convert UTC to Berlin time with validation check.
+
+        Args:
+            dt: UTC datetime
+
+        Returns:
+            Tuple of (formatted_string, is_valid)
+        """
+        berlin_tz = pytz.timezone(VALIDATION_TIMEZONE)
+
+        # Ensure UTC timezone
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+
+        # Convert to Berlin time
+        berlin_time = dt.astimezone(berlin_tz)
+
+        # Get timezone name and offset
+        tz_name = berlin_time.strftime('%Z')
+        offset_seconds = berlin_time.utcoffset().total_seconds()
+        offset_hours = int(offset_seconds / 3600)
+        offset_str = f"UTC+{offset_hours}" if offset_hours >= 0 else f"UTC{offset_hours}"
+
+        # Validate offset
+        is_valid = self._validate_utc_offset(dt, berlin_time, offset_hours)
+
+        # Format
+        weekday = berlin_time.strftime('%a')
+        time_str = berlin_time.strftime('%H:%M')
+
+        formatted = f"{weekday} {time_str} {tz_name} ({offset_str})"
+
+        return formatted, is_valid
+
     def generate_report(self) -> str:
         """
         Generate human-readable coverage report.
@@ -225,7 +317,84 @@ class TimeRangeCoverageReport:
         report.append(
             f"🔴 Large:        {self.gap_counts['large']} gaps (> 4h)")
 
-        # === SECTION 3: Detailed Gap List ===
+        # === SECTION 3: Weekend Gaps ===
+        weekend_gaps = [
+            g for g in self.gaps if g.category == GapCategory.WEEKEND]
+
+        if weekend_gaps:
+            report.append(f"\n{'─'*60}")
+            report.append("✅ WEEKEND GAPS (Expected Market Closures):")
+            report.append(f"{'─'*60}")
+            report.append("ℹ️  Expected Market Closure Window:")
+
+            # Get closure window description from MarketCalendar
+            closure_desc = MarketCalendar.get_weekend_closure_description()
+            for line in closure_desc.split('\n'):
+                report.append(f"   {line}")
+
+            # Add timezone validation info
+            report.append("")
+            report.append("ℹ️  Timezone Validation Settings:")
+            report.append(f"   • Validation Timezone: {VALIDATION_TIMEZONE}")
+
+            # Get current offset info from a sample timestamp
+            sample_dt = weekend_gaps[0].file1.end_time if weekend_gaps else datetime.now(
+                pytz.UTC)
+            berlin_tz = pytz.timezone(VALIDATION_TIMEZONE)
+            sample_berlin = sample_dt.astimezone(
+                berlin_tz) if sample_dt.tzinfo else pytz.UTC.localize(sample_dt).astimezone(berlin_tz)
+            offset_seconds = sample_berlin.utcoffset().total_seconds()
+            offset_hours = int(offset_seconds / 3600)
+            tz_name = sample_berlin.strftime('%Z')
+
+            report.append(
+                f"   • Current UTC Offset: {offset_hours:+d} hours ({tz_name})")
+            report.append(
+                f"   • Expected Offsets: +1 hour (CET) or +2 hours (CEST)")
+            report.append("   • Validation: Automatic check on each gap entry")
+            report.append("")
+            report.append(
+                "   ⚠️  CRITICAL: Broker Server Offset Configuration")
+            report.append(
+                "      • Your broker server time is NOT UTC (e.g., UTC+3 for Vantage)")
+            report.append(
+                "      • Import must apply correct --time-offset to convert to UTC")
+            report.append(
+                "      • If validation shows ❌, your offset configuration is WRONG")
+            report.append(
+                "      • Test once per broker: compare tick timestamps with real time")
+            report.append(
+                "      • Set in import: --time-offset +3 (example for UTC+3 broker)")
+
+            report.append(f"{'─'*60}")
+
+            for gap in weekend_gaps:
+                # Line 1: UTC times + gap duration (without seconds)
+                utc_start = gap.file1.end_time.strftime('%Y-%m-%d %H:%M')
+                utc_end = gap.file2.start_time.strftime('%Y-%m-%d %H:%M')
+                report.append(
+                    f"📅 {utc_start} UTC → {utc_end} UTC ({gap.gap_hours:.1f}h)"
+                )
+
+                # Line 2: Berlin local time with validation
+                berlin_start, valid_start = self._format_berlin_time_with_validation(
+                    gap.file1.end_time)
+                berlin_end, valid_end = self._format_berlin_time_with_validation(
+                    gap.file2.start_time)
+
+                validation_icon = "✅" if (valid_start and valid_end) else "❌"
+
+                report.append(
+                    f"   🇩🇪 {berlin_start} → {berlin_end} {validation_icon}")
+
+                # Add warning if validation fails
+                if not (valid_start and valid_end):
+                    report.append(
+                        "      ⚠️  UTC offset validation failed - check import configuration!")
+
+                report.append("")  # Empty line between gaps
+
+        # === SECTION 4: Detailed Gap List ===
         problematic_gaps = [g for g in self.gaps if g.category in [
             GapCategory.MODERATE, GapCategory.LARGE]]
 
@@ -259,7 +428,7 @@ class TimeRangeCoverageReport:
                     f"{gap.file2.start_time.strftime('%H:%M')} ({gap.duration_human})"
                 )
 
-        # === SECTION 4: Recommendations ===
+        # === SECTION 5: Recommendations ===
         recommendations = self.get_recommendations()
 
         if recommendations:
