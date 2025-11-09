@@ -41,9 +41,9 @@ class PortfolioManager:
         initial_balance: float,
         account_currency: str,
         broker_config: BrokerConfig,
-        leverage: int = 100,
-        margin_call_level: float = 50.0,
-        stop_out_level: float = 20.0
+        leverage: int,
+        margin_call_level: float,
+        stop_out_level: float
     ):
         """
         Initialize portfolio manager.

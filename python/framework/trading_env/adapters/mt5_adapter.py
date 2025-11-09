@@ -468,11 +468,6 @@ class MT5Adapter(IOrderCapabilities):
 
         return margin
 
-    def get_spread_points(self, symbol: str) -> int:
-        """Get current spread in points"""
-        symbol_spec = self.get_symbol_specification(symbol)
-        return symbol_spec.spread_current
-
     def get_commission_per_lot(self, symbol: str) -> float:
         """
         Get commission per lot (if configured).
