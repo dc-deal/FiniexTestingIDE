@@ -6,7 +6,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
-from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check
+from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_deserialization_utils import process_deserialize_ticks_batch
 from python.framework.workers.worker_coordinator import WorkerCoordinator
 
@@ -78,13 +78,16 @@ def process_startup_preparation(
     trade_simulator = prepare_trade_simulator_for_scenario(
         config=config,
         logger=scenario_logger,
-        decision_logic=decision_logic
+        decision_logic=decision_logic,
+        shared_data=shared_data
     )
 
     scenario_logger.debug(
         f"✅ Created trade simulator: "
         f"{config.initial_balance} {config.account_currency}"
     )
+
+    log_trade_simulator_config(scenario_logger, config, trade_simulator)
 
     # === CREATE BAR RENDERING CONTROLLER ===
     bar_rendering_controller = BarRenderingController(

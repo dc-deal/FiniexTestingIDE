@@ -1,12 +1,16 @@
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.trading_env.trade_simulator import TradeSimulator
-from python.framework.types.process_data_types import ProcessScenarioConfig
+from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
 
 
-def prepare_trade_simulator_for_scenario(logger: ScenarioLogger, config: ProcessScenarioConfig, decision_logic: AbstractDecisionLogic) -> TradeSimulator:
+def prepare_trade_simulator_for_scenario(logger: ScenarioLogger,
+                                         config: ProcessScenarioConfig,
+                                         decision_logic: AbstractDecisionLogic,
+                                         shared_data: ProcessDataPackage
+                                         ) -> TradeSimulator:
     """
     Create isolated TradeSimulator for a scenario.
 
@@ -15,18 +19,14 @@ def prepare_trade_simulator_for_scenario(logger: ScenarioLogger, config: Process
     - Independent balance/equity tracking
     - Clean statistics per scenario
     """
-
-    # Extract configuration
-    broker_config_path = config.broker_config_path
-    if broker_config_path is None:
-        raise ValueError(
-            "No broker_config_path specified in strategy_config. "
-            "Example: 'global.trade_simulator_config.broker_config_path': "
-            "'./configs/brokers/mt5/ic_markets_demo.json'"
-        )
-
     # Create broker config
-    broker_config = BrokerConfig.from_json(broker_config_path)
+    # Re-hydrate broker config from shared data (no file I/O!)
+    # BrokerConfig was loaded once in main process and serialized
+    broker_config = BrokerConfigFactory.from_serialized_dict(
+        broker_type=config.broker_type,
+        config_dict=shared_data.broker_configs.get(
+            config.broker_type, None)
+    )
 
     # Log currency configuration before TradeSimulator creation
     logger.info(

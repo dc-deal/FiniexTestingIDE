@@ -63,6 +63,7 @@ class ScenarioConfigLoader:
         global_config = config.get('global', {})
         global_strategy = global_config.get('strategy_config', {})
         global_execution = global_config.get('execution_config', {})
+
         # Parse global trade_simulator_config
         global_trade_simulator = global_config.get(
             'trade_simulator_config', {})
@@ -80,8 +81,6 @@ class ScenarioConfigLoader:
                 file_name=config_path,
                 reason="Property 'scenario_set_name' is missing in JSON root.",
                 sceanrio_set_configuration=config)
-
-        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
@@ -151,7 +150,7 @@ class ScenarioConfigLoader:
         # Validate that all scenarios use same quote currency (for MVP)
         if scenarios:
             try:
-                detected_currency = ScenarioValidator.validate_currency_consistency(
+                detected_currency = ScenarioValidator.get_currency_consistency(
                     scenarios)
                 vLog.info(
                     f"✅ Currency validation passed: All scenarios use {detected_currency} as quote currency"

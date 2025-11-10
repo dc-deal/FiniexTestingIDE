@@ -82,45 +82,6 @@ class BrokerConfig:
             init all symbols broker delivers in symbols list.
         """
 
-    # ============================================
-    # Factory Methods
-    # ============================================
-
-    @classmethod
-    def from_json(cls, config_path: str) -> 'BrokerConfig':
-        """
-        Load broker config from JSON file.
-
-        Automatically detects broker type and instantiates correct adapter.
-
-        Args:
-            config_path: Path to broker JSON config
-                        (e.g., "config/brokers/mt5/ic_markets_demo.json")
-
-        Returns:
-            BrokerConfig instance with correct adapter
-
-        Raises:
-            FileNotFoundError: If config file not found
-            ValueError: If broker type unknown or unsupported
-        """
-        path = Path(config_path)
-
-        if not path.exists():
-            raise FileNotFoundError(f"Broker config not found: {config_path}")
-
-        # Load JSON
-        with open(path, 'r') as f:
-            raw_config = json.load(f)
-
-        # Detect broker type
-        broker_type = cls._detect_broker_type(raw_config, path)
-
-        # Instantiate adapter
-        adapter = cls._create_adapter(broker_type, raw_config)
-
-        return cls(broker_type, adapter)
-
     @staticmethod
     def _detect_broker_type(config: Dict[str, Any], path: Path) -> BrokerType:
         """
@@ -157,7 +118,7 @@ class BrokerConfig:
             return BrokerType.KRAKEN_SPOT
 
         # Method 3: Config structure detection (MT5-specific fields)
-        if 'broker_info' in config and 'account_info' in config:
+        if 'broker_info' in config:
             # Check for MT5-specific fields
             broker_info = config.get('broker_info', {})
             if 'leverage' in broker_info and 'margin_mode' in broker_info:

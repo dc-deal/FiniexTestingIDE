@@ -63,7 +63,7 @@ class MT5Adapter(IOrderCapabilities):
 
     def _validate_config(self) -> None:
         """Validate MT5 broker configuration structure"""
-        required_keys = ['broker_info', 'account_info', 'symbols']
+        required_keys = ['broker_info', 'symbols']
 
         for key in required_keys:
             if key not in self.broker_config:
@@ -394,7 +394,6 @@ class MT5Adapter(IOrderCapabilities):
             print(f"Margin call: {spec.margin_call_level}%")
         """
         broker_info = self.broker_config.get('broker_info', {})
-        account_info = self.broker_config.get('account_info', {})
 
         # Parse margin mode
         margin_mode_str = broker_info.get(
@@ -412,7 +411,6 @@ class MT5Adapter(IOrderCapabilities):
 
             # Account Type
             trade_mode=broker_info.get('trade_mode', 'demo'),
-            account_currency=account_info.get('currency', 'USD'),
 
             # Leverage & Margin
             leverage=broker_info.get('leverage', 100),

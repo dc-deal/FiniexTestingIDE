@@ -92,7 +92,6 @@ class TradeSimulator:
             logger.warning(
                 f"💱 CURRENCY AUTO-DETECTION:\n"
                 f"   Symbol: {symbol} → Detected: {detected_currency}\n"
-                f"   Broker Config: {broker_spec.account_currency}\n"
                 f"   Using: {detected_currency} (auto-detection overrides broker)\n"
                 f"   All P&L calculations will be in {detected_currency}."
             )

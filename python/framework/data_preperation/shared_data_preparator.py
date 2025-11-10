@@ -105,7 +105,8 @@ class SharedDataPreparator:
             bars=bars_data,
             tick_counts=tick_counts,
             tick_ranges=tick_ranges,
-            bar_counts=bar_counts
+            bar_counts=bar_counts,
+            broker_configs=None
         )
 
         # Log summary
