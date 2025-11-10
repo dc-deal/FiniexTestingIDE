@@ -322,11 +322,12 @@ class AbstractLogger(ABC):
     def _process_log(self, level: LogLevel, message: str):
         should_log_console = self._should_log_console(level)
         should_log_file = self._should_log_file(level)
-        if should_log_console or should_log_file:
-            timestamp_implemenration = self._get_timestamp()
-            # something has to be logged.
-            formatted_line_implementation = self._log_console_implementation(
+        timestamp_implemenration = self._get_timestamp()
+        if should_log_console:
+            self._log_console_implementation(
                 level, message, timestamp_implemenration)
+
+        if should_log_file:
             # File output (DIRECT - if enabled)
             if should_log_file:
                 self._write_to_file(
