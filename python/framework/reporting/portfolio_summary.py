@@ -5,10 +5,12 @@ Trading and portfolio statistics rendering
 Rendered in BOX format matching scenario details.
 """
 
-from typing import List
-from python.framework.types.currency_codes import format_currency_simple, get_currency_symbol
+from typing import Dict
+
+from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult
 from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
+from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio
 
 
 class PortfolioSummary:
@@ -39,37 +41,72 @@ class PortfolioSummary:
             box_width=38    # Same width as scenario boxes
         )
 
-    def render_aggregated(self, renderer):
+    def render_aggregated(self, renderer, aggregated_portfolios: Dict[str, AggregatedPortfolio]):
         """
-        Render aggregated portfolio stats across ALL scenarios.
+        Render aggregated portfolio stats grouped by currency.
+
+        Renders separate aggregation for each currency group to avoid
+        cross-currency conversion issues.
+
         Args:
             renderer: ConsoleRenderer instance
+            aggregated_portfolios: Dict mapping currency to aggregated portfolio
         """
-        scenarios = self.batch_execution_summary.scenario_list
-
-        if not scenarios:
+        if not aggregated_portfolios:
             return
 
-        # Aggregate portfolio stats from all scenarios
-        aggregated_portfolio = self._aggregate_portfolio_stats(scenarios)
-        aggregated_execution = self._aggregate_execution_stats(scenarios)
-        aggregated_costs = self._aggregate_cost_breakdown(scenarios)
-
-        if aggregated_portfolio.total_trades == 0:
-            return
+        # Check if we have multiple currency groups
+        has_multiple_currencies = len(aggregated_portfolios) > 1
 
         print()
         renderer.section_separator()
-        renderer.print_bold("📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)")
+
+        if has_multiple_currencies:
+            renderer.print_bold("📊 AGGREGATED PORTFOLIO (BY CURRENCY)")
+        else:
+            renderer.print_bold("📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)")
+
         renderer.section_separator()
+
+        # Render each currency group
+        for currency, aggregated in aggregated_portfolios.items():
+            self._render_currency_group(
+                renderer, aggregated, has_multiple_currencies)
+            renderer.print_separator(width=120, char="·")
+
+        # Render multi-currency warning if applicable
+        if has_multiple_currencies or self._has_any_time_divergence(aggregated_portfolios):
+            self._render_aggregation_warnings(renderer, aggregated_portfolios)
+
+        print()
+
+    def _render_currency_group(
+        self,
+        renderer,
+        aggregated: AggregatedPortfolio,
+        show_currency_header: bool
+    ):
+        """
+        Render single currency group aggregation.
+
+        Args:
+            renderer: ConsoleRenderer instance
+            aggregated: Aggregated portfolio for this currency
+            show_currency_header: Whether to show currency-specific header
+        """
+        if show_currency_header:
+            print()
+            scenario_list = ", ".join(aggregated.scenario_names)
+            print(
+                f"\n{renderer.bold(f'   💰 {aggregated.currency} GROUP ({aggregated.scenario_count} scenarios)')}")
+            print(f"      Scenarios: {scenario_list}")
 
         self._render_aggregated_details(
-            aggregated_portfolio,
-            aggregated_execution,
-            aggregated_costs,
+            aggregated.portfolio_stats,
+            aggregated.execution_stats,
+            aggregated.cost_breakdown,
             renderer
         )
-        print()
 
     def _render_aggregated_details(
         self,
@@ -96,7 +133,6 @@ class PortfolioSummary:
               f"Win/Loss: {winning_trades}W/{losing_trades}L  |  "
               f"Win Rate: {win_rate:.1%}")
 
-        pnl_color = renderer.green if total_pnl >= 0 else renderer.red
         # Get currency from portfolio stats
         currency = portfolio_stats.currency
 
@@ -143,95 +179,68 @@ class PortfolioSummary:
         print(
             f"      Total Costs: {format_currency_simple(total_costs, currency)}")
 
-    def _aggregate_portfolio_stats(self, scenarios: List[ProcessResult]) -> PortfolioStats:
-        """Aggregate portfolio stats from all scenarios."""
-        total_trades = 0
-        total_long_trades = 0
-        total_short_trades = 0
-        winning_trades = 0
-        losing_trades = 0
-        total_profit = 0.0
-        total_loss = 0.0
-        total_spread_cost = 0.0
-        total_commission = 0.0
-        total_swap = 0.0
+    def _has_any_time_divergence(
+        self,
+        aggregated_portfolios: Dict[str, AggregatedPortfolio]
+    ) -> bool:
+        """
+        Check if any currency group has time divergence warning.
 
-        for scenario in scenarios:
-            stats = scenario.tick_loop_results.portfolio_stats
-            total_trades += stats.total_trades
-            winning_trades += stats.winning_trades
-            losing_trades += stats.losing_trades
-            total_profit += stats.total_profit
-            total_loss += stats.total_loss
-            total_spread_cost += stats.total_spread_cost
-            total_commission += stats.total_commission
-            total_swap += stats.total_swap
+        Args:
+            aggregated_portfolios: Dict of aggregated portfolios
 
-        win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-        profit_factor = total_profit / total_loss if total_loss > 0 else (
-            0.0 if total_profit == 0 else float('inf'))
+        Returns:
+            True if any group has time divergence
+        """
+        return any(agg.has_time_divergence_warning for agg in aggregated_portfolios.values())
 
-        return PortfolioStats(
-            total_trades=total_trades,
-            total_long_trades=total_long_trades,
-            total_short_trades=total_short_trades,
-            winning_trades=winning_trades,
-            losing_trades=losing_trades,
-            total_profit=total_profit,
-            total_loss=total_loss,
-            max_drawdown=0.0,  # Not aggregated
-            max_equity=0.0,     # Not aggregated
-            win_rate=win_rate,
-            profit_factor=profit_factor,
-            total_spread_cost=total_spread_cost,
-            total_commission=total_commission,
-            total_swap=total_swap,
-            total_fees=total_spread_cost + total_commission + total_swap,
-            # Use first scenario's currency - multi currency aggregation not supportet yet (feature Gate MVP)
-            currency=scenarios[0].tick_loop_results.portfolio_stats.currency
-        )
+    def _render_aggregation_warnings(
+        self,
+        renderer,
+        aggregated_portfolios: Dict[str, AggregatedPortfolio]
+    ):
+        """
+        Render warnings about aggregation limitations.
 
-    def _aggregate_execution_stats(self, scenarios: List[ProcessResult]) -> ExecutionStats:
-        """Aggregate execution stats from all scenarios."""
-        orders_sent = 0
-        orders_executed = 0
-        orders_rejected = 0
-        total_commission = 0.0
-        total_spread_cost = 0.0
+        Args:
+            renderer: ConsoleRenderer instance
+            aggregated_portfolios: Dict of aggregated portfolios
+        """
+        has_multiple_currencies = len(aggregated_portfolios) > 1
+        has_time_divergence = self._has_any_time_divergence(
+            aggregated_portfolios)
 
-        for scenario in scenarios:
-            stats = scenario.tick_loop_results.execution_stats
-            orders_sent += stats.orders_sent
-            orders_executed += stats.orders_executed
-            orders_rejected += stats.orders_rejected
-            total_commission += stats.total_commission
-            total_spread_cost += stats.total_spread_cost
+        if not (has_multiple_currencies or has_time_divergence):
+            return
 
-        return ExecutionStats(
-            orders_sent=orders_sent,
-            orders_executed=orders_executed,
-            orders_rejected=orders_rejected,
-            total_commission=total_commission,
-            total_spread_cost=total_spread_cost
-        )
+        print()
+        print(renderer.yellow("⚠️  AGGREGATION LIMITATIONS:"))
+        print()
 
-    def _aggregate_cost_breakdown(self, scenarios: List[ProcessResult]) -> CostBreakdown:
-        """Aggregate cost breakdown from all scenarios."""
-        total_spread_cost = 0.0
-        total_commission = 0.0
-        total_swap = 0.0
+        if has_time_divergence:
+            # Find groups with divergence
+            divergent_groups = [
+                (currency, agg) for currency, agg in aggregated_portfolios.items()
+                if agg.has_time_divergence_warning
+            ]
 
-        for scenario in scenarios:
-            costs = scenario.tick_loop_results.cost_breakdown
-            total_spread_cost += costs.total_spread_cost
-            total_commission += costs.total_commission
-            total_swap += costs.total_swap
+            print("   1. TIME DIVERGENCE:")
+            for currency, agg in divergent_groups:
+                print(
+                    f"      {currency} Group: Scenarios span {agg.time_span_days} days")
+            print("      Market conditions, volatility, and rates differ significantly.")
+            print(
+                "      Aggregated P&L is statistical only, not representative of portfolio performance.")
+            print()
 
-        return CostBreakdown(
-            total_spread_cost=total_spread_cost,
-            total_commission=total_commission,
-            total_swap=total_swap,
-            total_fees=total_spread_cost + total_commission + total_swap,
-            # Use first scenario's currency - multi currency aggregation not supportet yet (feature Gate MVP)
-            currency=scenarios[0].tick_loop_results.portfolio_stats.currency
-        )
+        if has_multiple_currencies:
+            print("   2. MULTI-CURRENCY:")
+            print(
+                "      Cross-currency aggregation is not performed to avoid conversion errors.")
+            print("      Each currency group shows accurate P&L in its own currency.")
+            print(
+                "      For portfolio-level P&L, implement real-time conversion (Post-MVP).")
+            print()
+
+        print("   3. RECOMMENDATION:")
+        print("      Use currency-grouped reports above for accurate P&L values.")

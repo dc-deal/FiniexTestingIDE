@@ -429,13 +429,33 @@ class ConsoleRenderer:
             pnl_str = self.red(
                 f"{format_currency_simple(total_pnl, currency)}")
 
+        broker_name = portfolio_stats.broker_name
+        configured_currency = portfolio_stats.configured_account_currency
+        current_conversion_rate = portfolio_stats.current_conversion_rate
+
+        # NEW: Format currency display
+        if configured_currency == "auto":
+            currency_display = f"{currency} (auto)"
+        else:
+            currency_display = currency
+
+        # NEW: Format conversion rate (only for Base == Account scenarios)
+        if current_conversion_rate is not None:
+            # Show conversion rate used
+            rate_display = f" @ {current_conversion_rate:.4f}"
+        else:
+            rate_display = ""
+
         # Create content lines
         if total_trades > 0:
             lines = [
-                f"💰 {scenario_name}",
+                f"💰 {scenario_name}",  # MODIFIED - Add broker
+                f"🏦 Broker: {broker_name}"
+                f"Account: {currency_display}"
                 f"Trades executed: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
-                f"P&L: {pnl_str}",
+                # MODIFIED - Add rate if applicable
+                f"P&L: {pnl_str}{rate_display}",
                 f"Spread: {format_currency_simple(spread_cost, currency)}",
                 f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
                 f"Long/Short: {long_trades}/{short_trades}",

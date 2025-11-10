@@ -14,6 +14,7 @@ Architecture:
 
 from typing import Any, Dict
 from python.framework.reporting.broker_summary import BrokerSummary
+from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
@@ -111,7 +112,13 @@ class BatchSummary:
         self.renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
         self.renderer.section_separator()
         self.portfolio_summary.render_per_scenario(self.renderer)
-        self.portfolio_summary.render_aggregated(self.renderer)
+
+        # Aggregate by currency
+        aggregator = PortfolioAggregator(
+            self.batch_execution_summary.scenario_list)
+        aggregated_portfolios = aggregator.aggregate_by_currency()
+        self.portfolio_summary.render_aggregated(
+            self.renderer, aggregated_portfolios)
 
         # Broker configuration
         self.renderer.section_separator()

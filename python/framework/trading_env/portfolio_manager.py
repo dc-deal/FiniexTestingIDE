@@ -43,7 +43,8 @@ class PortfolioManager:
         broker_config: BrokerConfig,
         leverage: int,
         margin_call_level: float,
-        stop_out_level: float
+        stop_out_level: float,
+        configured_account_currency: str
     ):
         """
         Initialize portfolio manager.
@@ -62,6 +63,8 @@ class PortfolioManager:
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
+        self.configured_account_currency = configured_account_currency
+        self._last_conversion_rate: Optional[float] = None
 
         # Account state
         self.balance = initial_balance
@@ -267,6 +270,7 @@ class PortfolioManager:
         """
         # Quote Currency matches Account Currency
         if self.account_currency == symbol_spec.quote_currency:
+            self._last_conversion_rate = None
             return 1.0
 
         # Base Currency matches Account Currency
@@ -275,6 +279,7 @@ class PortfolioManager:
                 raise ValueError(
                     f"Invalid price for tick_value calculation: {current_price}"
                 )
+            self._last_conversion_rate = current_price
             return 1.0 / current_price
 
         # Cross Currency - Not supported
@@ -516,7 +521,10 @@ class PortfolioManager:
             total_commission=self._cost_tracking.total_commission,
             total_swap=self._cost_tracking.total_swap,
             total_fees=self._cost_tracking.total_fees,
-            currency=self.account_currency  # Account currency
+            currency=self.account_currency,  # Account currency
+            broker_name=self.broker_config.get_broker_name(),
+            configured_account_currency=self.configured_account_currency,
+            current_conversion_rate=self._last_conversion_rate
         )
 
     def reset(self) -> None:
