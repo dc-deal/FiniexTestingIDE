@@ -18,10 +18,11 @@ from python.components.logger.scenario_logger import ScenarioLogger
 from python.configuration.app_config_loader import AppConfigLoader
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.trading_env.broker_config import BrokerType
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.decision_logic_types import DecisionLogicStatistics
 from python.framework.types.performance_stats_types import BatchPerformanceStats
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import CostBreakdown, ExecutionStats, PortfolioStats
 from python.framework.workers.worker_coordinator import WorkerCoordinator
@@ -110,6 +111,12 @@ class ProcessDataPackage:
     # Key includes start_time for scenario-specific warmup filtering
     bars: Dict[Tuple[str, str, datetime], Tuple[Any, ...]]
 
+    # === Broker config for subprocess re-hydration ===
+    # Broker config: Serialized dict for subprocess re-hydration (CoW-safe)
+    # Loaded once in main process, shared via CoW to all subprocesses
+    # Each subprocess re-hydrates BrokerConfig from this dict (no file I/O)
+    broker_configs: Tuple[str, Tuple[Tuple[str, Any], ...]]
+
     # === METADATA (human-readable, minimal overhead) ===
     # Tick counts per symbol (for progress logging)
     tick_counts: Dict[str, int] = field(default_factory=dict)
@@ -172,8 +179,8 @@ class ProcessScenarioConfig:
     run_timestamp: str = ""
 
     # === TRADING SIMULATOR CONFIG ===
-    broker_config_path: str = '',
-    initial_balance: float = 0,
+    broker_type: BrokerType = None
+    initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
 
     @staticmethod
@@ -223,8 +230,6 @@ class ProcessScenarioConfig:
             "worker_parallel_threshold_ms", 1.0
         )
 
-        broker_config_path = scenario.trade_simulator_config.get(
-            'broker_config_path')
         initial_balance = scenario.trade_simulator_config.get(
             'initial_balance')
         # Changed: Read 'account_currency' instead of 'currency'
@@ -238,14 +243,14 @@ class ProcessScenarioConfig:
             start_time=start_time,
             end_time=end_time,
             max_ticks=scenario.max_ticks,
-            strategy_config=strategy_config,  # CORRECTED: Complete config
+            strategy_config=strategy_config,  # Complete config
             decision_logic_type=decision_logic_type,
             decision_logic_config=decision_logic_config,
             parallel_workers=parallel_workers,
             parallel_threshold=parallel_threshold,
-            scenario_set_name=scenario_set_name,  # CORRECTED: Added
-            run_timestamp=run_timestamp,           # CORRECTED: Added
-            broker_config_path=broker_config_path,
+            scenario_set_name=scenario_set_name,
+            run_timestamp=run_timestamp,  # extracted from json, put into type.
+            broker_type=scenario.broker_type,
             initial_balance=initial_balance,
             account_currency=account_currency  # Changed from 'currency'
         )
@@ -276,6 +281,17 @@ class ProcessProfileData:
 
 
 @dataclass
+class TickRangeStats:
+    """
+        Tick time range (internal tick timestamps)
+    """
+    tick_count: int = 0,
+    first_tick_time: Optional[datetime] = None,
+    last_tick_time: Optional[datetime] = None,
+    tick_timespan_seconds: Optional[float] = None
+
+
+@dataclass
 class ProcessTickLoopResult:
     """
         Result info from Tick Loop, after execution.
@@ -285,7 +301,8 @@ class ProcessTickLoopResult:
     portfolio_stats: PortfolioStats = None,
     execution_stats: ExecutionStats = None,
     cost_breakdown: CostBreakdown = None,
-    profiling_data: ProcessProfileData = None
+    profiling_data: ProcessProfileData = None,
+    tick_range_stats: TickRangeStats = None,
 
 
 # ============================================================================
@@ -343,8 +360,14 @@ class ProcessResult:
 
 @dataclass
 class BatchExecutionSummary:
-    """Summary of batch execution results."""
+    """
+    Summary of batch execution results.
+    Broker config loaded once in main process
+    Used by BrokerSummary for report generation (no redundant loading)
+    broker_config: Any = None  # BrokerConfig instance
+    """
     success: bool
     scenarios_count: int
     summary_execution_time: float
     scenario_list:  List[ProcessResult] = None
+    broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo] = None

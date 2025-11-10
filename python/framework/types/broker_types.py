@@ -142,7 +142,6 @@ class BrokerSpecification:
 
     # Account Type
     trade_mode: str          # "demo" or "real"
-    account_currency: str    # Account base currency (e.g., "EUR", "USD")
 
     # Leverage & Margin
     leverage: int            # Account leverage (e.g., 500 for 1:500)

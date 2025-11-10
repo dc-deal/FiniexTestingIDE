@@ -115,9 +115,12 @@ RECOMMENDATION:
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
 import os
+from python.framework.data_preperation.broker_data_preperator import BrokerDataPreparator
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.factory.worker_factory import WorkerFactory
 import sys
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.types.process_data_types import BatchExecutionSummary, ProcessDataPackage, ProcessResult
 from python.configuration import AppConfigLoader
@@ -249,6 +252,8 @@ class BatchOrchestrator:
         # ========================================================================
         self.scenario_set.logger.info("🔄 Phase 1: Preparing shared data...")
 
+        # 1.1 PREPARE BARS & TICKS
+        # ========================================================================
         preparator = SharedDataPreparator()
         self.shared_data = preparator.prepare_all(requirements_map)
 
@@ -258,6 +263,15 @@ class BatchOrchestrator:
             f"{sum(self.shared_data.bar_counts.values())} bar sets prepared"
         )
 
+        # 1.2 PREPARE BROKER CONFIG
+        # ========================================================================
+        # Load broker configuration (once for entire batch)
+        # This avoids redundant JSON loading in each subprocess
+        preparator = BrokerDataPreparator(
+            self.scenario_set.scenarios,
+            self.scenario_set.logger
+        )
+        self.shared_data.broker_configs = preparator.prepare()
         # ========================================================================
         # PHASE 2: SCENARIO EXECUTION (Parallel)
         # ========================================================================
@@ -274,6 +288,10 @@ class BatchOrchestrator:
 
         # Set metadata in BatchExecutionSummary
         summary_execution_time = time.time() - start_time
+
+        # ========================================================================
+        # PHASE 3: Return Values & Summary
+        # ========================================================================
         self.scenario_set.logger.info(
             f"🕐 Create BatchExecutionSummary  : {time.time()}")
 
@@ -282,6 +300,7 @@ class BatchOrchestrator:
             success=True,
             scenarios_count=len(self.scenario_set.scenarios),
             summary_execution_time=summary_execution_time,
+            broker_scenario_map=preparator.get_broker_scenario_map(),
             scenario_list=results
         )
         self.flush_all_logs(summary)

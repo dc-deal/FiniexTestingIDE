@@ -10,24 +10,25 @@ PERFORMANCE OPTIMIZED:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.components.logger.system_info_writer import write_system_version_parameters
 from python.configuration.app_config_loader import AppConfigLoader
+from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
 @dataclass
 class SingleScenario:
     """Test scenario configuration for batch testing"""
-
+    # identification for Scenario, must be unique
+    name: str
     symbol: str
     start_date: str
     end_date: str
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
-
     # ============================================
     # STRATEGY PARAMETERS
     # ============================================
@@ -39,9 +40,9 @@ class SingleScenario:
 
     # TradeSimulator configuration (per scenario)
     # Allows each scenario to have different balance/currency/leverage
+    # broker_type must be set in startup.
+    broker_type: BrokerType = None
     trade_simulator_config: Optional[Dict[str, Any]] = None
-
-    name: Optional[str] = None
 
     def __post_init__(self):
         if self.name is None:
@@ -147,3 +148,12 @@ class ScenarioSet:
 
             write_system_version_parameters(system_info_logger)
             system_info_logger.close(flush_buffer=True)
+
+
+@dataclass
+class BrokerScenarioInfo:
+    """Internal mapping of broker to scenarios (used for logging)."""
+    config_path: str
+    scenarios: List[str]
+    symbols: Set[str]
+    broker_config: BrokerConfig

@@ -16,7 +16,7 @@
         "show_worker_details": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,
-        "log_level": "DEBUG"
+        "log_level": "INFO"
     },
     "file_logging": {
         "enabled": true,

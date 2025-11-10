@@ -294,9 +294,5 @@ def create_kraken_dummy_config() -> Dict[str, Any]:
                 "taker_fee": 0.0026,
                 "trade_allowed": True
             }
-        },
-        "account_info": {
-            "currency": "USD",
-            "balance": 10000.0
         }
     }

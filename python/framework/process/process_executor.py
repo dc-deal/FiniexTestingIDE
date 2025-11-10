@@ -12,6 +12,7 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
     ProcessScenarioConfig,
 )
+from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 
 
 def execute_tick_loop(
@@ -47,18 +48,7 @@ def execute_tick_loop(
     profile_counts = defaultdict(int)
     tick_count = 0
 
-    # === DEBUG: TICK RANGE INFO ===
-    scenario_logger.debug(f"🔍 [DEBUG] Tick loop starting")
-    scenario_logger.debug(f"  Total ticks: {len(ticks)}")
-    scenario_logger.debug(f"  TradeSimulator ID: {id(trade_simulator)}")
-    scenario_logger.debug(f"  Portfolio ID: {id(trade_simulator.portfolio)}")
-    if len(ticks) > 0:
-        first_tick = ticks[0]
-        last_tick = ticks[-1]
-        scenario_logger.debug(
-            f"  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}")
-        scenario_logger.debug(
-            f"  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}")
+    tick_range_stats = get_tick_range_stats(prepared_objects)
 
     scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
 
@@ -166,5 +156,6 @@ def execute_tick_loop(
         execution_stats=execution_stats,
         cost_breakdown=cost_breakdown,
         profiling_data=ProcessProfileData(
-            profile_times=profile_times, profile_counts=profile_counts)
+            profile_times=profile_times, profile_counts=profile_counts),
+        tick_range_stats=tick_range_stats
     )

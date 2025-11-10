@@ -1,22 +1,24 @@
 //+------------------------------------------------------------------+
 //| BrokerConfigExporter.mq5                                          |
-//| Exports broker configuration and symbol specifications as JSON    |
+//| Exports STATIC broker configuration and symbol specifications    |
 //| For FiniexTestingIDE - Trade Simulation realistic configuration  |
+//| VERSION 2.0 - RAW DATA ONLY, ALL SYMBOLS                         |
 //+------------------------------------------------------------------+
 #property copyright "FiniexTestingIDE"
-#property version "1.00"
+#property version "2.00"
 #property script_show_inputs
 
 // Input parameters
-input string ExportFileName = "broker_config.json";                  // Output filename
-input string SymbolsToExport = "EURUSD,GBPUSD,USDJPY,AUDUSD,BTCUSD"; // Comma-separated symbols
+input string ExportFileName = "broker_config.json";  // Output filename
 
 //+------------------------------------------------------------------+
 //| Script program start function                                    |
 //+------------------------------------------------------------------+
 void OnStart()
 {
-    Print("=== Broker Config Exporter Started ===");
+    Print("=== Broker Config Exporter v2.0 Started ===");
+    Print("NOTE: Exporting ALL symbols from broker (raw data only)");
+    Print("      Dynamic properties excluded.");
 
     // Open file for writing
     int fileHandle = FileOpen(ExportFileName, FILE_WRITE | FILE_TXT | FILE_ANSI);
@@ -32,27 +34,28 @@ void OnStart()
 
     // Build JSON structure
     WriteString(fileHandle, "{");
-    WriteString(fileHandle, "  \"_comment\": \"Demo account configuration - anonymized sample data for FiniexTestingIDE\",");
+    WriteString(fileHandle, "  \"_comment\": \"Static broker configuration for FiniexTestingIDE - Raw data only\",");
+    WriteString(fileHandle, "  \"_version\": \"2.0\",");
+    
+    // Export info with symbol counts
+    int totalSymbols = SymbolsTotal(false);
     WriteString(fileHandle, "  \"export_info\": {");
     WriteString(fileHandle, "    \"timestamp\": \"" + TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS) + "\",");
     WriteString(fileHandle, "    \"mt5_version\": \"" + TerminalInfoString(TERMINAL_NAME) + " " + IntegerToString(TerminalInfoInteger(TERMINAL_BUILD)) + "\",");
-    WriteString(fileHandle, "    \"exporter_version\": \"1.00\"");
+    WriteString(fileHandle, "    \"exporter_version\": \"2.00\",");
+    WriteString(fileHandle, "    \"symbols_total\": " + IntegerToString(totalSymbols));
     WriteString(fileHandle, "  },");
 
-    // Broker information
+    // Broker information (STATIC)
     ExportBrokerInfo(fileHandle);
     WriteString(fileHandle, ",");
 
-    // Account information
-    ExportAccountInfo(fileHandle);
-    WriteString(fileHandle, ",");
-
-    // Trading permissions
+    // Trading permissions (STATIC)
     ExportTradingPermissions(fileHandle);
     WriteString(fileHandle, ",");
 
-    // Symbol specifications
-    ExportSymbols(fileHandle, SymbolsToExport);
+    // Symbol specifications (ALL SYMBOLS, STATIC ONLY)
+    ExportAllSymbols(fileHandle);
 
     WriteString(fileHandle, "}");
 
@@ -64,14 +67,14 @@ void OnStart()
 }
 
 //+------------------------------------------------------------------+
-//| Export broker company and server information                     |
+//| Export STATIC broker company and server information             |
 //+------------------------------------------------------------------+
 void ExportBrokerInfo(int handle)
 {
     WriteString(handle, "  \"broker_info\": {");
     WriteString(handle, "    \"company\": \"" + AccountInfoString(ACCOUNT_COMPANY) + "\",");
     WriteString(handle, "    \"server\": \"" + AccountInfoString(ACCOUNT_SERVER) + "\",");
-    WriteString(handle, "    \"name\": \"demo_account\","); // statt echten Namen
+    WriteString(handle, "    \"name\": \"demo_account\",");
 
     // Trade mode (0=Real, 1=Contest, 2=Demo)
     int tradeMode = (int)AccountInfoInteger(ACCOUNT_TRADE_MODE);
@@ -110,23 +113,7 @@ void ExportBrokerInfo(int handle)
 }
 
 //+------------------------------------------------------------------+
-//| Export account information                                        |
-//+------------------------------------------------------------------+
-void ExportAccountInfo(int handle)
-{
-    WriteString(handle, "  \"account_info\": {");
-    WriteString(handle, "    \"account_number\": 99999999,");
-    WriteString(handle, "    \"currency\": \"" + AccountInfoString(ACCOUNT_CURRENCY) + "\",");
-    WriteString(handle, "    \"balance\": " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + ",");
-    WriteString(handle, "    \"equity\": " + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + ",");
-    WriteString(handle, "    \"margin\": " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2) + ",");
-    WriteString(handle, "    \"free_margin\": " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2) + ",");
-    WriteString(handle, "    \"margin_level\": " + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2));
-    WriteString(handle, "  }");
-}
-
-//+------------------------------------------------------------------+
-//| Export trading permissions and capabilities                      |
+//| Export STATIC trading permissions and capabilities              |
 //+------------------------------------------------------------------+
 void ExportTradingPermissions(int handle)
 {
@@ -137,63 +124,108 @@ void ExportTradingPermissions(int handle)
 
     // Check available order types
     WriteString(handle, "    \"order_types\": {");
-    WriteString(handle, "      \"market\": true,");    // Always available
-    WriteString(handle, "      \"limit\": true,");     // Always available
-    WriteString(handle, "      \"stop\": true,");      // Always available
-    WriteString(handle, "      \"stop_limit\": true"); // Always available in MT5
+    WriteString(handle, "      \"market\": true,");
+    WriteString(handle, "      \"limit\": true,");
+    WriteString(handle, "      \"stop\": true,");
+    WriteString(handle, "      \"stop_limit\": true");
     WriteString(handle, "    }");
     WriteString(handle, "  }");
 }
 
 //+------------------------------------------------------------------+
-//| Export symbol specifications                                      |
+//| Export ALL symbols from broker (RAW DATA ONLY)                  |
 //+------------------------------------------------------------------+
-void ExportSymbols(int handle, string symbolList)
+void ExportAllSymbols(int handle)
 {
     WriteString(handle, "  \"symbols\": {");
 
+    int total = SymbolsTotal(false);  // false = ALL symbols from broker
+    
+    Print("Total symbols available from broker: ", total);
+    Print("Starting export of all symbols...");
+
+    // First pass: Collect all symbols into array for sorting
     string symbols[];
-    int count = StringSplit(symbolList, StringGetCharacter(",", 0), symbols);
+    ArrayResize(symbols, total);
+    int validCount = 0;
 
-    bool firstSymbol = true;
-
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < total; i++)
     {
-        string symbol = symbols[i];
-        StringTrimLeft(symbol);
-        StringTrimRight(symbol);
-
-        // Check if symbol exists and is visible
+        string symbol = SymbolName(i, false);
+        
+        // Ensure symbol is selectable
         if (!SymbolSelect(symbol, true))
         {
-            Print("WARNING: Symbol not found or cannot be selected: ", symbol);
+            Print("WARNING: Cannot select symbol: ", symbol);
             continue;
         }
+        
+        // Check if trading is available (skip broken/disabled symbols)
+        int tradeMode = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+        if (tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+        {
+            Print("SKIPPED: Trading disabled for: ", symbol);
+            continue;
+        }
+        
+        symbols[validCount] = symbol;
+        validCount++;
+        
+        // Progress indicator
+        if ((i + 1) % 50 == 0)
+            Print("Scanning symbols: ", i + 1, "/", total, " (", validCount, " valid)");
+    }
 
+    // Trim array to actual size
+    ArrayResize(symbols, validCount);
+    
+    // Sort alphabetically
+    ArraySort(symbols);
+    
+    Print("Validated ", validCount, " symbols. Starting export...");
+
+    // Second pass: Export sorted symbols
+    bool firstSymbol = true;
+    for (int i = 0; i < validCount; i++)
+    {
         if (!firstSymbol)
             WriteString(handle, ",");
         firstSymbol = false;
 
-        ExportSymbolInfo(handle, symbol);
+        ExportSymbolInfo(handle, symbols[i]);
+        
+        // Progress indicator
+        if ((i + 1) % 50 == 0)
+            Print("Exporting: ", i + 1, "/", validCount, " (", ((i + 1) * 100 / validCount), "%)");
     }
 
     WriteString(handle, "  }");
+
+    Print("=== Export Statistics ===");
+    Print("Total symbols from broker: ", total);
+    Print("Successfully exported: ", validCount);
+    Print("Skipped/Invalid: ", total - validCount);
 }
 
 //+------------------------------------------------------------------+
-//| Export detailed information for a single symbol                  |
+//| Export STATIC information for a single symbol (RAW DATA)        |
 //+------------------------------------------------------------------+
 void ExportSymbolInfo(int handle, string symbol)
 {
     WriteString(handle, "    \"" + symbol + "\": {");
 
-    // Basic info
+    // Broker categorization path (RAW DATA from broker)
+    string path = SymbolInfoString(symbol, SYMBOL_PATH);
+    StringReplace(path, "\\", "\\\\");  
+    WriteString(handle, "      \"path\": \"" + path + "\",");
+
+    // Basic info (RAW DATA)
     WriteString(handle, "      \"description\": \"" + SymbolInfoString(symbol, SYMBOL_DESCRIPTION) + "\",");
     WriteString(handle, "      \"base_currency\": \"" + SymbolInfoString(symbol, SYMBOL_CURRENCY_BASE) + "\",");
     WriteString(handle, "      \"profit_currency\": \"" + SymbolInfoString(symbol, SYMBOL_CURRENCY_PROFIT) + "\",");
     WriteString(handle, "      \"margin_currency\": \"" + SymbolInfoString(symbol, SYMBOL_CURRENCY_MARGIN) + "\",");
 
-    // Trading mode
+    // Trading mode (RAW DATA)
     int tradeMode = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
     string tradeModeStr = "unknown";
     if (tradeMode == SYMBOL_TRADE_MODE_DISABLED)
@@ -210,31 +242,22 @@ void ExportSymbolInfo(int handle, string symbol)
     WriteString(handle, "      \"trade_mode\": \"" + tradeModeStr + "\",");
     WriteString(handle, "      \"trade_allowed\": " + BoolToString(tradeMode != SYMBOL_TRADE_MODE_DISABLED) + ",");
 
-    // Volume (lot) specifications
+    // Volume (lot) specifications - STATIC
     WriteString(handle, "      \"volume_min\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN), 2) + ",");
     WriteString(handle, "      \"volume_max\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX), 2) + ",");
     WriteString(handle, "      \"volume_step\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP), 2) + ",");
     WriteString(handle, "      \"volume_limit\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_VOLUME_LIMIT), 2) + ",");
 
-    // Contract specifications
+    // Contract specifications - STATIC
     WriteString(handle, "      \"contract_size\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_TRADE_CONTRACT_SIZE), 0) + ",");
     WriteString(handle, "      \"tick_size\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE), (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)) + ",");
-    WriteString(handle, "      \"tick_value\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE), 5) + ",");
-    WriteString(handle, "      \"tick_value_profit\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE_PROFIT), 5) + ",");
-    WriteString(handle, "      \"tick_value_loss\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE_LOSS), 5) + ",");
     WriteString(handle, "      \"point\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_POINT), (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)) + ",");
     WriteString(handle, "      \"digits\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_DIGITS)) + ",");
 
-    // Current prices
-    WriteString(handle, "      \"bid\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_BID), (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)) + ",");
-    WriteString(handle, "      \"ask\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_ASK), (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)) + ",");
-
-    // Spread
-    int spreadCurrent = (int)SymbolInfoInteger(symbol, SYMBOL_SPREAD);
-    WriteString(handle, "      \"spread_current\": " + IntegerToString(spreadCurrent) + ",");
+    // Spread configuration - STATIC
     WriteString(handle, "      \"spread_float\": " + BoolToString(SymbolInfoInteger(symbol, SYMBOL_SPREAD_FLOAT)) + ",");
 
-    // Swap (rollover)
+    // Swap (rollover) - STATIC
     int swapMode = (int)SymbolInfoInteger(symbol, SYMBOL_SWAP_MODE);
     string swapModeStr = "unknown";
     if (swapMode == SYMBOL_SWAP_MODE_DISABLED)
@@ -261,7 +284,7 @@ void ExportSymbolInfo(int handle, string symbol)
     WriteString(handle, "      \"swap_short\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_SWAP_SHORT), 2) + ",");
     WriteString(handle, "      \"swap_rollover3days\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_SWAP_ROLLOVER3DAYS)) + ",");
 
-    // Margin requirements
+    // Margin requirements - STATIC
     WriteString(handle, "      \"margin_initial\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_MARGIN_INITIAL), 2) + ",");
     WriteString(handle, "      \"margin_maintenance\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_MARGIN_MAINTENANCE), 2) + ",");
     WriteString(handle, "      \"margin_long\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_MARGIN_LONG), 2) + ",");
@@ -270,35 +293,22 @@ void ExportSymbolInfo(int handle, string symbol)
     WriteString(handle, "      \"margin_stop\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_MARGIN_STOP), 2) + ",");
     WriteString(handle, "      \"margin_stop_limit\": " + DoubleToString(SymbolInfoDouble(symbol, SYMBOL_MARGIN_STOPLIMIT), 2) + ",");
 
-    // Trading time
-    datetime from, to;
-    bool tradingAllowed = false;
-    datetime currentTime = TimeCurrent();
-    MqlDateTime dt;
-    TimeToStruct(currentTime, dt);
-    int dayOfWeek = dt.day_of_week; // 0=Sunday, 1=Monday, etc.
-    if (SymbolInfoSessionTrade(symbol, (ENUM_DAY_OF_WEEK)dayOfWeek, 0, from, to))
-    {
-        tradingAllowed = (currentTime >= from && currentTime <= to);
-    }
-    WriteString(handle, "      \"trading_hours_active\": " + BoolToString(tradingAllowed) + ",");
-
-    // Stops level
+    // Stops level - STATIC
     int stopsLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
     int freezeLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
 
     WriteString(handle, "      \"stops_level\": " + IntegerToString(stopsLevel) + ",");
-    WriteString(handle, "      \"freeze_level\": " + IntegerToString(freezeLevel) + ",");
+    WriteString(handle, "      \"freeze_level\": " + IntegerToString(freezeLevel));
 
-    // Session info
-    WriteString(handle, "      \"session_deals\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_SESSION_DEALS)) + ",");
-    WriteString(handle, "      \"session_buy_orders\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_SESSION_BUY_ORDERS)) + ",");
-    WriteString(handle, "      \"session_sell_orders\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_SESSION_SELL_ORDERS)) + ",");
-
-    // Volume (trading activity)
-    WriteString(handle, "      \"volume\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_VOLUME)) + ",");
-    WriteString(handle, "      \"volumehigh\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_VOLUMEHIGH)) + ",");
-    WriteString(handle, "      \"volumelow\": " + IntegerToString(SymbolInfoInteger(symbol, SYMBOL_VOLUMELOW)));
+    // ============================================================================
+    // RAW DATA ONLY - NO DYNAMIC PROPERTIES (v2.0):
+    // Removed: tick_value, tick_value_profit, tick_value_loss (dynamic)
+    // Removed: bid, ask (dynamic market data)
+    // Removed: spread_current (dynamic)
+    // Removed: session data (snapshots)
+    // Removed: volume data (snapshots)
+    // Removed: trading_hours_active (time-dependent)
+    // ============================================================================
 
     WriteString(handle, "    }");
 }

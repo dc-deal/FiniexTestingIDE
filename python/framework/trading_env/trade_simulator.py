@@ -86,12 +86,14 @@ class TradeSimulator:
 
             detected_currency = symbol[-3:].upper()
 
-            # Log currency auto-detection with explanation
+            # Show broker currency vs. detected currency for transparency
+            broker_spec = self.broker.get_broker_specification()
+
             logger.warning(
-                f"💱 CURRENCY AUTO-DETECTION: Symbol '{symbol}' → Account Currency '{detected_currency}'\n"
-                f"   Explanation: Quote currency (last 3 chars of symbol) used as account currency.\n"
-                f"   This means all P&L calculations will be in {detected_currency}.\n"
-                f"   tick_value from broker config is assumed to be in {detected_currency}."
+                f"💱 CURRENCY AUTO-DETECTION:\n"
+                f"   Symbol: {symbol} → Detected: {detected_currency}\n"
+                f"   Using: {detected_currency} (auto-detection overrides broker)\n"
+                f"   All P&L calculations will be in {detected_currency}."
             )
 
             account_currency = detected_currency
@@ -104,15 +106,16 @@ class TradeSimulator:
         # Store final account currency
         self.account_currency = account_currency
 
-        # Create portfolio manager
-        leverage = self.broker.get_max_leverage()
+        # Create portfolio manager with broker specifications
+        broker_spec = self.broker.get_broker_specification()
         self.portfolio = PortfolioManager(
             initial_balance=initial_balance,
             account_currency=account_currency,
-            broker_config=broker_config,  # ← NEU: Pass through!
-            leverage=leverage
+            broker_config=broker_config,
+            leverage=broker_spec.leverage,
+            margin_call_level=broker_spec.margin_call_level,
+            stop_out_level=broker_spec.stopout_level
         )
-
         # Current market prices
         # symbol: (bid, ask)
         self._current_prices: Dict[str, Tuple[float, float]] = {}

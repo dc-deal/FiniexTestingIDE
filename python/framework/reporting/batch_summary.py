@@ -13,6 +13,7 @@ Architecture:
 """
 
 from typing import Any, Dict
+from python.framework.reporting.broker_summary import BrokerSummary
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
@@ -58,7 +59,11 @@ class BatchSummary:
             batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
             batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
-
+        # Broker summary
+        self.broker_summary = BrokerSummary(
+            batch_summary=batch_execution_summary,
+            app_config=app_config
+        )
         # Renderer for unified console output
         self.renderer = ConsoleRenderer()
 
@@ -97,7 +102,7 @@ class BatchSummary:
 
         # Scenario details grid
         self.renderer.section_separator()
-        self.renderer.print_bold("SCENARIO DETAILS")
+        self.renderer.print_bold("🔍 SCENARIO DETAILS")
         self.renderer.section_separator()
         self._render_scenario_grid()
 
@@ -107,6 +112,12 @@ class BatchSummary:
         self.renderer.section_separator()
         self.portfolio_summary.render_per_scenario(self.renderer)
         self.portfolio_summary.render_aggregated(self.renderer)
+
+        # Broker configuration
+        self.renderer.section_separator()
+        self.renderer.print_bold("🏦 BROKER CONFIGURATION")
+        self.renderer.section_separator()
+        self.broker_summary.render(self.renderer)
 
         # Performance summaries
         self.renderer.section_separator()
