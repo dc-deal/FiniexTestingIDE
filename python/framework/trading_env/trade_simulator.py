@@ -97,11 +97,13 @@ class TradeSimulator:
             )
 
             account_currency = detected_currency
+            self.configured_account_currency = "auto"  # NEW
         else:
             # Explicit currency provided - just log it
             logger.info(
                 f"💱 Account Currency: {account_currency} (explicit configuration)"
             )
+            self.configured_account_currency = account_currency
 
         # Store final account currency
         self.account_currency = account_currency
@@ -114,7 +116,8 @@ class TradeSimulator:
             broker_config=broker_config,
             leverage=broker_spec.leverage,
             margin_call_level=broker_spec.margin_call_level,
-            stop_out_level=broker_spec.stopout_level
+            stop_out_level=broker_spec.stopout_level,
+            configured_account_currency=self.configured_account_currency
         )
         # Current market prices
         # symbol: (bid, ask)

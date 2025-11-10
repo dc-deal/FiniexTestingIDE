@@ -114,8 +114,6 @@ class PerformanceSummary:
         # Decision logic stats
         decision_stats = batch_stats.decision_logic
         decisions_made = decision_stats.decision_count if decision_stats else 0
-        buy_signal_count = decision_stats.decision_buy_count if decision_stats else 0
-        sell_signal_count = decision_stats.decision_sell_count if decision_stats else 0
 
         # Header
         mode_str = renderer.green(

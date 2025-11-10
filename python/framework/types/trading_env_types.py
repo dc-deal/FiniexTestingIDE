@@ -12,6 +12,7 @@ All Dict[str, Any] types replaced with strongly-typed dataclasses.
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -84,6 +85,11 @@ class PortfolioStats:
     total_swap: float
     total_fees: float
     currency: str  # Account currency (e.g., "USD", "EUR", "JPY")
+    broker_name: str
+    # Original config value ("auto" or explicit like "USD")
+    configured_account_currency: str
+    # Only set when Base == Account
+    current_conversion_rate: Optional[float] = None
 
 
 @dataclass
