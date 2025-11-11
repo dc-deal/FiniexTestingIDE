@@ -524,7 +524,9 @@ class PortfolioManager:
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),
             configured_account_currency=self.configured_account_currency,
-            current_conversion_rate=self._last_conversion_rate
+            current_conversion_rate=self._last_conversion_rate,
+            current_balance=self.balance,
+            initial_balance=self.initial_balance
         )
 
     def reset(self) -> None:
