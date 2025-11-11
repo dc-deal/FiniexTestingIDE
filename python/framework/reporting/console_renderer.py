@@ -326,10 +326,10 @@ class ConsoleRenderer:
 
         # Create content lines
         lines = [
-            f"📋 {scenario_name}",
+            f"{scenario_name}",
             f"Symbol: {symbol}",
             f"Ticks: {ticks:,}",
-            f"📅 {tick_time_range}",
+            f"{tick_time_range}",
             f"Non-Flat Sign.: {nfSig} ({rate:.1%})",
             f"B/S/F: {buys}/{sells}/{flats}",
             f"Trades requested: {action_trades} ({rate_trades:.1%})",
@@ -432,6 +432,18 @@ class ConsoleRenderer:
         broker_name = portfolio_stats.broker_name
         configured_currency = portfolio_stats.configured_account_currency
         current_conversion_rate = portfolio_stats.current_conversion_rate
+        initial_balance = portfolio_stats.initial_balance
+        current_balance = portfolio_stats.current_balance
+
+        initial_balance_str = format_currency_simple(
+            portfolio_stats.initial_balance, currency)
+        current_balance_str = format_currency_simple(
+            portfolio_stats.current_balance, currency)
+
+        if current_balance > initial_balance:
+            current_balance_str = self.green(current_balance_str)
+        if current_balance < initial_balance:
+            current_balance_str = self.red(f"{current_balance_str}")
 
         # NEW: Format currency display
         if configured_currency == "auto":
@@ -449,13 +461,15 @@ class ConsoleRenderer:
         # Create content lines
         if total_trades > 0:
             lines = [
-                f"💰 {scenario_name}",  # MODIFIED - Add broker
-                f"🏦 Broker: {broker_name}"
-                f"Account: {currency_display}"
+                f"{scenario_name}",  # MODIFIED - Add broker
+                f"Broker: {broker_name}",
+                f"Account: {currency_display}",
                 f"Trades executed: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
                 # MODIFIED - Add rate if applicable
                 f"P&L: {pnl_str}{rate_display}",
+                f"Balance: {current_balance_str}",
+                f"Init: {initial_balance_str}",
                 f"Spread: {format_currency_simple(spread_cost, currency)}",
                 f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
                 f"Long/Short: {long_trades}/{short_trades}",

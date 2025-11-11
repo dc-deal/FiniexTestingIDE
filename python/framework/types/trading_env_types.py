@@ -90,6 +90,8 @@ class PortfolioStats:
     configured_account_currency: str
     # Only set when Base == Account
     current_conversion_rate: Optional[float] = None
+    current_balance: Optional[float] = 0
+    initial_balance: Optional[float] = 0
 
 
 @dataclass
