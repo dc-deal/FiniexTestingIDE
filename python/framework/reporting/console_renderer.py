@@ -15,10 +15,9 @@ FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 
 import re
 from typing import List
-from datetime import datetime
-
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.process_data_types import ProcessResult, TickRangeStats
+from python.framework.utils.time_utils import format_duration
 
 
 class ConsoleRenderer:
@@ -205,47 +204,14 @@ class ConsoleRenderer:
             # Same day: "20:00:00 → 20:30:28 (30m 28s)"
             start_time = stats.first_tick_time.strftime("%H:%M:%S")
             end_time = stats.last_tick_time.strftime("%H:%M:%S")
-            duration = self._format_duration(stats.tick_timespan_seconds)
+            duration = format_duration(stats.tick_timespan_seconds)
             return f"{start_time} → {end_time} ({duration})"
         else:
             # Different days: "Oct 09 20:00 → Oct 10 02:15 (6h 15m)"
             start_time = stats.first_tick_time.strftime("%b %d %H:%M")
             end_time = stats.last_tick_time.strftime("%b %d %H:%M")
-            duration = self._format_duration(stats.tick_timespan_seconds)
+            duration = format_duration(stats.tick_timespan_seconds)
             return f"{start_time} → {end_time} ({duration})"
-
-    def _format_duration(self, seconds: float) -> str:
-        """
-        Format duration in human-readable format.
-
-        Args:
-            seconds: Duration in seconds
-
-        Returns:
-            Formatted duration (e.g., "30m 28s", "2h 15m 32s")
-        """
-        if seconds < 60:
-            # Less than 1 minute: show seconds only
-            return f"{int(seconds)}s"
-
-        minutes = int(seconds // 60)
-        remaining_seconds = int(seconds % 60)
-
-        if minutes < 60:
-            # Less than 1 hour: show minutes and seconds
-            if remaining_seconds > 0:
-                return f"{minutes}m {remaining_seconds}s"
-            else:
-                return f"{minutes}m"
-
-        hours = minutes // 60
-        remaining_minutes = minutes % 60
-
-        # 1 hour or more: show hours and minutes (skip seconds for brevity)
-        if remaining_minutes > 0:
-            return f"{hours}h {remaining_minutes}m"
-        else:
-            return f"{hours}h"
 
     # ============================================
     # Grid Rendering
@@ -323,11 +289,13 @@ class ConsoleRenderer:
         last_tick_time = stats.last_tick_time
         if first_tick_time and last_tick_time:
             tick_time_range = self.format_tick_timespan(stats)
-
+        execution_time = format_duration(
+            scenario.execution_time_ms, True)
         # Create content lines
         lines = [
             f"{scenario_name}",
             f"Symbol: {symbol}",
+            f"Duration: {execution_time}",
             f"Ticks: {ticks:,}",
             f"{tick_time_range}",
             f"Non-Flat Sign.: {nfSig} ({rate:.1%})",

@@ -289,7 +289,7 @@ class TradeSimulator:
             pending_order: PendingOrder with order_action=PendingOrderAction.OPEN
         """
         self.logger.info(
-            f"📋 Open Portfolio Position start - At Tick: {self._tick_counter}")
+            f"📋 Open Portfolio Position {pending_order.position_id} - at tick: {self._tick_counter}")
         self.logger.verbose(
             f"PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}")
         self.logger.verbose(
@@ -504,7 +504,7 @@ class TradeSimulator:
             pending_order: PendingOrder with order_action=PendingOrderAction.CLOSE
         """
         self.logger.info(
-            f"📋 Close and Fill Order start - At Tick: {self._tick_counter}")
+            f"📋 Close and Fill Order {pending_order.position_id}, at tick: {self._tick_counter}")
         self.logger.verbose(
             f"PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}")
         self.logger.verbose(

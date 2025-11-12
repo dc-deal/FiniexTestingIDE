@@ -21,7 +21,7 @@ from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
 from python.configuration import AppConfigLoader
-from python.framework.types.process_data_types import BatchExecutionSummary
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_performance_types import ProfilingData
 
 

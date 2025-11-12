@@ -4,7 +4,7 @@ Framework Exceptions - Custom errors for data validation and warmup
 
 from datetime import datetime
 
-from python.framework.utils.time_utils import format_duration, format_minutes
+from python.framework.utils.time_utils import format_minutes
 
 
 class InsufficientHistoricalDataError(Exception):

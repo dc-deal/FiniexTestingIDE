@@ -79,7 +79,7 @@ class TickDataImporter:
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
-        self.appConfig = AppConfigLoader()
+        self._app_config_loader = AppConfigLoader()
 
     def process_all_mql5_exports(self):
         """
@@ -316,7 +316,7 @@ class TickDataImporter:
             parquet_size = parquet_path.stat().st_size
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
-            if self.appConfig.get_move_processed_files:
+            if self._app_config_loader.get_move_processed_files:
                 finished_dir = Path("./data/finished/")
                 finished_dir.mkdir(exist_ok=True)
                 finished_file = finished_dir / json_file.name

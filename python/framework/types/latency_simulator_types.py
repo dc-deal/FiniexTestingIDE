@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Dict, Optional
 
 from python.framework.types.order_types import OrderDirection
-from python.framework.utils.process_deserialization_utils import serialize_value
+from python.framework.utils.process_serialization_utils import serialize_value
 
 
 class PendingOrderAction(Enum):

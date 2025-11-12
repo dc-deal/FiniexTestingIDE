@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
+from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.reporting.coverage_report import (
     TimeRangeCoverageReport,
     IndexEntry
@@ -31,7 +32,8 @@ class ParquetIndexManager:
     UPDATED: Angepasst für neue Verzeichnisstruktur (Collector-First)
     """
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, logger: AbstractLogger = vLog):
+        self.logger = logger
         self.data_dir = Path(data_dir)
         # CHANGED: Index-Dateiname für Ticks
         self.index_file = self.data_dir / ".parquet_tick_index.json"
@@ -49,10 +51,11 @@ class ParquetIndexManager:
         """
         if not force_rebuild and not self.needs_rebuild():
             self.load_index()
-            vLog.info(f"📚 Loaded existing index ({len(self.index)} symbols)")
+            self.logger.info(
+                f"📚 Loaded existing index ({len(self.index)} symbols)")
             return
 
-        vLog.info("🔍 Scanning Parquet files for index...")
+        self.logger.info("🔍 Scanning Parquet files for index...")
         start_time = time.time()
 
         # CHANGED: Scanne nur Tick-Files
@@ -60,7 +63,7 @@ class ParquetIndexManager:
         parquet_files = list(self.data_dir.glob("*/ticks/**/*.parquet"))
 
         if not parquet_files:
-            vLog.warning(f"No Parquet files found in {self.data_dir}")
+            self.logger.warning(f"No Parquet files found in {self.data_dir}")
             self.index = {}
             return
 
@@ -75,7 +78,8 @@ class ParquetIndexManager:
                 self.index[symbol].append(entry)
 
             except Exception as e:
-                vLog.warning(f"Failed to index {parquet_file.name}: {e}")
+                self.logger.warning(
+                    f"Failed to index {parquet_file.name}: {e}")
 
         # Sort files chronologically per symbol
         for symbol in self.index:
@@ -85,7 +89,7 @@ class ParquetIndexManager:
 
         elapsed = time.time() - start_time
         total_files = sum(len(files) for files in self.index.values())
-        vLog.info(
+        self.logger.info(
             f"✅ Index built: {total_files} files across {len(self.index)} symbols "
             f"in {elapsed:.2f}s"
         )
@@ -145,7 +149,8 @@ class ParquetIndexManager:
             newest_parquet = max(f.stat().st_mtime for f in parquet_files)
 
             if newest_parquet > index_mtime:
-                vLog.info("📋 Index outdated - newer Parquet files found")
+                self.logger.info(
+                    "📋 Index outdated - newer Parquet files found")
                 return True
 
         return False
@@ -162,7 +167,7 @@ class ParquetIndexManager:
     ) -> List[Path]:
         """Find ONLY files covering requested time range [UNCHANGED]"""
         if symbol not in self.index:
-            vLog.warning(f"Symbol '{symbol}' not found in index")
+            self.logger.warning(f"Symbol '{symbol}' not found in index")
             return []
 
         relevant = []
@@ -191,7 +196,7 @@ class ParquetIndexManager:
         with open(self.index_file, 'w') as f:
             json.dump(index_data, f, indent=2)
 
-        vLog.debug(f"💾 Index saved to {self.index_file}")
+        self.logger.debug(f"💾 Index saved to {self.index_file}")
 
     def load_index(self) -> None:
         """Load index from JSON file [UNCHANGED]"""
@@ -200,7 +205,7 @@ class ParquetIndexManager:
                 data = json.load(f)
                 self.index = data['symbols']
         except Exception as e:
-            vLog.warning(f"Failed to load index: {e}")
+            self.logger.warning(f"Failed to load index: {e}")
             self.index = {}
 
     # =========================================================================
@@ -210,7 +215,7 @@ class ParquetIndexManager:
     def get_coverage_report(self, symbol: str) -> TimeRangeCoverageReport:
         """Generate coverage report for a symbol [UNCHANGED]"""
         if symbol not in self.index:
-            vLog.warning(f"Symbol '{symbol}' not found in index")
+            self.logger.warning(f"Symbol '{symbol}' not found in index")
             return TimeRangeCoverageReport(symbol, [], [], [])
 
         entries = self.index[symbol]

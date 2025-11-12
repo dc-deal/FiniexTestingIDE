@@ -114,6 +114,8 @@ class GlobalLogger(AbstractLogger):
             logger.error(formatted_line)
         elif level == LogLevel.DEBUG:
             logger.debug(formatted_line)
+        elif level == LogLevel.VERBOSE:
+            logger.verbose(formatted_line)
 
     def _write_to_file(self, level: str, message: str, timestamp: str):
         """

@@ -12,14 +12,14 @@
     },
     "logging": {
         "performance_tracking": true,
+        "show_scenario_logging": false,
         "write_system_info": true,
-        "show_worker_details": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,
         "log_level": "INFO"
     },
     "file_logging": {
-        "enabled": true,
+        "enabled": false,
         "log_level": "DEBUG",
         "log_root_path": "logs/scenario_sets"
     },
@@ -35,7 +35,14 @@
         "data_parquet": "data/parquet"
     },
     "monitoring": {
+        "enabled": true,
         "tui_refresh_rate_ms": 300,
-        "enable_live_stats": false
+        "detailed_live_stats": true,
+        "detailed_live_stats_threshold": 3,
+        "detailed_live_stats_exports": {
+            "export_portfolio_stats": true,
+            "export_performance_stats": false,
+            "export_current_bars": false
+        }
     }
 }

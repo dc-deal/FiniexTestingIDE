@@ -157,6 +157,17 @@ class AppConfigLoader:
         return config.get("logging", {})
 
     @classmethod
+    def get_logging_show_scenario_logging(cls) -> Dict[str, Any]:
+        """
+        Scenario information, can be long.
+
+        Returns:
+            Logging config dict
+        """
+        config = cls.get_config()
+        return config.get('logging', {}).get('show_scenario_logging', False)
+
+    @classmethod
     def get_logging_write_system_info(cls) -> Dict[str, Any]:
         """
         Get logging configuration.
@@ -247,17 +258,6 @@ class AppConfigLoader:
         """
         logging_config = cls.get_logging_config()
         return logging_config.get("performance_tracking", True)
-
-    @classmethod
-    def should_show_worker_details(cls) -> bool:
-        """
-        Check if worker details should be shown.
-
-        Returns:
-            True if worker details should be displayed
-        """
-        logging_config = cls.get_logging_config()
-        return logging_config.get("show_worker_details", True)
 
     @classmethod
     def should_warn_on_override(cls) -> bool:
