@@ -40,7 +40,7 @@
         "detailed_live_stats": true,
         "detailed_live_stats_threshold": 3,
         "detailed_live_stats_exports": {
-            "export_portfolio_stats": true,
+            "export_portfolio_stats": false,
             "export_performance_stats": false,
             "export_current_bars": false
         }

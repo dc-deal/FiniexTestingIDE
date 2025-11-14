@@ -40,7 +40,7 @@ class LiveScenarioStats:
         total_trades: Total number of trades executed
         winning_trades: Number of winning trades
         losing_trades: Number of losing trades
-        portfolio_dirty: Dirty flag for lazy evaluation transparency
+        portfolio_dirty_flag: Dirty flag for lazy evaluation transparency
         portfolio_stats: Full PortfolioStats (optional, detailed mode only)
     """
     scenario_name: str
@@ -64,7 +64,7 @@ class LiveScenarioStats:
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
-    portfolio_dirty: bool = False
+    portfolio_dirty_flag: bool = False
 
     # Detailed Portfolio Info (optional - two-tier!)
     portfolio_stats: Optional[PortfolioStats] = None

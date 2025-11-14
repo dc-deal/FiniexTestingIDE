@@ -88,12 +88,13 @@ def process_live_export(live_setup: ProcessLiveSetup,
             ).total_seconds(),
 
             # Basic Portfolio (direct access - safe after get_portfolio_statistics!)
-            "current_balance": portfolio.balance,
             "initial_balance": portfolio.initial_balance,
+            # dirty states
+            "current_balance": portfolio.balance,
             "total_trades": len(portfolio.closed_positions),
             "winning_trades": portfolio._winning_trades,
             "losing_trades": portfolio._losing_trades,
-            "portfolio_dirty": portfolio._positions_dirty,
+            "portfolio_dirty_flag": portfolio._positions_dirty,
         }
 
         # === CONDITIONAL EXPORTS ===
@@ -101,7 +102,15 @@ def process_live_export(live_setup: ProcessLiveSetup,
         # 1. Portfolio Stats (expensive!)
         if config.live_stats_config.export_portfolio_stats:
             portfolio_stats_obj = portfolio.get_portfolio_statistics()
-            live_data["portfolio_stats"] = asdict(portfolio_stats_obj)
+            live_data["portfolio_stats"] = asdict(portfolio_stats_obj)  # full
+            # after refreshing we need to override the current values.
+            # portfolio_dirty_flag will be false now.
+            # overrides:
+            live_data["current_balance"] = portfolio_stats_obj.current_balance
+            live_data["total_trades"] = portfolio_stats_obj.total_trades
+            live_data["winning_trades"] = portfolio_stats_obj.winning_trades
+            live_data["losing_trades"] = portfolio_stats_obj.losing_trades
+            live_data["portfolio_dirty_flag"] = portfolio._positions_dirty
 
         # 2. Performance Stats
         if config.live_stats_config.export_performance_stats:

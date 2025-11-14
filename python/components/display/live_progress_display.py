@@ -220,8 +220,8 @@ class LiveProgressDisplay:
                     "winning_trades", stats.winning_trades)
                 stats.losing_trades = update.get(
                     "losing_trades", stats.losing_trades)
-                stats.portfolio_dirty = update.get(
-                    "portfolio_dirty", stats.portfolio_dirty)
+                stats.portfolio_dirty_flag = update.get(
+                    "portfolio_dirty_flag", stats.portfolio_dirty_flag)
 
                 # Status
                 status_str = update.get("status", "running")
@@ -375,7 +375,7 @@ class LiveProgressDisplay:
                 pnl_sign = ""
 
             # Dirty flag indicator
-            dirty_flag = " 🏴" if stats.portfolio_dirty else ""
+            dirty_flag = " 🏴" if stats.portfolio_dirty_flag else ""
 
             stats_text = (
                 f"[{pnl_color}]${portfolio_value:>8,.0f}{dirty_flag}[/{pnl_color}] "
