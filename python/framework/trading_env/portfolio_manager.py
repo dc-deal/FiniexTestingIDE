@@ -349,14 +349,22 @@ class PortfolioManager:
         return len(self.open_positions) > 0
 
     # ============================================
-    # Account Information
+    # Account Information - for example, for decision
     # ============================================
 
     def get_account_info(self) -> AccountInfo:
         """
         Get current account information.
 
-        Always returns copy (safe for external use).
+        Returns account state including:
+        - balance: Total account balance
+        - equity: Balance + unrealized P&L
+        - margin_used: Margin locked in open positions
+        - free_margin: Available margin for new trades
+        - margin_level: (equity / margin_used) * 100
+
+        Returns:
+            AccountInfo dataclass with all account metrics
         """
         # Ensure positions have latest prices (lazy update)
         self._ensure_positions_updated()
@@ -369,13 +377,16 @@ class PortfolioManager:
         # Equity = Balance + Unrealized P&L
         equity = self.balance + unrealized_pnl
 
-        # Calculate margin used
-        margin_used = sum(
-            pos.lots * 100000 * pos.entry_price / self.leverage
-            for pos in self.open_positions.values()
-        )
+        # Calculate margin used (delegated to broker adapter)
+        margin_used = 0.0
+        if self._current_tick is not None:
+            for pos in self.open_positions.values():
+                position_margin = self.broker_config.calculate_margin(
+                    pos.symbol, pos.lots, self._current_tick
+                )
+                margin_used += position_margin
 
-        # Free margin
+        # Free margin (calculated AFTER loop!)
         free_margin = equity - margin_used
 
         # Margin level
@@ -408,7 +419,7 @@ class PortfolioManager:
     def get_losing_trades(self):
         return self._losing_trades
 
-    def get_equity(self) -> float:
+    def _calculate_equity(self) -> float:
         """Get current equity (balance + unrealized P&L)"""
         unrealized_pnl = sum(
             pos.unrealized_pnl for pos in self.open_positions.values()
@@ -474,7 +485,7 @@ class PortfolioManager:
             self._total_loss += abs(realized_pnl)
 
         # Update max equity
-        equity = self.get_equity()
+        equity = self._calculate_equity()
         if equity > self._max_equity:
             self._max_equity = equity
 

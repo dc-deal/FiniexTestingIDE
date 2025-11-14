@@ -631,10 +631,6 @@ class TradeSimulator:
         """Get account balance"""
         return self.portfolio.balance
 
-    def get_equity(self) -> float:
-        """Get account equity (balance + unrealized P&L)"""
-        return self.portfolio.get_equity()
-
     def get_free_margin(self) -> float:
         """Get free margin"""
         return self.portfolio.get_free_margin()
