@@ -7,11 +7,12 @@ Data structures for order delay simulation
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Dict, Optional
 
 from python.framework.types.order_types import OrderDirection
-from python.framework.utils.process_deserialization_utils import serialize_value
+from python.framework.utils.process_serialization_utils import serialize_value
 
 
 class PendingOrderAction(Enum):
@@ -37,7 +38,7 @@ class PendingOrder:
     Contains all information needed to execute the order once
     the delay period has elapsed.
     """
-    order_id: str
+    pending_order_id: str
     placed_at_tick: int
     fill_at_tick: int
 
@@ -48,15 +49,16 @@ class PendingOrder:
     symbol: Optional[str] = None
     direction: Optional[OrderDirection] = None
     lots: Optional[float] = None
+    entry_price: Optional[float] = None      # For Position converter
+    entry_time: Optional[datetime] = None  # For Position converter
     order_kwargs: Optional[Dict] = None
 
     # For CLOSE orders
-    position_id: Optional[str] = None
     close_lots: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
-            'order_id': self.order_id,
+            'pending_order_id': self.pending_order_id,
             'placed_at_tick': self.placed_at_tick,
             'fill_at_tick': self.fill_at_tick,
             'order_action': self.order_action.value if self.order_action else None,
@@ -64,6 +66,5 @@ class PendingOrder:
             'direction': self.direction.value if self.direction else None,
             'lots': self.lots,
             'order_kwargs': serialize_value(self.order_kwargs),
-            'position_id': self.position_id,
             'close_lots': self.close_lots,
         }

@@ -1,23 +1,22 @@
 """
 FiniexTestingIDE - Live Progress Display
-Real-time scenario execution progress with resource monitoring
+Real-time scenario execution progress with queue-based updates
 
 Features:
 - Overhead line: System resources (CPU, RAM) + scenario count
 - Per-scenario lines: Progress bar, time, portfolio, trades
-- Thread-based polling (500ms updates)
+- Thread-based polling (300ms updates)
 - Flicker-free display using rich.live
+- Queue-based updates (ProcessPool compatible)
 - Graceful shutdown
-- Fully typed with LiveScenarioStats (no more dict access!)
+- Fully typed with LiveScenarioStats
 - Type-safe status handling with ScenarioStatus enum
 
 Usage:
     # In BatchOrchestrator
-    display = LiveProgressDisplay(performance_log, scenarios)
+    display = LiveProgressDisplay(scenarios, live_queue)
     display.start()
-
     # ... run scenarios ...
-
     display.stop()
 """
 
@@ -25,18 +24,19 @@ import threading
 import time
 import traceback
 import psutil
-from typing import List, Optional
+from multiprocessing import Queue
+from typing import List, Optional, Dict
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.panel import Panel
 from rich.layout import Layout
 from rich import box
 
 from python.framework.types.scenario_set_types import SingleScenario
-from python.framework.types.live_stats_types import LiveScenarioStats, ScenarioStatus
+from python.framework.types.live_scenario_stats_types import LiveScenarioStats, ScenarioStatus
 from python.components.logger.bootstrap_logger import get_logger
+
 vLog = get_logger()
 
 
@@ -44,26 +44,37 @@ class LiveProgressDisplay:
     """
     Live progress display for scenario execution.
 
+    Queue-based design for ProcessPool compatibility.
+    Reads updates from multiprocessing.Queue and renders display.
+
     Shows:
     - System resources (CPU, RAM)
     - Number of running/completed scenarios
     - Per-scenario progress bars with stats
-    - Real-time updates every 500ms
+    - Real-time updates every 300ms
     """
 
-    def __init__(self,
-                 scenarios: List[SingleScenario],
-                 update_interval: float = 0.3):
+    def __init__(
+        self,
+        scenarios: List[SingleScenario],
+        live_queue: Queue,
+        update_interval: float = 0.3
+    ):
         """
         Initialize live progress display.
 
         Args:
             scenarios: List of scenarios to track
+            live_queue: Queue for receiving live updates
             update_interval: Update interval in seconds (default: 0.3)
         """
-        # self.performance_manager = performance_manager
         self.scenarios = scenarios
+        self.live_queue = live_queue
         self.update_interval = update_interval
+
+        # Local stats cache (updated from queue)
+        self._stats_cache: Dict[int, LiveScenarioStats] = {}
+        self._init_stats_cache()
 
         # Threading
         self._running = False
@@ -74,6 +85,16 @@ class LiveProgressDisplay:
         self.console = Console()
         self._live: Optional[Live] = None
 
+    def _init_stats_cache(self) -> None:
+        """Initialize stats cache with INITIALIZED status."""
+        for idx, scenario in enumerate(self.scenarios):
+            self._stats_cache[idx] = LiveScenarioStats(
+                scenario_name=scenario.name,
+                symbol=scenario.symbol,
+                scenario_index=idx,
+                status=ScenarioStatus.INITIALIZED
+            )
+
     def start(self) -> None:
         """Start the live display thread."""
         with self._lock:
@@ -82,7 +103,9 @@ class LiveProgressDisplay:
 
             self._running = True
             self._thread = threading.Thread(
-                target=self._update_loop, daemon=True)
+                target=self._update_loop,
+                daemon=True
+            )
             self._thread.start()
 
     def stop(self) -> None:
@@ -107,24 +130,107 @@ class LiveProgressDisplay:
 
     def _update_loop(self) -> None:
         """Main update loop running in thread."""
-        with Live(self._render(), console=self.console, refresh_per_second=2) as live:
+        with Live(
+            self._render(),
+            console=self.console,
+            refresh_per_second=2
+        ) as live:
             self._live = live
 
             while self._running:
                 try:
-                    # Update display
+                    # === 1. AGGRESSIV Queue lesen - NICHT empty() prüfen! ===
+                    updates_processed = 0
+                    max_updates_per_cycle = 100  # Prevent infinite loop
+
+                    for _ in range(max_updates_per_cycle):
+                        try:
+                            # Versuche zu lesen - wirft Exception wenn leer
+                            update = self.live_queue.get_nowait()
+                            self._process_update(update)
+                            updates_processed += 1
+                        except:
+                            # Queue ist wirklich leer
+                            break
+
+                    # === 2. Render display (IMMER!) ===
                     live.update(self._render())
 
-                    # Sleep
+                    # === 3. HART warten ===
                     time.sleep(self.update_interval)
 
                 except Exception as e:
                     vLog.error(f"\n❌ CRITICAL ERROR in LiveProgressDisplay:")
                     vLog.error(traceback.format_exc())
-
-                    # Stop display and re-raise
                     self._running = False
-                    raise  # <-- HARD FAIL!
+                    raise
+
+    def _process_update(self, update: dict) -> None:
+        """
+        Process a single queue update and update cache.
+
+        Args:
+            update: Update message from queue
+        """
+        # === REGULÄRE UPDATES (benötigen scenario_index) ===
+        scenario_index = update.get("scenario_index")
+        if scenario_index is None:
+            return
+
+        update_type = update.get("type", "progress")
+        with self._lock:
+            stats = self._stats_cache.get(scenario_index)
+            if not stats:
+                return
+
+            # Status-only updates
+            if update_type == "status":
+                status_str = update.get("status", "initialized")
+                stats.status = ScenarioStatus(status_str)
+                return
+
+            # Progress updates
+            if update_type == "progress":
+                # Progress
+                stats.ticks_processed = update.get(
+                    "ticks_processed", stats.ticks_processed)
+                stats.total_ticks = update.get(
+                    "total_ticks", stats.total_ticks)
+                stats.progress_percent = update.get(
+                    "progress_percent", stats.progress_percent)
+
+                # In-Time tracking
+                stats.first_tick_time = update.get(
+                    "first_tick_time", stats.first_tick_time)
+                stats.current_tick_time = update.get(
+                    "current_tick_time", stats.current_tick_time)
+                stats.tick_timespan_seconds = update.get(
+                    "tick_timespan_seconds",
+                    stats.tick_timespan_seconds
+                )
+
+                # Basic Portfolio
+                stats.current_balance = update.get(
+                    "current_balance", stats.current_balance)
+                stats.initial_balance = update.get(
+                    "initial_balance", stats.initial_balance)
+                stats.total_trades = update.get(
+                    "total_trades", stats.total_trades)
+                stats.winning_trades = update.get(
+                    "winning_trades", stats.winning_trades)
+                stats.losing_trades = update.get(
+                    "losing_trades", stats.losing_trades)
+                stats.portfolio_dirty_flag = update.get(
+                    "portfolio_dirty_flag", stats.portfolio_dirty_flag)
+
+                # Status
+                status_str = update.get("status", "running")
+                stats.status = ScenarioStatus(status_str)
+
+                # Detailed exports (if present)
+                # Note: portfolio_stats, performance_stats, current_bars
+                # are available in update but not stored in LiveScenarioStats
+                # Display can access them directly from update if needed
 
     def _render(self) -> Panel:
         """
@@ -133,13 +239,14 @@ class LiveProgressDisplay:
         Returns:
             Rich Panel with overhead + scenario progress
         """
-        # Get all live stats
-        all_stats = self.performance_manager.get_all_live_stats()
+        # Get all stats from cache
+        with self._lock:
+            all_stats = list(self._stats_cache.values())
 
         # Build overhead line
         overhead = self._build_overhead(all_stats)
 
-        # Build scenario lines
+        # Build scenario table
         scenario_table = self._build_scenario_table(all_stats)
 
         # Combine into panel
@@ -168,9 +275,11 @@ class LiveProgressDisplay:
         """
         # Count scenarios by status
         running_count = sum(
-            1 for s in all_stats if s.status == ScenarioStatus.RUNNING)
+            1 for s in all_stats if s.status == ScenarioStatus.RUNNING
+        )
         completed_count = sum(
-            1 for s in all_stats if s.status == ScenarioStatus.COMPLETED)
+            1 for s in all_stats if s.status == ScenarioStatus.COMPLETED
+        )
         total_count = len(self.scenarios)
 
         # System resources
@@ -195,7 +304,10 @@ class LiveProgressDisplay:
 
         return overhead
 
-    def _build_scenario_table(self, all_stats: List[LiveScenarioStats]) -> Table:
+    def _build_scenario_table(
+        self,
+        all_stats: List[LiveScenarioStats]
+    ) -> Table:
         """
         Build scenario progress table.
 
@@ -208,23 +320,27 @@ class LiveProgressDisplay:
         table = Table(show_header=False, box=None, padding=(0, 1))
 
         # Add columns
-        name_length = 20
+        name_length = 25
         table.add_column("Icon", width=2)
         table.add_column("Scenario", width=name_length)
         table.add_column("Progress", width=20)
-        table.add_column("Stats", width=40)
+        table.add_column("Stats", width=50)
 
         if not all_stats:
             table.add_row(
-                "", "", "[yellow]No scenarios running...[/yellow]", "")
+                "",
+                "",
+                "[yellow]No scenarios running...[/yellow]",
+                ""
+            )
             return table
 
         # Add scenario rows
         for stats in all_stats:
             # Truncate scenario name
             name = stats.scenario_name
-            if len(name) > name_length-2:
-                name = name[:name_length-5] + "..."
+            if len(name) > name_length - 2:
+                name = name[:name_length - 5] + "..."
 
             # Status-based icon and color
             icon, name_color = self._get_status_display(stats.status)
@@ -233,18 +349,24 @@ class LiveProgressDisplay:
             progress_text = self._build_progress_text(stats)
 
             # Stats
-            portfolio_value = stats.portfolio_value
+            portfolio_value = stats.current_balance
             total_trades = stats.total_trades
             winning = stats.winning_trades
             losing = stats.losing_trades
 
             trades = ""
             # Only show trades when not in initial states
-            if stats.status not in (ScenarioStatus.INITIALIZED, ScenarioStatus.WARMUP):
+            if stats.status not in (
+                ScenarioStatus.INITIALIZED,
+                ScenarioStatus.WARMUP_DATA_TICKS,
+                ScenarioStatus.WARMUP_DATA_BARS,
+                ScenarioStatus.WARMUP_TRADER,
+                ScenarioStatus.INIT_PROCESS
+            ):
                 trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
 
             # Format P/L
-            pnl = stats.portfolio_value - stats.initial_balance
+            pnl = stats.current_balance - stats.initial_balance
             if pnl >= 0:
                 pnl_color = "green"
                 pnl_sign = "+"
@@ -252,8 +374,11 @@ class LiveProgressDisplay:
                 pnl_color = "red"
                 pnl_sign = ""
 
+            # Dirty flag indicator
+            dirty_flag = " 🏴" if stats.portfolio_dirty_flag else ""
+
             stats_text = (
-                f"[{pnl_color}]${portfolio_value:>8,.0f}[/{pnl_color}] "
+                f"[{pnl_color}]${portfolio_value:>8,.0f}{dirty_flag}[/{pnl_color}] "
                 f"[dim]({pnl_sign}${pnl:>6,.2f})[/dim] \n"
                 f"[blue]{trades}[/blue]"
             )
@@ -281,10 +406,14 @@ class LiveProgressDisplay:
         match status:
             case ScenarioStatus.INITIALIZED:
                 return "⏸️", "dim"
-            case ScenarioStatus.WARMUP:
+            case ScenarioStatus.WARMUP_DATA_TICKS:
                 return "🔥", "yellow"
-            case ScenarioStatus.WARMUP_COMPLETE:
-                return "🔥", "dim"
+            case ScenarioStatus.WARMUP_DATA_BARS:
+                return "🔥", "yellow"
+            case ScenarioStatus.WARMUP_TRADER:
+                return "🔥", "yellow"
+            case ScenarioStatus.INIT_PROCESS:
+                return "⚙️", "cyan"
             case ScenarioStatus.RUNNING:
                 return "🔬", "cyan"
             case ScenarioStatus.COMPLETED:
@@ -307,11 +436,15 @@ class LiveProgressDisplay:
         # Status-specific messages for non-running states
         match stats.status:
             case ScenarioStatus.INITIALIZED:
-                return "[dim]Initializing...[/dim]"
-            case ScenarioStatus.WARMUP:
-                return "[dim]Warming up...[/dim]"
-            case ScenarioStatus.WARMUP_COMPLETE:
-                return "[green]Warmup complete[/green]"
+                return "[dim]Initialized[/dim]"
+            case ScenarioStatus.WARMUP_DATA_TICKS:
+                return "[yellow]Loading ticks...[/yellow]"
+            case ScenarioStatus.WARMUP_DATA_BARS:
+                return "[yellow]Rendering bars...[/yellow]"
+            case ScenarioStatus.WARMUP_TRADER:
+                return "[yellow]Loading broker...[/yellow]"
+            case ScenarioStatus.INIT_PROCESS:
+                return "[cyan]Starting...[/cyan]"
 
         # For RUNNING and COMPLETED: show progress bar
         progress_percent = stats.progress_percent
@@ -320,30 +453,3 @@ class LiveProgressDisplay:
         bar = "█" * filled + "░" * (bar_width - filled)
 
         return f"{bar} {progress_percent:>5.1f}%"
-
-    def format_scenario_name(self, name: str, max_length: int = 10) -> str:
-        """
-        Format scenario name for display (truncate intelligently).
-
-        Args:
-            name: Full scenario name
-            max_length: Maximum display length
-
-        Returns:
-            Truncated name
-        """
-        if len(name) <= max_length:
-            return name
-
-        # Try to keep symbol + meaningful part
-        # Example: "EURUSD_window_02" -> "EUR_win02"
-        parts = name.split('_')
-
-        if len(parts) >= 2:
-            # Keep first part (symbol) + abbreviated rest
-            symbol = parts[0][:3]  # First 3 chars of symbol
-            rest = ''.join(parts[1:])[:max_length - len(symbol) - 1]
-            return f"{symbol}_{rest}"
-
-        # Fallback: Simple truncation
-        return name[:max_length - 3] + "..."

@@ -22,6 +22,7 @@ from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
+from python.framework.utils.trade_simulator_utils import pending_order_to_position
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position
 from ..types.order_types import (
@@ -216,7 +217,7 @@ class TradeSimulator:
 
         # Generate order ID
         self._order_counter += 1
-        order_id = f"order_{self._order_counter}"
+        order_id = self.portfolio.get_next_position_id(symbol)
 
         # Some checks which don't have to be made "at the broker" (after the delay)
 
@@ -246,7 +247,8 @@ class TradeSimulator:
         # Execute based on order type
         if order_type == OrderType.MARKET:
             # Submit to execution engine
-            engine_order_id = self.latency_simulator.submit_open_order(
+            self.latency_simulator.submit_open_order(
+                order_id=order_id,
                 symbol=symbol,
                 direction=direction,
                 lots=lots,
@@ -255,7 +257,7 @@ class TradeSimulator:
             )
             # Return PENDING status
             result = OrderResult(
-                order_id=engine_order_id,
+                order_id=order_id,
                 status=OrderStatus.PENDING,
                 metadata={
                     "symbol": symbol,
@@ -289,7 +291,7 @@ class TradeSimulator:
             pending_order: PendingOrder with order_action=PendingOrderAction.OPEN
         """
         self.logger.info(
-            f"📋 Open Portfolio Position start - At Tick: {self._tick_counter}")
+            f"📋 Open Portfolio Position from Pending Order: {pending_order.pending_order_id} - at tick: {self._tick_counter}")
         self.logger.verbose(
             f"PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}")
         self.logger.verbose(
@@ -336,13 +338,14 @@ class TradeSimulator:
         if margin_required > free_margin:
             self._orders_rejected += 1
             return create_rejection_result(
-                order_id=pending_order.order_id,
+                order_id=pending_order.pending_order_id,
                 reason=RejectionReason.INSUFFICIENT_MARGIN,
                 message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
             )
 
         # Open position in portfolio
         position = self.portfolio.open_position(
+            order_id=pending_order.pending_order_id,  # Pass order_id to portfolio
             symbol=pending_order.symbol,
             direction=pending_order.direction,
             lots=pending_order.lots,
@@ -356,7 +359,7 @@ class TradeSimulator:
 
         # Create order result for history
         result = OrderResult(
-            order_id=pending_order.order_id,
+            order_id=pending_order.pending_order_id,
             status=OrderStatus.EXECUTED,
             executed_price=entry_price,
             executed_lots=pending_order.lots,
@@ -464,7 +467,6 @@ class TradeSimulator:
         # Check if position exists
         position = self.portfolio.get_position(position_id)
         if not position:
-            from datetime import datetime
             return create_rejection_result(
                 order_id=f"close_{position_id}",
                 reason=RejectionReason.BROKER_ERROR,
@@ -479,7 +481,6 @@ class TradeSimulator:
         )
 
         # Return PENDING result (order not filled yet!)
-        from datetime import datetime
         return OrderResult(
             order_id=order_id,
             status=OrderStatus.PENDING,
@@ -504,18 +505,18 @@ class TradeSimulator:
             pending_order: PendingOrder with order_action=PendingOrderAction.CLOSE
         """
         self.logger.info(
-            f"📋 Close and Fill Order start - At Tick: {self._tick_counter}")
+            f"📋 Close and Fill Order {pending_order.pending_order_id}, at tick: {self._tick_counter}")
         self.logger.verbose(
             f"PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}")
         self.logger.verbose(
             f"CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}")
 
         # Get position
-        position = self.portfolio.get_position(pending_order.position_id)
+        position = self.portfolio.get_position(pending_order.pending_order_id)
         if not position:
             self.logger.warning(
-                f"⚠️ Close order {pending_order.order_id} failed: "
-                f"Position {pending_order.position_id} not found"
+                f"⚠️ Close order {pending_order.pending_order_id} failed: "
+                f"Position {pending_order.pending_order_id} not found"
             )
             return
 
@@ -530,21 +531,20 @@ class TradeSimulator:
 
         # Close position
         realized_pnl = self.portfolio.close_position_portfolio(
-            position_id=pending_order.position_id,
+            position_id=pending_order.pending_order_id,
             exit_price=close_price,
             exit_fee=None  # MVP: No exit commission
         )
 
         # Log close execution
         self.logger.debug(
-            f"💰 Position closed: {pending_order.position_id} "
+            f"💰 Position closed: {pending_order.pending_order_id} "
             f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
         )
 
         # Create order result for history
-        from datetime import datetime
         result = OrderResult(
-            order_id=pending_order.order_id,
+            order_id=pending_order.pending_order_id,
             status=OrderStatus.EXECUTED,
             executed_price=close_price,
             executed_lots=pending_order.close_lots if pending_order.close_lots else position.lots,
@@ -552,7 +552,7 @@ class TradeSimulator:
             commission=0.0,
             metadata={
                 "realized_pnl": realized_pnl,
-                "position_id": pending_order.position_id
+                "position_id": pending_order.pending_order_id
             }
         )
 
@@ -599,29 +599,43 @@ class TradeSimulator:
         return self.portfolio.get_account_info()
 
     def get_open_positions(self) -> List[Position]:
-        """Get all open positions"""
-        return self.portfolio.get_open_positions()
-
-    def get_pending_orders(self, symbol: Optional[str] = None) -> List[PendingOrder]:
         """
-        Get list of pending_order orders waiting for execution.
+        Get all ACTIVE positions (real + pending OPENs, excluding pending CLOSEs).
 
-        Args:
-            symbol: Optional symbol filter (e.g. "EURUSD")
+        Decision Logic sees unified view:
+        - Real positions from Portfolio
+        - Pending OPEN orders as pseudo-positions (pending=True)
+        - Excludes positions with pending CLOSE orders
+
+        This hides latency simulation details from Decision Logic.
 
         Returns:
-            List of PendingOrder objects, optionally filtered by symbol
+            List of Position objects (mix of real and pseudo-positions)
         """
-        # Hole alle pending_order orders als Liste
-        all_pending = self.latency_simulator.get_pending_orders(
+        # Get real positions from portfolio
+        positions = self.portfolio.get_open_positions()
+
+        # Get pending OPEN orders as pseudo-positions
+        pending_opens = self.latency_simulator.get_pending_orders(
+            PendingOrderAction.OPEN
         )
+        pseudo_positions = [
+            pending_order_to_position(po) for po in pending_opens
+        ]
 
-        # Wenn kein Symbol-Filter, gib alle zurück
-        if symbol is None:
-            return all_pending
+        # Filter out positions with pending CLOSE orders
+        pending_closes = self.latency_simulator.get_pending_orders(
+            PendingOrderAction.CLOSE
+        )
+        closing_position_ids = [pc.pending_order_id for pc in pending_closes]
 
-        # Filtere nach Symbol
-        return [order for order in all_pending if order.symbol == symbol]
+        active_positions = [
+            p for p in positions
+            if p.position_id not in closing_position_ids
+        ]
+
+        # Combine: active real positions + pending opens
+        return active_positions + pseudo_positions
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""
@@ -630,10 +644,6 @@ class TradeSimulator:
     def get_balance(self) -> float:
         """Get account balance"""
         return self.portfolio.balance
-
-    def get_equity(self) -> float:
-        """Get account equity (balance + unrealized P&L)"""
-        return self.portfolio.get_equity()
 
     def get_free_margin(self) -> float:
         """Get free margin"""
@@ -798,3 +808,6 @@ class TradeSimulator:
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
+
+    def get_tick_counter(self) -> int:
+        return self._tick_counter

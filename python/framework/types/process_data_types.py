@@ -21,8 +21,9 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.trading_env.broker_config import BrokerType
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.decision_logic_types import DecisionLogicStatistics
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.performance_stats_types import BatchPerformanceStats
-from python.framework.types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_types import CostBreakdown, ExecutionStats, PortfolioStats
 from python.framework.workers.worker_coordinator import WorkerCoordinator
@@ -178,6 +179,9 @@ class ProcessScenarioConfig:
     scenario_set_name: str = ""
     run_timestamp: str = ""
 
+    # Live Stats Config
+    live_stats_config: LiveStatsExportConfig = None
+
     # === TRADING SIMULATOR CONFIG ===
     broker_type: BrokerType = None
     initial_balance: float = 0
@@ -186,10 +190,11 @@ class ProcessScenarioConfig:
     @staticmethod
     def from_scenario(
         scenario: SingleScenario,
-        app_config: AppConfigLoader,
+        app_config_loader: AppConfigLoader,
         scenario_index: int,
         scenario_set_name: str,
-        run_timestamp: str
+        run_timestamp: str,
+        live_stats_config: LiveStatsExportConfig
     ) -> 'ProcessScenarioConfig':
         """
         Create ProcessScenarioConfig from SingleScenario + AppConfig.
@@ -224,7 +229,7 @@ class ProcessScenarioConfig:
             'decision_logic_config', {})
 
         # Execution config
-        exec_config = scenario.execution_config or app_config.get_execution_config()
+        exec_config = scenario.execution_config or app_config_loader.get_execution_config()
         parallel_workers = exec_config.get('parallel_workers', False)
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0
@@ -235,6 +240,10 @@ class ProcessScenarioConfig:
         # Changed: Read 'account_currency' instead of 'currency'
         account_currency = scenario.trade_simulator_config.get(
             'account_currency', 'auto')
+
+        # Default live stats config if not provided
+        if live_stats_config is None:
+            live_stats_config = LiveStatsExportConfig(enabled=False)
 
         return ProcessScenarioConfig(
             name=scenario.name,
@@ -250,6 +259,7 @@ class ProcessScenarioConfig:
             parallel_threshold=parallel_threshold,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
+            live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
             initial_balance=initial_balance,
             account_currency=account_currency  # Changed from 'currency'
@@ -356,18 +366,3 @@ class ProcessResult:
             'error_message': self.error_message,
             'traceback': self.traceback,
         }
-
-
-@dataclass
-class BatchExecutionSummary:
-    """
-    Summary of batch execution results.
-    Broker config loaded once in main process
-    Used by BrokerSummary for report generation (no redundant loading)
-    broker_config: Any = None  # BrokerConfig instance
-    """
-    success: bool
-    scenarios_count: int
-    summary_execution_time: float
-    scenario_list:  List[ProcessResult] = None
-    broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo] = None

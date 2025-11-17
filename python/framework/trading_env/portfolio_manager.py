@@ -18,7 +18,7 @@ from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
-from .trading_fees import AbstractTradingFee
+from .trading_fees import AbstractTradingFee, FeeType
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
@@ -100,8 +100,14 @@ class PortfolioManager:
     # Position Management
     # ============================================
 
+    # Generate position ID
+    def get_next_position_id(self, symbol) -> str:
+        self._position_counter += 1
+        return f"pos_{symbol.lower()}_{self._position_counter}"
+
     def open_position(
         self,
+        order_id: str,  # Link to original order
         symbol: str,
         direction: OrderDirection,
         lots: float,
@@ -117,9 +123,8 @@ class PortfolioManager:
 
         Accepts entry_fee (typically SpreadFee).
         """
-        # Generate position ID
-        self._position_counter += 1
-        position_id = f"pos_{symbol.lower()}_{self._position_counter}"
+        # order_id becomes position id.
+        position_id = order_id
 
         # Create position
         position = Position(
@@ -140,7 +145,6 @@ class PortfolioManager:
             position.add_fee(entry_fee)
 
             # Update cost tracking object
-            from .trading_fees import FeeType
             if entry_fee.fee_type == FeeType.SPREAD:
                 self._cost_tracking.total_spread_cost += entry_fee.cost
             elif entry_fee.fee_type == FeeType.COMMISSION:
@@ -177,7 +181,6 @@ class PortfolioManager:
             position.add_fee(exit_fee)
 
             # Update cost tracking
-            from .trading_fees import FeeType
             if exit_fee.fee_type == FeeType.COMMISSION:
                 self._cost_tracking.total_commission += exit_fee.cost
             elif exit_fee.fee_type == FeeType.SWAP:
@@ -349,14 +352,22 @@ class PortfolioManager:
         return len(self.open_positions) > 0
 
     # ============================================
-    # Account Information
+    # Account Information - for example, for decision
     # ============================================
 
     def get_account_info(self) -> AccountInfo:
         """
         Get current account information.
 
-        Always returns copy (safe for external use).
+        Returns account state including:
+        - balance: Total account balance
+        - equity: Balance + unrealized P&L
+        - margin_used: Margin locked in open positions
+        - free_margin: Available margin for new trades
+        - margin_level: (equity / margin_used) * 100
+
+        Returns:
+            AccountInfo dataclass with all account metrics
         """
         # Ensure positions have latest prices (lazy update)
         self._ensure_positions_updated()
@@ -369,13 +380,16 @@ class PortfolioManager:
         # Equity = Balance + Unrealized P&L
         equity = self.balance + unrealized_pnl
 
-        # Calculate margin used
-        margin_used = sum(
-            pos.lots * 100000 * pos.entry_price / self.leverage
-            for pos in self.open_positions.values()
-        )
+        # Calculate margin used (delegated to broker adapter)
+        margin_used = 0.0
+        if self._current_tick is not None:
+            for pos in self.open_positions.values():
+                position_margin = self.broker_config.calculate_margin(
+                    pos.symbol, pos.lots, self._current_tick
+                )
+                margin_used += position_margin
 
-        # Free margin
+        # Free margin (calculated AFTER loop!)
         free_margin = equity - margin_used
 
         # Margin level
@@ -408,7 +422,7 @@ class PortfolioManager:
     def get_losing_trades(self):
         return self._losing_trades
 
-    def get_equity(self) -> float:
+    def _calculate_equity(self) -> float:
         """Get current equity (balance + unrealized P&L)"""
         unrealized_pnl = sum(
             pos.unrealized_pnl for pos in self.open_positions.values()
@@ -474,7 +488,7 @@ class PortfolioManager:
             self._total_loss += abs(realized_pnl)
 
         # Update max equity
-        equity = self.get_equity()
+        equity = self._calculate_equity()
         if equity > self._max_equity:
             self._max_equity = equity
 

@@ -136,8 +136,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         3. Opposite direction signal → Close old, open new (reversal)
         4. New signal with no position → Open position (entry)
 
-        CRITICAL FIX: Now checks BOTH open positions AND pending orders
-        to prevent duplicate order submissions during execution delays!
+        Note: get_open_positions() automatically excludes positions being closed.
+        Latency simulation is handled internally by TradeSimulator.
 
         Args:
             decision: Decision object from compute()
@@ -159,17 +159,11 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Get BOTH positions AND pending orders
         # ============================================
         open_positions = self.trading_api.get_open_positions()
-        pending_orders = self.trading_api.get_pending_orders()
 
-        # CRITICAL: Check if we have pending orders for same direction
-        # This prevents duplicate submissions during execution delay!
+        # Note: get_open_positions() already filters out positions being closed.
+        # Latency simulation is handled internally by TradeSimulator.
+
         new_direction = OrderDirection.LONG if decision.action == DecisionLogicAction.BUY else OrderDirection.SHORT
-
-        # Check if we already have a pending order for this direction
-        for pending in pending_orders:
-            pending_dir = pending.direction
-            if pending_dir == new_direction:
-                return None
 
         # ============================================
         # STEP 1: Handle FLAT signal (exit strategy)
@@ -210,7 +204,8 @@ class SimpleConsensus(AbstractDecisionLogic):
                 f"(ID: {current_position.position_id})"
             )
             self.trading_api.close_position(current_position.position_id)
-            # Continue to open new position below
+            # This is it for this tick, we'll wait until the position gets closed properly
+            return
 
         # ============================================
         # STEP 3: Open new position

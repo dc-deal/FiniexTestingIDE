@@ -118,11 +118,11 @@ class BarRenderer:
         max_history = 1000
 
         # ============ DEBUG START ============
-        self.logger.debug(
+        self.logger.verbose(
             f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
         # ============ DEBUG END ============
 
-        self.logger.debug(
+        self.logger.verbose(
             f"📊 {bar.symbol} {bar.timeframe} archived | "
             f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
         )
@@ -131,7 +131,7 @@ class BarRenderer:
         history.append(bar)
 
         # ============ DEBUG START ============
-        self.logger.debug(f"   History size AFTER append: {len(history)}")
+        self.logger.verbose(f"   History size AFTER append: {len(history)}")
         # ============ DEBUG END ============
 
         if len(history) > max_history:

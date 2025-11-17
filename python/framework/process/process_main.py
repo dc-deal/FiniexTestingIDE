@@ -1,18 +1,21 @@
 
 
+from multiprocessing import Queue
 import time
 import traceback
+from typing import Optional
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.configuration.app_config_loader import AppConfigLoader
-from python.framework.process.process_executor import execute_tick_loop
+from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_live_queue_helper import send_status_update
 from python.framework.process.process_startup_prepreation import process_startup_preparation
+from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
-from python.framework.types.scenario_set_types import SingleScenario
 
 
 def process_main(
     config: ProcessScenarioConfig,
-    shared_data: ProcessDataPackage
+    shared_data: ProcessDataPackage,
+    live_queue: Optional[Queue] = None
 ) -> ProcessResult:
     """
     Main process entry point.
@@ -29,8 +32,11 @@ def process_main(
     """
     try:
         start_time = time.time()
+        # === STATUS: INIT_PROCESS ===
+        send_status_update(live_queue, config, ScenarioStatus.INIT_PROCESS)
+
         # === CREATE SCENARIO LOGGER ===
-        # CORRECTED: Use shared run_timestamp from BatchOrchestrator
+        # Use shared run_timestamp from BatchOrchestrator
         scenario_logger = ScenarioLogger(
             scenario_set_name=config.scenario_set_name,
             scenario_name=config.name,
@@ -44,9 +50,12 @@ def process_main(
         scenario_logger.debug(
             f"🔄 Process preperation finished")
 
+        # === STATUS: RUNNING ===
+        send_status_update(live_queue, config, ScenarioStatus.RUNNING)
+
         # === TICK LOOP EXECUTION ===
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects)
+            config, prepared_objects, live_queue)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
@@ -55,6 +64,9 @@ def process_main(
 
         log_buffer = scenario_logger.get_buffer()
         scenario_logger.close()
+
+        # === STATUS: COMPLETED ===
+        send_status_update(live_queue, config, ScenarioStatus.COMPLETED)
 
         result = ProcessResult(
             success=True,
@@ -75,7 +87,10 @@ def process_main(
         try:
             # try to fetch Log, if possible.
             log_buffer = scenario_logger.get_buffer()
+            send_status_update(live_queue, config,
+                               ScenarioStatus.FINISHED_WITH_ERROR)
         except:
+            print(e)
             pass
         return ProcessResult(
             success=False,
@@ -87,71 +102,3 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
-
-
-# ============================================================================
-# PROCESS EXECUTOR CLASS (Orchestration Wrapper)
-# ============================================================================
-
-
-class ProcessExecutor:
-    """
-    Orchestrates scenario execution.
-
-    Wrapper around top-level process functions.
-    Provides clean interface for BatchOrchestrator.
-
-    DESIGN:
-    - Holds scenario and config
-    - Calls process_main() (top-level function)
-    - Compatible with ThreadPoolExecutor and ProcessPoolExecutor
-    """
-
-    def __init__(
-        self,
-        scenario: SingleScenario,
-        app_config: AppConfigLoader,
-        scenario_index: int,
-        scenario_set_name: str,
-        run_timestamp: str
-    ):
-        """
-        Initialize process executor.
-
-        CORRECTED: Added scenario_set_name and run_timestamp
-
-        Args:
-            scenario: Scenario to execute
-            app_config: Application configuration
-            scenario_index: Index in scenario list
-            scenario_set_name: Name of scenario set (for logger)
-            run_timestamp: Shared timestamp (for logger)
-        """
-        self.scenario = scenario
-        self.app_config = app_config
-        self.scenario_index = scenario_index
-        self.scenario_set_name = scenario_set_name
-        self.run_timestamp = run_timestamp
-
-        # Create config (serializable)
-        self.config = ProcessScenarioConfig.from_scenario(
-            scenario=scenario,
-            app_config=app_config,
-            scenario_index=scenario_index,
-            scenario_set_name=scenario_set_name,
-            run_timestamp=run_timestamp
-        )
-
-    def run(self, shared_data: ProcessDataPackage) -> ProcessResult:
-        """
-        Execute scenario with shared data.
-
-        Entry point for executor. Calls process_main().
-
-        Args:
-            shared_data: Prepared shared data
-
-        Returns:
-            ProcessResult with execution results
-        """
-        return process_main(self.config, shared_data)

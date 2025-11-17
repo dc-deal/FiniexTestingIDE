@@ -11,11 +11,11 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import Any, Dict, List, Optional
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
-from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult, ProcessTickLoopResult
-from python.framework.types.scenario_set_performance_types import ProfilingData
+from python.framework.types.process_data_types import ProcessResult
 
 
 class WorkerDecisionBreakdownSummary:

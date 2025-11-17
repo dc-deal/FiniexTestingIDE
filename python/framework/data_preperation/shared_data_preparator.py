@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 import pandas as pd
 
+from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.types.live_scenario_stats_types import ScenarioStatus
 from python.framework.types.process_data_types import (
     RequirementsMap,
     ProcessDataPackage,
@@ -23,9 +25,6 @@ from python.framework.types.process_data_types import (
 )
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
 
 
 class SharedDataPreparator:
@@ -49,7 +48,7 @@ class SharedDataPreparator:
     - Prevents pandas datetime comparison errors
     """
 
-    def __init__(self, data_dir: str = "data/processed"):
+    def __init__(self, logger: ScenarioLogger, data_dir: str = "data/processed"):
         """
         Initialize data preparator with index managers.
 
@@ -57,69 +56,28 @@ class SharedDataPreparator:
             data_dir: Root data directory containing parquet files and indices
         """
         self.data_dir = Path(data_dir)
+        self._logger = logger
 
         # Use existing index managers
-        vLog.info("📚 Initializing index managers...")
+        self._logger.info("📚 Initializing index managers...")
 
         # Tick index manager
-        self.tick_index_manager = ParquetIndexManager(self.data_dir)
+        self.tick_index_manager = ParquetIndexManager(
+            self.data_dir, self._logger)
         self.tick_index_manager.build_index()  # Auto-loads or rebuilds
 
         # Bar index manager
-        self.bar_index_manager = ParquetBarsIndexManager(self.data_dir)
+        self.bar_index_manager = ParquetBarsIndexManager(
+            self.data_dir, self._logger)
         self.bar_index_manager.build_index()  # Auto-loads or rebuilds
 
-        vLog.info(
+        self._logger.info(
             f"✅ Indices loaded: "
             f"{len(self.tick_index_manager.list_symbols())} tick symbols, "
             f"{len(self.bar_index_manager.list_symbols())} bar symbols"
         )
 
-    def prepare_all(self, requirements: RequirementsMap) -> ProcessDataPackage:
-        """
-        Prepare all data based on requirements.
-
-        MAIN ENTRY POINT for data preparation.
-
-        Args:
-            requirements: Aggregated requirements from all scenarios
-
-        Returns:
-            ProcessDataPackage with all prepared data
-        """
-        vLog.info("🔄 Starting data preparation...")
-
-        # === PHASE 1A: Load Ticks ===
-        ticks_data, tick_counts, tick_ranges = self._prepare_ticks(
-            requirements.tick_requirements
-        )
-
-        # === PHASE 1B: Load Bars ===
-        bars_data, bar_counts = self._prepare_bars(
-            requirements.bar_requirements
-        )
-
-        # === PHASE 1C: Package Data ===
-        package = ProcessDataPackage(
-            ticks=ticks_data,
-            bars=bars_data,
-            tick_counts=tick_counts,
-            tick_ranges=tick_ranges,
-            bar_counts=bar_counts,
-            broker_configs=None
-        )
-
-        # Log summary
-        total_ticks = sum(tick_counts.values())
-        total_bars = sum(bar_counts.values())
-        vLog.info(
-            f"✅ Data prepared: {total_ticks:,} ticks, {total_bars:,} bars "
-            f"({len(ticks_data)} tick sets, {len(bars_data)} bar sets)"
-        )
-
-        return package
-
-    def _prepare_ticks(
+    def prepare_ticks(
         self,
         requirements: List[TickRequirement]
     ) -> Tuple[Dict[str, Tuple[Any, ...]], Dict[str, int], Dict[str, Tuple[datetime, datetime]]]:
@@ -137,7 +95,7 @@ class SharedDataPreparator:
         tick_ranges = {}
 
         for req in requirements:
-            vLog.info(f"📊 Loading ticks for {req.symbol}...")
+            self._logger.info(f"📊 Loading ticks for {req.symbol}...")
 
             # Determine loading strategy
             if req.max_ticks is not None:
@@ -160,7 +118,7 @@ class SharedDataPreparator:
             tick_counts[req.scenario_name] = count
             tick_ranges[req.scenario_name] = time_range
 
-            vLog.info(
+            self._logger.info(
                 f"  ✅ {count:,} ticks loaded ({time_range[0]} → {time_range[1]})")
 
         return ticks_data, tick_counts, tick_ranges
@@ -317,7 +275,7 @@ class SharedDataPreparator:
 
         return all_ticks, len(all_ticks), time_range
 
-    def _prepare_bars(
+    def prepare_bars(
         self,
         requirements: List[BarRequirement]
     ) -> Tuple[Dict[Tuple[str, str, datetime], Tuple[Any, ...]], Dict[Tuple[str, str, datetime], int]]:
@@ -345,13 +303,13 @@ class SharedDataPreparator:
 
         # Load and filter for each (symbol, timeframe)
         for (symbol, timeframe), reqs in by_symbol_tf.items():
-            vLog.info(f"📊 Loading bars for {symbol} {timeframe}...")
+            self._logger.info(f"📊 Loading bars for {symbol} {timeframe}...")
 
             # Use manager's API to get bar file
             bar_file = self.bar_index_manager.get_bar_file(symbol, timeframe)
 
             if bar_file is None:
-                vLog.error(
+                self._logger.error(
                     f"Bar file not found for {symbol} {timeframe} - "
                     f"available timeframes: {self.bar_index_manager.get_available_timeframes(symbol)}"
                 )
@@ -385,7 +343,7 @@ class SharedDataPreparator:
 
                 # Validate count
                 if len(warmup_bars_df) < req.warmup_count:
-                    vLog.warning(
+                    self._logger.warning(
                         f"  ⚠️  Only {len(warmup_bars_df)} warmup bars available "
                         f"(requested {req.warmup_count}) for {symbol} {timeframe} "
                         f"before {req_start_time}"
@@ -401,7 +359,7 @@ class SharedDataPreparator:
                 bars_data[key] = tuple(bars_list)
                 bar_counts[key] = len(bars_list)
 
-                vLog.info(
+                self._logger.info(
                     f"  ✅ {len(bars_list)} warmup bars filtered "
                     f"(before {req_start_time})"
                 )

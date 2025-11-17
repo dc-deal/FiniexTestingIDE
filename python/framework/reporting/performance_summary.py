@@ -17,7 +17,8 @@ Renders:
 
 from typing import Any, Dict, List
 
-from python.framework.types.process_data_types import BatchExecutionSummary, ProcessResult
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.process_data_types import ProcessResult
 
 
 class PerformanceSummary:

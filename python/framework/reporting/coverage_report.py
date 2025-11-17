@@ -15,6 +15,7 @@ import pytz
 
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
 from python.framework.types.market_types import VALIDATION_TIMEZONE
+from python.framework.utils.time_utils import format_duration
 
 
 @dataclass
@@ -52,7 +53,7 @@ class Gap:
     @property
     def duration_human(self) -> str:
         """Human-readable duration"""
-        return MarketCalendar.format_duration(self.gap_seconds)
+        return format_duration(self.gap_seconds)
 
     @property
     def severity_icon(self) -> str:

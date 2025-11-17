@@ -93,3 +93,28 @@ def serialize_value(v):
 
     # Fallback: convert to string as last resort
     return str(v)
+
+
+def serialize_current_bars(current_bars: Dict[str, Any]) -> Dict[str, Dict]:
+    """
+    Serialize current bars for JSON export.
+
+    Args:
+        current_bars: Dict[timeframe, Bar] from bar_rendering_controller
+
+    Returns:
+        JSON-serializable dict
+    """
+    serialized = {}
+
+    for timeframe, bar in current_bars.items():
+        serialized[timeframe] = {
+            "time": bar.timestamp if hasattr(bar, 'timestamp') else None,
+            "open": float(bar.open) if hasattr(bar, 'open') else None,
+            "high": float(bar.high) if hasattr(bar, 'high') else None,
+            "low": float(bar.low) if hasattr(bar, 'low') else None,
+            "close": float(bar.close) if hasattr(bar, 'close') else None,
+            "volume": float(bar.volume) if hasattr(bar, 'volume') else None,
+        }
+
+    return serialized

@@ -1,161 +1,81 @@
-"""
-FiniexTestingIDE - Process Executor (CORRECTED)
-Process-based scenario execution with ProcessPool support
-"""
-import time
-import traceback
-from collections import defaultdict
-from python.framework.types.currency_codes import format_currency_simple
-from python.framework.types.process_data_types import (
-    ProcessPreparedDataObjects,
-    ProcessProfileData,
-    ProcessTickLoopResult,
-    ProcessScenarioConfig,
-)
-from python.framework.utils.process_debug_info_utils import get_tick_range_stats
+
+# ============================================================================
+# PROCESS EXECUTOR CLASS (Orchestration Wrapper)
+# ============================================================================
 
 
-def execute_tick_loop(
-    config: ProcessScenarioConfig,
-    prepared_objects: ProcessPreparedDataObjects
-) -> ProcessTickLoopResult:
+from multiprocessing import Queue
+from typing import Optional
+from python.configuration.app_config_loader import AppConfigLoader
+from python.framework.process.process_main import process_main
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
+from python.framework.types.scenario_set_types import SingleScenario
+
+
+class ProcessExecutor:
     """
-    Execute tick processing loop.
+    Orchestrates scenario execution.
 
-    MAIN PROCESSING: Iterate through ticks, process each.
+    Wrapper around top-level process functions.
+    Provides clean interface for BatchOrchestrator.
 
-    Args:
-        config: Scenario configuration
-        shared_data: Shared data package
-        prepared_objects: Objects from startup_preparation
-
-    Returns:
-        Dictionary with loop results
+    DESIGN:
+    - Holds scenario and config
+    - Calls process_main() (top-level function)
+    - Compatible with ThreadPoolExecutor and ProcessPoolExecutor
     """
-    coordinator = prepared_objects.coordinator
-    trade_simulator = prepared_objects.trade_simulator
-    bar_rendering_controller = prepared_objects.bar_rendering_controller
-    scenario_logger = prepared_objects.scenario_logger
-    decision_logic = prepared_objects.decision_logic
 
-    # Get ticks from shared_data (CoW!)
-    # ticks = shared_data.ticks[config.symbol]
-    # ToDo unoptimized, no CoW -
-    ticks = prepared_objects.ticks
+    def __init__(
+        self,
+        scenario: SingleScenario,
+        app_config_loader: AppConfigLoader,
+        scenario_index: int,
+        scenario_set_name: str,
+        run_timestamp: str,
+        live_stats_config: LiveStatsExportConfig = None
+    ):
+        """
+        Initialize process executor.
 
-    # Performance profiling
-    profile_times = defaultdict(float)
-    profile_counts = defaultdict(int)
-    tick_count = 0
+        CORRECTED: Added scenario_set_name and run_timestamp
 
-    tick_range_stats = get_tick_range_stats(prepared_objects)
+        Args:
+            scenario: Scenario to execute
+            app_config: Application configuration
+            scenario_index: Index in scenario list
+            scenario_set_name: Name of scenario set (for logger)
+            run_timestamp: Shared timestamp (for logger)
+        """
+        self.scenario = scenario
+        self.app_config = app_config_loader
+        self.scenario_index = scenario_index
+        self.scenario_set_name = scenario_set_name
+        self.run_timestamp = run_timestamp
+        self.live_stats_config = live_stats_config
 
-    scenario_logger.info(f"🔄 Starting tick loop ({len(ticks):,} ticks)")
-
-    # === TICK LOOP ===
-    for tick in ticks:
-        tick_count += 1
-        tick_start = time.perf_counter()
-
-        # === 1. Trade Simulator ===
-        t5 = time.perf_counter()
-        trade_simulator.update_prices(tick)
-        t6 = time.perf_counter()
-        profile_times['trade_simulator'] += (t6 - t5) * 1000
-        profile_counts['trade_simulator'] += 1
-
-        # === 2. Bar Rendering ===
-        t3 = time.perf_counter()
-        current_bars = bar_rendering_controller.process_tick(tick)
-        t4 = time.perf_counter()
-        profile_times['bar_rendering'] += (t4 - t3) * 1000
-        profile_counts['bar_rendering'] += 1
-
-        # === 3. Bar History Retrieval ===
-        t5 = time.perf_counter()
-        bar_history = bar_rendering_controller.get_all_bar_history(
-            symbol=config.symbol
+        # Create config (serializable)
+        self.config = ProcessScenarioConfig.from_scenario(
+            scenario=scenario,
+            app_config_loader=app_config_loader,
+            scenario_index=scenario_index,
+            scenario_set_name=scenario_set_name,
+            run_timestamp=run_timestamp,
+            live_stats_config=live_stats_config
         )
-        t6 = time.perf_counter()
-        profile_times['bar_history'] += (t6 - t5) * 1000
-        profile_counts['bar_history'] += 1
 
-        # === 4. Worker Processing + Decision ===
-        t7 = time.perf_counter()
-        decision = coordinator.process_tick(
-            tick=tick,
-            current_bars=current_bars,
-            bar_history=bar_history
-        )
-        t8 = time.perf_counter()
-        profile_times['worker_decision'] += (t8 - t7) * 1000
-        profile_counts['worker_decision'] += 1
+    def run(self,
+            shared_data: ProcessDataPackage,
+            live_queue: Optional[Queue] = None) -> ProcessResult:
+        """
+        Execute scenario with shared data.
 
-        # === 5. Order Execution ===
-        t9 = time.perf_counter()
-        try:
-            decision_logic.execute_decision(
-                decision, tick
-            )
-            # self.deps.performance_log.update_live_stats(
-            #     scenario_index=self.scenario_index,
-            #     ticks_processed=tick_count
-            # )
-        except Exception as e:
-            raise RuntimeError(
-                f"Order execution failed: {e} \n{traceback.format_exc()}")
+        Entry point for executor. Calls process_main().
 
-        t10 = time.perf_counter()
-        profile_times['order_execution'] += (t10 - t9) * 1000
-        profile_counts['order_execution'] += 1
+        Args:
+            shared_data: Prepared shared data
 
-        # === 6. Periodic Stats Update ===
-        # if tick_count % 500 == 0:
-        #     t11 = time.perf_counter()
-        #     self.deps.performance_log.update_live_stats(
-        #         scenario_index=self.scenario_index,
-        #         ticks_processed=tick_count
-        #     )
-        #     t12 = time.perf_counter()
-        #     profile_times['stats_update'] += (t12 - t11) * 1000
-        #     profile_counts['stats_update'] += 1
-
-        # Total tick time
-        tick_end = time.perf_counter()
-        profile_times['total_per_tick'] += (
-            tick_end - tick_start) * 1000
-
-    scenario_logger.info(
-        f"✅ Tick loop completed: {tick_count:,} ticks")
-
-    # === CLOSE OPEN TRADES ===
-    trade_simulator.close_all_remaining_orders()
-
-    # === CLEANUP COORDINATOR ===
-    coordinator.cleanup()
-    scenario_logger.debug("✅ Coordinator cleanup completed")
-
-    # === GET RESULTS ===
-    decision_statistics = decision_logic.get_statistics()
-    performance_stats = coordinator.performance_log.get_snapshot()
-    portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
-    execution_stats = trade_simulator.get_execution_stats()
-    cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
-
-    total_profit = portfolio_stats.total_profit
-    total_loss = portfolio_stats.total_loss
-    total_pnl = total_profit - total_loss
-    currency = portfolio_stats.currency
-    scenario_logger.debug(
-        f"💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}")
-
-    return ProcessTickLoopResult(
-        decision_statistics=decision_statistics,
-        performance_stats=performance_stats,
-        portfolio_stats=portfolio_stats,
-        execution_stats=execution_stats,
-        cost_breakdown=cost_breakdown,
-        profiling_data=ProcessProfileData(
-            profile_times=profile_times, profile_counts=profile_counts),
-        tick_range_stats=tick_range_stats
-    )
+        Returns:
+            ProcessResult with execution results
+        """
+        return process_main(self.config, shared_data, live_queue)

@@ -305,37 +305,6 @@ class MarketCalendar:
         return GapCategory.LARGE, f'🔴 Large gap - check data collection ({gap_hours:.2f}h)'
 
     @staticmethod
-    def format_duration(seconds: float) -> str:
-        """
-        Format duration in human-readable format.
-
-        Helper for gap reporting.
-
-        Args:
-            seconds: Duration in seconds
-
-        Returns:
-            Formatted string (e.g., "2h 15m", "45s", "3d 5h")
-        """
-        if seconds < 60:
-            return f"{int(seconds)}s"
-
-        minutes = seconds / 60
-        if minutes < 60:
-            return f"{int(minutes)}m"
-
-        hours = minutes / 60
-        if hours < 24:
-            h = int(hours)
-            m = int((hours - h) * 60)
-            return f"{h}h {m}m" if m > 0 else f"{h}h"
-
-        days = hours / 24
-        d = int(days)
-        h = int((days - d) * 24)
-        return f"{d}d {h}h" if h > 0 else f"{d}d"
-
-    @staticmethod
     def format_time_range(
         start: Union[datetime, str],
         end: Union[datetime, str],
