@@ -189,7 +189,9 @@ class AggressiveTrend(AbstractDecisionLogic):
         # ============================================
         if len(open_positions) > 0:
             current_position = open_positions[0]
-
+            if (current_position.pending):
+                # waiting for full close (or open)!
+                return
             # Same direction? Skip (we already have what the strategy wants)
             if current_position.direction == new_direction:
                 # self.logger.debug(
