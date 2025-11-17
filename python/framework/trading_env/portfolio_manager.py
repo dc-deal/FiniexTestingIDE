@@ -18,7 +18,7 @@ from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
-from .trading_fees import AbstractTradingFee
+from .trading_fees import AbstractTradingFee, FeeType
 from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
@@ -100,8 +100,14 @@ class PortfolioManager:
     # Position Management
     # ============================================
 
+    # Generate position ID
+    def get_next_position_id(self, symbol) -> str:
+        self._position_counter += 1
+        return f"pos_{symbol.lower()}_{self._position_counter}"
+
     def open_position(
         self,
+        order_id: str,  # Link to original order
         symbol: str,
         direction: OrderDirection,
         lots: float,
@@ -117,9 +123,8 @@ class PortfolioManager:
 
         Accepts entry_fee (typically SpreadFee).
         """
-        # Generate position ID
-        self._position_counter += 1
-        position_id = f"pos_{symbol.lower()}_{self._position_counter}"
+        # order_id becomes position id.
+        position_id = order_id
 
         # Create position
         position = Position(
@@ -140,7 +145,6 @@ class PortfolioManager:
             position.add_fee(entry_fee)
 
             # Update cost tracking object
-            from .trading_fees import FeeType
             if entry_fee.fee_type == FeeType.SPREAD:
                 self._cost_tracking.total_spread_cost += entry_fee.cost
             elif entry_fee.fee_type == FeeType.COMMISSION:
@@ -177,7 +181,6 @@ class PortfolioManager:
             position.add_fee(exit_fee)
 
             # Update cost tracking
-            from .trading_fees import FeeType
             if exit_fee.fee_type == FeeType.COMMISSION:
                 self._cost_tracking.total_commission += exit_fee.cost
             elif exit_fee.fee_type == FeeType.SWAP:

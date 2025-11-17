@@ -1,6 +1,3 @@
-# ============================================
-# python/framework/trading_env/decision_trading_api.py
-# ============================================
 """
 FiniexTestingIDE - Decision Trading API
 Public interface for Decision Logic to interact with trading environment
@@ -19,6 +16,12 @@ Post-MVP:
 - Order history access
 - EventBus integration
 
+ARCHITECTURE NOTE:
+- get_open_positions() returns ACTIVE positions (excluding those being closed)
+- Latency simulation (pending orders) is hidden from Decision Logic
+- This maintains clean separation: Decision Logic sees "logical state",
+  TradeSimulator handles "execution details"
+
 FUTURE NOTES:
 - Tick→MS Migration: Currently delays are tick-based. Post-MVP will use millisecond-based 
   timing with tick timestamp mapping for more realistic execution simulation.
@@ -28,9 +31,7 @@ FUTURE NOTES:
   to real broker. Example: DecisionTradingAPI(LiveTradeExecutor(broker_connection), required_types)
 """
 
-from typing import Any, Dict, List, Optional
-
-from python.framework.trading_env.order_latency_simulator import PendingOrder
+from typing import List, Optional
 
 from .trade_simulator import TradeSimulator
 from ..types.order_types import (
@@ -227,30 +228,6 @@ class DecisionTradingAPI:
             return [p for p in all_positions if p.symbol == symbol]
 
         return all_positions
-
-    def get_pending_orders(self, symbol: Optional[str] = None) -> List[PendingOrder]:
-        """
-        Get list of pending orders waiting for execution.
-
-        CRITICAL for preventing duplicate order submissions!
-        Decision Logics MUST check pending orders before submitting new ones.
-
-        Args:
-            symbol: Filter by symbol (None = all pending orders)
-
-        Returns:
-            List of pending order info dicts
-
-        Example:
-            # Check total exposure (positions + pending)
-            open_positions = len(self.trading_api.get_open_positions())
-            pending_orders = len(self.trading_api.get_pending_orders())
-            total_exposure = open_positions + pending_orders
-
-            if total_exposure >= max_positions:
-                return None  # Don't submit more orders
-        """
-        return self._simulator.get_pending_orders(symbol)
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """

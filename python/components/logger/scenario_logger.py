@@ -52,6 +52,8 @@ class ScenarioLogger(AbstractLogger):
 
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
+        self._tick_loop_started = False
+        self._tick_loop_count = 1
 
         self.run_dir = None
         self.file_logger = None
@@ -78,6 +80,14 @@ class ScenarioLogger(AbstractLogger):
     def reset_start_time(self):
         self.start_time = datetime.now()
 
+    def set_tick_loop_started(self, started: bool):
+        self._tick_loop_started = started
+        if (started):
+            self._tick_loop_count = 1
+
+    def set_current_tick(self, tick_count: int):
+        self._tick_loop_count = tick_count
+
     def _get_timestamp(self) -> str:
         """
         Get elapsed time since scenario start.
@@ -102,6 +112,8 @@ class ScenarioLogger(AbstractLogger):
             level: Log level (INFO, DEBUG, WARNING, ERROR)
             message: Log message
         """
+        if self._tick_loop_started:
+            message = f"{self._tick_loop_count: 5}| {message}"
         formatted_line = self._format_log_line(level, message, timestamp)
         # Console output (BUFFERED) - for scenario loggers.
         self._add_to_console_buffer(level, formatted_line)

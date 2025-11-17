@@ -22,6 +22,7 @@ class Position:
     Now includes List[AbstractTradingFee] for all costs.
     """
     position_id: str
+
     symbol: str
     direction: OrderDirection
     lots: float
@@ -41,6 +42,7 @@ class Position:
 
     # Status
     status: PositionStatus = PositionStatus.OPEN
+    pending: bool = False  # a converted pending order
 
     # Metadata
     comment: str = ""

@@ -14,7 +14,7 @@ Each Position contains List[AbstractTradingFee] that accumulate over time.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from enum import Enum
 

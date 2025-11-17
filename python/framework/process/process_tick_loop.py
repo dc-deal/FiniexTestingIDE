@@ -61,7 +61,11 @@ def execute_tick_loop(
         f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
 
     # === TICK LOOP ===
+    # from now on, log shows ticks.
+    scenario_logger.set_tick_loop_started(True)
     for tick_idx, tick in enumerate(ticks):
+        scenario_logger.set_current_tick(
+            tick_idx + 1)
         tick_start = time.perf_counter()
 
         # === 1. Trade Simulator ===
@@ -124,6 +128,7 @@ def execute_tick_loop(
         tick_end = time.perf_counter()
         profile_times['total_per_tick'] += (tick_end - tick_start) * 1000
 
+    scenario_logger.set_tick_loop_started(False)
     scenario_logger.info(
         f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
 

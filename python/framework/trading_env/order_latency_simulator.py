@@ -32,6 +32,7 @@ We simulate both with seeded random generators to create realistic yet
 reproducible order execution patterns.
 """
 
+from datetime import datetime
 import random
 from typing import Dict, List, Optional
 
@@ -95,23 +96,6 @@ class OrderLatencySimulator:
     All delays are seeded for reproducibility across runs.
     This allows testing strategies with consistent execution
     conditions while maintaining realistic timing behavior.
-
-    Usage:
-        # In TradeSimulator.__init__
-        seeds = config.get('trade_simulator_seeds', {})
-        self.latency_simulator = OrderLatencySimulator(
-            seeds, logger
-        )
-
-        # When order placed
-        order_id = self.latency_simulator.submit_open_order(
-            order_data, current_tick
-        )
-
-        # Every tick
-        filled_orders = self.latency_simulator.process_tick(tick_number)
-        for order in filled_orders:
-            self._fill_order(order)
     """
 
     def __init__(
@@ -161,6 +145,7 @@ class OrderLatencySimulator:
 
     def submit_open_order(
         self,
+        order_id: str,
         symbol: str,
         direction: OrderDirection,
         lots: float,
@@ -188,19 +173,17 @@ class OrderLatencySimulator:
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
 
-        # Create unique order ID
-        self._order_counter += 1
-        order_id = f"ord_{self._order_counter}"
-
         # Store pending order
         self._pending_orders[order_id] = PendingOrder(
-            order_id=order_id,
+            pending_order_id=order_id,
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
             order_action=PendingOrderAction.OPEN,
             symbol=symbol,
             direction=direction,
             lots=lots,
+            entry_price=0,     # ← NEW: Store for converter
+            entry_time=datetime.now(),       # ← NEW: Store for converter
             order_kwargs=kwargs
         )
 
@@ -241,17 +224,12 @@ class OrderLatencySimulator:
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
 
-        # Create unique order ID
-        self._order_counter += 1
-        order_id = f"close_{self._order_counter}"
-
         # Store pending close order
-        self._pending_orders[order_id] = PendingOrder(
-            order_id=order_id,
+        self._pending_orders[position_id] = PendingOrder(
+            pending_order_id=position_id,
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
             order_action=PendingOrderAction.CLOSE,
-            position_id=position_id,
             close_lots=close_lots
         )
 
@@ -266,7 +244,7 @@ class OrderLatencySimulator:
             f"Fill at tick: {current_tick + total_delay}"
         )
 
-        return order_id
+        return position_id
 
     def process_tick(self, tick_number: int) -> List[PendingOrder]:
         """
@@ -311,13 +289,34 @@ class OrderLatencySimulator:
         """
         return len(self._pending_orders)
 
-    def get_pending_orders(self) -> List[PendingOrder]:
+    def get_pending_orders(
+        self,
+        filter_pending_action: Optional[PendingOrderAction] = None
+    ) -> List[PendingOrder]:
         """
-        Get number of pending orders.
+        Get pending orders, optionally filtered by action type.
 
-        Useful for debugging and statistics.
+        Args:
+            filter_pending_action: Optional filter (OPEN or CLOSE)
+                                  None returns all pending orders
+
+        Returns:
+            List of PendingOrder objects matching the filter
+
+        Example:
+            # Get only pending CLOSE orders
+            closes = simulator.get_pending_orders(PendingOrderAction.CLOSE)
+
+            # Get all pending orders
+            all_pending = simulator.get_pending_orders()
         """
-        return list(self._pending_orders.values())
+        if filter_pending_action is None:
+            return list(self._pending_orders.values())
+
+        return [
+            pending for pending in self._pending_orders.values()
+            if pending.order_action == filter_pending_action
+        ]
 
     def clear_pending(self) -> None:
         """

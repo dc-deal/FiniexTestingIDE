@@ -12,11 +12,11 @@
     },
     "logging": {
         "performance_tracking": true,
-        "show_scenario_logging": false,
+        "show_scenario_logging": true,
         "write_system_info": true,
         "show_decision_logic_details": true,
         "warn_on_parameter_override": true,
-        "log_level": "INFO"
+        "log_level": "DEBUG"
     },
     "file_logging": {
         "enabled": false,
