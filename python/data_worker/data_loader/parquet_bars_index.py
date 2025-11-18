@@ -107,13 +107,16 @@ class ParquetBarsIndexManager:
         """
         Scan single bar parquet file and extract metadata.
 
+        Extended to include tick statistics and bar type distribution
+        for market analysis and scenario generation.
+
         Args:
             bar_file: Path to bar parquet file
 
         Returns:
-            Index entry dict
+            Index entry dict with metadata and aggregated statistics
         """
-        # Open parquet file (metadata-only)
+        # Open parquet file (metadata-only first)
         pq_file = pq.ParquetFile(bar_file)
 
         # Extract metadata
@@ -141,6 +144,22 @@ class ParquetBarsIndexManager:
         )
         end_time = last_bar['timestamp'][-1].as_py()
 
+        # === NEW: Load full DataFrame for aggregations ===
+        # Required for tick_count and bar_type statistics
+        df = pd.read_parquet(bar_file)
+
+        # Tick count statistics
+        total_tick_count = int(df['tick_count'].sum())
+        avg_ticks_per_bar = float(
+            df['tick_count'].mean()) if len(df) > 0 else 0.0
+        min_ticks_per_bar = int(df['tick_count'].min()) if len(df) > 0 else 0
+        max_ticks_per_bar = int(df['tick_count'].max()) if len(df) > 0 else 0
+
+        # Bar type distribution
+        real_bar_count = int((df['bar_type'] == 'real').sum())
+        synthetic_bar_count = int((df['bar_type'] == 'synthetic').sum())
+        hybrid_bar_count = int((df['bar_type'] == 'hybrid').sum())
+
         # Build index entry
         return {
             'file': bar_file.name,
@@ -152,7 +171,18 @@ class ParquetBarsIndexManager:
             'bar_count': pq_file.metadata.num_rows,
             'file_size_mb': round(bar_file.stat().st_size / (1024 * 1024), 2),
             'num_row_groups': pq_file.num_row_groups,
-            'rendered_at': metadata.get('rendered_at', 'unknown')
+            'rendered_at': metadata.get('rendered_at', 'unknown'),
+
+            # NEW: Tick statistics for scenario generation
+            'total_tick_count': total_tick_count,
+            'avg_ticks_per_bar': round(avg_ticks_per_bar, 2),
+            'min_ticks_per_bar': min_ticks_per_bar,
+            'max_ticks_per_bar': max_ticks_per_bar,
+
+            # NEW: Bar type distribution for quality analysis
+            'real_bar_count': real_bar_count,
+            'synthetic_bar_count': synthetic_bar_count,
+            'hybrid_bar_count': hybrid_bar_count,
         }
 
     def needs_rebuild(self) -> bool:
