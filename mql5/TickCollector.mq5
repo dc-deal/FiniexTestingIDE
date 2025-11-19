@@ -40,7 +40,7 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.0.5";  // CHANGED: Version 1.0.5
+input string DataFormatVersion = "1.1.0"; 
 // Identifies the data collection platform (mt5, ib, etc.)
 // Only change when importing from a different broker platform!
 input string DataCollectorName = "mt5"; 
@@ -484,6 +484,7 @@ bool CreateNewExportFile()
         "    \"volume_timeframe_minutes\": %d,\n"
         "    \"data_format_version\": \"%s\",\n"
         "    \"data_collector\": \"%s\",\n"
+        "    \"market_type\": \"forex_cfd\",\n"
         "    \"collection_purpose\": \"%s\",\n"
         "    \"operator\": \"%s\",\n"
         "    \"symbol_info\": {\n"

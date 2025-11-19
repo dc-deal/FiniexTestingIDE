@@ -6,7 +6,7 @@ Konvertiert MQL5 JSON-Exports zu optimierten Parquet-Files mit UTC-Konvertierung
 Workflow: JSON laden → Validieren → Optimieren → UTC-Konvertierung → Parquet speichern
 
 Author: FiniexTestingIDE Team
-Version: 1.3 (UTC Conversion with Manual Offset Support)
+Version: 1.4 (Market Type Support)
 """
 
 import json
@@ -25,7 +25,7 @@ from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
 # Import duplicate detection
-from python.data_worker.data_loader.exceptions import (
+from python.data_worker.data_loader.data_loader_exceptions import (
     ArtificialDuplicateException,
     DuplicateReport
 )
@@ -47,6 +47,7 @@ class TickDataImporter:
     - Batch-Verarbeitung mit Error-Handling
     - Duplicate Prevention mit Override-Option
     - Hierarchical directory structure
+    - Market type detection (v1.4+)
 
     Args:
         source_dir (str): Verzeichnis mit JSON-Files
@@ -55,7 +56,7 @@ class TickDataImporter:
         time_offset (int): Manueller UTC-Offset in Stunden (z.B. -3 für GMT+3)
     """
 
-    VERSION = "1.3"
+    VERSION = "1.4"
 
     def __init__(self, source_dir: str, target_dir: str,
                  override: bool = False, time_offset: int = 0):
@@ -260,6 +261,13 @@ class TickDataImporter:
         symbol = metadata.get("symbol", "UNKNOWN")
         start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
 
+        # NEU: data_format_version extrahieren
+        data_format_version = metadata.get("data_format_version", "1.0.0")
+
+        # NEU: market_type mit Fallback-Logik
+        market_type = self._determine_market_type(
+            metadata, data_format_version)
+
         # NEUE STRUKTUR: data_collector / ticks / symbol
         target_path = self.target_dir / data_collector / "ticks" / symbol
         target_path.mkdir(parents=True, exist_ok=True)
@@ -272,8 +280,10 @@ class TickDataImporter:
             "source_file": json_file.name,
             "symbol": symbol,
             "broker": metadata.get("broker", "unknown"),
-            "collector_version": metadata.get("data_format_version", "1.0"),
+            "collector_version": data_format_version,  # Legacy-Name beibehalten
+            "data_format_version": data_format_version,  # NEU: Explizit
             "data_collector": data_collector,
+            "market_type": market_type,  # NEU: Markttyp
             "processed_at": datetime.now(timezone.utc).isoformat(),
             "tick_count": str(len(df)),
             "importer_version": self.VERSION,
@@ -331,12 +341,44 @@ class TickDataImporter:
                 f"Kompression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
             )
+            vLog.debug(
+                f"   market_type={market_type}, version={data_format_version}")
 
         except Exception as e:
             vLog.error(f"FEHLER beim Schreiben von {parquet_path}")
             vLog.error(f"Original Error: {str(e)}")
             vLog.error(f"Error Type: {type(e)}")
             raise
+
+    def _determine_market_type(self, metadata: Dict, data_format_version: str) -> str:
+        """
+        Bestimmt den Markttyp basierend auf Metadata und Version.
+
+        Logik:
+        - Version < 1.1.0: Implizit forex_cfd (alle alten MT5-Daten)
+        - Version >= 1.1.0: Explizit aus metadata['market_type']
+
+        Args:
+            metadata: JSON-Metadata aus der Quelldatei
+            data_format_version: Datenformat-Version
+
+        Returns:
+            market_type string: 'forex_cfd', 'crypto_spot', etc.
+        """
+        # Version parsen für Vergleich
+        try:
+            version_parts = [int(x) for x in data_format_version.split('.')]
+            version_tuple = tuple(
+                version_parts + [0] * (3 - len(version_parts)))
+        except (ValueError, AttributeError):
+            version_tuple = (1, 0, 0)
+
+        # Fallback für alte Versionen
+        if version_tuple < (1, 1, 0):
+            return 'forex_cfd'
+
+        # Ab 1.1.0: Explizit aus Metadata
+        return metadata.get('market_type', 'unknown')
 
     def _apply_time_offset(self, df: pd.DataFrame) -> pd.DataFrame:
         """

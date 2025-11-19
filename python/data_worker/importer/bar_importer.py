@@ -162,6 +162,14 @@ class BarImporter:
 
         vLog.info(f"  ├─ Loaded {len(ticks_df):,} ticks")
 
+        # === 1.5 EXTRACT SOURCE VERSIONS ===
+        tick_files = [Path(entry['path'])
+                      for entry in self.tick_index.index[symbol]]
+        source_version_min, source_version_max = self._extract_source_versions(
+            tick_files)
+        vLog.debug(
+            f"  ├─ Source versions: {source_version_min} - {source_version_max}")
+
         # === 2. RENDER BARS ===
         vLog.info(f"  ├─ Rendering bars...")
         renderer = VectorizedBarRenderer(symbol)
@@ -177,7 +185,9 @@ class BarImporter:
                     symbol,
                     timeframe,
                     bars_df,
-                    data_collector
+                    data_collector,
+                    source_version_min,
+                    source_version_max
                 )
                 bars_written += len(bars_df)
                 self.total_bars_rendered += len(bars_df)
@@ -237,7 +247,9 @@ class BarImporter:
         symbol: str,
         timeframe: str,
         bars_df: pd.DataFrame,
-        data_collector: str
+        data_collector: str,
+        source_version_min: str = '1.0.0',
+        source_version_max: str = '1.0.0'
     ):
         """
         Write bar DataFrame to parquet file.
@@ -268,7 +280,10 @@ class BarImporter:
             'start_time': bars_df['timestamp'].min().isoformat(),
             'end_time': bars_df['timestamp'].max().isoformat(),
             'importer_version': self.VERSION,
-            'rendered_at': pd.Timestamp.now(tz='UTC').isoformat()
+            'rendered_at': pd.Timestamp.now(tz='UTC').isoformat(),
+            # NEU: Source version tracking
+            'source_version_min': source_version_min,
+            'source_version_max': source_version_max,
         }
 
         # Write parquet with metadata
@@ -282,6 +297,50 @@ class BarImporter:
             f"    ├─ Written: {filename} "
             f"({len(bars_df):,} bars, {file_size_mb:.2f} MB)"
         )
+
+    def _extract_source_versions(self, tick_files: List[Path]) -> tuple:
+        """
+        Extract min/max data_format_version from tick parquet files.
+
+        Args:
+            tick_files: List of tick parquet file paths
+
+        Returns:
+            Tuple (version_min, version_max)
+        """
+        versions = []
+
+        for tick_file in tick_files:
+            try:
+                pq_file = pq.ParquetFile(tick_file)
+                metadata_raw = pq_file.metadata.metadata
+
+                # Extract version from metadata
+                version = metadata_raw.get(b'data_format_version', b'1.0.0')
+                if isinstance(version, bytes):
+                    version = version.decode('utf-8')
+
+                # Fallback: Try collector_version (legacy field)
+                if version == '1.0.0':
+                    legacy = metadata_raw.get(b'collector_version', b'1.0.0')
+                    if isinstance(legacy, bytes):
+                        legacy = legacy.decode('utf-8')
+                    version = legacy
+
+                versions.append(version)
+
+            except Exception as e:
+                vLog.warning(
+                    f"Could not extract version from {tick_file.name}: {e}")
+                versions.append('1.0.0')
+
+        if not versions:
+            return ('1.0.0', '1.0.0')
+
+        # Sort versions for min/max
+        sorted_versions = sorted(set(versions), key=lambda v: [
+            int(x) for x in v.split('.')])
+        return (sorted_versions[0], sorted_versions[-1])
 
     def _update_bar_index(self):
         """

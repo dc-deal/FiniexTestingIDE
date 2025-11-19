@@ -20,6 +20,7 @@ import traceback
 import pandas as pd
 
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_data_report import run_summary_report
 from python.data_worker.importer.tick_importer import TickDataImporter
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -97,6 +98,16 @@ class DataIndexCLI:
 
         if self.index_manager.needs_rebuild():
             print("⚠️  Index is outdated - run 'rebuild' to update\n")
+
+    def cmd_tick_data_report(self):
+        """Tick data report"""
+        self.index_manager.build_index()
+
+        print("\n" + "="*60)
+        print("📊 Tick Data Report")
+        print("="*60)
+
+        run_summary_report()
 
     def cmd_coverage(self, symbol: str):
         """Show coverage statistics for symbol"""
@@ -199,6 +210,7 @@ Commands:
     
     rebuild             Rebuild index from Parquet files
     status              Show index status and metadata
+    tick_data_report    Data Loader Summary Report & Test Load
     coverage SYMBOL     Show coverage statistics for symbol
     gaps SYMBOL         Analyze and report gaps for symbol
     files SYMBOL --start DATE --end DATE
@@ -284,6 +296,9 @@ def main():
 
         elif command == "status":
             cli.cmd_status()
+
+        elif command == "tick_data_report":
+            cli.cmd_tick_data_report()
 
         elif command == "coverage":
             if len(sys.argv) < 3:

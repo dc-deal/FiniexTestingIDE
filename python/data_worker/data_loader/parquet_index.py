@@ -165,7 +165,7 @@ class ParquetIndexManager:
         start_date: datetime,
         end_date: datetime
     ) -> List[Path]:
-        """Find ONLY files covering requested time range [UNCHANGED]"""
+        """Find ONLY files covering requested time range """
         if symbol not in self.index:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
             return []
@@ -186,7 +186,7 @@ class ParquetIndexManager:
     # =========================================================================
 
     def save_index(self) -> None:
-        """Save index to JSON file [UNCHANGED]"""
+        """Save index to JSON file """
         index_data = {
             'created_at': datetime.now(timezone.utc).isoformat(),
             'data_dir': str(self.data_dir),
@@ -199,7 +199,7 @@ class ParquetIndexManager:
         self.logger.debug(f"💾 Index saved to {self.index_file}")
 
     def load_index(self) -> None:
-        """Load index from JSON file [UNCHANGED]"""
+        """Load index from JSON file """
         try:
             with open(self.index_file, 'r') as f:
                 data = json.load(f)
@@ -213,7 +213,7 @@ class ParquetIndexManager:
     # =========================================================================
 
     def get_coverage_report(self, symbol: str) -> TimeRangeCoverageReport:
-        """Generate coverage report for a symbol [UNCHANGED]"""
+        """Generate coverage report for a symbol """
         if symbol not in self.index:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
             return TimeRangeCoverageReport(symbol, [], [], [])
@@ -240,7 +240,7 @@ class ParquetIndexManager:
         return report
 
     def get_symbol_coverage(self, symbol: str) -> Dict:
-        """Get basic coverage statistics for a symbol [UNCHANGED]"""
+        """Get basic coverage statistics for a symbol """
         if symbol not in self.index:
             return {}
 
@@ -260,11 +260,11 @@ class ParquetIndexManager:
     # =========================================================================
 
     def list_symbols(self) -> List[str]:
-        """List all available symbols [UNCHANGED]"""
+        """List all available symbols """
         return sorted(self.index.keys())
 
     def print_summary(self) -> None:
-        """Print index summary [UNCHANGED]"""
+        """Print index summary """
         print("\n" + "="*60)
         print("📚 Parquet Index Summary")
         print("="*60)
@@ -285,6 +285,6 @@ class ParquetIndexManager:
         print("="*60 + "\n")
 
     def print_coverage_report(self, symbol: str) -> None:
-        """Print coverage report for a symbol [UNCHANGED]"""
+        """Print coverage report for a symbol """
         report = self.get_coverage_report(symbol)
         print(report.generate_report())

@@ -413,13 +413,13 @@ class ConsoleRenderer:
         if current_balance < initial_balance:
             current_balance_str = self.red(f"{current_balance_str}")
 
-        # NEW: Format currency display
+        # Format currency display
         if configured_currency == "auto":
             currency_display = f"{currency} (auto)"
         else:
             currency_display = currency
 
-        # NEW: Format conversion rate (only for Base == Account scenarios)
+        # Format conversion rate (only for Base == Account scenarios)
         if current_conversion_rate is not None:
             # Show conversion rate used
             rate_display = f" @ {current_conversion_rate:.4f}"

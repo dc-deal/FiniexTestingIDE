@@ -42,7 +42,7 @@ def prepare_trade_simulator_for_scenario(logger: ScenarioLogger,
         broker_config=broker_config,
         initial_balance=config.initial_balance,
         account_currency=config.account_currency,  # Changed from 'currency'
-        symbol=config.symbol,  # NEW: Required for auto-detection
+        symbol=config.symbol,  # Required for auto-detection
         logger=logger
     )
 

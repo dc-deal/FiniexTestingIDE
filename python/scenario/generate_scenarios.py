@@ -18,7 +18,7 @@ Usage:
 import traceback
 from pathlib import Path
 
-from python.data_worker.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.data_loader_core import TickDataLoader
 from python.scenario.config_saver import ScenarioConfigSaver
 from python.scenario.generator import ScenarioGenerator
 

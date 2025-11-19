@@ -17,6 +17,7 @@ from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexMa
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.activity_volume_provider import get_activity_provider
 vLog = get_logger()
 
 
@@ -94,11 +95,45 @@ class BarIndexCLI:
             print(f"   Timeframes: {', '.join(timeframes)}")
             print(f"   Total bars: {total_bars:,}")
 
-            # Show per-timeframe stats
+            # Get first timeframe entry for metadata
+            first_tf = sorted(timeframes)[0]
+            first_entry = self.index_manager.index[symbol][first_tf]
+
+            # Show metadata if available
+            market_type = first_entry.get('market_type', 'unknown')
+            source_version_min = first_entry.get(
+                'source_version_min', 'unknown')
+            source_version_max = first_entry.get(
+                'source_version_max', 'unknown')
+            data_source = first_entry.get('data_source', 'unknown')
+
+            # Version display
+            if source_version_min == source_version_max:
+                version_str = source_version_min
+            else:
+                version_str = f"{source_version_min} - {source_version_max}"
+
+            print(f"   Source:     {data_source} (v{version_str})")
+            print(f"   Market:     {market_type}")
+
+            # Activity metrics using provider
+            provider = get_activity_provider()
+            activity_label = provider.get_metric_label(market_type)
+
             for tf in sorted(timeframes):
                 tf_stats = stats[tf]
+
+                # Get full entry for activity data
+                entry = self.index_manager.index[symbol][tf]
+                total_activity = provider.get_total_activity_value(
+                    entry, market_type)
+                avg_activity = provider.get_avg_activity_value(
+                    entry, market_type)
+
                 print(f"      • {tf}: {tf_stats['bar_count']:,} bars "
-                      f"({tf_stats['file_size_mb']:.1f} MB)")
+                      f"({tf_stats['file_size_mb']:.1f} MB) "
+                      f"[{activity_label}: {provider.format_activity_value(total_activity, market_type)}, "
+                      f"Ø {provider.format_activity_value(avg_activity, market_type)}/bar]")
 
         print("\n" + "="*80)
 

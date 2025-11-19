@@ -215,7 +215,7 @@ class VectorizedBarRenderer:
 
     def _fill_gaps(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         """
-        Fill time gaps with synthetic and hybrid bars.
+        Fill time gaps with synthetic bars.
 
         Gaps occur during:
         - Weekends (Fr 21:00 → Mo 00:00)
@@ -225,9 +225,7 @@ class VectorizedBarRenderer:
         Strategy:
         - Create complete time series (no gaps)
         - For missing periods: insert synthetic bar with OHLC = last_close
-        - Mark as 'synthetic' or 'hybrid' with appropriate metadata
-
-        Detects hybrid bars (partial data) and logs all filled gaps!
+        - Mark as 'synthetic' with appropriate metadata
 
         Args:
             bars_df: Real bars from ticks
@@ -287,66 +285,34 @@ class VectorizedBarRenderer:
         last_close = last_close = bars_df['close'].ffill()
 
         synthetic_count = 0
-        hybrid_count = 0
 
-        # For each gap row, create synthetic or hybrid bar
+        # For each gap row, create synthetic bar
         for idx in bars_df[gap_mask].index:
             # Use last known close as fill price
             fill_price = last_close.loc[idx] if not pd.isna(
                 last_close.loc[idx]) else bars_df['close'].dropna().iloc[0]
 
-            # Check if this is a hybrid bar (has some data but not all)
-            has_open = not pd.isna(bars_df.loc[idx, 'open'])
-            has_high = not pd.isna(bars_df.loc[idx, 'high'])
-            has_low = not pd.isna(bars_df.loc[idx, 'low'])
-            has_close = not pd.isna(bars_df.loc[idx, 'close'])
-
-            # Determine bar type and synthetic fields
-            if has_open or has_high or has_low or has_close:
-                # HYBRID: Has some real data
-                bar_type = 'hybrid'
-                synthetic_fields = []
-
-                if not has_open or pd.isna(bars_df.loc[idx, 'open']):
-                    bars_df.loc[idx, 'open'] = fill_price
-                    synthetic_fields.append('open')
-                if not has_high or pd.isna(bars_df.loc[idx, 'high']):
-                    bars_df.loc[idx, 'high'] = fill_price
-                    synthetic_fields.append('high')
-                if not has_low or pd.isna(bars_df.loc[idx, 'low']):
-                    bars_df.loc[idx, 'low'] = fill_price
-                    synthetic_fields.append('low')
-                if not has_close or pd.isna(bars_df.loc[idx, 'close']):
-                    bars_df.loc[idx, 'close'] = fill_price
-                    synthetic_fields.append('close')
-
-                hybrid_count += 1
-            else:
-                # SYNTHETIC: No real data at all
-                bar_type = 'synthetic'
-                synthetic_fields = ['open', 'high', 'low', 'close']
-
-                bars_df.loc[idx, 'open'] = fill_price
-                bars_df.loc[idx, 'high'] = fill_price
-                bars_df.loc[idx, 'low'] = fill_price
-                bars_df.loc[idx, 'close'] = fill_price
-
-                synthetic_count += 1
+            # All gap bars are fully synthetic (OHLC = last close)
+            bars_df.loc[idx, 'open'] = fill_price
+            bars_df.loc[idx, 'high'] = fill_price
+            bars_df.loc[idx, 'low'] = fill_price
+            bars_df.loc[idx, 'close'] = fill_price
 
             # Set common fields
             bars_df.loc[idx, 'symbol'] = self.symbol
             bars_df.loc[idx, 'timeframe'] = timeframe
             bars_df.loc[idx, 'volume'] = 0.0
             bars_df.loc[idx, 'tick_count'] = 0
-            bars_df.loc[idx, 'bar_type'] = bar_type
-            bars_df.loc[idx, 'synthetic_fields'] = json.dumps(synthetic_fields)
+            bars_df.loc[idx, 'bar_type'] = 'synthetic'
+            bars_df.loc[idx, 'synthetic_fields'] = json.dumps(
+                ['open', 'high', 'low', 'close'])
             bars_df.loc[idx, 'reason'] = None  # Feature-gated
 
+        synthetic_count = gap_mask.sum()
+
         # === LOGGING: Fill Summary ===
-        vLog.info(f"    ├─ Filled Gaps:")
         vLog.info(
-            f"    │  ├─ Synthetic bars: {synthetic_count:,} (100% synthetic)")
-        vLog.info(f"    │  └─ Hybrid bars: {hybrid_count:,} (partial data)")
+            f"    ├─ Filled {synthetic_count:,} gaps with synthetic bars")
 
         # Reset index and return
         bars_df = bars_df.reset_index()

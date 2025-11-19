@@ -93,12 +93,23 @@ class BarIndexReportGenerator:
                 # Count timeframe occurrences
                 timeframe_counts[tf] = timeframe_counts.get(tf, 0) + 1
 
+        # Collect market types and activity totals
+        market_types = set()
+        total_tick_count = 0
+
+        for symbol in symbols:
+            for tf, entry in self.index_manager.index[symbol].items():
+                market_types.add(entry.get('market_type', 'unknown'))
+                total_tick_count += entry.get('total_tick_count', 0)
+
         return {
             "total_symbols": len(symbols),
             "total_timeframes": sum(timeframe_counts.values()),
             "total_bar_files": total_files,
             "total_bars": total_bars,
             "total_size_mb": round(total_size_mb, 2),
+            "total_tick_count": total_tick_count,
+            "market_types": sorted(list(market_types)),
             "timeframe_distribution": timeframe_counts
         }
 
@@ -122,14 +133,39 @@ class BarIndexReportGenerator:
                            for tf_stats in stats.values()]
             end_times = [tf_stats['end_time'] for tf_stats in stats.values()]
 
+            # Get metadata from first timeframe entry
+            first_tf = sorted(timeframes)[0]
+            first_entry = self.index_manager.index[symbol][first_tf]
+
+            market_type = first_entry.get('market_type', 'unknown')
+            source_version_min = first_entry.get(
+                'source_version_min', 'unknown')
+            source_version_max = first_entry.get(
+                'source_version_max', 'unknown')
+            data_source = first_entry.get('data_source', 'unknown')
+
+            # Calculate total tick count for symbol
+            total_tick_count = sum(
+                self.index_manager.index[symbol][tf].get('total_tick_count', 0)
+                for tf in timeframes
+            )
+
             symbol_details[symbol] = {
                 "available_timeframes": sorted(timeframes),
                 "timeframe_count": len(timeframes),
                 "total_bars": total_bars,
                 "total_size_mb": round(total_size, 2),
+                "total_tick_count": total_tick_count,
                 "time_range": {
                     "start": min(start_times) if start_times else None,
                     "end": max(end_times) if end_times else None
+                },
+                # Metadata
+                "market_type": market_type,
+                "data_source": data_source,
+                "source_version": {
+                    "min": source_version_min,
+                    "max": source_version_max
                 },
                 "timeframes": {}
             }
@@ -137,6 +173,7 @@ class BarIndexReportGenerator:
             # Add per-timeframe details
             for tf in sorted(timeframes):
                 tf_stats = stats[tf]
+                entry = self.index_manager.index[symbol][tf]
 
                 # Get file path for this timeframe
                 bar_file = self.index_manager.get_bar_file(symbol, tf)
@@ -146,7 +183,15 @@ class BarIndexReportGenerator:
                     "file_size_mb": tf_stats['file_size_mb'],
                     "start_time": tf_stats['start_time'],
                     "end_time": tf_stats['end_time'],
-                    "file_path": str(bar_file) if bar_file else None
+                    "file_path": str(bar_file) if bar_file else None,
+                    # Activity statistics
+                    "total_tick_count": entry.get('total_tick_count', 0),
+                    "avg_ticks_per_bar": entry.get('avg_ticks_per_bar', 0),
+                    "min_ticks_per_bar": entry.get('min_ticks_per_bar', 0),
+                    "max_ticks_per_bar": entry.get('max_ticks_per_bar', 0),
+                    # Bar type distribution
+                    "real_bar_count": entry.get('real_bar_count', 0),
+                    "synthetic_bar_count": entry.get('synthetic_bar_count', 0),
                 }
 
         return symbol_details

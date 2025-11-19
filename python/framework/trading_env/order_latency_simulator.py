@@ -182,8 +182,8 @@ class OrderLatencySimulator:
             symbol=symbol,
             direction=direction,
             lots=lots,
-            entry_price=0,     # ← NEW: Store for converter
-            entry_time=datetime.now(),       # ← NEW: Store for converter
+            entry_price=0,     # ← Store for converter
+            entry_time=datetime.now(),       # ← Store for converter
             order_kwargs=kwargs
         )
 

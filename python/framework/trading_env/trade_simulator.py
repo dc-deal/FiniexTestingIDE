@@ -57,7 +57,7 @@ class TradeSimulator:
         broker_config: BrokerConfig,
         initial_balance: float,
         account_currency: str,  # Changed from 'currency', supports "auto"
-        symbol: str,  # NEW: Required for auto-detection
+        symbol: str,  # Required for auto-detection
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
     ):
@@ -613,7 +613,7 @@ class TradeSimulator:
             List of Position objects (mix of real and pseudo-positions)
         """
         # Get real positions from portfolio
-        positions = self.portfolio.get_open_positions()
+        active_positions = self.portfolio.get_open_positions()
 
         # Get pending OPEN orders as pseudo-positions
         pending_opens = self.latency_simulator.get_pending_orders(
@@ -627,12 +627,11 @@ class TradeSimulator:
         pending_closes = self.latency_simulator.get_pending_orders(
             PendingOrderAction.CLOSE
         )
-        closing_position_ids = [pc.pending_order_id for pc in pending_closes]
-
-        active_positions = [
-            p for p in positions
-            if p.position_id not in closing_position_ids
-        ]
+        # If Order is about to be closed, mark active_positions for algortihm.
+        for p in active_positions:
+            for c in pending_closes:
+                if (p.position_id == c.pending_order_id):
+                    p.pending = True
 
         # Combine: active real positions + pending opens
         return active_positions + pseudo_positions

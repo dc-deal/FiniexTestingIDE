@@ -10,8 +10,8 @@ import traceback
 import pandas as pd
 from typing import Dict
 
-from python.data_worker.data_loader.analytics import TickDataAnalyzer
-from python.data_worker.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.tick_data_analyzer import TickDataAnalyzer
+from python.data_worker.data_loader.data_loader_core import TickDataLoader
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -70,6 +70,13 @@ class TickDataReporter:
             sessions_str = ", ".join(
                 [f"{k}: {v}" for k, v in info["sessions"].items()])
             vLog.info(f"      Sessions:     {sessions_str}")
+
+        # NEW: Market type and activity metrics
+        if info.get("market_type"):
+            vLog.info(f"   ├─ Market Type:  {info['market_type']}")
+
+        if info.get("data_source"):
+            vLog.info(f"   └─ Data Source:  {info['data_source']}")
 
     def print_all_symbols(self):
         """vLog.info summary for all available symbols"""
@@ -160,12 +167,3 @@ def run_summary_report():
 
     except Exception as e:
         vLog.error(f"Error generating report: \n{traceback.format_exc()}")
-
-
-def main():
-    """Main entry point for command-line execution"""
-    run_summary_report()
-
-
-if __name__ == "__main__":
-    main()

@@ -13,7 +13,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.components.logger.abstract_logger import AbstractLogger
-from python.data_worker.data_loader.exceptions import (
+from python.data_worker.data_loader.data_loader_exceptions import (
     ArtificialDuplicateException,
     DuplicateReport,
     InvalidDataModeException
@@ -169,7 +169,7 @@ class TickDataLoader:
         return sorted(files)
 
     def _check_artificial_duplicates(self, files: List[Path], logger: AbstractLogger = vLog) -> Optional[DuplicateReport]:
-        """Check for artificial duplicates via Parquet metadata [UNCHANGED]"""
+        """Check for artificial duplicates via Parquet metadata """
         if not files:
             return None
 
@@ -244,7 +244,7 @@ class TickDataLoader:
         start_date: Optional[str],
         end_date: Optional[str]
     ) -> pd.DataFrame:
-        """Apply date range filters to DataFrame [UNCHANGED]"""
+        """Apply date range filters to DataFrame """
 
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
