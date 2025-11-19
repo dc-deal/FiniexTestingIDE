@@ -30,10 +30,13 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Data Pipeline: Test Data Report",
+            "name": "📊 Tick Data Report",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/data_worker/data_loader/reports.py",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "tick_data_report"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },

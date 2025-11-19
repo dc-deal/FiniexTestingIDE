@@ -167,7 +167,7 @@ class ParquetBarsIndexManager:
         )
         end_time = last_bar['timestamp'][-1].as_py()
 
-        # === NEW: Load full DataFrame for aggregations ===
+        # === Load full DataFrame for aggregations ===
         # Required for tick_count and bar_type statistics
         df = pd.read_parquet(bar_file)
 
@@ -182,7 +182,7 @@ class ParquetBarsIndexManager:
         real_bar_count = int((df['bar_type'] == 'real').sum())
         synthetic_bar_count = int((df['bar_type'] == 'synthetic').sum())
 
-        # === NEW: Version and market type detection ===
+        # === Version and market type detection ===
         source_version_min = metadata.get('source_version_min', '1.0.0')
         source_version_max = metadata.get('source_version_max', '1.0.0')
 
@@ -221,14 +221,14 @@ class ParquetBarsIndexManager:
             'real_bar_count': real_bar_count,
             'synthetic_bar_count': synthetic_bar_count,
 
-            # NEW: Version and market type metadata
+            # Version and market type metadata
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
             'data_source': metadata.get('data_collector', 'mt5'),
             'market_type': market_type,
             'primary_activity_metric': primary_activity_metric,
 
-            # NEW: Volume fields (null for Forex)
+            # Volume fields (null for Forex)
             'total_trade_volume': None,
             'avg_volume_per_bar': None,
         }

@@ -25,7 +25,7 @@ from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
 # Import duplicate detection
-from python.data_worker.data_loader.exceptions import (
+from python.data_worker.data_loader.data_loader_exceptions import (
     ArtificialDuplicateException,
     DuplicateReport
 )

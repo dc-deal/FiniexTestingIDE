@@ -57,7 +57,7 @@ class TradeSimulator:
         broker_config: BrokerConfig,
         initial_balance: float,
         account_currency: str,  # Changed from 'currency', supports "auto"
-        symbol: str,  # NEW: Required for auto-detection
+        symbol: str,  # Required for auto-detection
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
     ):

@@ -12,7 +12,7 @@ from typing import Dict, Tuple
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.data_worker.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.data_loader_core import TickDataLoader
 from python.framework.utils.market_calendar import MarketCalendar
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -109,6 +109,9 @@ class TickDataAnalyzer:
                     if "session" in combined_df
                     else {}
                 ),
+                # NEW: Market type metadata (inferred from data)
+                "market_type": "forex_cfd",  # Default for tick data from MT5
+                "data_source": "mt5",  # Default data source
             }
 
         except Exception as e:

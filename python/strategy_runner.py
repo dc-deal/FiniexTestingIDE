@@ -11,7 +11,7 @@ from python.framework.types.scenario_set_types import LoadedScenarioConfig, Scen
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.exceptions.data_validation_errors import DataValidationError
-from python.data_worker.data_loader.core import TickDataLoader
+from python.data_worker.data_loader.data_loader_core import TickDataLoader
 from python.framework.batch_orchestrator import BatchOrchestrator
 import os
 import platform
