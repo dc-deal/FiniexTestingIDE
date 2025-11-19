@@ -132,7 +132,6 @@ from python.framework.exceptions.scenario_execution_errors import BatchExecution
 from python.framework.process.process_main import process_main
 from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
 from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
-from python.data_worker.data_loader.data_loader_core import TickDataLoader
 from python.components.logger.abstract_logger import AbstractLogger
 from typing import Dict, List
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -160,21 +159,18 @@ class BatchOrchestrator:
     def __init__(
         self,
         scenario_set: ScenarioSet,
-        data_worker: TickDataLoader,
         app_config_loader: AppConfigLoader
     ):
         """
         Initialize batch orchestrator.
 
-        CORRECTED: Creates run_timestamp for shared logger initialization.
+        Creates run_timestamp for shared logger initialization.
 
         Args:
             scenario_set: Set of scenarios to execute
-            data_worker: TickDataLoader instance (kept for backwards compatibility)
             app_config: Application configuration
         """
         self.scenario_set = scenario_set
-        self.data_worker = data_worker  # Kept but not used in new flow
         self._app_config_loader = app_config_loader
         self._parallel_scenarios = app_config_loader.get_default_parallel_scenarios()
         self._preparator: SharedDataPreparator = None

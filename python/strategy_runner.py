@@ -87,16 +87,10 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
         scenario_set.copy_config_snapshot()
 
         # ============================================================
-        # Initialize Data Worker
-        # ============================================================
-        data_worker = TickDataLoader()
-
-        # ============================================================
         # Execute Batch via Orchestrator
         # ============================================================
         orchestrator = BatchOrchestrator(
             scenario_set,
-            data_worker,
             app_config_loader
         )
 
