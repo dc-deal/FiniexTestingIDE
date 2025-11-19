@@ -114,17 +114,17 @@ class ScenarioCLI:
 
         # Volatility regimes with duration
         regime_names = {
-            VolatilityRegime.VERY_LOW: "Very Low   (0-20%)",
-            VolatilityRegime.LOW: "Low        (20-40%)",
-            VolatilityRegime.MEDIUM: "Medium     (40-60%)",
-            VolatilityRegime.HIGH: "High       (60-80%)",
+            VolatilityRegime.VERY_LOW: "Very Low   (0-20%)  ",
+            VolatilityRegime.LOW: "Low        (20-40%) ",
+            VolatilityRegime.MEDIUM: "Medium     (40-60%) ",
+            VolatilityRegime.HIGH: "High       (60-80%) ",
             VolatilityRegime.VERY_HIGH: "Very High  (80-100%)",
         }
 
         for regime in VolatilityRegime:
             count = analysis.regime_distribution.get(regime, 0)
             pct = analysis.regime_percentages.get(regime, 0)
-            bar_len = int(pct / 10)
+            bar_len = round(pct / 10)
             bar = "█" * bar_len + "░" * (10 - bar_len)
 
             # Calculate duration for this regime
@@ -137,7 +137,7 @@ class ScenarioCLI:
                 f"   {regime_names[regime]}:  {count:4d} periods  {bar}  {pct:5.1f}%  → {duration_str}")
 
         # ATR stats
-        print(f"\n   ATR Range: {analysis.atr_min:.5f} - {analysis.atr_max:.5f} "
+        print(f"\n   ATR Relative: {analysis.atr_min:.5f} - {analysis.atr_max:.5f} "
               f"(avg: {analysis.atr_avg:.5f})")
 
         # Session statistics with regime distribution
@@ -182,7 +182,7 @@ class ScenarioCLI:
             print(
                 f"      Avg density:    {summary.avg_tick_density:,.0f} {activity_label}/hour")
             print(
-                f"      ATR range:      {summary.min_atr:.5f} - {summary.max_atr:.5f}")
+                f"      ATR Relative:      {summary.min_atr:.5f} - {summary.max_atr:.5f}")
 
             # Regime distribution for this session
             if summary.period_count > 0:

@@ -165,6 +165,9 @@ class MarketAnalyzer:
         total_bars = len(df)
         real_bars = len(df[df['bar_type'] == 'real'])
 
+        atr_min = min(atr_values) if atr_values else 0.0
+        atr_max = max(atr_values) if atr_values else 0.0
+
         return SymbolAnalysis(
             symbol=symbol,
             timeframe=tf,
@@ -176,9 +179,9 @@ class MarketAnalyzer:
             total_bars=total_bars,
             total_ticks=int(df['tick_count'].sum()),
             real_bar_ratio=real_bars / total_bars if total_bars > 0 else 0,
-            atr_min=min(atr_values) if atr_values else 0.0,
-            atr_max=max(atr_values) if atr_values else 0.0,
-            atr_avg=np.mean(atr_values) if atr_values else 0.0,
+            atr_min=atr_min,
+            atr_max=atr_max,
+            atr_avg=(atr_min + atr_max) / 2,
             atr_std=np.std(atr_values) if atr_values else 0.0,
             regime_distribution=regime_dist,
             regime_percentages={
@@ -334,7 +337,11 @@ class MarketAnalyzer:
             tick_density = tick_count / granularity
 
             # Regime classification (relative to average ATR)
-            regime = self._classify_regime(avg_atr, avg_atr_global)
+            # Uses relative thresholds for consistent classification across symbols.
+            ratio = avg_atr / avg_atr_global
+            if avg_atr == 0:
+                regime = VolatilityRegime.VERY_LOW
+            regime = self._classify_regime(ratio)
 
             # Calculate percentile for reference
             atr_percentile = self._get_percentile(avg_atr, np.array(all_atrs))
@@ -352,7 +359,7 @@ class MarketAnalyzer:
                 start_time=period_start.to_pydatetime(),
                 end_time=period_end.to_pydatetime(),
                 session=session,
-                atr=avg_atr,
+                atr=ratio,
                 atr_percentile=atr_percentile,
                 regime=regime,
                 tick_count=tick_count,
@@ -382,32 +389,26 @@ class MarketAnalyzer:
             return 0.0
         return (all_values < value).sum() / len(all_values) * 100
 
-    def _classify_regime(self, atr: float, avg_atr: float) -> VolatilityRegime:
+    def _classify_regime(self, ratio: float) -> VolatilityRegime:
         """
         Classify volatility regime based on ratio to average ATR.
 
         Uses relative thresholds for consistent classification across symbols.
 
-        Args:
-            atr: Period ATR value
-            avg_atr: Global average ATR
-
         Returns:
             VolatilityRegime enum
         """
-        if avg_atr == 0:
-            return VolatilityRegime.VERY_LOW
-
-        ratio = atr / avg_atr
 
         # Relative thresholds
-        if ratio < 0.5:
+        thresholds = self._config.analysis.regime_thresholds
+
+        if ratio < thresholds[0]:
             return VolatilityRegime.VERY_LOW
-        elif ratio < 0.8:
+        elif ratio < thresholds[1]:
             return VolatilityRegime.LOW
-        elif ratio < 1.2:
+        elif ratio < thresholds[2]:
             return VolatilityRegime.MEDIUM
-        elif ratio < 1.8:
+        elif ratio < thresholds[3]:
             return VolatilityRegime.HIGH
         else:
             return VolatilityRegime.VERY_HIGH

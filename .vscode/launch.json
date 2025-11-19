@@ -191,7 +191,7 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 Scenario CLI - Analyze EURGBP",
+            "name": "📊 MARKET ANALYSIS REPORT - EURGBP",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -203,7 +203,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario CLI - Analyze All",
+            "name": "📊 MARKET ANALYSIS REPORT - Analyze All",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -215,7 +215,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario CLI - Generate Balanced",
+            "name": "📊 Scenario Generator - Generate Balanced",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -231,7 +231,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario CLI - Generate Blocks",
+            "name": "📊 Scenario Generator - Generate Blocks",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -251,7 +251,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario CLI - Generate Stress",
+            "name": "📊 Scenario Generator - Generate Stress",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
