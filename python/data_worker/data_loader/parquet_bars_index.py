@@ -45,6 +45,29 @@ class ParquetBarsIndexManager:
         self.index: Dict[str, Dict[str, Dict]] = {}
         self.logger = logger
 
+    def _version_less_than(self, version: str, compare_to: str) -> bool:
+        """
+        Compare version strings (e.g., '1.0.5' < '1.1.0').
+
+        Args:
+            version: Version to check
+            compare_to: Version to compare against
+
+        Returns:
+            True if version < compare_to
+        """
+        try:
+            v1 = [int(x) for x in version.split('.')]
+            v2 = [int(x) for x in compare_to.split('.')]
+            # Pad to same length
+            while len(v1) < 3:
+                v1.append(0)
+            while len(v2) < 3:
+                v2.append(0)
+            return tuple(v1) < tuple(v2)
+        except (ValueError, AttributeError):
+            return True
+
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
@@ -158,7 +181,22 @@ class ParquetBarsIndexManager:
         # Bar type distribution
         real_bar_count = int((df['bar_type'] == 'real').sum())
         synthetic_bar_count = int((df['bar_type'] == 'synthetic').sum())
-        hybrid_bar_count = int((df['bar_type'] == 'hybrid').sum())
+
+        # === NEW: Version and market type detection ===
+        source_version_min = metadata.get('source_version_min', '1.0.0')
+        source_version_max = metadata.get('source_version_max', '1.0.0')
+
+        # Market type with fallback for old data
+        if self._version_less_than(source_version_max, '1.1.0'):
+            market_type = 'forex_cfd'
+        else:
+            market_type = metadata.get('market_type', 'unknown')
+
+        # Primary activity metric based on market type
+        if market_type in ['crypto_spot', 'crypto_futures', 'equity']:
+            primary_activity_metric = 'trade_volume'
+        else:
+            primary_activity_metric = 'tick_count'
 
         # Build index entry
         return {
@@ -173,16 +211,26 @@ class ParquetBarsIndexManager:
             'num_row_groups': pq_file.num_row_groups,
             'rendered_at': metadata.get('rendered_at', 'unknown'),
 
-            # NEW: Tick statistics for scenario generation
+            # Tick statistics for scenario generation
             'total_tick_count': total_tick_count,
             'avg_ticks_per_bar': round(avg_ticks_per_bar, 2),
             'min_ticks_per_bar': min_ticks_per_bar,
             'max_ticks_per_bar': max_ticks_per_bar,
 
-            # NEW: Bar type distribution for quality analysis
+            # Bar type distribution for quality analysis
             'real_bar_count': real_bar_count,
             'synthetic_bar_count': synthetic_bar_count,
-            'hybrid_bar_count': hybrid_bar_count,
+
+            # NEW: Version and market type metadata
+            'source_version_min': source_version_min,
+            'source_version_max': source_version_max,
+            'data_source': metadata.get('data_collector', 'mt5'),
+            'market_type': market_type,
+            'primary_activity_metric': primary_activity_metric,
+
+            # NEW: Volume fields (null for Forex)
+            'total_trade_volume': None,
+            'avg_volume_per_bar': None,
         }
 
     def needs_rebuild(self) -> bool:
