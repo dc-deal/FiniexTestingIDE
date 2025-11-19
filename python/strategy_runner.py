@@ -61,7 +61,7 @@ def run_strategy_test():
         # ============================================================
         config_loader = ScenarioConfigLoader()
 
-        scenario_set_json = "eurusd_3_windows.json"
+        scenario_set_json = "EURGBP_blocks_20251119_1505.json"
         scenario_config_data = config_loader.load_config(scenario_set_json)
 
         vLog.info(

@@ -188,13 +188,81 @@
             "justMyCode": false
         },
         // ====================================================
-        // 📝 SCENARIO MANAGEMENT
+        // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📝 Scenario Generator - Run",
+            "name": "📊 Scenario CLI - Analyze EURGBP",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/scenario/generate_scenarios.py",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "analyze",
+                "EURGBP"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario CLI - Analyze All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "analyze",
+                "--all"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario CLI - Generate Balanced",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "balanced",
+                "--count",
+                "12"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario CLI - Generate Blocks",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "blocks",
+                "--block-size",
+                "6",
+                "--count",
+                "20",
+                "--sessions",
+                "new_york"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario CLI - Generate Stress",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "stress",
+                "--count",
+                "5"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },

@@ -1,0 +1,30 @@
+{
+    "analysis": {
+        "timeframe": "M5",
+        "atr_period": 14,
+        "regime_granularity_hours": 1,
+        "regime_thresholds": [
+            20,
+            40,
+            60,
+            80
+        ]
+    },
+    "strategies": {
+        "balanced": {
+            "regime_count": 5,
+            "min_scenarios_per_regime": 1,
+            "prefer_real_bars": true
+        },
+        "blocks": {
+            "default_block_hours": 6,
+            "merge_remainder_threshold_minutes": 60,
+            "min_real_bar_ratio": 0.5
+        },
+        "stress": {
+            "volatility_percentile": 90,
+            "density_percentile": 90,
+            "min_periods": 3
+        }
+    }
+}
