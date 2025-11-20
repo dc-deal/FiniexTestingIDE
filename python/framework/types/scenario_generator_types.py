@@ -128,6 +128,12 @@ class SymbolAnalysis:
     atr_avg: float
     atr_std: float
 
+    # Cross-instrument comparison (ATR as percentage of price)
+    atr_percent: float
+
+    # Average pips per day (None if symbol spec not available)
+    avg_pips_per_day: Optional[float]
+
     # Regime distribution
     regime_distribution: Dict[VolatilityRegime, int]
     regime_percentages: Dict[VolatilityRegime, float]
@@ -159,6 +165,15 @@ class AnalysisConfig:
     regime_thresholds: List[int] = field(
         default_factory=lambda: [20, 40, 60, 80]
     )
+    broker_config_paths: List[str] = field(
+        default_factory=list
+    )
+
+
+@dataclass
+class CrossInstrumentRankingConfig:
+    """Configuration for cross-instrument comparison ranking."""
+    top_count: int = 3
 
 
 @dataclass
@@ -196,6 +211,7 @@ class GeneratorConfig:
     balanced: BalancedStrategyConfig
     blocks: BlocksStrategyConfig
     stress: StressStrategyConfig
+    cross_instrument_ranking: CrossInstrumentRankingConfig
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'GeneratorConfig':
@@ -212,6 +228,7 @@ class GeneratorConfig:
         balanced_data = data.get('strategies', {}).get('balanced', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
         stress_data = data.get('strategies', {}).get('stress', {})
+        ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
             analysis=AnalysisConfig(
@@ -221,7 +238,10 @@ class GeneratorConfig:
                     'regime_granularity_hours', 1
                 ),
                 regime_thresholds=analysis_data.get(
-                    'regime_thresholds', [20, 40, 60, 80]
+                    'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
+                ),
+                broker_config_paths=analysis_data.get(
+                    'broker_config_paths', []
                 )
             ),
             balanced=BalancedStrategyConfig(
@@ -244,6 +264,9 @@ class GeneratorConfig:
                 ),
                 density_percentile=stress_data.get('density_percentile', 90),
                 min_periods=stress_data.get('min_periods', 3)
+            ),
+            cross_instrument_ranking=CrossInstrumentRankingConfig(
+                top_count=ranking_data.get('top_count', 3)
             )
         )
 

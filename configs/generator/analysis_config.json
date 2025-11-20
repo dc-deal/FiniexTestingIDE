@@ -4,10 +4,13 @@
         "atr_period": 14,
         "regime_granularity_hours": 1,
         "regime_thresholds": [
-            0.50,
+            0.5,
             0.8,
             1.2,
             1.8
+        ],
+        "broker_config_paths": [
+            "./configs/brokers/mt5/ic_markets_demo.json"
         ]
     },
     "strategies": {
@@ -26,5 +29,8 @@
             "density_percentile": 90,
             "min_periods": 3
         }
+    },
+    "cross_instrument_ranking": {
+        "top_count": 10
     }
 }

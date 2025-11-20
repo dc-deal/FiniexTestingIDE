@@ -7,7 +7,7 @@ Ensures consistent order creation API across different broker types.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
 from python.framework.types.order_types import (
     OrderCapabilities,
@@ -235,6 +235,13 @@ class IOrderCapabilities(ABC):
     # ============================================
     # Required: Symbol Information
     # ============================================
+
+    @abstractmethod
+    def get_all_aviable_symbols(self) -> List[str]:
+        """
+        Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
+        """
+        pass
 
     @abstractmethod
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:

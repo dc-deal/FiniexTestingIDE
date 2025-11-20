@@ -11,11 +11,15 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
+import math
 
 import numpy as np
 import pandas as pd
 
 from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.types.timeframe_types import TimeframeConfig
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.scenario_generator_types import (
@@ -27,6 +31,7 @@ from python.framework.types.scenario_generator_types import (
     TradingSession,
     VolatilityRegime,
 )
+from python.framework.types.broker_types import SymbolSpecification
 from python.components.logger.bootstrap_logger import get_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 
@@ -56,7 +61,7 @@ class MarketAnalyzer:
             config_path: Path to analysis config JSON (optional)
         """
         self._data_dir = Path(data_dir)
-        self._config = self._load_config(config_path)
+        self._config = self._load_analysis_config(config_path)
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
@@ -67,7 +72,11 @@ class MarketAnalyzer:
         self._tick_index = ParquetIndexManager(self._data_dir)
         self._tick_index.build_index()
 
-    def _load_config(self, config_path: Optional[str]) -> GeneratorConfig:
+        # Load broker configs and build symbol specification cache
+        self._market_symbol_specs: Dict[str, SymbolSpecification] = {}
+        self._load_broker_configs()
+
+    def _load_analysis_config(self, config_path: Optional[str]) -> GeneratorConfig:
         """
         Load configuration from JSON file.
 
@@ -99,6 +108,70 @@ class MarketAnalyzer:
     def get_config(self) -> GeneratorConfig:
         """Get current configuration."""
         return self._config
+
+    def _load_broker_configs(self) -> None:
+        """
+        Load broker configurations and build symbol specification cache.
+
+        Loads all broker configs from paths in analysis config.
+        Builds cache mapping symbol -> SymbolSpecification for pip calculation.
+        """
+        broker_paths = self._config.analysis.broker_config_paths
+
+        for broker_path in broker_paths:
+            # Create temporary BrokerConfig to get SymbolSpecification
+            broker_config = BrokerConfigFactory.build_broker_config(
+                broker_path)
+            try:
+                symbols = broker_config.get_all_aviable_symbols()
+                for symbol in symbols:
+                    spec = broker_config.get_symbol_specification(
+                        symbol)
+                    self._market_symbol_specs[symbol] = spec
+                    vLog.debug(
+                        f"Loaded {len(symbol)} symbols from {broker_path}")
+            except Exception as e:
+                vLog.warning(
+                    f"Failed to load broker config specs for symbol: {symbol} {broker_path}: {e}")
+                pass
+
+    def _calculate_pips_per_day(
+        self,
+        symbol: str,
+        avg_absolute_atr: float
+    ) -> Optional[float]:
+        """
+        Calculate average pips per day from ATR.
+
+        Args:
+            symbol: Trading symbol
+            avg_absolute_atr: Average absolute ATR value
+
+        Returns:
+            Pips per day or None if symbol spec not found
+        """
+        if symbol not in self._market_symbol_specs:
+            return None
+
+        spec = self._market_symbol_specs[symbol]
+
+        # Pip size: for 5-digit broker, pip = tick_size * 10
+        # For 3-digit (JPY pairs), pip = tick_size * 10
+        if spec.digits == 5 or spec.digits == 3:
+            pip_size = spec.tick_size * 10
+        else:
+            pip_size = spec.tick_size
+
+        if pip_size <= 0:
+            return None
+
+        # Calculate pips per day using sqrt scaling
+        timeframe_minutes = TimeframeConfig.get_minutes(
+            self._config.analysis.timeframe)
+        bars_per_day = (24 * 60) / timeframe_minutes
+        daily_atr = avg_absolute_atr * math.sqrt(bars_per_day)
+
+        return daily_atr / pip_size
 
     # =========================================================================
     # MAIN ANALYSIS
@@ -168,6 +241,20 @@ class MarketAnalyzer:
         atr_min = min(atr_values) if atr_values else 0.0
         atr_max = max(atr_values) if atr_values else 0.0
 
+        # Calculate ATR% for cross-instrument comparison
+        # ATR% = (ATR * sqrt(bars_per_day) / Close) * 100
+        # Volatility scales with sqrt of time
+        last_close = df['close'].iloc[-1] if len(df) > 0 else 1.0
+        avg_absolute_atr = df['atr'].mean() if 'atr' in df.columns else 0.0
+        timeframe_minutes = TimeframeConfig.get_minutes(tf)
+        bars_per_day = (24 * 60) / timeframe_minutes
+        atr_percent = (avg_absolute_atr * math.sqrt(bars_per_day) /
+                       last_close) * 100 if last_close > 0 else 0.0
+
+        # Calculate pips per day (if symbol spec available)
+        avg_pips_per_day = self._calculate_pips_per_day(
+            symbol, avg_absolute_atr)
+
         return SymbolAnalysis(
             symbol=symbol,
             timeframe=tf,
@@ -183,6 +270,8 @@ class MarketAnalyzer:
             atr_max=atr_max,
             atr_avg=(atr_min + atr_max) / 2,
             atr_std=np.std(atr_values) if atr_values else 0.0,
+            atr_percent=atr_percent,
+            avg_pips_per_day=avg_pips_per_day,
             regime_distribution=regime_dist,
             regime_percentages={
                 regime: count / len(periods) * 100

@@ -24,6 +24,8 @@ from python.framework.types.scenario_generator_types import (
     TradingSession,
     VolatilityRegime,
 )
+from python.framework.reporting.market_report import print_analysis_report
+from python.framework.reporting.comparison_report import print_cross_instrument_ranking
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.components.logger.bootstrap_logger import get_logger
 
@@ -53,166 +55,57 @@ class ScenarioCLI:
     def cmd_analyze(
         self,
         symbols: List[str],
-        timeframe: Optional[str] = None,
-        all_symbols: bool = False
+        timeframe: Optional[str] = None
     ) -> None:
         """
-        Analyze market data and print report.
+        Analyze market data and print report with cross-instrument comparison.
 
         Args:
             symbols: List of symbols to analyze
             timeframe: Timeframe override
-            all_symbols: Analyze all available symbols
         """
-        if all_symbols:
-            symbols = self._analyzer.list_symbols()
-
         if not symbols:
-            print("❌ No symbols specified. Use --all or provide symbol names.")
+            print("❌ No symbols specified. Provide symbol names.")
             return
 
+        # Analyze requested symbols
+        requested_analyses: List[SymbolAnalysis] = []
         for symbol in symbols:
             try:
                 analysis = self._analyzer.analyze_symbol(symbol, timeframe)
-                self._print_analysis_report(analysis)
+                requested_analyses.append(analysis)
+                print_analysis_report(analysis)
             except Exception as e:
                 print(f"❌ Failed to analyze {symbol}: {e}")
                 vLog.error(f"Analysis failed for {symbol}: {e}")
 
-    def _print_analysis_report(self, analysis: SymbolAnalysis) -> None:
-        """
-        Print formatted analysis report.
+        # Load all other symbols for cross-instrument comparison
+        all_symbols = self._analyzer.list_symbols()
+        all_analyses: List[SymbolAnalysis] = []
 
-        Args:
-            analysis: SymbolAnalysis results
-        """
-        # Header
-        print("\n" + "=" * 60)
-        print(f"📊 MARKET ANALYSIS REPORT: {analysis.symbol}")
-        print("=" * 60)
+        for sym in all_symbols:
+            # Check if already analyzed
+            existing = next(
+                (a for a in requested_analyses if a.symbol == sym), None
+            )
+            if existing:
+                all_analyses.append(existing)
+            else:
+                try:
+                    analysis = self._analyzer.analyze_symbol(sym, timeframe)
+                    all_analyses.append(analysis)
+                except Exception as e:
+                    vLog.warning(
+                        f"Could not analyze {sym} for comparison: {e}")
 
-        # Overview
-        print(f"Data Range:     {analysis.start_time.strftime('%Y-%m-%d')} → "
-              f"{analysis.end_time.strftime('%Y-%m-%d')} ({analysis.total_days} days)")
-        print(f"Timeframe:      {analysis.timeframe}")
-        print(f"Market Type:    {analysis.market_type}")
-        print(f"Data Source:    {analysis.data_source}")
-
-        # Divider
-        print("\n" + "─" * 60)
-        print("📈 VOLATILITY DISTRIBUTION (ATR-based)")
-        print("─" * 60)
-
-        # Total coverage time
-        total_periods = len(analysis.periods)
-        granularity_hours = 1  # From config - regime_granularity_hours
-        total_hours = total_periods * granularity_hours
-        total_days = total_hours // 24
-        remaining_hours = total_hours % 24
-        print(
-            f"Total Coverage: {total_days}d {remaining_hours}h ({total_periods} periods)\n")
-
-        # Volatility regimes with duration
-        regime_names = {
-            VolatilityRegime.VERY_LOW: "Very Low   (0-20%)  ",
-            VolatilityRegime.LOW: "Low        (20-40%) ",
-            VolatilityRegime.MEDIUM: "Medium     (40-60%) ",
-            VolatilityRegime.HIGH: "High       (60-80%) ",
-            VolatilityRegime.VERY_HIGH: "Very High  (80-100%)",
-        }
-
-        for regime in VolatilityRegime:
-            count = analysis.regime_distribution.get(regime, 0)
-            pct = analysis.regime_percentages.get(regime, 0)
-            bar_len = round(pct / 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
-
-            # Calculate duration for this regime
-            regime_hours = count * granularity_hours
-            regime_days = regime_hours // 24
-            regime_rem_hours = regime_hours % 24
-            duration_str = f"{regime_days:2d}d {regime_rem_hours:2d}h"
-
-            print(
-                f"   {regime_names[regime]}:  {count:4d} periods  {bar}  {pct:5.1f}%  → {duration_str}")
-
-        # ATR stats
-        print(f"\n   ATR Relative: {analysis.atr_min:.5f} - {analysis.atr_max:.5f} "
-              f"(avg: {analysis.atr_avg:.5f})")
-
-        # Session statistics with regime distribution
-        print("\n" + "─" * 60)
-        print("📊 SESSION ACTIVITY")
-        print("─" * 60)
-
-        activity_label = self._activity_provider.get_metric_label(
-            analysis.market_type
-        ).lower()
-
-        session_names = {
-            TradingSession.SYDNEY_TOKYO: "Asian (Sydney/Tokyo)",
-            TradingSession.LONDON: "London",
-            TradingSession.NEW_YORK: "New York",
-            TradingSession.TRANSITION: "Transition",
-        }
-
-        # Short regime labels for compact display
-        regime_short = {
-            VolatilityRegime.VERY_LOW: "VL",
-            VolatilityRegime.LOW: "L",
-            VolatilityRegime.MEDIUM: "M",
-            VolatilityRegime.HIGH: "H",
-            VolatilityRegime.VERY_HIGH: "VH",
-        }
-
-        for session in TradingSession:
-            if session not in analysis.session_summaries:
-                continue
-
-            summary = analysis.session_summaries[session]
-
-            # Calculate session duration
-            session_hours = summary.period_count * granularity_hours
-            session_days = session_hours // 24
-            session_rem_hours = session_hours % 24
-
-            print(
-                f"\n   {session_names[session]} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
-            print(f"      Total {activity_label}:    {summary.total_ticks:,}")
-            print(
-                f"      Avg density:    {summary.avg_tick_density:,.0f} {activity_label}/hour")
-            print(
-                f"      ATR Relative:      {summary.min_atr:.5f} - {summary.max_atr:.5f}")
-
-            # Regime distribution for this session
-            if summary.period_count > 0:
-                regime_parts = []
-                for regime in VolatilityRegime:
-                    regime_count = summary.regime_distribution.get(regime, 0)
-                    regime_pct = (regime_count / summary.period_count) * 100
-                    regime_parts.append(
-                        f"{regime_short[regime]}: {regime_pct:.0f}%")
-                print(f"      Regimes:        {' | '.join(regime_parts)}")
-
-        # Data quality
-        print("\n" + "─" * 60)
-        print("📦 DATA QUALITY")
-        print("─" * 60)
-        print(f"   Total bars:      {analysis.total_bars:,}")
-        print(f"   Total {activity_label}:    {analysis.total_ticks:,}")
-        print(f"   Real bar ratio:  {analysis.real_bar_ratio * 100:.1f}%")
-
-        # Recommendations
-        print("\n" + "─" * 60)
-        print("💡 GENERATION RECOMMENDATIONS")
-        print("─" * 60)
-        print(f"   • Balanced testing: --strategy balanced --count 12")
-        print(f"   • Chronological:    --strategy blocks --block-size 6")
-        print(f"   • Stress testing:   --strategy stress --count 5")
-        print(
-            f"\n   Run: python scenario_cli.py generate {analysis.symbol} --help")
-
-        print("=" * 60 + "\n")
+        # Print cross-instrument ranking
+        if all_analyses and requested_analyses:
+            config = self._analyzer.get_config()
+            top_count = config.cross_instrument_ranking.top_count
+            # Use first requested symbol as current
+            current_symbol = requested_analyses[0].symbol
+            print_cross_instrument_ranking(
+                all_analyses, current_symbol, top_count)
 
     # =========================================================================
     # GENERATE COMMAND
@@ -237,44 +130,42 @@ class ScenarioCLI:
         Args:
             symbols: List of symbols
             strategy: Generation strategy (balanced, blocks, stress)
-            count: Number of scenarios to generate
+            count: Number of scenarios
             block_size: Block size in hours (for blocks strategy)
-            session: Filter by trading session
+            session: Single session filter
+            sessions: Comma-separated session filters
             start: Start date filter (ISO format)
             end: End date filter (ISO format)
             output: Output filename
             max_ticks: Max ticks per scenario
         """
-        if not symbols:
-            print("❌ No symbols specified.")
-            return
-
-        # Parse strategy
         try:
-            gen_strategy = GenerationStrategy(strategy.lower())
+            gen_strategy = GenerationStrategy(strategy)
         except ValueError:
-            print(f"❌ Unknown strategy: {strategy}")
-            print("   Available: balanced, blocks, stress")
+            print(f"❌ Invalid strategy: {strategy}")
             return
 
-        # Parse dates
-        start_dt = None
-        end_dt = None
+        # Parse session filters
+        sessions_list: Optional[List[str]] = None
+        if sessions:
+            sessions_list = [s.strip() for s in sessions.split(',')]
+        elif session:
+            sessions_list = [session]
+
+        # Parse date filters
+        start_dt: Optional[datetime] = None
+        end_dt: Optional[datetime] = None
         if start:
-            start_dt = datetime.fromisoformat(
-                start).replace(tzinfo=timezone.utc)
+            start_dt = datetime.fromisoformat(start)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
         if end:
-            end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+            end_dt = datetime.fromisoformat(end)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
 
-        # Initialize generator
-        generator = ScenarioGenerator(str(self._data_dir))
-
-        # Generate scenarios
         try:
-            # Parse sessions list for blocks strategy
-            sessions_list = None
-            if sessions:
-                sessions_list = [s.strip() for s in sessions.split(',')]
+            generator = ScenarioGenerator(str(self._data_dir))
 
             result = generator.generate(
                 symbols=symbols,
@@ -399,13 +290,8 @@ def main():
     )
     analyze_parser.add_argument(
         'symbols',
-        nargs='*',
+        nargs='+',
         help='Symbols to analyze (e.g., EURUSD GBPUSD)'
-    )
-    analyze_parser.add_argument(
-        '--all',
-        action='store_true',
-        help='Analyze all available symbols'
     )
     analyze_parser.add_argument(
         '--timeframe',
@@ -497,8 +383,7 @@ def main():
     if args.command == 'analyze':
         cli.cmd_analyze(
             symbols=args.symbols,
-            timeframe=args.timeframe,
-            all_symbols=args.all
+            timeframe=args.timeframe
         )
 
     elif args.command == 'generate':

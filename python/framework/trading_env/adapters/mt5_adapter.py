@@ -6,7 +6,7 @@ Loads existing broker_config.json from BrokerConfigExporter.mq5.
 Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from python.framework.types.market_data_types import TickData
 from .base_adapter import IOrderCapabilities
@@ -306,6 +306,12 @@ class MT5Adapter(IOrderCapabilities):
     # ============================================
     # Symbol Information
     # ============================================
+
+    def get_all_aviable_symbols(self) -> List[str]:
+        """
+        Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
+        """
+        return list(self.broker_config["symbols"].keys())
 
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """

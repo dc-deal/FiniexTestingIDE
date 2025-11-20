@@ -203,18 +203,6 @@
             "justMyCode": false
         },
         {
-            "name": "📊 MARKET ANALYSIS REPORT - Analyze All",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
-            "args": [
-                "analyze",
-                "--all"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "📊 Scenario Generator - Generate Balanced",
             "type": "debugpy",
             "request": "launch",
