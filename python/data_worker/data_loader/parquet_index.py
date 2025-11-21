@@ -1,7 +1,6 @@
 """
 ParquetIndexManager - Fast File Selection via Metadata Index
 
-UPDATED: Support für neue Collector-First Hierarchie
 - ALT: ticks/mt5/EURUSD/*.parquet
 - NEU: mt5/ticks/EURUSD/*.parquet
 """
@@ -29,7 +28,6 @@ class ParquetIndexManager:
     """
     Manages Parquet file index for fast time-based file selection.
 
-    UPDATED: Angepasst für neue Verzeichnisstruktur (Collector-First)
     """
 
     def __init__(self, data_dir: Path, logger: AbstractLogger = vLog):
@@ -46,8 +44,6 @@ class ParquetIndexManager:
     def build_index(self, force_rebuild: bool = False) -> None:
         """
         Build or load index from Parquet files.
-
-        UPDATED: Scannt neue Hierarchie (collector/ticks/symbol/*.parquet)
         """
         if not force_rebuild and not self.needs_rebuild():
             self.load_index()
@@ -135,8 +131,6 @@ class ParquetIndexManager:
     def needs_rebuild(self) -> bool:
         """
         Check if index needs rebuilding.
-
-        UPDATED: Scannt nur Tick-Files
         """
         if not self.index_file.exists():
             return True

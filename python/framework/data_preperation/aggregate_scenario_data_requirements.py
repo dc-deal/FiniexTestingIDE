@@ -24,7 +24,7 @@ from python.framework.utils.scenario_requirements import (
     calculate_scenario_requirements
 )
 from python.framework.factory.worker_factory import WorkerFactory
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -53,7 +53,7 @@ class AggregateScenarioDataRequirements:
     def add_scenario(
         self,
         scenario: SingleScenario,
-        app_config: AppConfigLoader,
+        app_config: AppConfigManager,
         scenario_index: int,
         logger: AbstractLogger = vLog
     ) -> Dict[str, int]:

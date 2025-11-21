@@ -127,7 +127,7 @@ from python.framework.types.live_scenario_stats_types import LiveScenarioStats
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.framework.process.process_main import process_main
 from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
@@ -159,7 +159,7 @@ class BatchOrchestrator:
     def __init__(
         self,
         scenario_set: ScenarioSet,
-        app_config_loader: AppConfigLoader
+        app_config_loader: AppConfigManager
     ):
         """
         Initialize batch orchestrator.

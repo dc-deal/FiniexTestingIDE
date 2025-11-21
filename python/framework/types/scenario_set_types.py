@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.components.logger.system_info_writer import write_system_version_parameters
-from python.configuration.app_config_loader import AppConfigLoader
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
@@ -96,7 +96,7 @@ class LoadedScenarioConfig:
 class ScenarioSet:
     """Self-contained scenario set with its own logging infrastructure"""
 
-    def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigLoader):
+    def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager):
 
         self.scenario_set_name = scenario_config.scenario_set_name
         self.scenarios = scenario_config.scenarios
@@ -105,7 +105,7 @@ class ScenarioSet:
 
         # ScenarioSet erstellt SEINE EIGENEN Logger
         self._run_timestamp = datetime.now(
-            timezone.utc).strftime("%Y%m%d_%H%M%S")
+            timezone.utc)
 
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
@@ -119,7 +119,7 @@ class ScenarioSet:
         )
 
     @property
-    def run_timestamp(self) -> str:
+    def run_timestamp(self) -> datetime:
         """Expose run_timestamp for easy access"""
         return self._run_timestamp
 

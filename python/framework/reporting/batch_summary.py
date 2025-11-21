@@ -2,10 +2,6 @@
 FiniexTestingIDE - Batch Summary
 Main orchestrator for all batch execution summaries
 
-UPDATED:
-- Added ProfilingSummary for performance profiling
-- Extended render_all() to include profiling section
-
 Architecture:
 - BatchSummary orchestrates all sub-summaries
 - Delegates to specialized summary classes
@@ -20,7 +16,7 @@ from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.reporting.console_renderer import ConsoleRenderer
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_performance_types import ProfilingData
 
@@ -29,21 +25,19 @@ class BatchSummary:
     """
     Main summary orchestrator for batch execution results.
 
-    UPDATED:
-    - Added ProfilingSummary for tick loop profiling
     """
 
     def __init__(
         self,
         batch_execution_summary: BatchExecutionSummary,
-        app_config: AppConfigLoader
+        app_config: AppConfigManager
     ):
         """
         Initialize batch summary.
 
         Args:
             performance_log: Performance statistics container (includes portfolio stats)
-            app_config: AppConfigLoader instance
+            app_config: AppConfigManager instance
         """
         self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config

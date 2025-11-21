@@ -8,7 +8,7 @@ from python.framework.reporting.console_renderer import ConsoleRenderer
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 
 
 class BrokerSummary:
@@ -17,7 +17,7 @@ class BrokerSummary:
     def __init__(
         self,
         batch_summary: BatchExecutionSummary,
-        app_config: AppConfigLoader
+        app_config: AppConfigManager
     ):
         """
         Initialize broker summary.

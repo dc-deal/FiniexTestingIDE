@@ -13,28 +13,15 @@ Subclasses must implement:
 - _get_timestamp() - Timestamp format (datetime vs elapsed time)
 """
 
-from datetime import datetime
-from pathlib import Path
 import sys
 import traceback
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
-from python.components.logger.file_logger import FileLogger
-from python.configuration.app_config_loader import AppConfigLoader
-from python.framework.types.log_level import LogLevel
-
-
-class ColorCodes:
-    """ANSI Color Codes for console output"""
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    PURPLE = '\033[95m'  # für VERBOSE
-    GRAY = '\033[90m'
-    BOLD = '\033[1m'
-    RESET = '\033[0m'
+from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.console_logging_config import ConsoleLoggingConfig
+from python.configuration.file_logging_config import FileLoggingConfig
+from python.framework.types.log_level import ColorCodes, LogLevel
 
 
 class AbstractLogger(ABC):
@@ -58,35 +45,23 @@ class AbstractLogger(ABC):
 
         Args:
             name: Logger name/identifier
-            console_log_level: Minimum log level for console output
         """
         self.name = name
 
-        # Load config for log levels
-        config = AppConfigLoader.get_config()
-        console_log_level = config.get('logging', {}).get(
-            'log_level', LogLevel.INFO)
+        # Load config objects
+        app_config = AppConfigManager()
 
-        self.console_log_level = console_log_level.upper()
+        # For GlobalLogger: use console log level
+        # For ScenarioLogger: use scenario log level (with inheritance)
+        self._console_logging_config: ConsoleLoggingConfig = app_config.get_console_logging_config_object()
+        self._file_logging_config: FileLoggingConfig = app_config.get_file_logging_config_object()
 
-        # Timing
-        self.start_time = datetime.now()
+        # Will be set by subclasses (GlobalLogger vs ScenarioLogger)
+        # Setup config from parent (uses global file logging config)
+        self.file_logging_enabled = self._file_logging_config.global_enabled
+        self.file_log_level = self._file_logging_config.global_log_level
 
-        # Console buffering
-        # [(level, formatted_line)]
         self.console_buffer: List[Tuple[str, str]] = []
-
-        # File logging config
-        self.file_logging_enabled = config.get(
-            'file_logging', {}).get('enabled', False)
-        self.file_log_level = config.get('file_logging', {}).get(
-            'log_level', LogLevel.DEBUG)
-        self.file_log_root = config.get(
-            'file_logging', {}).get('log_root_path', 'logs')
-
-        # Validate log level from config str
-        if not LogLevel.validate(self.console_log_level):
-            raise ValueError(f"Invalid log level: {self.console_log_level}")
 
     @abstractmethod
     def _log_console_implementation(self, level: str, message: str) -> str:
@@ -100,6 +75,18 @@ class AbstractLogger(ABC):
         Args:
             level: Log level (INFO, DEBUG, WARNING, ERROR)
             message: Log message
+        """
+        pass
+
+    @abstractmethod
+    def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
+        """
+        Write to global log file.
+
+        Args:
+            level: Log level
+            message: Log message (plain text, no colors)
+            timestamp: DateTime timestamp
         """
         pass
 
@@ -118,24 +105,22 @@ class AbstractLogger(ABC):
         pass
 
     @abstractmethod
-    def flush_buffer(self):
+    def _should_log_console(self, level: LogLevel) -> str:
         """
-        Flush any buffered logs.
+        check if console log is enabled for logger
+        """
+        pass
 
-        Different implementations:
-        - GlobalLogger: No-op (no buffering)
-        - ScenarioLogger: Flush console buffer
+    @abstractmethod
+    def _should_log_file(self, level: LogLevel) -> str:
+        """
+         check if file log is enabled for logger
         """
         pass
 
     # ============================================
     # Public Logging API
     # ============================================
-
-    def should_logLevel(self, level: LogLevel):
-        should_log_console = self._should_log_console(level)
-        should_log_file = self._should_log_file(level)
-        return should_log_console or should_log_file
 
     def verbose(self, message: str):
         """Log VERBOSE message - All Logs also Tick / Order Data"""
@@ -177,7 +162,6 @@ class AbstractLogger(ABC):
             - Prints formatted error message
             - Exits with code 1
         """
-        self.flush_buffer()
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         print(f"{ColorCodes.RED}{ColorCodes.BOLD}❌ VALIDATION ERROR{ColorCodes.RESET}")
@@ -208,7 +192,6 @@ class AbstractLogger(ABC):
             - Prints formatted error message
             - Exits with code 1
         """
-        self.flush_buffer()
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         print(
@@ -238,7 +221,6 @@ class AbstractLogger(ABC):
             - Prints formatted error message with stack trace
             - Exits with code 1
         """
-        self.flush_buffer()
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         print(f"{ColorCodes.RED}{ColorCodes.BOLD}💥 CRITICAL ERROR{ColorCodes.RESET}")
@@ -302,12 +284,6 @@ class AbstractLogger(ABC):
     # Helper Methods
     # ============================================
 
-    def _should_log_console(self, logLevel: LogLevel) -> bool:
-        return LogLevel.should_log(logLevel, self.console_log_level)
-
-    def _should_log_file(self, logLevel: LogLevel) -> bool:
-        return self.file_logging_enabled and LogLevel.should_log(logLevel, self.file_log_level)
-
     def _get_color_for_level(self, level: str) -> str:
         """Get ANSI color code for log level"""
         color_map = {
@@ -326,12 +302,9 @@ class AbstractLogger(ABC):
         if should_log_console:
             self._log_console_implementation(
                 level, message, timestamp_implemenration)
-
         if should_log_file:
-            # File output (DIRECT - if enabled)
-            if should_log_file:
-                self._write_to_file(
-                    level, message, timestamp_implemenration)
+            self._write_to_file_implementation(
+                level, message, timestamp_implemenration)
 
     def _format_log_line(self, level: str, message: str, timestamp: str) -> str:
         """

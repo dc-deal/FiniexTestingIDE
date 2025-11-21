@@ -32,7 +32,7 @@ We simulate both with seeded random generators to create realistic yet
 reproducible order execution patterns.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import random
 from typing import Dict, List, Optional
 
@@ -183,7 +183,8 @@ class OrderLatencySimulator:
             direction=direction,
             lots=lots,
             entry_price=0,     # ← Store for converter
-            entry_time=datetime.now(),       # ← Store for converter
+            # ← Store for converter
+            entry_time=datetime.now(timezone.utc),
             order_kwargs=kwargs
         )
 

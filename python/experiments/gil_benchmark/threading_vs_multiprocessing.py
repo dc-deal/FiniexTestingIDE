@@ -25,7 +25,7 @@ import sys
 import os
 import threading
 import psutil
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 
 
@@ -52,7 +52,7 @@ class LogWriter:
         safe_mode = re.sub(r'[^\w\-]', '_', execution_mode.lower())
 
         # Timestamp
-        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        timestamp = datetime.now(timezone.utc) .strftime('%Y%m%d-%H%M%S')
 
         # Filename
         filename = f"gil_benchmark_{safe_platform}_{safe_mode}_{timestamp}.log"
@@ -64,7 +64,7 @@ class LogWriter:
         # Write header
         self.write(f"GIL Benchmark Log File")
         self.write(
-            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            f"Generated: {datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')}")
         self.write(f"Platform: {platform_name}")
         self.write(f"Execution Mode: {execution_mode}")
         self.write(f"Log File: {filename}")
@@ -406,7 +406,7 @@ def run_extended_benchmark():
     logger.write(
         "\nRealistische Simulation der FiniexTestingIDE Scenario Parallelization")
     logger.write(
-        f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f"Timestamp: {datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     # Environment Detection
     context, sys_info = EnvironmentDetector.print_environment_report(logger)

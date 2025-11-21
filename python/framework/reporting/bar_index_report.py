@@ -256,7 +256,7 @@ class BarIndexReportGenerator:
         Returns:
             Path to saved report
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc) .strftime("%Y%m%d_%H%M%S")
         filename = f"bar_index_{timestamp}.json"
         report_path = self.reports_dir / filename
 

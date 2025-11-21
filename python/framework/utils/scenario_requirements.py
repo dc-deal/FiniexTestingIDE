@@ -4,10 +4,8 @@ Calculates warmup and timeframe requirements from workers
 
 """
 
-from typing import Dict, List, Any
+from typing import List
 from python.framework.types.scenario_types import ScenarioRequirements
-from python.framework.factory.worker_factory import WorkerFactory
-from python.components.logger.abstract_logger import AbstractLogger
 
 
 def calculate_scenario_requirements(workers: List) -> ScenarioRequirements:

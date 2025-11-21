@@ -10,18 +10,26 @@
         "default_parallel_workers": true,
         "default_worker_parallel_threshold_ms": 1.0
     },
-    "logging": {
-        "performance_tracking": true,
-        "show_scenario_logging": true,
-        "write_system_info": true,
-        "show_decision_logic_details": true,
+    "console_logging": {
+        "enabled": true,
+        "log_level": "INFO",
         "warn_on_parameter_override": true,
-        "log_level": "DEBUG"
+        "scenario": {
+            "enabled": true,
+            "log_level": "WARNING",
+            "write_system_info": true
+        }
     },
     "file_logging": {
-        "enabled": false,
+        "enabled": true,
         "log_level": "DEBUG",
-        "log_root_path": "logs/scenario_sets"
+        "log_path": "logs/global.log",
+        "append_mode": true,
+        "scenario": {
+            "enabled": true,
+            "log_level": null,
+            "log_root_path": "logs/scenario_sets"
+        }
     },
     "importer": {
         "move_processed_files": true,

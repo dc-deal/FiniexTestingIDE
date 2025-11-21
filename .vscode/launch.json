@@ -197,7 +197,7 @@
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
-                "EURGBP"
+                "AUDUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

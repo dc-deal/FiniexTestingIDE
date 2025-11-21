@@ -20,7 +20,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
@@ -81,7 +81,7 @@ class TickDataImporter:
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
-        self._app_config_loader = AppConfigLoader()
+        self._app_config_loader = AppConfigManager()
 
     def process_all_mql5_exports(self):
         """
@@ -260,7 +260,8 @@ class TickDataImporter:
 
         data_collector = metadata.get("data_collector", "mt5")
         symbol = metadata.get("symbol", "UNKNOWN")
-        start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
+        start_time = pd.to_datetime(metadata.get(
+            "start_time", datetime.now(timezone.utc)))
 
         # NEU: data_format_version extrahieren
         data_format_version = metadata.get("data_format_version", "1.0.0")

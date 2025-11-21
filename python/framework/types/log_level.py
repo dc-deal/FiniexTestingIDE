@@ -14,6 +14,18 @@ Usage:
 """
 
 
+class ColorCodes:
+    """ANSI Color Codes for console output"""
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    PURPLE = '\033[95m'  # für VERBOSE
+    GRAY = '\033[90m'
+    BOLD = '\033[1m'
+    RESET = '\033[0m'
+
+
 class LogLevel:
     """
     Log level definitions and validation.
@@ -48,6 +60,10 @@ class LogLevel:
         Raises:
             ValueError: If invalid log level
         """
+        if not isinstance(level, str):
+            raise TypeError(
+                f"Log level must be a string, but got {type(level).__name__}: {level}"
+            )
         level_upper = level.upper()
         if level_upper not in cls._PRIORITY:
             valid_levels = ", ".join(cls._PRIORITY.keys())

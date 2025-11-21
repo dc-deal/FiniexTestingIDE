@@ -6,7 +6,7 @@
 
 from multiprocessing import Queue
 from typing import Optional
-from python.configuration.app_config_loader import AppConfigLoader
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.process.process_main import process_main
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
@@ -29,7 +29,7 @@ class ProcessExecutor:
     def __init__(
         self,
         scenario: SingleScenario,
-        app_config_loader: AppConfigLoader,
+        app_config_loader: AppConfigManager,
         scenario_index: int,
         scenario_set_name: str,
         run_timestamp: str,

@@ -15,14 +15,10 @@ Features:
 - Thread-safe
 - Plain text format (no ANSI colors)
 """
-
-import shutil
-import threading
-from datetime import datetime
+from datetime import timezone
 from pathlib import Path
-from typing import Optional, Dict
-
 from python.framework.types.log_level import LogLevel
+from datetime import datetime
 
 
 class FileLogger:
@@ -39,42 +35,38 @@ class FileLogger:
 
     def __init__(
         self,
-        log_type: str,
-        run_dir: Path,
-        scenario_name: Optional[str] = None,  # scenario_index ENTFERNT!
-        log_level: str = LogLevel.DEBUG
+        file_path: Path,
+        log_level: LogLevel,
+        log_filename: str = "",
+        append_mode: bool = False,
     ):
         """
         Initialize file logger.
 
         Args:
-            log_type: "global" or "scenario"
             run_dir: Directory for log files
             scenario_name: Scenario name (for scenario logs)
             log_level: Minimum log level to write
         """
-        self.log_type = log_type
-        self.run_dir = run_dir
-        self.scenario_name = scenario_name
-        self.log_level = log_level.upper()
+        self.file_path = file_path
+        self.log_level = log_level
+        self._append_mode = append_mode
 
-        # Create log file
-        if log_type == "global":
-            log_filename = "global.log"
-        elif log_type == "scenario":
-            if not scenario_name:
-                raise ValueError("scenario_name required for scenario logs")
-            # Format: scenario_GBPUSD_window_01.log
-            log_filename = f"scenario_{scenario_name}.log"
-        else:
-            raise ValueError(f"Unknown log_type: {log_type}")
+        self.log_file_path = file_path / log_filename
 
-        self.log_file_path = run_dir / log_filename
-
-        # Open file handle
+        # Open file handle with appropriate mode
+        file_mode = 'a' if append_mode else 'w'
         try:
-            self.file_handle = open(self.log_file_path, 'w', encoding='utf-8')
-            self._write_header()
+            self.file_handle = open(
+                self.log_file_path, file_mode, encoding='utf-8')
+
+            # Write header only if creating new file (not appending)
+            if not append_mode:
+                self._write_header()
+            else:
+                # Add separator when appending
+                self._write_append_separator()
+
         except Exception as e:
             print(
                 f"Warning: Failed to create log file {self.log_file_path}: {e}")
@@ -86,18 +78,29 @@ class FileLogger:
             return
 
         header = "=" * 80 + "\n"
-
-        if self.log_type == "global":
-            header += "                    FiniexTestingIDE - Global Log\n"
-        else:
-            header += "                    FiniexTestingIDE - Scenario Log\n"
-            # scenario_index removed
-            header += f"Scenario Name: {self.scenario_name}\n"
-
+        header += "Global Log\n"
         header += f"Log Level: {self.log_level}\n"
         header += "=" * 80 + "\n\n"
 
         self.file_handle.write(header)
+        self.file_handle.flush()
+
+    def _write_append_separator(self):
+        """Write separator when appending to existing log"""
+        if not self.file_handle:
+            return
+        timestamp = datetime.now(timezone.utc) .strftime("%Y-%m-%d %H:%M:%S")
+
+        log_level_str = 'LOG LEVEL: ' + self.log_level
+        separator = (
+            f"\n{'='*80}\n"
+            f"{'SESSION CONTINUED'.center(80)}\n"
+            f"{log_level_str.center(80)}\n"
+            f"{timestamp.center(80)}\n"
+            f"{'='*80}\n\n"
+        )
+
+        self.file_handle.write(separator)
         self.file_handle.flush()
 
     def write_log(self, level: str, message: str, timestamp: str):
