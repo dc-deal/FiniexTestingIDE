@@ -20,6 +20,8 @@ from pathlib import Path
 from python.framework.types.log_level import LogLevel
 from datetime import datetime
 
+from python.framework.utils.file_utils import sanitize_filename
+
 
 class FileLogger:
     """
@@ -51,8 +53,9 @@ class FileLogger:
         self.file_path = file_path
         self.log_level = log_level
         self._append_mode = append_mode
+        sanitized_filename = sanitize_filename(log_filename)
 
-        self.log_file_path = file_path / log_filename
+        self.log_file_path = file_path / sanitized_filename
 
         # Open file handle with appropriate mode
         file_mode = 'a' if append_mode else 'w'

@@ -1,6 +1,6 @@
 import json
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 class ConfigFileLoader:
@@ -14,12 +14,24 @@ class ConfigFileLoader:
         ConfigFileLoader._config_path = config_path
 
     @staticmethod
-    def get_config() -> Dict[str, Any]:
-        """Returns the cached config, loads it once."""
+    def get_config() -> Tuple[Dict[str, Any], bool]:
+        """
+        Returns the configuration and whether it was loaded during this call.
+
+        Loads the config once and caches it. The boolean indicates if the config
+        was freshly loaded (`True`) or returned from cache (`False`).
+
+        Returns:
+            Tuple[Dict[str, Any], bool]: (config_dict, was_first_load)
+        """
         with ConfigFileLoader._lock:
+            was_first_load = False
+
             if ConfigFileLoader._config is None:
                 ConfigFileLoader._config = ConfigFileLoader._load()
-            return ConfigFileLoader._config
+                was_first_load = True
+
+            return ConfigFileLoader._config, was_first_load
 
     @staticmethod
     def reload() -> Dict[str, Any]:

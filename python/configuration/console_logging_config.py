@@ -30,7 +30,7 @@ class ConsoleLoggingConfig:
         Raises:
             ValueError: If required fields missing or invalid
         """
-        config = ConfigFileLoader.get_config()
+        config, was_first_load = ConfigFileLoader.get_config()
         self._config = config.get(
             'console_logging', None)
         if self._config is None:

@@ -21,7 +21,7 @@
         }
     },
     "file_logging": {
-        "enabled": true,
+        "enabled": false,
         "log_level": "DEBUG",
         "log_path": "logs/global.log",
         "append_mode": true,

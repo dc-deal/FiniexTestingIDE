@@ -23,8 +23,10 @@ class AppConfigManager:
         Initialize app config loader.
         """
         # Only load once
-        self._config = ConfigFileLoader.get_config()
-        self._print_config_status()
+        config, was_first_load = ConfigFileLoader.get_config()
+        self._config = config
+        if was_first_load:
+            self._print_config_status()
         self._file_logging_config = FileLoggingConfig()
         self._console_logging_config = ConsoleLoggingConfig()
 
