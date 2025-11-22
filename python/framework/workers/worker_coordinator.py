@@ -109,7 +109,7 @@ class WorkerCoordinator:
         # ============================================
         # Performance Logging Integration
         # ============================================
-        self.performance_log = PerformanceLogCoordinator(
+        self.performance_log_coordinator = PerformanceLogCoordinator(
             parallel_workers=self.parallel_workers
         )
 
@@ -117,7 +117,7 @@ class WorkerCoordinator:
         for worker_name, worker in self.workers.items():
             # Extract worker type from worker parameters or name
             worker_type = self._extract_worker_type(worker)
-            perf_logger = self.performance_log.create_worker_log(
+            perf_logger = self.performance_log_coordinator.create_worker_log(
                 worker_type=worker_type,
                 worker_name=worker_name
             )
@@ -125,7 +125,7 @@ class WorkerCoordinator:
 
         # Create performance logger for decision logic
         decision_logic_type = self._extract_decision_logic_type(decision_logic)
-        decision_perf_logger = self.performance_log.create_decision_logic_log(
+        decision_perf_logger = self.performance_log_coordinator.create_decision_logic_log(
             decision_logic_type=decision_logic_type,
             decision_logic_name=decision_logic.name
         )
@@ -294,7 +294,7 @@ class WorkerCoordinator:
         if not self.is_initialized:
             raise RuntimeError("Coordinator not initialized")
 
-        self.performance_log.increment_ticks()
+        self.performance_log_coordinator.increment_ticks()
         bar_history = bar_history or {}
 
         # Determine if any bars were updated
@@ -443,7 +443,8 @@ class WorkerCoordinator:
 
         if time_saved > 0:
             # Record parallel performance
-            self.performance_log.record_parallel_time_saved(time_saved)
+            self.performance_log_coordinator.record_parallel_time_saved(
+                time_saved)
 
     def _compute_worker(
         self,

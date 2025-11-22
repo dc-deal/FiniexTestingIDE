@@ -35,7 +35,7 @@ class PerformanceSummary:
         Initialize performance summary.
 
         Args:
-            performance_log: Performance statistics container
+            performance_log_coordinator: Performance statistics container
         """
         self.batch_execution_summary = batch_execution_summary
         self.all_scenarios = batch_execution_summary.scenario_list

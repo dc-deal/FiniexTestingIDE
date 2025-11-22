@@ -60,14 +60,14 @@ def process_startup_preparation(
         f"✅ Created decision logic: {config.decision_logic_type}")
 
     # === CREATE WORKER COORDINATOR ===
-    coordinator = WorkerCoordinator(
+    worker_coordinator = WorkerCoordinator(
         decision_logic=decision_logic,
         strategy_config=config.strategy_config,
         workers=workers,
         parallel_workers=config.parallel_workers,
         parallel_threshold_ms=config.parallel_threshold
     )
-    coordinator.initialize()
+    worker_coordinator.initialize()
 
     scenario_logger.debug(
         f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
@@ -140,7 +140,7 @@ def process_startup_preparation(
         f"🔄 De-Serialization of {len(ticks):,} ticks finished")
 
     return ProcessPreparedDataObjects(
-        coordinator=coordinator,
+        worker_coordinator=worker_coordinator,
         trade_simulator=trade_simulator,
         bar_rendering_controller=bar_rendering_controller,
         decision_logic=decision_logic,

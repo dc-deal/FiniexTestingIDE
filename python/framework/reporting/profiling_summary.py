@@ -31,7 +31,7 @@ class ProfilingSummary:
         Initialize profiling summary.
 
         Args:
-            performance_log: Performance statistics container
+            performance_log_coordinator: Performance statistics container
         """
         self.batch_execution_summary = batch_execution_summary
         self.profiling_data_map = profiling_data_map

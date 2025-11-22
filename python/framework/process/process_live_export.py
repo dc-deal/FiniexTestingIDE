@@ -51,7 +51,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
                         tick_idx: int,
                         tick: TickData,
                         portfolio: PortfolioManager,
-                        coordinator: WorkerCoordinator,
+                        worker_coordinator: WorkerCoordinator,
                         current_bars: Dict[str, Bar]
                         ) -> bool:
     first_tick = live_setup.first_tick
@@ -115,7 +115,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
         # 2. Performance Stats
         if config.live_stats_config.export_performance_stats:
             live_data["performance_stats"] = (
-                coordinator.performance_log.get_snapshot()
+                worker_coordinator.performance_log_coordinator.get_snapshot()
             )
 
         # 3. Current Bars

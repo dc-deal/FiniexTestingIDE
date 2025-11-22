@@ -67,7 +67,7 @@ parallel scenario execution. Each has important trade-offs:
 │                                                                              │
 │ REQUIRED CLEANUPS (implemented in process_executor.py):                     │
 │   1. FileLogger.close()        - Close scenario log files                   │
-│   2. coordinator.cleanup()     - Close ThreadPool (if enabled)              │
+│   2. worker_coordinator.cleanup()     - Close ThreadPool (if enabled)              │
 │   3. logging.shutdown()        - Close ALL Python logging handlers          │
 │                                                                              │
 │ DEBUGGER COMPATIBILITY:                                                     │
