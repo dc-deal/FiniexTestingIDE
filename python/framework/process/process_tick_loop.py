@@ -38,7 +38,7 @@ def execute_tick_loop(
     Returns:
         ProcessTickLoopResult with loop results
     """
-    coordinator = prepared_objects.coordinator
+    worker_coordinator = prepared_objects.worker_coordinator
     trade_simulator = prepared_objects.trade_simulator
     bar_rendering_controller = prepared_objects.bar_rendering_controller
     scenario_logger = prepared_objects.scenario_logger
@@ -93,7 +93,7 @@ def execute_tick_loop(
 
         # === 4. Worker Processing + Decision ===
         t7 = time.perf_counter()
-        decision = coordinator.process_tick(
+        decision = worker_coordinator.process_tick(
             tick=tick,
             current_bars=current_bars,
             bar_history=bar_history
@@ -117,7 +117,7 @@ def execute_tick_loop(
         # === 6. LIVE UPDATES (Time-based) ===
         t11 = time.perf_counter()
         live_updated = process_live_export(
-            live_setup, config, tick_idx, tick, portfolio, coordinator, current_bars)
+            live_setup, config, tick_idx, tick, portfolio, worker_coordinator, current_bars)
         if (live_updated):
             live_update_count += 1
         t12 = time.perf_counter()
@@ -136,12 +136,12 @@ def execute_tick_loop(
     trade_simulator.close_all_remaining_orders()
 
     # === CLEANUP COORDINATOR ===
-    coordinator.cleanup()
+    worker_coordinator.cleanup()
     scenario_logger.debug("✅ Coordinator cleanup completed")
 
     # === GET RESULTS ===
     decision_statistics = decision_logic.get_statistics()
-    performance_stats = coordinator.performance_log.get_snapshot()
+    performance_stats = worker_coordinator.performance_log_coordinator.get_snapshot()
     portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
     execution_stats = trade_simulator.get_execution_stats()
     cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()

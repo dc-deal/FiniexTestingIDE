@@ -1,8 +1,5 @@
 """
 ParquetIndexManager - Fast File Selection via Metadata Index
-
-- ALT: ticks/mt5/EURUSD/*.parquet
-- NEU: mt5/ticks/EURUSD/*.parquet
 """
 
 import json
@@ -16,7 +13,7 @@ import pyarrow.parquet as pq
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.reporting.coverage_report import (
-    TimeRangeCoverageReport,
+    CoverageReport,
     IndexEntry
 )
 
@@ -206,11 +203,11 @@ class ParquetIndexManager:
     # COVERAGE REPORTS - UNCHANGED
     # =========================================================================
 
-    def get_coverage_report(self, symbol: str) -> TimeRangeCoverageReport:
+    def get_coverage_report(self, symbol: str) -> CoverageReport:
         """Generate coverage report for a symbol """
         if symbol not in self.index:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
-            return TimeRangeCoverageReport(symbol, [], [], [])
+            return CoverageReport(symbol, [], [], [])
 
         entries = self.index[symbol]
 
@@ -229,7 +226,7 @@ class ParquetIndexManager:
             for entry in entries
         ]
 
-        report = TimeRangeCoverageReport(symbol, index_entries)
+        report = CoverageReport(symbol, index_entries)
         report.analyze()
         return report
 

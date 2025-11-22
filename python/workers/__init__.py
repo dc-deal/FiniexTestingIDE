@@ -1,5 +1,5 @@
 # ============================================
-# python/workers/__init__.py (NEU - User Content Root)
+# python/workers/__init__.py
 # ============================================
 """
 FiniexTestingIDE - User Workers Package

@@ -58,7 +58,7 @@ class SingleScenario:
                 # True = Workers parallel (gut bei 4+ workers)
                 "parallel_workers": None,  # Auto-detect
                 "worker_parallel_threshold_ms": 1.0,  # Nur parallel wenn Worker >1ms
-                # ← NEU: Künstliche Last - NUR für Heavy workers
+                # Künstliche Last - NUR für Heavy workers
                 # Ist eher für self-testing szenarios und stress tests gedacht.
                 "artificial_load_ms": 5.0,  # 5ms pro Worker
                 # Performance Tuning

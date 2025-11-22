@@ -36,7 +36,7 @@ class BatchSummary:
         Initialize batch summary.
 
         Args:
-            performance_log: Performance statistics container (includes portfolio stats)
+            performance_log_coordinator: Performance statistics container (includes portfolio stats)
             app_config: AppConfigManager instance
         """
         self.batch_execution_summary = batch_execution_summary

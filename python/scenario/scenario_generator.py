@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
-from python.framework.reporting.coverage_report import TimeRangeCoverageReport
+from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.scenario.market_analyzer import MarketAnalyzer
@@ -458,7 +458,7 @@ class ScenarioGenerator:
 
     def _extract_continuous_regions(
         self,
-        coverage_report: TimeRangeCoverageReport
+        coverage_report: CoverageReport
     ) -> List[Dict[str, datetime]]:
         """
         Extract continuous data regions from coverage report.

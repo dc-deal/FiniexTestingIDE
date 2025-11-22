@@ -46,7 +46,7 @@ class AbstractBlackboxWorker(ABC):
         self._last_result = None
 
         # Loggers
-        self.logger = logger  # NEU: ScenarioLogger
+        self.logger = logger  # ScenarioLogger
         self.performance_logger: Optional[PerformanceLogWorker] = None
 
     @abstractmethod

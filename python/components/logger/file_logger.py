@@ -39,7 +39,7 @@ class FileLogger:
         self,
         file_path: Path,
         log_level: LogLevel,
-        log_filename: str = "",
+        log_filename: str,
         append_mode: bool = False,
     ):
         """
@@ -53,6 +53,9 @@ class FileLogger:
         self.file_path = file_path
         self.log_level = log_level
         self._append_mode = append_mode
+        self._tick_loop_started = False
+        self._tick_loop_count = 1
+
         sanitized_filename = sanitize_filename(log_filename)
 
         self.log_file_path = file_path / sanitized_filename
@@ -106,6 +109,14 @@ class FileLogger:
         self.file_handle.write(separator)
         self.file_handle.flush()
 
+    def set_tick_loop_started(self, started: bool):
+        self._tick_loop_started = started
+        if (started):
+            self._tick_loop_count = 1
+
+    def set_current_tick(self, tick_count: int):
+        self._tick_loop_count = tick_count
+
     def write_log(self, level: str, message: str, timestamp: str):
         """
         Write log entry to file.
@@ -121,6 +132,10 @@ class FileLogger:
         """
         if not self.file_handle:
             return
+
+        # tick loop logs.
+        if self._tick_loop_started:
+            message = f"{self._tick_loop_count: 5}| {message}"
 
         # Format: [timestamp] LEVEL | message
         log_line = f"{timestamp} {level:8} | {message}\n"

@@ -64,7 +64,7 @@ class AbstractLogger(ABC):
         self.console_buffer: List[Tuple[str, str]] = []
 
     @abstractmethod
-    def _log_console_implementation(self, level: str, message: str) -> str:
+    def _log_console_implementation(self, level: str, message: str):
         """
         Core logging method - must be implemented by subclasses.
 

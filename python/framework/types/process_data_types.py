@@ -272,7 +272,7 @@ class ProcessPreparedDataObjects:
         Prepared Objects from process_startup_preparation
         All those must be created in minimum time
     """
-    coordinator: WorkerCoordinator = None
+    worker_coordinator: WorkerCoordinator = None
     trade_simulator: TradeSimulator = None
     bar_rendering_controller: BarRenderingController = None
     decision_logic: AbstractDecisionLogic = None

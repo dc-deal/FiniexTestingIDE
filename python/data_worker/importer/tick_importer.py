@@ -263,10 +263,10 @@ class TickDataImporter:
         start_time = pd.to_datetime(metadata.get(
             "start_time", datetime.now(timezone.utc)))
 
-        # NEU: data_format_version extrahieren
+        # data_format_version extrahieren
         data_format_version = metadata.get("data_format_version", "1.0.0")
 
-        # NEU: market_type mit Fallback-Logik
+        # market_type mit Fallback-Logik
         market_type = self._determine_market_type(
             metadata, data_format_version)
 
@@ -283,9 +283,9 @@ class TickDataImporter:
             "symbol": symbol,
             "broker": metadata.get("broker", "unknown"),
             "collector_version": data_format_version,  # Legacy-Name beibehalten
-            "data_format_version": data_format_version,  # NEU: Explizit
+            "data_format_version": data_format_version,  # Explizit
             "data_collector": data_collector,
-            "market_type": market_type,  # NEU: Markttyp
+            "market_type": market_type,  # Markttyp
             "processed_at": datetime.now(timezone.utc).isoformat(),
             "tick_count": str(len(df)),
             "importer_version": self.VERSION,

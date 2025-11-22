@@ -121,13 +121,15 @@ class ScenarioLogger(AbstractLogger):
 
     def set_tick_loop_started(self, started: bool):
         self._tick_loop_started = started
+        self.file_logger.set_tick_loop_started(started)
         if (started):
             self._tick_loop_count = 1
 
     def set_current_tick(self, tick_count: int):
+        self.file_logger.set_current_tick(tick_count)
         self._tick_loop_count = tick_count
 
-    def _log_console_implementation(self, level: str, message: str, timestamp: str) -> str:
+    def _log_console_implementation(self, level: str, message: str, timestamp: str):
         """
             Format Message for Scenario Log.
 
@@ -141,9 +143,10 @@ class ScenarioLogger(AbstractLogger):
         if self._tick_loop_started:
             message = f"{self._tick_loop_count: 5}| {message}"
         formatted_line = self._format_log_line(level, message, timestamp)
+
         # Console output (BUFFERED) - for scenario loggers.
+        # NO EXPLICIT CONSOLE PRINT. Scenario Buffers must be printet after scenario run.
         self._add_to_console_buffer(level, formatted_line)
-        return formatted_line
 
     def _add_to_console_buffer(self, level: str, formatted_line: str):
         """

@@ -105,7 +105,7 @@ class ScenarioConfigLoader:
                     scenario_data['trade_simulator_config'])
 
             # ============================================
-            # NEU: PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
+            # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
             # ============================================
             ParameterOverrideDetector.detect_and_log_overrides(
                 scenario_name=scenario_data['name'],
@@ -207,7 +207,7 @@ class ScenarioConfigLoader:
                     merged['workers'][worker_type] = worker_params
 
         # ============================================
-        # STEP 3: Deep merge decision_logic_config (NEU!)
+        # STEP 3: Deep merge decision_logic_config
         # ============================================
         if 'decision_logic_config' in scenario_config:
             if 'decision_logic_config' not in merged:
