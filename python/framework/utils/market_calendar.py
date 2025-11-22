@@ -7,20 +7,11 @@ EXTENDED  Comprehensive weekend analysis and gap classification
 
 from datetime import datetime, timedelta
 from typing import Tuple, Dict, Union
-from enum import Enum
 
 import pytz
 
+from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types import WeekendClosureWindow
-
-
-class GapCategory(Enum):
-    """Gap classification categories"""
-    SEAMLESS = "seamless"
-    WEEKEND = "weekend"
-    SHORT = "short"
-    MODERATE = "moderate"
-    LARGE = "large"
 
 
 class MarketCalendar:
