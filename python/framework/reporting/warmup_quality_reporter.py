@@ -9,7 +9,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 vLog = get_logger()
 
 
-def print_warmup_quality_metrics(bar_orchestrator: BarRenderingController) -> None:
+def print_warmup_quality_metrics(bar_rendering_controller: BarRenderingController) -> None:
     """
     Print warmup bar quality metrics.
 
@@ -28,10 +28,10 @@ def print_warmup_quality_metrics(bar_orchestrator: BarRenderingController) -> No
     indicator warmup may be unrealistic.
 
     Args:
-        bar_orchestrator: BarRenderingController with warmup data
+        bar_rendering_controller: BarRenderingController with warmup data
     """
     # Get warmup quality metrics from bar orchestrator
-    warmup_quality = bar_orchestrator.get_warmup_quality_metrics()
+    warmup_quality = bar_rendering_controller.get_warmup_quality_metrics()
 
     has_quality_issues = False
 
