@@ -1,0 +1,1821 @@
+================================================================================
+FINIEXTESTINGIDE - DETAILLIERTE KLASSEN-ANALYSE
+================================================================================
+
+================================================================================
+class BarIndexCLI
+  Datei: cli/bar_index_cli.py:24
+  Methoden (6):
+    🔒 __init__()
+    🔓 cmd_rebuild()
+    🔓 cmd_status()
+    🔓 cmd_report()
+    🔓 cmd_render()
+    🔓 cmd_help()
+
+================================================================================
+class DataIndexCLI
+  Datei: cli/data_index_cli.py:30
+  Methoden (10):
+    🔒 __init__()
+    🔓 cmd_import()
+    🔓 cmd_rebuild()
+    🔓 cmd_status()
+    🔓 cmd_tick_data_report()
+    🔓 cmd_coverage()
+    🔓 cmd_gaps()
+    🔓 cmd_files()
+    🔓 cmd_validate()
+    🔓 cmd_help()
+
+================================================================================
+class ScenarioCLI
+  Datei: cli/scenario_cli.py:35
+  Methoden (5):
+    🔒 __init__()
+    🔓 cmd_analyze()
+    🔓 cmd_generate()
+    🔒 _generate_output_name()
+    🔒 _print_generation_summary()
+
+================================================================================
+class LiveProgressDisplay
+  Datei: components/display/live_progress_display.py:43
+  Methoden (11):
+    🔒 __init__()
+    🔒 _init_stats_cache()
+    🔓 start()
+    🔓 stop()
+    🔒 _update_loop()
+    🔒 _process_update()
+    🔒 _render()
+    🔒 _build_overhead()
+    🔒 _build_scenario_table()
+    🔒 _get_status_display()
+    🔒 _build_progress_text()
+
+================================================================================
+class AbstractLogger
+  Erbt von: ABC
+  Datei: components/logger/abstract_logger.py:27
+  Methoden (20):
+    🔒 __init__()
+    🔒 _log_console_implementation()
+    🔒 _write_to_file_implementation()
+    🔒 _get_timestamp()
+    🔒 _should_log_console()
+    🔒 _should_log_file()
+    🔓 verbose()
+    🔓 debug()
+    🔓 info()
+    🔓 warning()
+    🔓 error()
+    🔓 validation_error()
+    🔓 config_error()
+    🔓 hard_error()
+    🔓 get_buffer()
+    🔓 set_buffer()
+    🔓 print_buffer()
+    🔒 _get_color_for_level()
+    🔒 _process_log()
+    🔒 _format_log_line()
+
+================================================================================
+class FileLogger
+  Datei: components/logger/file_logger.py:26
+  Methoden (5):
+    🔒 __init__()
+    🔒 _write_header()
+    🔒 _write_append_separator()
+    🔓 write_log()
+    🔓 close()
+
+================================================================================
+class GlobalLogger
+  Erbt von: AbstractLogger
+  Datei: components/logger/global_logger.py:24
+  Methoden (6):
+    🔒 __init__()
+    🔒 _get_timestamp()
+    🔒 _should_log_console()
+    🔒 _should_log_file()
+    🔒 _log_console_implementation()
+    🔒 _write_to_file_implementation()
+
+================================================================================
+class ScenarioLogger
+  Erbt von: AbstractLogger
+  Datei: components/logger/scenario_logger.py:26
+  Methoden (16):
+    🔒 __init__()
+    🔒 _get_timestamp()
+    🔒 _should_log_console()
+    🔒 _should_log_file()
+    🔓 should_logLevel()
+    🔓 get_run_timestamp()
+    🔓 get_log_dir()
+    🔓 reset_start_time()
+    🔓 set_tick_loop_started()
+    🔓 set_current_tick()
+    🔒 _log_console_implementation()
+    🔒 _add_to_console_buffer()
+    🔒 _write_to_file_implementation()
+    🔓 flush_buffer()
+    🔓 close()
+    🔓 get_elapsed_time_seconds()
+
+================================================================================
+class AppConfigManager
+  Datei: configuration/app_config_manager.py:13
+  Methoden (20):
+    🔒 __init__()
+    🔒 _print_config_status()
+    🔓 get_console_logging_config_object()
+    🔓 get_file_logging_config_object()
+    🔓 get_config()
+    🔓 get_execution_config()
+    🔓 get_logging_show_scenario_logging()
+    🔓 get_logging_write_system_info()
+    🔓 get_paths_config()
+    🔓 get_monitoring_config()
+    🔓 get_default_parallel_scenarios()
+    🔓 get_default_max_parallel_scenarios()
+    🔓 get_default_parallel_workers()
+    🔓 should_warn_on_override()
+    🔓 get_console_log_level()
+    🔓 get_development_config()
+    🔓 get_importer_config()
+    🔓 get_dev_mode()
+    🔓 get_move_processed_files()
+    🔓 get_delete_on_error()
+
+================================================================================
+class ConfigFileLoader
+  Datei: configuration/config_file_loader.py:6
+  Methoden (4):
+    🔓 initialize()
+    🔓 get_config()
+    🔓 reload()
+    🔒 _load()
+
+================================================================================
+class ConsoleLoggingConfig
+  Datei: configuration/console_logging_config.py:15
+  Methoden (10):
+    🔒 __init__()
+    🔒 _validate_scenario_config()
+    🔓 console_enabled()
+    🔓 global_log_level()
+    🔓 warn_on_parameter_override()
+    🔓 scenario_enabled()
+    🔓 scenario_log_level()
+    🔓 scenario_write_system_info()
+    🔓 should_log_scenarios()
+    🔒 __repr__()
+
+================================================================================
+class FileLoggingConfig
+  Datei: configuration/file_logging_config.py:16
+  Methoden (11):
+    🔒 __init__()
+    🔒 _validate_scenario_config()
+    🔓 global_enabled()
+    🔓 global_log_level()
+    🔓 global_log_path()
+    🔓 global_append_mode()
+    🔓 scenario_enabled()
+    🔓 scenario_log_level()
+    🔓 scenario_log_root_path()
+    🔓 is_file_logging_enabled()
+    🔒 __repr__()
+
+================================================================================
+class TickDataLoader
+  Datei: data_worker/data_loader/data_loader_core.py:28
+  Methoden (6):
+    🔒 __init__()
+    🔓 list_available_symbols()
+    🔓 load_symbol_data()
+    🔒 _get_symbol_files()
+    🔒 _check_artificial_duplicates()
+    🔒 _apply_date_filters()
+
+================================================================================
+class DuplicateReport
+  Decorators: dataclass
+  Datei: data_worker/data_loader/data_loader_exceptions.py:16
+  Methoden (4):
+    🔓 get_detailed_report()
+    🔒 _tick_counts_identical()
+    🔒 _time_ranges_identical()
+    🔒 _are_metadata_identical()
+
+================================================================================
+class DataQualityException
+  Erbt von: Exception
+  Datei: data_worker/data_loader/data_loader_exceptions.py:207
+
+================================================================================
+class ArtificialDuplicateException
+  Erbt von: DataQualityException
+  Datei: data_worker/data_loader/data_loader_exceptions.py:212
+  Methoden (1):
+    🔒 __init__()
+
+================================================================================
+class InvalidDataModeException
+  Erbt von: DataQualityException
+  Datei: data_worker/data_loader/data_loader_exceptions.py:233
+  Methoden (1):
+    🔒 __init__()
+
+================================================================================
+class ParquetBarsIndexManager
+  Datei: data_worker/data_loader/parquet_bars_index.py:25
+  Methoden (12):
+    🔒 __init__()
+    🔒 _version_less_than()
+    🔓 build_index()
+    🔒 _scan_bar_file()
+    🔓 needs_rebuild()
+    🔓 get_bar_file()
+    🔓 get_available_timeframes()
+    🔓 save_index()
+    🔓 load_index()
+    🔓 list_symbols()
+    🔓 get_symbol_stats()
+    🔓 print_summary()
+
+================================================================================
+class ParquetIndexManager
+  Datei: data_worker/data_loader/parquet_index.py:27
+  Methoden (12):
+    🔒 __init__()
+    🔓 build_index()
+    🔒 _scan_file()
+    🔓 needs_rebuild()
+    🔓 get_relevant_files()
+    🔓 save_index()
+    🔓 load_index()
+    🔓 get_coverage_report()
+    🔓 get_symbol_coverage()
+    🔓 list_symbols()
+    🔓 print_summary()
+    🔓 print_coverage_report()
+
+================================================================================
+class TickDataAnalyzer
+  Datei: data_worker/data_loader/tick_data_analyzer.py:22
+  Methoden (5):
+    🔒 __init__()
+    🔓 get_symbol_info()
+    🔓 get_data_summary()
+    🔓 get_available_date_range()
+    🔒 _count_weekends()
+
+================================================================================
+class TickDataReporter
+  Datei: data_worker/data_loader/tick_data_report.py:20
+  Methoden (4):
+    🔒 __init__()
+    🔓 print_symbol_info()
+    🔓 print_all_symbols()
+    🔓 test_load_symbol()
+
+================================================================================
+class BarImporter
+  Datei: data_worker/importer/bar_importer.py:36
+  Methoden (8):
+    🔒 __init__()
+    🔓 render_bars_for_all_symbols()
+    🔓 render_bars_for_symbol()
+    🔒 _load_all_ticks_for_symbol()
+    🔒 _write_bar_file()
+    🔒 _extract_source_versions()
+    🔒 _update_bar_index()
+    🔒 _print_summary()
+
+================================================================================
+class TickDataImporter
+  Datei: data_worker/importer/tick_importer.py:38
+  Methoden (12):
+    🔒 __init__()
+    🔓 process_all_mql5_exports()
+    🔓 rebuild_parquet_index()
+    🔓 convert_json_to_parquet()
+    🔒 _determine_market_type()
+    🔒 _apply_time_offset()
+    🔒 _recalculate_sessions()
+    🔒 _check_for_existing_duplicate()
+    🔒 _optimize_datatypes()
+    🔒 _quality_checks()
+    🔒 _print_summary()
+    🔒 _trigger_bar_rendering()
+
+================================================================================
+class VectorizedBarRenderer
+  Datei: data_worker/importer/vectorized_bar_renderer.py:26
+  Methoden (6):
+    🔒 __init__()
+    🔓 render_all_timeframes()
+    🔒 _prepare_ticks_for_resampling()
+    🔒 _render_single_timeframe()
+    🔒 _fill_gaps()
+    🔒 _find_gap_ranges()
+
+================================================================================
+class ClassInfo
+  Datei: experiments/analyze_project_structure.py:37
+  Methoden (1):
+    🔒 __init__()
+
+================================================================================
+class ProjectAnalyzer
+  Datei: experiments/analyze_project_structure.py:50
+  Methoden (4):
+    🔒 __init__()
+    🔓 analyze()
+    🔒 _analyze_file()
+    🔒 _generate_report()
+
+================================================================================
+class LogWriter
+  Datei: experiments/gil_benchmark/threading_vs_multiprocessing.py:32
+  Methoden (4):
+    🔒 __init__()
+    🔓 start_logging()
+    🔓 write()
+    🔓 close()
+
+================================================================================
+class BenchmarkResult
+  Decorators: dataclass
+  Datei: experiments/gil_benchmark/threading_vs_multiprocessing.py:91
+
+================================================================================
+class EnvironmentDetector
+  Datei: experiments/gil_benchmark/threading_vs_multiprocessing.py:101
+  Methoden (3):
+    🔓 detect_execution_context()
+    🔓 get_system_info()
+    🔓 print_environment_report()
+
+================================================================================
+class RealisticScenarioSimulator
+  Datei: experiments/gil_benchmark/threading_vs_multiprocessing.py:169
+  Methoden (2):
+    🔓 simulate_scenario()
+    🔒 _simulate_worker()
+
+================================================================================
+class ExtendedGILBenchmark
+  Datei: experiments/gil_benchmark/threading_vs_multiprocessing.py:226
+  Methoden (6):
+    🔒 __init__()
+    🔓 run_test_suite()
+    🔒 _run_sequential()
+    🔒 _run_threading()
+    🔒 _run_multiprocessing()
+    🔓 print_final_summary()
+
+================================================================================
+class BarRenderer
+  Datei: framework/bars/bar_renderer.py:20
+  Methoden (8):
+    🔒 __init__()
+    🔓 get_required_timeframes()
+    🔓 update_current_bars()
+    🔒 _archive_completed_bar()
+    🔓 get_bar_history()
+    🔓 get_current_bar()
+    🔓 initialize_historical_bars()
+    🔓 render_bars_from_ticks()
+
+================================================================================
+class BarRenderingController
+  Datei: framework/bars/bar_rendering_controller.py:21
+  Methoden (8):
+    🔒 __init__()
+    🔓 register_workers()
+    🔓 process_tick()
+    🔓 get_bar_history()
+    🔓 get_current_bar()
+    🔓 get_warmup_quality_metrics()
+    🔓 get_all_bar_history()
+    🔓 inject_warmup_bars()
+
+================================================================================
+class BatchOrchestrator
+  Datei: framework/batch_orchestrator.py:149
+  Methoden (8):
+    🔒 __init__()
+    🔒 _init_live_stats()
+    🔒 _prepare_shared_data()
+    🔒 _broadcast_status()
+    🔓 run()
+    🔒 _run_sequential()
+    🔒 _run_parallel()
+    🔓 flush_all_logs()
+
+================================================================================
+class AggregateScenarioDataRequirements
+  Datei: framework/data_preperation/aggregate_scenario_data_requirements.py:33
+  Methoden (3):
+    🔒 __init__()
+    🔓 add_scenario()
+    🔓 finalize()
+
+================================================================================
+class BrokerDataPreparator
+  Datei: framework/data_preperation/broker_data_preperator.py:23
+  Methoden (6):
+    🔒 __init__()
+    🔓 get_broker_scenario_map()
+    🔓 prepare()
+    🔒 _load_and_map_broker_configs()
+    🔒 _serialize_broker_configs()
+    🔒 _log_broker_overview()
+
+================================================================================
+class SharedDataPreparator
+  Datei: framework/data_preperation/shared_data_preparator.py:27
+  Methoden (5):
+    🔒 __init__()
+    🔓 prepare_ticks()
+    🔒 _load_ticks_tick_mode()
+    🔒 _load_ticks_timespan_mode()
+    🔓 prepare_bars()
+
+================================================================================
+class AbstractDecisionLogic
+  Erbt von: ABC
+  Datei: framework/decision_logic/abstract_decision_logic.py:34
+  Methoden (11):
+    🔒 __init__()
+    🔓 get_required_order_types()
+    🔓 execute_decision()
+    🔒 _execute_decision_impl()
+    🔓 get_required_worker_instances()
+    🔓 compute()
+    🔓 set_trading_api()
+    🔒 _update_decision_statistics()
+    🔓 get_statistics()
+    🔓 get_config_value()
+    🔓 set_performance_logger()
+
+================================================================================
+class AggressiveTrend
+  Erbt von: AbstractDecisionLogic
+  Datei: framework/decision_logic/core/aggressive_trend.py:61
+  Methoden (9):
+    🔒 __init__()
+    🔓 get_required_order_types()
+    🔒 _execute_decision_impl()
+    🔓 get_required_worker_instances()
+    🔓 compute()
+    🔒 _calculate_buy_confidence()
+    🔒 _calculate_sell_confidence()
+    🔒 _build_buy_reason()
+    🔒 _build_sell_reason()
+
+================================================================================
+class SimpleConsensus
+  Erbt von: AbstractDecisionLogic
+  Datei: framework/decision_logic/core/simple_consensus.py:55
+  Methoden (7):
+    🔒 __init__()
+    🔓 get_required_order_types()
+    🔒 _execute_decision_impl()
+    🔓 get_required_worker_instances()
+    🔓 compute()
+    🔒 _calculate_buy_confidence()
+    🔒 _calculate_sell_confidence()
+
+================================================================================
+class ConfigurationError
+  Erbt von: Exception
+  Datei: framework/exceptions/configuration_errors.py:6
+  Methoden (1):
+    🔓 get_context()
+
+================================================================================
+class ScenarioSetConfigurationError
+  Erbt von: ConfigurationError
+  Datei: framework/exceptions/configuration_errors.py:14
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class DataValidationError
+  Erbt von: Exception
+  Datei: framework/exceptions/data_validation_errors.py:12
+  Methoden (1):
+    🔓 get_context()
+
+================================================================================
+class InsufficientTickDataError
+  Erbt von: DataValidationError
+  Datei: framework/exceptions/data_validation_errors.py:20
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class CriticalGapError
+  Erbt von: DataValidationError
+  Datei: framework/exceptions/data_validation_errors.py:66
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class NoDataAvailableError
+  Erbt von: DataValidationError
+  Datei: framework/exceptions/data_validation_errors.py:123
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class NoTicksInTimespanError
+  Erbt von: DataValidationError
+  Datei: framework/exceptions/data_validation_errors.py:160
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class InvalidDateRangeError
+  Erbt von: DataValidationError
+  Datei: framework/exceptions/data_validation_errors.py:200
+  Methoden (2):
+    🔒 __init__()
+    🔓 get_context()
+
+================================================================================
+class ScenarioPreparationError
+  Erbt von: Exception
+  Datei: framework/exceptions/scenario_execution_errors.py:11
+
+================================================================================
+class ScenarioExecutionError
+  Erbt von: Exception
+  Datei: framework/exceptions/scenario_execution_errors.py:26
+
+================================================================================
+class ScenarioStateError
+  Erbt von: Exception
+  Datei: framework/exceptions/scenario_execution_errors.py:41
+
+================================================================================
+class ScenarioExecutionError
+  Erbt von: Exception
+  Datei: framework/exceptions/scenario_execution_errors.py:54
+
+================================================================================
+class ScenarioPreparationError
+  Erbt von: ScenarioExecutionError
+  Datei: framework/exceptions/scenario_execution_errors.py:59
+
+================================================================================
+class WarmupBarValidationError
+  Erbt von: ScenarioExecutionError
+  Datei: framework/exceptions/scenario_execution_errors.py:64
+
+================================================================================
+class BatchExecutionError
+  Erbt von: ScenarioExecutionError
+  Datei: framework/exceptions/scenario_execution_errors.py:74
+  Methoden (3):
+    🔒 __init__()
+    🔓 get_failed_scenario_names()
+    🔓 get_failure_summary()
+
+================================================================================
+class InsufficientHistoricalDataError
+  Erbt von: Exception
+  Datei: framework/exceptions/warmup_errors.py:10
+  Methoden (1):
+    🔒 __init__()
+
+================================================================================
+class InsufficientWarmupDataError
+  Erbt von: Exception
+  Datei: framework/exceptions/warmup_errors.py:65
+  Methoden (1):
+    🔒 __init__()
+
+================================================================================
+class BrokerConfigFactory
+  Datei: framework/factory/broker_config_factory.py:29
+  Methoden (3):
+    🔓 build_broker_config()
+    🔓 to_serializable_dict()
+    🔓 from_serialized_dict()
+
+================================================================================
+class DecisionLogicFactory
+  Datei: framework/factory/decision_logic_factory.py:37
+  Methoden (9):
+    🔒 __init__()
+    🔒 _load_core_logics()
+    🔓 register_logic()
+    🔓 create_logic()
+    🔓 create_logic_from_strategy_config()
+    🔒 _resolve_logic_class()
+    🔒 _load_custom_logic()
+    🔒 _extract_logic_name()
+    🔓 get_registered_logics()
+
+================================================================================
+class WorkerFactory
+  Datei: framework/factory/worker_factory.py:45
+  Methoden (10):
+    🔒 __init__()
+    🔒 _load_core_workers()
+    🔓 register_worker()
+    🔓 create_worker()
+    🔓 create_workers_from_config()
+    🔒 _resolve_worker_class()
+    🔒 _load_custom_worker()
+    🔒 _validate_required_parameters()
+    🔒 _merge_parameters()
+    🔓 get_registered_workers()
+
+================================================================================
+class CoordinatorTickLogger
+  Datei: framework/logger/coordinator_tick_logger.py:18
+  Methoden (5):
+    🔒 __init__()
+    🔓 log_tick_data()
+    🔒 _build_log_structure()
+    🔒 _has_bar_history_changed()
+    🔒 _update_cache()
+
+================================================================================
+class PerformanceLogCoordinator
+  Datei: framework/performance/performance_log_coordinator.py:16
+  Methoden (8):
+    🔒 __init__()
+    🔓 create_worker_log()
+    🔓 create_decision_logic_log()
+    🔓 record_parallel_time_saved()
+    🔓 increment_ticks()
+    🔓 get_snapshot()
+    🔒 _get_parallel_status()
+    🔓 reset()
+
+================================================================================
+class PerformanceLogDecisionLogic
+  Datei: framework/performance/performance_log_decision_logic.py:13
+  Methoden (5):
+    🔒 __init__()
+    🔓 record()
+    🔓 get_avg_time_ms()
+    🔓 get_stats()
+    🔓 reset()
+
+================================================================================
+class PerformanceLogWorker
+  Datei: framework/performance/performance_log_worker.py:12
+  Methoden (5):
+    🔒 __init__()
+    🔓 record()
+    🔓 get_avg_time_ms()
+    🔓 get_stats()
+    🔓 reset()
+
+================================================================================
+class ProcessExecutor
+  Datei: framework/process/process_executor.py:16
+  Methoden (2):
+    🔒 __init__()
+    🔓 run()
+
+================================================================================
+class BarIndexReportGenerator
+  Datei: framework/reporting/bar_index_report.py:20
+  Methoden (7):
+    🔒 __init__()
+    🔓 generate_report()
+    🔒 _generate_metadata()
+    🔒 _generate_overview()
+    🔒 _generate_symbol_details()
+    🔒 _generate_collector_summary()
+    🔒 _save_report()
+
+================================================================================
+class BatchSummary
+  Datei: framework/reporting/batch_summary.py:24
+  Methoden (5):
+    🔒 __init__()
+    🔓 build_profiling_data_map()
+    🔓 render_all()
+    🔒 _render_basic_stats()
+    🔒 _render_scenario_grid()
+
+================================================================================
+class BrokerInfoRenderer
+  Datei: framework/reporting/broker_info_renderer.py:10
+  Methoden (4):
+    🔓 render_detailed()
+    🔓 render_single_line()
+    🔓 render_summary_table()
+    🔓 render_symbols_table()
+
+================================================================================
+class BrokerSummary
+  Datei: framework/reporting/broker_summary.py:14
+  Methoden (3):
+    🔒 __init__()
+    🔒 _collect_broker_data()
+    🔓 render()
+
+================================================================================
+class ConsoleRenderer
+  Datei: framework/reporting/console_renderer.py:23
+  Methoden (20):
+    🔒 __init__()
+    🔓 red()
+    🔓 yellow()
+    🔓 blue()
+    🔓 green()
+    🔓 gray()
+    🔓 bold()
+    🔓 section_header()
+    🔓 section_separator()
+    🔓 print_separator()
+    🔓 print_bold()
+    🔓 strip_ansi()
+    🔓 visual_length()
+    🔓 pad_line()
+    🔓 render_box()
+    🔓 format_tick_timespan()
+    🔓 render_scenario_grid()
+    🔒 _create_scenario_box()
+    🔓 render_portfolio_grid()
+    🔒 _create_portfolio_box()
+
+================================================================================
+class IndexEntry
+  Decorators: dataclass
+  Datei: framework/reporting/coverage_report.py:22
+
+================================================================================
+class Gap
+  Decorators: dataclass
+  Datei: framework/reporting/coverage_report.py:38
+  Methoden (3):
+    🔓 gap_hours()
+    🔓 duration_human()
+    🔓 severity_icon()
+
+================================================================================
+class TimeRangeCoverageReport
+  Datei: framework/reporting/coverage_report.py:70
+  Methoden (9):
+    🔒 __init__()
+    🔓 analyze()
+    🔓 has_issues()
+    🔓 get_recommendations()
+    🔒 _format_berlin_time()
+    🔒 _validate_utc_offset()
+    🔒 _format_berlin_time_with_validation()
+    🔓 generate_report()
+    🔓 get_summary_dict()
+
+================================================================================
+class PerformanceSummary
+  Datei: framework/reporting/performance_summary.py:24
+  Methoden (9):
+    🔒 __init__()
+    🔓 render_per_scenario()
+    🔓 render_aggregated()
+    🔓 render_bottleneck_analysis()
+    🔒 _render_scenario_performance()
+    🔒 _aggregate_performance_stats()
+    🔒 _render_aggregated_details()
+    🔒 _analyze_bottlenecks()
+    🔒 _render_bottleneck_details()
+
+================================================================================
+class PortfolioAggregator
+  Datei: framework/reporting/portfolio_aggregator.py:24
+  Methoden (7):
+    🔒 __init__()
+    🔓 aggregate_by_currency()
+    🔒 _aggregate_group()
+    🔒 _aggregate_portfolio_stats()
+    🔒 _aggregate_order_execution_stats()
+    🔒 _aggregate_cost_breakdown()
+    🔒 _validate_time_divergence()
+
+================================================================================
+class PortfolioSummary
+  Datei: framework/reporting/portfolio_summary.py:16
+  Methoden (7):
+    🔒 __init__()
+    🔓 render_per_scenario()
+    🔓 render_aggregated()
+    🔒 _render_currency_group()
+    🔒 _render_aggregated_details()
+    🔒 _has_any_time_divergence()
+    🔒 _render_aggregation_warnings()
+
+================================================================================
+class ProfilingSummary
+  Datei: framework/reporting/profiling_summary.py:16
+  Methoden (10):
+    🔒 __init__()
+    🔓 render_per_scenario()
+    🔓 render_aggregated()
+    🔓 render_bottleneck_analysis()
+    🔒 _extract_profile_from_scenario()
+    🔒 _build_profiling_metrics()
+    🔒 _render_scenario_profile()
+    🔒 _render_aggregated_details()
+    🔒 _render_cross_scenario_averages()
+    🔒 _render_bottleneck_details()
+
+================================================================================
+class WorkerDecisionBreakdownSummary
+  Datei: framework/reporting/worker_decision_breakdown_summary.py:21
+  Methoden (9):
+    🔒 __init__()
+    🔓 render_per_scenario()
+    🔓 render_aggregated()
+    🔓 render_overhead_analysis()
+    🔒 _build_breakdowns()
+    🔒 _build_breakdown_for_scenario()
+    🔒 _render_scenario_breakdown()
+    🔒 _render_overhead_details()
+    🔒 _create_bar()
+
+================================================================================
+class IOrderCapabilities
+  Erbt von: ABC
+  Datei: framework/trading_env/adapters/base_adapter.py:26
+  Methoden (16):
+    🔒 __init__()
+    🔒 _validate_config()
+    🔓 get_broker_name()
+    🔓 get_broker_type()
+    🔓 get_order_capabilities()
+    🔓 create_market_order()
+    🔓 create_limit_order()
+    🔓 create_stop_order()
+    🔓 create_stop_limit_order()
+    🔓 create_iceberg_order()
+    🔓 validate_order()
+    🔓 get_all_aviable_symbols()
+    🔓 get_symbol_specification()
+    🔓 get_broker_specification()
+    🔒 _validate_lot_size()
+    🔒 _get_config_value()
+
+================================================================================
+class KrakenAdapter
+  Erbt von: IOrderCapabilities
+  Datei: framework/trading_env/adapters/kraken_adapter.py:29
+  Methoden (15):
+    🔒 __init__()
+    🔒 _validate_config()
+    🔓 get_broker_name()
+    🔓 get_broker_type()
+    🔓 get_order_capabilities()
+    🔓 create_market_order()
+    🔓 create_limit_order()
+    🔓 create_stop_limit_order()
+    🔓 create_iceberg_order()
+    🔓 validate_order()
+    🔓 get_all_aviable_symbols()
+    🔓 get_symbol_specification()
+    🔓 get_maker_fee()
+    🔓 get_taker_fee()
+    🔓 get_funding_rate()
+
+================================================================================
+class MT5Adapter
+  Erbt von: IOrderCapabilities
+  Datei: framework/trading_env/adapters/mt5_adapter.py:30
+  Methoden (17):
+    🔒 __init__()
+    🔒 _validate_config()
+    🔓 get_broker_name()
+    🔓 get_broker_type()
+    🔓 get_order_capabilities()
+    🔓 create_market_order()
+    🔓 create_limit_order()
+    🔓 create_stop_order()
+    🔓 create_stop_limit_order()
+    🔓 validate_order()
+    🔓 get_all_aviable_symbols()
+    🔓 get_symbol_specification()
+    🔓 get_broker_specification()
+    🔓 get_leverage()
+    🔓 calculate_margin_required()
+    🔓 get_commission_per_lot()
+    🔓 is_hedging_allowed()
+
+================================================================================
+class BrokerType
+  Erbt von: Enum
+  Datei: framework/trading_env/broker_config.py:34
+
+================================================================================
+class BrokerConfig
+  Datei: framework/trading_env/broker_config.py:43
+  Methoden (23):
+    🔒 __init__()
+    🔓 load_all_symbol_specs()
+    🔒 _detect_broker_type()
+    🔒 _create_adapter()
+    🔓 get_broker_name()
+    🔓 get_broker_type_str()
+    🔓 get_order_capabilities()
+    🔓 get_all_aviable_symbols()
+    🔓 get_symbol_specification()
+    🔓 get_broker_specification()
+    🔓 get_min_lot_size()
+    🔓 get_max_lot_size()
+    🔓 get_lot_step()
+    🔓 get_tick_size()
+    🔓 is_symbol_tradeable()
+    🔓 create_market_order()
+    🔓 create_limit_order()
+    🔓 create_stop_order()
+    🔓 create_stop_limit_order()
+    🔓 create_iceberg_order()
+    🔓 validate_order()
+    🔓 get_max_leverage()
+    🔓 calculate_margin()
+
+================================================================================
+class DecisionTradingAPI
+  Datei: framework/trading_env/decision_trading_api.py:46
+  Methoden (13):
+    🔒 __init__()
+    🔒 _validate_order_types()
+    🔒 _get_supported_order_types()
+    🔓 send_order()
+    🔓 get_account_info()
+    🔓 get_open_positions()
+    🔓 get_position()
+    🔓 close_position()
+    🔓 get_order_capabilities()
+    🔓 get_broker_name()
+    🔓 get_leverage()
+    🔓 modify_position()
+    🔓 get_order_history()
+
+================================================================================
+class SeededDelayGenerator
+  Datei: framework/trading_env/order_latency_simulator.py:48
+  Methoden (2):
+    🔒 __init__()
+    🔓 next()
+
+================================================================================
+class OrderLatencySimulator
+  Datei: framework/trading_env/order_latency_simulator.py:86
+  Methoden (7):
+    🔒 __init__()
+    🔓 submit_open_order()
+    🔓 submit_close_order()
+    🔓 process_tick()
+    🔓 get_pending_count()
+    🔓 get_pending_orders()
+    🔓 clear_pending()
+
+================================================================================
+class PortfolioManager
+  Datei: framework/trading_env/portfolio_manager.py:27
+  Methoden (24):
+    🔒 __init__()
+    🔓 get_next_position_id()
+    🔓 open_position()
+    🔓 close_position_portfolio()
+    🔓 modify_position()
+    🔓 mark_dirty()
+    🔒 _calculate_tick_value()
+    🔒 _ensure_positions_updated()
+    🔓 get_open_positions()
+    🔓 get_closed_positions()
+    🔓 get_position()
+    🔓 has_open_positions()
+    🔓 get_account_info()
+    🔓 get_total_trades()
+    🔓 get_winning_trades()
+    🔓 get_losing_trades()
+    🔒 _calculate_equity()
+    🔓 get_free_margin()
+    🔓 is_margin_call()
+    🔓 is_stop_out()
+    🔓 get_cost_breakdown()
+    🔒 _update_statistics()
+    🔓 get_portfolio_statistics()
+    🔓 reset()
+
+================================================================================
+class TradeSimulator
+  Datei: framework/trading_env/trade_simulator.py:41
+  Methoden (24):
+    🔒 __init__()
+    🔓 update_prices()
+    🔓 get_current_price()
+    🔓 open_order_with_latency()
+    🔒 _check_and_open_order_in_portfolio()
+    🔒 _execute_limit_order()
+    🔓 modify_position()
+    🔓 close_position_with_latency()
+    🔒 _close_and_fill_order_in_portfolio()
+    🔓 close_all_remaining_orders()
+    🔓 get_account_info()
+    🔓 get_open_positions()
+    🔓 get_position()
+    🔓 get_balance()
+    🔓 get_free_margin()
+    🔒 _calculate_tick_value()
+    🔓 get_order_history()
+    🔓 get_closed_positions()
+    🔓 get_broker_name()
+    🔓 get_broker_capabilities()
+    🔓 get_symbol_spec()
+    🔓 get_execution_stats()
+    🔓 reset()
+    🔓 get_tick_counter()
+
+================================================================================
+class FeeType
+  Erbt von: Enum
+  Datei: framework/trading_env/trading_fees.py:24
+
+================================================================================
+class FeeStatus
+  Erbt von: Enum
+  Datei: framework/trading_env/trading_fees.py:32
+
+================================================================================
+class AbstractTradingFee
+  Erbt von: ABC
+  Decorators: dataclass
+  Datei: framework/trading_env/trading_fees.py:40
+  Methoden (4):
+    🔒 __post_init__()
+    🔓 calculate_cost()
+    🔓 apply()
+    🔓 get_display_name()
+
+================================================================================
+class SpreadFee
+  Erbt von: AbstractTradingFee
+  Decorators: dataclass
+  Datei: framework/trading_env/trading_fees.py:88
+  Methoden (2):
+    🔒 __init__()
+    🔓 calculate_cost()
+
+================================================================================
+class SwapFee
+  Erbt von: AbstractTradingFee
+  Decorators: dataclass
+  Datei: framework/trading_env/trading_fees.py:176
+  Methoden (2):
+    🔒 __init__()
+    🔓 calculate_cost()
+
+================================================================================
+class CommissionFee
+  Erbt von: AbstractTradingFee
+  Decorators: dataclass
+  Datei: framework/trading_env/trading_fees.py:260
+  Methoden (2):
+    🔒 __init__()
+    🔓 calculate_cost()
+
+================================================================================
+class MakerTakerFee
+  Erbt von: AbstractTradingFee
+  Decorators: dataclass
+  Datei: framework/trading_env/trading_fees.py:352
+  Methoden (2):
+    🔒 __init__()
+    🔓 calculate_cost()
+
+================================================================================
+class BatchExecutionSummary
+  Decorators: dataclass
+  Datei: framework/types/batch_execution_types.py:10
+
+================================================================================
+class SwapMode
+  Erbt von: Enum
+  Datei: framework/types/broker_types.py:19
+
+================================================================================
+class MarginMode
+  Erbt von: Enum
+  Datei: framework/types/broker_types.py:27
+
+================================================================================
+class SymbolSpecification
+  Decorators: dataclass(...)
+  Datei: framework/types/broker_types.py:35
+  Methoden (4):
+    🔓 get_min_stop_distance()
+    🔓 get_freeze_distance()
+    🔓 validate_lot_size()
+    🔓 format_price()
+
+================================================================================
+class BrokerSpecification
+  Decorators: dataclass(...)
+  Datei: framework/types/broker_types.py:125
+  Methoden (4):
+    🔓 get_margin_call_ratio()
+    🔓 get_stopout_ratio()
+    🔓 is_demo_account()
+    🔓 is_real_account()
+
+================================================================================
+class DecisionLogicAction
+  Erbt von: Enum
+  Datei: framework/types/decision_logic_types.py:14
+  Methoden (1):
+    🔒 __str__()
+
+================================================================================
+class DecisionLogicStatistics
+  Decorators: dataclass
+  Datei: framework/types/decision_logic_types.py:42
+
+================================================================================
+class Decision
+  Decorators: dataclass
+  Datei: framework/types/decision_logic_types.py:58
+  Methoden (1):
+    🔓 to_dict()
+
+================================================================================
+class PendingOrderAction
+  Erbt von: Enum
+  Datei: framework/types/latency_simulator_types.py:18
+  Methoden (1):
+    🔒 __str__()
+
+================================================================================
+class PendingOrder
+  Decorators: dataclass
+  Datei: framework/types/latency_simulator_types.py:34
+  Methoden (1):
+    🔓 to_dict()
+
+================================================================================
+class LiveScenarioStats
+  Decorators: dataclass
+  Datei: framework/types/live_scenario_stats_types.py:19
+
+================================================================================
+class ProcessLiveSetup
+  Decorators: dataclass
+  Datei: framework/types/live_stats_config_types.py:10
+
+================================================================================
+class ScenarioStatus
+  Erbt von: Enum
+  Datei: framework/types/live_stats_config_types.py:22
+
+================================================================================
+class LiveStatsExportConfig
+  Decorators: dataclass
+  Datei: framework/types/live_stats_config_types.py:56
+  Methoden (1):
+    🔓 from_app_config()
+
+================================================================================
+class ColorCodes
+  Datei: framework/types/log_level.py:17
+
+================================================================================
+class LogLevel
+  Datei: framework/types/log_level.py:29
+  Methoden (3):
+    🔓 validate()
+    🔓 should_log()
+    🔓 get_priority()
+
+================================================================================
+class TickData
+  Decorators: dataclass
+  Datei: framework/types/market_data_types.py:8
+  Methoden (2):
+    🔓 mid()
+    🔓 to_dict()
+
+================================================================================
+class Bar
+  Decorators: dataclass
+  Datei: framework/types/market_data_types.py:41
+  Methoden (2):
+    🔓 ohlc()
+    🔓 update_with_tick()
+
+================================================================================
+class WeekendClosureWindow
+  Decorators: dataclass
+  Datei: framework/types/market_types.py:17
+  Methoden (3):
+    🔓 get_description()
+    🔓 matches_primary_pattern()
+    🔓 matches_alternative_pattern()
+
+================================================================================
+class OrderType
+  Erbt von: Enum
+  Datei: framework/types/order_types.py:22
+
+================================================================================
+class OrderDirection
+  Erbt von: Enum
+  Datei: framework/types/order_types.py:37
+  Methoden (1):
+    🔒 __str__()
+
+================================================================================
+class OrderStatus
+  Erbt von: Enum
+  Datei: framework/types/order_types.py:47
+
+================================================================================
+class RejectionReason
+  Erbt von: Enum
+  Datei: framework/types/order_types.py:58
+
+================================================================================
+class OrderCapabilities
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:74
+  Methoden (1):
+    🔓 supports_order_type()
+
+================================================================================
+class BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:116
+  Methoden (1):
+    🔓 validate()
+
+================================================================================
+class MarketOrder
+  Erbt von: BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:147
+
+================================================================================
+class LimitOrder
+  Erbt von: BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:160
+
+================================================================================
+class StopOrder
+  Erbt von: BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:176
+
+================================================================================
+class StopLimitOrder
+  Erbt von: BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:189
+
+================================================================================
+class IcebergOrder
+  Erbt von: BaseOrder
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:203
+
+================================================================================
+class OrderResult
+  Decorators: dataclass
+  Datei: framework/types/order_types.py:223
+  Methoden (3):
+    🔓 is_success()
+    🔓 is_rejected()
+    🔓 to_dict()
+
+================================================================================
+class OperationProfile
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:21
+
+================================================================================
+class TickLoopProfile
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:41
+  Methoden (1):
+    🔒 __post_init__()
+
+================================================================================
+class ProfilingMetrics
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:80
+  Methoden (1):
+    🔓 add_scenario_profile()
+
+================================================================================
+class ResourceMetrics
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:130
+
+================================================================================
+class PerformanceSnapshot
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:161
+
+================================================================================
+class WorkerDecisionBreakdown
+  Decorators: dataclass
+  Datei: framework/types/performance_metrics_types.py:188
+  Methoden (1):
+    🔒 __post_init__()
+
+================================================================================
+class WorkerPerformanceStats
+  Decorators: dataclass
+  Datei: framework/types/performance_stats_types.py:20
+
+================================================================================
+class DecisionLogicPerformanceStats
+  Decorators: dataclass
+  Datei: framework/types/performance_stats_types.py:45
+
+================================================================================
+class BatchPerformanceStats
+  Decorators: dataclass
+  Datei: framework/types/performance_stats_types.py:74
+
+================================================================================
+class AggregatedPortfolio
+  Decorators: dataclass
+  Datei: framework/types/portfolio_aggregation_types.py:17
+
+================================================================================
+class PositionStatus
+  Erbt von: Enum
+  Datei: framework/types/portfolio_types.py:10
+
+================================================================================
+class Position
+  Decorators: dataclass
+  Datei: framework/types/portfolio_types.py:18
+  Methoden (9):
+    🔓 update_current_price()
+    🔓 add_fee()
+    🔓 get_total_fees()
+    🔓 get_fees_by_type()
+    🔓 get_spread_cost()
+    🔓 get_commission_cost()
+    🔓 get_swap_cost()
+    🔓 get_margin_used()
+    🔓 is_open()
+
+================================================================================
+class TickRequirement
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:37
+
+================================================================================
+class BarRequirement
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:53
+
+================================================================================
+class RequirementsMap
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:68
+  Methoden (2):
+    🔓 add_tick_requirement()
+    🔓 add_bar_requirement()
+
+================================================================================
+class ProcessDataPackage
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:92
+
+================================================================================
+class ProcessScenarioConfig
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:139
+  Methoden (1):
+    🔓 from_scenario()
+
+================================================================================
+class ProcessPreparedDataObjects
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:270
+
+================================================================================
+class ProcessProfileData
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:284
+
+================================================================================
+class TickRangeStats
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:294
+
+================================================================================
+class ProcessTickLoopResult
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:305
+
+================================================================================
+class ProcessResult
+  Decorators: dataclass
+  Datei: framework/types/process_data_types.py:323
+  Methoden (1):
+    🔓 to_dict()
+
+================================================================================
+class VolatilityRegime
+  Erbt von: Enum
+  Datei: framework/types/scenario_generator_types.py:19
+  Methoden (1):
+    🔒 __str__()
+
+================================================================================
+class TradingSession
+  Erbt von: Enum
+  Datei: framework/types/scenario_generator_types.py:32
+
+================================================================================
+class GenerationStrategy
+  Erbt von: Enum
+  Datei: framework/types/scenario_generator_types.py:40
+
+================================================================================
+class PeriodAnalysis
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:52
+
+================================================================================
+class SessionSummary
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:83
+
+================================================================================
+class SymbolAnalysis
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:106
+
+================================================================================
+class AnalysisConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:153
+
+================================================================================
+class CrossInstrumentRankingConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:174
+
+================================================================================
+class BalancedStrategyConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:180
+
+================================================================================
+class BlocksStrategyConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:188
+
+================================================================================
+class StressStrategyConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:196
+
+================================================================================
+class GeneratorConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:204
+  Methoden (1):
+    🔓 from_dict()
+
+================================================================================
+class ScenarioCandidate
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:279
+  Methoden (1):
+    🔓 to_scenario_dict()
+
+================================================================================
+class GenerationResult
+  Decorators: dataclass
+  Datei: framework/types/scenario_generator_types.py:335
+
+================================================================================
+class OperationTiming
+  Decorators: dataclass
+  Datei: framework/types/scenario_set_performance_types.py:16
+  Methoden (1):
+    🔓 avg_time_ms()
+
+================================================================================
+class ProfilingData
+  Decorators: dataclass
+  Datei: framework/types/scenario_set_performance_types.py:42
+  Methoden (3):
+    🔓 get_operation_time()
+    🔓 get_operation_count()
+    🔓 from_dicts()
+
+================================================================================
+class SingleScenario
+  Decorators: dataclass
+  Datei: framework/types/scenario_set_types.py:22
+  Methoden (2):
+    🔒 __post_init__()
+    🔓 to_config_string_for_display()
+
+================================================================================
+class LoadedScenarioConfig
+  Decorators: dataclass
+  Datei: framework/types/scenario_set_types.py:89
+
+================================================================================
+class ScenarioSet
+  Datei: framework/types/scenario_set_types.py:96
+  Methoden (4):
+    🔒 __init__()
+    🔓 run_timestamp()
+    🔓 copy_config_snapshot()
+    🔓 write_scenario_system_info_log()
+
+================================================================================
+class BrokerScenarioInfo
+  Decorators: dataclass
+  Datei: framework/types/scenario_set_types.py:154
+
+================================================================================
+class ScenarioRequirements
+  Decorators: dataclass
+  Datei: framework/types/scenario_types.py:11
+
+================================================================================
+class TimeframeConfig
+  Datei: framework/types/timeframe_types.py:16
+  Methoden (3):
+    🔓 get_minutes()
+    🔓 get_bar_start_time()
+    🔓 is_bar_complete()
+
+================================================================================
+class AccountInfo
+  Decorators: dataclass
+  Datei: framework/types/trading_env_types.py:19
+
+================================================================================
+class PortfolioStats
+  Decorators: dataclass
+  Datei: framework/types/trading_env_types.py:49
+
+================================================================================
+class ExecutionStats
+  Decorators: dataclass
+  Datei: framework/types/trading_env_types.py:98
+
+================================================================================
+class CostBreakdown
+  Decorators: dataclass
+  Datei: framework/types/trading_env_types.py:120
+
+================================================================================
+class WorkerState
+  Erbt von: Enum
+  Datei: framework/types/worker_types.py:6
+
+================================================================================
+class WorkerType
+  Erbt von: Enum
+  Datei: framework/types/worker_types.py:15
+
+================================================================================
+class WorkerResult
+  Decorators: dataclass
+  Datei: framework/types/worker_types.py:23
+
+================================================================================
+class ActivityVolumeProvider
+  Datei: framework/utils/activity_volume_provider.py:15
+  Methoden (8):
+    🔓 get_activity_value()
+    🔓 get_avg_activity_value()
+    🔓 get_total_activity_value()
+    🔓 get_metric_label()
+    🔓 get_metric_name()
+    🔓 get_activity_summary()
+    🔓 format_activity_value()
+    🔓 is_volume_based()
+
+================================================================================
+class GapCategory
+  Erbt von: Enum
+  Datei: framework/utils/market_calendar.py:17
+
+================================================================================
+class MarketCalendar
+  Datei: framework/utils/market_calendar.py:26
+  Methoden (10):
+    🔓 get_weekend_closure_description()
+    🔓 is_market_open()
+    🔓 spans_weekend()
+    🔓 validate_timeframe_for_weekends()
+    🔓 get_trading_days()
+    🔓 get_previous_trading_day()
+    🔓 get_weekend_statistics()
+    🔓 classify_gap()
+    🔓 format_time_range()
+    🔓 format_time_range_short()
+
+================================================================================
+class ParameterOverrideDetector
+  Datei: framework/utils/parameter_override_detector.py:29
+  Methoden (6):
+    🔓 detect_overrides()
+    🔓 format_overrides_for_display()
+    🔓 extract_overrides_for_save()
+    🔒 _check_dict_overrides()
+    🔒 _extract_dict_overrides()
+    🔓 detect_and_log_overrides()
+
+================================================================================
+class ScenarioSetUtils
+  Datei: framework/utils/scenario_set_utils.py:13
+  Methoden (2):
+    🔒 __init__()
+    🔓 copy_config_snapshot()
+
+================================================================================
+class ScenarioValidator
+  Datei: framework/validators/scenario_validator.py:19
+  Methoden (2):
+    🔓 detect_quote_currency()
+    🔓 get_currency_consistency()
+
+================================================================================
+class AbstractBlackboxWorker
+  Erbt von: ABC
+  Datei: framework/workers/abstract_blackbox_worker.py:16
+  Methoden (13):
+    🔒 __init__()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 get_required_timeframes()
+    🔓 get_warmup_requirements()
+    🔓 should_recompute()
+    🔓 compute()
+    🔓 get_last_result()
+    🔓 set_state()
+    🔓 set_performance_logger()
+    🔓 get_worker_type()
+    🔓 get_default_parameters()
+
+================================================================================
+class EnvelopeWorker
+  Erbt von: AbstractBlackboxWorker
+  Datei: framework/workers/core/envelope_worker.py:17
+  Methoden (8):
+    🔒 __init__()
+    🔓 get_required_parameters()
+    🔓 get_optional_parameters()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 should_recompute()
+    🔓 compute()
+
+================================================================================
+class HeavyRSIWorker
+  Erbt von: AbstractBlackboxWorker
+  Datei: framework/workers/core/heavy_workers.py:18
+  Methoden (9):
+    🔒 __init__()
+    🔓 get_required_parameters()
+    🔓 get_optional_parameters()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 should_recompute()
+    🔓 compute()
+    🔒 _simulate_heavy_computation()
+
+================================================================================
+class HeavyEnvelopeWorker
+  Erbt von: AbstractBlackboxWorker
+  Datei: framework/workers/core/heavy_workers.py:135
+  Methoden (9):
+    🔒 __init__()
+    🔓 get_required_parameters()
+    🔓 get_optional_parameters()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 should_recompute()
+    🔓 compute()
+    🔒 _simulate_heavy_computation()
+
+================================================================================
+class HeavyMACDWorker
+  Erbt von: AbstractBlackboxWorker
+  Datei: framework/workers/core/heavy_workers.py:257
+  Methoden (10):
+    🔒 __init__()
+    🔓 get_required_parameters()
+    🔓 get_optional_parameters()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 should_recompute()
+    🔓 compute()
+    🔒 _ema()
+    🔒 _simulate_heavy_computation()
+
+================================================================================
+class RSIWorker
+  Erbt von: AbstractBlackboxWorker
+  Datei: framework/workers/core/rsi_worker.py:12
+  Methoden (8):
+    🔒 __init__()
+    🔓 get_required_parameters()
+    🔓 get_optional_parameters()
+    🔓 get_warmup_requirements()
+    🔓 get_required_timeframes()
+    🔓 get_max_computation_time_ms()
+    🔓 should_recompute()
+    🔓 compute()
+
+================================================================================
+class WorkerCoordinator
+  Datei: framework/workers/worker_coordinator.py:29
+  Methoden (12):
+    🔒 __init__()
+    🔒 _extract_worker_type()
+    🔒 _extract_decision_logic_type()
+    🔒 _validate_decision_logic_requirements()
+    🔒 _auto_detect_parallel_mode()
+    🔓 initialize()
+    🔓 process_tick()
+    🔒 _process_workers_sequential()
+    🔒 _process_workers_parallel()
+    🔒 _compute_worker()
+    🔓 get_worker_results()
+    🔓 cleanup()
+
+================================================================================
+class ScenarioConfigLoader
+  Datei: scenario/config_loader.py:23
+  Methoden (4):
+    🔒 __init__()
+    🔓 load_config()
+    🔒 _deep_merge_strategy_configs()
+    🔒 _validate_scenario_dates()
+
+================================================================================
+class ScenarioGenerator
+  Datei: scenario/generator.py:40
+  Methoden (12):
+    🔒 __init__()
+    🔓 generate()
+    🔒 _filter_periods()
+    🔒 _generate_balanced()
+    🔒 _generate_blocks_from_coverage()
+    🔒 _extract_continuous_regions()
+    🔒 _extract_session_windows()
+    🔒 _generate_stress()
+    🔒 _period_to_candidate()
+    🔒 _build_result()
+    🔓 save_config()
+    🔒 _get_default_template()
+
+================================================================================
+class MarketAnalyzer
+  Datei: scenario/market_analyzer.py:41
+  Methoden (16):
+    🔒 __init__()
+    🔒 _load_analysis_config()
+    🔓 get_config()
+    🔒 _load_broker_configs()
+    🔒 _calculate_pips_per_day()
+    🔓 analyze_symbol()
+    🔒 _prepare_dataframe()
+    🔒 _calculate_atr()
+    🔒 _analyze_periods()
+    🔒 _get_percentile()
+    🔒 _classify_regime()
+    🔒 _calculate_regime_distribution()
+    🔒 _calculate_session_summaries()
+    🔓 list_symbols()
+    🔓 get_available_timeframes()
+    🔓 get_index_entry()
