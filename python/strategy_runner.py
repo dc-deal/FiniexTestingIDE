@@ -5,18 +5,15 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
-from python.components.logger.abstract_logger import AbstractLogger
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.scenario.config_loader import ScenarioConfigLoader
 from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.exceptions.data_validation_errors import DataValidationError
-from python.data_worker.data_loader.data_loader_core import TickDataLoader
 from python.framework.batch_orchestrator import BatchOrchestrator
 import os
 import platform
 import sys
-import traceback
 import io
 import re
 
@@ -42,7 +39,7 @@ def run_strategy_test():
         # ============================================================
         # Load Application Configuration
         # ============================================================
-        app_config_loader = AppConfigLoader()
+        app_config_loader = AppConfigManager()
 
         # Extract execution defaults
         default_parallel_scenarios = app_config_loader.get_default_parallel_scenarios()
@@ -77,7 +74,7 @@ def run_strategy_test():
         )
 
 
-def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_config_loader: AppConfigLoader):
+def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_config_loader: AppConfigManager):
     try:
         # ScenarioSet erstellt sich selbst mit eigenen Loggern
         scenario_set = ScenarioSet(scenario_config_data, app_config_loader)
@@ -87,16 +84,10 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
         scenario_set.copy_config_snapshot()
 
         # ============================================================
-        # Initialize Data Worker
-        # ============================================================
-        data_worker = TickDataLoader()
-
-        # ============================================================
         # Execute Batch via Orchestrator
         # ============================================================
         orchestrator = BatchOrchestrator(
             scenario_set,
-            data_worker,
             app_config_loader
         )
 

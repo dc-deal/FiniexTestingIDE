@@ -181,6 +181,12 @@ class BrokerConfig:
     # Symbol Information
     # ============================================
 
+    def get_all_aviable_symbols(self) -> List[str]:
+        """
+        get a list of all symbols there are for a broker.
+        """
+        return self.adapter.get_all_aviable_symbols()
+
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
         Get fully typed symbol specification.

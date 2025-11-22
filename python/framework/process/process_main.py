@@ -10,6 +10,7 @@ from python.framework.process.process_live_queue_helper import send_status_updat
 from python.framework.process.process_startup_prepreation import process_startup_preparation
 from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
+from python.framework.utils.file_utils import file_name_for_scenario, pad_int
 
 
 def process_main(
@@ -39,7 +40,8 @@ def process_main(
         # Use shared run_timestamp from BatchOrchestrator
         scenario_logger = ScenarioLogger(
             scenario_set_name=config.scenario_set_name,
-            scenario_name=config.name,
+            scenario_name=file_name_for_scenario(
+                config.scenario_index, config.name),
             run_timestamp=config.run_timestamp
         )
 

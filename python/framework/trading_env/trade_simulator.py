@@ -12,7 +12,7 @@ Simulates broker trading environment with realistic execution
 - FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
 - CURRENCY: account_currency with auto-detection from symbol
 """
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Optional, List, Dict, Tuple
 
@@ -363,7 +363,7 @@ class TradeSimulator:
             status=OrderStatus.EXECUTED,
             executed_price=entry_price,
             executed_lots=pending_order.lots,
-            execution_time=datetime.now(),
+            execution_time=datetime.now(timezone.utc),
             commission=0.0,
             broker_order_id=position.position_id,
             metadata={
@@ -486,7 +486,7 @@ class TradeSimulator:
             status=OrderStatus.PENDING,
             executed_price=None,
             executed_lots=lots if lots else position.lots,
-            execution_time=datetime.now(),
+            execution_time=datetime.now(timezone.utc),
             commission=0.0,
             metadata={
                 "position_id": position_id,
@@ -548,7 +548,7 @@ class TradeSimulator:
             status=OrderStatus.EXECUTED,
             executed_price=close_price,
             executed_lots=pending_order.close_lots if pending_order.close_lots else position.lots,
-            execution_time=datetime.now(),
+            execution_time=datetime.now(timezone.utc),
             commission=0.0,
             metadata={
                 "realized_pnl": realized_pnl,

@@ -20,7 +20,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.configuration import AppConfigLoader
+from python.configuration import AppConfigManager
 from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.parquet_index import ParquetIndexManager
 
@@ -31,6 +31,7 @@ from python.data_worker.data_loader.data_loader_exceptions import (
 )
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.market_session_utils import get_session_from_utc_hour
 vLog = get_logger()
 
 
@@ -80,7 +81,7 @@ class TickDataImporter:
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
-        self._app_config_loader = AppConfigLoader()
+        self._app_config_loader = AppConfigManager()
 
     def process_all_mql5_exports(self):
         """
@@ -259,7 +260,8 @@ class TickDataImporter:
 
         data_collector = metadata.get("data_collector", "mt5")
         symbol = metadata.get("symbol", "UNKNOWN")
-        start_time = pd.to_datetime(metadata.get("start_time", datetime.now()))
+        start_time = pd.to_datetime(metadata.get(
+            "start_time", datetime.now(timezone.utc)))
 
         # NEU: data_format_version extrahieren
         data_format_version = metadata.get("data_format_version", "1.0.0")
@@ -416,28 +418,7 @@ class TickDataImporter:
     def _recalculate_sessions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Berechnet Trading-Sessions neu basierend auf UTC-Zeit.
-
-        KORREKTE Forex Sessions (UTC):
-        - sydney_tokyo: 22:00 - 08:00 UTC (10h Asian session)
-        - london:       08:00 - 16:00 UTC (8h European session)  
-        - new_york:     13:00 - 21:00 UTC (8h US session)
-        - transition:   21:00 - 22:00 UTC (1h gap)
-
-        Note: London/NY overlap = 13:00-16:00 UTC (markiert als "london")
         """
-
-        def get_session_from_utc_hour(hour):
-            """Determine trading session from UTC hour"""
-            if 22 <= hour <= 23 or 0 <= hour < 8:
-                return "sydney_tokyo"
-            elif 8 <= hour < 13:
-                return "london"
-            elif 13 <= hour < 16:
-                return "london"  # London/NY overlap - bleibt "london"
-            elif 16 <= hour < 21:
-                return "new_york"
-            else:  # 21:00 - 21:59
-                return "transition"
 
         df['session'] = df['timestamp'].dt.hour.apply(
             get_session_from_utc_hour)

@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 
 from python.components.logger.bootstrap_logger import get_logger
-from python.configuration.app_config_loader import AppConfigLoader
+from python.configuration.app_config_manager import AppConfigManager
 
 vLog = get_logger()
 
@@ -13,9 +13,9 @@ vLog = get_logger()
 class ScenarioSetUtils:
 
     def __init__(self, config_snapshot_path: Path, scenario_log_path: Path):
-        config = AppConfigLoader().get_config()
-        self.file_logging_enabled = config.get(
-            'file_logging', {}).get('enabled', False)
+        config = AppConfigManager()
+        file_logger_config = config.get_file_logging_config_object()
+        self.file_logging_enabled = file_logger_config.is_file_logging_enabled()
 
         self.scenario_log_path = scenario_log_path
         self.config_snapshot_path = config_snapshot_path

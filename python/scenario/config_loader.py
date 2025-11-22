@@ -8,18 +8,15 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
-from python.components.logger.global_logger import GlobalLogger
-from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.exceptions.configuration_errors import ScenarioSetConfigurationError
 from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
-from python.configuration.app_config_loader import AppConfigLoader
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.validators.scenario_validator import ScenarioValidator
 
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
-from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 vLog = get_logger()
 
 
@@ -69,7 +66,7 @@ class ScenarioConfigLoader:
             'trade_simulator_config', {})
 
         # Get warn_on_override flag from app_config
-        app_config = AppConfigLoader()
+        app_config = AppConfigManager()
         warn_on_override = app_config.should_warn_on_override()
 
         scenarios: List[SingleScenario] = []

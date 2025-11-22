@@ -133,7 +133,7 @@ class SpreadFee(AbstractTradingFee):
         super().__init__(
             fee_type=FeeType.SPREAD,
             status=FeeStatus.APPLIED,  # Spread is immediate
-            timestamp=timestamp or datetime.now()
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
 
         self.bid = bid
@@ -312,7 +312,7 @@ class CommissionFee(AbstractTradingFee):
         super().__init__(
             fee_type=FeeType.COMMISSION,
             status=FeeStatus.PENDING,
-            timestamp=timestamp or datetime.now()
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
 
         self.commission_mode = commission_mode
@@ -401,7 +401,7 @@ class MakerTakerFee(AbstractTradingFee):
         super().__init__(
             fee_type=FeeType.MAKER_TAKER,
             status=FeeStatus.PENDING,
-            timestamp=timestamp or datetime.now()
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
 
         self.is_maker = is_maker

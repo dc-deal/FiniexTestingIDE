@@ -1,416 +1,812 @@
 """
-FiniexTestingIDE - Scenario Config System
-Auto-Generator ( for Worker Instance System)
+Scenario Generator
+==================
+Generates test scenario configurations based on market analysis.
+
+Strategies:
+- balanced: Equal distribution across volatility regimes
+- blocks: Chronological time blocks with tick balancing
+- stress: High volatility and high activity periods
+
+Location: python/scenario/generator.py
 """
 
-from typing import List, Dict, Any, Optional
-from datetime import timedelta
-import pandas as pd
+import json
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional
 
-from python.data_worker.data_loader.tick_data_analyzer import TickDataAnalyzer
-from python.framework.types.scenario_set_types import SingleScenario
-from python.data_worker.data_loader.data_loader_core import TickDataLoader
+import numpy as np
 
+from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.framework.reporting.coverage_report import TimeRangeCoverageReport
+from python.framework.utils.market_calendar import GapCategory
+from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.scenario.market_analyzer import MarketAnalyzer
+from python.framework.types.scenario_generator_types import (
+    GenerationResult,
+    GenerationStrategy,
+    GeneratorConfig,
+    PeriodAnalysis,
+    ScenarioCandidate,
+    TradingSession,
+    VolatilityRegime,
+)
 from python.components.logger.bootstrap_logger import get_logger
+
 vLog = get_logger()
 
 
 class ScenarioGenerator:
     """
-    Generates test scenarios automatically from available data.
+    Generates scenario configurations from market analysis.
 
-     (Worker Instance System): Now generates worker_instances
-    with instance names and supports multiple instances per type.
-    NEW  Supports trade_simulator_config for all generation strategies.
+    Uses MarketAnalyzer results to select optimal time periods
+    based on volatility, activity, and data quality.
     """
 
-    def __init__(self, data_loader: TickDataLoader):
-        """
-        Args:
-            data_loader: TickDataLoader instance
-        """
-        self.data_loader = data_loader
-        self.analyzer = TickDataAnalyzer(self.data_loader)
-
-    def _generate_instance_name(self, worker_type: str, suffix: str = "main") -> str:
-        """
-        Generate instance name from worker type.
-
-        Examples:
-            "CORE/rsi" + "main" → "rsi_main"
-            "CORE/envelope" + "fast" → "envelope_fast"
-            "USER/custom_indicator" + "main" → "custom_indicator_main"
-
-        Args:
-            worker_type: Full worker type (e.g., "CORE/rsi")
-            suffix: Instance suffix (e.g., "main", "fast", "slow")
-
-        Returns:
-            Instance name in snake_case
-        """
-        # Extract worker name from type
-        _, worker_name = worker_type.split("/", 1)
-        return f"{worker_name}_{suffix}"
-
-    def generate_from_symbol(
+    def __init__(
         self,
-        symbol: str,
-        strategy: str = "time_windows",
-        decision_logic_type: str = "CORE/aggressive_trend",
-        worker_instances: Dict[str, str] = None,
-        workers_config: Dict[str, Dict[str, Any]] = None,
-        decision_logic_config: Optional[Dict[str, Any]] = None,
-        execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> List[SingleScenario]:
+        data_dir: str = "./data/processed",
+        config_path: Optional[str] = None
+    ):
         """
-        Generate scenarios for a symbol using different strategies.
-
-         (Worker Instance System): Uses worker_instances dict.
-        NEW  Added trade_simulator_config parameter.
+        Initialize scenario generator.
 
         Args:
-            symbol: Trading symbol
-            strategy: Generation strategy ("time_windows", "volatility", "sessions")
-            decision_logic_type: DecisionLogic to use (e.g., "CORE/aggressive_trend")
-            worker_instances: Dict[instance_name, worker_type] (e.g., {"rsi_main": "CORE/rsi"})
-            workers_config: Worker parameters indexed by instance name
-            decision_logic_config: DecisionLogic-specific config
-            execution_config: Execution-specific config (parallelization, etc.)
-            trade_simulator_config: TradeSimulator config (balance, currency, broker)
-            **kwargs: Strategy-specific parameters
+            data_dir: Path to processed data directory
+            config_path: Path to generator config JSON
+        """
+        self._data_dir = Path(data_dir)
+        self._analyzer = MarketAnalyzer(str(self._data_dir), config_path)
+        self._config = self._analyzer.get_config()
+
+        # Template paths
+        self._template_path = Path(
+            "./configs/generator/template_scenario_set_header.json")
+        self._output_dir = Path("./configs/scenario_sets")
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+
+    # =========================================================================
+    # MAIN GENERATION
+    # =========================================================================
+
+    def generate(
+        self,
+        symbols: List[str],
+        strategy: GenerationStrategy,
+        count: Optional[int] = None,
+        block_hours: Optional[int] = None,
+        session_filter: Optional[str] = None,
+        # NEW: Multiple sessions for blocks
+        sessions_filter: Optional[List[str]] = None,
+        start_filter: Optional[datetime] = None,
+        end_filter: Optional[datetime] = None,
+        max_ticks: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Generate scenario candidates.
+
+        Args:
+            symbols: List of symbols to generate for
+            strategy: Generation strategy
+            count: Number of scenarios
+            block_hours: Block size for blocks strategy
+            session_filter: Filter by session name
+            start_filter: Start date filter
+            end_filter: End date filter
+            max_ticks: Max ticks per scenario
 
         Returns:
-            List of generated SingleScenario objects
+            GenerationResult with selected scenarios
         """
-        # Default to RSI + Envelope workers if not specified
-        if worker_instances is None:
-            worker_instances = {
-                "rsi_main": "CORE/rsi",
-                "envelope_main": "CORE/envelope"
-            }
+        # For now, support single symbol generation
+        # Multi-symbol can be added later
+        if len(symbols) > 1:
+            vLog.warning(
+                "Multi-symbol generation not yet implemented. Using first symbol.")
 
-        # Build strategy config with new structure
-        strategy_config = self._build_strategy_config(
-            decision_logic_type=decision_logic_type,
-            worker_instances=worker_instances,
-            workers_config=workers_config,
-            decision_logic_config=decision_logic_config
+        symbol = symbols[0]
+
+        # Analyze the symbol
+        analysis = self._analyzer.analyze_symbol(symbol)
+
+        # Filter periods
+        periods = self._filter_periods(
+            analysis.periods,
+            session_filter,
+            start_filter,
+            end_filter
         )
 
-        # Generate scenarios based on strategy
-        if strategy == "time_windows":
-            return self._generate_time_windows(
-                symbol,
-                strategy_config=strategy_config,
-                execution_config=execution_config,
-                trade_simulator_config=trade_simulator_config,
-                **kwargs
+        if not periods:
+            raise ValueError(
+                f"No periods match the given filters for {symbol}")
+
+        vLog.info(f"Generating {count} {strategy.value} scenarios from "
+                  f"{len(periods)} periods")
+
+        # Generate based on strategy
+        if strategy == GenerationStrategy.BALANCED:
+            effective_count = count or 10
+            vLog.info(f"Generating {effective_count} {strategy.value} scenarios from "
+                      f"{len(periods)} periods")
+            scenarios = self._generate_balanced(
+                symbol, periods, effective_count, max_ticks
             )
-        elif strategy == "volatility":
-            return self._generate_volatility_based(
-                symbol,
-                strategy_config=strategy_config,
-                execution_config=execution_config,
-                trade_simulator_config=trade_simulator_config,
-                **kwargs
+        elif strategy == GenerationStrategy.BLOCKS:
+            hours = block_hours or self._config.blocks.default_block_hours
+            # Blocks strategy uses coverage report for gap-aware generation
+            scenarios = self._generate_blocks_from_coverage(
+                symbol, hours, count, sessions_filter
             )
-        elif strategy == "sessions":
-            return self._generate_session_based(
-                symbol,
-                strategy_config=strategy_config,
-                execution_config=execution_config,
-                trade_simulator_config=trade_simulator_config,
-                **kwargs
+            session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
+            vLog.info(
+                f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
+
+        elif strategy == GenerationStrategy.STRESS:
+            effective_count = count or 5
+            vLog.info(f"Generating {effective_count} {strategy.value} scenarios from "
+                      f"{len(periods)} periods")
+            scenarios = self._generate_stress(
+                symbol, periods, effective_count, max_ticks
             )
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
+        # Build result
+        return self._build_result(symbol, strategy, scenarios)
 
-    def _build_strategy_config(
+    # =========================================================================
+    # FILTERING
+    # =========================================================================
+
+    def _filter_periods(
         self,
-        decision_logic_type: str,
-        worker_instances: Dict[str, str],
-        workers_config: Optional[Dict[str, Dict[str, Any]]] = None,
-        decision_logic_config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        periods: List[PeriodAnalysis],
+        session_filter: Optional[str],
+        start_filter: Optional[datetime],
+        end_filter: Optional[datetime]
+    ) -> List[PeriodAnalysis]:
         """
-        Build strategy configuration with worker instance system.
-
-        This method constructs the hierarchical config that factories need.
-        It sets up sensible defaults for workers based on their type.
+        Filter periods by session and time range.
 
         Args:
-            decision_logic_type: e.g., "CORE/aggressive_trend"
-            worker_instances: e.g., {"rsi_main": "CORE/rsi", "envelope_main": "CORE/envelope"}
-            workers_config: Worker configs indexed by instance name (optional)
-            decision_logic_config: DecisionLogic config (optional)
+            periods: All periods
+            session_filter: Session name filter
+            start_filter: Start datetime
+            end_filter: End datetime
 
         Returns:
-            Strategy config dict ready for SingleScenario
+            Filtered periods
         """
-        # Build workers config with defaults if not provided
-        if workers_config is None:
-            workers_config = {}
-            for instance_name, worker_type in worker_instances.items():
-                # Set sensible defaults based on worker type
-                worker_name = worker_type.split("/")[1].lower()
+        filtered = periods
 
-                if "rsi" in worker_name:
-                    workers_config[instance_name] = {
-                        "period": 14,
-                        "timeframe": "M5"
-                    }
-                elif "envelope" in worker_name:
-                    workers_config[instance_name] = {
-                        "period": 20,
-                        "deviation": 0.02,
-                        "timeframe": "M5"
-                    }
-                elif "macd" in worker_name:
-                    workers_config[instance_name] = {
-                        "fast": 12,
-                        "slow": 26,
-                        "signal": 9,
-                        "timeframe": "M5"
-                    }
-                # Add more defaults as needed
+        # Session filter
+        if session_filter:
+            session = TradingSession(session_filter)
+            filtered = [p for p in filtered if p.session == session]
 
-        # Build complete strategy config
-        config = {
-            "decision_logic_type": decision_logic_type,
-            "worker_instances": worker_instances,
-            "workers": workers_config
-        }
+        # Time filters
+        if start_filter:
+            filtered = [p for p in filtered if p.start_time >= start_filter]
 
-        # Add decision logic config if provided
-        if decision_logic_config:
-            config["decision_logic_config"] = decision_logic_config
+        if end_filter:
+            filtered = [p for p in filtered if p.end_time <= end_filter]
 
-        return config
-
-    def generate_multi_symbol(
-        self,
-        symbols: List[str] = None,
-        scenarios_per_symbol: int = 3,
-        decision_logic_type: str = "CORE/aggressive_trend",
-        worker_instances: Dict[str, str] = None,
-        workers_config: Dict[str, Dict[str, Any]] = None,
-        decision_logic_config: Optional[Dict[str, Any]] = None,
-        execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> List[SingleScenario]:
-        """
-        Generate scenarios for multiple symbols.
-
-         (Worker Instance System): Uses worker_instances dict.
-        NEW  Added trade_simulator_config parameter.
-
-        Args:
-            symbols: List of symbols (None = all available)
-            scenarios_per_symbol: Number of scenarios per symbol
-            decision_logic_type: DecisionLogic to use
-            worker_instances: Dict[instance_name, worker_type]
-            workers_config: Worker configs indexed by instance name
-            decision_logic_config: DecisionLogic config
-            execution_config: Execution config
-            trade_simulator_config: TradeSimulator config
-            **kwargs: Passed to generation strategy
-
-        Returns:
-            List of SingleScenario objects
-        """
-        if symbols is None:
-            symbols = self.data_loader.list_available_symbols()
-
-        all_scenarios = []
-
-        for symbol in symbols:
-            vLog.info(
-                f"Generating {scenarios_per_symbol} scenarios for {symbol}")
-            scenarios = self.generate_from_symbol(
-                symbol,
-                strategy="time_windows",
-                decision_logic_type=decision_logic_type,
-                worker_instances=worker_instances,
-                workers_config=workers_config,
-                decision_logic_config=decision_logic_config,
-                execution_config=execution_config,
-                trade_simulator_config=trade_simulator_config,
-                num_windows=scenarios_per_symbol,
-                **kwargs
+        # Quality filter: prefer real bars
+        if self._config.balanced.prefer_real_bars:
+            # Sort by real bar ratio descending
+            filtered = sorted(
+                filtered,
+                key=lambda p: p.real_bar_count / max(p.bar_count, 1),
+                reverse=True
             )
-            all_scenarios.extend(scenarios)
 
-        vLog.info(f"Generated {len(all_scenarios)} scenarios total")
-        return all_scenarios
+        return filtered
 
-    def _generate_time_windows(
+    # =========================================================================
+    # BALANCED STRATEGY
+    # =========================================================================
+
+    def _generate_balanced(
         self,
         symbol: str,
-        num_windows: int = 5,
-        window_days: int = 2,
-        ticks_per_window: int = 1000,
-        session: str = "london_ny_overlap",
-        strategy_config: Optional[Dict[str, Any]] = None,
-        execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[SingleScenario]:
+        periods: List[PeriodAnalysis],
+        count: int,
+        max_ticks: Optional[int]
+    ) -> List[ScenarioCandidate]:
         """
-        Generate scenarios by splitting data into time windows.
+        Generate balanced scenarios across volatility regimes.
 
-         (Worker Instance System): Uses worker_instances dict.
-        NEW  Added trade_simulator_config parameter.
+        Selects equal number from each regime for comprehensive testing.
 
         Args:
             symbol: Trading symbol
-            num_windows: Number of time windows
-            window_days: Days per window
-            ticks_per_window: Max ticks per window
-            session: Trading session - 'london', 'ny', 'london_ny_overlap', 'asian', or 'full_day'
-            strategy_config: Strategy parameters (new structure!)
-            execution_config: Execution parameters
-            trade_simulator_config: TradeSimulator config (balance, currency, broker)
+            periods: Available periods
+            count: Total scenarios to generate
+            max_ticks: Max ticks per scenario
+
+        Returns:
+            List of scenario candidates
         """
-        # Define trading sessions (UTC times)
-        SESSIONS = {
-            'asian': (0, 8),           # 00:00 - 08:00 UTC (Tokyo)
-            'london': (8, 16),         # 08:00 - 16:00 UTC
-            'ny': (13, 21),            # 13:00 - 21:00 UTC
-            # 13:00 - 16:00 UTC (best liquidity!)
-            'london_ny_overlap': (13, 16),
-            'full_day': (0, 23),       # 00:00 - 23:00 UTC
+        # Group periods by regime
+        regime_periods: Dict[VolatilityRegime, List[PeriodAnalysis]] = {
+            regime: [] for regime in VolatilityRegime
         }
 
-        start_hour, end_hour = SESSIONS.get(
-            session, (8, 16))  # Default: London
+        for period in periods:
+            regime_periods[period.regime].append(period)
 
-        # Get available date range
-        symbol_info = self.analyzer.get_symbol_info(symbol)
-
-        if "error" in symbol_info:
-            vLog.error(
-                f"Cannot generate for {symbol}: {symbol_info['error']}")
-            return []
-
-        start_date = pd.to_datetime(symbol_info["date_range"]["start"])
-        end_date = pd.to_datetime(symbol_info["date_range"]["end"])
-
-        total_days = (end_date - start_date).days
-
-        if total_days < window_days * num_windows:
-            vLog.warning(
-                f"Not enough data for {num_windows} windows of {window_days} days. "
-                f"Reducing to {total_days // window_days} windows."
-            )
-            num_windows = max(1, total_days // window_days)
+        # Calculate scenarios per regime
+        regime_count = self._config.balanced.regime_count
+        per_regime = max(1, count // regime_count)
 
         scenarios = []
-        window_duration = timedelta(days=window_days)
 
-        # Use provided configs or build defaults
-        if strategy_config is None:
-            strategy_config = self._build_strategy_config(
-                decision_logic_type="CORE/aggressive_trend",
-                worker_instances={
-                    "rsi_main": "CORE/rsi",
-                    "envelope_main": "CORE/envelope"
-                },
-                workers_config=None,
-                decision_logic_config=None
+        for regime in VolatilityRegime:
+            regime_list = regime_periods[regime]
+
+            if not regime_list:
+                vLog.debug(f"No periods for regime {regime.value}")
+                continue
+
+            # Sort by quality (real bar ratio)
+            regime_list = sorted(
+                regime_list,
+                key=lambda p: (
+                    p.real_bar_count / max(p.bar_count, 1),
+                    p.tick_count
+                ),
+                reverse=True
             )
 
-        if execution_config is None:
-            execution_config = {
-                "parallel_workers": None,  # Auto-detect
-                "worker_parallel_threshold_ms": 1.0,
-                "adaptive_parallelization": True,
-                "log_performance_stats": True,
-            }
+            # Select top periods
+            selected = regime_list[:per_regime]
 
-        for i in range(num_windows):
-            window_start = start_date + (i * window_duration)
-            window_end = window_start + window_duration
+            for period in selected:
+                candidate = self._period_to_candidate(
+                    symbol, period, max_ticks
+                )
+                scenarios.append(candidate)
 
-            if window_end > end_date:
-                window_end = end_date
+        # If we need more scenarios, fill from best remaining
+        if len(scenarios) < count:
+            used_times = {s.start_time for s in scenarios}
+            remaining = [
+                p for p in periods
+                if p.start_time not in used_times
+            ]
 
-            # Set realistic intraday times
-            window_start = window_start.replace(
-                hour=start_hour, minute=0, second=0, microsecond=0)
-            window_end = window_end.replace(
-                hour=end_hour, minute=0, second=0, microsecond=0)
-
-            scenario = SingleScenario(
-                symbol=symbol,
-                start_date=window_start.isoformat(),
-                end_date=window_end.isoformat(),
-                max_ticks=ticks_per_window,
-                data_mode="realistic",
-                strategy_config=strategy_config.copy(),
-                execution_config=execution_config.copy(),
-                trade_simulator_config=trade_simulator_config.copy(
-                ) if trade_simulator_config else None,
-                enabled=True,
-                name=f"{symbol}_window_{i+1:02d}"
+            # Sort remaining by tick count
+            remaining = sorted(
+                remaining,
+                key=lambda p: p.tick_count,
+                reverse=True
             )
-            scenarios.append(scenario)
+
+            for period in remaining:
+                if len(scenarios) >= count:
+                    break
+
+                candidate = self._period_to_candidate(
+                    symbol, period, max_ticks
+                )
+                scenarios.append(candidate)
+
+        return scenarios[:count]
+
+    # =========================================================================
+    # BLOCKS STRATEGY
+    # =========================================================================
+
+    def _generate_blocks_from_coverage(
+        self,
+        symbol: str,
+        block_hours: int,
+        count_max: Optional[int],
+        sessions_filter: Optional[List[str]] = None
+    ) -> List[ScenarioCandidate]:
+        """
+        Generate chronological blocks based on coverage report.
+
+        Uses gap analysis to create blocks only within continuous data regions.
+        Gaps of type moderate/large/weekend interrupt blocks.
+
+        Args:
+            symbol: Trading symbol
+            block_hours: Maximum hours per block
+            count_max: Optional limit on number of blocks (None = all)
+            sessions_filter: Optional list of session names to include
+
+        Returns:
+            List of scenario candidates with max_ticks=None
+        """
+        # Get tick index for coverage report
+        tick_index = ParquetIndexManager(self._data_dir)
+        tick_index.build_index()
+
+        # Generate coverage report
+        coverage_report = tick_index.get_coverage_report(symbol)
+
+        if not coverage_report.files:
+            raise ValueError(f"No tick data found for {symbol}")
+
+        # Extract continuous regions (between interrupting gaps)
+        continuous_regions = self._extract_continuous_regions(coverage_report)
+
+        if not continuous_regions:
+            raise ValueError(f"No continuous data regions found for {symbol}")
+
+        # Convert sessions_filter to TradingSession enums if provided
+        allowed_sessions = None
+        if sessions_filter:
+            allowed_sessions = set()
+            for s in sessions_filter:
+                try:
+                    allowed_sessions.add(TradingSession(s))
+                except ValueError:
+                    vLog.warning(f"Unknown session '{s}', ignoring")
+
+            if allowed_sessions:
+                vLog.info(
+                    f"Filtering blocks to sessions: {[s.value for s in allowed_sessions]}")
+
+        # Log gap filtering info
+        filtered_gaps = [
+            g for g in coverage_report.gaps
+            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND]
+        ]
+
+        total_coverage_hours = sum(
+            (r['end'] - r['start']).total_seconds() / 3600
+            for r in continuous_regions
+        )
+        total_gap_hours = sum(g.gap_hours for g in filtered_gaps)
 
         vLog.info(
-            f"Generated {len(scenarios)} {session} session scenarios for {symbol}"
+            f"Coverage: {total_coverage_hours:.1f}h usable, "
+            f"{total_gap_hours:.1f}h gaps filtered "
+            f"({len(filtered_gaps)} gaps: "
+            f"{coverage_report.gap_counts['weekend']} weekend, "
+            f"{coverage_report.gap_counts['moderate']} moderate, "
+            f"{coverage_report.gap_counts['large']} large)"
         )
+
+        # Generate blocks from continuous regions
+        scenarios = []
+        merge_threshold = timedelta(
+            minutes=self._config.blocks.merge_remainder_threshold_minutes
+        )
+        block_duration = timedelta(hours=block_hours)
+
+        for region in continuous_regions:
+            region_start = region['start']
+            region_end = region['end']
+            region_duration = region_end - region_start
+
+            # Skip regions smaller than merge threshold
+            if region_duration < merge_threshold:
+                continue
+
+            # If session filter active, extract only hours within allowed sessions
+            if allowed_sessions:
+                session_windows = self._extract_session_windows(
+                    region_start, region_end, allowed_sessions
+                )
+            else:
+                # No filter - entire region is one window
+                session_windows = [{'start': region_start, 'end': region_end}]
+
+            # Generate blocks from session windows
+            for window in session_windows:
+                window_start = window['start']
+                window_end = window['end']
+                window_duration = window_end - window_start
+
+                if window_duration < merge_threshold:
+                    continue
+
+                current_start = window_start
+                window_blocks = []
+
+                while current_start < window_end:
+                    remaining = window_end - current_start
+
+                    if remaining <= block_duration:
+                        # Last block in window
+                        if remaining < merge_threshold and window_blocks:
+                            # Merge with previous block
+                            prev_block = window_blocks[-1]
+                            prev_block['end'] = window_end
+                        else:
+                            # Create final block
+                            window_blocks.append({
+                                'start': current_start,
+                                'end': window_end
+                            })
+                        break
+                    else:
+                        # Full block
+                        block_end = current_start + block_duration
+                        window_blocks.append({
+                            'start': current_start,
+                            'end': block_end
+                        })
+                        current_start = block_end
+
+                # Convert window blocks to candidates
+                for block in window_blocks:
+                    candidate = ScenarioCandidate(
+                        symbol=symbol,
+                        start_time=block['start'],
+                        end_time=block['end'],
+                        regime=VolatilityRegime.MEDIUM,
+                        session=TradingSession.LONDON,
+                        estimated_ticks=0,
+                        atr=0.0,
+                        tick_density=0.0,
+                        real_bar_ratio=1.0
+                    )
+                    scenarios.append(candidate)
+
+        # Apply count_max limit if specified
+        if count_max and len(scenarios) > count_max:
+            scenarios = scenarios[:count_max]
+            vLog.info(f"Limited to {count_max} blocks (from {len(scenarios)})")
+
         return scenarios
 
-    def _generate_volatility_based(
+    def _extract_continuous_regions(
+        self,
+        coverage_report: TimeRangeCoverageReport
+    ) -> List[Dict[str, datetime]]:
+        """
+        Extract continuous data regions from coverage report.
+
+        Regions are split by moderate, large, and weekend gaps.
+
+        Args:
+            coverage_report: Analyzed coverage report
+
+        Returns:
+            List of dicts with 'start' and 'end' datetime keys
+        """
+        if not coverage_report.files:
+            return []
+
+        # Gap categories that interrupt blocks
+        interrupting_categories = {
+            GapCategory.MODERATE,
+            GapCategory.LARGE,
+            GapCategory.WEEKEND
+        }
+
+        regions = []
+        current_start = coverage_report.files[0].start_time
+
+        for gap in coverage_report.gaps:
+            if gap.category in interrupting_categories:
+                # End current region at gap start
+                region_end = gap.file1.end_time
+
+                if region_end > current_start:
+                    regions.append({
+                        'start': current_start,
+                        'end': region_end
+                    })
+
+                # Start new region after gap
+                current_start = gap.file2.start_time
+
+        # Add final region
+        final_end = coverage_report.files[-1].end_time
+        if final_end > current_start:
+            regions.append({
+                'start': current_start,
+                'end': final_end
+            })
+
+        return regions
+
+    def _extract_session_windows(
+        self,
+        start: datetime,
+        end: datetime,
+        allowed_sessions: set
+    ) -> List[Dict[str, datetime]]:
+        """
+        Extract time windows within allowed trading sessions.
+
+        Iterates hour by hour and groups consecutive hours in allowed sessions.
+
+        Args:
+            start: Region start time
+            end: Region end time
+            allowed_sessions: Set of TradingSession enums to include
+
+        Returns:
+            List of dicts with 'start' and 'end' datetime keys
+        """
+        windows = []
+        current_window_start = None
+        current_hour = start.replace(minute=0, second=0, microsecond=0)
+
+        while current_hour < end:
+            hour_session = get_session_from_utc_hour(current_hour.hour)
+
+            if hour_session in allowed_sessions:
+                if current_window_start is None:
+                    # Start new window
+                    current_window_start = max(current_hour, start)
+            else:
+                if current_window_start is not None:
+                    # End current window
+                    window_end = min(current_hour, end)
+                    if window_end > current_window_start:
+                        windows.append({
+                            'start': current_window_start,
+                            'end': window_end
+                        })
+                    current_window_start = None
+
+            current_hour += timedelta(hours=1)
+
+        # Close final window if open
+        if current_window_start is not None:
+            windows.append({
+                'start': current_window_start,
+                'end': end
+            })
+
+        return windows
+
+    # =========================================================================
+    # STRESS STRATEGY
+    # =========================================================================
+
+    def _generate_stress(
         self,
         symbol: str,
-        high_vol_threshold: float = 0.02,
-        max_scenarios: int = 10,
-        strategy_config: Optional[Dict[str, Any]] = None,
-        execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[SingleScenario]:
+        periods: List[PeriodAnalysis],
+        count: int,
+        max_ticks: Optional[int]
+    ) -> List[ScenarioCandidate]:
         """
-        Generate scenarios based on volatility periods.
+        Generate stress test scenarios.
 
-        TODO: Implement volatility detection.
-        For now, falls back to time_windows.
+        Selects periods with highest volatility AND tick density.
 
-        NEW  Added trade_simulator_config parameter.
+        Args:
+            symbol: Trading symbol
+            periods: Available periods
+            count: Number of scenarios
+            max_ticks: Max ticks per scenario
+
+        Returns:
+            List of stress test candidates
         """
-        vLog.warning(
-            f"Volatility-based generation not yet implemented. Using time_windows.")
-        return self._generate_time_windows(
-            symbol,
-            num_windows=max_scenarios,
-            strategy_config=strategy_config,
-            execution_config=execution_config,
-            trade_simulator_config=trade_simulator_config,
+        vol_pct = self._config.stress.volatility_percentile
+        density_pct = self._config.stress.density_percentile
+
+        # Calculate thresholds
+        atrs = [p.atr for p in periods]
+        densities = [p.tick_density for p in periods]
+
+        atr_threshold = np.percentile(atrs, vol_pct)
+        density_threshold = np.percentile(densities, density_pct)
+
+        # Filter for extreme conditions
+        stress_periods = [
+            p for p in periods
+            if p.atr >= atr_threshold and p.tick_density >= density_threshold
+        ]
+
+        # If not enough, relax one constraint
+        if len(stress_periods) < self._config.stress.min_periods:
+            vLog.warning(
+                f"Only {len(stress_periods)} periods meet both criteria. "
+                f"Relaxing density threshold."
+            )
+            stress_periods = [
+                p for p in periods
+                if p.atr >= atr_threshold
+            ]
+
+        # Sort by combined score
+        stress_periods = sorted(
+            stress_periods,
+            key=lambda p: (p.atr_percentile +
+                           (p.tick_density / max(densities))),
+            reverse=True
         )
 
-    def _generate_session_based(
+        # Convert to candidates
+        scenarios = []
+        for period in stress_periods[:count]:
+            candidate = self._period_to_candidate(
+                symbol, period, max_ticks
+            )
+            scenarios.append(candidate)
+
+        return scenarios
+
+    # =========================================================================
+    # HELPER METHODS
+    # =========================================================================
+
+    def _period_to_candidate(
         self,
         symbol: str,
-        sessions: List[str] = None,
-        strategy_config: Optional[Dict[str, Any]] = None,
-        execution_config: Optional[Dict[str, Any]] = None,
-        trade_simulator_config: Optional[Dict[str, Any]] = None,
-    ) -> List[SingleScenario]:
+        period: PeriodAnalysis,
+        max_ticks: Optional[int]
+    ) -> ScenarioCandidate:
         """
-        Generate scenarios based on trading sessions.
+        Convert period analysis to scenario candidate.
 
-        TODO: Implement session-based generation.
-        For now, falls back to time_windows.
+        Args:
+            symbol: Trading symbol
+            period: Period analysis
+            max_ticks: Max ticks override
 
-        NEW  Added trade_simulator_config parameter.
+        Returns:
+            ScenarioCandidate
         """
-        vLog.warning(
-            f"Session-based generation not yet implemented. Using time_windows.")
-        return self._generate_time_windows(
-            symbol,
-            num_windows=3,
-            strategy_config=strategy_config,
-            execution_config=execution_config,
-            trade_simulator_config=trade_simulator_config,
+        estimated = period.tick_count
+        if max_ticks:
+            estimated = min(estimated, max_ticks)
+
+        real_ratio = period.real_bar_count / max(period.bar_count, 1)
+
+        return ScenarioCandidate(
+            symbol=symbol,
+            start_time=period.start_time,
+            end_time=period.end_time,
+            regime=period.regime,
+            session=period.session,
+            estimated_ticks=estimated,
+            atr=period.atr,
+            tick_density=period.tick_density,
+            real_bar_ratio=real_ratio
         )
+
+    def _build_result(
+        self,
+        symbol: str,
+        strategy: GenerationStrategy,
+        scenarios: List[ScenarioCandidate]
+    ) -> GenerationResult:
+        """
+        Build generation result from scenarios.
+
+        Args:
+            symbol: Trading symbol
+            strategy: Strategy used
+            scenarios: Generated scenarios
+
+        Returns:
+            GenerationResult
+        """
+        total_ticks = sum(s.estimated_ticks for s in scenarios)
+        avg_ticks = total_ticks / len(scenarios) if scenarios else 0
+
+        # Regime coverage
+        regime_coverage = {regime: 0 for regime in VolatilityRegime}
+        for s in scenarios:
+            regime_coverage[s.regime] += 1
+
+        # Session coverage
+        session_coverage = {session: 0 for session in TradingSession}
+        for s in scenarios:
+            session_coverage[s.session] += 1
+
+        return GenerationResult(
+            symbol=symbol,
+            strategy=strategy,
+            scenarios=scenarios,
+            total_estimated_ticks=total_ticks,
+            avg_ticks_per_scenario=avg_ticks,
+            regime_coverage=regime_coverage,
+            session_coverage=session_coverage,
+            generated_at=datetime.now(timezone.utc),
+            config_used=self._config
+        )
+
+    # =========================================================================
+    # CONFIG SAVING
+    # =========================================================================
+
+    def save_config(
+        self,
+        result: GenerationResult,
+        filename: str
+    ) -> Path:
+        """
+        Save generation result as scenario set config.
+
+        Args:
+            result: Generation result
+            filename: Output filename
+
+        Returns:
+            Path to saved config file
+        """
+        # Load template
+        if self._template_path.exists():
+            with open(self._template_path, 'r') as f:
+                config = json.load(f)
+        else:
+            config = self._get_default_template()
+
+        # Update metadata
+        config['version'] = "1.0"
+        config['scenario_set_name'] = filename.replace('.json', '')
+        config['created'] = datetime.now(timezone.utc).isoformat()
+
+        # Add scenarios
+        config['scenarios'] = []
+        for i, candidate in enumerate(result.scenarios, 1):
+            name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
+            # Blocks strategy: max_ticks = None (time-based only)
+            use_max_ticks = None if result.strategy == GenerationStrategy.BLOCKS else candidate.estimated_ticks
+            scenario_dict = candidate.to_scenario_dict(name, use_max_ticks)
+            config['scenarios'].append(scenario_dict)
+
+        # Save to file
+        output_path = self._output_dir / filename
+        with open(output_path, 'w') as f:
+            json.dump(config, f, indent=2, default=str)
+
+        vLog.info(f"Saved {len(result.scenarios)} scenarios to {output_path}")
+
+        return output_path
+
+    def _get_default_template(self) -> Dict:
+        """
+        Get default template when file not found.
+
+        Returns:
+            Default config dictionary
+        """
+        return {
+            "version": "1.0",
+            "scenario_set_name": "",
+            "created": "",
+            "global": {
+                "data_mode": "realistic",
+                "strategy_config": {
+                    "decision_logic_type": "CORE/aggressive_trend",
+                    "worker_instances": {
+                        "rsi_fast": "CORE/rsi",
+                        "envelope_main": "CORE/envelope"
+                    },
+                    "workers": {
+                        "rsi_fast": {
+                            "period": 14,
+                            "timeframe": "M5"
+                        },
+                        "envelope_main": {
+                            "period": 20,
+                            "deviation": 0.02,
+                            "timeframe": "M5"
+                        }
+                    },
+                    "decision_logic_config": {
+                        "rsi_oversold": 30,
+                        "rsi_overbought": 70,
+                        "min_confidence": 0.6
+                    }
+                },
+                "execution_config": {
+                    "parallel_workers": False,
+                    "worker_parallel_threshold_ms": 1.0,
+                    "adaptive_parallelization": True,
+                    "log_performance_stats": True
+                },
+                "trade_simulator_config": {
+                    "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+                    "initial_balance": 10000,
+                    "currency": "EUR"
+                }
+            },
+            "scenarios": []
+        }

@@ -16,10 +16,7 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.framework.types.live_scenario_stats_types import ScenarioStatus
 from python.framework.types.process_data_types import (
-    RequirementsMap,
-    ProcessDataPackage,
     TickRequirement,
     BarRequirement
 )

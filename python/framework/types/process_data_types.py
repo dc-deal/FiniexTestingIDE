@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dateutil import parser
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.configuration.app_config_loader import AppConfigLoader
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.trading_env.broker_config import BrokerType
@@ -190,7 +190,7 @@ class ProcessScenarioConfig:
     @staticmethod
     def from_scenario(
         scenario: SingleScenario,
-        app_config_loader: AppConfigLoader,
+        app_config_loader: AppConfigManager,
         scenario_index: int,
         scenario_set_name: str,
         run_timestamp: str,

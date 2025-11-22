@@ -11,7 +11,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 """
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.types.broker_types import SymbolSpecification
@@ -133,7 +133,7 @@ class PortfolioManager:
             direction=direction,
             lots=lots,
             entry_price=entry_price,
-            entry_time=datetime.now(),
+            entry_time=datetime.now(timezone.utc),
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,
@@ -197,7 +197,7 @@ class PortfolioManager:
 
         # Mark position as closed
         position.status = PositionStatus.CLOSED
-        position.close_time = datetime.now()
+        position.close_time = datetime.now(timezone.utc)
         position.close_price = exit_price
 
         # Move to closed positions

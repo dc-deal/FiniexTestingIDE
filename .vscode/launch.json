@@ -188,13 +188,69 @@
             "justMyCode": false
         },
         // ====================================================
-        // 📝 SCENARIO MANAGEMENT
+        // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📝 Scenario Generator - Run",
+            "name": "📊 MARKET ANALYSIS REPORT - EURGBP",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/scenario/generate_scenarios.py",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "analyze",
+                "AUDUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario Generator - Generate Balanced",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "balanced",
+                "--count",
+                "12"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario Generator - Generate Blocks",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "blocks",
+                "--block-size",
+                "6",
+                "--count",
+                "20",
+                "--sessions",
+                "new_york"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario Generator - Generate Stress",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "EURGBP",
+                "--strategy",
+                "stress",
+                "--count",
+                "5"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },

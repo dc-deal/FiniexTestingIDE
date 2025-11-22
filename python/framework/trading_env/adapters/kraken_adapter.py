@@ -6,7 +6,7 @@ FEATURE GATED: KRAKEN_ENABLED = False (MVP)
 Post-MVP: Full implementation with Kraken API integration
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from python.framework.types.broker_types import SymbolSpecification
 from .base_adapter import IOrderCapabilities
@@ -223,6 +223,14 @@ class KrakenAdapter(IOrderCapabilities):
     # ============================================
     # Symbol Information
     # ============================================
+
+    def get_all_aviable_symbols(self) -> List[str]:
+        """
+        Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
+        """
+        raise NotImplementedError(
+            "Kraken symbol list info not implemented (feature gated)."
+        )
 
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """

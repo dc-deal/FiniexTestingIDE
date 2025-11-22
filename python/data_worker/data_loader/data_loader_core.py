@@ -29,7 +29,6 @@ class TickDataLoader:
     """
     Core tick data loading with caching and filtering.
 
-    UPDATED: Angepasst für neue Verzeichnisstruktur (Collector-First)
     """
 
     VALID_DATA_MODES = ["raw", "realistic", "clean"]

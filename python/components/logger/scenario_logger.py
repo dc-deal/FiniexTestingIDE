@@ -16,13 +16,11 @@ Usage:
     scenario.logger.flush_buffer()
 """
 
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 
 from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
 from python.components.logger.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
-from python.components.logger.file_logger import FileLogger
 
 
 class ScenarioLogger(AbstractLogger):
@@ -45,48 +43,35 @@ class ScenarioLogger(AbstractLogger):
         Initialize scenario logger.
 
         Args:
+            scenario_set_name: Scenario set name
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
-            run_dir: Directory for log files (created if None)
+            run_timestamp: Run timestamp string
         """
         super().__init__(name=scenario_name)
 
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
+        run_timestamp_str = self.run_timestamp.strftime("%Y%m%d_%H%M%S")
         self._tick_loop_started = False
         self._tick_loop_count = 1
 
         self.run_dir = None
         self.file_logger = None
-        if self.file_logging_enabled:
-            # Create default run directory
-            self.run_dir = Path(self.file_log_root) / \
-                self.scenario_set_name / self.run_timestamp
 
+        if self._file_logging_config.scenario_enabled:
+            # Create scenario run directory
+            log_root = self._file_logging_config.scenario_log_root_path
+            self.run_dir = log_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
             self.file_logger = FileLogger(
-                log_type="scenario",
-                run_dir=self.run_dir,
-                scenario_name=self.name,
-                log_level=self.file_log_level
+                log_filename="scenario_"+scenario_name+".log",
+                file_path=self.run_dir,
+                log_level=self._file_logging_config.scenario_log_level
             )
-
-    def get_run_timestamp(self):
-        return self.run_timestamp
-
-    def get_log_dir(self):
-        return self.run_dir
-
-    def reset_start_time(self):
-        self.start_time = datetime.now()
-
-    def set_tick_loop_started(self, started: bool):
-        self._tick_loop_started = started
-        if (started):
-            self._tick_loop_count = 1
-
-    def set_current_tick(self, tick_count: int):
-        self._tick_loop_count = tick_count
+        else:
+            # File logging disabled for scenarios
+            pass
 
     def _get_timestamp(self) -> str:
         """
@@ -95,11 +80,52 @@ class ScenarioLogger(AbstractLogger):
         Returns:
             Elapsed time string (e.g., "[ 3s 417ms]")
         """
-        elapsed = datetime.now() - self.start_time
+        elapsed = datetime.now(timezone.utc) - self.run_timestamp
         total_seconds = elapsed.total_seconds()
         seconds = int(total_seconds)
         milliseconds = int((total_seconds - seconds) * 1000)
         return f"[{seconds:3d}s {milliseconds:3d}ms]"
+
+    def _should_log_console(self, level: LogLevel) -> str:
+        """
+        check if console log is enabled for logger
+        """
+        return LogLevel.should_log(
+            level, self._console_logging_config.scenario_log_level)
+
+    def _should_log_file(self, level: LogLevel) -> str:
+        """
+         check if file log is enabled for logger
+        """
+        return LogLevel.should_log(
+            level, self._file_logging_config.scenario_log_level)
+
+    def should_logLevel(self, level: LogLevel):
+        """
+        check if any log is active - usecase: scenario silent mode (only file log)
+        """
+        should_log_console = self._console_logging_config.should_log_scenarios(
+        ) and self._should_log_console(level)
+        should_log_file = self._file_logging_config.is_file_logging_enabled(
+        ) and self._should_log_file(level)
+        return should_log_console or should_log_file
+
+    def get_run_timestamp(self):
+        return self.run_timestamp
+
+    def get_log_dir(self):
+        return self.run_dir
+
+    def reset_start_time(self):
+        self.start_time = datetime.now(timezone.utc)
+
+    def set_tick_loop_started(self, started: bool):
+        self._tick_loop_started = started
+        if (started):
+            self._tick_loop_count = 1
+
+    def set_current_tick(self, tick_count: int):
+        self._tick_loop_count = tick_count
 
     def _log_console_implementation(self, level: str, message: str, timestamp: str) -> str:
         """
@@ -129,7 +155,7 @@ class ScenarioLogger(AbstractLogger):
         """
         self.console_buffer.append((level, formatted_line))
 
-    def _write_to_file(self, level: str, message: str, timestamp: str):
+    def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
         """
         Write directly to scenario log file.
 
@@ -187,4 +213,4 @@ class ScenarioLogger(AbstractLogger):
         Returns:
             Elapsed time in seconds
         """
-        return (datetime.now() - self.start_time).total_seconds()
+        return (datetime.now(timezone.utc) - self.start_time).total_seconds()
