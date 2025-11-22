@@ -16,8 +16,8 @@ FIXED: _create_scenario_box() uses BatchPerformanceStats correctly.
 import re
 from typing import List
 from python.framework.types.currency_codes import format_currency_simple
-from python.framework.types.process_data_types import ProcessResult, TickRangeStats
-from python.framework.utils.time_utils import format_duration
+from python.framework.types.process_data_types import ProcessResult
+from python.framework.utils.time_utils import format_duration, format_tick_timespan
 
 
 class ConsoleRenderer:
@@ -178,42 +178,6 @@ class ConsoleRenderer:
         return box_lines
 
     # ============================================
-    # Time Formatting
-    # ============================================
-
-    def format_tick_timespan(self, stats: TickRangeStats) -> str:
-        """
-        Format tick time range in human-readable format.
-
-        Args:
-            first_tick_time: First tick timestamp
-            last_tick_time: Last tick timestamp
-            tick_timespan_seconds: Duration in seconds
-
-        Returns:
-            Formatted time range string
-        """
-
-        if not stats.first_tick_time or not stats.last_tick_time:
-            return "N/A"
-
-        # Check if same day
-        same_day = stats.first_tick_time.date() == stats.last_tick_time.date()
-
-        if same_day:
-            # Same day: "20:00:00 → 20:30:28 (30m 28s)"
-            start_time = stats.first_tick_time.strftime("%H:%M:%S")
-            end_time = stats.last_tick_time.strftime("%H:%M:%S")
-            duration = format_duration(stats.tick_timespan_seconds)
-            return f"{start_time} → {end_time} ({duration})"
-        else:
-            # Different days: "Oct 09 20:00 → Oct 10 02:15 (6h 15m)"
-            start_time = stats.first_tick_time.strftime("%b %d %H:%M")
-            end_time = stats.last_tick_time.strftime("%b %d %H:%M")
-            duration = format_duration(stats.tick_timespan_seconds)
-            return f"{start_time} → {end_time} ({duration})"
-
-    # ============================================
     # Grid Rendering
     # ============================================
 
@@ -288,7 +252,9 @@ class ConsoleRenderer:
         first_tick_time = stats.first_tick_time
         last_tick_time = stats.last_tick_time
         if first_tick_time and last_tick_time:
-            tick_time_range = self.format_tick_timespan(stats)
+            tick_time_range = format_tick_timespan(stats.first_tick_time,
+                                                   stats.last_tick_time,
+                                                   stats.tick_timespan_seconds)
         execution_time = format_duration(
             scenario.execution_time_ms, True)
         # Create content lines

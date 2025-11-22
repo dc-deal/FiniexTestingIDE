@@ -20,7 +20,9 @@ from pathlib import Path
 from python.framework.types.log_level import LogLevel
 from datetime import datetime
 
+from python.framework.types.market_data_types import TickData
 from python.framework.utils.file_utils import sanitize_filename
+from python.framework.utils.time_utils import format_timestamp
 
 
 class FileLogger:
@@ -54,6 +56,7 @@ class FileLogger:
         self.log_level = log_level
         self._append_mode = append_mode
         self._tick_loop_started = False
+        self._current_tick = None
         self._tick_loop_count = 1
 
         sanitized_filename = sanitize_filename(log_filename)
@@ -114,7 +117,8 @@ class FileLogger:
         if (started):
             self._tick_loop_count = 1
 
-    def set_current_tick(self, tick_count: int):
+    def set_current_tick(self, tick_count: int, tick: TickData):
+        self._current_tick = tick
         self._tick_loop_count = tick_count
 
     def write_log(self, level: str, message: str, timestamp: str):
@@ -135,7 +139,8 @@ class FileLogger:
 
         # tick loop logs.
         if self._tick_loop_started:
-            message = f"{self._tick_loop_count: 5}| {message}"
+            tick_time = format_timestamp(self._current_tick.timestamp)
+            message = f"{self._tick_loop_count:5}| {tick_time} | {message}"
 
         # Format: [timestamp] LEVEL | message
         log_line = f"{timestamp} {level:8} | {message}\n"

@@ -65,7 +65,7 @@ def execute_tick_loop(
     scenario_logger.set_tick_loop_started(True)
     for tick_idx, tick in enumerate(ticks):
         scenario_logger.set_current_tick(
-            tick_idx + 1)
+            tick_idx + 1, tick)
         tick_start = time.perf_counter()
 
         # === 1. Trade Simulator ===
