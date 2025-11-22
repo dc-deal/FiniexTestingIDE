@@ -73,7 +73,7 @@ class WorkerCoordinator:
         }
         self.decision_logic = decision_logic
         # Get logger from decision_logic (already has ScenarioLogger)
-        self.logger = decision_logic.logger  # NEU: Logger-Referenz!
+        self.logger = decision_logic.logger  # Logger-Referenz!
 
         self.strategy_config = strategy_config
 

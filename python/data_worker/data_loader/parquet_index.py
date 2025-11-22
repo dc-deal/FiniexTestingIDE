@@ -1,8 +1,5 @@
 """
 ParquetIndexManager - Fast File Selection via Metadata Index
-
-- ALT: ticks/mt5/EURUSD/*.parquet
-- NEU: mt5/ticks/EURUSD/*.parquet
 """
 
 import json

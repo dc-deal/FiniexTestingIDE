@@ -281,7 +281,7 @@ class BarImporter:
             'end_time': bars_df['timestamp'].max().isoformat(),
             'importer_version': self.VERSION,
             'rendered_at': pd.Timestamp.now(tz='UTC').isoformat(),
-            # NEU: Source version tracking
+            # Source version tracking
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
         }
