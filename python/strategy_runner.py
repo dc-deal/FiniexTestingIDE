@@ -8,14 +8,11 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 from python.configuration import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.scenario.config_loader import ScenarioConfigLoader
-from python.framework.reporting.batch_summary import BatchSummary
 from python.framework.exceptions.data_validation_errors import DataValidationError
-from python.framework.batch_orchestrator import BatchOrchestrator
+from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
 import os
 import platform
-import sys
-import io
-import re
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -95,27 +92,14 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
         batch_execution_summary = orchestrator.run()
 
         # ============================================
-        # Capture output for file logging
+        # Generate and log batch report
         # ============================================
-        summary = BatchSummary(
+        report_coordinator = BatchReportCoordinator(
             batch_execution_summary=batch_execution_summary,
+            scenario_set=scenario_set,
             app_config=app_config_loader
         )
-
-        # Capture stdout (with ANSI colors for console)
-        old_stdout = sys.stdout
-        sys.stdout = summary_capture = io.StringIO()
-
-        summary.render_all()
-
-        sys.stdout = old_stdout
-        summary_with_colors = summary_capture.getvalue()
-
-        # Print summary in console
-        print(summary_with_colors)
-        # print in scenario
-        summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
-        scenario_set.printed_summary_logger.info(summary_clean)
+        report_coordinator.generate_and_log()
 
     except DataValidationError as e:
         vLog.validation_error(

@@ -67,7 +67,7 @@ parallel scenario execution. Each has important trade-offs:
 │                                                                              │
 │ REQUIRED CLEANUPS (implemented in process_executor.py):                     │
 │   1. FileLogger.close()        - Close scenario log files                   │
-│   2. worker_coordinator.cleanup()     - Close ThreadPool (if enabled)              │
+│   2. coordinator.cleanup()     - Close ThreadPool (if enabled)              │
 │   3. logging.shutdown()        - Close ALL Python logging handlers          │
 │                                                                              │
 │ DEBUGGER COMPATIBILITY:                                                     │
@@ -114,36 +114,23 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
-from python.framework.process.process_executor import ProcessExecutor
-from multiprocessing import Manager
-import os
-from python.components.display.live_progress_display import LiveProgressDisplay
-from python.framework.data_preperation.broker_data_preperator import BrokerDataPreparator
-from python.framework.factory.worker_factory import WorkerFactory
-import sys
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.live_scenario_stats_types import LiveScenarioStats
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
-from python.configuration import AppConfigManager
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.framework.process.process_main import process_main
-from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
-from python.framework.data_preperation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
-from python.components.logger.abstract_logger import AbstractLogger
-from typing import Dict, List
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import time
-import traceback
-
-# Auto-detect if debugger is attached
-DEBUGGER_ACTIVE = (
-    hasattr(sys, 'gettrace') and sys.gettrace() is not None
-    or 'debugpy' in sys.modules
-    or 'pydevd' in sys.modules
-)
+from typing import Dict, List
+from multiprocessing import Manager
+from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.configuration import AppConfigManager
+from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
+from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.factory.worker_factory import WorkerFactory
+from python.components.display.live_progress_display import LiveProgressDisplay
+from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
+from python.framework.batch.execution_coordinator import ExecutionCoordinator
+from python.framework.batch.requirements_collector import RequirementsCollector
+from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 
 
 class BatchOrchestrator:
@@ -168,30 +155,33 @@ class BatchOrchestrator:
 
         Args:
             scenario_set: Set of scenarios to execute
-            app_config: Application configuration
+            app_config_loader: Application configuration manager
         """
         self.scenario_set = scenario_set
         self._app_config_loader = app_config_loader
         self._parallel_scenarios = app_config_loader.get_default_parallel_scenarios()
-        self._preparator: SharedDataPreparator = None
 
-        # start global Log
+        # Start global log
         self.scenario_set.logger.reset_start_time()
-        self.scenario_set.logger.info("🚀 Starting Scenario " +
-                                      self.scenario_set.scenario_set_name+" Log Timer (Batch Init).")
+        self.scenario_set.logger.info(
+            "🚀 Starting Scenario " +
+            self.scenario_set.scenario_set_name +
+            " Log Timer (Batch Init)."
+        )
 
-        # Initialize Factories
+        # Initialize factories
         self.worker_factory = WorkerFactory(logger=self.scenario_set.logger)
         self.decision_logic_factory = DecisionLogicFactory(
-            logger=self.scenario_set.logger)
+            logger=self.scenario_set.logger
+        )
 
         # Shared data package (filled in run())
         self.shared_data: ProcessDataPackage = None
 
-        # CORRECTED: Extract scenario_set_name from scenario_set
+        # Extract scenario_set_name from scenario_set
         self.scenario_set_name = self.scenario_set.scenario_set_name
 
-        # CORRECTED: Create shared run_timestamp for all processes
+        # Create shared run_timestamp for all processes
         self.logger_start_time_format = self.scenario_set.logger.get_run_timestamp()
 
         # Live stats config
@@ -202,25 +192,45 @@ class BatchOrchestrator:
 
         # Create queue (if monitoring enabled)
         if self.live_stats_config.enabled:
-            self.manager = Manager()  # ← Store manager reference!
-            self.live_queue = self.manager.Queue(maxsize=100)
+            self._manager = Manager()
+            self._live_queue = self._manager.Queue(maxsize=100)
         else:
-            self.manager = None
-            self.live_queue = None
+            self._manager = None
+            self._live_queue = None
 
-        # Initialize live stats cache
-        self._live_stats_cache: Dict[int, LiveScenarioStats] = {}
-        self._init_live_stats()
+        # Initialize coordinators
+        self._requirements_collector = RequirementsCollector(
+            logger=self.scenario_set.logger
+        )
+
+        self._data_coordinator = DataPreparationCoordinator(
+            scenarios=scenario_set.scenarios,
+            logger=self.scenario_set.logger
+        )
+
+        self._execution_coordinator = ExecutionCoordinator(
+            scenario_set_name=self.scenario_set_name,
+            run_timestamp=self.logger_start_time_format,
+            app_config=self._app_config_loader,
+            live_stats_config=self.live_stats_config,
+            logger=self.scenario_set.logger
+        )
+
+        self._live_stats_coordinator = LiveStatsCoordinator(
+            scenarios=scenario_set.scenarios,
+            live_queue=self._live_queue,
+            enabled=self.live_stats_config.enabled
+        )
 
         # Create display (if monitoring enabled)
         if self.live_stats_config.enabled:
-            self.display = LiveProgressDisplay(
+            self._display = LiveProgressDisplay(
                 scenarios=scenario_set.scenarios,
-                live_queue=self.live_queue,
+                live_queue=self._live_queue,
                 update_interval=self.live_stats_config.update_interval_sec
             )
         else:
-            self.display = None
+            self._display = None
 
         # Log live stats setup
         if self.live_stats_config.enabled:
@@ -243,225 +253,116 @@ class BatchOrchestrator:
             f"{len(scenario_set.scenarios)} scenario(s)"
         )
 
-    def _init_live_stats(self) -> None:
-        """Initialize LiveScenarioStats cache for all scenarios."""
-        if not self.live_stats_config.enabled:
-            return
-
-        for idx, scenario in enumerate(self.scenario_set.scenarios):
-            self._live_stats_cache[idx] = LiveScenarioStats(
-                scenario_name=scenario.name,
-                symbol=scenario.symbol,
-                scenario_index=idx,
-                status=ScenarioStatus.INITIALIZED
-            )
-
-    def _prepare_shared_data(
-        self
-    ) -> None:
-        """
-        Phase 1: Prepare shared data with status updates.
-
-        Args:
-            requirements_collector: Requirements collector with finalized map
-        """
-        # ========================================================================
-        # PHASE 0: REQUIREMENTS COLLECTION (Serial)
-        # ========================================================================
-        self.scenario_set.logger.info(
-            "📋 Phase 0: Collecting data requirements...")
-
-        requirements_collector = AggregateScenarioDataRequirements()
-
-        # CORRECTED: Store warmup requirements per scenario
-        warmup_requirements_by_scenario = {}
-
-        for idx, scenario in enumerate(self.scenario_set.scenarios):
-            warmup_reqs = requirements_collector.add_scenario(
-                scenario=scenario,
-                app_config=self._app_config_loader,
-                scenario_index=idx,
-                logger=self.scenario_set.logger
-            )
-            # Store for later use in ProcessExecutor
-            warmup_requirements_by_scenario[idx] = warmup_reqs
-        requirements_map = requirements_collector.finalize()
-
-        # ========================================================================
-        # DATA PREPARATION (Serial)
-        # ========================================================================
-        self.scenario_set.logger.info("🔄 Phase 1: Preparing shared data...")
-
-        # ========================================================================
-        # 1.1 PREPARE BARS & TICKS
-        # ========================================================================
-        self._data_preparator = SharedDataPreparator(self.scenario_set.logger)
-
-        # === STATUS: WARMUP_DATA_TICKS ===
-        self._broadcast_status(ScenarioStatus.WARMUP_DATA_TICKS)
-
-        # === PHASE 1A: Load Ticks ===
-        ticks_data, tick_counts, tick_ranges = self._data_preparator.prepare_ticks(
-            requirements_map.tick_requirements
-        )
-
-        # === STATUS: WARMUP_DATA_BARS ===
-        self._broadcast_status(ScenarioStatus.WARMUP_DATA_BARS)
-
-        # === PHASE 1B: Load Bars ===
-        bars_data, bar_counts = self._data_preparator.prepare_bars(
-            requirements_map.bar_requirements
-        )
-
-        # === PHASE 1C: Package Data ===
-        self.shared_data = ProcessDataPackage(
-            ticks=ticks_data,
-            bars=bars_data,
-            tick_counts=tick_counts,
-            tick_ranges=tick_ranges,
-            bar_counts=bar_counts,
-            broker_configs=None
-        )
-
-        # Log summary
-        total_ticks = sum(tick_counts.values())
-        total_bars = sum(bar_counts.values())
-
-        self.scenario_set.logger.info(
-            f"✅ Data prepared: {total_ticks:,} ticks, {total_bars:,} bars "
-            f"({len(ticks_data)} tick sets, {len(bars_data)} bar sets)"
-        )
-
-        # === STATUS: WARMUP_TRADER ===
-        self._broadcast_status(ScenarioStatus.WARMUP_TRADER)
-
-        # ========================================================================
-        # 1.2 PREPARE BROKER CONFIG
-        # ========================================================================
-        self._broker_preparator = BrokerDataPreparator(
-            self.scenario_set.scenarios,
-            self.scenario_set.logger
-        )
-        self.shared_data.broker_configs = self._broker_preparator.prepare()
-
-    def _broadcast_status(self, status: ScenarioStatus) -> None:
-        """
-        Broadcast status update for all scenarios.
-
-        Args:
-            status: New status for all scenarios
-        """
-        if not self.live_stats_config.enabled:
-            return
-
-        for idx, stats in self._live_stats_cache.items():
-            stats.status = status
-
-            try:
-                self.live_queue.put_nowait({
-                    "type": "status",
-                    "scenario_index": idx,
-                    "scenario_name": stats.scenario_name,
-                    "status": status.value
-                })
-            except:
-                pass  # Queue full - skip update
-
-    # === REPLACE run() METHOD ===
-
     def run(self) -> BatchExecutionSummary:
         """
-        Execute all scenarios with new ProcessPool-ready architecture.
+        Execute all scenarios with coordinated phases.
 
         WORKFLOW:
         Phase 0: Requirements Collection (Serial)
         Phase 1: Data Preparation (Serial)
-        Phase 2: Scenario Execution (Parallel - ThreadPool or ProcessPool)
-
-        CORRECTED:
-        - Uses run_timestamp and scenario_set_name throughout
-        - Properly passes warmup requirements to ProcessExecutor
+        Phase 2: Scenario Execution (Parallel/Sequential)
 
         Returns:
-            Aggregated results from all scenarios
+            BatchExecutionSummary with aggregated results from all scenarios
         """
         scenario_count = len(self.scenario_set.scenarios)
-        force_parallel = scenario_count == 1
+        force_sequential = scenario_count == 1
 
-        if (force_parallel):
+        if force_sequential:
             self.scenario_set.logger.info(
-                f"⚠️ Sequential execution forced - only one scenario in set.")
+                "⚠️ Sequential execution forced - only one scenario in set."
+            )
+
         self.scenario_set.logger.info(
             f"🚀 Starting batch execution "
             f"({scenario_count} scenarios, "
-            f"run_timestamp={self.logger_start_time_format})")
-        start_time = time.time()
-        self._broadcast_status(ScenarioStatus.INITIALIZED)
+            f"run_timestamp={self.logger_start_time_format})"
+        )
 
-        # ... Phase 2: Scenario Execution ...
-        # === ADD: Start/Stop Display ===
-        # Location: Before executing scenarios
+        start_time = time.time()
+        self._live_stats_coordinator.broadcast_status(
+            ScenarioStatus.INITIALIZED)
 
         # Start live display
-        if self.display:
-            self.display.start()
-
-        # prepare all data
-        self._prepare_shared_data()
+        if self._display:
+            self._display.start()
 
         # ========================================================================
-        # PHASE 2: SCENARIO EXECUTION (Parallel)
+        # PHASE 0: REQUIREMENTS COLLECTION (Serial)
+        # ========================================================================
+        requirements_map, warmup_reqs = self._requirements_collector.collect(
+            scenarios=self.scenario_set.scenarios,
+            app_config=self._app_config_loader
+        )
+
+        # ========================================================================
+        # PHASE 1: DATA PREPARATION (Serial)
+        # ========================================================================
+        self.shared_data = self._data_coordinator.prepare(
+            requirements_map=requirements_map,
+            status_broadcaster=self._live_stats_coordinator
+        )
+
+        # ========================================================================
+        # PHASE 2: SCENARIO EXECUTION (Parallel/Sequential)
         # ========================================================================
         self.scenario_set.logger.info("🚦 Phase 2: Executing scenarios...")
 
-        # Get execution mode
-
-        # Execute scenarios (pass warmup_requirements)
         if self._parallel_scenarios and scenario_count > 1:
-            results = self._run_parallel()
+            results = self._execution_coordinator.execute_parallel(
+                scenarios=self.scenario_set.scenarios,
+                shared_data=self.shared_data,
+                live_queue=self._live_queue
+            )
         else:
-            results = self._run_sequential()
+            results = self._execution_coordinator.execute_sequential(
+                scenarios=self.scenario_set.scenarios,
+                shared_data=self.shared_data,
+                live_queue=self._live_queue
+            )
 
-        # Set metadata in BatchExecutionSummary
         summary_execution_time = time.time() - start_time
 
         # ========================================================================
-        # Cleanup display
+        # CLEANUP
         # ========================================================================
-        # === ADD: Cleanup in finally block ===
-        if self.display and self.display._running:
-            self.display.stop()
-        if self.manager:
+        if self._display and self._display._running:
+            self._display.stop()
+        if self._manager:
             try:
-                self.manager.shutdown()
+                self._manager.shutdown()
             except:
                 pass
 
         # ========================================================================
-        # PHASE 3: Return Values & Summary
+        # PHASE 3: BUILD SUMMARY
         # ========================================================================
         self.scenario_set.logger.info(
-            f"🕐 Create BatchExecutionSummary  : {time.time()}")
+            f"🕐 Create BatchExecutionSummary : {time.time()}"
+        )
 
-        # build result and flush logs
         summary = BatchExecutionSummary(
             success=True,
             scenarios_count=len(self.scenario_set.scenarios),
             summary_execution_time=summary_execution_time,
-            broker_scenario_map=self._broker_preparator.get_broker_scenario_map(),
+            broker_scenario_map=self._data_coordinator.get_broker_scenario_map(),
             scenario_list=results
         )
+
         self.flush_all_logs(summary)
 
-        # Error handling.
+        # Error handling
         self.scenario_set.logger.info(
-            f"🕐 Scenario error check  : {time.time()}")
+            f"🕐 Scenario error check : {time.time()}"
+        )
+
         failed_results = [r for r in results if not r.success]
         if failed_results:
             # Log failures but don't stop (scenarios are independent)
             for failed in failed_results:
                 self.scenario_set.logger.error(
-                    f"❌ Scenario failed - flushing Log: {failed.scenario_name} - {failed.error_message}"
+                    f"❌ Scenario failed - flushing Log: "
+                    f"{failed.scenario_name} - {failed.error_message}"
                 )
                 self.scenario_set.logger.flush_buffer()
 
@@ -474,172 +375,19 @@ class BatchOrchestrator:
 
         return summary
 
-    def _run_sequential(
-        self
-    ) -> List[ProcessResult]:
-        """
-        Execute scenarios sequentially with new architecture.
-
-        CORRECTED: Passes scenario_set_name and run_timestamp to ProcessExecutor.
-
-        Args:
-            warmup_requirements_by_scenario: {scenario_idx: {timeframe: warmup_count}}
-
-        Returns:
-            List of ProcessResult objects
-        """
-        results = []
-
-        for idx, scenario in enumerate(self.scenario_set.scenarios):
-            readable_index = idx + 1
-            self.scenario_set.logger.info(
-                f"▶️  Executing scenario {readable_index}/{len(self.scenario_set.scenarios)}: "
-                f"{scenario.name}"
-            )
-
-            # Create executor with corrected parameters
-            executor = ProcessExecutor(
-                scenario=scenario,
-                app_config_loader=self._app_config_loader,
-                scenario_index=idx,
-                scenario_set_name=self.scenario_set_name,
-                run_timestamp=self.scenario_set.logger.get_run_timestamp(),
-                live_stats_config=self.live_stats_config
-            )
-            # Execute
-            result = executor.run(self.shared_data, self.live_queue)
-            results.append(result)
-
-            if result.success:
-                self.scenario_set.logger.info(
-                    f"✅ Scenario {readable_index} completed in "
-                    f"{result.execution_time_ms:.0f}ms"
-                )
-            else:
-                self.scenario_set.logger.error(
-                    f"❌ Scenario {readable_index} failed: {result.error_message}"
-                )
-
-        return results
-
-    def _run_parallel(
-        self,
-    ) -> List[ProcessResult]:
-        """
-        Execute scenarios in parallel with new architecture.
-
-        QUICK SWITCH: ThreadPoolExecutor vs ProcessPoolExecutor
-        Change USE_PROCESSPOOL to switch between threading and multiprocessing.
-
-        CORRECTED: Passes scenario_set_name and run_timestamp to ProcessExecutor.
-
-        Args:
-            warmup_requirements_by_scenario: {scenario_idx: {timeframe: warmup_count}}
-
-        Returns:
-            List of ProcessResult objects
-        """
-        # Auto-switch based on environment
-        if DEBUGGER_ACTIVE or os.getenv('DEBUG_MODE'):
-            USE_PROCESSPOOL = False
-            self.scenario_set.logger.warning(
-                "⚠️  Debugger detected - using ThreadPool "
-                "(performance not representative!)"
-            )
-        else:
-            USE_PROCESSPOOL = True
-            self.scenario_set.logger.info(
-                "🚀 Performance mode - using ProcessPool"
-            )
-
-        executor_class = ProcessPoolExecutor if USE_PROCESSPOOL else ThreadPoolExecutor
-        max_workers = self._app_config_loader.get_default_max_parallel_scenarios()
-
-        self.scenario_set.logger.info(
-            f"🔀 Parallel execution: {executor_class.__name__} "
-            f"(max_workers={max_workers})"
-        )
-
-        results = [None] * len(self.scenario_set.scenarios)
-
-        with executor_class(max_workers=max_workers) as executor:
-            # Submit all scenarios
-            futures = {}
-            for idx, scenario in enumerate(self.scenario_set.scenarios):
-                # Create executor with corrected parameters
-                executor_obj = ProcessExecutor(
-                    scenario=scenario,
-                    app_config_loader=self._app_config_loader,
-                    scenario_index=idx,
-                    scenario_set_name=self.scenario_set_name,
-                    run_timestamp=self.scenario_set.logger.get_run_timestamp(),
-                    live_stats_config=self.live_stats_config
-                )
-
-                # Submit to executor
-                # Call process_main directly (top-level function, pickle-able)
-                future = executor.submit(
-                    process_main,
-                    executor_obj.config,
-                    self.shared_data,
-                    self.live_queue  # ← ADD queue!
-                )
-                futures[future] = idx
-
-            # Collect results
-            from concurrent.futures import as_completed
-            for future in as_completed(futures):
-                idx = futures[future]
-                readable_index = idx + 1
-
-                try:
-                    result = future.result()
-                    results[idx] = result
-
-                    if result.success:
-                        self.scenario_set.logger.info(
-                            f"✅ Scenario {readable_index} completed: "
-                            f"{result.scenario_name} ({result.execution_time_ms:.0f}ms)"
-                        )
-                    else:
-                        self.scenario_set.logger.error(
-                            f"❌ Scenario {readable_index} failed: "
-                            f"{result.scenario_name} - {result.error_message}"
-                        )
-
-                except Exception as e:
-                    # Unexpected error (not caught in process_main)
-                    self.scenario_set.logger.error(
-                        f"❌ Scenario {readable_index} crashed: "
-                        f"\n{traceback.format_exc()}"
-                    )
-                    results[idx] = ProcessResult(
-                        success=False,
-                        scenario_name=self.scenario_set.scenarios[idx].name,
-                        symbol=self.scenario_set.scenarios[idx].symbol,
-                        scenario_index=idx,
-                        error_type=type(e).__name__,
-                        error_message=str(e),
-                        traceback=traceback.format_exc()
-                    )
-            self.scenario_set.logger.info(
-                "🕐 All futures collected, exiting context manager...")
-            self.scenario_set.logger.info(
-                "🕐 If a major slowdown occurs here, " +
-                "it's just the debugger who waits for processes." +
-                " You can't skip this...")
-
-        self.scenario_set.logger.info(
-            f"🕐 ProcessPoolExecutor shutdown complete! Time: {time.time()}")
-        return results
-
     def flush_all_logs(self, batch_execution_summary: BatchExecutionSummary = None):
-        """ 
-        Logger Flush. Run does not decide weather to Console log Run.
+        """
+        Logger flush. Run does not decide whether to console log.
+
+        Args:
+            batch_execution_summary: Summary with scenario results
         """
         self.scenario_set.logger.close(True)
         show_scenario_logging = self._app_config_loader.get_logging_show_scenario_logging()
+
         if show_scenario_logging:
             for process_result in batch_execution_summary.scenario_list:
                 AbstractLogger.print_buffer(
-                    process_result.scenario_logger_buffer, process_result.scenario_name)
+                    process_result.scenario_logger_buffer,
+                    process_result.scenario_name
+                )
