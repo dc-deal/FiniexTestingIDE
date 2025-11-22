@@ -82,7 +82,7 @@ def _get_default_config() -> Dict[str, Any]:
         "file_logging": {
             "enabled": None,
             "log_level": "INFO",
-            "log_path": "logs/global.log",
+            "log_path": "logs/",
             "append_mode": None,
             "scenario": {
                 "enabled": None,

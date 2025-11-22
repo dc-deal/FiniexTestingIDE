@@ -41,6 +41,9 @@ class GlobalLogger(AbstractLogger):
         """
         super().__init__(name=name)
 
+        # report mode for forcing console print regardless of log level
+        self.report_mode = False
+
         # Create file logger if enabled
         if self.file_logging_enabled:
             log_file_path = self._file_logging_config.global_log_path
@@ -49,11 +52,24 @@ class GlobalLogger(AbstractLogger):
 
             self.file_logger = FileLogger(
                 file_path=log_file_path,
+                log_filename="global.log",
                 log_level=self._file_logging_config.global_log_level,
                 append_mode=self._file_logging_config.global_append_mode
             )
         else:
             self.file_logger = None
+
+        # Print log destination
+        self.print_log_info()
+
+    def print_log_info(self):
+        """Print where logs are being written (or if disabled)"""
+        if self.file_logging_enabled and self.file_logger:
+            print(f"📝 Global Log: {self.file_logger.log_file_path}")
+        elif self.file_logging_enabled:
+            print(f"⚠️  Global Log: FAILED to create (check path config)")
+        else:
+            print(f"ℹ️  Global Log: Disabled")
 
     def _get_timestamp(self) -> str:
         """
@@ -78,14 +94,16 @@ class GlobalLogger(AbstractLogger):
         return LogLevel.should_log(
             level, self._file_logging_config.global_log_level)
 
-    def _log_console_implementation(self, level: str, message: str, timestamp: str) -> str:
+    def _log_console_implementation(self, level: str, message: str, timestamp: str):
         """
           Format Message for Global Log
         Args:
             level: Log level (INFO, DEBUG, WARNING, ERROR)
             message: Log message
         """
-        return self._format_log_line(level, message, timestamp)
+        formatted_line = self._format_log_line(level, message, timestamp)
+        # Console output (direct print)
+        print(formatted_line)
 
     def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
         """
