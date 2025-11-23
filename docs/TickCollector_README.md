@@ -1,90 +1,180 @@
-# FiniexTestingIDE - MQL5 Data Collection
+# MQL5 Tick Data Collection System
+**TickCollector Enhanced v1.0.5 - Professional Tick Data Acquisition**
 
-## TickCollector Enhanced v1.03
+---
 
-Professioneller Tick-Daten-Sammler für MetaTrader 5 mit gestuftem Error-Tracking und Qualitätssicherung.
+## Overview
 
-### Neue Features v1.03
+Professional tick data collector for MetaTrader 5 with tiered error tracking and quality assurance. Designed for high-fidelity algorithmic trading backtesting with real market data.
 
-- **Gestuftes Error-System**: Atomare Fehlerklassifizierung in 3 Stufen
-- **Datenqualitäts-Scoring**: Automatische Qualitätsbewertung
-- **Intelligente Anomalie-Erkennung**: Erkennt Spread-Sprünge, Zeitlücken, Preisanomalien
-- **Adaptive Validierung**: Konfigurierbare Schwellenwerte pro Symbol
-- **Stream-Corruption-Detection**: Erkennt korrupte Datenströme
-- **Detaillierte Error-Reports**: Vollständige Metadaten für jeden Fehler
+**Key Features:**
+- Tiered error classification (Negligible/Serious/Fatal)
+- Automatic data quality scoring
+- Intelligent anomaly detection (spread jumps, time gaps, price anomalies)
+- Adaptive validation with configurable thresholds
+- Stream corruption detection
+- Comprehensive error reporting with full metadata
 
-### Error-Klassifizierung
+## Error Classification System
 
-#### NEGLIGIBLE (Vernachlässigbar)
-- **Spread-Sprünge** < 50%
-- **Kleine Datenlücken** 60-300 Sekunden
-- **Fehlende Tick-Flags**
-- **Negative Real-Volume**
-- **Status**: Daten bleiben voll brauchbar
+### Three-Tier Severity Model
 
-#### SERIOUS (Ernst)
-- **Extreme Spreads** > 5%
-- **Große Datenlücken** > 5 Minuten
-- **Preis-Sprünge** > 10%
-- **Millisekunden-Zeitregressionen**
-- **Negative Tick-Volume**
-- **Status**: Daten brauchbar mit Einschränkungen
+#### NEGLIGIBLE (Severity Level 0)
+**Characteristics:**
+- Minor data quality issues
+- Does not impact backtesting accuracy significantly
+- Data remains fully usable
 
-#### FATAL (Fatal)
-- **Bid/Ask ≤ 0**
-- **Invertierter Spread** (Ask < Bid)
-- **Spread ≤ 0**
-- **Zeitregressionen** (Rückwärts-Zeit)
-- **Status**: Daten womöglich unbrauchbar
+**Error Types:**
+- **Spread Jumps** < 50% (e.g., 1.1 pips → 1.6 pips)
+- **Small Data Gaps** 60-300 seconds (e.g., during low liquidity)
+- **Missing Tick Flags** (flag data unavailable)
+- **Negative Real Volume** (broker reporting issue)
 
-### Installation
+**Action:** Log for monitoring, no data rejection
 
-1. Kopiere `TickCollector.mq5` in deinen MetaTrader 5 Experts Ordner
-2. Kompiliere in MetaEditor (F7)
-3. Hänge an beliebigen Chart an (EURUSD, GBPUSD, USDJPY, AUDUSD empfohlen)
-4. Konfiguriere Export-Pfad: `C:\FiniexData\`
+---
 
-### Konfiguration
+#### SERIOUS (Severity Level 1)
+**Characteristics:**
+- Significant data quality issues
+- May impact backtesting accuracy
+- Data usable with restrictions
 
-#### Basis-Parameter
+**Error Types:**
+- **Extreme Spreads** > 5% of price (e.g., 50+ pips on EURUSD)
+- **Large Data Gaps** > 5 minutes (connection loss)
+- **Price Jumps** > 10% (flash crash / data spike)
+- **Millisecond Time Regressions** (time moves backward slightly)
+- **Negative Tick Volume** (impossible value)
+
+**Action:** Log with warning, flag affected ticks, consider filtering
+
+---
+
+#### FATAL (Severity Level 2)
+**Characteristics:**
+- Critical data integrity violations
+- Backtesting results unreliable
+- Data potentially unusable
+
+**Error Types:**
+- **Bid/Ask ≤ 0** (invalid price data)
+- **Inverted Spread** (Ask < Bid - impossible)
+- **Spread ≤ 0** (zero or negative spread)
+- **Time Regressions** (timestamp moving backward)
+
+**Action:** Log as critical, reject data, optionally stop collection
+
+---
+
+## Installation & Setup
+
+### Step 1: Installation
+
+1. Copy `TickCollector.mq5` to your MetaTrader 5 Experts folder:
+   ```
+   C:\Users\[YourUser]\AppData\Roaming\MetaQuotes\Terminal\[TerminalID]\MQL5\Experts\
+   ```
+
+2. Compile in MetaEditor (F7)
+
+3. Attach to any chart (recommended: EURUSD, GBPUSD, USDJPY, AUDUSD)
+
+4. Configure export path: `C:\FiniexData\` (or leave empty for default)
+
+### Step 2: Configuration
+
+**Basic Parameters:**
 ```cpp
-input string ExportPath = "";                    // Leer = MQL5-Standard-Ordner
-input bool CollectTicks = true;                  // Sammlung ein/aus
-input int MaxTicksPerFile = 50000;               // Ticks pro Datei
-input bool IncludeRealVolume = true;             // Echtes Volumen sammeln
-input bool IncludeTickFlags = true;              // Tick-Flags sammeln
+input string ExportPath = "";                    // Empty = MQL5 default folder
+input bool CollectTicks = true;                  // Enable/disable collection
+input int MaxTicksPerFile = 50000;               // Ticks per file (rotation)
+input bool IncludeRealVolume = true;             // Collect real volume
+input bool IncludeTickFlags = true;              // Collect tick flags
 ```
 
-#### Error-Tracking-Konfiguration
+**Error Tracking Configuration:**
 ```cpp
-input bool EnableErrorTracking = true;           // Error-System aktivieren
-input int MaxErrorsPerFile = 1000;               // Max Errors pro Datei
-input bool LogNegligibleErrors = true;           // Negligible Errors loggen
-input bool LogSeriousErrors = true;              // Serious Errors loggen
-input bool LogFatalErrors = true;                // Fatal Errors loggen
-input bool StopOnFatalErrors = false;            // Bei Fatal Errors stoppen
+input bool EnableErrorTracking = true;           // Enable error system
+input int MaxErrorsPerFile = 1000;               // Max errors per file
+input bool LogNegligibleErrors = true;           // Log negligible errors
+input bool LogSeriousErrors = true;              // Log serious errors
+input bool LogFatalErrors = true;                // Log fatal errors
+input bool StopOnFatalErrors = false;            // Stop collection on fatal
 ```
 
-#### Validierungs-Schwellenwerte
+**Validation Thresholds:**
 ```cpp
-// Standard-Werte (anpassbar je Symbol)
-maxSpreadPercent = 5.0;        // Max 5% Spread
-maxPriceJumpPercent = 10.0;    // Max 10% Preis-Sprung
-maxDataGapSeconds = 300;       // Max 5 Min Datenlücke
-warningDataGapSeconds = 60;    // Warning bei 1 Min Lücke
+// Default values (customizable per symbol)
+maxSpreadPercent = 5.0;        // Max 5% spread
+maxPriceJumpPercent = 10.0;    // Max 10% price jump
+maxDataGapSeconds = 300;       // Max 5 min data gap
+warningDataGapSeconds = 60;    // Warning at 1 min gap
 ```
 
-### JSON-Output-Struktur
+---
 
-#### Metadaten
+## JSON Output Structure
+
+### Complete File Structure
+
+```json
+{
+  "metadata": { ... },
+  "ticks": [ ... ],
+  "errors": {
+    "by_severity": { ... },
+    "details": [ ... ]
+  },
+  "summary": {
+    "data_stream_status": "HEALTHY",
+    "quality_metrics": { ... },
+    "timing": { ... },
+    "recommendations": "..."
+  }
+}
+```
+
+### Metadata Section
+
 ```json
 {
   "metadata": {
     "symbol": "EURUSD",
-    "collector_version": "1.03",
-    "data_format_version": "1.0.3",
+    "broker": "Vantage International Group Limited",
+    "server": "VantageInternational-Demo",
+    "broker_utc_offset_hours": 0,
+    "local_device_time": "2025.11.23 20:23:45",
+    "broker_server_time": "2025.11.23 21:23:45",
+    "start_time": "2025.11.23 21:23:45",
+    "start_time_unix": 1763933025,
+    "timeframe": "TICK",
+    "volume_timeframe": "PERIOD_M1",
+    "volume_timeframe_minutes": 1,
+    "data_format_version": "1.0.5",
+    "data_collector": "mt5",
+    "market_type": "forex_cfd",
+    "collection_purpose": "backtesting",
+    "operator": "automated",
+    "symbol_info": {
+      "point_value": 0.00001000,
+      "digits": 5,
+      "tick_size": 0.00001000,
+      "tick_value": 0.86841740
+    },
+    "collection_settings": {
+      "max_ticks_per_file": 50000,
+      "max_errors_per_file": 1000,
+      "include_real_volume": true,
+      "include_tick_flags": true,
+      "stop_on_fatal_errors": false
+    },
     "error_tracking": {
       "enabled": true,
+      "log_negligible": true,
+      "log_serious": true,
+      "log_fatal": true,
       "max_spread_percent": 5.00,
       "max_price_jump_percent": 10.00,
       "max_data_gap_seconds": 300
@@ -93,7 +183,40 @@ warningDataGapSeconds = 60;    // Warning bei 1 Min Lücke
 }
 ```
 
-#### Error-Report
+**Key Fields:**
+- `data_format_version`: "1.0.5" - Current JSON format version
+- `market_type`: "forex_cfd" - Market classification
+- `collection_purpose`: "backtesting" - Use case identifier
+- `volume_timeframe`: "PERIOD_M1" - Volume aggregation period
+- `error_tracking.enabled`: true - Error system active
+
+### Tick Data Section
+
+```json
+{
+  "ticks": [
+    {
+      "timestamp": "2025.11.23 21:23:45.123",
+      "timestamp_unix": 1763933025,
+      "bid": 1.05234,
+      "ask": 1.05246,
+      "volume": 123,
+      "flags": 6
+    }
+  ]
+}
+```
+
+**Tick Fields:**
+- `timestamp`: Human-readable time (broker server time)
+- `timestamp_unix`: Unix timestamp (milliseconds)
+- `bid`: Bid price
+- `ask`: Ask price
+- `volume`: Real volume (if available) or tick volume
+- `flags`: Tick flags (bid/ask/last/volume changes)
+
+### Error Report Section
+
 ```json
 {
   "errors": {
@@ -118,10 +241,23 @@ warningDataGapSeconds = 60;    // Warning bei 1 Min Lücke
 }
 ```
 
-#### Qualitäts-Metriken
+**Error Fields:**
+- `severity`: "negligible" | "serious" | "fatal"
+- `severity_level`: 0 | 1 | 2 (numeric for sorting)
+- `type`: Error classification (e.g., "spread_jump")
+- `description`: Human-readable explanation
+- `timestamp`: When error occurred
+- `tick_context`: Tick index in file
+- `affected_value`: Problematic value
+- `additional_data`: Context information
+
+### Summary Section
+
 ```json
 {
   "summary": {
+    "total_ticks": 38,
+    "total_errors": 2,
     "data_stream_status": "HEALTHY",
     "quality_metrics": {
       "overall_quality_score": 0.947368,
@@ -131,146 +267,444 @@ warningDataGapSeconds = 60;    // Warning bei 1 Min Lücke
       "serious_error_rate": 0.000000,
       "fatal_error_rate": 0.000000
     },
+    "timing": {
+      "end_time": "2025.11.23 21:23:54",
+      "duration_minutes": 0.1,
+      "avg_ticks_per_minute": 380.0
+    },
     "recommendations": "Data quality is excellent - no specific recommendations."
   }
 }
 ```
 
-### Datenqualitäts-Scoring
+---
 
-- **Overall Quality Score**: 1.0 - (total_errors / total_ticks)
-- **Data Integrity Score**: 1.0 - (fatal_errors / total_ticks)
-- **Data Reliability Score**: 1.0 - ((serious + fatal_errors) / total_ticks)
+## Data Quality Scoring System
 
-### Stream-Status-Klassifizierung
+### Quality Metrics Calculation
 
-- **HEALTHY**: Keine fatalen Errors, normale Datenqualität
-- **COMPROMISED**: Fatale Errors vorhanden, Datenintegrität beeinträchtigt
-- **CORRUPTED**: Stream-Korruption erkannt, Sammlung möglicherweise gestoppt
+**Overall Quality Score:**
+```
+overall_quality_score = 1.0 - (total_errors / total_ticks)
+```
+- **Perfect:** 1.0 (no errors)
+- **Excellent:** 0.95-0.99 (< 5% error rate)
+- **Good:** 0.90-0.95 (5-10% error rate)
+- **Poor:** < 0.90 (> 10% error rate)
 
-### File-Rotation-System
+**Data Integrity Score:**
+```
+data_integrity_score = 1.0 - (fatal_errors / total_ticks)
+```
+- Focuses on critical errors only
+- **Must be 1.0** for production use
+- **< 1.0** indicates corrupted data
 
-Das System rotiert Dateien **tick-basiert**, nicht größenbasiert:
+**Data Reliability Score:**
+```
+data_reliability_score = 1.0 - ((serious_errors + fatal_errors) / total_ticks)
+```
+- Combines serious and fatal errors
+- **> 0.99** recommended for backtesting
+- **< 0.95** requires investigation
+
+### Stream Status Classification
+
+**HEALTHY:**
+- No fatal errors
+- Quality metrics normal
+- Data suitable for backtesting
+
+**COMPROMISED:**
+- Fatal errors present
+- Data integrity affected
+- Use with caution
+
+**CORRUPTED:**
+- Stream corruption detected
+- Collection possibly stopped
+- Data unusable
+
+---
+
+## File Rotation System
+
+### Tick-Based Rotation
+
+Files rotate based on **tick count**, not file size:
 
 ```cpp
-input int MaxTicksPerFile = 50000;  // Standard: 50.000 Ticks pro Datei
+input int MaxTicksPerFile = 50000;  // Default: 50,000 ticks per file
 ```
 
-**Rotation-Ablauf (nahtlos):**
-1. Tick 49.999: Normale Verarbeitung
-2. Tick 50.000: In aktuelle Datei schreiben
-3. **CloseCurrentFile()**: JSON abschließen, Error-Summary anhängen
-4. **CreateNewExportFile()**: Neue Datei mit Metadaten erstellen
-5. Tick 50.001: In neue Datei schreiben
+**Rotation Workflow:**
 
-**Kein Datenverlust** - der Übergang erfolgt zwischen OnTick()-Aufrufen.
+```
+Tick 49,999: Normal processing
+Tick 50,000: Write to current file
+─────────────────────────────────
+CloseCurrentFile():
+  - Finalize JSON structure
+  - Append error summary
+  - Close file handle
+─────────────────────────────────
+CreateNewExportFile():
+  - Create new file with timestamp
+  - Write metadata section
+  - Initialize tick array
+─────────────────────────────────
+Tick 50,001: Write to new file
+```
 
-### Erwartete Output-Größen (Schätzungen)
+**Key Properties:**
+- **Seamless:** No data loss during rotation
+- **Predictable:** File size based on tick count
+- **Atomic:** Rotation happens between OnTick() calls
 
-**Dateien pro Tag (24h Sammlung):**
-- **EURUSD**: 8-15 Dateien/Tag
-- **GBPUSD**: 6-12 Dateien/Tag
-- **USDJPY**: 5-10 Dateien/Tag
-- **AUDUSD**: 4-8 Dateien/Tag
+### File Naming Convention
 
-*Variiert stark je nach Marktvolatilität und Handelszeiten*
+```
+SYMBOL_YYYYMMDD_HHMMSS_ticks.json
 
-**Dateigrößen pro File (50.000 Ticks):**
-- **EURUSD**: 18-25 MB (bis 30 MB bei vielen Errors)
-- **GBPUSD**: 20-28 MB (bis 35 MB bei Spread-Anomalien)
-- **USDJPY**: 15-22 MB (3-Digit = kompakter)
-- **AUDUSD**: 16-24 MB
+Examples:
+EURUSD_20251123_212345_ticks.json
+GBPUSD_20251123_143022_ticks.json
+USDJPY_20251124_080534_ticks.json
+```
 
-**Speicherplatzbedarf (Schätzungen):**
-- **Einzelsymbol**: 160-300 MB/Tag
-- **Vier Symbole parallel**: 640 MB - 1.2 GB/Tag
-- **Wöchentlich**: 4.5-8.4 GB
-- **Monatlich**: 18-34 GB
-- **Mit Parquet-Kompression**: ~2-4 GB/Monat (Faktor 8-12)
+---
 
-**Faktoren für größere Dateien:**
-- News-Events: Bis zu 5x mehr Ticks
-- London/NY Overlap: 2-3x höhere Aktivität  
-- Error-Rate >5%: +20-30% Dateigröße
-- Volatile Marktphasen: Einzeldateien bis 40-50 MB
+## Expected Output Characteristics
 
-**Error-Verteilung (typisch):**
-- Negligible: 0.1-2% der Ticks
-- Serious: 0.01-0.1% der Ticks  
-- Fatal: 0-0.001% der Ticks
+### Files Per Day (24h Collection)
 
-*Alle Angaben sind Schätzungen basierend auf typischen Forex-Marktbedingungen*
+| Symbol | Files/Day | Variation |
+|--------|-----------|-----------|
+| **EURUSD** | 8-15 | High volatility: +50% |
+| **GBPUSD** | 6-12 | News events: +100% |
+| **USDJPY** | 5-10 | Asian session: +30% |
+| **AUDUSD** | 4-8 | Sydney/Tokyo: +40% |
 
-### Empfohlene Symbol-Konfigurationen
+*Varies significantly based on market volatility and trading sessions*
 
-#### Major Pairs (EURUSD, GBPUSD, USDJPY)
+### File Sizes (50,000 ticks)
+
+| Symbol | Typical Size | With Errors |
+|--------|--------------|-------------|
+| **EURUSD** | 18-25 MB | 30 MB (high error rate) |
+| **GBPUSD** | 20-28 MB | 35 MB (spread anomalies) |
+| **USDJPY** | 15-22 MB | 27 MB (3-digit = compact) |
+| **AUDUSD** | 16-24 MB | 30 MB |
+
+**Factors Increasing File Size:**
+- **News Events:** Up to 5x more ticks
+- **London/NY Overlap:** 2-3x activity
+- **Error Rate > 5%:** +20-30% file size
+- **Volatile Markets:** Individual files up to 40-50 MB
+
+### Storage Requirements (Estimates)
+
+| Period | Single Symbol | Four Symbols | Parquet Compressed |
+|--------|--------------|--------------|-------------------|
+| **Daily** | 160-300 MB | 640 MB - 1.2 GB | 80-150 MB |
+| **Weekly** | 1.1-2.1 GB | 4.5-8.4 GB | 560 MB - 1 GB |
+| **Monthly** | 4.8-9 GB | 18-34 GB | 2-4 GB |
+
+**Compression Factor:** Parquet achieves 8-12x compression vs JSON
+
+### Error Distribution (Typical)
+
+| Severity | Typical Rate | Acceptable Threshold |
+|----------|-------------|---------------------|
+| **Negligible** | 0.1-2% | < 5% |
+| **Serious** | 0.01-0.1% | < 1% |
+| **Fatal** | 0-0.001% | 0% (ideally) |
+
+*All figures are estimates based on typical Forex market conditions*
+
+---
+
+## Symbol-Specific Configuration
+
+### Major Pairs (EURUSD, GBPUSD, USDJPY)
+**Characteristics:** Tight spreads, high liquidity
+
 ```cpp
-maxSpreadPercent = 2.0;        // Engere Toleranz
+maxSpreadPercent = 2.0;        // Tight tolerance
 maxPriceJumpPercent = 8.0;     // Standard
+maxDataGapSeconds = 180;       // 3 minutes max
 ```
 
-#### JPY-Pairs (USDJPY, EURJPY, GBPJPY)
+### JPY Pairs (USDJPY, EURJPY, GBPJPY)
+**Characteristics:** Different pip structure (0.01)
+
 ```cpp
-maxPriceJumpPercent = 15.0;    // Höhere Toleranz
+maxSpreadPercent = 3.0;        // Slightly wider
+maxPriceJumpPercent = 15.0;    // Higher tolerance
+maxDataGapSeconds = 300;       // Standard
 ```
 
-#### Exotic Pairs
+### Exotic Pairs
+**Characteristics:** Wide spreads, lower liquidity
+
 ```cpp
-maxSpreadPercent = 10.0;       // Weitere Toleranz
-maxPriceJumpPercent = 20.0;    // Höhere Volatilität erwartet
+maxSpreadPercent = 10.0;       // Wide tolerance
+maxPriceJumpPercent = 20.0;    // High volatility expected
+maxDataGapSeconds = 600;       // 10 minutes allowed
 ```
 
-### Troubleshooting
+### Cryptocurrencies (if supported)
+**Characteristics:** Extreme volatility
 
-#### Keine Dateien erstellt?
-- Prüfe Expert Advisor Logs im Terminal
-- Verifiziere dass Export-Pfad existiert
-- Stelle sicher dass AutoTrading aktiviert ist
-- Prüfe ob `CollectTicks = true` gesetzt ist
+```cpp
+maxSpreadPercent = 15.0;       // Very wide
+maxPriceJumpPercent = 30.0;    // Extreme moves possible
+maxDataGapSeconds = 900;       // 15 minutes (exchange downtime)
+```
 
-#### Hohe Fehlerraten?
-- **> 5% Negligible**: Broker-Feed-Qualität prüfen
-- **> 1% Serious**: Netzwerkstabilität und Server-Performance prüfen
-- **> 0.1% Fatal**: Broker-Verbindung prüfen, möglicherweise Neustart erforderlich
+---
 
-#### Große Dateigrößen?
-- Reduziere `MaxTicksPerFile` Parameter (z.B. auf 25.000)
-- Aktiviere Session-Filtering für spezifische Handelszeiten
-- Nutze `MaxErrorsPerFile` um Error-Log-Größe zu begrenzen
+## Troubleshooting
 
-#### Performance-Optimierung
-- Deaktiviere `LogNegligibleErrors` bei stabilen Feeds
-- Erhöhe Validierungs-Schwellenwerte für weniger kritische Symbole
-- Nutze `StopOnFatalErrors = true` um korrupte Streams zu stoppen
+### No Files Created?
 
-### Error-Code-Referenz
+**Diagnostics:**
+1. Check Expert Advisor logs in Terminal
+2. Verify export path exists (or use empty for default)
+3. Ensure AutoTrading is enabled (green button)
+4. Confirm `CollectTicks = true` in settings
+5. Check file permissions on export folder
 
-| Error Type | Severity | Beschreibung | Aktion |
-|------------|----------|--------------|--------|
-| `tick_unavailable` | SERIOUS | SymbolInfoTick() failed | Broker-Verbindung prüfen |
-| `invalid_price_zero` | FATAL | Bid/Ask ≤ 0 | Daten verwerfen |
-| `invalid_spread_zero` | FATAL | Spread ≤ 0 | Daten verwerfen |
-| `spread_extreme` | SERIOUS | Spread > Schwellenwert | Marktvolatilität beachten |
-| `spread_jump` | NEGLIGIBLE | Spread-Sprung > 50% | Normal bei Volatilität |
-| `data_gap_major` | SERIOUS | Datenlücke > 5 Min | Verbindung prüfen |
-| `data_gap_minor` | NEGLIGIBLE | Datenlücke 1-5 Min | Normal außerhalb Handelszeiten |
-| `time_regression` | FATAL | Rückwärts-Zeitsprung | Server-Zeit prüfen |
-| `price_jump_bid/ask` | SERIOUS | Preis-Sprung > Schwellenwert | Marktvolatilität |
+**Common Fixes:**
+- Create export directory manually
+- Run MetaTrader as administrator
+- Use empty path for MQL5 default folder
 
-### Support & Weiterentwicklung
+---
 
-**FiniexTestingIDE GitHub**: [github.com/dc-deal/FiniexTestingIDE](https://github.com/dc-deal/FiniexTestingIDE)
+### High Error Rates?
 
-Für Issues, Feature-Requests und Contributions nutze bitte GitHub Issues.
+**> 5% Negligible Errors:**
+- **Cause:** Poor broker feed quality
+- **Action:** Check broker server status, consider switching servers
+- **Acceptable:** Up to 2% during news events
 
-### Changelog v1.03
+**> 1% Serious Errors:**
+- **Cause:** Network instability, server performance issues
+- **Action:** Check internet connection, ping broker server, monitor latency
+- **Acceptable:** Brief spikes during high volatility
 
-- **NEW**: Gestuftes Error-System mit 3 Severity-Leveln
-- **NEW**: Datenqualitäts-Scoring und automatische Empfehlungen
-- **NEW**: Stream-Corruption-Detection
-- **NEW**: Konfigurierbare Validierungs-Schwellenwerte
-- **NEW**: Detaillierte Error-Metadaten mit Kontext
-- **IMPROVED**: JSON-Struktur mit Error-Kategorisierung
-- **IMPROVED**: Performance-optimierte Validierung
-- **IMPROVED**: Erweiterte Session-Classification
+**> 0.1% Fatal Errors:**
+- **Cause:** Broker connection issues, data corruption
+- **Action:** Check broker API status, restart MetaTrader, contact broker support
+- **Acceptable:** Never - indicates serious problems
 
+---
+
+### Large File Sizes?
+
+**Problem:** Files exceeding 40-50 MB
+
+**Solutions:**
+1. **Reduce MaxTicksPerFile:**
+   ```cpp
+   input int MaxTicksPerFile = 25000;  // Half the default
+   ```
+
+2. **Limit Error Logging:**
+   ```cpp
+   input bool LogNegligibleErrors = false;  // Skip minor errors
+   input int MaxErrorsPerFile = 500;        // Cap error details
+   ```
+
+3. **Session Filtering:**
+   - Collect only during specific trading sessions
+   - Avoid low-liquidity periods (e.g., Asian session for EUR/USD)
+
+4. **Immediate Parquet Conversion:**
+   - Convert JSON to Parquet immediately
+   - Delete JSON after successful import
+   - Saves 90% storage space
+
+---
+
+### Performance Optimization
+
+**For Stable Feeds:**
+```cpp
+input bool LogNegligibleErrors = false;    // Skip minor logging
+input int MaxErrorsPerFile = 100;          // Minimal error tracking
+```
+
+**For Multiple Symbols:**
+- Run separate MetaTrader instances per 2-3 symbols
+- Avoid collecting 10+ symbols on single MT5 instance
+- Use SSD for export directory
+
+**For High-Frequency Collection:**
+```cpp
+input int MaxTicksPerFile = 25000;         // Faster rotation
+input bool IncludeTickFlags = false;       // Reduce file size
+input bool IncludeRealVolume = false;      // Skip if not needed
+```
+
+---
+
+## Error Code Reference
+
+### Complete Error Type Catalog
+
+| Error Type | Severity | Description | Recommended Action |
+|------------|----------|-------------|-------------------|
+| `tick_unavailable` | SERIOUS | SymbolInfoTick() failed | Check broker connection |
+| `invalid_price_zero` | FATAL | Bid/Ask ≤ 0 | Discard data |
+| `invalid_spread_zero` | FATAL | Spread ≤ 0 | Discard data |
+| `inverted_spread` | FATAL | Ask < Bid | Discard data |
+| `spread_extreme` | SERIOUS | Spread > threshold | Note market volatility |
+| `spread_jump` | NEGLIGIBLE | Spread jump > 50% | Normal during volatility |
+| `data_gap_major` | SERIOUS | Gap > 5 minutes | Check connection |
+| `data_gap_minor` | NEGLIGIBLE | Gap 1-5 minutes | Normal outside trading hours |
+| `time_regression` | FATAL | Backward time jump | Check server time |
+| `time_regression_minor` | SERIOUS | Millisecond regression | Clock sync issue |
+| `price_jump_bid` | SERIOUS | Bid jump > threshold | Market volatility |
+| `price_jump_ask` | SERIOUS | Ask jump > threshold | Market volatility |
+| `missing_tick_flags` | NEGLIGIBLE | Flags unavailable | Non-critical |
+| `negative_tick_volume` | SERIOUS | Volume < 0 | Data corruption |
+| `negative_real_volume` | NEGLIGIBLE | Real volume < 0 | Broker reporting issue |
+
+---
+
+## Integration with Python Import Pipeline
+
+### Workflow
+
+```
+MQL5 TickCollector
+    ↓ JSON Files
+tick_importer.py
+    ↓ Parquet Files (indexed)
+bar_importer.py
+    ↓ Pre-rendered Bars
+FiniexTestingIDE
+```
+
+### Data Format Version Tracking
+
+**Version Chain:**
+```
+TickCollector v1.0.5 → data_format_version: "1.0.5" (JSON metadata)
+    ↓
+tick_importer.py → Parquet metadata (preserved)
+    ↓
+bar_importer.py → source_version_min/max in bar files
+```
+
+**Purpose:**
+- Track data provenance
+- Detect format changes
+- Validate compatibility
+- Debug data quality issues
+
+---
+
+## Best Practices
+
+### Production Collection
+
+**Recommended Settings:**
+```cpp
+input int MaxTicksPerFile = 50000;
+input bool EnableErrorTracking = true;
+input bool LogNegligibleErrors = false;     // Reduce noise
+input bool LogSeriousErrors = true;
+input bool LogFatalErrors = true;
+input bool StopOnFatalErrors = false;       // Don't stop on errors
+input int MaxErrorsPerFile = 500;           // Limit error details
+```
+
+**Why:**
+- Balanced file size (~20-25 MB)
+- Focus on critical errors
+- Resilient to transient issues
+- Manageable error logs
+
+### Development/Testing
+
+**Recommended Settings:**
+```cpp
+input int MaxTicksPerFile = 10000;          // Smaller files
+input bool EnableErrorTracking = true;
+input bool LogNegligibleErrors = true;      // Full logging
+input bool StopOnFatalErrors = true;        // Stop on serious issues
+```
+
+**Why:**
+- Faster iteration
+- Complete error visibility
+- Early detection of problems
+- Easy to review logs
+
+### 24/7 Automated Collection
+
+**Checklist:**
+- [ ] VPS with stable connection
+- [ ] AutoTrading enabled by default
+- [ ] Export path on dedicated drive (non-system)
+- [ ] Automated Parquet conversion pipeline
+- [ ] Daily backup of raw JSON files
+- [ ] Monitoring script for error rates
+- [ ] Alert system for fatal errors
+
+---
+
+## Quality Assurance
+
+### Pre-Import Validation
+
+**Before importing to Parquet:**
+1. Check `data_stream_status` = "HEALTHY"
+2. Verify `data_integrity_score` = 1.0
+3. Confirm `overall_quality_score` > 0.95
+4. Review error details for anomalies
+5. Validate timestamp continuity
+
+### Post-Import Verification
+
+**After Parquet conversion:**
+1. Verify tick count matches JSON
+2. Check timestamp range consistency
+3. Validate no data loss during conversion
+4. Confirm metadata preservation
+5. Test bar rendering with sample data
+
+---
+
+## Advanced Features
+
+### Custom Error Thresholds
+
+**Per-Symbol Configuration:**
+
+Edit in MQL5 code before compilation:
+```cpp
+// In OnInit() function
+if (Symbol() == "EURUSD") {
+    maxSpreadPercent = 2.0;
+    maxPriceJumpPercent = 8.0;
+} else if (Symbol() == "EURJPY") {
+    maxSpreadPercent = 3.0;
+    maxPriceJumpPercent = 15.0;
+}
+```
+
+### Session-Based Collection
+
+**Collect Only During Specific Hours:**
+
+Add in OnTick():
+```cpp
+// Only collect during London session (8:00-16:00 UTC)
+MqlDateTime dt;
+TimeCurrent(dt);
+if (dt.hour < 8 || dt.hour >= 16) return;
+```
