@@ -19,7 +19,7 @@ from datetime import datetime
 import traceback
 import pandas as pd
 
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.data_worker.data_loader.tick_data_report import run_summary_report
 from python.data_worker.importer.tick_importer import TickDataImporter
 
@@ -35,7 +35,7 @@ class DataIndexCLI:
     def __init__(self, data_dir: str = "./data/processed/"):
         """Initialize CLI"""
         self.data_dir = Path(data_dir)
-        self.index_manager = ParquetIndexManager(self.data_dir)
+        self.index_manager = TickIndexManager(self.data_dir)
 
     def cmd_import(self, override: bool = False, time_offset: int = 0):
         """

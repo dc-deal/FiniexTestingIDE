@@ -3,7 +3,7 @@ FiniexTestingIDE - Application Configuration Loader
 Centralized app config management
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from python.configuration.console_logging_config import ConsoleLoggingConfig
 from python.configuration.file_logging_config import FileLoggingConfig
 from python.configuration.config_file_loader import ConfigFileLoader
@@ -229,3 +229,32 @@ class AppConfigManager:
         """
         importer_config = self.get_importer_config()
         return importer_config.get("delete_on_error", False)
+
+    def get_data_validation_config(self) -> Dict[str, Any]:
+        """
+        Get data validation configuration.
+
+        Returns:
+            Data validation config dict
+        """
+        return self._config.get("data_validation", {})
+
+    def get_warmup_quality_mode(self) -> str:
+        """
+        Get warmup quality mode.
+
+        Returns:
+            Warmup quality mode: 'permissive' or 'standard' (default: 'standard')
+        """
+        validation_config = self.get_data_validation_config()
+        return validation_config.get("warmup_quality_mode", "standard")
+
+    def get_allowed_gap_categories(self) -> List[str]:
+        """
+        Get allowed gap categories for validation.
+
+        Returns:
+            List of allowed gap category strings (default: ['seamless', 'short'])
+        """
+        validation_config = self.get_data_validation_config()
+        return validation_config.get("allowed_gap_categories", ["seamless", "short"])

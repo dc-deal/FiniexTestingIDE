@@ -6,7 +6,7 @@ import traceback
 from typing import Optional
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
-from python.framework.process.process_live_queue_helper import send_status_update
+from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_prepreation import process_startup_preparation
 from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
@@ -34,7 +34,8 @@ def process_main(
     try:
         start_time = time.time()
         # === STATUS: INIT_PROCESS ===
-        send_status_update(live_queue, config, ScenarioStatus.INIT_PROCESS)
+        send_status_update_process(
+            live_queue, config, ScenarioStatus.INIT_PROCESS)
 
         # === CREATE SCENARIO LOGGER ===
         # Use shared run_timestamp from BatchOrchestrator
@@ -53,7 +54,7 @@ def process_main(
             f"🔄 Process preperation finished")
 
         # === STATUS: RUNNING ===
-        send_status_update(live_queue, config, ScenarioStatus.RUNNING)
+        send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
         # === TICK LOOP EXECUTION ===
         tick_loop_results = execute_tick_loop(
@@ -68,7 +69,8 @@ def process_main(
         scenario_logger.close()
 
         # === STATUS: COMPLETED ===
-        send_status_update(live_queue, config, ScenarioStatus.COMPLETED)
+        send_status_update_process(
+            live_queue, config, ScenarioStatus.COMPLETED)
 
         result = ProcessResult(
             success=True,
@@ -89,8 +91,8 @@ def process_main(
         try:
             # try to fetch Log, if possible.
             log_buffer = scenario_logger.get_buffer()
-            send_status_update(live_queue, config,
-                               ScenarioStatus.FINISHED_WITH_ERROR)
+            send_status_update_process(live_queue, config,
+                                       ScenarioStatus.FINISHED_WITH_ERROR)
         except:
             print(e)
             pass

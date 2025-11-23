@@ -109,4 +109,8 @@ def _get_default_config() -> Dict[str, Any]:
                 "export_current_bars": False,
             },
         },
+        "data_validation": {
+            "warmup_quality_mode": "standard",
+            "allowed_gap_categories": ["seamless", "short"]
+        }
     }

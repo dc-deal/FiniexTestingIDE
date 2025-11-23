@@ -5,10 +5,11 @@ Phase 2: Coordinates sequential and parallel scenario execution
 Extracted from BatchOrchestrator to separate execution logic.
 """
 from python.framework.process.process_executor import ProcessExecutor
+from python.framework.process.process_live_queue_helper import broadcast_status_update
 from python.framework.process.process_main import process_main
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.configuration import AppConfigManager
 from python.components.logger.abstract_logger import AbstractLogger
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -84,6 +85,29 @@ class ExecutionCoordinator:
 
         for idx, scenario in enumerate(scenarios):
             readable_index = idx + 1
+
+            # === CHECK VALIDATION STATUS (NEW) ===
+            if not scenario.is_valid():
+                self._logger.warning(
+                    f"⚠️  Scenario {readable_index}/{len(scenarios)}: "
+                    f"{scenario.name} - SKIPPED (validation failed)"
+                )
+
+                # Create failed result
+                failed_result = self._create_validation_failed_result(
+                    scenario, idx)
+                results.append(failed_result)
+
+                # Broadcast FAILED status to display
+                broadcast_status_update(live_queue=live_queue,
+                                        scenario_index=idx,
+                                        scenario_name=scenario.name,
+                                        status=ScenarioStatus.FINISHED_WITH_ERROR,
+                                        live_stats_config=self._live_stats_config
+                                        )
+
+                continue  # Skip to next scenario
+
             self._logger.info(
                 f"▶️  Executing scenario {readable_index}/{len(scenarios)}: "
                 f"{scenario.name}"
@@ -160,6 +184,29 @@ class ExecutionCoordinator:
             # Submit all scenarios
             futures = {}
             for idx, scenario in enumerate(scenarios):
+
+                # === CHECK VALIDATION STATUS (NEW) ===
+                if not scenario.is_valid():
+                    readable_index = idx + 1
+                    self._logger.warning(
+                        f"⚠️  Scenario {readable_index}: {scenario.name} - "
+                        f"SKIPPED (validation failed)"
+                    )
+
+                    # Create failed result immediately
+                    results[idx] = self._create_validation_failed_result(
+                        scenario, idx)
+
+                    # Broadcast FAILED status to display
+                    broadcast_status_update(live_queue=live_queue,
+                                            scenario_index=idx,
+                                            scenario_name=scenario.name,
+                                            status=ScenarioStatus.FINISHED_WITH_ERROR,
+                                            live_stats_config=self._live_stats_config
+                                            )
+
+                    continue
+
                 # Create executor config
                 executor_obj = ProcessExecutor(
                     scenario=scenario,
@@ -229,3 +276,32 @@ class ExecutionCoordinator:
         )
 
         return results
+
+    def _create_validation_failed_result(
+        self,
+        scenario: SingleScenario,
+        scenario_index: int
+    ) -> ProcessResult:
+        """
+        Create ProcessResult for validation-failed scenario.
+
+        Args:
+            scenario: Scenario that failed validation
+            scenario_index: Index in scenario list
+
+        Returns:
+            ProcessResult with validation error details
+        """
+        validation_result = scenario.validation_result
+
+        return ProcessResult(
+            success=False,
+            scenario_name=scenario.name,
+            symbol=scenario.symbol,
+            scenario_index=scenario_index,
+            error_type="ValidationError",
+            error_message=validation_result.get_full_report(
+            ) if validation_result else "Unknown validation error",
+            traceback=None,  # No traceback for validation errors
+            execution_time_ms=0.0
+        )

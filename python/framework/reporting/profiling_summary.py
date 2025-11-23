@@ -134,7 +134,12 @@ class ProfilingSummary:
         # Build operation profiles from typed data
         operations = []
 
+        if not self.profiling_data_map:
+            return None
+
         profiling = self.profiling_data_map.get(scenario.scenario_index)
+        if not profiling:
+            return None
 
         for op_name, timing in profiling.operations.items():
             # Calculate percentage

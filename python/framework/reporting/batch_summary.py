@@ -54,6 +54,7 @@ class BatchSummary:
             batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
             batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
+
         # Broker summary
         self.broker_summary = BrokerSummary(
             batch_summary=batch_execution_summary,
@@ -69,8 +70,9 @@ class BatchSummary:
 
         for scenario in batch_execution_summary.scenario_list:
             # Check if profiling data exists
-            if not scenario.tick_loop_results.profiling_data:
-                return {}
+            if (not scenario.tick_loop_results or
+                    not scenario.tick_loop_results.profiling_data):
+                continue
             profiling = ProfilingData.from_dicts(
                 scenario.tick_loop_results.profiling_data.profile_times,
                 scenario.tick_loop_results.profiling_data.profile_counts

@@ -100,14 +100,14 @@ class BatchExecutionError(ScenarioExecutionError):
         self.failed_count = len(failed_results)
 
         # Build detailed error message
-        message = (
+        self._message = (
             f"\n{'='*80}\n"
             f"BATCH EXECUTION COMPLETED WITH {self.failed_count} FAILED SCENARIO(S)\n"
             f"{'='*80}\n"
         )
 
         for idx, result in enumerate(failed_results, 1):
-            message += (
+            self._message += (
                 f"\n[{idx}/{self.failed_count}] Scenario: {result.scenario_name}\n"
                 f"{'─'*80}\n"
                 f"  Error Type: {result.error_type}\n"
@@ -119,13 +119,16 @@ class BatchExecutionError(ScenarioExecutionError):
             if result.traceback:
                 for line in result.traceback.split('\n'):
                     if line.strip():
-                        message += f"    {line}\n"
+                        self._message += f"    {line}\n"
 
-            message += f"{'─'*80}\n"
+            self._message += f"{'─'*80}\n"
 
-        message += f"\n{'='*80}\n"
+        self._message += f"\n{'='*80}\n"
 
-        super().__init__(message)
+        super().__init__(self._message)
+
+    def get_message(self) -> str:
+        return self._message
 
     def get_failed_scenario_names(self) -> List[str]:
         """Get list of failed scenario names."""

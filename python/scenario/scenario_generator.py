@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
@@ -322,7 +322,7 @@ class ScenarioGenerator:
             List of scenario candidates with max_ticks=None
         """
         # Get tick index for coverage report
-        tick_index = ParquetIndexManager(self._data_dir)
+        tick_index = TickIndexManager(self._data_dir)
         tick_index.build_index()
 
         # Generate coverage report

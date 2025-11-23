@@ -358,6 +358,7 @@ class LiveProgressDisplay:
             # Only show trades when not in initial states
             if stats.status not in (
                 ScenarioStatus.INITIALIZED,
+                ScenarioStatus.WARMUP_COVERAGE,
                 ScenarioStatus.WARMUP_DATA_TICKS,
                 ScenarioStatus.WARMUP_DATA_BARS,
                 ScenarioStatus.WARMUP_TRADER,
@@ -406,6 +407,8 @@ class LiveProgressDisplay:
         match status:
             case ScenarioStatus.INITIALIZED:
                 return "⏸️", "dim"
+            case ScenarioStatus.WARMUP_COVERAGE:
+                return "📊", "dim"
             case ScenarioStatus.WARMUP_DATA_TICKS:
                 return "🔥", "yellow"
             case ScenarioStatus.WARMUP_DATA_BARS:
@@ -437,6 +440,8 @@ class LiveProgressDisplay:
         match stats.status:
             case ScenarioStatus.INITIALIZED:
                 return "[dim]Initialized[/dim]"
+            case ScenarioStatus.WARMUP_COVERAGE:
+                return "[yellow]Loading coverage...[/yellow]"
             case ScenarioStatus.WARMUP_DATA_TICKS:
                 return "[yellow]Loading ticks...[/yellow]"
             case ScenarioStatus.WARMUP_DATA_BARS:

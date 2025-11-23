@@ -25,8 +25,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.data_worker.importer.vectorized_bar_renderer import VectorizedBarRenderer
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
-from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -58,7 +58,7 @@ class BarImporter:
             raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
         # Initialize tick index for finding tick files
-        self.tick_index = ParquetIndexManager(self.data_dir)
+        self.tick_index = TickIndexManager(self.data_dir)
         self.tick_index.build_index()
 
         # Statistics
@@ -353,14 +353,14 @@ class BarImporter:
             # Try to import bar index manager
             # NOTE: File must be at python/data_worker/data_loader/parquet_bars_index.py
 
-            bar_index = ParquetBarsIndexManager(self.data_dir)
+            bar_index = BarsIndexManager(self.data_dir)
             bar_index.build_index(force_rebuild=True)
 
             symbols = bar_index.list_symbols()
             vLog.info(f"✅ Bar index updated: {len(symbols)} symbols indexed")
 
         except ImportError as e:
-            vLog.error(f"❌ Failed to import ParquetBarsIndexManager: {e}")
+            vLog.error(f"❌ Failed to import BarsIndexManager: {e}")
             vLog.error("   Make sure parquet_bars_index.py is at:")
             vLog.error(
                 "   python/data_worker/data_loader/parquet_bars_index.py")
