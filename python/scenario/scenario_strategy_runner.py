@@ -7,7 +7,7 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 
 from python.configuration import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
-from python.scenario.config_loader import ScenarioConfigLoader
+from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.exceptions.data_validation_errors import DataValidationError
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
@@ -18,19 +18,15 @@ from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
 
-def run_strategy_test():
+def run_strategy_test(scenario_set_json: str):
     """
     Main strategy testing function with visual output
-    """
-    try:
-        # ============================================================
-        # System Info
-        # ============================================================
-        vLog.info(
-            f"System: {platform.system()} {platform.release()}")
-        vLog.info(f"Python: {platform.python_version()}")
-        vLog.info(f"CPU Count: {os.cpu_count()}")
 
+    Args:
+        scenario_set_json: Config filename (e.g., "eurusd_3_windows.json")
+    """
+
+    try:
         vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
 
         # ============================================================
@@ -53,10 +49,11 @@ def run_strategy_test():
         # ============================================================
         # Load Scenario Configuration
         # ============================================================
-        config_loader = ScenarioConfigLoader()
+        scenario_config_loader = ScenarioConfigLoader()
 
-        scenario_set_json = "eurusd_3_windows.json"
-        scenario_config_data = config_loader.load_config(scenario_set_json)
+        # scenario_set_json is now passed as parameter
+        scenario_config_data = scenario_config_loader.load_config(
+            scenario_set_json)
 
         vLog.info(
             f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)"
@@ -118,10 +115,3 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
             f"Unexpected error during strategy test",
             exception=e
         )
-
-
-if __name__ == "__main__":
-    """Entry point"""
-
-    # Run test
-    run_strategy_test()

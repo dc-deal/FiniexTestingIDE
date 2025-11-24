@@ -172,3 +172,32 @@ class BrokerScenarioInfo:
     scenarios: List[str]
     symbols: Set[str]
     broker_config: BrokerConfig
+
+
+@dataclass
+class ScenarioSetMetadata:
+    """
+    Metadata about a scenario set config file
+
+    Used for discovery and listing of available scenario sets
+    """
+    # Basic info
+    filename: str
+    scenario_set_name: str
+    total_count: int
+    enabled_count: int
+    disabled_count: int
+    symbols: list[str]
+    config_path: Path
+
+    # Time analysis
+    timespan_scenario_count: int
+    total_timespan_seconds: float
+    tick_scenario_count: int
+    total_ticks: int
+
+    # Strategy info
+    decision_logic_type: str | None
+    is_mixed_decision_logic: bool
+    worker_count: int | None
+    is_mixed_workers: bool

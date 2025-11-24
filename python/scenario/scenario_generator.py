@@ -22,7 +22,7 @@ from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
-from python.scenario.market_analyzer import MarketAnalyzer
+from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,

@@ -193,10 +193,26 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Strategy Runner - Default",
+            "name": "🔬 Strategy Runner - Run (eurusd_3_windows)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/strategy_runner.py",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Strategy Runner - List Scenarios",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "list",
+                "--full-details"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
