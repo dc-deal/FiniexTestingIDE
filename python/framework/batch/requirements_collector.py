@@ -37,7 +37,6 @@ class RequirementsCollector:
     def collect(
         self,
         scenarios: List[SingleScenario],
-        app_config: AppConfigManager
     ) -> tuple[RequirementsMap, Dict[int, Dict]]:
         """
         Collect requirements from all scenarios.
@@ -55,7 +54,6 @@ class RequirementsCollector:
         for idx, scenario in enumerate(scenarios):
             warmup_reqs = self._aggregate_requirements.add_scenario(
                 scenario=scenario,
-                app_config=app_config,
                 scenario_index=idx,
                 logger=self._logger
             )

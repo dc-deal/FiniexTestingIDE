@@ -84,6 +84,9 @@ class WorkerDecisionBreakdownSummary:
         """
         profiling = self.profiling_data_map.get(scenario.scenario_index)
 
+        if not profiling:
+            return None
+
         # Get total worker_decision time using typed access
         total_worker_decision_ms = profiling.get_operation_time(
             'worker_decision')

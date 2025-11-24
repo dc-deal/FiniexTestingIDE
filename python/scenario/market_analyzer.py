@@ -16,11 +16,11 @@ import math
 import numpy as np
 import pandas as pd
 
-from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.timeframe_types import TimeframeConfig
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.scenario_generator_types import (
     AnalysisConfig,
@@ -65,11 +65,11 @@ class MarketAnalyzer:
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
-        self._bar_index = ParquetBarsIndexManager(self._data_dir)
+        self._bar_index = BarsIndexManager(self._data_dir)
         self._bar_index.build_index()
 
         # Initialize tick index for coverage reports
-        self._tick_index = ParquetIndexManager(self._data_dir)
+        self._tick_index = TickIndexManager(self._data_dir)
         self._tick_index.build_index()
 
         # Load broker configs and build symbol specification cache

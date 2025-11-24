@@ -31,6 +31,7 @@ class ScenarioStatus(Enum):
 
     States:
         INITIALIZED: Scenario object created (BatchOrchestrator)
+        WARMUP_COVERAGE: Loading Gap Report, Data Coverage for execution validation
         WARMUP_DATA_TICKS: Loading ticks (BatchOrchestrator, Phase 1)
         WARMUP_DATA_BARS: Loading bars (BatchOrchestrator, Phase 1)
         WARMUP_TRADER: Loading broker config (BatchOrchestrator, Phase 1)
@@ -41,6 +42,7 @@ class ScenarioStatus(Enum):
     """
     # BatchOrchestrator States (Main Process)
     INITIALIZED = "initialized"
+    WARMUP_COVERAGE = "warmup_coverage"
     WARMUP_DATA_TICKS = "warmup_data_ticks"
     WARMUP_DATA_BARS = "warmup_data_bars"
     WARMUP_TRADER = "warmup_trader"

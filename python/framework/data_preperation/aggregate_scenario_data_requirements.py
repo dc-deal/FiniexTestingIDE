@@ -53,7 +53,6 @@ class AggregateScenarioDataRequirements:
     def add_scenario(
         self,
         scenario: SingleScenario,
-        app_config: AppConfigManager,
         scenario_index: int,
         logger: AbstractLogger = vLog
     ) -> Dict[str, int]:
@@ -64,7 +63,6 @@ class AggregateScenarioDataRequirements:
 
         Args:
             scenario: Scenario configuration
-            app_config: Application config
             scenario_index: Scenario index
 
         Returns:

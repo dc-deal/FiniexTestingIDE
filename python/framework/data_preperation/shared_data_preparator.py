@@ -20,8 +20,8 @@ from python.framework.types.process_data_types import (
     TickRequirement,
     BarRequirement
 )
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
-from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 
 
 class SharedDataPreparator:
@@ -56,15 +56,15 @@ class SharedDataPreparator:
         self._logger = logger
 
         # Use existing index managers
-        self._logger.info("📚 Initializing index managers...")
+        self._logger.debug("📚 Initializing index managers...")
 
         # Tick index manager
-        self.tick_index_manager = ParquetIndexManager(
+        self.tick_index_manager = TickIndexManager(
             self.data_dir, self._logger)
         self.tick_index_manager.build_index()  # Auto-loads or rebuilds
 
         # Bar index manager
-        self.bar_index_manager = ParquetBarsIndexManager(
+        self.bar_index_manager = BarsIndexManager(
             self.data_dir, self._logger)
         self.bar_index_manager.build_index()  # Auto-loads or rebuilds
 

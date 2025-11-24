@@ -16,7 +16,7 @@
         "warn_on_parameter_override": true,
         "scenario": {
             "enabled": true,
-            "log_level": "WARNING",
+            "log_level": "INFO",
             "write_system_info": true
         }
     },
@@ -52,5 +52,12 @@
             "export_performance_stats": false,
             "export_current_bars": false
         }
+    },
+    "data_validation": {
+        "warmup_quality_mode": "standard",
+        "allowed_gap_categories": [
+            "seamless",
+            "short"
+        ]
     }
 }

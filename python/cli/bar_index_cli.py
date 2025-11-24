@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
-from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -29,7 +29,7 @@ class BarIndexCLI:
     def __init__(self, data_dir: str = "./data/processed/"):
         """Initialize CLI"""
         self.data_dir = Path(data_dir)
-        self.index_manager = ParquetBarsIndexManager(self.data_dir)
+        self.index_manager = BarsIndexManager(self.data_dir)
 
     def cmd_rebuild(self):
         """Rebuild bar index from scratch"""

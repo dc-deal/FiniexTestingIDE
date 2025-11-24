@@ -5,7 +5,7 @@ Parquet Bars Index Manager - Fast Bar File Selection
 Manages index for pre-rendered bar files.
 Enables O(1) file selection for warmup and backtesting.
 
-Analog to ParquetIndexManager but for bars instead of ticks.
+Analog to TickIndexManager but for bars instead of ticks.
 """
 
 import json
@@ -22,7 +22,7 @@ from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
 
-class ParquetBarsIndexManager:
+class BarsIndexManager:
     """
     Manages index for pre-rendered bar parquet files.
 
@@ -284,7 +284,7 @@ class ParquetBarsIndexManager:
             Path to bar file or None if not found
 
         Example:
-            >>> index = ParquetBarsIndexManager(data_dir)
+            >>> index = BarsIndexManager(data_dir)
             >>> bar_file = index.get_bar_file('EURUSD', 'M5')
             >>> bars = pd.read_parquet(bar_file)  # Load M5 bars instantly!
         """

@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from python.data_worker.data_loader.parquet_bars_index import ParquetBarsIndexManager
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -29,12 +29,12 @@ class BarIndexReportGenerator:
     - File locations and sizes
     """
 
-    def __init__(self, index_manager: ParquetBarsIndexManager):
+    def __init__(self, index_manager: BarsIndexManager):
         """
         Initialize report generator.
 
         Args:
-            index_manager: Initialized ParquetBarsIndexManager
+            index_manager: Initialized BarsIndexManager
         """
         self.index_manager = index_manager
         self.reports_dir = Path("./framework/reports/")

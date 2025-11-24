@@ -1,5 +1,5 @@
 """
-ParquetIndexManager - Fast File Selection via Metadata Index
+TickIndexManager - Fast File Selection via Metadata Index
 """
 
 import json
@@ -21,7 +21,7 @@ from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
 
 
-class ParquetIndexManager:
+class TickIndexManager:
     """
     Manages Parquet file index for fast time-based file selection.
 
@@ -33,6 +33,7 @@ class ParquetIndexManager:
         # CHANGED: Index-Dateiname für Ticks
         self.index_file = self.data_dir / ".parquet_tick_index.json"
         self.index: Dict[str, List[Dict]] = {}
+        self.logger.info("📚 Parquet Index Manager initialized.")
 
     # =========================================================================
     # INDEX BUILDING - ANGEPASST

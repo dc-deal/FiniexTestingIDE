@@ -22,7 +22,7 @@ import pyarrow.parquet as pq
 
 from python.configuration import AppConfigManager
 from python.data_worker.importer.bar_importer import BarImporter
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
 from python.data_worker.data_loader.data_loader_exceptions import (
@@ -142,7 +142,7 @@ class TickDataImporter:
         vLog.info("\n🔄 Rebuilding Parquet index...")
         try:
 
-            index_manager = ParquetIndexManager(self.target_dir)
+            index_manager = TickIndexManager(self.target_dir)
             index_manager.build_index(force_rebuild=True)
 
             symbols = index_manager.list_symbols()
@@ -420,8 +420,10 @@ class TickDataImporter:
         Berechnet Trading-Sessions neu basierend auf UTC-Zeit.
         """
 
-        df['session'] = df['timestamp'].dt.hour.apply(
-            get_session_from_utc_hour)
+        if 'session' in df.columns:
+            df['session'] = df['session'].apply(
+                lambda x: x.value if hasattr(x, 'value') else str(x)
+            )
         return df
 
     def _check_for_existing_duplicate(

@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
 from python.components.logger.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
+from python.framework.types.market_data_types import TickData
+from python.framework.utils.time_utils import format_timestamp
 
 
 class ScenarioLogger(AbstractLogger):
@@ -53,6 +55,7 @@ class ScenarioLogger(AbstractLogger):
         self.run_timestamp = run_timestamp
         run_timestamp_str = self.run_timestamp.strftime("%Y%m%d_%H%M%S")
         self._tick_loop_started = False
+        self._current_tick = None
         self._tick_loop_count = 1
 
         self.run_dir = None
@@ -125,8 +128,9 @@ class ScenarioLogger(AbstractLogger):
         if (started):
             self._tick_loop_count = 1
 
-    def set_current_tick(self, tick_count: int):
-        self.file_logger.set_current_tick(tick_count)
+    def set_current_tick(self, tick_count: int, tick: TickData):
+        self.file_logger.set_current_tick(tick_count, tick)
+        self._current_tick = tick
         self._tick_loop_count = tick_count
 
     def _log_console_implementation(self, level: str, message: str, timestamp: str):
@@ -141,7 +145,8 @@ class ScenarioLogger(AbstractLogger):
             message: Log message
         """
         if self._tick_loop_started:
-            message = f"{self._tick_loop_count: 5}| {message}"
+            tick_time = format_timestamp(self._current_tick.timestamp)
+            message = f"{self._tick_loop_count:5}| {tick_time} | {message}"
         formatted_line = self._format_log_line(level, message, timestamp)
 
         # Console output (BUFFERED) - for scenario loggers.

@@ -15,6 +15,7 @@ from python.components.logger.scenario_logger import ScenarioLogger
 from python.components.logger.system_info_writer import write_system_version_parameters
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
+from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
@@ -43,6 +44,9 @@ class SingleScenario:
     # broker_type must be set in startup.
     broker_type: BrokerType = None
     trade_simulator_config: Optional[Dict[str, Any]] = None
+
+    # === VALIDATION TRACKING  ===
+    validation_result: Optional[ValidationResult] = None
 
     def __post_init__(self):
         if self.name is None:
@@ -83,6 +87,17 @@ class SingleScenario:
             f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"
             f"  Enabled: {self.enabled}"
         )
+
+    def is_valid(self) -> bool:
+        """
+        Check if scenario passed validation.
+
+        Returns:
+            True if no validation result or validation passed
+        """
+        if self.validation_result is None:
+            return False
+        return not self.validation_result.has_errors()
 
 
 @dataclass

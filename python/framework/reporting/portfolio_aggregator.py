@@ -57,6 +57,8 @@ class PortfolioAggregator:
         currency_groups: Dict[str, List[ProcessResult]] = {}
 
         for scenario in self.scenarios:
+            if not scenario.tick_loop_results:
+                continue
             currency = scenario.tick_loop_results.portfolio_stats.currency
 
             if currency not in currency_groups:

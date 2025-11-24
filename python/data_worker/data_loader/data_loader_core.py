@@ -18,7 +18,7 @@ from python.data_worker.data_loader.data_loader_exceptions import (
     DuplicateReport,
     InvalidDataModeException
 )
-from python.data_worker.data_loader.parquet_index import ParquetIndexManager
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
 
 from python.components.logger.bootstrap_logger import get_logger
@@ -41,7 +41,7 @@ class TickDataLoader:
         self._symbol_cache = {}
 
         # Index manager bleibt unverändert - arbeitet transparent mit neuer Struktur
-        self.index_manager = ParquetIndexManager(self.data_dir)
+        self.index_manager = TickIndexManager(self.data_dir)
         self.index_manager.build_index()
 
     def list_available_symbols(self) -> List[str]:
