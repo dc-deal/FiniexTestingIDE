@@ -191,13 +191,13 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - EURGBP",
+            "name": "📊 MARKET ANALYSIS REPORT - USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
-                "AUDUSD"
+                "USDJPY"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
