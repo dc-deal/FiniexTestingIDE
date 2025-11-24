@@ -40,11 +40,24 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧪 TEST LOAD: Ticks&Bars",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "inspect",
+                "EURUSD",
+                "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔍 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "🔍 Index: Rebuild",
+            "name": "🔍 Tick index: Rebuild",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -55,7 +68,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Index: Status",
+            "name": "🔍 Tick index: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -66,7 +79,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Index: Validate All Symbols",
+            "name": "🔍 Tick index: Validate All Symbols",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
