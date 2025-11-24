@@ -40,11 +40,24 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧪 TEST LOAD: Ticks&Bars",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "inspect",
+                "EURUSD",
+                "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔍 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "🔍 Index: Rebuild",
+            "name": "🔍 Tick index: Rebuild",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -55,7 +68,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Index: Status",
+            "name": "🔍 Tick index: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -66,7 +79,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Index: Validate All Symbols",
+            "name": "🔍 Tick index: Validate All Symbols",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -180,10 +193,26 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Strategy Runner - Default",
+            "name": "🔬 Strategy Runner - Run (eurusd_3_windows)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/strategy_runner.py",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Strategy Runner - List Scenarios",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "list",
+                "--full-details"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -191,13 +220,13 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - EURGBP",
+            "name": "📊 MARKET ANALYSIS REPORT - USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
-                "AUDUSD"
+                "USDJPY"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

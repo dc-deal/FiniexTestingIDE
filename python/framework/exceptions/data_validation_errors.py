@@ -201,7 +201,7 @@ class InvalidDateRangeError(DataValidationError):
     """
     Raised when scenario has invalid date range.
 
-    Used in: config_loader validation
+    Used in: scenario_config_loader validation
     """
 
     def __init__(

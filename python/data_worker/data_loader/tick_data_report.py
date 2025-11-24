@@ -5,28 +5,126 @@ Summary reports, formatted output, and developer convenience tools
 Location: python/data_worker/reports.py
 """
 
+from pathlib import Path
 import traceback
 
 import pandas as pd
 from typing import Dict
 
-from python.data_worker.data_loader.tick_data_analyzer import TickDataAnalyzer
-from python.data_worker.data_loader.data_loader_core import TickDataLoader
-
 from python.components.logger.bootstrap_logger import get_logger
+from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.framework.utils.market_calendar import MarketCalendar
 vLog = get_logger()
 
 
 class TickDataReporter:
     """Generates formatted reports and summaries for tick data"""
 
-    def __init__(self, loader: TickDataLoader, analyzer: TickDataAnalyzer):
-        """Initialize reporter with loader and analyzer"""
-        self.loader = loader
-        self.analyzer = analyzer
+    def __init__(self, index_manager: TickIndexManager):
+        """
+        Initialize reporter with index manager.
+
+        Args:
+            index_manager: TickIndexManager instance
+        """
+        self.index_manager = index_manager
+
+    def get_symbol_info(self, symbol: str) -> Dict:
+        """
+        Get comprehensive information about a symbol from index.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Dict with symbol information and statistics
+        """
+        if symbol not in self.index_manager.index:
+            return {"error": f"No data found for symbol {symbol}"}
+
+        files = self.index_manager.index[symbol]
+
+        # === AGGREGATE STATISTICS FROM INDEX ===
+        total_ticks = sum(f['tick_count'] for f in files)
+        total_size_mb = sum(f['file_size_mb'] for f in files)
+
+        # Time range
+        start_time = pd.to_datetime(files[0]['start_time'])
+        end_time = pd.to_datetime(files[-1]['end_time'])
+        duration = end_time - start_time
+
+        # Duration calculations
+        duration_days = duration.days
+        duration_hours = duration.total_seconds() / 3600
+        duration_minutes = duration.total_seconds() / 60
+
+        # Weekend analysis
+        weekend_info = MarketCalendar.get_weekend_statistics(
+            start_time, end_time)
+        trading_days = duration_days - (weekend_info["full_weekends"] * 2)
+
+        # === AGGREGATE SPREAD STATISTICS ===
+        # Weighted average by tick_count
+        total_weighted_spread_points = 0
+        total_weighted_spread_pct = 0
+
+        for f in files:
+            if f.get('statistics') and f['statistics'].get('avg_spread_points'):
+                total_weighted_spread_points += f['statistics']['avg_spread_points'] * \
+                    f['tick_count']
+                total_weighted_spread_pct += f['statistics']['avg_spread_pct'] * \
+                    f['tick_count']
+
+        avg_spread_points = round(
+            total_weighted_spread_points / total_ticks, 2) if total_ticks > 0 else None
+        avg_spread_pct = round(total_weighted_spread_pct /
+                               total_ticks, 6) if total_ticks > 0 else None
+
+        # === AGGREGATE SESSIONS ===
+        sessions = {}
+        for f in files:
+            for session, count in f.get('sessions', {}).items():
+                sessions[session] = sessions.get(session, 0) + count
+
+        # === CALCULATE TICK FREQUENCY ===
+        tick_frequency = round(
+            total_ticks / duration.total_seconds(), 2) if duration.total_seconds() > 0 else 0.0
+
+        # === MARKET METADATA (from first file) ===
+        market_type = files[0].get('market_type', 'forex_cfd')
+        data_source = files[0].get('data_source', 'mt5')
+
+        return {
+            "symbol": symbol,
+            "files": len(files),
+            "total_ticks": total_ticks,
+            "date_range": {
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+                "start_formatted": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "end_formatted": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "duration": {
+                    "days": duration_days,
+                    "hours": round(duration_hours, 2),
+                    "minutes": round(duration_minutes, 2),
+                    "total_seconds": duration.total_seconds(),
+                    "trading_days": trading_days,
+                    "weekends": weekend_info,
+                },
+            },
+            "statistics": {
+                "avg_spread_points": avg_spread_points,
+                "avg_spread_pct": avg_spread_pct,
+                "tick_frequency_per_second": tick_frequency,
+            },
+            "file_size_mb": round(total_size_mb, 2),
+            "sessions": sessions,
+            "market_type": market_type,
+            "data_source": data_source,
+        }
 
     def print_symbol_info(self, info: Dict):
-        """vLog.info formatted symbol information to console"""
+        """Print formatted symbol information to console"""
         if "error" in info:
             vLog.info(
                 f"\n❌ {info.get('symbol', 'UNKNOWN')}: {info['error']}")
@@ -71,7 +169,6 @@ class TickDataReporter:
                 [f"{k}: {v}" for k, v in info["sessions"].items()])
             vLog.info(f"      Sessions:     {sessions_str}")
 
-        # NEW: Market type and activity metrics
         if info.get("market_type"):
             vLog.info(f"   ├─ Market Type:  {info['market_type']}")
 
@@ -79,15 +176,15 @@ class TickDataReporter:
             vLog.info(f"   └─ Data Source:  {info['data_source']}")
 
     def print_all_symbols(self):
-        """vLog.info summary for all available symbols"""
-        symbols = self.loader.list_available_symbols()
+        """Print summary for all available symbols"""
+        symbols = self.index_manager.list_symbols()
 
         vLog.info("\n" + "=" * 100)
         vLog.info("SYMBOL OVERVIEW WITH TIME RANGES")
         vLog.info("=" * 100)
 
         for symbol in symbols:
-            info = self.analyzer.get_symbol_info(symbol)
+            info = self.get_symbol_info(symbol)
             self.print_symbol_info(info)
 
         vLog.info("\n" + "=" * 100)
@@ -128,20 +225,22 @@ class TickDataReporter:
 
 def run_summary_report():
     """
-    Run comprehensive summary report for all available data
+    Run comprehensive summary report for all available data.
 
     Main entry point for developers to inspect their data.
     """
     vLog.info("=== FiniexTestingIDE Data Loader Summary Report ===")
 
     try:
-        # Initialize components
-        loader = TickDataLoader()
-        analyzer = TickDataAnalyzer(loader)
-        reporter = TickDataReporter(loader, analyzer)
+        # Initialize index manager
+        index_manager = TickIndexManager(Path("./data/processed/"))
+        index_manager.build_index()
+
+        # Initialize reporter
+        reporter = TickDataReporter(index_manager)
 
         # Check if data exists
-        symbols = loader.list_available_symbols()
+        symbols = index_manager.list_symbols()
         vLog.info(f"Available symbols: {symbols}")
 
         if not symbols:
@@ -156,12 +255,8 @@ def run_summary_report():
             vLog.info("4. Run this report again")
             return
 
-        # vLog.info all symbols
+        # Print all symbols
         reporter.print_all_symbols()
-
-        # Test load first symbol
-        if symbols:
-            reporter.test_load_symbol(symbols[0])
 
         vLog.info("\n✅ Summary report completed successfully!")
 

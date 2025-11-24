@@ -207,9 +207,6 @@ class BarImporter:
         """
         Load ALL tick files for a symbol.
 
-        Unlike TickDataLoader which can filter by date,
-        we load everything for complete bar rendering.
-
         Args:
             symbol: Trading symbol
             data_collector: Data collector name

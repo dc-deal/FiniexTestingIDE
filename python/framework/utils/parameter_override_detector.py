@@ -12,11 +12,11 @@ Central config management for cascade detection and override extraction
 - ✅ Supports all config sections: workers, decision_logic_config, execution_config, trade_simulator_config
 
 Usage:
-    # In config_loader.py load_config():
+    # In scenario_config_loader.py load_config():
     overrides = ParameterOverrideDetector.detect_overrides(global, scenario)
     formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
     
-    # In config_loader.py save_config():
+    # In scenario_config_loader.py save_config():
     strategy_overrides = ParameterOverrideDetector.extract_overrides_for_save(
         global_strategy, scenario.strategy_config, 
         sections=['workers', 'decision_logic_config']
@@ -35,7 +35,7 @@ class ParameterOverrideDetector:
     2. format_overrides_for_display() - Pretty print
     3. extract_overrides_for_save() - Get only overrides (for save_config)
 
-    This centralizes all override logic that was scattered across config_loader.
+    This centralizes all override logic that was scattered across scenario_config_loader.
     """
 
     # ============================================

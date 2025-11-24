@@ -38,13 +38,14 @@ class ClassInfo:
     """Information über eine Python-Klasse."""
 
     def __init__(self, name: str, file_path: str, line_number: int,
-                 base_classes: List[str], decorators: List[str]):
+                 base_classes: List[str], decorators: List[str], docstring: str = None):
         self.name = name
         self.file_path = file_path
         self.line_number = line_number
         self.base_classes = base_classes
         self.decorators = decorators
-        self.methods = []
+        self.docstring = docstring
+        self.methods = []  # List of tuples: (method_name, docstring)
 
 
 class ProjectAnalyzer:
@@ -118,18 +119,24 @@ class ProjectAnalyzer:
                     # Relative Pfad zum Projekt-Root
                     rel_path = file_path.relative_to(self.root_dir)
 
+                    # Extrahiere Klassen-Docstring
+                    class_docstring = ast.get_docstring(node)
+
                     class_info = ClassInfo(
                         name=node.name,
                         file_path=str(rel_path),
                         line_number=node.lineno,
                         base_classes=base_classes,
-                        decorators=decorators
+                        decorators=decorators,
+                        docstring=class_docstring
                     )
 
-                    # Extrahiere Methoden
+                    # Extrahiere Methoden mit Docstrings
                     for item in node.body:
                         if isinstance(item, ast.FunctionDef):
-                            class_info.methods.append(item.name)
+                            method_docstring = ast.get_docstring(item)
+                            class_info.methods.append(
+                                (item.name, method_docstring))
 
                     self.classes.append(class_info)
 
@@ -156,9 +163,42 @@ class ProjectAnalyzer:
         duplicates = {name: classes for name, classes in class_names.items()
                       if len(classes) > 1}
 
+        # Dokumentations-Statistiken
+        total_methods = sum(len(cls.methods) for cls in self.classes)
+        documented_classes = sum(1 for cls in self.classes if cls.docstring)
+        documented_methods = sum(
+            1 for cls in self.classes
+            for method_name, docstring in cls.methods
+            if docstring
+        )
+
+        # Undokumentierte sammeln
+        undocumented_classes = [
+            cls for cls in self.classes if not cls.docstring]
+        undocumented_methods = []
+        for cls in self.classes:
+            for method_name, docstring in cls.methods:
+                if not docstring:
+                    undocumented_methods.append((cls, method_name))
+
+        # Vererbungs-Statistiken
+        classes_with_inheritance = sum(
+            1 for cls in self.classes if cls.base_classes)
+
+        # Top 5 größte Klassen
+        largest_classes = sorted(
+            self.classes, key=lambda c: len(c.methods), reverse=True)[:5]
+
         return {
             'total_classes': len(self.classes),
             'total_files': self.files_processed,
+            'total_methods': total_methods,
+            'documented_classes': documented_classes,
+            'documented_methods': documented_methods,
+            'undocumented_classes': undocumented_classes,
+            'undocumented_methods': undocumented_methods,
+            'classes_with_inheritance': classes_with_inheritance,
+            'largest_classes': largest_classes,
             'by_directory': dict(by_directory),
             'duplicates': duplicates,
             'errors': self.errors,
@@ -166,35 +206,125 @@ class ProjectAnalyzer:
         }
 
 
-def format_tree_output(report: Dict) -> str:
-    """Formatiert Report als Baum-Struktur."""
+def format_statistics_header(report: Dict) -> str:
+    """Formatiert die Statistics Overview Section."""
     lines = []
     lines.append("=" * 80)
     lines.append("FINIEXTESTINGIDE - PROJECT STRUCTURE ANALYSIS")
     lines.append("=" * 80)
-    lines.append(f"\n📊 Statistik:")
-    lines.append(f"   Klassen gesamt: {report['total_classes']}")
-    lines.append(f"   Dateien analysiert: {report['total_files']}")
-    lines.append(f"   Verzeichnisse: {len(report['by_directory'])}")
+    lines.append("")
+    lines.append("📊 STATISTICS OVERVIEW")
+    lines.append("-" * 80)
 
-    # Namespace-Konflikte
+    # Basis-Statistiken
+    lines.append(f"Total Files Analyzed:        {report['total_files']}")
+    lines.append(f"Total Directories:           {len(report['by_directory'])}")
+    lines.append(f"Total Classes:               {report['total_classes']}")
+    lines.append(f"Total Methods:               {report['total_methods']}")
+
+    # Durchschnitt
+    avg_methods = report['total_methods'] / \
+        report['total_classes'] if report['total_classes'] > 0 else 0
+    lines.append(f"Avg Methods per Class:       {avg_methods:.1f}")
+
+    # Dokumentation
+    class_coverage = (report['documented_classes'] / report['total_classes']
+                      * 100) if report['total_classes'] > 0 else 0
+    method_coverage = (report['documented_methods'] / report['total_methods']
+                       * 100) if report['total_methods'] > 0 else 0
+    lines.append(f"")
+    lines.append(f"Documentation Coverage:")
+    lines.append(
+        f"  Classes:                   {report['documented_classes']}/{report['total_classes']} ({class_coverage:.1f}%)")
+    lines.append(
+        f"  Methods:                   {report['documented_methods']}/{report['total_methods']} ({method_coverage:.1f}%)")
+
+    # Vererbung
+    lines.append(f"")
+    lines.append(
+        f"Classes with Inheritance:    {report['classes_with_inheritance']}/{report['total_classes']}")
+    lines.append(f"Namespace Conflicts:         {len(report['duplicates'])}")
+
+    # Top 5 größte Klassen
+    if report['largest_classes']:
+        lines.append(f"")
+        lines.append(f"Top 5 Largest Classes (by method count):")
+        for i, cls in enumerate(report['largest_classes'], 1):
+            lines.append(
+                f"  {i}. {cls.name:30} {len(cls.methods):3} methods  ({cls.file_path})")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_tree_output(report: Dict) -> str:
+    """Formatiert Report als Baum-Struktur."""
+    lines = []
+
+    # Statistics Header
+    lines.append(format_statistics_header(report))
+
+    # ====================================================================
+    # NAMESPACE-KONFLIKTE
+    # ====================================================================
     if report['duplicates']:
+        lines.append("")
+        lines.append("")
+        lines.append("⚠️  NAMESPACE CONFLICTS")
+        lines.append("=" * 80)
         lines.append(
-            f"\n⚠️  NAMESPACE-KONFLIKTE ({len(report['duplicates'])} gefunden):")
-        lines.append("-" * 80)
+            f"{len(report['duplicates'])} duplicate class names found:")
+        lines.append("")
         for name, classes in sorted(report['duplicates'].items()):
-            lines.append(f"\n🔴 Klassenname '{name}' mehrfach verwendet:")
+            lines.append(
+                f"🔴 Class '{name}' defined in {len(classes)} locations:")
             for cls in classes:
                 lines.append(f"   → {cls.file_path}:{cls.line_number}")
+            lines.append("")
 
-    # Verzeichnis-Struktur
-    lines.append(f"\n\n📁 VERZEICHNIS-STRUKTUR MIT KLASSEN:")
+    # ====================================================================
+    # UNDOKUMENTIERTE CODE
+    # ====================================================================
+    if report['undocumented_classes'] or report['undocumented_methods']:
+        lines.append("")
+        lines.append("")
+        lines.append("📝 UNDOCUMENTED CODE")
+        lines.append("=" * 80)
+
+        if report['undocumented_classes']:
+            lines.append(
+                f"\n⚠️  Classes without docstrings ({len(report['undocumented_classes'])}):")
+            for cls in sorted(report['undocumented_classes'], key=lambda c: c.file_path):
+                lines.append(
+                    f"   • {cls.name:30} → {cls.file_path}:{cls.line_number}")
+
+        if report['undocumented_methods']:
+            lines.append(
+                f"\n⚠️  Methods without docstrings ({len(report['undocumented_methods'])}):")
+            # Group by class for readability
+            by_class = defaultdict(list)
+            for cls, method_name in report['undocumented_methods']:
+                by_class[cls].append(method_name)
+
+            for cls, methods in sorted(by_class.items(), key=lambda x: x[0].file_path):
+                lines.append(f"   • {cls.name} ({len(methods)} methods):")
+                for method in sorted(methods)[:10]:  # Limit to first 10
+                    lines.append(f"     - {method}()")
+                if len(methods) > 10:
+                    lines.append(f"     ... and {len(methods) - 10} more")
+
+    # ====================================================================
+    # VERZEICHNIS-STRUKTUR MIT KLASSEN
+    # ====================================================================
+    lines.append("")
+    lines.append("")
+    lines.append("📁 DIRECTORY STRUCTURE WITH CLASSES")
     lines.append("=" * 80)
 
     for directory in sorted(report['by_directory'].keys()):
         classes = report['by_directory'][directory]
         lines.append(f"\n📂 {directory}/")
-        lines.append(f"   ({len(classes)} Klassen)")
+        lines.append(f"   ({len(classes)} classes)")
 
         # Gruppiere nach Datei
         by_file = defaultdict(list)
@@ -217,28 +347,70 @@ def format_tree_output(report: Dict) -> str:
                 if cls.decorators:
                     decorators = f" @{', @'.join(cls.decorators)}"
 
-                lines.append(
-                    f"      ├─ class {cls.name}{inheritance}{decorators}")
-                lines.append(
-                    f"      │  └─ Zeile {cls.line_number}, {len(cls.methods)} Methoden")
+                # Docstring als One-Liner
+                doc_info = ""
+                if cls.docstring:
+                    # Erste Zeile, max 60 Zeichen
+                    first_line = cls.docstring.split('\n')[0].strip()
+                    if len(first_line) > 60:
+                        first_line = first_line[:57] + "..."
+                    doc_info = f' | "{first_line}"'
+                else:
+                    doc_info = ' | ⚠️  NO DOCSTRING'
 
-    # Fehler
+                lines.append(
+                    f"      ├─ class {cls.name}{inheritance}{decorators}{doc_info}")
+                lines.append(
+                    f"      │  └─ Line {cls.line_number}, {len(cls.methods)} methods")
+
+                # Methoden mit Docstrings
+                if cls.methods:
+                    for i, (method_name, method_doc) in enumerate(cls.methods):
+                        is_last = (i == len(cls.methods) - 1)
+                        prefix = "      │     " if not is_last else "      │     "
+
+                        marker = "🔒" if method_name.startswith('_') else "🔓"
+
+                        # Methoden-Docstring als One-Liner
+                        method_doc_info = ""
+                        if method_doc:
+                            first_line = method_doc.split('\n')[0].strip()
+                            if len(first_line) > 50:
+                                first_line = first_line[:47] + "..."
+                            method_doc_info = f' | "{first_line}"'
+                        else:
+                            method_doc_info = ' | ⚠️'
+
+                        lines.append(
+                            f"{prefix}└─ {marker} {method_name}(){method_doc_info}")
+
+    # ====================================================================
+    # FEHLER
+    # ====================================================================
     if report['errors']:
-        lines.append(f"\n\n⚠️  FEHLER BEIM PARSEN:")
-        lines.append("-" * 80)
+        lines.append("")
+        lines.append("")
+        lines.append("⚠️  PARSING ERRORS")
+        lines.append("=" * 80)
         for file_path, error in report['errors']:
             lines.append(f"   ❌ {file_path}")
             lines.append(f"      {error}")
 
-    lines.append("\n" + "=" * 80)
+    lines.append("")
+    lines.append("=" * 80)
     return "\n".join(lines)
 
 
 def format_detailed_output(report: Dict) -> str:
-    """Formatiert detaillierten Report mit allen Methoden."""
+    """Formatiert detaillierten Report mit allen Methoden und Docstrings."""
     lines = []
+
+    # Statistics Header
+    lines.append(format_statistics_header(report))
+
+    lines.append("")
     lines.append("=" * 80)
-    lines.append("FINIEXTESTINGIDE - DETAILLIERTE KLASSEN-ANALYSE")
+    lines.append("DETAILED CLASS ANALYSIS")
     lines.append("=" * 80)
 
     for cls in sorted(report['all_classes'], key=lambda c: (c.file_path, c.line_number)):
@@ -246,18 +418,34 @@ def format_detailed_output(report: Dict) -> str:
         lines.append(f"class {cls.name}")
 
         if cls.base_classes:
-            lines.append(f"  Erbt von: {', '.join(cls.base_classes)}")
+            lines.append(f"  Inherits from: {', '.join(cls.base_classes)}")
 
         if cls.decorators:
             lines.append(f"  Decorators: {', '.join(cls.decorators)}")
 
-        lines.append(f"  Datei: {cls.file_path}:{cls.line_number}")
+        lines.append(f"  File: {cls.file_path}:{cls.line_number}")
 
+        # Klassen-Docstring
+        if cls.docstring:
+            lines.append(f"\n  Class Docstring:")
+            for line in cls.docstring.split('\n'):
+                lines.append(f"    {line}")
+        else:
+            lines.append(f"\n  ⚠️  NO CLASS DOCSTRING")
+
+        # Methoden mit Docstrings
         if cls.methods:
-            lines.append(f"  Methoden ({len(cls.methods)}):")
-            for method in cls.methods:
-                marker = "🔒" if method.startswith('_') else "🔓"
-                lines.append(f"    {marker} {method}()")
+            lines.append(f"\n  Methods ({len(cls.methods)}):")
+            for method_name, method_doc in cls.methods:
+                marker = "🔒" if method_name.startswith('_') else "🔓"
+                lines.append(f"\n    {marker} {method_name}()")
+
+                if method_doc:
+                    lines.append(f"       Docstring:")
+                    for line in method_doc.split('\n'):
+                        lines.append(f"         {line}")
+                else:
+                    lines.append(f"       ⚠️  NO DOCSTRING")
 
     return "\n".join(lines)
 

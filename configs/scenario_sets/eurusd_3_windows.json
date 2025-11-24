@@ -91,7 +91,7 @@
     {
       "name": "window_05",
       "symbol": "EURGBP",
-      "start_date": "2025-10-18T16:00:00+00:00",
+      "start_date": "2025-10-20T16:00:00+00:00",
       "end_date": "2025-10-20T17:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",

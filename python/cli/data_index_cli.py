@@ -19,6 +19,8 @@ from datetime import datetime
 import traceback
 import pandas as pd
 
+from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_worker.data_loader.data_inspector import DataInspector
 from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.data_worker.data_loader.tick_data_report import run_summary_report
 from python.data_worker.importer.tick_importer import TickDataImporter
@@ -36,6 +38,7 @@ class DataIndexCLI:
         """Initialize CLI"""
         self.data_dir = Path(data_dir)
         self.index_manager = TickIndexManager(self.data_dir)
+        self.bar_index_manager = BarsIndexManager(self.data_dir)
 
     def cmd_import(self, override: bool = False, time_offset: int = 0):
         """
@@ -195,43 +198,77 @@ class DataIndexCLI:
         print("Use 'gaps SYMBOL' for detailed gap analysis")
         print("="*60 + "\n")
 
+    def cmd_inspect(self, symbol: str, timeframe: str = None):
+        """
+        Inspect tick or bar data: metadata, schema, and sample rows.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Optional timeframe (if provided, inspect bars instead of ticks)
+        """
+        # Build indices if needed
+        self.index_manager.build_index()
+        self.bar_index_manager.build_index()
+
+        # Create inspector
+        inspector = DataInspector(
+            tick_index_manager=self.index_manager,
+            bar_index_manager=self.bar_index_manager
+        )
+
+        # Inspect ticks
+        result = inspector.inspect_ticks(symbol)
+        # Print results
+        inspector.print_inspection(result)
+        if timeframe:
+            # Inspect bars
+            result = inspector.inspect_bars(symbol, timeframe)
+            # Print results
+            inspector.print_inspection(result)
+
     def cmd_help(self):
         """Show help"""
         print("""
-📚 Data Index CLI - Usage
+            📚 Data Index CLI - Usage
 
-Commands:
-    import [--override] [--time-offset +N/-N]
-                        Import tick data from JSON to Parquet
-                        --override: Overwrite existing files
-                        --time-offset: UTC offset (REQUIRES explicit +/- sign!)
-                                      Valid: +1, -3, +5, -2
-                                      INVALID: 1, 3 (missing sign)
-    
-    rebuild             Rebuild index from Parquet files
-    status              Show index status and metadata
-    tick_data_report    Data Loader Summary Report & Test Load
-    coverage SYMBOL     Show coverage statistics for symbol
-    gaps SYMBOL         Analyze and report gaps for symbol
-    files SYMBOL --start DATE --end DATE
-                        Show files selected for time range
-    validate            Validate all symbols and show issues
-    help                Show this help
+            Commands:
+                import [--override] [--time-offset +N/-N]
+                                    Import tick data from JSON to Parquet
+                                    --override: Overwrite existing files
+                                    --time-offset: UTC offset (REQUIRES explicit +/- sign!)
+                                                Valid: +1, -3, +5, -2
+                                                INVALID: 1, 3 (missing sign)
+                
+                rebuild             Rebuild index from Parquet files
+                status              Show index status and metadata
+                tick_data_report    Data Loader Summary Report & Test Load
+                coverage SYMBOL     Show coverage statistics for symbol
+                gaps SYMBOL         Analyze and report gaps for symbol
+                files SYMBOL --start DATE --end DATE
+                                    Show files selected for time range
+                validate            Validate all symbols and show issues
+                inspect SYMBOL [TIMEFRAME]
+                                    Inspect tick or bar data (metadata, schema, sample)
+                                    - No timeframe: Inspect ticks
+                                    - With timeframe: Inspect bars
+                help                Show this help
 
-Examples:
-    python python/cli/data_index_cli.py import
-    python python/cli/data_index_cli.py import --time-offset -3
-    python python/cli/data_index_cli.py import --time-offset +2
-    python python/cli/data_index_cli.py import --override --time-offset -3
-    python python/cli/data_index_cli.py rebuild
-    python python/cli/data_index_cli.py status
-    python python/cli/data_index_cli.py coverage EURUSD
-    python python/cli/data_index_cli.py gaps EURUSD
-    python python/cli/data_index_cli.py files EURUSD --start "2025-09-23" --end "2025-09-24"
-    python python/cli/data_index_cli.py validate
+            Examples:
+                python python/cli/data_index_cli.py import
+                python python/cli/data_index_cli.py import --time-offset -3
+                python python/cli/data_index_cli.py import --time-offset +2
+                python python/cli/data_index_cli.py import --override --time-offset -3
+                python python/cli/data_index_cli.py rebuild
+                python python/cli/data_index_cli.py status
+                python python/cli/data_index_cli.py coverage EURUSD
+                python python/cli/data_index_cli.py gaps EURUSD
+                python python/cli/data_index_cli.py files EURUSD --start "2025-09-23" --end "2025-09-24"
+                python python/cli/data_index_cli.py validate
+                python python/cli/data_index_cli.py inspect EURUSD
+                python python/cli/data_index_cli.py inspect EURUSD M5
 
-⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
-""")
+            ⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
+            """)
 
 
 def parse_time_offset(value: str) -> int:
@@ -331,6 +368,16 @@ def main():
 
         elif command == "validate":
             cli.cmd_validate()
+
+        elif command == "inspect":
+            if len(sys.argv) < 3:
+                print("❌ Missing symbol. Usage: inspect SYMBOL [TIMEFRAME]")
+                sys.exit(1)
+
+            symbol = sys.argv[2]
+            timeframe = sys.argv[3] if len(sys.argv) > 3 else None
+
+            cli.cmd_inspect(symbol, timeframe)
 
         elif command == "help":
             cli.cmd_help()

@@ -220,7 +220,7 @@ class ProcessScenarioConfig:
             scenario.end_date) if scenario.end_date else None
 
         # CORRECTED: Use complete strategy_config
-        # This is already merged (global + scenario overrides) in config_loader
+        # This is already merged (global + scenario overrides) in scenario_config_loader
         strategy_config = scenario.strategy_config
 
         # Extract decision logic (for compatibility, already in strategy_config)

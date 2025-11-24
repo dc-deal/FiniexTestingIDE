@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from python.scenario.market_analyzer import MarketAnalyzer
+from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.scenario.scenario_generator import ScenarioGenerator
 from python.framework.types.scenario_generator_types import (
     GenerationStrategy,

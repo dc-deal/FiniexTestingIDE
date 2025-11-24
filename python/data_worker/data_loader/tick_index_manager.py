@@ -90,8 +90,21 @@ class TickIndexManager:
 
     def _scan_file(self, parquet_file: Path) -> Dict:
         """
-        Scan single Parquet file and extract metadata.
-        [UNCHANGED - works with any path structure]
+        Scan single Parquet file and extract metadata with statistics.
+
+        Extended to calculate:
+        - Spread statistics (avg points, avg pct)
+        - Tick frequency (ticks per second)
+        - Session distribution
+        - Market type and data source
+
+        Uses sampling for large files (>50k ticks) to optimize performance.
+
+        Args:
+            parquet_file: Path to parquet file
+
+        Returns:
+            Index entry dict with metadata and statistics
         """
         pq_file = pq.ParquetFile(parquet_file)
 
@@ -100,6 +113,7 @@ class TickIndexManager:
         except IndexError:
             symbol = "UNKNOWN"
 
+        # === BASIC METADATA (unchanged) ===
         first_row_group = pq_file.read_row_group(0, columns=['timestamp'])
         start_time = first_row_group['timestamp'][0].as_py()
 
@@ -114,16 +128,81 @@ class TickIndexManager:
         source_file = custom_metadata.get(
             b'source_file', b'unknown').decode('utf-8')
 
+        tick_count = pq_file.metadata.num_rows
+        file_size_mb = round(parquet_file.stat().st_size / (1024 * 1024), 2)
+
+        # === NEW: STATISTICS CALCULATION ===
+        # Load DataFrame for statistics (with sampling for large files)
+        if tick_count > 50000:
+            # Sample 10% for spread statistics (performance optimization)
+            df = pd.read_parquet(parquet_file)
+            sample_size = max(5000, int(tick_count * 0.1))
+            df_sample = df.sample(n=min(sample_size, len(df)))
+
+            # Calculate spread from sample
+            avg_spread_points = float(
+                df_sample['spread_points'].mean()) if 'spread_points' in df_sample else None
+            avg_spread_pct = float(
+                df_sample['spread_pct'].mean()) if 'spread_pct' in df_sample else None
+
+            # Sessions need full scan (no sampling)
+            sessions = df['session'].value_counts(
+            ).to_dict() if 'session' in df else {}
+        else:
+            # Small file: full scan
+            df = pd.read_parquet(parquet_file)
+
+            avg_spread_points = float(
+                df['spread_points'].mean()) if 'spread_points' in df else None
+            avg_spread_pct = float(df['spread_pct'].mean()
+                                   ) if 'spread_pct' in df else None
+            sessions = df['session'].value_counts(
+            ).to_dict() if 'session' in df else {}
+
+        # Calculate tick frequency (ticks per second)
+        duration_seconds = (end_time - start_time).total_seconds()
+        tick_frequency = round(tick_count / duration_seconds,
+                               2) if duration_seconds > 0 else 0.0
+
+        # === NEW: MARKET TYPE AND DATA SOURCE ===
+        # Try to get from metadata, fallback to defaults
+        market_type = custom_metadata.get(
+            b'market_type', b'forex_cfd').decode('utf-8')
+        data_source = custom_metadata.get(
+            b'data_source', b'mt5').decode('utf-8')
+
+        # Fallback: If not in metadata, use defaults based on source
+        if market_type == 'forex_cfd' and b'market_type' not in custom_metadata:
+            market_type = 'forex_cfd'  # Default for MT5 data
+        if data_source == 'mt5' and b'data_source' not in custom_metadata:
+            data_source = 'mt5'  # Default source
+
+        # === BUILD EXTENDED INDEX ENTRY ===
         return {
+            # Basic metadata (unchanged)
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
             'symbol': symbol,
             'start_time': start_time.isoformat(),
             'end_time': end_time.isoformat(),
-            'tick_count': pq_file.metadata.num_rows,
-            'file_size_mb': round(parquet_file.stat().st_size / (1024 * 1024), 2),
+            'tick_count': tick_count,
+            'file_size_mb': file_size_mb,
             'source_file': source_file,
-            'num_row_groups': pq_file.num_row_groups
+            'num_row_groups': pq_file.num_row_groups,
+
+            # NEW: Statistics
+            'statistics': {
+                'avg_spread_points': round(avg_spread_points, 2) if avg_spread_points else None,
+                'avg_spread_pct': round(avg_spread_pct, 6) if avg_spread_pct else None,
+                'tick_frequency_per_second': tick_frequency
+            },
+
+            # NEW: Session distribution (convert numpy int64 to Python int)
+            'sessions': {str(k): int(v) for k, v in sessions.items()},
+
+            # NEW: Market metadata
+            'market_type': market_type,
+            'data_source': data_source
         }
 
     def needs_rebuild(self) -> bool:
