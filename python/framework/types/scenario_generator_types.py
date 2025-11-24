@@ -36,12 +36,20 @@ class TradingSession(Enum):
     NEW_YORK = "new_york"
     TRANSITION = "transition"
 
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
+
 
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
     BALANCED = "balanced"
     BLOCKS = "blocks"
     STRESS = "stress"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
 
 
 # =============================================================================

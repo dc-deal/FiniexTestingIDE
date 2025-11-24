@@ -420,8 +420,10 @@ class TickDataImporter:
         Berechnet Trading-Sessions neu basierend auf UTC-Zeit.
         """
 
-        df['session'] = df['timestamp'].dt.hour.apply(
-            get_session_from_utc_hour)
+        if 'session' in df.columns:
+            df['session'] = df['session'].apply(
+                lambda x: x.value if hasattr(x, 'value') else str(x)
+            )
         return df
 
     def _check_for_existing_duplicate(
