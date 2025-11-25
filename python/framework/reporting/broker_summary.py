@@ -4,7 +4,7 @@ Displays broker configuration in batch summary reports
 """
 
 from typing import Dict, List, Set
-from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification

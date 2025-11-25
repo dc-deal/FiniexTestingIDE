@@ -314,6 +314,7 @@ class ProcessTickLoopResult:
     cost_breakdown: CostBreakdown = None,
     profiling_data: ProcessProfileData = None,
     tick_range_stats: TickRangeStats = None,
+    tick_loop_error: Exception = None
 
 
 # ============================================================================

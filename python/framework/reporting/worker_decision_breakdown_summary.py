@@ -11,7 +11,7 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import Any, Dict, List, Optional
-from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,

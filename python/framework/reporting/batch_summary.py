@@ -10,13 +10,14 @@ Architecture:
 
 from typing import Any, Dict
 from python.framework.reporting.broker_summary import BrokerSummary
-from python.framework.reporting.console_box_renderer import ConsoleBoxRenderer
+from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
-from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.types.rendering_types import BatchStatus
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_performance_types import ProfilingData
@@ -65,6 +66,29 @@ class BatchSummary:
         self._renderer = ConsoleRenderer()
         self._box_renderer = ConsoleBoxRenderer(self._renderer)
 
+    def _calculate_batch_status(self) -> BatchStatus:
+        """
+        Calculate batch execution status based on scenario results.
+
+        Returns:
+            BatchStatus.SUCCESS: All scenarios successful
+            BatchStatus.PARTIAL: Some scenarios failed
+            BatchStatus.FAILED: All scenarios failed
+        """
+        scenarios = self.batch_execution_summary.scenario_list
+
+        if not scenarios:
+            return BatchStatus.SUCCESS
+
+        failed_count = sum(1 for s in scenarios if not s.success)
+
+        if failed_count == 0:
+            return BatchStatus.SUCCESS
+        elif failed_count == len(scenarios):
+            return BatchStatus.FAILED
+        else:
+            return BatchStatus.PARTIAL
+
     def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
         # Build ProfilingData für alle Scenarios
 
@@ -87,29 +111,39 @@ class BatchSummary:
         Render complete batch summary.
 
         Sequence:
-        1. Header with basic stats
+        1. Header with basic stats (INCLUDING batch status)
         2. Scenario details (grid)
         3. Portfolio summaries (per scenario + aggregated)
         4. Performance details (per scenario + aggregated)
         5. Bottleneck analysis
-        6. Profiling analysis (NEW)
-        7. Worker decision breakdown (NEW)
+        6. Profiling analysis
+        7. Worker decision breakdown
         """
-        # Header
+        # Calculate batch status
+        batch_status = self._calculate_batch_status()
+
+        # Header with batch status
         self._renderer.section_header("🎉 EXECUTION RESULTS")
-        self._render_basic_stats()
+        self._render_basic_stats(batch_status)
 
         # Scenario details grid
         self._renderer.section_separator()
         self._renderer.print_bold("🔍 SCENARIO DETAILS")
         self._renderer.section_separator()
-        self._render_scenario_grid()
+
+        # Pass show_status_line flag
+        show_status_line = batch_status != BatchStatus.SUCCESS
+        self._render_scenario_grid(show_status_line)
 
         # Portfolio summaries
         self._renderer.section_separator()
         self._renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
         self._renderer.section_separator()
-        self.portfolio_summary.render_per_scenario(self._box_renderer)
+
+        # Pass show_status_line flag
+        self.portfolio_summary.render_per_scenario(
+            self._box_renderer
+        )
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(
@@ -151,8 +185,13 @@ class BatchSummary:
         # Footer
         self._renderer.print_separator(width=120)
 
-    def _render_basic_stats(self):
-        """Render basic execution statistics (top-level summary)."""
+    def _render_basic_stats(self, batch_status: BatchStatus):
+        """
+        Render basic execution statistics (top-level summary).
+
+        Args:
+            batch_status: Overall batch execution status
+        """
         batch_performance_data = self.batch_execution_summary
 
         success = batch_performance_data.success
@@ -163,12 +202,19 @@ class BatchSummary:
         batch_parallel = self.app_config.get_default_parallel_scenarios()
         max_parallel = self.app_config.get_default_max_parallel_scenarios()
 
-        # Render basic stats
-        success_str = self._renderer.green(f"✅ Success: {success}")
+        # NEW: Format batch status with color
+        if batch_status == BatchStatus.SUCCESS:
+            status_str = self._renderer.green("✅ Success: True")
+        elif batch_status == BatchStatus.PARTIAL:
+            status_str = self._renderer.yellow("⚠️ Success: Partial")
+        else:  # FAILED
+            status_str = self._renderer.red("❌ Success: False")
+
         scenarios_str = self._renderer.blue(f"📊 Scenarios: {scenarios_count}")
         time_str = self._renderer.blue(f"⏱️  Time: {exec_time:.2f}s")
 
-        print(f"{success_str}  |  {scenarios_str}  |  {time_str}")
+        # MODIFIED: Use new status_str
+        print(f"{status_str}  |  {scenarios_str}  |  {time_str}")
 
         # Batch mode
         mode_str = self._renderer.green(
@@ -181,13 +227,21 @@ class BatchSummary:
         else:
             print()
 
-    def _render_scenario_grid(self):
-        """Render scenario details in grid format."""
+    def _render_scenario_grid(self, show_status_line: bool):
+        """
+        Render scenario details in grid format.
+
+        Args:
+            show_status_line: Whether to show status line in boxes
+        """
         all_scenarios = self.batch_execution_summary.scenario_list
 
         if not all_scenarios:
             print("No scenario results available")
             return
 
-        # Use renderer for grid
-        self._box_renderer.render_scenario_grid(all_scenarios)
+        # MODIFIED: Pass show_status_line flag
+        self._box_renderer.render_scenario_grid(
+            all_scenarios,
+            show_status_line=show_status_line
+        )

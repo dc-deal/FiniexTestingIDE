@@ -4,6 +4,18 @@ Type definitions for console rendering configuration
 """
 
 from dataclasses import dataclass
+from enum import Enum
+
+
+class BatchStatus(Enum):
+    """
+    Batch execution status across all scenarios.
+
+    Used for conditional rendering and color coding in summary.
+    """
+    SUCCESS = "success"   # All scenarios successful
+    PARTIAL = "partial"   # Some scenarios failed
+    FAILED = "failed"     # All scenarios failed
 
 
 @dataclass

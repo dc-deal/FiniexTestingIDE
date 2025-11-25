@@ -15,10 +15,9 @@ Renders:
 - Bottleneck analysis (worst performers)
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
-from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_summary_aggregation_types import AggregatedPerformanceStats, DecisionLogicBottleneckData, ParallelBottleneckData, PerformanceBottlenecks, ScenarioBottleneckData, WorkerAggregateData, WorkerBottleneckData
 from python.framework.types.process_data_types import ProcessResult
@@ -43,15 +42,20 @@ class PerformanceSummary:
         self.batch_execution_summary: BatchExecutionSummary = batch_execution_summary
         self.all_scenarios: List[ProcessResult] = batch_execution_summary.scenario_list
 
-    def render_per_scenario(self, renderer: ConsoleRenderer) -> None:
+    def render_per_scenario(self, renderer: ConsoleRenderer):
         """
-        Render performance stats per scenario.
+        Render profiling breakdown per scenario.
+
+        Shows:
+        - Operation timing table
+        - Percentage breakdown
+        - Bottleneck identification
 
         Args:
             renderer: ConsoleRenderer instance
         """
         if not self.all_scenarios:
-            print("No performance data available")
+            print("No profiling data available")
             return
 
         for idx, scenario in enumerate(self.all_scenarios, 1):

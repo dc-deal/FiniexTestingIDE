@@ -131,6 +131,9 @@ class AbstractDecisionLogic(ABC):
         # Call implementation (subclass)
         order_result = self._execute_decision_impl(decision, tick)
 
+        if (order_result):
+            self._statistics.trades_requested += 1
+
         # Automatically update statistics
         self._update_decision_statistics(decision, order_result)
 

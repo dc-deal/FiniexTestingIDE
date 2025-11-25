@@ -7,8 +7,8 @@ Rendered in BOX format matching scenario details.
 
 from typing import Dict
 
-from python.framework.reporting.console_box_renderer import ConsoleBoxRenderer
-from python.framework.reporting.console_renderer import ConsoleRenderer
+from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.trading_env_stats_types import ExecutionStats, CostBreakdown
