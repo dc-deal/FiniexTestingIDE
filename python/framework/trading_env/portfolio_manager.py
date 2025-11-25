@@ -15,11 +15,12 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee, FeeType
-from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
+from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
 
@@ -79,7 +80,7 @@ class PortfolioManager:
         self._position_counter = 0
 
         # Cost tracking as CostBreakdown object
-        self._cost_tracking = CostBreakdown()
+        self._cost_tracking = CostBreakdown(currency=account_currency)
 
         # Statistics as direct attributes (no nested object)
         self._total_trades = 0

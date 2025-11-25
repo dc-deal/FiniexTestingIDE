@@ -11,13 +11,8 @@ Provides:
 """
 
 import re
-from typing import List
-from python.framework.reporting.console_box_renderer import ConsoleBoxRenderer
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.log_level import ColorCodes
-from python.framework.types.process_data_types import ProcessResult
-from python.framework.types.rendering_types import BoxRenderConfig
-from python.framework.utils.time_utils import format_duration, format_tick_timespan
 
 
 class ConsoleRenderer:
@@ -33,7 +28,6 @@ class ConsoleRenderer:
 
     def __init__(self):
         """Initialize console renderer."""
-        self._box_renderer = ConsoleBoxRenderer(self, BoxRenderConfig())
 
     # ============================================
     # Color Utilities
@@ -62,6 +56,18 @@ class ConsoleRenderer:
     def bold(self, text: str) -> str:
         """Make text bold."""
         return f"{ColorCodes.BOLD}{text}{ColorCodes.RESET}"
+
+    def pnl(self, input: float, currency: str):
+        """Return colorized P&L string based on value."""
+        amount_str = format_currency_simple(input, currency)
+
+        if input > 0:
+            return self.green(
+                f"+{amount_str}")
+        elif input < 0:
+            return self.red(amount_str)
+        else:
+            return amount_str
 
     # ============================================
     # Section Formatting
@@ -135,109 +141,3 @@ class ConsoleRenderer:
         # Add padding
         padding = ' ' * (width - visual_len)
         return text + padding
-
-    # ============================================
-    # Box Rendering (Symmetric)
-    # ============================================
-
-    def render_box(self, lines: List[str], box_width: int = 38) -> List[str]:
-        """
-        Render symmetric box around lines.
-
-        Args:
-            lines: Lines of text (may contain ANSI codes)
-            box_width: Total box width (including borders)
-
-        Returns:
-            List of box lines ready to print
-        """
-        content_width = box_width - 4  # Account for "│ " and " │"
-
-        box_lines = []
-
-        # Top border
-        box_lines.append(f"┌{'─' * (box_width - 2)}┐")
-
-        # Content lines
-        for line in lines:
-            padded = self.pad_line(line, content_width)
-            box_lines.append(f"│ {padded} │")
-
-        # Bottom border
-        box_lines.append(f"└{'─' * (box_width - 2)}┘")
-
-        return box_lines
-
-    # ============================================
-    # Grid Rendering
-    # ============================================
-
-    def render_scenario_grid(self, scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
-        """
-        Render scenarios in grid layout.
-
-        Args:
-            scenarios: List of Scenario objects
-            columns: Number of columns in grid
-            box_width: Width of each box
-        """
-        for i in range(0, len(scenarios), columns):
-            row_scenarios = scenarios[i:i+columns]
-
-            # Create lines for each box
-            all_boxes = []
-
-            for scenario in row_scenarios:
-                box_lines = self._box_renderer.create_scenario_box(
-                    scenario, box_width)
-                all_boxes.append(box_lines)
-
-            # Print boxes side by side
-            max_lines = max(len(box) for box in all_boxes)
-
-            for line_idx in range(max_lines):
-                line_parts = []
-                for box in all_boxes:
-                    if line_idx < len(box):
-                        line_parts.append(box[line_idx])
-                    else:
-                        line_parts.append(' ' * box_width)
-
-                print("  ".join(line_parts))
-
-            print()  # Empty line between rows
-
-    def render_portfolio_grid(self,  scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
-        """
-        Render portfolio stats in grid layout.
-
-        Args:
-            scenarios: List of scenario result dicts with portfolio stats
-            columns: Number of columns in grid
-            box_width: Width of each box
-        """
-        for i in range(0, len(scenarios), columns):
-            row_scenarios = scenarios[i:i+columns]
-
-            # Create lines for each box
-            all_boxes = []
-
-            for scenario in row_scenarios:
-                box_lines = self._box_renderer.create_portfolio_box(
-                    scenario, box_width)
-                all_boxes.append(box_lines)
-
-            # Print boxes side by side
-            max_lines = max(len(box) for box in all_boxes)
-
-            for line_idx in range(max_lines):
-                line_parts = []
-                for box in all_boxes:
-                    if line_idx < len(box):
-                        line_parts.append(box[line_idx])
-                    else:
-                        line_parts.append(' ' * box_width)
-
-                print("  ".join(line_parts))
-
-            print()  # Empty line between rows

@@ -10,6 +10,7 @@ Architecture:
 
 from typing import Any, Dict
 from python.framework.reporting.broker_summary import BrokerSummary
+from python.framework.reporting.console_box_renderer import ConsoleBoxRenderer
 from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
@@ -61,7 +62,8 @@ class BatchSummary:
             app_config=app_config
         )
         # Renderer for unified console output
-        self.renderer = ConsoleRenderer()
+        self._renderer = ConsoleRenderer()
+        self._box_renderer = ConsoleBoxRenderer(self._renderer)
 
     def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
         # Build ProfilingData für alle Scenarios
@@ -94,60 +96,60 @@ class BatchSummary:
         7. Worker decision breakdown (NEW)
         """
         # Header
-        self.renderer.section_header("🎉 EXECUTION RESULTS")
+        self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats()
 
         # Scenario details grid
-        self.renderer.section_separator()
-        self.renderer.print_bold("🔍 SCENARIO DETAILS")
-        self.renderer.section_separator()
+        self._renderer.section_separator()
+        self._renderer.print_bold("🔍 SCENARIO DETAILS")
+        self._renderer.section_separator()
         self._render_scenario_grid()
 
         # Portfolio summaries
-        self.renderer.section_separator()
-        self.renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
-        self.renderer.section_separator()
-        self.portfolio_summary.render_per_scenario(self.renderer)
+        self._renderer.section_separator()
+        self._renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
+        self._renderer.section_separator()
+        self.portfolio_summary.render_per_scenario(self._box_renderer)
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(
             self.batch_execution_summary.scenario_list)
         aggregated_portfolios = aggregator.aggregate_by_currency()
         self.portfolio_summary.render_aggregated(
-            self.renderer, aggregated_portfolios)
+            self._renderer, self._box_renderer, aggregated_portfolios)
 
         # Broker configuration
-        self.renderer.section_separator()
-        self.renderer.print_bold("🏦 BROKER CONFIGURATION")
-        self.renderer.section_separator()
-        self.broker_summary.render(self.renderer)
+        self._renderer.section_separator()
+        self._renderer.print_bold("🏦 BROKER CONFIGURATION")
+        self._renderer.section_separator()
+        self.broker_summary.render(self._renderer)
 
         # Performance summaries
-        self.renderer.section_separator()
-        self.renderer.print_bold("📊 PERFORMANCE DETAILS (PER SCENARIO)")
-        self.renderer.section_separator()
-        self.performance_summary.render_per_scenario(self.renderer)
-        self.performance_summary.render_aggregated(self.renderer)
-        self.performance_summary.render_bottleneck_analysis(self.renderer)
+        self._renderer.section_separator()
+        self._renderer.print_bold("📊 PERFORMANCE DETAILS (PER SCENARIO)")
+        self._renderer.section_separator()
+        self.performance_summary.render_per_scenario(self._renderer)
+        self.performance_summary.render_aggregated(self._renderer)
+        self.performance_summary.render_bottleneck_analysis(self._renderer)
 
         # === Profiling Analysis ===
-        self.renderer.section_separator()
-        self.renderer.print_bold("⚡ PROFILING ANALYSIS")
-        self.renderer.section_separator()
-        self.profiling_summary.render_per_scenario(self.renderer)
-        self.profiling_summary.render_aggregated(self.renderer)
-        self.profiling_summary.render_bottleneck_analysis(self.renderer)
+        self._renderer.section_separator()
+        self._renderer.print_bold("⚡ PROFILING ANALYSIS")
+        self._renderer.section_separator()
+        self.profiling_summary.render_per_scenario(self._renderer)
+        self.profiling_summary.render_aggregated(self._renderer)
+        self.profiling_summary.render_bottleneck_analysis(self._renderer)
 
         # === Worker Decision Breakdown ===
-        self.renderer.section_separator()
-        self.renderer.print_bold("🔍 WORKER DECISION BREAKDOWN")
-        self.renderer.section_separator()
-        self.worker_decision_breakdown.render_per_scenario(self.renderer)
-        self.worker_decision_breakdown.render_aggregated(self.renderer)
-        self.worker_decision_breakdown.render_overhead_analysis(self.renderer)
+        self._renderer.section_separator()
+        self._renderer.print_bold("🔍 WORKER DECISION BREAKDOWN")
+        self._renderer.section_separator()
+        self.worker_decision_breakdown.render_per_scenario(self._renderer)
+        self.worker_decision_breakdown.render_aggregated()
+        self.worker_decision_breakdown.render_overhead_analysis(self._renderer)
 
         # Footer
-        self.renderer.print_separator(width=120)
+        self._renderer.print_separator(width=120)
 
     def _render_basic_stats(self):
         """Render basic execution statistics (top-level summary)."""
@@ -162,16 +164,16 @@ class BatchSummary:
         max_parallel = self.app_config.get_default_max_parallel_scenarios()
 
         # Render basic stats
-        success_str = self.renderer.green(f"✅ Success: {success}")
-        scenarios_str = self.renderer.blue(f"📊 Scenarios: {scenarios_count}")
-        time_str = self.renderer.blue(f"⏱️  Time: {exec_time:.2f}s")
+        success_str = self._renderer.green(f"✅ Success: {success}")
+        scenarios_str = self._renderer.blue(f"📊 Scenarios: {scenarios_count}")
+        time_str = self._renderer.blue(f"⏱️  Time: {exec_time:.2f}s")
 
         print(f"{success_str}  |  {scenarios_str}  |  {time_str}")
 
         # Batch mode
-        mode_str = self.renderer.green(
-            "Parallel") if batch_parallel else self.renderer.yellow("Sequential")
-        print(f"{self.renderer.bold('⚙️  Batch Mode:')} {mode_str}", end="")
+        mode_str = self._renderer.green(
+            "Parallel") if batch_parallel else self._renderer.yellow("Sequential")
+        print(f"{self._renderer.bold('⚙️  Batch Mode:')} {mode_str}", end="")
 
         if batch_parallel and scenarios_count > 1:
             concurrent = min(max_parallel, scenarios_count)
@@ -188,4 +190,4 @@ class BatchSummary:
             return
 
         # Use renderer for grid
-        self.renderer.render_scenario_grid(all_scenarios)
+        self._box_renderer.render_scenario_grid(all_scenarios)

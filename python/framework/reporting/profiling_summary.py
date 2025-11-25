@@ -4,6 +4,7 @@ Performance profiling and bottleneck analysis reporting
 """
 
 from typing import Any, Dict, List, Optional
+from python.framework.reporting.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_metrics_types import (
     TickLoopProfile,
@@ -40,7 +41,7 @@ class ProfilingSummary:
         # Build profiling metrics from scenarios
         self.profiling_metrics = self._build_profiling_metrics()
 
-    def render_per_scenario(self, renderer):
+    def render_per_scenario(self, renderer: ConsoleRenderer):
         """
         Render profiling breakdown per scenario.
 
@@ -72,7 +73,7 @@ class ProfilingSummary:
 
             self._render_scenario_profile(profile, renderer)
 
-    def render_aggregated(self, renderer):
+    def render_aggregated(self, renderer: ConsoleRenderer):
         """
         Render aggregated profiling across all scenarios.
 
@@ -97,7 +98,7 @@ class ProfilingSummary:
         self._render_aggregated_details(renderer)
         print()
 
-    def render_bottleneck_analysis(self, renderer):
+    def render_bottleneck_analysis(self, renderer: ConsoleRenderer):
         """
         Render bottleneck analysis and optimization recommendations.
 
@@ -180,7 +181,7 @@ class ProfilingSummary:
 
         return metrics
 
-    def _render_scenario_profile(self, profile: TickLoopProfile, renderer):
+    def _render_scenario_profile(self, profile: TickLoopProfile, renderer: ConsoleRenderer):
         """
         Render single scenario's profiling breakdown.
 
@@ -269,7 +270,7 @@ class ProfilingSummary:
         # Per-operation averages
         self._render_cross_scenario_averages(renderer)
 
-    def _render_cross_scenario_averages(self, renderer):
+    def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):
         """Render average operation times across all scenarios."""
         # Aggregate
         operation_totals = {}
@@ -313,7 +314,7 @@ class ProfilingSummary:
             time_str = color_func(f"{avg_time:>12.3f}ms")
             print(f"{op_name} {time_str:<15}")
 
-    def _render_bottleneck_details(self, renderer):
+    def _render_bottleneck_details(self, renderer: ConsoleRenderer):
         """
         Render detailed bottleneck analysis.
 

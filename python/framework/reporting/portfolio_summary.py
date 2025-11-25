@@ -7,10 +7,13 @@ Rendered in BOX format matching scenario details.
 
 from typing import Dict
 
+from python.framework.reporting.console_box_renderer import ConsoleBoxRenderer
+from python.framework.reporting.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.currency_codes import format_currency_simple
-from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
-from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio
+from python.framework.types.trading_env_stats_types import ExecutionStats, CostBreakdown
+from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
+from python.framework.utils.math_utils import force_negative, force_positive
 
 
 class PortfolioSummary:
@@ -24,7 +27,7 @@ class PortfolioSummary:
         """
         self.batch_execution_summary = batch_execution_summary
 
-    def render_per_scenario(self, renderer):
+    def render_per_scenario(self, box_renderer: ConsoleBoxRenderer):
         """
         Render portfolio stats per scenario in BOX format.
 
@@ -35,13 +38,16 @@ class PortfolioSummary:
 
         # Use grid renderer
         print()
-        renderer.render_portfolio_grid(
+        box_renderer.render_portfolio_grid(
             scenarios=scenarios,
             columns=3,      # 3 boxes per row
             box_width=38    # Same width as scenario boxes
         )
 
-    def render_aggregated(self, renderer, aggregated_portfolios: Dict[str, AggregatedPortfolio]):
+    def render_aggregated(self,
+                          renderer: ConsoleRenderer,
+                          box_renderer: ConsoleBoxRenderer,
+                          aggregated_portfolios: Dict[str, AggregatedPortfolio]):
         """
         Render aggregated portfolio stats grouped by currency.
 
@@ -76,13 +82,14 @@ class PortfolioSummary:
 
         # Render multi-currency warning if applicable
         if has_multiple_currencies or self._has_any_time_divergence(aggregated_portfolios):
-            self._render_aggregation_warnings(renderer, aggregated_portfolios)
+            self._render_aggregation_warnings(
+                renderer, aggregated_portfolios)
 
         print()
 
     def _render_currency_group(
         self,
-        renderer,
+        renderer: ConsoleRenderer,
         aggregated: AggregatedPortfolio,
         show_currency_header: bool
     ):
@@ -110,10 +117,10 @@ class PortfolioSummary:
 
     def _render_aggregated_details(
         self,
-        portfolio_stats: PortfolioStats,
+        portfolio_stats: AggregatedPortfolioStats,
         execution_stats: ExecutionStats,
         cost_breakdown: CostBreakdown,
-        renderer
+        renderer: ConsoleRenderer
     ):
         """Render detailed aggregated portfolio stats."""
         # Trading summary
@@ -123,6 +130,11 @@ class PortfolioSummary:
         long_trades = portfolio_stats.total_long_trades
         short_trades = portfolio_stats.total_short_trades
         win_rate = portfolio_stats.win_rate
+        # min/max aggregated
+        max_drawdown = portfolio_stats.max_drawdown
+        max_drawdown_scenario = portfolio_stats.max_drawdown_scenario
+        max_equity = portfolio_stats.max_equity
+        max_equity_scenario = portfolio_stats.max_equity_scenario
 
         total_profit = portfolio_stats.total_profit
         total_loss = portfolio_stats.total_loss
@@ -136,12 +148,11 @@ class PortfolioSummary:
         # Get currency from portfolio stats
         currency = portfolio_stats.currency
 
-        pnl_color = renderer.green if total_pnl >= 0 else renderer.red
-        pnl_str = pnl_color(format_currency_simple(total_pnl, currency))
+        pnl_str = renderer.pnl(total_pnl, currency)
 
         print(f"      Total P&L: {pnl_str}  |  "
-              f"Profit: {format_currency_simple(total_profit, currency)}  |  "
-              f"Loss: {format_currency_simple(total_loss, currency)}")
+              f"Profit: {renderer.pnl(force_positive(total_profit), currency)}  |  "
+              f"Loss: {renderer.pnl(force_negative(total_loss), currency)}")
 
         # Profit factor
         profit_factor = portfolio_stats.profit_factor
@@ -173,11 +184,23 @@ class PortfolioSummary:
         currency = cost_breakdown.currency
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f"      Spread Cost: {format_currency_simple(spread_cost, currency)}  |  "
-              f"Commission: {format_currency_simple(commission, currency)}  |  "
-              f"Swap: {format_currency_simple(swap, currency)}")
+        print(f"      Spread Cost: {renderer.pnl(force_negative(spread_cost), currency)} |  "
+              f"Commission: {renderer.pnl(force_negative(commission), currency)} |  "
+              f"Swap: {renderer.pnl(force_negative(swap), currency)}")
         print(
-            f"      Total Costs: {format_currency_simple(total_costs, currency)}")
+            f"      Total Costs: {renderer.pnl(force_negative(total_costs), currency)}")
+
+        # Risk Metrics
+        max_dd_pct = 0.0
+        if portfolio_stats.max_equity > 0:
+            max_dd_pct = max_drawdown / \
+                portfolio_stats.max_equity * 100
+
+        print(f"\n   📉 RISK METRICS:")
+        print(f"      Max Drawdown: {renderer.pnl(force_negative(max_drawdown), currency)} "
+              f"({max_dd_pct:.1f}%) - Scenario: {max_drawdown_scenario}")
+        print(f"      Max Equity: {renderer.pnl(force_positive(max_equity), currency)} "
+              f"- Scenario: {max_equity_scenario}")
 
     def _has_any_time_divergence(
         self,
@@ -196,7 +219,7 @@ class PortfolioSummary:
 
     def _render_aggregation_warnings(
         self,
-        renderer,
+        renderer: ConsoleRenderer,
         aggregated_portfolios: Dict[str, AggregatedPortfolio]
     ):
         """

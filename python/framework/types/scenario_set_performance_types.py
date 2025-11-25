@@ -6,10 +6,8 @@ FULLY TYPED: Uses dataclasses from trading_env_types instead of generic dicts.
 ProfilingData now fully typed instead of Dict[str, Any]
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
-from python.framework.types.trading_env_types import PortfolioStats, ExecutionStats, CostBreakdown
+from dataclasses import dataclass
+from typing import Dict
 
 
 @dataclass

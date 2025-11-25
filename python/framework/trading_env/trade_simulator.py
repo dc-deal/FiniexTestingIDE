@@ -21,7 +21,7 @@ from python.framework.trading_env.order_latency_simulator import OrderLatencySim
 from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
-from python.framework.types.trading_env_types import AccountInfo, ExecutionStats
+from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
 from python.framework.utils.trade_simulator_utils import pending_order_to_position
 from .broker_config import BrokerConfig
 from .portfolio_manager import PortfolioManager, Position

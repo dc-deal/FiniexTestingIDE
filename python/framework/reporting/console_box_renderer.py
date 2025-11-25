@@ -13,8 +13,10 @@ must have identical line counts.
 """
 
 from typing import List
+from python.framework.reporting.console_renderer import ConsoleRenderer
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.rendering_types import BoxRenderConfig
+from python.framework.utils.math_utils import force_negative, force_positive
 from python.framework.utils.time_utils import format_duration, format_tick_timespan
 from python.framework.types.currency_codes import format_currency_simple
 
@@ -27,7 +29,7 @@ class ConsoleBoxRenderer:
     for grid rendering.
     """
 
-    def __init__(self, renderer, config: BoxRenderConfig = None):
+    def __init__(self, renderer: ConsoleRenderer, config: BoxRenderConfig = None):
         """
         Initialize box renderer.
 
@@ -38,7 +40,113 @@ class ConsoleBoxRenderer:
         self._renderer = renderer
         self._config = config or BoxRenderConfig()
 
-    def create_scenario_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
+    # ============================================
+    # Grid Rendering
+    # ============================================
+
+    def render_scenario_grid(self, scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
+        """
+        Render scenarios in grid layout.
+
+        Args:
+            scenarios: List of Scenario objects
+            columns: Number of columns in grid
+            box_width: Width of each box
+        """
+        for i in range(0, len(scenarios), columns):
+            row_scenarios = scenarios[i:i+columns]
+
+            # Create lines for each box
+            all_boxes = []
+
+            for scenario in row_scenarios:
+                box_lines = self._create_scenario_box(
+                    scenario, box_width)
+                all_boxes.append(box_lines)
+
+            # Print boxes side by side
+            max_lines = max(len(box) for box in all_boxes)
+
+            for line_idx in range(max_lines):
+                line_parts = []
+                for box in all_boxes:
+                    if line_idx < len(box):
+                        line_parts.append(box[line_idx])
+                    else:
+                        line_parts.append(' ' * box_width)
+
+                print("  ".join(line_parts))
+
+            print()  # Empty line between rows
+
+    def render_portfolio_grid(self,  scenarios: List[ProcessResult], columns: int = 3, box_width: int = 38):
+        """
+        Render portfolio stats in grid layout.
+
+        Args:
+            scenarios: List of scenario result dicts with portfolio stats
+            columns: Number of columns in grid
+            box_width: Width of each box
+        """
+        for i in range(0, len(scenarios), columns):
+            row_scenarios = scenarios[i:i+columns]
+
+            # Create lines for each box
+            all_boxes = []
+
+            for scenario in row_scenarios:
+                box_lines = self._create_portfolio_box(
+                    scenario, box_width)
+                all_boxes.append(box_lines)
+
+            # Print boxes side by side
+            max_lines = max(len(box) for box in all_boxes)
+
+            for line_idx in range(max_lines):
+                line_parts = []
+                for box in all_boxes:
+                    if line_idx < len(box):
+                        line_parts.append(box[line_idx])
+                    else:
+                        line_parts.append(' ' * box_width)
+
+                print("  ".join(line_parts))
+
+            print()  # Empty line between rows
+
+   # ============================================
+    # Box Rendering (Symmetric)
+    # ============================================
+
+    def _render_box(self, lines: List[str], box_width: int = 38) -> List[str]:
+        """
+        Render symmetric box around lines.
+
+        Args:
+            lines: Lines of text (may contain ANSI codes)
+            box_width: Total box width (including borders)
+
+        Returns:
+            List of box lines ready to print
+        """
+        content_width = box_width - 4  # Account for "│ " and " │"
+
+        box_lines = []
+
+        # Top border
+        box_lines.append(f"┌{'─' * (box_width - 2)}┐")
+
+        # Content lines
+        for line in lines:
+            padded = self._renderer.pad_line(line, content_width)
+            box_lines.append(f"│ {padded} │")
+
+        # Bottom border
+        box_lines.append(f"└{'─' * (box_width - 2)}┘")
+
+        return box_lines
+
+    def _create_scenario_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
         Create box lines for scenario statistics.
 
@@ -66,7 +174,7 @@ class ConsoleBoxRenderer:
         # Normal success case
         return self._create_success_scenario_box(scenario, box_width)
 
-    def create_portfolio_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
+    def _create_portfolio_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
         Create box lines for portfolio statistics.
 
@@ -152,7 +260,7 @@ class ConsoleBoxRenderer:
             self._renderer.green("✅ Status: Success"),
         ]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _create_success_portfolio_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
@@ -186,7 +294,7 @@ class ConsoleBoxRenderer:
                 "",
                 "",
             ]
-            return self._renderer.render_box(lines, box_width)
+            return self._render_box(lines, box_width)
 
         # Extract stats
         total_trades = portfolio_stats.total_trades
@@ -208,14 +316,6 @@ class ConsoleBoxRenderer:
 
         # Get currency
         currency = portfolio_stats.currency
-
-        # Format P&L with color and currency
-        if total_pnl >= 0:
-            pnl_str = self._renderer.green(
-                f"+{format_currency_simple(total_pnl, currency)}")
-        else:
-            pnl_str = self._renderer.red(
-                f"{format_currency_simple(total_pnl, currency)}")
 
         broker_name = portfolio_stats.broker_name
         configured_currency = portfolio_stats.configured_account_currency
@@ -245,6 +345,12 @@ class ConsoleBoxRenderer:
         else:
             rate_display = ""
 
+        # Calculate max drawdown percentage
+        max_dd_pct = 0.0
+        if portfolio_stats.max_equity > 0:
+            max_dd_pct = portfolio_stats.max_drawdown / \
+                portfolio_stats.max_equity * 100
+
         # Create content lines (11 stats + 1 status)
         if total_trades > 0:
             lines = [
@@ -253,9 +359,11 @@ class ConsoleBoxRenderer:
                 f"Account: {currency_display}",
                 f"Trades executed: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
-                f"P&L: {pnl_str}{rate_display}",
+                f"P&L: {self._renderer.pnl(total_pnl, currency)}{rate_display}",
                 f"Balance: {current_balance_str}",
                 f"Init: {initial_balance_str}",
+                f"Max DD: {self._renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)",
+                f"Max Equity: {self._renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
                 f"Spread: {format_currency_simple(spread_cost, currency)}",
                 f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
                 f"Long/Short: {long_trades}/{short_trades}",
@@ -277,7 +385,7 @@ class ConsoleBoxRenderer:
                 self._renderer.green("✅ Status: Success"),
             ]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _create_hybrid_scenario_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
@@ -340,7 +448,7 @@ class ConsoleBoxRenderer:
             self._renderer.red("⚠️ CRITICAL: Errors detected"),
         ]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _create_hybrid_portfolio_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
@@ -377,7 +485,7 @@ class ConsoleBoxRenderer:
                 "",
                 self._renderer.red("⚠️ CRITICAL: Errors detected"),
             ]
-            return self._renderer.render_box(lines, box_width)
+            return self._render_box(lines, box_width)
 
         # Extract stats
         total_trades = portfolio_stats.total_trades
@@ -399,14 +507,6 @@ class ConsoleBoxRenderer:
 
         # Get currency
         currency = portfolio_stats.currency
-
-        # Format P&L with color and currency
-        if total_pnl >= 0:
-            pnl_str = self._renderer.green(
-                f"+{format_currency_simple(total_pnl, currency)}")
-        else:
-            pnl_str = self._renderer.red(
-                f"{format_currency_simple(total_pnl, currency)}")
 
         broker_name = portfolio_stats.broker_name
         configured_currency = portfolio_stats.configured_account_currency
@@ -436,6 +536,12 @@ class ConsoleBoxRenderer:
         else:
             rate_display = ""
 
+        # Calculate max drawdown percentage
+        max_dd_pct = 0.0
+        if portfolio_stats.max_equity > 0:
+            max_dd_pct = portfolio_stats.max_drawdown / \
+                portfolio_stats.max_equity * 100
+
         # Create content lines (11 stats + 1 CRITICAL warning)
         if total_trades > 0:
             lines = [
@@ -444,9 +550,11 @@ class ConsoleBoxRenderer:
                 f"Account: {currency_display}",
                 f"Trades executed: {total_trades} ({winning}W/{losing}L)",
                 f"Win Rate: {win_rate:.1%}",
-                f"P&L: {pnl_str}{rate_display}",
+                f"P&L: {self._renderer.pnl(total_pnl, currency)}{rate_display}",
                 f"Balance: {current_balance_str}",
                 f"Init: {initial_balance_str}",
+                f"Max DD: {self._renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)",
+                f"Max Equity: {self._renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
                 f"Spread: {format_currency_simple(spread_cost, currency)}",
                 f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
                 f"Long/Short: {long_trades}/{short_trades}",
@@ -468,7 +576,7 @@ class ConsoleBoxRenderer:
                 self._renderer.red("⚠️ CRITICAL: Errors detected"),
             ]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _create_scenario_error_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
@@ -514,7 +622,7 @@ class ConsoleBoxRenderer:
         # Truncate if too long
         lines = lines[:10]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _create_portfolio_error_box(self, scenario: ProcessResult, box_width: int) -> List[str]:
         """
@@ -549,7 +657,7 @@ class ConsoleBoxRenderer:
             "",
         ]
 
-        return self._renderer.render_box(lines, box_width)
+        return self._render_box(lines, box_width)
 
     def _wrap_error_message(self, message: str, width: int, max_lines: int) -> List[str]:
         """
