@@ -162,6 +162,18 @@
             "justMyCode": false
         },
         {
+            "name": "📈 CLI - Gap Report: USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "gaps",
+                "USDJPY"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "📈 CLI - Coverage: EURUSD",
             "type": "debugpy",
             "request": "launch",
