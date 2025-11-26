@@ -8,15 +8,11 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.data_preperation.shared_data_preparator import SharedDataPreparator
 from python.framework.data_preperation.broker_data_preperator import BrokerDataPreparator
-from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.components.logger.abstract_logger import AbstractLogger
-from typing import Dict, List, Optional, Protocol, Tuple
-
-from python.framework.types.validation_types import ValidationResult
-from python.framework.validators.scenario_data_validator import ScenarioDataValidator
+from typing import List, Optional, Protocol
 
 
 class StatusBroadcaster(Protocol):

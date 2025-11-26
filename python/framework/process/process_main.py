@@ -62,31 +62,43 @@ def process_main(
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
-        # === BUILD RESULT ===
-        # logger.run_timestamp - start
-
+        # === Get Log Buffer ===
         log_buffer = scenario_logger.get_buffer()
         scenario_logger.close()
 
-        # === STATUS: COMPLETED ===
-        send_status_update_process(
-            live_queue, config, ScenarioStatus.COMPLETED)
+        # === Process Final status ===
+        success = True
+        error_type = None
+        error_message = None
+        tick_loop_error = tick_loop_results.tick_loop_error
+        if (tick_loop_error is not None):
+            # tick loop failed, pare error, sucess is false.
+            success = False
+            error_type = type(tick_loop_error).__name__
+            error_message = str(tick_loop_error)
+            send_status_update_process(live_queue, config,
+                                       ScenarioStatus.FINISHED_WITH_ERROR)
+        if success == True:
+            send_status_update_process(
+                live_queue, config, ScenarioStatus.COMPLETED)
 
+        # === BUILD RESULT ===
         result = ProcessResult(
-            success=True,
+            success=success,
             scenario_name=config.name,
-            symbol=config.symbol,
             scenario_index=config.scenario_index,
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
-            scenario_logger_buffer=log_buffer
+            scenario_logger_buffer=log_buffer,
+            error_type=error_type,
+            error_message=error_message
         )
         scenario_logger.debug(
             f"🕐 {config.name} returning at {time.time()}")
         return result
 
     except Exception as e:
-        # Error handling: Return error details for logging
+        # HARD Error handling: Return error details for logging
         log_buffer = None
         try:
             # try to fetch Log, if possible.
@@ -99,7 +111,6 @@ def process_main(
         return ProcessResult(
             success=False,
             scenario_name=config.name,
-            symbol=config.symbol,
             scenario_index=config.scenario_index,
             error_type=type(e).__name__,
             error_message=str(e),

@@ -13,12 +13,11 @@ from typing import Dict, List
 from datetime import datetime
 
 from python.framework.types.process_data_types import ProcessResult
-from python.framework.types.trading_env_types import (
-    PortfolioStats,
+from python.framework.types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown
 )
-from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio
+from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats
 
 
 class PortfolioAggregator:
@@ -89,7 +88,7 @@ class PortfolioAggregator:
         Returns:
             Aggregated portfolio for this currency
         """
-        portfolio_stats = self._aggregate_portfolio_stats(scenarios)
+        aggregated_portfolio_stats = self._aggregate_portfolio_stats(scenarios)
         execution_stats = self._aggregate_order_execution_stats(scenarios)
         cost_breakdown = self._aggregate_cost_breakdown(scenarios)
 
@@ -100,7 +99,7 @@ class PortfolioAggregator:
             currency=currency,
             scenario_names=[s.scenario_name for s in scenarios],
             scenario_count=len(scenarios),
-            portfolio_stats=portfolio_stats,
+            portfolio_stats=aggregated_portfolio_stats,
             execution_stats=execution_stats,
             cost_breakdown=cost_breakdown,
             time_span_days=time_span_days,
@@ -110,7 +109,7 @@ class PortfolioAggregator:
     def _aggregate_portfolio_stats(
         self,
         scenarios: List[ProcessResult]
-    ) -> PortfolioStats:
+    ) -> AggregatedPortfolioStats:
         """
         Aggregate portfolio statistics from scenarios.
 
@@ -130,6 +129,11 @@ class PortfolioAggregator:
         total_spread_cost = 0.0
         total_commission = 0.0
         total_swap = 0.0
+        # Track worst drawdown and peak equity
+        max_drawdown = 0.0
+        max_drawdown_scenario = ""
+        max_equity = 0.0
+        max_equity_scenario = ""
 
         for scenario in scenarios:
             stats = scenario.tick_loop_results.portfolio_stats
@@ -144,6 +148,16 @@ class PortfolioAggregator:
             total_commission += stats.total_commission
             total_swap += stats.total_swap
 
+            # Track worst drawdown (most negative)
+            if abs(stats.max_drawdown) > abs(max_drawdown):
+                max_drawdown = stats.max_drawdown
+                max_drawdown_scenario = scenario.scenario_name
+
+            # Track peak equity (highest)
+            if stats.max_equity > max_equity:
+                max_equity = stats.max_equity
+                max_equity_scenario = scenario.scenario_name
+
         win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
         profit_factor = total_profit / total_loss if total_loss > 0 else (
             0.0 if total_profit == 0 else float('inf'))
@@ -157,9 +171,8 @@ class PortfolioAggregator:
             first_broker = scenarios[0].tick_loop_results.portfolio_stats.broker_name
             broker_name = f"{first_broker} (+{len(unique_brokers)-1} more)"
         currency = scenarios[0].tick_loop_results.portfolio_stats.currency
-        configured_currency = scenarios[0].tick_loop_results.portfolio_stats.configured_account_currency
 
-        return PortfolioStats(
+        return AggregatedPortfolioStats(
             total_trades=total_trades,
             total_long_trades=total_long_trades,
             total_short_trades=total_short_trades,
@@ -167,8 +180,10 @@ class PortfolioAggregator:
             losing_trades=losing_trades,
             total_profit=total_profit,
             total_loss=total_loss,
-            max_drawdown=0.0,  # Not aggregated
-            max_equity=0.0,     # Not aggregated
+            max_drawdown=max_drawdown,
+            max_drawdown_scenario=max_drawdown_scenario,
+            max_equity=max_equity,
+            max_equity_scenario=max_equity_scenario,
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_spread_cost=total_spread_cost,
@@ -177,8 +192,7 @@ class PortfolioAggregator:
             total_fees=total_spread_cost + total_commission + total_swap,
             currency=currency,
             broker_name=broker_name,
-            configured_account_currency=configured_currency,
-            current_conversion_rate=None  # - Not meaningful in aggregation
+            current_conversion_rate=None
         )
 
     def _aggregate_order_execution_stats(

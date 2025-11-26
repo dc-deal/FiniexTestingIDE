@@ -160,16 +160,19 @@ class SharedDataPreparator:
                 break
 
         if start_file_idx is None:
-            # Start time not in any file, find next file after start_time
-            for idx, file_info in enumerate(files):
-                file_start = pd.to_datetime(file_info['start_time'], utc=True)
-                if file_start >= start_time:
-                    start_file_idx = idx
-                    break
+            # CRITICAL: No silent fallback! Hard error if start_date not available
+            # This error should never occur if Phase 0.5 validation ran correctly
 
-        if start_file_idx is None:
+            # Build helpful error message with available range
+            first_available = pd.to_datetime(files[0]['start_time'], utc=True)
+            last_available = pd.to_datetime(files[-1]['end_time'], utc=True)
+
             raise ValueError(
-                f"No tick data found for {symbol} starting at {start_time}")
+                f"No tick data available for {symbol} starting at {start_time}. "
+                f"Available data range: {first_available.strftime('%Y-%m-%d %H:%M:%S')} UTC "
+                f"→ {last_available.strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                f"This error indicates Phase 0.5 validation was skipped or failed."
+            )
 
         # Load files until max_ticks reached
         all_ticks = []

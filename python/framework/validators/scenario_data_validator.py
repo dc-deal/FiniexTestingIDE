@@ -84,6 +84,87 @@ class ScenarioDataValidator:
 
         return allowed_categories
 
+    def validate_date_logic(
+        self,
+        scenario: SingleScenario
+    ) -> List[str]:
+        """
+        Validate basic date logic (config sanity check).
+
+        Checks:
+        - end_date must be after start_date
+
+        Args:
+            scenario: Scenario to validate
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        start_date = self._parse_datetime(scenario.start_date)
+        end_date = self._parse_datetime(
+            scenario.end_date) if scenario.end_date else None
+
+        # Check basic logic
+        if end_date and end_date < start_date:
+            errors.append(
+                f"Invalid date range: end_date {end_date.strftime('%Y-%m-%d %H:%M:%S')} UTC "
+                f"is BEFORE start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                f"This is a configuration error."
+            )
+
+        return errors
+
+    def validate_data_availability(
+        self,
+        scenario: SingleScenario,
+        report: CoverageReport
+    ) -> List[str]:
+        """
+        Validate that scenario dates are within available data range.
+
+        Assumes date logic is already validated (_validate_date_logic).
+
+        Checks:
+        - start_date must be >= first available tick
+        - end_date must be <= last available tick
+
+        Args:
+            scenario: Scenario to validate
+            report: Coverage report for symbol
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        start_date = self._parse_datetime(scenario.start_date)
+        end_date = self._parse_datetime(
+            scenario.end_date) if scenario.end_date else None
+
+        # Get data range from coverage report
+        data_start = self._ensure_utc_aware(report.start_time)
+        data_end = self._ensure_utc_aware(report.end_time)
+
+        # Check if start_date is before available data
+        if start_date < data_start:
+            errors.append(
+                f"start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC is BEFORE "
+                f"available data range (earliest: {data_start.strftime('%Y-%m-%d %H:%M:%S')} UTC). "
+                f"No ticks exist for this period! Adjust start_date to >= {data_start.strftime('%Y-%m-%d')}."
+            )
+
+         # Check if end_date is after available data
+        if end_date and end_date > data_end:
+            errors.append(
+                f"end_date {end_date.strftime('%Y-%m-%d %H:%M:%S')} UTC is AFTER "
+                f"available data range (latest: {data_end.strftime('%Y-%m-%d %H:%M:%S')} UTC). "
+                f"Adjust end_date to <= {data_end.strftime('%Y-%m-%d')}."
+            )
+
+        return errors
+
     def _ensure_utc_aware(self, dt: datetime) -> datetime:
         """
         Ensure datetime is UTC-aware.
@@ -126,6 +207,12 @@ class ScenarioDataValidator:
         invalid_scenarios: List[Tuple[SingleScenario, ValidationResult]] = []
 
         for scenario in scenarios:
+            if not scenario.is_valid():
+                # perhaps something went wrong before---
+                invalid_scenarios.append(
+                    (scenario, scenario.validation_result))
+                continue
+
             result = self._validate_single_scenario(
                 scenario, shared_data, requirements_map
             )

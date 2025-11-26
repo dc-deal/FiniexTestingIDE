@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from python.framework.types.live_stats_config_types import ScenarioStatus
-from python.framework.types.trading_env_types import PortfolioStats
+from python.framework.types.portfolio_aggregation_types import PortfolioStats
 
 
 @dataclass

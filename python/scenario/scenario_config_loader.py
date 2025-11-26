@@ -7,9 +7,6 @@ import copy  # CRITICAL: For deep copying nested structures
 import json
 from pathlib import Path
 from typing import List, Dict, Any
-from datetime import datetime
-from python.framework.exceptions.configuration_errors import ScenarioSetConfigurationError
-from python.framework.exceptions.data_validation_errors import InvalidDateRangeError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.validators.scenario_validator import ScenarioValidator
@@ -72,12 +69,7 @@ class ScenarioConfigLoader:
         scenarios: List[SingleScenario] = []
         disabled_count = 0
 
-        scenario_set_name = config.get('scenario_set_name', [])
-        if not scenario_set_name:
-            raise ScenarioSetConfigurationError(
-                file_name=config_path,
-                reason="Property 'scenario_set_name' is missing in JSON root.",
-                sceanrio_set_configuration=config)
+        scenario_set_name = config.get('scenario_set_name', "unknown")
 
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
@@ -120,11 +112,6 @@ class ScenarioConfigLoader:
                 warn_on_override=warn_on_override
             )
 
-            # ============================================
-            # DATE VALIDATION & MODE DETECTION
-            # ============================================
-            self._validate_scenario_dates(scenario_data)
-
             scenario = SingleScenario(
                 name=scenario_data['name'],
                 symbol=scenario_data['symbol'],
@@ -142,20 +129,6 @@ class ScenarioConfigLoader:
         if disabled_count > 0:
             vLog.debug(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
-
-        # === CURRENCY VALIDATION ===
-        # Validate that all scenarios use same quote currency (for MVP)
-        if scenarios:
-            try:
-                detected_currency = ScenarioValidator.get_currency_consistency(
-                    scenarios)
-                vLog.info(
-                    f"✅ Currency validation passed: All scenarios use {detected_currency} as quote currency"
-                )
-            except ValueError as e:
-                # Re-raise with enhanced error message
-                vLog.error(f"❌ Currency validation failed:\n{str(e)}")
-                raise
 
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
 
@@ -219,57 +192,3 @@ class ScenarioConfigLoader:
             )
 
         return merged
-
-    def _validate_scenario_dates(
-        self,
-        scenario_data: Dict[str, Any]
-    ) -> None:
-        """
-            Validate scenario date range and log execution mode.
-
-            NO AUTO-FIX! Just validation and mode logging.
-
-            Cases:
-            A) max_ticks set + valid dates → INFO (tick-limited mode)
-            B) max_ticks null + valid dates → INFO (timespan mode)
-            C) max_ticks null + invalid dates → ERROR (critical config error)
-            D) max_ticks set + invalid dates → ERROR (invalid config)
-
-            Args:
-                scenario_data: Scenario dict (read-only)
-
-            Raises:
-                ValueError: If dates are invalid
-            """
-        start_date_str = scenario_data['start_date']
-        end_date_str = scenario_data['end_date']
-        max_ticks = scenario_data.get('max_ticks')
-        name = scenario_data['name']
-
-        # Parse dates for comparison
-        start_dt = datetime.fromisoformat(start_date_str)
-        end_dt = datetime.fromisoformat(end_date_str)
-
-        # Check date validity
-        if end_dt < start_dt:
-            raise InvalidDateRangeError(
-                scenario_name=name,
-                start_date=start_date_str,
-                end_date=end_date_str,
-                max_ticks=max_ticks
-            )
-        else:
-            # Valid dates - log execution mode
-            if max_ticks:
-                # Case A: max_ticks mode
-                vLog.info(
-                    f"ℹ️  Scenario '{name}': Tick-limited mode (max_ticks={max_ticks:,})"
-                )
-            else:
-                # Case B: Timespan mode
-                duration = end_dt - start_dt
-                days = duration.days
-                hours = duration.seconds // 3600
-                vLog.info(
-                    f"ℹ️  Scenario '{name}': Timespan mode ({days}d {hours}h)"
-                )

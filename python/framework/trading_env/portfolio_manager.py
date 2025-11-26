@@ -15,11 +15,12 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
 from .trading_fees import AbstractTradingFee, FeeType
-from python.framework.types.trading_env_types import AccountInfo, PortfolioStats, CostBreakdown
+from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
 
@@ -44,7 +45,6 @@ class PortfolioManager:
         leverage: int,
         margin_call_level: float,
         stop_out_level: float,
-        configured_account_currency: str
     ):
         """
         Initialize portfolio manager.
@@ -63,7 +63,6 @@ class PortfolioManager:
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
-        self.configured_account_currency = configured_account_currency
         self._last_conversion_rate: Optional[float] = None
 
         # Account state
@@ -79,7 +78,7 @@ class PortfolioManager:
         self._position_counter = 0
 
         # Cost tracking as CostBreakdown object
-        self._cost_tracking = CostBreakdown()
+        self._cost_tracking = CostBreakdown(currency=account_currency)
 
         # Statistics as direct attributes (no nested object)
         self._total_trades = 0
@@ -537,7 +536,6 @@ class PortfolioManager:
             total_fees=self._cost_tracking.total_fees,
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),
-            configured_account_currency=self.configured_account_currency,
             current_conversion_rate=self._last_conversion_rate,
             current_balance=self.balance,
             initial_balance=self.initial_balance

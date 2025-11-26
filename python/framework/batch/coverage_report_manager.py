@@ -49,6 +49,9 @@ class CoverageReportManager:
         self._coverage_reports: Dict[str, CoverageReport] = {}
         self._app_config = app_config
 
+        # Create validator
+        self._validator = None
+
     def generate_reports(self):
         """
         Generate coverage reports for all symbols.
@@ -78,6 +81,119 @@ class CoverageReportManager:
 
         self._coverage_reports = coverage_reports
 
+        # Create validator
+        self._validator = ScenarioDataValidator(
+            coverage_reports=self._coverage_reports,
+            app_config=self._app_config,
+            logger=self._logger
+        )
+
+    def validate_availability(
+        self,
+        scenarios: List[SingleScenario]
+    ) -> Tuple[List[SingleScenario], List[Tuple[SingleScenario, ValidationResult]]]:
+        """
+        Validate data availability BEFORE loading (Phase 0.5).
+
+        Pre-Load Validation:
+        - Date logic check (end >= start)
+        - Coverage report availability
+        - Date range within available data
+
+        Side Effects:
+        - Sets scenario.validation_result for ALL scenarios
+        - Invalid scenarios get is_valid() = False
+
+        Args:
+            scenarios: List of scenarios to validate
+
+        Returns:
+            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        """
+        self._logger.info("🔍 Phase 0.5: Validating data availability...")
+
+        valid_scenarios = []
+        invalid_scenarios = []
+
+        for scenario in scenarios:
+            if not scenario.is_valid():
+                # perhaps something went wrong before---
+                invalid_scenarios.append(
+                    (scenario, scenario.validation_result))
+                continue
+            # === STEP 1: Validate date logic (config sanity) ===
+            date_logic_errors = self._validator.validate_date_logic(scenario)
+
+            if date_logic_errors:
+                # Config error - don't proceed to availability check
+                for error in date_logic_errors:
+                    self._logger.error(f"❌ {scenario.name}: {error}")
+
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=date_logic_errors,
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                invalid_scenarios.append((scenario, validation_result))
+                continue
+
+            # === STEP 2: Check coverage report availability ===
+            report = self._coverage_reports.get(scenario.symbol)
+            if not report:
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[
+                        f"No coverage report available for {scenario.symbol}"],
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                invalid_scenarios.append((scenario, validation_result))
+                self._logger.error(
+                    f"❌ {scenario.name}: No coverage report for {scenario.symbol}"
+                )
+                continue
+
+            # === STEP 3: Validate data availability ===
+            availability_errors = self._validator.validate_data_availability(
+                scenario, report)
+
+            if availability_errors:
+                for error in availability_errors:
+                    self._logger.error(f"❌ {scenario.name}: {error}")
+
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=availability_errors,
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                invalid_scenarios.append((scenario, validation_result))
+            else:
+                # All checks passed
+                validation_result = ValidationResult(
+                    is_valid=True,
+                    scenario_name=scenario.name,
+                    errors=[],
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                valid_scenarios.append((scenario, validation_result))
+
+        if invalid_scenarios:
+            self._logger.warning(
+                f"⚠️  {len(invalid_scenarios)} scenario(s) failed availability check - skipped"
+            )
+
+        self._logger.info(
+            f"✅ Availability check: {len(valid_scenarios)}/{len(scenarios)} scenarios valid"
+        )
+
+        return valid_scenarios, invalid_scenarios
+
     def validate_after_load(
         self,
         scenarios: List[SingleScenario],
@@ -99,26 +215,12 @@ class CoverageReportManager:
         """
         self._logger.info("🔍 Phase 1.5: Validating data quality...")
 
-        # Create validator
-        validator = ScenarioDataValidator(
-            coverage_reports=self._coverage_reports,
-            app_config=self._app_config,
-            logger=self._logger
-        )
-
         # Validate all scenarios
-        valid_scenarios, invalid_scenarios, = validator.validate_loaded_data(
+        valid_scenarios, invalid_scenarios, = self._validator.validate_loaded_data(
             scenarios=scenarios,
             shared_data=shared_data,
             requirements_map=requirements_map
         )
-
-        # Attach scenarios with validation result
-        for scenario, validation_result in invalid_scenarios:
-            scenario.validation_result = validation_result
-        for scenario, validation_result in valid_scenarios:
-            scenario.validation_result = validation_result
-
         if invalid_scenarios:
             self._logger.warning(
                 f"⚠️  {len(invalid_scenarios)} scenario(s) failed validation - skipped"

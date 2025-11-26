@@ -8,11 +8,8 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 from python.configuration import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
-from python.framework.exceptions.data_validation_errors import DataValidationError
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
-import os
-import platform
 
 from python.components.logger.bootstrap_logger import get_logger
 vLog = get_logger()
@@ -97,12 +94,6 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
             app_config=app_config_loader
         )
         report_coordinator.generate_and_log()
-
-    except DataValidationError as e:
-        vLog.validation_error(
-            message=str(e),
-            context=e.get_context()
-        )
 
     except FileNotFoundError as e:
         vLog.config_error(

@@ -52,6 +52,7 @@ class DecisionLogicStatistics:
     flat_signals: int = 0         # FLAT actions generated
     orders_executed: int = 0      # Orders successfully executed
     orders_rejected: int = 0      # Orders rejected by broker
+    trades_requested: int = 0
 
 
 @dataclass

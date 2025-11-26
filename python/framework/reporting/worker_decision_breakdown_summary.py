@@ -11,6 +11,7 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import Any, Dict, List, Optional
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_metrics_types import (
     WorkerDecisionBreakdown,
@@ -32,7 +33,7 @@ class WorkerDecisionBreakdownSummary:
         self.scenario_list = batch_execution_summary.scenario_list
         self.breakdowns = self._build_breakdowns()
 
-    def render_per_scenario(self, renderer):
+    def render_per_scenario(self, renderer: ConsoleRenderer):
         """Render per scenario breakdown."""
         if not self.breakdowns:
             print("No data")
@@ -45,7 +46,7 @@ class WorkerDecisionBreakdownSummary:
                 print()
             self._render_scenario_breakdown(breakdown, renderer)
 
-    def render_aggregated(self, renderer):
+    def render_aggregated(self):
         """Render aggregated breakdown."""
         if not self.breakdowns:
             print("No data")

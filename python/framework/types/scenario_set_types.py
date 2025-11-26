@@ -45,8 +45,12 @@ class SingleScenario:
     broker_type: BrokerType = None
     trade_simulator_config: Optional[Dict[str, Any]] = None
 
+    # account currency and the original value from configuration (can be "auto")
+    account_currency: str = ''
+    configured_account_currency: str = ''
+
     # === VALIDATION TRACKING  ===
-    validation_result: Optional[ValidationResult] = None
+    validation_result: List[ValidationResult] = field(default_factory=list)
 
     def __post_init__(self):
         if self.name is None:
@@ -95,9 +99,11 @@ class SingleScenario:
         Returns:
             True if no validation result or validation passed
         """
-        if self.validation_result is None:
-            return False
-        return not self.validation_result.has_errors()
+        if not self.validation_result:
+            return True
+
+        # Prüfe alle ValidationResult-Objekte
+        return all(v.is_valid for v in self.validation_result)
 
 
 @dataclass

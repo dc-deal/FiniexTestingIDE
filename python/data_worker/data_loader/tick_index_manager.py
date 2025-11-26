@@ -287,7 +287,7 @@ class TickIndexManager:
         """Generate coverage report for a symbol """
         if symbol not in self.index:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
-            return CoverageReport(symbol, [], [], [])
+            return None
 
         entries = self.index[symbol]
 
@@ -358,4 +358,5 @@ class TickIndexManager:
     def print_coverage_report(self, symbol: str) -> None:
         """Print coverage report for a symbol """
         report = self.get_coverage_report(symbol)
-        print(report.generate_report())
+        if report is not None:
+            print(report.generate_report())

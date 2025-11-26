@@ -124,14 +124,14 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.process_data_types import PostProcessResult
 from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
 from python.configuration import AppConfigManager
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.components.logger.abstract_logger import AbstractLogger
 from multiprocessing import Manager
-from typing import Dict, List
 import time
+from python.framework.validators.scenario_validator import ScenarioValidator
 
 
 class BatchOrchestrator:
@@ -253,9 +253,13 @@ class BatchOrchestrator:
         Execute all scenarios with coordinated phases.
 
         WORKFLOW:
-        Phase 0: Requirements Collection (Serial)
-        Phase 1: Data Preparation (Serial)
-        Phase 2: Scenario Execution (Parallel/Sequential)
+        Phase 1: Index & Coverage Setup (Serial)
+        Phase 2: Availability Validation (Serial)
+        Phase 3: Requirements Collection (Serial)
+        Phase 4: Data Loading (Serial)
+        Phase 5: Quality Validation (Serial)
+        Phase 6: Execution (Parallel/Sequential)
+        Phase 7: Summary & Reporting
 
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
@@ -282,36 +286,41 @@ class BatchOrchestrator:
         if self._display:
             self._display.start()
 
+            # ========================================================================
+        # PHASE 0: CONFIG VALIDATION
         # ========================================================================
-        # PHASE 0: REQUIREMENTS COLLECTION
-        # ========================================================================
-        requirements_map, warmup_requirements_by_scenario = (
-            self._requirements_collector.collect(self._scenarios)
+        self._logger.info("🔍 Phase 0: Validating configuration...")
+
+        # 1. Validate scenario names (unique, non-empty)
+        ScenarioValidator.validate_scenario_names(
+            scenarios=self._scenarios,
+            logger=self._logger
+        )
+
+        # 2. Validate account_currency compatibility with symbols
+        ScenarioValidator.validate_account_currencies(
+            scenarios=self._scenarios,
+            logger=self._logger
+        )
+
+        # set scenario final currencies.
+        ScenarioValidator.set_scenario_account_currency(
+            scenarios=self._scenarios,
+            logger=self._logger
         )
 
         # ========================================================================
-        # PHASE 1: DATA PREPARATION (Serial)
+        # PHASE 1: INDEX & COVERAGE SETUP
         # ========================================================================
+        self._logger.info("📊 Phase 1: Index & coverage setup...")
+
         data_coordinator = DataPreparationCoordinator(
             scenarios=self._scenarios,
             logger=self._logger,
             app_config=self._app_config_manager
         )
 
-        shared_data = data_coordinator.prepare(
-            requirements_map=requirements_map,
-            status_broadcaster=self._live_stats_coordinator
-        )
-
-        # ========================================================================
-        # PHASE 1.5: QUALITY VALIDATION
-        # ========================================================================
-        self._logger.info("📊 Phase 1.5: Quality validation...")
-
-        self._live_stats_coordinator.broadcast_status(
-            ScenarioStatus.WARMUP_COVERAGE)
-
-        # Generate coverage reports (time-consuming but index-feeded and negligible)
+        # Build tick index and generate coverage reports
         tick_index_manager = data_coordinator.get_tick_index_manager()
         coverage_report_manager = CoverageReportManager(
             logger=self._logger,
@@ -321,22 +330,71 @@ class BatchOrchestrator:
         )
         coverage_report_manager.generate_reports()
 
-        # validation
-        valid_scenarios, invalid_scenarios = coverage_report_manager.validate_after_load(
-            scenarios=self._scenarios,
-            shared_data=shared_data,
-            requirements_map=requirements_map
+        # ========================================================================
+        # PHASE 2: AVAILABILITY VALIDATION
+        # ========================================================================
+        self._logger.info("🔍 Phase 2: Validating data availability...")
+
+        # Validate that all scenarios have data available
+        # IMPORTANT: Initializes validation_result for ALL SingleScenario objects
+        valid_after_availability, invalid_availability = (
+            coverage_report_manager.validate_availability(
+                scenarios=self._scenarios
+            )
         )
+
+        # ========================================================================
+        # PHASE 3: REQUIREMENTS COLLECTION
+        # ========================================================================
+        self._logger.info("📋 Phase 3: Collecting data requirements...")
+
+        # Collect requirements from valid scenarios only
+        # collect() internally skips scenarios where is_valid() == False
+        requirements_map, warmup_requirements_by_scenario = (
+            self._requirements_collector.collect(self._scenarios)
+        )
+
+        # ========================================================================
+        # PHASE 4: DATA LOADING
+        # ========================================================================
+        self._logger.info("📦 Phase 4: Loading data...")
+
+        # Prepare data only for scenarios in requirements_map
+        shared_data = data_coordinator.prepare(
+            requirements_map=requirements_map,
+            status_broadcaster=self._live_stats_coordinator
+        )
+
+        # ========================================================================
+        # PHASE 5: QUALITY VALIDATION
+        # ========================================================================
+        self._logger.info("🔬 Phase 5: Validating data quality...")
+
+        self._live_stats_coordinator.broadcast_status(
+            ScenarioStatus.WARMUP_COVERAGE)
+
+        valid_scenarios, invalid_scenarios = (
+            coverage_report_manager.validate_after_load(
+                scenarios=self._scenarios,
+                shared_data=shared_data,
+                requirements_map=requirements_map
+            )
+        )
+
+        # Calculate total invalid scenarios
+        total_invalid = len(invalid_availability) + len(invalid_scenarios)
 
         self._logger.info(
-            f"✅ Continuing with {len(valid_scenarios)}/{len(self._scenarios)} valid scenario(s)"
+            f"✅ Continuing with {len(valid_scenarios)}/{len(self._scenarios)} "
+            f"valid scenario(s) ({total_invalid} filtered out)"
         )
 
         # ========================================================================
-        # PHASE 2: SCENARIO EXECUTION (Parallel/Sequential)
+        # PHASE 6: EXECUTION
         # ========================================================================
-        self._logger.info("🚦 Phase 2: Executing scenarios...")
+        self._logger.info("🚀 Phase 6: Executing scenarios...")
 
+        # Execute scenarios
         if self._parallel_scenarios and scenario_count > 1:
             results = self._execution_coordinator.execute_parallel(
                 scenarios=self._scenarios,
@@ -364,25 +422,18 @@ class BatchOrchestrator:
                 pass
 
         # ========================================================================
-        # PHASE 3: BUILD SUMMARY
+        # PHASE 7: SUMMARY & REPORTING
         # ========================================================================
-        self._logger.info(
-            f"🕐 Create BatchExecutionSummary : {time.time()}"
-        )
+        self._logger.info("📊 Phase 7: Building summary...")
 
-        summary = BatchExecutionSummary(
-            success=True,
-            scenarios_count=len(self._scenarios),
+        summary = BatchExecutionSummary.from_process_results(
+            scenarios=self._scenarios,
+            results=results,
             summary_execution_time=summary_execution_time,
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
-            scenario_list=results
         )
 
         # Error handling
-        self._logger.info(
-            f"🕐 Scenario error check : {time.time()}"
-        )
-
         failed_results = [r for r in results if not r.success]
         if failed_results:
             # After all processing, raise comprehensive error

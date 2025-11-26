@@ -52,6 +52,15 @@ class RequirementsCollector:
 
         # Collect requirements from each scenario
         for idx, scenario in enumerate(scenarios):
+            if not scenario.is_valid():
+                self._logger.warning(
+                    f"⚠️  Collection of Scenario {idx+1}/{len(scenarios)}: "
+                    f"{scenario.name} - SKIPPED (validation failed)"
+                )
+                # assume no requirements.
+                self._warmup_requirements_by_scenario[idx] = {}
+                continue
+
             warmup_reqs = self._aggregate_requirements.add_scenario(
                 scenario=scenario,
                 scenario_index=idx,

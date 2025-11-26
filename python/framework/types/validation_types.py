@@ -55,3 +55,18 @@ class ValidationResult:
                 report_lines.append(f"  • {warning}")
 
         return "\n".join(report_lines)
+
+
+def get_validation_list_report(validation_list:  List[ValidationResult]) -> str:
+    if not validation_list:
+        return "No validation results available"
+
+    reports = []
+    for validation in validation_list:
+        if not validation.is_valid:
+            reports.append(validation.get_full_report())
+
+    if not reports:
+        return "Scenario is valid"
+
+    return "\n\n".join(reports)
