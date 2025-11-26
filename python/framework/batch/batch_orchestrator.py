@@ -114,8 +114,8 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
-from python.framework.batch.coverage_report_manager import CoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
+from python.framework.batch.coverage_report_manager import CoverageReportManager
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
@@ -124,12 +124,14 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.process_data_types import PostProcessResult
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.configuration import AppConfigManager
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.components.logger.abstract_logger import AbstractLogger
-import time
 from multiprocessing import Manager
+import time
+from python.framework.validators.scenario_validator import ScenarioValidator
 
 
 class BatchOrchestrator:
@@ -284,6 +286,29 @@ class BatchOrchestrator:
         if self._display:
             self._display.start()
 
+            # ========================================================================
+        # PHASE 0: CONFIG VALIDATION
+        # ========================================================================
+        self._logger.info("🔍 Phase 0: Validating configuration...")
+
+        # 1. Validate scenario names (unique, non-empty)
+        ScenarioValidator.validate_scenario_names(
+            scenarios=self._scenarios,
+            logger=self._logger
+        )
+
+        # 2. Validate account_currency compatibility with symbols
+        ScenarioValidator.validate_account_currencies(
+            scenarios=self._scenarios,
+            logger=self._logger
+        )
+
+        # set scenario final currencies.
+        ScenarioValidator.set_scenario_account_currency(
+            scenarios=self._scenarios,
+            logger=self._logger
+        )
+
         # ========================================================================
         # PHASE 1: INDEX & COVERAGE SETUP
         # ========================================================================
@@ -348,13 +373,9 @@ class BatchOrchestrator:
         self._live_stats_coordinator.broadcast_status(
             ScenarioStatus.WARMUP_COVERAGE)
 
-        # Validate quality of loaded data (gaps, warmup bars)
-        # Only pass scenarios that passed availability check
-        still_valid_scenarios = [s for s in self._scenarios if s.is_valid()]
-
         valid_scenarios, invalid_scenarios = (
             coverage_report_manager.validate_after_load(
-                scenarios=still_valid_scenarios,
+                scenarios=self._scenarios,
                 shared_data=shared_data,
                 requirements_map=requirements_map
             )
@@ -373,7 +394,7 @@ class BatchOrchestrator:
         # ========================================================================
         self._logger.info("🚀 Phase 6: Executing scenarios...")
 
-        # Execute scenarios (coordinator handles is_valid() checks internally)
+        # Execute scenarios
         if self._parallel_scenarios and scenario_count > 1:
             results = self._execution_coordinator.execute_parallel(
                 scenarios=self._scenarios,
@@ -405,12 +426,11 @@ class BatchOrchestrator:
         # ========================================================================
         self._logger.info("📊 Phase 7: Building summary...")
 
-        summary = BatchExecutionSummary(
-            success=True,
-            scenarios_count=len(self._scenarios),
+        summary = BatchExecutionSummary.from_process_results(
+            scenarios=self._scenarios,
+            results=results,
             summary_execution_time=summary_execution_time,
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
-            scenario_list=results
         )
 
         # Error handling

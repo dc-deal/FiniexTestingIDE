@@ -116,6 +116,11 @@ class CoverageReportManager:
         invalid_scenarios = []
 
         for scenario in scenarios:
+            if not scenario.is_valid():
+                # perhaps something went wrong before---
+                invalid_scenarios.append(
+                    (scenario, scenario.validation_result))
+                continue
             # === STEP 1: Validate date logic (config sanity) ===
             date_logic_errors = self._validator.validate_date_logic(scenario)
 
@@ -130,7 +135,7 @@ class CoverageReportManager:
                     errors=date_logic_errors,
                     warnings=[]
                 )
-                scenario.validation_result = validation_result
+                scenario.validation_result.append(validation_result)
                 invalid_scenarios.append((scenario, validation_result))
                 continue
 
@@ -144,7 +149,7 @@ class CoverageReportManager:
                         f"No coverage report available for {scenario.symbol}"],
                     warnings=[]
                 )
-                scenario.validation_result = validation_result
+                scenario.validation_result.append(validation_result)
                 invalid_scenarios.append((scenario, validation_result))
                 self._logger.error(
                     f"❌ {scenario.name}: No coverage report for {scenario.symbol}"
@@ -165,7 +170,7 @@ class CoverageReportManager:
                     errors=availability_errors,
                     warnings=[]
                 )
-                scenario.validation_result = validation_result
+                scenario.validation_result.append(validation_result)
                 invalid_scenarios.append((scenario, validation_result))
             else:
                 # All checks passed
@@ -175,7 +180,7 @@ class CoverageReportManager:
                     errors=[],
                     warnings=[]
                 )
-                scenario.validation_result = validation_result
+                scenario.validation_result.append(validation_result)
                 valid_scenarios.append((scenario, validation_result))
 
         if invalid_scenarios:
@@ -216,13 +221,6 @@ class CoverageReportManager:
             shared_data=shared_data,
             requirements_map=requirements_map
         )
-
-        # Attach scenarios with validation result
-        for scenario, validation_result in invalid_scenarios:
-            scenario.validation_result = validation_result
-        for scenario, validation_result in valid_scenarios:
-            scenario.validation_result = validation_result
-
         if invalid_scenarios:
             self._logger.warning(
                 f"⚠️  {len(invalid_scenarios)} scenario(s) failed validation - skipped"

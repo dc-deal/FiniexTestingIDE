@@ -14,12 +14,12 @@ All box types maintain identical line count for grid alignment.
 from typing import List
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.grid.console_grid_renderer import render_box
-from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.process_data_types import PostProcessResult, ProcessResult
 from python.framework.utils.time_utils import format_duration, format_tick_timespan
 
 
 def create_scenario_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -53,7 +53,7 @@ def create_scenario_box(
 
 
 def _build_success_scenario_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -75,7 +75,7 @@ def _build_success_scenario_box(
     tick_range_stats = scenario.tick_loop_results.tick_range_stats
 
     scenario_name = scenario.scenario_name[:28]
-    symbol = scenario.symbol
+    symbol = scenario.single_scenario.symbol
     ticks = performance_stats.ticks_processed
     nfSig = decision_statistics.buy_signals + decision_statistics.sell_signals
     buys = decision_statistics.buy_signals

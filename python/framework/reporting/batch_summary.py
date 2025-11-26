@@ -150,7 +150,7 @@ class BatchSummary:
             self.batch_execution_summary.scenario_list)
         aggregated_portfolios = aggregator.aggregate_by_currency()
         self.portfolio_summary.render_aggregated(
-            self._renderer, self._box_renderer, aggregated_portfolios)
+            self._renderer, aggregated_portfolios)
 
         # Broker configuration
         self._renderer.section_separator()

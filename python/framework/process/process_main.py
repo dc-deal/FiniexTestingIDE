@@ -86,7 +86,6 @@ def process_main(
         result = ProcessResult(
             success=success,
             scenario_name=config.name,
-            symbol=config.symbol,
             scenario_index=config.scenario_index,
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
@@ -112,7 +111,6 @@ def process_main(
         return ProcessResult(
             success=False,
             scenario_name=config.name,
-            symbol=config.symbol,
             scenario_index=config.scenario_index,
             error_type=type(e).__name__,
             error_message=str(e),

@@ -12,15 +12,15 @@ All box types maintain identical line count for grid alignment.
 """
 
 from typing import List
+from python.framework.types.process_data_types import PostProcessResult
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.grid.console_grid_renderer import render_box
-from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
 def create_portfolio_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -33,7 +33,7 @@ def create_portfolio_box(
     - Hybrid: Portfolio data + CRITICAL warning
 
     Args:
-        scenario: ProcessResult object
+        scenario: PostProcessResult object
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -54,7 +54,7 @@ def create_portfolio_box(
 
 
 def _build_success_portfolio_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -62,7 +62,7 @@ def _build_success_portfolio_box(
     Build portfolio box for successful execution.
 
     Args:
-        scenario: ProcessResult with success=True
+        scenario: PostProcessResult with success=True
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -123,7 +123,7 @@ def _build_success_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = portfolio_stats.configured_account_currency
+    configured_currency = scenario.single_scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -184,7 +184,7 @@ def _build_success_portfolio_box(
 
 
 def _build_hybrid_portfolio_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -194,7 +194,7 @@ def _build_hybrid_portfolio_box(
     Shows portfolio data from partial execution + CRITICAL warning.
 
     Args:
-        scenario: ProcessResult with portfolio_stats + errors
+        scenario: PostProcessResult with portfolio_stats + errors
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -249,7 +249,7 @@ def _build_hybrid_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = portfolio_stats.configured_account_currency
+    configured_currency = scenario.single_scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -304,7 +304,7 @@ def _build_hybrid_portfolio_box(
 
 
 def _build_error_portfolio_box(
-    scenario: ProcessResult,
+    scenario: PostProcessResult,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -314,7 +314,7 @@ def _build_error_portfolio_box(
     Minimal display - error details shown in scenario box only.
 
     Args:
-        scenario: ProcessResult with success=False
+        scenario: PostProcessResult with success=False
         box_width: Total box width
         show_status_line: Whether to show status line
 

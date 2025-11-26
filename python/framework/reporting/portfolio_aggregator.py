@@ -171,7 +171,6 @@ class PortfolioAggregator:
             first_broker = scenarios[0].tick_loop_results.portfolio_stats.broker_name
             broker_name = f"{first_broker} (+{len(unique_brokers)-1} more)"
         currency = scenarios[0].tick_loop_results.portfolio_stats.currency
-        configured_currency = scenarios[0].tick_loop_results.portfolio_stats.configured_account_currency
 
         return AggregatedPortfolioStats(
             total_trades=total_trades,
@@ -193,7 +192,6 @@ class PortfolioAggregator:
             total_fees=total_spread_cost + total_commission + total_swap,
             currency=currency,
             broker_name=broker_name,
-            configured_account_currency=configured_currency,
             current_conversion_rate=None
         )
 

@@ -7,7 +7,6 @@ import copy  # CRITICAL: For deep copying nested structures
 import json
 from pathlib import Path
 from typing import List, Dict, Any
-from python.framework.exceptions.configuration_errors import ScenarioSetConfigurationError
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.validators.scenario_validator import ScenarioValidator
@@ -70,12 +69,7 @@ class ScenarioConfigLoader:
         scenarios: List[SingleScenario] = []
         disabled_count = 0
 
-        scenario_set_name = config.get('scenario_set_name', [])
-        if not scenario_set_name:
-            raise ScenarioSetConfigurationError(
-                file_name=config_path,
-                reason="Property 'scenario_set_name' is missing in JSON root.",
-                sceanrio_set_configuration=config)
+        scenario_set_name = config.get('scenario_set_name', "unknown")
 
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
@@ -135,20 +129,6 @@ class ScenarioConfigLoader:
         if disabled_count > 0:
             vLog.debug(
                 f"🔻 Filtered out {disabled_count} disabled scenario(s)")
-
-        # === CURRENCY VALIDATION ===
-        # Validate that all scenarios use same quote currency (for MVP)
-        if scenarios:
-            try:
-                detected_currency = ScenarioValidator.get_currency_consistency(
-                    scenarios)
-                vLog.info(
-                    f"✅ Currency validation passed: All scenarios use {detected_currency} as quote currency"
-                )
-            except ValueError as e:
-                # Re-raise with enhanced error message
-                vLog.error(f"❌ Currency validation failed:\n{str(e)}")
-                raise
 
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
 

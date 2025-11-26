@@ -10,7 +10,7 @@ CORRECTIONS:
 - account_currency: Changed from 'currency' for clarity (auto-detection support)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dateutil import parser
@@ -236,11 +236,10 @@ class ProcessScenarioConfig:
             "worker_parallel_threshold_ms", 1.0
         )
 
+        # accountt currency is set in scenario_validator after detecting the correct value (see "auto"-mode)
+        account_currency = scenario.account_currency
         initial_balance = scenario.trade_simulator_config.get(
             'initial_balance')
-        # Changed: Read 'account_currency' instead of 'currency'
-        account_currency = scenario.trade_simulator_config.get(
-            'account_currency', 'auto')
 
         # Default live stats config if not provided
         if live_stats_config is None:
@@ -335,15 +334,10 @@ class ProcessResult:
     # === STATUS ===
     success: bool = False
     scenario_name: str = ''
-    symbol: str = ''
-    account_currency: str = ''  # Account currency (auto-detected or explicit)
     scenario_index: int = ''
 
     # === EXECUTION TIME ===
     execution_time_ms: float = 0.0
-
-    # Signals generated
-    signal_count: int = 0
 
     # === ERROR INFORMATION (success=False) ===
     error_type: Optional[str] = None
@@ -362,9 +356,36 @@ class ProcessResult:
             'success': self.success,
             'scenario_name': self.scenario_name,
             'scenario_index': self.scenario_index,
-            'account_currency': self.account_currency,
             'execution_time_ms': self.execution_time_ms,
             'error_type': self.error_type,
             'error_message': self.error_message,
             'traceback': self.traceback,
         }
+
+
+@dataclass
+class PostProcessResult(ProcessResult):
+    """
+    ProcessResult Child for Post-Batch Operations with Objects,
+    that shall not interfere with Sub-Process (not serializable structures)
+    """
+    single_scenario: SingleScenario = None
+
+    @classmethod
+    def from_process_result(
+        cls,
+        process_result: ProcessResult,
+        scenario: SingleScenario,
+    ) -> 'PostProcessResult':
+        return cls(
+            success=process_result.success,
+            scenario_name=process_result.scenario_name,
+            scenario_index=process_result.scenario_index,
+            execution_time_ms=process_result.execution_time_ms,
+            error_type=process_result.error_type,
+            error_message=process_result.error_message,
+            traceback=process_result.traceback,
+            tick_loop_results=process_result.tick_loop_results,
+            scenario_logger_buffer=process_result.scenario_logger_buffer,
+            single_scenario=scenario
+        )

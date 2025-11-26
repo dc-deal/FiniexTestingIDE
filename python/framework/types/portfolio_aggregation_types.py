@@ -47,7 +47,6 @@ class BasePortfolioStats:
     # Metadata
     currency: str
     broker_name: str
-    configured_account_currency: str
     current_conversion_rate: float
 
 

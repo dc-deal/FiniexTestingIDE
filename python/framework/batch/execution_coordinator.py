@@ -20,6 +20,8 @@ import sys
 import time
 import traceback
 
+from python.framework.types.validation_types import get_validation_list_report
+
 
 # Auto-detect if debugger is attached
 DEBUGGER_ACTIVE = (
@@ -297,11 +299,9 @@ class ExecutionCoordinator:
         return ProcessResult(
             success=False,
             scenario_name=scenario.name,
-            symbol=scenario.symbol,
             scenario_index=scenario_index,
             error_type="ValidationError",
-            error_message=validation_result.get_full_report(
-            ) if validation_result else "Unknown validation error",
+            error_message=get_validation_list_report(validation_result),
             traceback=None,  # No traceback for validation errors
             execution_time_ms=0.0
         )

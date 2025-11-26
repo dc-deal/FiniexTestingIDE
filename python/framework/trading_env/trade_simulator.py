@@ -74,39 +74,7 @@ class TradeSimulator:
         """
         self.broker = broker_config
         self.logger = logger
-
-        # === CURRENCY AUTO-DETECTION ===
-        # If account_currency is "auto", extract from symbol (last 3 chars)
-        if account_currency == "auto":
-            # Validate symbol format
-            if len(symbol) != 6:
-                raise ValueError(
-                    f"Invalid symbol format for auto-detection: '{symbol}'. "
-                    f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
-                )
-
-            detected_currency = symbol[-3:].upper()
-
-            # Show broker currency vs. detected currency for transparency
-            broker_spec = self.broker.get_broker_specification()
-
-            logger.warning(
-                f"💱 CURRENCY AUTO-DETECTION:\n"
-                f"   Symbol: {symbol} → Detected: {detected_currency}\n"
-                f"   Using: {detected_currency} (auto-detection overrides broker)\n"
-                f"   All P&L calculations will be in {detected_currency}."
-            )
-
-            account_currency = detected_currency
-            self.configured_account_currency = "auto"  # NEW
-        else:
-            # Explicit currency provided - just log it
-            logger.info(
-                f"💱 Account Currency: {account_currency} (explicit configuration)"
-            )
-            self.configured_account_currency = account_currency
-
-        # Store final account currency
+        # account currency (has to be checked!)
         self.account_currency = account_currency
 
         # Create portfolio manager with broker specifications
@@ -117,8 +85,7 @@ class TradeSimulator:
             broker_config=broker_config,
             leverage=broker_spec.leverage,
             margin_call_level=broker_spec.margin_call_level,
-            stop_out_level=broker_spec.stopout_level,
-            configured_account_currency=self.configured_account_currency
+            stop_out_level=broker_spec.stopout_level
         )
         # Current market prices
         # symbol: (bid, ask)
@@ -705,7 +672,7 @@ class TradeSimulator:
         else:
             raise NotImplementedError(
                 f"Cross-currency conversion not supported (MVP restriction): "
-                f"Account Currency: {self.account_currency}, "
+                f"Account Currency: '{self.account_currency}', "
                 f"Symbol: {symbol_spec.symbol} "
                 f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})\n"
                 f"Supported configurations:\n"

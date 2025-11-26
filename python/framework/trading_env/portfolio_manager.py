@@ -45,7 +45,6 @@ class PortfolioManager:
         leverage: int,
         margin_call_level: float,
         stop_out_level: float,
-        configured_account_currency: str
     ):
         """
         Initialize portfolio manager.
@@ -64,7 +63,6 @@ class PortfolioManager:
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
-        self.configured_account_currency = configured_account_currency
         self._last_conversion_rate: Optional[float] = None
 
         # Account state
@@ -538,7 +536,6 @@ class PortfolioManager:
             total_fees=self._cost_tracking.total_fees,
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),
-            configured_account_currency=self.configured_account_currency,
             current_conversion_rate=self._last_conversion_rate,
             current_balance=self.balance,
             initial_balance=self.initial_balance

@@ -10,7 +10,6 @@ from typing import Dict
 from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.currency_codes import format_currency_simple
 from python.framework.types.trading_env_stats_types import ExecutionStats, CostBreakdown
 from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
 from python.framework.utils.math_utils import force_negative, force_positive
@@ -46,7 +45,6 @@ class PortfolioSummary:
 
     def render_aggregated(self,
                           renderer: ConsoleRenderer,
-                          box_renderer: ConsoleBoxRenderer,
                           aggregated_portfolios: Dict[str, AggregatedPortfolio]):
         """
         Render aggregated portfolio stats grouped by currency.

@@ -33,6 +33,7 @@ from rich.panel import Panel
 from rich.layout import Layout
 from rich import box
 
+from python.framework.types.currency_codes import get_currency_symbol
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.live_scenario_stats_types import LiveScenarioStats, ScenarioStatus
 from python.components.logger.bootstrap_logger import get_logger
@@ -337,6 +338,11 @@ class LiveProgressDisplay:
 
         # Add scenario rows
         for stats in all_stats:
+            # detect scenario class
+            scenario = self.scenarios[stats.scenario_index]
+            account_currency = scenario.account_currency
+            symbol = get_currency_symbol(account_currency)
+
             # Truncate scenario name
             name = stats.scenario_name
             if len(name) > name_length - 2:
@@ -379,8 +385,8 @@ class LiveProgressDisplay:
             dirty_flag = " 🏴" if stats.portfolio_dirty_flag else ""
 
             stats_text = (
-                f"[{pnl_color}]${portfolio_value:>8,.0f}{dirty_flag}[/{pnl_color}] "
-                f"[dim]({pnl_sign}${pnl:>6,.2f})[/dim] \n"
+                f"[{pnl_color}]{symbol}{portfolio_value:>8,.0f}{dirty_flag}[/{pnl_color}] "
+                f"[dim]({pnl_sign}{symbol}{pnl:>6,.2f})[/dim] \n"
                 f"[blue]{trades}[/blue]"
             )
 
