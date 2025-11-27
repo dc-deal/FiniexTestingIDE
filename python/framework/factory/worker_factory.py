@@ -12,34 +12,18 @@ Namespace System:
 - CORE/worker_name → Framework workers (framework/workers/core/)
 - USER/worker_name → User custom workers (workers/user/)
 - BLACKBOX/worker_name → IP-protected workers (workers/blackbox/)
-
-Example Config:
-{
-    "worker_types": ["CORE/rsi", "CORE/envelope"],
-    "workers": {
-        "CORE/rsi": {
-            "period": 14,        # Required parameter
-            "timeframe": "M5"    # Required parameter
-        },
-        "CORE/envelope": {
-            "period": 20,        # Optional (has default)
-            "deviation": 0.02    # Optional (has default)
-        }
-    }
-}
 """
 
 import importlib
 import json
 from typing import Any, Dict, List, Type
 
-from python.components.logger.abstract_logger import AbstractLogger
 from python.components.logger.scenario_logger import ScenarioLogger
-from python.framework.workers.abstract_blackbox_worker import \
-    AbstractBlackboxWorker
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.workers.abstract_worker import AbstactWorker
+from python.framework.workers.core.macd_worker import MACDWorker
+from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.heavy_rsi_worker import HeavyRSIWorker
 
 
 class WorkerFactory:
@@ -51,7 +35,7 @@ class WorkerFactory:
     the complete lifecycle of worker creation.
     """
 
-    def __init__(self, logger: AbstractLogger):
+    def __init__(self, logger: ScenarioLogger):
         """
         Initialize worker factory with empty registry.
 
@@ -59,7 +43,7 @@ class WorkerFactory:
         This lazy-loading approach avoids import overhead for unused workers.
         """
         self._logger = logger
-        self._registry: Dict[str, Type[AbstractBlackboxWorker]] = {}
+        self._registry: Dict[str, Type[AbstactWorker]] = {}
         self._load_core_workers()
 
     def _load_core_workers(self):
@@ -74,18 +58,11 @@ class WorkerFactory:
         """
         # Import core workers
         try:
-            from python.framework.workers.core.rsi_worker import RSIWorker
-            from python.framework.workers.core.envelope_worker import EnvelopeWorker
-            from python.framework.workers.core.heavy_workers import HeavyEnvelopeWorker
-            from python.framework.workers.core.heavy_workers import HeavyMACDWorker
-            from python.framework.workers.core.heavy_workers import HeavyRSIWorker
-
             # Register with CORE namespace
             self._registry["CORE/rsi"] = RSIWorker
             self._registry["CORE/envelope"] = EnvelopeWorker
-            self._registry["CORE/heavy_envelope"] = HeavyEnvelopeWorker
-            self._registry["CORE/heavy_macd"] = HeavyMACDWorker
             self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
+            self._registry["CORE/macd"] = MACDWorker
 
             self._logger.debug(
                 f"Core workers registered: {list(self._registry.keys())}"
@@ -96,7 +73,7 @@ class WorkerFactory:
     def register_worker(
         self,
         worker_type: str,
-        worker_class: Type[AbstractBlackboxWorker]
+        worker_class: Type[AbstactWorker]
     ):
         """
         Manually register a worker class.
@@ -106,15 +83,15 @@ class WorkerFactory:
 
         Args:
             worker_type: Full worker type with namespace (e.g., "USER/my_worker")
-            worker_class: Worker class (must inherit from AbstractBlackboxWorker)
+            worker_class: Worker class (must inherit from AbstactWorker)
 
         Raises:
-            ValueError: If worker_class doesn't inherit from AbstractBlackboxWorker
+            ValueError: If worker_class doesn't inherit from AbstactWorker
         """
-        if not issubclass(worker_class, AbstractBlackboxWorker):
+        if not issubclass(worker_class, AbstactWorker):
             raise ValueError(
                 f"Worker class {worker_class.__name__} must inherit from "
-                f"AbstractBlackboxWorker"
+                f"AbstactWorker"
             )
 
         self._registry[worker_type] = worker_class
@@ -127,7 +104,7 @@ class WorkerFactory:
         worker_type: str,
         worker_config: Dict[str, Any] = None,
 
-    ) -> AbstractBlackboxWorker:
+    ) -> AbstactWorker:
         """
         Create a worker instance with validation.
 
@@ -155,6 +132,9 @@ class WorkerFactory:
 
         # Step 1: Resolve worker class
         worker_class = self._resolve_worker_class(worker_type)
+
+        # Step 1.5: Validate type-specific config (is also checked in batch before run)
+        worker_class.validate_config(worker_config)
 
         # Step 2: Get parameter requirements via CLASSMETHODS
         required_params = worker_class.get_required_parameters()
@@ -190,33 +170,18 @@ class WorkerFactory:
     def create_workers_from_config(
         self,
         strategy_config: Dict[str, Any]
-    ) -> Dict[str, AbstractBlackboxWorker]:
+    ) -> Dict[str, AbstactWorker]:
         """
         Create all workers from strategy configuration.
 
         This is the batch creation method used by orchestrator.
         It takes a complete strategy config and creates all declared workers.
 
-        Expected config structure:
-        {
-            "worker_instances": {
-                "rsi_main": "CORE/rsi",
-                "envelope_main": "CORE/envelope"
-            },
-            "workers": {
-                "rsi_main": {"period": 14, "timeframe": "M5"},
-                "envelope_main": {"period": 20, "deviation": 0.02}
-            }
-        }
-
         Args:
             strategy_config: Strategy configuration dict
 
         Returns:
             Dict mapping worker instance names to worker instances
-
-        Raises:
-            ValueError: If config is invalid or worker creation fails
         """
         # Extract worker instances mapping and configs
         worker_instances = strategy_config.get("worker_instances", {})
@@ -259,7 +224,7 @@ class WorkerFactory:
     def _resolve_worker_class(
         self,
         worker_type: str
-    ) -> Type[AbstractBlackboxWorker]:
+    ) -> Type[AbstactWorker]:
         """
         Resolve worker type string to worker class.
 
@@ -292,7 +257,7 @@ class WorkerFactory:
     def _load_custom_worker(
         self,
         worker_type: str
-    ) -> Type[AbstractBlackboxWorker]:
+    ) -> Type[AbstactWorker]:
         """
         Dynamically load custom worker from USER or BLACKBOX namespace.
 
@@ -345,7 +310,7 @@ class WorkerFactory:
             # Register for future use
             self._registry[worker_type] = worker_class
 
-            vLog.info(f"Dynamically loaded worker: {worker_type}")
+            self._logger.info(f"Dynamically loaded worker: {worker_type}")
             return worker_class
 
         except (ImportError, AttributeError) as e:

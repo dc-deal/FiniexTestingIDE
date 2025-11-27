@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import List, Dict, Any
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.validators.scenario_validator import ScenarioValidator
 
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 

@@ -781,13 +781,11 @@ class ScenarioGenerator:
                     },
                     "workers": {
                         "rsi_fast": {
-                            "period": 14,
-                            "timeframe": "M5"
+                            "periods": {"M5": 14},
                         },
                         "envelope_main": {
-                            "period": 20,
+                            "periods": {"M5": 20},
                             "deviation": 0.02,
-                            "timeframe": "M5"
                         }
                     },
                     "decision_logic_config": {

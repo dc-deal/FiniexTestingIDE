@@ -60,13 +60,6 @@ class ParameterOverrideDetector:
 
         Returns:
             List of tuples: (parameter_path, global_value, scenario_value)
-
-        Example:
-            overrides = detect_overrides(
-                {"workers": {"CORE/rsi": {"period": 14}}},
-                {"workers": {"CORE/rsi": {"period": 5}}}
-            )
-            # Returns: [("workers.CORE/rsi.period", 14, 5)]
         """
         overrides = []
 
@@ -137,17 +130,6 @@ class ParameterOverrideDetector:
 
         Returns:
             Dict with ONLY overridden parameters
-
-        Example:
-            # Global: {"workers": {"CORE/rsi": {"period": 14, "timeframe": "M5"}}}
-            # Scenario: {"workers": {"CORE/rsi": {"period": 5, "timeframe": "M5"}}}
-
-            overrides = extract_overrides_for_save(
-                global_config={'workers': {'CORE/rsi': {'period': 14, 'timeframe': 'M5'}}},
-                scenario_config={'workers': {'CORE/rsi': {'period': 5, 'timeframe': 'M5'}}},
-                sections=['workers']
-            )
-            # Returns: {'workers': {'CORE/rsi': {'period': 5}}}  # Only period changed!
         """
         result = {}
 
@@ -240,21 +222,6 @@ class ParameterOverrideDetector:
 
         Returns:
             Dict containing ONLY overridden values
-
-        Example:
-            global_dict = {
-                "CORE/rsi": {"period": 14, "timeframe": "M5"},
-                "CORE/envelope": {"period": 20}
-            }
-            scenario_dict = {
-                "CORE/rsi": {"period": 5, "timeframe": "M5"},
-                "CORE/envelope": {"period": 20}
-            }
-
-            result = _extract_dict_overrides(global_dict, scenario_dict)
-            # Returns: {"CORE/rsi": {"period": 5}}
-            # Note: CORE/envelope is completely omitted (no changes)
-            # Note: timeframe is omitted (same as global)
         """
         result = {}
 

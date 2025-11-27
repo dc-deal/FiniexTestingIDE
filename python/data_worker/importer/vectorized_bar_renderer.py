@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 vLog = get_logger()
 
 
@@ -31,18 +32,6 @@ class VectorizedBarRenderer:
     Perfect for pre-rendering bars from tick data.
     """
 
-    # Pandas resample() rules for each timeframe
-    # NOTE: 'T' is deprecated, use 'min' instead
-    RESAMPLE_RULES = {
-        'M1': '1min',    # 1 minute
-        'M5': '5min',    # 5 minutes
-        'M15': '15min',  # 15 minutes
-        'M30': '30min',  # 30 minutes
-        'H1': '1h',      # 1 hour (lowercase for pandas 2.0+)
-        'H4': '4h',      # 4 hours
-        'D1': '1D'       # 1 day
-    }
-
     def __init__(self, symbol: str):
         """
         Initialize renderer for a specific symbol.
@@ -51,6 +40,11 @@ class VectorizedBarRenderer:
             symbol: Trading symbol (e.g., 'EURUSD')
         """
         self.symbol = symbol
+        # Pandas resample() rules for each timeframe
+        self._resample_rules = {
+            tf: TimeframeConfig.get_resample_rule(tf)
+            for tf in TimeframeConfig.sorted()
+        }
 
     def render_all_timeframes(
         self,
@@ -82,7 +76,7 @@ class VectorizedBarRenderer:
 
         # Render all timeframes
         all_bars = {}
-        for timeframe in self.RESAMPLE_RULES.keys():
+        for timeframe in self._resample_rules.keys():
             vLog.debug(f"  ├─ Rendering {timeframe}...")
             bars_df = self._render_single_timeframe(
                 prepared_df, timeframe, fill_gaps)
@@ -156,7 +150,7 @@ class VectorizedBarRenderer:
             DataFrame with rendered bars
         """
         # Get resample rule for this timeframe
-        rule = self.RESAMPLE_RULES[timeframe]
+        rule = self._resample_rules[timeframe]
 
         # === PANDAS RESAMPLE MAGIC ===
         # This single operation replaces 10,000 loop iterations!
@@ -238,7 +232,7 @@ class VectorizedBarRenderer:
             return bars_df
 
         # Get bar frequency for this timeframe
-        freq = self.RESAMPLE_RULES[timeframe]
+        freq = self._resample_rules[timeframe]
 
         # Create complete time range (no gaps)
         start = bars_df['timestamp'].min()

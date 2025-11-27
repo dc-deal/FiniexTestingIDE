@@ -197,8 +197,6 @@ class AbstractDecisionLogic(ABC):
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
-        current_bars: Dict[str, Bar],
-        bar_history: Dict[str, List[Bar]],
     ) -> Decision:
         """
         Generate trading decision based on worker results.

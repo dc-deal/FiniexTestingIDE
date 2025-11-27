@@ -5,28 +5,53 @@ Converts ticks to bars for all timeframes
 PERFORMANCE OPTIMIZED:
 - Removed pd.to_datetime() calls (timestamp is already datetime)
 - Removed pd.to_datetime() comparison for bar timestamps
+- deque(maxlen) auto-trims for O(1) performance (no manual checks)
 - Expected speedup: 50-70% reduction in bar rendering time
 """
 
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.timeframe_types import TimeframeConfig
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class BarRenderer:
     """Core bar renderer for all timeframes"""
 
-    def __init__(self, logger: ScenarioLogger):
+    def __init__(self, logger: ScenarioLogger, max_history: int = 1000):
+        """
+        Initialize bar renderer.
+
+        Args:
+            logger: ScenarioLogger for logging
+            max_history: Maximum bars to keep per symbol/timeframe
+
+        PERFORMANCE LIMIT (not guessing!):
+        max_history=1000 is a deliberate memory/performance trade-off:
+        - Most indicators need <100 bars warmup
+        - 1000 bars = ~16 hours (M1) or ~20 days (M30)
+        - Prevents unbounded memory growth in long backtests
+        - deque(maxlen) auto-trims with O(1) performance
+
+        Post-MVP: Calculate dynamically from worker requirements.
+        """
+        self.max_history = max_history
+
+        # Cache for bar start times: (timestamp_minute_key, timeframe) -> bar_start_time
+        self._bar_start_cache: Dict[Tuple[str, str], datetime] = {}
+
         self.current_bars: Dict[str, Dict[str, Bar]] = defaultdict(
             dict
         )  # {timeframe: {symbol: bar}}
+
+        # PERFORMANCE: deque(maxlen) auto-trims - no manual checks needed!
         self.completed_bars: Dict[str, Dict[str, deque]] = defaultdict(
-            lambda: defaultdict(deque)
+            lambda: defaultdict(lambda: deque(maxlen=self.max_history))
         )
+
         self._last_tick_time: Optional[datetime] = None
         self.logger = logger
 
@@ -34,11 +59,61 @@ class BarRenderer:
         """Collect all required timeframes from workers"""
         timeframes = set()
         for worker in workers:
-            if hasattr(worker, "required_timeframes"):
-                timeframes.update(worker.required_timeframes)
-            elif hasattr(worker, "timeframe"):
-                timeframes.add(worker.timeframe)
-        return timeframes or {"M1"}
+            timeframes.update(worker.get_required_timeframes())
+        return timeframes
+
+    def get_bar_start_time(self, timestamp: datetime, timeframe: str) -> datetime:
+        """
+        Calculate bar start time for given timestamp.
+
+        PERFORMANCE OPTIMIZED:
+        - Results are cached per minute
+        - Same minute + timeframe always returns cached result
+        - Reduces 40,000 calculations to ~few hundred cache lookups
+        """
+        # Create cache key from minute precision (ignore seconds/microseconds)
+        cache_key = (
+            f"{timestamp.year}-{timestamp.month:02d}-{timestamp.day:02d}"
+            f"T{timestamp.hour:02d}:{timestamp.minute:02d}",
+            timeframe
+        )
+
+        # Check cache first
+        if cache_key in self._bar_start_cache:
+            return self._bar_start_cache[cache_key]
+
+        # Calculate bar start time
+        minutes = TimeframeConfig.get_minutes(timeframe)
+        total_minutes = timestamp.hour * 60 + timestamp.minute
+        bar_start_minute = (total_minutes // minutes) * minutes
+
+        bar_start = timestamp.replace(
+            minute=bar_start_minute % 60,
+            hour=bar_start_minute // 60,
+            second=0,
+            microsecond=0,
+        )
+
+        # Cache result
+        self._bar_start_cache[cache_key] = bar_start
+
+        # Limit cache size (keep last 10,000 entries)
+        if len(self._bar_start_cache) > 10000:
+            # Remove oldest 5000 entries
+            keys_to_remove = list(self._bar_start_cache.keys())[:5000]
+            for key in keys_to_remove:
+                del self._bar_start_cache[key]
+
+        return bar_start
+
+    def is_bar_complete(
+        self, bar_start: datetime, current_time: datetime, timeframe: str
+    ) -> bool:
+        """Check if bar is complete"""
+        bar_duration = timedelta(
+            minutes=TimeframeConfig.get_minutes(timeframe))
+        bar_end = bar_start + bar_duration
+        return current_time >= bar_end
 
     def update_current_bars(
         self, tick_data: TickData, required_timeframes: Set[str]
@@ -66,7 +141,7 @@ class BarRenderer:
 
         for timeframe in required_timeframes:
             # Cached calculation - much faster for repeated calls
-            bar_start_time = TimeframeConfig.get_bar_start_time(
+            bar_start_time = self.get_bar_start_time(
                 timestamp, timeframe)
 
             # Check if we need a new bar
@@ -104,7 +179,7 @@ class BarRenderer:
             current_bar.update_with_tick(mid_price, volume)
 
             # Check if bar is complete (time-based)
-            if TimeframeConfig.is_bar_complete(bar_start_time, timestamp, timeframe):
+            if self.is_bar_complete(bar_start_time, timestamp, timeframe):
                 current_bar.is_complete = True
 
             updated_bars[timeframe] = current_bar
@@ -114,28 +189,24 @@ class BarRenderer:
         return updated_bars, closed_bars
 
     def _archive_completed_bar(self, symbol: str, timeframe: str, bar: Bar):
-        """Archive completed bar to history"""
-        max_history = 1000
+        """
+        Archive completed bar to history.
 
-        # ============ DEBUG START ============
+        PERFORMANCE: No manual limit check needed!
+        deque(maxlen) automatically discards oldest when full (O(1)).
+        """
         self.logger.verbose(
             f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
-        # ============ DEBUG END ============
 
         self.logger.verbose(
             f"📊 {bar.symbol} {bar.timeframe} archived | "
             f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
         )
+
         history = self.completed_bars[timeframe][symbol]
+        history.append(bar)  # ✅ Auto-trims if len > maxlen
 
-        history.append(bar)
-
-        # ============ DEBUG START ============
         self.logger.verbose(f"   History size AFTER append: {len(history)}")
-        # ============ DEBUG END ============
-
-        if len(history) > max_history:
-            history.popleft()
 
     def get_bar_history(
         self, symbol: str, timeframe: str
@@ -174,10 +245,13 @@ class BarRenderer:
         """
         # Ensure the nested structure exists for this timeframe/symbol
         if timeframe not in self.completed_bars:
-            self.completed_bars[timeframe] = defaultdict(deque)
+            self.completed_bars[timeframe] = defaultdict(
+                lambda: deque(maxlen=self.max_history)
+            )
 
         if symbol not in self.completed_bars[timeframe]:
-            self.completed_bars[timeframe][symbol] = deque(maxlen=1000)
+            self.completed_bars[timeframe][symbol] = deque(
+                maxlen=self.max_history)
 
         # Add all warmup bars to the history
         for bar in bars:

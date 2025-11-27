@@ -9,8 +9,8 @@ UTC-FIX:
 - Prevents timezone comparison errors in data loading
 """
 
-from datetime import datetime, timezone
-from typing import Dict, List, Tuple
+from datetime import timezone
+from typing import Dict
 from dateutil import parser
 
 from python.components.logger.abstract_logger import AbstractLogger
@@ -20,14 +20,7 @@ from python.framework.types.process_data_types import (
     BarRequirement,
 )
 from python.framework.types.scenario_set_types import SingleScenario
-from python.framework.utils.scenario_requirements import (
-    calculate_scenario_requirements
-)
 from python.framework.factory.worker_factory import WorkerFactory
-from python.configuration import AppConfigManager
-
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
 
 
 class AggregateScenarioDataRequirements:
@@ -44,17 +37,17 @@ class AggregateScenarioDataRequirements:
     - Prevents timezone comparison errors
     """
 
-    def __init__(self):
+    def __init__(self, logger: AbstractLogger):
         """Initialize empty requirements collector."""
+        self._logger = logger
         self.requirements = RequirementsMap()
-        self.worker_factory = WorkerFactory(logger=vLog)
+        self.worker_factory = WorkerFactory(logger)
         self._scenario_count = 0
 
     def add_scenario(
         self,
         scenario: SingleScenario,
-        scenario_index: int,
-        logger: AbstractLogger = vLog
+        scenario_index: int
     ) -> Dict[str, int]:
         """
         Add requirements from one scenario.
@@ -93,31 +86,48 @@ class AggregateScenarioDataRequirements:
         )
         self.requirements.add_tick_requirement(tick_req)
 
-        # === BAR REQUIREMENTS (via Worker System) ===
-        # Create workers temporarily
-        # 1. Create workers temporarily
-        worker_factory = WorkerFactory(logger=vLog)
-        workers_dict = worker_factory.create_workers_from_config(
-            strategy_config=scenario.strategy_config
-        )
-        workers = list(workers_dict.values())
+        # === BAR REQUIREMENTS (via Config + Classmethod) ===
+        # NEW APPROACH: No worker instantiation needed!
+        # Use calculate_requirements() classmethod instead
 
-        vLog.debug(
+        warmup_by_timeframe = {}
+
+        worker_instances = scenario.strategy_config.get("worker_instances", {})
+        workers_config = scenario.strategy_config.get("workers", {})
+
+        for instance_name, worker_type in worker_instances.items():
+            # Get config for this worker instance
+            worker_config = workers_config.get(instance_name, {})
+
+            # Resolve worker class (from registry)
+            worker_class = self.worker_factory._resolve_worker_class(
+                worker_type)
+
+            # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)
+            worker_class.validate_config(worker_config)
+
+            # Calculate requirements via CLASSMETHOD (no instance!)
+            requirements = worker_class.calculate_requirements(worker_config)
+
+            self._logger.debug(
+                f"[Requirements] {instance_name} ({worker_type}): "
+                f"{requirements}"
+            )
+
+            # Merge with other workers (max per timeframe)
+            for tf, bars in requirements.items():
+                warmup_by_timeframe[tf] = max(
+                    warmup_by_timeframe.get(tf, 0), bars
+                )
+
+        self._logger.debug(
             f"[Requirements] Scenario {scenario_index + 1}: "
-            f"Created {len(workers)} workers temporarily"
-        )
-
-        # Calculate requirements using existing method
-        scenario_reqs = calculate_scenario_requirements(workers)
-
-        vLog.debug(
-            f"[Requirements] Scenario {scenario_index + 1}: "
-            f"{scenario.symbol}, {len(scenario_reqs.all_timeframes)} timeframes, "
-            f"max_warmup={scenario_reqs.max_warmup_bars}"
+            f"{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
+            f"warmup_by_timeframe={warmup_by_timeframe}"
         )
 
         # Convert to BarRequirements for aggregation
-        for timeframe, warmup_count in scenario_reqs.warmup_by_timeframe.items():
+        for timeframe, warmup_count in warmup_by_timeframe.items():
             bar_req = BarRequirement(
                 scenario_name=scenario.name,
                 symbol=scenario.symbol,
@@ -129,7 +139,7 @@ class AggregateScenarioDataRequirements:
             self.requirements.add_bar_requirement(bar_req)
 
         # Return warmup requirements for ProcessExecutor
-        return scenario_reqs.warmup_by_timeframe
+        return warmup_by_timeframe
 
     def finalize(self) -> RequirementsMap:
         """
@@ -143,14 +153,14 @@ class AggregateScenarioDataRequirements:
         Returns:
             Deduplicated RequirementsMap
         """
-        vLog.info(
+        self._logger.info(
             f"📊 Requirements collected: "
             f"{len(self.requirements.tick_requirements)} tick reqs, "
             f"{len(self.requirements.bar_requirements)} bar reqs "
             f"from {self._scenario_count} scenarios"
         )
 
-        vLog.info(
+        self._logger.info(
             f"✅ After deduplication: "
             f"{len(self.requirements.tick_requirements)} tick loads, "
             f"{len(self.requirements.bar_requirements)} bar loads"

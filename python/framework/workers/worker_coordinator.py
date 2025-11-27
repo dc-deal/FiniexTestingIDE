@@ -20,8 +20,8 @@ from python.framework.types.worker_types import (
     WorkerResult,
     WorkerState)
 from python.framework.types.performance_stats_types import BatchPerformanceStats
-from python.framework.workers.abstract_blackbox_worker import \
-    AbstractBlackboxWorker
+from python.framework.workers.abstract_worker import \
+    AbstactWorker
 from python.framework.performance.performance_log_coordinator import \
     PerformanceLogCoordinator
 
@@ -40,7 +40,7 @@ class WorkerCoordinator:
 
     def __init__(
         self,
-        workers: List[AbstractBlackboxWorker],
+        workers: List[AbstactWorker],
         decision_logic: AbstractDecisionLogic,
         strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
@@ -68,7 +68,7 @@ class WorkerCoordinator:
         # ============================================
         # Injected dependencies
         # ============================================
-        self.workers: Dict[str, AbstractBlackboxWorker] = {
+        self.workers: Dict[str, AbstactWorker] = {
             worker.name: worker for worker in workers
         }
         self.decision_logic = decision_logic
@@ -139,7 +139,7 @@ class WorkerCoordinator:
             f"parallel={self.parallel_workers}"
         )
 
-    def _extract_worker_type(self, worker: AbstractBlackboxWorker) -> str:
+    def _extract_worker_type(self, worker: AbstactWorker) -> str:
         """
         Extract worker type from worker instance.
 
@@ -317,9 +317,7 @@ class WorkerCoordinator:
 
         decision = self.decision_logic.compute(
             tick=tick,
-            worker_results=self._worker_results,
-            current_bars=current_bars,
-            bar_history=bar_history
+            worker_results=self._worker_results
         )
 
         # ============================================
@@ -360,7 +358,10 @@ class WorkerCoordinator:
 
                 try:
                     worker.set_state(WorkerState.WORKING)
-                    result = worker.compute(tick, bar_history, current_bars)
+                    filtered_bar_history = self._filter_bar_history_for_worker(
+                        worker, bar_history)
+                    result = worker.compute(
+                        tick, filtered_bar_history, current_bars)
                     computation_time_ms = (
                         time.perf_counter() - start_time
                     ) * 1000
@@ -407,8 +408,10 @@ class WorkerCoordinator:
         future_to_worker = {}
         for name, worker in workers_to_compute:
             worker.set_state(WorkerState.WORKING)
+            filtered_bar_history = self._filter_bar_history_for_worker(
+                worker, bar_history)
             future = self._thread_pool.submit(
-                self._compute_worker, worker, tick, bar_history, current_bars
+                self._compute_worker, worker, tick, filtered_bar_history, current_bars
             )
             future_to_worker[future] = (name, worker)
 
@@ -446,9 +449,30 @@ class WorkerCoordinator:
             self.performance_log_coordinator.record_parallel_time_saved(
                 time_saved)
 
+    def _filter_bar_history_for_worker(
+        self, worker: AbstactWorker, bar_history: Dict[str, List[Bar]]
+    ) -> Dict[str, List[Bar]]:
+        """
+        Filter bar_history to only include timeframes required by worker.
+
+        PERFORMANCE vs CLARITY trade-off:
+        - Cost: ~0.001-0.002ms per worker (dict comprehension)
+        - Benefit: Worker receives ONLY requested data (enforces requirements)
+        - Prevents bugs: Worker can't accidentally use wrong timeframe
+        """
+        required_timeframes = worker.get_required_timeframes()
+
+        filtered = {
+            tf: bar_history[tf]
+            for tf in required_timeframes
+            if tf in bar_history
+        }
+
+        return filtered
+
     def _compute_worker(
         self,
-        worker: AbstractBlackboxWorker,
+        worker: AbstactWorker,
         tick: TickData,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
@@ -456,7 +480,7 @@ class WorkerCoordinator:
         """
         Compute worker result (thread-safe helper method).
 
-        UNCHANGED - Worker computation works exactly as before.
+        bar_history is pre-filtered to worker's required timeframes.
 
         Returns:
             Tuple of (result, computation_time_ms)
