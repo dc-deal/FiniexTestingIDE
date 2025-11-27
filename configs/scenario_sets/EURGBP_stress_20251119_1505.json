@@ -29,12 +29,7 @@
         "min_confidence": 0.6
       }
     },
-    "execution_config": {
-      "parallel_workers": false,
-      "worker_parallel_threshold_ms": 1.0,
-      "adaptive_parallelization": true,
-      "log_performance_stats": true
-    },
+    "execution_config": {},
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 10000,

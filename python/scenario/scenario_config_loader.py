@@ -13,6 +13,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.scenario.scenario_cascade import ScenarioCascade
 vLog = get_logger()
 
 
@@ -79,21 +80,27 @@ class ScenarioConfigLoader:
                     f"🔻 Skipping disabled scenario: {scenario_data['name']}")
                 continue  # Skip disabled
 
-            # Merge strategy config
-            scenario_strategy = {**global_strategy}
-            if scenario_data.get('strategy_config'):
-                scenario_strategy.update(scenario_data['strategy_config'])
+            # Get app-level execution defaults (3-level cascade base)
+            app_execution_defaults = app_config.get_scenario_execution_defaults()
 
-            # Merge execution config
-            scenario_execution = {**global_execution}
-            if scenario_data.get('execution_config'):
-                scenario_execution.update(scenario_data['execution_config'])
+            # Deep merge strategy config (2-level: global → scenario)
+            scenario_strategy = ScenarioCascade.merge_strategy_config(
+                global_strategy,
+                scenario_data.get('strategy_config', {})
+            )
 
-            # Merge trade_simulator_config (global + scenario-specific)
-            scenario_trade_simulator = {**global_trade_simulator}
-            if scenario_data.get('trade_simulator_config'):
-                scenario_trade_simulator.update(
-                    scenario_data['trade_simulator_config'])
+            # Deep merge execution config (3-level: app → global → scenario)
+            scenario_execution = ScenarioCascade.merge_execution_config(
+                app_execution_defaults,
+                global_execution,
+                scenario_data.get('execution_config', {})
+            )
+
+            # Deep merge trade_simulator_config (2-level: global → scenario)
+            scenario_trade_simulator = ScenarioCascade.merge_trade_simulator_config(
+                global_trade_simulator,
+                scenario_data.get('trade_simulator_config', {})
+            )
 
             # ============================================
             # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
