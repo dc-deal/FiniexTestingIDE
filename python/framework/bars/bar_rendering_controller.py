@@ -46,8 +46,9 @@ class BarRenderingController:
         # PERFORMANCE OPTIMIZATION: Bar history caching
         # Cache is built on first get_all_bar_history() call
         # and invalidated whenever a bar closes
-        self._cached_bar_history = None
-        self._cache_is_valid = False  # Starts invalid (no cache yet)
+        self._cached_bar_history: Dict[str, List[Bar]] = {}
+        # CASHE PER TIMEFRAME!
+        self._cache_valid_per_timeframe: Dict[str, bool] = {}
 
     def register_workers(self, workers):
         """
@@ -83,15 +84,12 @@ class BarRenderingController:
             tick_data, self._required_timeframes
         )
 
-        # Invalidate cache if any bar was closed
-        # Cache rebuild happens on next get_all_bar_history() call
-        if any(closed_bars.values()):
-            # ============ DEBUG START ============
-            self.logger.verbose(
-                f"🔍 [CACHE INVALIDATED] Bars closed: {closed_bars}")
-            # ============ DEBUG END ============
-
-            self._cache_is_valid = False
+        # Invalidate cache ONLY for timeframes that closed
+        for timeframe, was_closed in closed_bars.items():
+            if was_closed:
+                self.logger.verbose(
+                    f"🔍 [CACHE INVALIDATED] {timeframe} bar closed")
+                self._cache_valid_per_timeframe[timeframe] = False
 
         return current_bars
 
@@ -140,36 +138,27 @@ class BarRenderingController:
         Get all loaded warmup bars per timeframe.
 
         PERFORMANCE OPTIMIZED:
-        This method caches the bar history dict and only rebuilds when
-        a bar is closed. This eliminates thousands of unnecessary dict rebuilds
-        and list copies during the tick loop.
-
-        Cache invalidation happens in process_tick() when a bar closes.
-        Expected speedup: 100-200x for this operation (from 2000 to ~10-20 rebuilds).
-
-        Args:
-            symbol: Trading symbol
-
-        Returns:
-            Dict[timeframe, List[Bar]] - All historical bars per timeframe
-
-        Note:
-            Returns cached references. Workers must not modify the history.
+        Only rebuilds cache for timeframes where bars were closed.
+        M5 closes don't trigger M30 rebuilds and vice versa.
         """
-        # Return cached version if still valid
-        if self._cache_is_valid and self._cached_bar_history is not None:
-            return self._cached_bar_history
+        result = {}
 
-        # Rebuild cache from _warmup_data
-        # _warmup_data is filled by inject_warmup_bars() at startup
-        self._cached_bar_history = {
-            timeframe: self.bar_renderer.get_bar_history(symbol, timeframe)
-            for timeframe in self._warmup_data.keys()
-        }
+        for timeframe in self._required_timeframes:
+            # Check if this specific timeframe's cache is valid
+            is_valid = self._cache_valid_per_timeframe.get(timeframe, False)
+            has_cache = timeframe in self._cached_bar_history
 
-        self._cache_is_valid = True
+            if is_valid and has_cache:
+                # Cache hit for this timeframe
+                result[timeframe] = self._cached_bar_history[timeframe]
+            else:
+                # Cache miss - rebuild only this timeframe
+                history = self.bar_renderer.get_bar_history(symbol, timeframe)
+                self._cached_bar_history[timeframe] = history
+                self._cache_valid_per_timeframe[timeframe] = True
+                result[timeframe] = history
 
-        return self._cached_bar_history
+        return result
 
     def inject_warmup_bars(
         self,
@@ -210,9 +199,8 @@ class BarRenderingController:
                 timeframe=timeframe,
                 bars=bars_list
             )
-
-        # 4. Explicitly invalidate cache after injection
-        self._cache_is_valid = False
+            # Invalidate cache for this timeframe after injection
+            self._cache_valid_per_timeframe[timeframe] = False
 
         self.logger.debug(
             f"✅ Injected warmup bars: "

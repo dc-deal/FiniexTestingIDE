@@ -102,7 +102,7 @@ def process_startup_preparation(
         time_match = start_time == config.start_time
 
         # Only inject bars matching this scenario
-        if symbol_match and time_match:
+        if symbol_match:
 
             scenario_logger.debug(
                 f"🔍 Checking: ({symbol}, {timeframe}, {start_time})"
