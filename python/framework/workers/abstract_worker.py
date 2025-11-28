@@ -4,9 +4,9 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from python.framework.performance.performance_log_worker import PerformanceLogWorker
+from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
     WorkerResult, WorkerState, WorkerType)
@@ -55,7 +55,7 @@ class AbstactWorker(ABC):
 
         # Loggers
         self.logger = logger  # ScenarioLogger
-        self.performance_logger: Optional[PerformanceLogWorker] = None
+        self.performance_logger: WorkerPerformanceTracker = None
 
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:
@@ -137,11 +137,11 @@ class AbstactWorker(ABC):
         """Update worker state"""
         self.state = state
 
-    def set_performance_logger(self, logger: 'PerformanceLogWorker'):
+    def set_performance_logger(self, logger: WorkerPerformanceTracker):
         """
         Set performance logger for this worker.
 
-        Called by WorkerCoordinator during initialization.
+        Called by WorkerOrchestrator during initialization.
 
         Args:
             logger: PerformanceLogWorker instance

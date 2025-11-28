@@ -8,8 +8,10 @@ from collections import defaultdict
 from multiprocessing import Queue
 from typing import Optional
 
+from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.types.currency_codes import format_currency_simple
+from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
     ProcessProfileData,
@@ -153,24 +155,24 @@ def execute_tick_loop(
         scenario_logger.debug("✅ Coordinator cleanup completed")
 
         # === GET RESULTS ===
+        # Collect statistics from Algorithm section
         decision_statistics = decision_logic.get_statistics()
-        performance_stats = worker_coordinator.performance_log_coordinator.get_snapshot()
+        worker_statistics = worker_coordinator.get_worker_statistics()
+        coordination_statistics = worker_coordinator.get_coordination_statistics()
+
+        # collect stistics from Trader section
         portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
 
-        total_profit = portfolio_stats.total_profit
-        total_loss = portfolio_stats.total_loss
-        total_pnl = total_profit - total_loss
-        currency = portfolio_stats.currency
-        scenario_logger.debug(
-            f"Live update count: {live_update_count}")
-        scenario_logger.debug(
-            f"💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}")
+        _print_tick_loop_finishing_log(
+            live_update_count, scenario_logger, portfolio_stats
+        )
 
         return ProcessTickLoopResult(
             decision_statistics=decision_statistics,
-            performance_stats=performance_stats,
+            worker_statistics=worker_statistics,
+            coordination_statistics=coordination_statistics,
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,
             cost_breakdown=cost_breakdown,
@@ -185,3 +187,20 @@ def execute_tick_loop(
         # an error here is not possible to handle correctly.
         scenario_logger.error(f"Error in Tick Loop - Statistics & Return: {e}")
         raise e
+
+
+def _print_tick_loop_finishing_log(
+        live_update_count: int,
+        scenario_logger: ScenarioLogger,
+        portfolio_stats: PortfolioStats):
+    """
+        Simple finishing log after Tick loop for debug purposes.
+    """
+    total_profit = portfolio_stats.total_profit
+    total_loss = portfolio_stats.total_loss
+    total_pnl = total_profit - total_loss
+    currency = portfolio_stats.currency
+    scenario_logger.debug(
+        f"Live update count: {live_update_count}")
+    scenario_logger.info(
+        f"💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}")

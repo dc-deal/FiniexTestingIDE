@@ -8,7 +8,7 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
-from python.framework.workers.worker_coordinator import WorkerCoordinator
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 def process_startup_preparation(
@@ -60,7 +60,7 @@ def process_startup_preparation(
         f"✅ Created decision logic: {config.decision_logic_type}")
 
     # === CREATE WORKER COORDINATOR ===
-    worker_coordinator = WorkerCoordinator(
+    worker_coordinator = WorkerOrchestrator(
         decision_logic=decision_logic,
         strategy_config=config.strategy_config,
         workers=workers,

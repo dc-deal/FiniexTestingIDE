@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple
 from dateutil import parser
 
 from python.components.logger.abstract_logger import AbstractLogger
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap

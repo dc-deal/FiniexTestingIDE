@@ -11,6 +11,7 @@ This class now serves as a facade for backward compatibility.
 """
 
 from typing import List
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.grid.console_grid_renderer import render_grid
 from python.framework.reporting.grid.scenario_box_builder import create_scenario_box
@@ -40,24 +41,23 @@ class ConsoleBoxRenderer:
 
     def render_scenario_grid(
         self,
-        scenarios: List[ProcessResult],
+        batch_summary: BatchExecutionSummary,
         show_status_line: bool = False,
         columns: int = 3,
         box_width: int = 38
     ):
         """
-        Render scenarios in grid layout.
+        Render process_results in grid layout.
 
         Args:
-            scenarios: List of ProcessResult objects
+            process_results: List of ProcessResult objects
             show_status_line: Whether to show status line in boxes
             columns: Number of columns in grid
             box_width: Width of each box
         """
         render_grid(
-            items=scenarios,
+            batch_summary=batch_summary,
             box_creator=create_scenario_box,
-            renderer=self._renderer,
             show_status_line=show_status_line,
             columns=columns,
             box_width=box_width
@@ -65,7 +65,7 @@ class ConsoleBoxRenderer:
 
     def render_portfolio_grid(
         self,
-        scenarios: List[ProcessResult],
+        batch_summary: BatchExecutionSummary,
         show_status_line: bool = False,
         columns: int = 3,
         box_width: int = 38
@@ -74,15 +74,14 @@ class ConsoleBoxRenderer:
         Render portfolio stats in grid layout.
 
         Args:
-            scenarios: List of ProcessResult objects with portfolio stats
+            process_results: List of ProcessResult objects with portfolio stats
             show_status_line: Whether to show status line in boxes
             columns: Number of columns in grid
             box_width: Width of each box
         """
         render_grid(
-            items=scenarios,
+            batch_summary=batch_summary,
             box_creator=create_portfolio_box,
-            renderer=self._renderer,
             show_status_line=show_status_line,
             columns=columns,
             box_width=box_width

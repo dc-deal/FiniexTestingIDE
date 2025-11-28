@@ -3,30 +3,23 @@ FiniexTestingIDE - Worker Coordinator ()
 Coordinates multiple workers and delegates decision-making to DecisionLogic
 """
 
-from dataclasses import asdict
-import json
 import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logger.coordinator_tick_logger import CoordinatorTickLogger
-from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
+from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
+from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_data_types import Bar, TickData
-
-from python.framework.types.worker_types import (
-    WorkerResult,
-    WorkerState)
-from python.framework.types.performance_stats_types import BatchPerformanceStats
-from python.framework.workers.abstract_worker import \
-    AbstactWorker
-from python.framework.performance.performance_log_coordinator import \
-    PerformanceLogCoordinator
+from python.framework.types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
+from python.framework.types.worker_types import WorkerResult, WorkerState
+from python.framework.workers.abstract_worker import AbstactWorker
 
 
-class WorkerCoordinator:
+class WorkerOrchestrator:
     """
     Orchestrates multiple workers and delegates decision-making to DecisionLogic.
 
@@ -56,7 +49,7 @@ class WorkerCoordinator:
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
             scenario_name: Name of the scenario being executed
 
-            Der WorkerCoordinator selbst bekommt KEINEN separaten Logger-Parameter,
+            Der WorkerOrchestrator selbst bekommt KEINEN separaten Logger-Parameter,
             weil er bereits die DecisionLogic bekommt, die einen Logger hat.
 
             Der Coordinator nutzt einfach den Logger der DecisionLogic für seine Logs.
@@ -90,8 +83,6 @@ class WorkerCoordinator:
             self.parallel_workers = parallel_workers
 
         self.parallel_threshold_ms = parallel_threshold_ms
-        self._avg_worker_time_ms = 0.0
-        self._sample_count = 0
 
         # Thread pool - only create if parallel enabled
         self._thread_pool = (
@@ -101,39 +92,34 @@ class WorkerCoordinator:
             else None
         )
 
-        # ============================================
-        # Optimized Tick Logger
-        # ============================================
+        # Optimized Tick Logger, log ververy tick
+        # for VERBOSE log level. DATA INTENSE!
         self.tick_logger = CoordinatorTickLogger(logger=self.logger)
 
-        # ============================================
-        # Performance Logging Integration
-        # ============================================
-        self.performance_log_coordinator = PerformanceLogCoordinator(
-            parallel_workers=self.parallel_workers
-        )
+        # Coordination performance tracking
+        self._coordination_stats = WorkerCoordinatorPerformanceStats(
+            parallel_workers=parallel_workers)
 
-        # Create performance loggers for each worker
+        # Create performance trackers for each worker
         for worker_name, worker in self.workers.items():
-            # Extract worker type from worker parameters or name
             worker_type = self._extract_worker_type(worker)
-            perf_logger = self.performance_log_coordinator.create_worker_log(
+            perf_tracker = WorkerPerformanceTracker(
                 worker_type=worker_type,
                 worker_name=worker_name
             )
-            worker.set_performance_logger(perf_logger)
+            worker.set_performance_logger(perf_tracker)
 
-        # Create performance logger for decision logic
+        # Create performance tracker for decision logic
         decision_logic_type = self._extract_decision_logic_type(decision_logic)
-        decision_perf_logger = self.performance_log_coordinator.create_decision_logic_log(
+        decision_perf_tracker = DecisionLogicPerformanceTracker(
             decision_logic_type=decision_logic_type,
             decision_logic_name=decision_logic.name
         )
-        decision_logic.set_performance_logger(decision_perf_logger)
+        decision_logic.set_performance_logger(decision_perf_tracker)
 
         # Log configuration
         decision_logic.logger.debug(
-            f"WorkerCoordinator config: "
+            f"WorkerOrchestrator config: "
             f"workers={len(self.workers)}, "
             f"decision_logic={decision_logic.name}, "
             f"parallel={self.parallel_workers}"
@@ -262,7 +248,7 @@ class WorkerCoordinator:
     def initialize(self):
         """Initialize coordinator and all workers"""
         self.logger.debug(
-            f"🔧 Initializing WorkerCoordinator with {len(self.workers)} workers "
+            f"🔧 Initializing WorkerOrchestrator with {len(self.workers)} workers "
             f"(parallel: {self.parallel_workers})"
         )
 
@@ -272,7 +258,7 @@ class WorkerCoordinator:
 
         self.is_initialized = True
         self.logger.debug(
-            f"✅ WorkerCoordinator initialized with DecisionLogic: {self.decision_logic.name}")
+            f"✅ WorkerOrchestrator initialized with DecisionLogic: {self.decision_logic.name}")
 
     def process_tick(
         self,
@@ -294,7 +280,9 @@ class WorkerCoordinator:
         if not self.is_initialized:
             raise RuntimeError("Coordinator not initialized")
 
-        self.performance_log_coordinator.increment_ticks()
+        # Track tick processing
+        self._coordination_stats.ticks_processed += 1
+
         bar_history = bar_history or {}
 
         # Determine if any bars were updated
@@ -446,8 +434,7 @@ class WorkerCoordinator:
 
         if time_saved > 0:
             # Record parallel performance
-            self.performance_log_coordinator.record_parallel_time_saved(
-                time_saved)
+            self._coordination_stats.parallel_time_saved_ms += time_saved
 
     def _filter_bar_history_for_worker(
         self, worker: AbstactWorker, bar_history: Dict[str, List[Bar]]
@@ -498,14 +485,6 @@ class WorkerCoordinator:
             raise RuntimeError(
                 f"Worker {worker.name} computation failed: {e}") from e
 
-    def get_worker_results(self) -> Dict[str, WorkerResult]:
-        """
-        Get all current worker results.
-
-        UNCHANGED - This method works exactly as before.
-        """
-        return self._worker_results.copy()
-
     def cleanup(self):
         """Clean up resources."""
         if self._thread_pool:
@@ -517,3 +496,29 @@ class WorkerCoordinator:
 
         self._worker_results.clear()
         self.is_initialized = False
+
+    def get_worker_statistics(self) -> List[WorkerPerformanceStats]:
+        """
+        Collect worker statistics from all workers.
+
+        Returns list of WorkerPerformanceStats for serialization.
+
+        Returns:
+            List of WorkerPerformanceStats (one per worker)
+        """
+        worker_stats = []
+        for worker in self.workers.values():
+            if worker.performance_logger:
+                worker_stats.append(worker.performance_logger.get_stats())
+        return worker_stats
+
+    def get_coordination_statistics(self) -> WorkerCoordinatorPerformanceStats:
+        """
+        Get coordination performance statistics.
+
+        Returns coordination stats for serialization.
+
+        Returns:
+            WorkerCoordinatorPerformanceStats with tick count and parallel metrics
+        """
+        return self._coordination_stats

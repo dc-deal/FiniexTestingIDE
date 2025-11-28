@@ -156,10 +156,10 @@ class BrokerDataPreparator:
             )
 
             num_scenarios = len(info.scenarios)
-            scenario_list = ', '.join(info.scenarios)
+            broker_scenario_names = ', '.join(info.scenarios)
 
             self.logger.info(f"   {broker_info_line}")
             self.logger.debug(f"      Config: {info.config_path}")
             self.logger.debug(
-                f"      Used by {num_scenarios} scenario(s): {scenario_list}"
+                f"      Used by {num_scenarios} scenario(s): {broker_scenario_names}"
             )

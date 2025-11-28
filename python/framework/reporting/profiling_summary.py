@@ -36,7 +36,7 @@ class ProfilingSummary:
         """
         self.batch_execution_summary = batch_execution_summary
         self.profiling_data_map = profiling_data_map
-        self.all_scenarios = batch_execution_summary.scenario_list
+        self._process_results = batch_execution_summary.process_result_list
 
         # Build profiling metrics from scenarios
         self.profiling_metrics = self._build_profiling_metrics()
@@ -53,11 +53,11 @@ class ProfilingSummary:
         Args:
             renderer: ConsoleRenderer instance
         """
-        if not self.all_scenarios:
+        if not self._process_results:
             print("No profiling data available")
             return
 
-        for idx, scenario in enumerate(self.all_scenarios, 1):
+        for idx, scenario in enumerate(self._process_results, 1):
             # Separator between scenarios
             if idx > 1:
                 print()
@@ -157,7 +157,7 @@ class ProfilingSummary:
 
         # Sort by percentage (highest first)
         operations.sort(key=lambda op: op.percentage, reverse=True)
-        ticks_processed = scenario.tick_loop_results.performance_stats.ticks_processed
+        ticks_processed = scenario.tick_loop_results.coordination_statistics.ticks_processed
 
         return TickLoopProfile(
             scenario_index=scenario.scenario_index,
@@ -173,7 +173,7 @@ class ProfilingSummary:
         """Build ProfilingMetrics from all scenarios."""
         metrics = ProfilingMetrics()
 
-        for scenario in self.all_scenarios:
+        for scenario in self._process_results:
             profile = self._extract_profile_from_scenario(
                 scenario)
             if profile:

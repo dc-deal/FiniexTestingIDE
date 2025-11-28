@@ -12,7 +12,8 @@ All box types maintain identical line count for grid alignment.
 """
 
 from typing import List
-from python.framework.types.process_data_types import PostProcessResult
+from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.grid.console_grid_renderer import render_box
 from python.framework.types.currency_codes import format_currency_simple
@@ -20,7 +21,8 @@ from python.framework.utils.math_utils import force_negative, force_positive
 
 
 def create_portfolio_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -33,7 +35,7 @@ def create_portfolio_box(
     - Hybrid: Portfolio data + CRITICAL warning
 
     Args:
-        scenario: PostProcessResult object
+        process_result: ProcessResult object
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -41,20 +43,21 @@ def create_portfolio_box(
         List of formatted box lines
     """
     # Check for errors first
-    if scenario.error_type or scenario.error_message:
+    if process_result.error_type or process_result.error_message:
         # Hybrid case: execution started, portfolio data exists
-        if scenario.tick_loop_results and scenario.tick_loop_results.portfolio_stats:
-            return _build_hybrid_portfolio_box(scenario, box_width, show_status_line)
+        if process_result.tick_loop_results and process_result.tick_loop_results.portfolio_stats:
+            return _build_hybrid_portfolio_box(process_result, scenario, box_width, show_status_line)
         else:
             # Pure error: no portfolio data
-            return _build_error_portfolio_box(scenario, box_width, show_status_line)
+            return _build_error_portfolio_box(process_result, scenario, box_width, show_status_line)
 
     # Normal success case
-    return _build_success_portfolio_box(scenario, box_width, show_status_line)
+    return _build_success_portfolio_box(process_result, scenario, box_width, show_status_line)
 
 
 def _build_success_portfolio_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -62,7 +65,7 @@ def _build_success_portfolio_box(
     Build portfolio box for successful execution.
 
     Args:
-        scenario: PostProcessResult with success=True
+        process_result: ProcessResult with success=True
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -71,13 +74,13 @@ def _build_success_portfolio_box(
     """
     renderer = ConsoleRenderer()
 
-    portfolio_stats = scenario.tick_loop_results.portfolio_stats
-    execution_stats = scenario.tick_loop_results.execution_stats
-    cost_breakdown = scenario.tick_loop_results.cost_breakdown
+    portfolio_stats = process_result.tick_loop_results.portfolio_stats
+    execution_stats = process_result.tick_loop_results.execution_stats
+    cost_breakdown = process_result.tick_loop_results.cost_breakdown
 
-    scenario_name = scenario.scenario_name[:28]
+    scenario_name = process_result.scenario_name[:28]
 
-    # Check for no trades scenario
+    # Check for no trades process_result
     if portfolio_stats.total_trades == 0:
         lines = [
             f"💰 {scenario_name}",
@@ -123,7 +126,7 @@ def _build_success_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = scenario.single_scenario.configured_account_currency
+    configured_currency = scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -184,7 +187,8 @@ def _build_success_portfolio_box(
 
 
 def _build_hybrid_portfolio_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
@@ -194,7 +198,7 @@ def _build_hybrid_portfolio_box(
     Shows portfolio data from partial execution + CRITICAL warning.
 
     Args:
-        scenario: PostProcessResult with portfolio_stats + errors
+        process_result: ProcessResult with portfolio_stats + errors
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -203,13 +207,13 @@ def _build_hybrid_portfolio_box(
     """
     renderer = ConsoleRenderer()
 
-    portfolio_stats = scenario.tick_loop_results.portfolio_stats
-    execution_stats = scenario.tick_loop_results.execution_stats
-    cost_breakdown = scenario.tick_loop_results.cost_breakdown
+    portfolio_stats = process_result.tick_loop_results.portfolio_stats
+    execution_stats = process_result.tick_loop_results.execution_stats
+    cost_breakdown = process_result.tick_loop_results.cost_breakdown
 
-    scenario_name = scenario.scenario_name[:28]
+    scenario_name = process_result.scenario_name[:28]
 
-    # Check for no trades scenario
+    # Check for no trades process_result
     if portfolio_stats.total_trades == 0:
         lines = [
             f"💰 {scenario_name}",
@@ -249,7 +253,7 @@ def _build_hybrid_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = scenario.single_scenario.configured_account_currency
+    configured_currency = scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -304,17 +308,18 @@ def _build_hybrid_portfolio_box(
 
 
 def _build_error_portfolio_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
     """
     Build portfolio box for failed scenarios.
 
-    Minimal display - error details shown in scenario box only.
+    Minimal display - error details shown in process_result box only.
 
     Args:
-        scenario: PostProcessResult with success=False
+        process_result: ProcessResult with success=False
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -323,8 +328,8 @@ def _build_error_portfolio_box(
     """
     renderer = ConsoleRenderer()
 
-    scenario_name = scenario.scenario_name[:28]
-    symbol = scenario.single_scenario.symbol
+    scenario_name = process_result.scenario_name[:28]
+    symbol = scenario.symbol
 
     # Minimal error display
     lines = [

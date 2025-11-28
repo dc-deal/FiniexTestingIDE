@@ -8,7 +8,7 @@ This is the coordination layer - actual rendering logic stays in framework/repor
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.reporting.batch_summary import BatchSummary
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
 import re

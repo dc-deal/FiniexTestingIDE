@@ -18,7 +18,7 @@ from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_performance_types import ProfilingData
 
@@ -68,23 +68,23 @@ class BatchSummary:
 
     def _calculate_batch_status(self) -> BatchStatus:
         """
-        Calculate batch execution status based on scenario results.
+        Calculate batch execution status based on process_result results.
 
         Returns:
-            BatchStatus.SUCCESS: All scenarios successful
-            BatchStatus.PARTIAL: Some scenarios failed
-            BatchStatus.FAILED: All scenarios failed
+            BatchStatus.SUCCESS: All process_results successful
+            BatchStatus.PARTIAL: Some process_results failed
+            BatchStatus.FAILED: All process_results failed
         """
-        scenarios = self.batch_execution_summary.scenario_list
+        process_results = self.batch_execution_summary.process_result_list
 
-        if not scenarios:
+        if not process_results:
             return BatchStatus.SUCCESS
 
-        failed_count = sum(1 for s in scenarios if not s.success)
+        failed_count = sum(1 for s in process_results if not s.success)
 
         if failed_count == 0:
             return BatchStatus.SUCCESS
-        elif failed_count == len(scenarios):
+        elif failed_count == len(process_results):
             return BatchStatus.FAILED
         else:
             return BatchStatus.PARTIAL
@@ -94,16 +94,16 @@ class BatchSummary:
 
         profiling_data_map = {}
 
-        for scenario in batch_execution_summary.scenario_list:
+        for process_result in batch_execution_summary.process_result_list:
             # Check if profiling data exists
-            if (not scenario.tick_loop_results or
-                    not scenario.tick_loop_results.profiling_data):
+            if (not process_result.tick_loop_results or
+                    not process_result.tick_loop_results.profiling_data):
                 continue
             profiling = ProfilingData.from_dicts(
-                scenario.tick_loop_results.profiling_data.profile_times,
-                scenario.tick_loop_results.profiling_data.profile_counts
+                process_result.tick_loop_results.profiling_data.profile_times,
+                process_result.tick_loop_results.profiling_data.profile_counts
             )
-            profiling_data_map[scenario.scenario_index] = profiling
+            profiling_data_map[process_result.scenario_index] = profiling
         return profiling_data_map
 
     def render_all(self):
@@ -113,8 +113,8 @@ class BatchSummary:
         Sequence:
         1. Header with basic stats (INCLUDING batch status)
         2. Scenario details (grid)
-        3. Portfolio summaries (per scenario + aggregated)
-        4. Performance details (per scenario + aggregated)
+        3. Portfolio summaries (per process_result + aggregated)
+        4. Performance details (per process_result + aggregated)
         5. Bottleneck analysis
         6. Profiling analysis
         7. Worker decision breakdown
@@ -133,7 +133,10 @@ class BatchSummary:
 
         # Pass show_status_line flag
         show_status_line = batch_status != BatchStatus.SUCCESS
-        self._render_scenario_grid(show_status_line)
+        self._box_renderer.render_scenario_grid(
+            self.batch_execution_summary,
+            show_status_line=show_status_line
+        )
 
         # Portfolio summaries
         self._renderer.section_separator()
@@ -147,7 +150,7 @@ class BatchSummary:
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(
-            self.batch_execution_summary.scenario_list)
+            self.batch_execution_summary.process_result_list)
         aggregated_portfolios = aggregator.aggregate_by_currency()
         self.portfolio_summary.render_aggregated(
             self._renderer, aggregated_portfolios)
@@ -194,9 +197,8 @@ class BatchSummary:
         """
         batch_performance_data = self.batch_execution_summary
 
-        success = batch_performance_data.success
-        scenarios_count = batch_performance_data.scenarios_count
-        exec_time = batch_performance_data.summary_execution_time
+        scenarios_count = len(batch_performance_data.single_scenario_list)
+        exec_time = batch_performance_data.batch_execution_time
 
         # Check parallel mode
         batch_parallel = self.app_config.get_default_parallel_scenarios()
@@ -223,25 +225,6 @@ class BatchSummary:
 
         if batch_parallel and scenarios_count > 1:
             concurrent = min(max_parallel, scenarios_count)
-            print(f" ({concurrent} scenarios concurrent)")
+            print(f" ({concurrent} process_results concurrent)")
         else:
             print()
-
-    def _render_scenario_grid(self, show_status_line: bool):
-        """
-        Render scenario details in grid format.
-
-        Args:
-            show_status_line: Whether to show status line in boxes
-        """
-        all_scenarios = self.batch_execution_summary.scenario_list
-
-        if not all_scenarios:
-            print("No scenario results available")
-            return
-
-        # MODIFIED: Pass show_status_line flag
-        self._box_renderer.render_scenario_grid(
-            all_scenarios,
-            show_status_line=show_status_line
-        )

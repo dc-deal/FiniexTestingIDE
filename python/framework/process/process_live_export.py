@@ -10,7 +10,7 @@ from python.framework.types.live_stats_config_types import ProcessLiveSetup
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.process_serialization_utils import serialize_current_bars
-from python.framework.workers.worker_coordinator import WorkerCoordinator
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 def process_live_setup(logger: ScenarioLogger,
@@ -51,7 +51,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
                         tick_idx: int,
                         tick: TickData,
                         portfolio: PortfolioManager,
-                        worker_coordinator: WorkerCoordinator,
+                        worker_coordinator: WorkerOrchestrator,
                         current_bars: Dict[str, Bar]
                         ) -> bool:
     first_tick = live_setup.first_tick

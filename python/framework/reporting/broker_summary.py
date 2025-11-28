@@ -8,7 +8,7 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 
 
 class BrokerSummary:

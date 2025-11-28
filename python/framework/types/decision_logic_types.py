@@ -39,23 +39,6 @@ class DecisionLogicAction(Enum):
 
 
 @dataclass
-class DecisionLogicStatistics:
-    """
-    Statistics tracking for DecisionLogic performance.
-
-    Tracks decision-making and order execution metrics.
-    Replaces dict-based statistics for type safety.
-    """
-    decisions_made: int = 0       # Total decisions generated
-    buy_signals: int = 0          # BUY actions generated
-    sell_signals: int = 0         # SELL actions generated
-    flat_signals: int = 0         # FLAT actions generated
-    orders_executed: int = 0      # Orders successfully executed
-    orders_rejected: int = 0      # Orders rejected by broker
-    trades_requested: int = 0
-
-
-@dataclass
 class Decision:
     """
     Trading decision output from DecisionLogic.

@@ -14,7 +14,7 @@ Usage:
     ScenarioValidator.validate_account_currencies(scenarios, logger)
 """
 
-from typing import List
+from typing import Dict, List
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -198,7 +198,7 @@ class ScenarioValidator:
                 logger.error(f"❌ Scenario at index {idx}: Missing name")
 
         # Check for duplicates
-        name_counts = {}
+        name_counts: Dict[str, List[SingleScenario]] = {}
         for scenario in scenarios:
             if scenario.name and scenario.name.strip():  # Skip empty (already caught)
                 if scenario.name not in name_counts:
@@ -206,9 +206,9 @@ class ScenarioValidator:
                 name_counts[scenario.name].append(scenario)
 
         # Mark all duplicates as invalid
-        for name, scenario_list in name_counts.items():
-            if len(scenario_list) > 1:
-                for scenario in scenario_list:
+        for name, single_scenario_list in name_counts.items():
+            if len(single_scenario_list) > 1:
+                for scenario in single_scenario_list:
                     validation_result = ValidationResult(
                         is_valid=False,
                         scenario_name=scenario.name,
@@ -218,7 +218,7 @@ class ScenarioValidator:
                     )
                     scenario.validation_result.append(validation_result)
                     logger.error(
-                        f"❌ {scenario.name}: Duplicate name found ({len(scenario_list)} occurrences)")
+                        f"❌ {scenario.name}: Duplicate name found ({len(single_scenario_list)} occurrences)")
 
     @staticmethod
     def validate_account_currency(

@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Coordinator Tick Logger
-Handles optimized logging for WorkerCoordinator with intelligent bar history caching.
+Handles optimized logging for WorkerOrchestrator with intelligent bar history caching.
 """
 
 import json

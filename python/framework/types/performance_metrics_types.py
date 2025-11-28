@@ -127,69 +127,11 @@ class ProfilingMetrics:
 
 
 @dataclass
-class ResourceMetrics:
-    """
-    System resource usage during scenario execution.
-
-    Optional metrics that can be collected:
-    - CPU usage (per core or average)
-    - Memory usage (RAM)
-    - Thread count
-    - I/O statistics
-    """
-    scenario_index: int
-    scenario_name: str
-
-    # CPU metrics
-    avg_cpu_percent: Optional[float] = None
-    peak_cpu_percent: Optional[float] = None
-
-    # Memory metrics
-    avg_memory_mb: Optional[float] = None
-    peak_memory_mb: Optional[float] = None
-
-    # Threading metrics
-    avg_thread_count: Optional[int] = None
-    peak_thread_count: Optional[int] = None
-
-    # Sampling info
-    sample_count: int = 0
-    sampling_interval_ms: float = 500.0  # How often samples were taken
-
-
-@dataclass
-class PerformanceSnapshot:
-    """
-    Point-in-time performance snapshot during execution.
-
-    Used for:
-    - Live progress display
-    - Historical performance tracking
-    - Performance degradation detection
-    """
-    timestamp: float  # Unix timestamp
-    scenario_index: int
-    ticks_processed: int
-
-    # Current performance metrics
-    current_tick_time_ms: float
-    avg_tick_time_ms: float
-
-    # Resource usage at this point
-    cpu_percent: Optional[float] = None
-    memory_mb: Optional[float] = None
-
-    # Trading metrics
-    portfolio_value: float = 0.0
-    trades_count: int = 0
-
-
-@dataclass
 class WorkerDecisionBreakdown:
     """
     Detailed breakdown of worker_decision time.
 
-    Shows exactly where time is spent in WorkerCoordinator.process_tick():
+    Shows exactly where time is spent in WorkerOrchestrator.process_tick():
     - Pure worker computation time
     - Decision logic computation time
     - Coordination overhead (the mystery!)

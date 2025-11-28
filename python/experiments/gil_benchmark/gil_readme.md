@@ -104,7 +104,7 @@ def _run_parallel(self):
 ### Already Good in Your Code:
 
 ✅ Each scenario gets its own `TradeSimulator` instance  
-✅ Each scenario gets its own `WorkerCoordinator` instance  
+✅ Each scenario gets its own `WorkerOrchestrator` instance  
 ✅ Results collected via `BatchExecutionSummary` (thread-safe)  
 ✅ No shared mutable state between scenarios
 

@@ -33,12 +33,10 @@ class PortfolioSummary:
         Args:
             renderer: ConsoleRenderer instance
         """
-        scenarios = self.batch_execution_summary.scenario_list
-
         # Use grid renderer
         print()
         box_renderer.render_portfolio_grid(
-            scenarios=scenarios,
+            batch_summary=self.batch_execution_summary,
             columns=3,      # 3 boxes per row
             box_width=38    # Same width as scenario boxes
         )
@@ -101,10 +99,10 @@ class PortfolioSummary:
         """
         if show_currency_header:
             print()
-            scenario_list = ", ".join(aggregated.scenario_names)
+            scenario_names = ", ".join(aggregated.scenario_names)
             print(
                 f"\n{renderer.bold(f'   💰 {aggregated.currency} GROUP ({aggregated.scenario_count} scenarios)')}")
-            print(f"      Scenarios: {scenario_list}")
+            print(f"      Scenarios: {scenario_names}")
 
         self._render_aggregated_details(
             aggregated.portfolio_stats,
