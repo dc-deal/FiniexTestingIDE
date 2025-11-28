@@ -70,12 +70,18 @@ def process_main(
         success = True
         error_type = None
         error_message = None
+        error_traceback = None
         tick_loop_error = tick_loop_results.tick_loop_error
         if (tick_loop_error is not None):
             # tick loop failed, pare error, sucess is false.
             success = False
             error_type = type(tick_loop_error).__name__
             error_message = str(tick_loop_error)
+            error_traceback = ''.join(traceback.format_exception(
+                type(tick_loop_error),
+                tick_loop_error,
+                tick_loop_error.__traceback__
+            ))
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
         if success == True:
@@ -91,7 +97,8 @@ def process_main(
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
             error_type=error_type,
-            error_message=error_message
+            error_message=error_message,
+            traceback=error_traceback
         )
         scenario_logger.debug(
             f"🕐 {config.name} returning at {time.time()}")

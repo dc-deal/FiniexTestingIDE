@@ -276,8 +276,6 @@ class SimpleConsensus(AbstractDecisionLogic):
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
-        current_bars: Dict[str, Bar],
-        bar_history: Dict[str, List[Bar]],
     ) -> Decision:
         """
         Generate trading decision based on consensus between RSI and Envelope.
@@ -288,8 +286,6 @@ class SimpleConsensus(AbstractDecisionLogic):
         Args:
             tick: Current tick data
             worker_results: Results from rsi and envelope workers
-            current_bars: Current bars (not used in simple strategy)
-            bar_history: Historical bars (not used in simple strategy)
 
         Returns:
             Decision object with action, confidence, and reason

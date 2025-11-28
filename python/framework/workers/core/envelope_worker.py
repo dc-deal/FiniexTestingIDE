@@ -9,35 +9,44 @@ import numpy as np
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.worker_types import WorkerResult
-from python.framework.workers.abstract_blackbox_worker import \
-    AbstractBlackboxWorker
+from python.framework.types.worker_types import WorkerResult, WorkerType
+from python.framework.workers.abstract_worker import \
+    AbstactWorker
 
 
-class EnvelopeWorker(AbstractBlackboxWorker):
+class EnvelopeWorker(AbstactWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
     def __init__(self, name, parameters, logger: ScenarioLogger, **kwargs):
         """
         Initialize Envelope worker.
 
+        NEW CONFIG STRUCTURE:
+        {
+            "periods": {"M5": 20, "M30": 50},  # REQUIRED for INDICATOR
+            "deviation": 0.02                   # Optional
+        }
+
         Parameters can be provided via:
         - parameters dict (factory-style)
         - kwargs (legacy constructor-style)
-
-        Optional parameters (all have defaults):
-        - period: Moving average period (default: 20)
-        - deviation: Band deviation multiplier (default: 0.02)
-        - timeframe: Timeframe to use (default: "M5")
         """
         super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
 
         params = parameters or {}
-        self.period = params.get('period') or kwargs.get('period', 20)
+
+        # Extract 'periods' namespace (REQUIRED for INDICATOR)
+        self.periods = params.get('periods', kwargs.get('periods', {}))
+
+        if not self.periods:
+            raise ValueError(
+                f"EnvelopeWorker '{name}' requires 'periods' in config "
+                f"(e.g. {{'M5': 20}})"
+            )
+
+        # Extract optional algorithm parameters
         self.deviation = params.get(
             'deviation') or kwargs.get('deviation', 0.02)
-        self.timeframe = params.get(
-            'timeframe') or kwargs.get('timeframe', 'M5')
 
     # ============================================
     # STATIC: Classmethods für Factory/UI
@@ -45,17 +54,23 @@ class EnvelopeWorker(AbstractBlackboxWorker):
 
     @classmethod
     def get_required_parameters(cls) -> Dict[str, type]:
-        """Envelope hat KEINE required parameters - alle haben defaults"""
+        """
+        Envelope requires 'periods' (validated by AbstactWorker).
+
+        Returns empty because validation happens in parent class.
+        """
         return {}
 
     @classmethod
     def get_optional_parameters(cls) -> Dict[str, Any]:
-        """Envelope hat NUR optionale Parameter mit defaults"""
+        """Envelope optional parameters with defaults"""
         return {
-            'period': 20,         # Moving average period
-            'deviation': 0.02,    # Band deviation (2%)
-            'timeframe': 'M5',    # Default timeframe
+            'deviation': 0.02,  # Band deviation (2%)
         }
+
+    @classmethod
+    def get_worker_type(cls) -> WorkerType:
+        return WorkerType.INDICATOR
 
     # ============================================
     # DYNAMIC: Instance methods für Runtime
@@ -63,22 +78,21 @@ class EnvelopeWorker(AbstractBlackboxWorker):
 
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        Envelope braucht 'period' bars.
+        Envelope warmup requirements from config 'periods'.
 
-        Berechnet aus self.period (aus Config!)
+        Returns:
+            Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
         """
-        requirements = {}
-        for tf in self.get_required_timeframes():
-            requirements[tf] = self.period
-        return requirements
+        return self.periods
 
     def get_required_timeframes(self) -> List[str]:
         """
-        Envelope braucht nur einen Timeframe.
+        Envelope required timeframes from config 'periods'.
 
-        Berechnet aus self.timeframe (aus Config!)
+        Returns:
+            List of timeframes - e.g. ["M5", "M30"]
         """
-        return [self.timeframe]
+        return list(self.periods.keys())
 
     def get_max_computation_time_ms(self) -> float:
         """Envelope ist schnell - 50ms Timeout"""
@@ -95,7 +109,10 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         current_bars: Dict[str, Bar],
     ) -> WorkerResult:
         """
-        Envelope/Bollinger Band computation using bar close prices
+        Envelope/Bollinger Band computation using bar close prices.
+
+        Works with first timeframe from 'periods' config.
+        For multi-timeframe envelope, create multiple worker instances.
 
         Args:
             tick: Current tick (for metadata only)
@@ -105,15 +122,18 @@ class EnvelopeWorker(AbstractBlackboxWorker):
         Returns:
             WorkerResult with envelope bands
         """
+        # Get first timeframe from periods
+        timeframe = list(self.periods.keys())[0]
+        period = self.periods[timeframe]
 
         # Get bar history for our timeframe
-        bars = bar_history.get(self.timeframe, [])
-        current_bar = current_bars.get(self.timeframe, [])
-        if current_bars:
+        bars = bar_history.get(timeframe, [])
+        current_bar = current_bars.get(timeframe)  # Default: None (not [])
+        if current_bar:  # Check if Bar exists (not Dict!)
             bars = list(bars) + [current_bar]
 
         # Extract close prices from bars
-        close_prices = np.array([bar.close for bar in bars[-self.period:]])
+        close_prices = np.array([bar.close for bar in bars[-period:]])
 
         # Calculate envelope/bollinger bands
         middle = np.mean(close_prices)
@@ -131,7 +151,7 @@ class EnvelopeWorker(AbstractBlackboxWorker):
             position = max(0.0, min(1.0, position))  # Clamp 0-1
 
         # Confidence based on bar quality
-        confidence = min(1.0, len(bars) / (self.period * 2))
+        confidence = min(1.0, len(bars) / (period * 2))
 
         return WorkerResult(
             worker_name=self.name,
@@ -143,8 +163,8 @@ class EnvelopeWorker(AbstractBlackboxWorker):
             },
             confidence=confidence,
             metadata={
-                "period": self.period,
-                "timeframe": self.timeframe,
+                "period": period,
+                "timeframe": timeframe,
                 "deviation": self.deviation,
                 "std_dev": float(std_dev),
                 "bars_used": len(close_prices),

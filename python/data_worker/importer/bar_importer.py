@@ -43,9 +43,6 @@ class BarImporter:
 
     VERSION = "1.0"
 
-    # Supported timeframes (from types.py)
-    SUPPORTED_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1']
-
     def __init__(self, data_dir: str = "./data/parquet/"):
         """
         Initialize Bar Importer.

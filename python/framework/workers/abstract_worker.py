@@ -11,14 +11,22 @@ from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
     WorkerResult, WorkerState, WorkerType)
 from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
-class AbstractBlackboxWorker(ABC):
+class AbstactWorker(ABC):
     """
     Abstract base class for all blackbox workers
 
     Workers compute indicators/signals based on bar data
     """
+
+    # Type-specific required config fields
+    REQUIRED_CONFIG_FIELDS = {
+        WorkerType.INDICATOR: ["periods"],
+        WorkerType.API: ["endpoints"],      # Post-MVP
+        WorkerType.EVENT: ["subscriptions"]  # Post-MVP
+    }
 
     def __init__(
         self,
@@ -87,25 +95,6 @@ class AbstractBlackboxWorker(ABC):
         """
         return 100.0
 
-    def get_required_timeframes(self) -> List[str]:
-        """
-        Get required timeframes for this worker
-
-        Returns:
-            List of timeframe strings (e.g., ['M1', 'M5'])
-        """
-        return ["M1"]  # Default
-
-    def get_warmup_requirements(self) -> Dict[str, int]:
-        """
-        Get warmup requirements per timeframe
-
-        Returns:
-            Dict[timeframe, bars_needed]
-        """
-
-        return {}  # Default
-
     @abstractmethod
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """
@@ -163,16 +152,16 @@ class AbstractBlackboxWorker(ABC):
     # Factory Support Methods
     # ============================================
 
-    def get_worker_type(self) -> WorkerType:
+    @classmethod
+    @abstractmethod
+    def get_worker_type(cls) -> WorkerType:
         """
-        Get worker type classification for monitoring.
+        Get worker type classification.
 
-        Override in subclass if needed.
-
-        Returns:
-            WorkerType enum value
+        MUST be overridden in every subclass.
+        Forces explicit type declaration.
         """
-        return WorkerType.COMPUTE
+        pass
 
     @classmethod
     def get_default_parameters(cls) -> Dict[str, Any]:
@@ -185,4 +174,70 @@ class AbstractBlackboxWorker(ABC):
         Returns:
             Dict of default parameter values
         """
+        return {}
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> None:
+        """
+        Validate config has type-specific required fields.
+
+        Raises ValueError if required fields missing.
+        Called by WorkerFactory before instantiation.
+
+        Args:
+            config: Worker configuration dict
+
+        Raises:
+            ValueError: If required fields missing
+        """
+        worker_type = cls.get_worker_type()
+        required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])
+
+        for field in required_fields:
+            if field not in config:
+                raise ValueError(
+                    f"{worker_type.value} worker '{cls.__name__}' requires "
+                    f"'{field}' in config"
+                )
+
+            # Validate 'periods' is not empty for INDICATOR
+            if field == "periods" and not config[field]:
+                raise ValueError(
+                    f"INDICATOR worker '{cls.__name__}' requires non-empty "
+                    f"'periods' dict (e.g. {{'M5': 20}})"
+                )
+
+            # Validate timeframe keys inside 'periods'
+            if field == "periods":
+                for tf in config[field].keys():
+                    # uses our central registry
+                    TimeframeConfig.normalize(tf)
+
+    @classmethod
+    def calculate_requirements(cls, config: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Calculate warmup requirements from config WITHOUT creating instance.
+
+        This is THE KEY METHOD that eliminates double worker creation:
+        - Phase 0: Call this to get requirements (no instance needed)
+        - Phase 6: Create actual worker instance for execution
+
+        Override in subclass for custom logic (e.g., MACD max(fast, slow)).
+
+        Args:
+            config: Worker configuration dict
+
+        Returns:
+            Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
+
+        Example:
+            >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 0.02}
+            >>> EnvelopeWorker.calculate_requirements(config)
+            {"M5": 20, "M30": 50}
+        """
+        # Default implementation: Use 'periods' directly for INDICATOR
+        if cls.get_worker_type() == WorkerType.INDICATOR:
+            return config.get("periods", {})
+
+        # Non-INDICATOR workers return empty (no warmup needed)
         return {}

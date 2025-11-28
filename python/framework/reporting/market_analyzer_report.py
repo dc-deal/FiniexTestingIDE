@@ -18,7 +18,7 @@ import pandas as pd
 
 from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.types.timeframe_types import TimeframeConfig
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.scenario_generator_types import (

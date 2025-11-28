@@ -351,7 +351,7 @@ class BatchOrchestrator:
         # Collect requirements from valid scenarios only
         # collect() internally skips scenarios where is_valid() == False
         requirements_map, warmup_requirements_by_scenario = (
-            self._requirements_collector.collect(self._scenarios)
+            self._requirements_collector.collect_and_validate(self._scenarios)
         )
 
         # ========================================================================

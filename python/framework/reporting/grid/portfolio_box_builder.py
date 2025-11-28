@@ -324,7 +324,7 @@ def _build_error_portfolio_box(
     renderer = ConsoleRenderer()
 
     scenario_name = scenario.scenario_name[:28]
-    symbol = scenario.symbol
+    symbol = scenario.single_scenario.symbol
 
     # Minimal error display
     lines = [

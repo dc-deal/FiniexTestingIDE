@@ -68,6 +68,22 @@ class AppConfigManager:
         """
         return self._config.get("execution", {})
 
+    def get_scenario_execution_defaults(self) -> Dict[str, Any]:
+        """
+        Get default execution_config for scenarios from app_config.
+
+        These defaults are used as the base layer in the 3-level cascade:
+            app_config → global → scenario
+
+        Only execution_config has this 3-level cascade. strategy_config
+        and trade_simulator_config use 2-level cascade (global → scenario).
+
+        Returns:
+            Default execution config dict for scenarios
+        """
+        exec_config = self.get_execution_config()
+        return exec_config.get("scenario_execution_defaults", {})
+
     def get_logging_show_scenario_logging(self) -> bool:
         """
         Check if scenario logging should be shown in console.

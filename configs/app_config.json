@@ -5,10 +5,14 @@
         "dev_mode": false
     },
     "execution": {
-        "default_parallel_scenarios": true,
-        "default_max_parallel_scenarios": 20,
-        "default_parallel_workers": true,
-        "default_worker_parallel_threshold_ms": 1.0
+        "parallel_scenarios": true,
+        "max_parallel_scenarios": 20,
+        "default_scenario_execution_config": {
+            "parallel_workers": false,
+            "worker_parallel_threshold_ms": 1.0,
+            "adaptive_parallelization": true,
+            "log_performance_stats": true
+        }
     },
     "console_logging": {
         "enabled": true,
