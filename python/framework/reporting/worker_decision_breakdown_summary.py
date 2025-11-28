@@ -30,7 +30,7 @@ class WorkerDecisionBreakdownSummary:
     def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]):
         self.batch_execution_summary = batch_execution_summary
         self.profiling_data_map = profiling_data_map
-        self.scenario_list = batch_execution_summary.scenario_list
+        self._process_results = batch_execution_summary.process_result_list
         self.breakdowns = self._build_breakdowns()
 
     def render_per_scenario(self, renderer: ConsoleRenderer):
@@ -66,7 +66,7 @@ class WorkerDecisionBreakdownSummary:
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
         """Build breakdowns from scenarios."""
         breakdowns = []
-        for scenario in self.scenario_list:
+        for scenario in self._process_results:
             breakdown = self._build_breakdown_for_scenario(
                 scenario)
             if breakdown:
@@ -79,51 +79,52 @@ class WorkerDecisionBreakdownSummary:
         """
         Build breakdown for single scenario.
 
-        Uses typed ProfilingData for clean access.
-        No more: profiling_data.get('profile_times', {}).get('worker_decision', 0.0)
-        Now: profiling_data.get_operation_time('worker_decision')
+        Uses typed ProfilingData and new statistics structure.
+
+        Args:
+            scenario: ProcessResult with tick loop results
+
+        Returns:
+            WorkerDecisionBreakdown or None if no profiling data
         """
         profiling = self.profiling_data_map.get(scenario.scenario_index)
-
         if not profiling:
             return None
 
-        # Get total worker_decision time using typed access
+        # Get total worker_decision time from profiling
         total_worker_decision_ms = profiling.get_operation_time(
             'worker_decision')
-
         if total_worker_decision_ms == 0:
             return None
 
-        # Access BatchPerformanceStats directly
-        batch_stats = scenario.tick_loop_results.performance_stats
+        # Get statistics from new structure
+        decision_stats = scenario.tick_loop_results.decision_statistics
+        worker_stats = scenario.tick_loop_results.worker_statistics
+        coordination_stats = scenario.tick_loop_results.coordination_statistics
 
-        # Calculate worker execution time from WorkerPerformanceStats objects
-        worker_execution_ms = sum(
-            w.worker_total_time_ms for w in batch_stats.workers.values()
-        )
+        # Calculate worker execution time (sum from list)
+        worker_execution_ms = sum(w.worker_total_time_ms for w in worker_stats)
 
-        # Build worker breakdown dict
+        # Build worker breakdown dict (worker_name -> time_ms)
         worker_breakdown = {
-            name: perf.worker_total_time_ms
-            for name, perf in batch_stats.workers.items()
+            w.worker_name: w.worker_total_time_ms
+            for w in worker_stats
         }
 
         # Get decision logic time
-        decision_logic_ms = 0.0
-        if batch_stats.decision_logic:
-            decision_logic_ms = batch_stats.decision_logic.decision_total_time_ms
+        decision_logic_ms = decision_stats.decision_total_time_ms
 
         # Calculate coordination overhead
-        coordination_overhead_ms = total_worker_decision_ms - \
-            worker_execution_ms - decision_logic_ms
-        coordination_overhead_ms = max(0.0, coordination_overhead_ms)
+        coordination_overhead_ms = max(
+            0.0,
+            total_worker_decision_ms - worker_execution_ms - decision_logic_ms
+        )
 
         return WorkerDecisionBreakdown(
             scenario_index=scenario.scenario_index,
             scenario_name=scenario.scenario_name,
             total_time_ms=total_worker_decision_ms,
-            total_ticks=scenario.tick_loop_results.performance_stats.ticks_processed,
+            total_ticks=coordination_stats.ticks_processed,
             worker_execution_ms=worker_execution_ms,
             decision_logic_ms=decision_logic_ms,
             coordination_overhead_ms=coordination_overhead_ms,

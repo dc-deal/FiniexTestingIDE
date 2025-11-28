@@ -124,9 +124,9 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.process_data_types import PostProcessResult
+from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_set_types import ScenarioSet
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.components.logger.abstract_logger import AbstractLogger
 from multiprocessing import Manager
@@ -408,7 +408,7 @@ class BatchOrchestrator:
                 live_queue=self._live_queue
             )
 
-        summary_execution_time = time.time() - start_time
+        batch_execution_time = time.time() - start_time
 
         # ========================================================================
         # CLEANUP
@@ -426,10 +426,14 @@ class BatchOrchestrator:
         # ========================================================================
         self._logger.info("📊 Phase 7: Building summary...")
 
-        summary = BatchExecutionSummary.from_process_results(
-            scenarios=self._scenarios,
-            results=results,
-            summary_execution_time=summary_execution_time,
+        summary = BatchExecutionSummary(
+            # results of scenario
+            process_result_list=results,
+            # scenarios always stay in index synchronisity with results.
+            single_scenario_list=self._scenarios,
+            # stats for batch execution
+            batch_execution_time=batch_execution_time,
+            # broker maps are a set of symbols used in scenario_set
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
         )
 
@@ -443,7 +447,7 @@ class BatchOrchestrator:
         self.flush_all_logs(summary)
 
         self._logger.info(
-            f"✅ Batch execution completed in {summary_execution_time:.2f}s"
+            f"✅ Batch execution completed in {batch_execution_time:.2f}s"
         )
 
         return summary
@@ -458,7 +462,7 @@ class BatchOrchestrator:
         # output scenario Logs
         show_scenario_logging = self._app_config_manager.get_logging_show_scenario_logging()
         if show_scenario_logging:
-            for process_result in batch_execution_summary.scenario_list:
+            for process_result in batch_execution_summary.process_result_list:
                 AbstractLogger.print_buffer(
                     process_result.scenario_logger_buffer,
                     process_result.scenario_name

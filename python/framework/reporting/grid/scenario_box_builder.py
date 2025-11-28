@@ -1,9 +1,9 @@
 """
 FiniexTestingIDE - Scenario Box Builder
-Builds scenario statistics boxes
+Builds process_result statistics boxes
 
 Handles:
-- Success boxes (scenario execution details)
+- Success boxes (process_result execution details)
 - Error boxes (validation/execution failures)
 - Hybrid boxes (partial execution with errors)
 - Conditional status line rendering
@@ -12,19 +12,21 @@ All box types maintain identical line count for grid alignment.
 """
 
 from typing import List
+from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.grid.console_grid_renderer import render_box
-from python.framework.types.process_data_types import PostProcessResult
+from python.framework.types.process_data_types import ProcessResult
 from python.framework.utils.time_utils import format_duration, format_tick_timespan
 
 
 def create_scenario_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
     """
-    Create scenario box - dispatches to appropriate builder.
+    Create process_result box - dispatches to appropriate builder.
 
     Determines box type based on execution state:
     - Success: Normal statistics
@@ -32,7 +34,7 @@ def create_scenario_box(
     - Hybrid: Runtime error during execution
 
     Args:
-        scenario: PostProcessResult object
+        process_result: ProcessResult object
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -40,28 +42,28 @@ def create_scenario_box(
         List of formatted box lines
     """
     # Check for errors first
-    if scenario.error_type or scenario.error_message:
+    if process_result.error_type or process_result.error_message:
         # Hybrid case: execution started but errors occurred
-        if scenario.tick_loop_results:
-            return _build_hybrid_scenario_box(scenario, box_width, show_status_line)
+        if process_result.tick_loop_results:
+            return _build_hybrid_scenario_box(process_result, scenario, box_width, show_status_line)
         else:
             # Pure error: preparation/validation failed
-            return _build_error_scenario_box(scenario, box_width, show_status_line)
+            return _build_error_scenario_box(process_result, scenario, box_width, show_status_line)
 
     # Normal success case
-    return _build_success_scenario_box(scenario, box_width, show_status_line)
+    return _build_success_scenario_box(process_result, scenario, box_width, show_status_line)
 
 
 def _build_success_scenario_box(
-    scenario: PostProcessResult,
-    box_width: int,
-    show_status_line: bool
-) -> List[str]:
+        process_result: ProcessResult,
+        scenario: SingleScenario,
+        box_width: int,
+        show_status_line: bool):
     """
-    Build scenario box for successful execution.
+    Build process_result box for successful execution.
 
     Args:
-        scenario: PostProcessResult with success=True
+        process_result: ProcessResult with success=True
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -70,21 +72,30 @@ def _build_success_scenario_box(
     """
     renderer = ConsoleRenderer()
 
-    performance_stats = scenario.tick_loop_results.performance_stats
-    decision_statistics = scenario.tick_loop_results.decision_statistics
-    tick_range_stats = scenario.tick_loop_results.tick_range_stats
+    # Get statistics from tick loop results
+    decision_statistics = process_result.tick_loop_results.decision_statistics
+    worker_statistics = process_result.tick_loop_results.worker_statistics
+    coordination_statistics = process_result.tick_loop_results.coordination_statistics
+    tick_range_stats = process_result.tick_loop_results.tick_range_stats
 
-    scenario_name = scenario.scenario_name[:28]
-    symbol = scenario.single_scenario.symbol
-    ticks = performance_stats.ticks_processed
+    # Extract data
+    scenario_name = process_result.scenario_name[:28]
+    symbol = scenario.symbol
+
+    # Ticks from coordination statistics (counted in process_tick)
+    ticks_processed = coordination_statistics.ticks_processed
+
+    # Signal counts from decision statistics
     nfSig = decision_statistics.buy_signals + decision_statistics.sell_signals
     buys = decision_statistics.buy_signals
     sells = decision_statistics.sell_signals
     flats = decision_statistics.flat_signals
-    total_workers = performance_stats.total_workers
+
+    # Worker count from list length
+    total_workers = len(worker_statistics)
 
     # Format duration
-    exec_time = scenario.execution_time_ms
+    exec_time = process_result.execution_time_ms
     duration_str = format_duration(exec_time)
 
     # FIXED: Extract fields from tick_range_stats and pass individually
@@ -95,18 +106,19 @@ def _build_success_scenario_box(
     )
 
     # Non-flat signal percentage
-    nf_pct = (nfSig / ticks * 100) if ticks > 0 else 0
+    nf_pct = (nfSig / ticks_processed * 100) if ticks_processed > 0 else 0
 
     # Trades requested (decision logic signals)
     trades_requested = decision_statistics.trades_requested
-    trades_pct = (trades_requested / ticks * 100) if ticks > 0 else 0
+    trades_pct = (trades_requested / ticks_processed *
+                  100) if ticks_processed > 0 else 0
 
     # Create content lines (9 stats)
     lines = [
         f"{scenario_name}",
         f"Symbol: {symbol}",
         f"Duration: {duration_str}",
-        f"Ticks: {ticks:,}",
+        f"Ticks: {ticks_processed:,}",
         f"{tick_timespan_str}",
         f"Non-Flat Sign.: {nfSig} ({nf_pct:.1f}%)",
         f"B/S/F: {buys}/{sells}/{flats}",
@@ -124,17 +136,18 @@ def _build_success_scenario_box(
 
 
 def _build_hybrid_scenario_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
     """
-    Build scenario box for partial execution with errors.
+    Build process_result box for partial execution with errors.
 
     Shows statistics from partial execution + CRITICAL warning.
 
     Args:
-        scenario: PostProcessResult with tick_loop_results + errors
+        process_result: ProcessResult with tick_loop_results + errors
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -143,21 +156,29 @@ def _build_hybrid_scenario_box(
     """
     renderer = ConsoleRenderer()
 
-    performance_stats = scenario.tick_loop_results.performance_stats
-    decision_statistics = scenario.tick_loop_results.decision_statistics
-    tick_range_stats = scenario.tick_loop_results.tick_range_stats
+    # Get statistics
+    decision_statistics = process_result.tick_loop_results.decision_statistics
+    worker_statistics = process_result.tick_loop_results.worker_statistics
+    coordination_statistics = process_result.tick_loop_results.coordination_statistics
+    tick_range_stats = process_result.tick_loop_results.tick_range_stats
 
-    scenario_name = renderer.red(f"❌ {scenario.scenario_name[:28]}")
-    symbol = scenario.single_scenario.symbol
-    ticks = performance_stats.ticks_processed
+    scenario_name = renderer.red(f"❌ {process_result.scenario_name[:28]}")
+    symbol = scenario.symbol
+
+    # Ticks from coordination statistics
+    ticks = coordination_statistics.ticks_processed
+
+    # Signal counts
     nfSig = decision_statistics.buy_signals + decision_statistics.sell_signals
     buys = decision_statistics.buy_signals
     sells = decision_statistics.sell_signals
     flats = decision_statistics.flat_signals
-    total_workers = performance_stats.total_workers
+
+    # Worker count
+    total_workers = len(worker_statistics)
 
     # Format duration
-    exec_time = scenario.execution_time_ms
+    exec_time = process_result.execution_time_ms
     duration_str = format_duration(exec_time)
 
     # FIXED: Extract fields from tick_range_stats and pass individually
@@ -194,18 +215,19 @@ def _build_hybrid_scenario_box(
 
 
 def _build_error_scenario_box(
-    scenario: PostProcessResult,
+    process_result: ProcessResult,
+    scenario: SingleScenario,
     box_width: int,
     show_status_line: bool
 ) -> List[str]:
     """
-    Build scenario box for failed scenarios.
+    Build process_result box for failed scenarios.
 
     Displays error information with wrapped message.
     Status line shows failed state when enabled.
 
     Args:
-        scenario: PostProcessResult with success=False
+        process_result: ProcessResult with success=False
         box_width: Total box width
         show_status_line: Whether to show status line
 
@@ -215,22 +237,22 @@ def _build_error_scenario_box(
     renderer = ConsoleRenderer()
 
     content_width = box_width - 4
-    scenario_name = scenario.scenario_name[:28]
-    symbol = scenario.single_scenario.symbol
+    scenario_name = process_result.scenario_name[:28]
+    symbol = scenario.symbol
 
     # Build content lines
     lines = [
         renderer.red(f"❌ {scenario_name}"),
         f"Symbol: {symbol}",
         "",  # Separator
-        renderer.red(f"Error: {scenario.error_type or 'Unknown'}"),
+        renderer.red(f"Error: {process_result.error_type or 'Unknown'}"),
     ]
 
     # Add wrapped error message (5 or 6 lines available)
-    if scenario.error_message:
+    if process_result.error_message:
         remaining_lines = 5 if show_status_line else 6
         wrapped_msg = _wrap_error_message(
-            scenario.error_message,
+            process_result.error_message,
             content_width,
             remaining_lines
         )

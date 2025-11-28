@@ -7,7 +7,7 @@ CHANGES:
 - Added execute_decision() as abstractmethod (Template Method pattern)
 - Added set_trading_api() for API injection after validation
 - Removed trading_env parameter (replaced by DecisionTradingAPI)
-- REFACTORED: _statistics is now DecisionLogicStatistics dataclass (type-safe)
+- REFACTORED: _statistics is now DecisionLogicStats dataclass (type-safe)
 - REFACTORED: Uses DecisionLogicAction enum instead of string comparisons
 
 Decision Logic orchestrates worker results into trading decisions AND executes them.
@@ -18,16 +18,13 @@ on decision-making strategy AND trade execution, not on worker management.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from python.framework.performance.performance_log_decision_logic import PerformanceLogDecisionLogic
-from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import (
-    Decision,
-    DecisionLogicAction,
-    DecisionLogicStatistics
-)
-from python.framework.types.order_types import OrderType, OrderResult
 from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
+from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.types.decision_logic_types import Decision
+from python.framework.types.market_data_types import TickData
+from python.framework.types.order_types import OrderResult, OrderType
+from python.framework.types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerResult
 
 
@@ -80,10 +77,7 @@ class AbstractDecisionLogic(ABC):
         # API and loggers
         self.trading_api: Optional[DecisionTradingAPI] = None
         self.logger = logger
-        self.performance_logger: Optional[PerformanceLogDecisionLogic] = None
-
-        # Statistics - now fully typed dataclass
-        self._statistics = DecisionLogicStatistics()
+        self.performance_logger: DecisionLogicPerformanceTracker = None
 
     # ============================================
     # New abstractmethods
@@ -131,11 +125,10 @@ class AbstractDecisionLogic(ABC):
         # Call implementation (subclass)
         order_result = self._execute_decision_impl(decision, tick)
 
-        if (order_result):
-            self._statistics.trades_requested += 1
-
-        # Automatically update statistics
-        self._update_decision_statistics(decision, order_result)
+        if order_result:
+            # Track trade request in performance logger
+            if self.performance_logger:
+                self.performance_logger.record_trade_requested()
 
         return order_result
 
@@ -231,46 +224,21 @@ class AbstractDecisionLogic(ABC):
         """
         self.trading_api = trading_api
 
-    def _update_decision_statistics(
-        self,
-        decision: Decision,
-        order_result: Optional[OrderResult] = None
-    ) -> None:
+    def get_statistics(self) -> DecisionLogicStats:
         """
-        Update internal statistics after decision.
+        Get decision logic statistics.
 
-        Called automatically by execute_decision() template method.
-        Now uses typed DecisionLogicStatistics dataclass.
-
-        Args:
-            decision: Decision that was made
-            order_result: OrderResult if trade was executed (can be None)
-        """
-        self._statistics.decisions_made += 1
-
-        # Track signal type using enum comparison
-        if decision.action == DecisionLogicAction.BUY:
-            self._statistics.buy_signals += 1
-        elif decision.action == DecisionLogicAction.SELL:
-            self._statistics.sell_signals += 1
-        elif decision.action == DecisionLogicAction.FLAT:
-            self._statistics.flat_signals += 1
-
-        # Track order execution
-        if order_result:
-            if order_result.is_success:
-                self._statistics.orders_executed += 1
-            elif order_result.is_rejected:
-                self._statistics.orders_rejected += 1
-
-    def get_statistics(self) -> DecisionLogicStatistics:
-        """
-        Get current statistics.
+        Delegates to performance tracker which returns complete
+        DecisionLogicStats (signals + performance).
 
         Returns:
-            DecisionLogicStatistics instance with current counters
+            DecisionLogicStats with all metrics
         """
-        return self._statistics
+        if not self.performance_logger:
+            # Fallback for tests without performance logger
+            return DecisionLogicStats()
+
+        return self.performance_logger.get_stats()
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """
@@ -287,13 +255,13 @@ class AbstractDecisionLogic(ABC):
         """
         return self.config.get(key, default)
 
-    def set_performance_logger(self, logger: PerformanceLogDecisionLogic) -> None:
+    def set_performance_logger(self, performance_logger: DecisionLogicPerformanceTracker) -> None:
         """
         Set performance logger for this decision logic.
 
-        Called by WorkerCoordinator to enable performance tracking.
+        Called by WorkerOrchestrator to enable performance tracking.
 
         Args:
             logger: PerformanceLogDecisionLogic instance
         """
-        self.performance_logger = logger
+        self.performance_logger = performance_logger

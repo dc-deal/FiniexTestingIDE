@@ -33,7 +33,7 @@ class SingleScenario:
     # ============================================
     # STRATEGY PARAMETERS
     # ============================================
-    # Strategy-Logic (→ WorkerCoordinator sammelt Requirements & dessen Parameter)
+    # Strategy-Logic (→ WorkerOrchestrator sammelt Requirements & dessen Parameter)
     strategy_config: Dict[str, Any] = field(default_factory=dict)
 
     # Execution-Optimization (→ Framework)

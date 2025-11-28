@@ -11,13 +11,13 @@ DRY Principle: Grid logic implemented once, reused for all box types.
 """
 
 from typing import Any, Callable, List
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 def render_grid(
-    items: List[Any],
+    batch_summary: BatchExecutionSummary,
     box_creator: Callable[[Any, int, bool], List[str]],
-    renderer: ConsoleRenderer,
     show_status_line: bool,
     columns: int = 3,
     box_width: int = 38,
@@ -39,13 +39,16 @@ def render_grid(
         box_width: Width of each box (including borders)
         spacing: Number of spaces between boxes
     """
+    items = batch_summary.process_result_list
     for i in range(0, len(items), columns):
         row_items = items[i:i+columns]
 
         # Create box lines for each item in row
         all_boxes = []
         for item in row_items:
-            box_lines = box_creator(item, box_width, show_status_line)
+            scenario = batch_summary.get_scenario_by_process_result(item)
+            box_lines = box_creator(
+                item, scenario, box_width, show_status_line)
             all_boxes.append(box_lines)
 
         # Print boxes side by side

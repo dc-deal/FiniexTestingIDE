@@ -20,7 +20,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.configuration import AppConfigManager
+from python.configuration.app_config_manager import AppConfigManager
 from python.data_worker.importer.bar_importer import BarImporter
 from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 
