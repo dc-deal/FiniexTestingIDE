@@ -20,7 +20,7 @@
         "warn_on_parameter_override": true,
         "scenario": {
             "enabled": true,
-            "log_level": "INFO",
+            "log_level": "WARN",
             "write_system_info": true
         }
     },
@@ -32,7 +32,8 @@
         "scenario": {
             "enabled": true,
             "log_level": null,
-            "log_root_path": "logs/scenario_sets"
+            "log_root_path": "logs/scenario_sets",
+            "file_name_prefix": "single1run"
         }
     },
     "importer": {

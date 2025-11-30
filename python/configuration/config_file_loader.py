@@ -88,6 +88,7 @@ def _get_default_config() -> Dict[str, Any]:
                 "enabled": None,
                 "log_level": "DEBUG",
                 "log_root_path": "logs/scenario_sets",
+                "file_name_prefix": "scenario"
             },
         },
         "importer": {"move_processed_files": None, "delete_on_error": False},

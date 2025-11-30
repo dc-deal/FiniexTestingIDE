@@ -195,10 +195,10 @@ class BarRenderer:
         PERFORMANCE: No manual limit check needed!
         deque(maxlen) automatically discards oldest when full (O(1)).
         """
-        self.logger.verbose(
+        self.logger.debug(
             f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
 
-        self.logger.verbose(
+        self.logger.debug(
             f"📊 {bar.symbol} {bar.timeframe} archived | "
             f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
         )

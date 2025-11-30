@@ -64,11 +64,12 @@ class ScenarioLogger(AbstractLogger):
         if self._file_logging_config.scenario_enabled:
             # Create scenario run directory
             log_root = self._file_logging_config.scenario_log_root_path
+            prefix = self._file_logging_config.scenario_file_name_prefix
             self.run_dir = log_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
             self.file_logger = FileLogger(
-                log_filename="scenario_"+scenario_name+".log",
+                log_filename=prefix+'_'+scenario_name+".log",
                 file_path=self.run_dir,
                 log_level=self._file_logging_config.scenario_log_level
             )

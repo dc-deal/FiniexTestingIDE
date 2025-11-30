@@ -81,6 +81,7 @@ class FileLoggingConfig:
         if 'log_root_path' not in scenario_config:
             raise ValueError("file_logging.scenario.log_root_path is required")
         self._scenario_log_root_path = Path(scenario_config['log_root_path'])
+        self._scenario_file_name_prefix = scenario_config['file_name_prefix']
 
     def _validate_scenario_config(self, scenario_config: dict):
         """
@@ -145,6 +146,11 @@ class FileLoggingConfig:
     def scenario_log_root_path(self) -> Path:
         """Root directory for scenario logs"""
         return self._scenario_log_root_path
+
+    @property
+    def scenario_file_name_prefix(self) -> str:
+        """Name prefix for scenario logs (default "scenario" -> scenario_01_USDJPY_blks_02.log)"""
+        return self._scenario_file_name_prefix
 
     # ============================================
     # Utility Methods
