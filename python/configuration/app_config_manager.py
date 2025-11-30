@@ -132,7 +132,7 @@ class AppConfigManager:
             True if scenarios should run in parallel by default
         """
         exec_config = self.get_execution_config()
-        return exec_config.get("default_parallel_scenarios", True)
+        return exec_config.get("parallel_scenarios", True)
 
     def get_default_max_parallel_scenarios(self) -> int:
         """
@@ -142,7 +142,7 @@ class AppConfigManager:
             Max number of scenarios to run in parallel
         """
         exec_config = self.get_execution_config()
-        return exec_config.get("default_max_parallel_scenarios", 4)
+        return exec_config.get("max_parallel_scenarios", 4)
 
     def get_default_parallel_workers(self) -> bool:
         """
@@ -152,7 +152,7 @@ class AppConfigManager:
             True if workers should run in parallel by default
         """
         exec_config = self.get_execution_config()
-        return exec_config.get("default_parallel_workers", True)
+        return exec_config.get("parallel_workers", True)
 
     def should_warn_on_override(self) -> bool:
         """

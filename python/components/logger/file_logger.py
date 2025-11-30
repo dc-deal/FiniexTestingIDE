@@ -5,7 +5,7 @@ Writes logs to file with run-specific directories
 Architecture:
 - One run directory per execution (timestamp-based)
 - One global.log for all global logs + summary
-- One scenario_{index}_{name}.log per scenario
+- One {file_name_prefix}_{index}_{name}.log per scenario
 - One config.json snapshot per run
 
 Features:
@@ -59,9 +59,9 @@ class FileLogger:
         self._current_tick = None
         self._tick_loop_count = 1
 
-        sanitized_filename = sanitize_filename(log_filename)
+        self._sanitized_filename = sanitize_filename(log_filename)
 
-        self.log_file_path = file_path / sanitized_filename
+        self.log_file_path = file_path / self._sanitized_filename
 
         # Open file handle with appropriate mode
         file_mode = 'a' if append_mode else 'w'
@@ -87,7 +87,7 @@ class FileLogger:
             return
 
         header = "=" * 80 + "\n"
-        header += "Global Log\n"
+        header += f"Log Name: {self._sanitized_filename}\n"
         header += f"Log Level: {self.log_level}\n"
         header += "=" * 80 + "\n\n"
 

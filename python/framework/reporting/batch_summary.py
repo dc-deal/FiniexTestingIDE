@@ -225,6 +225,6 @@ class BatchSummary:
 
         if batch_parallel and scenarios_count > 1:
             concurrent = min(max_parallel, scenarios_count)
-            print(f" ({concurrent} process_results concurrent)")
+            print(f" ({concurrent} concurrent)")
         else:
             print()
