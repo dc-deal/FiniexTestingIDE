@@ -1,5 +1,6 @@
 
 
+from datetime import timezone
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -94,31 +95,53 @@ def process_startup_preparation(
         logger=scenario_logger)
     bar_rendering_controller.register_workers(workers)
 
+    # === MATCH AND INJECT WARMUP BARS ===
+    # Critical: Match bars from shared_data to this specific scenario
+    # Keys in shared_data.bars: (symbol, timeframe, scenario_start_time)
+    #
+    # UTC-AWARE COMPARISON FIX:
+    # - shared_data keys use UTC-aware datetime (from SharedDataPreparator)
+    # - config.start_time may be naive (from JSON parsing)
+    # - Must ensure both are UTC-aware for correct comparison
+
+    # Normalize config.start_time to UTC-aware
+    config_start = config.start_time
+    if config_start.tzinfo is None:
+        config_start = config_start.replace(tzinfo=timezone.utc)
+
     warmup_bars = {}
     for key, bars_tuple in shared_data.bars.items():
         symbol, timeframe, start_time = key
-        # Debug: Vergleich
+
+        # Match criteria: symbol AND start_time must match exactly
         symbol_match = symbol == config.symbol
-        time_match = start_time == config.start_time
+        time_match = start_time == config_start  # Both UTC-aware now
 
-        # Only inject bars matching this scenario
-        if symbol_match:
-
+        if symbol_match and time_match:
             scenario_logger.debug(
-                f"🔍 Checking: ({symbol}, {timeframe}, {start_time})"
+                f"✅ MATCH: ({symbol}, {timeframe}, {start_time}) → {len(bars_tuple)} bars"
             )
-            scenario_logger.debug(
-                f"  symbol_match: {symbol_match} ({symbol} == {config.symbol})"
-            )
-            scenario_logger.debug(
-                f"  time_match: {time_match} ({start_time} == {config.start_time})"
-            )
-            scenario_logger.debug(f"  ✅ MATCH! Adding {len(bars_tuple)} bars")
-
             warmup_bars[timeframe] = bars_tuple
 
+    # === VALIDATE: CRITICAL ERROR IF NO WARMUP BARS ===
+    # If workers require warmup bars but none were found, this is a CRITICAL ERROR
+    # indicating data preparation failed or config mismatch
+    required_timeframes = bar_rendering_controller._required_timeframes
+
+    if len(required_timeframes) > 0 and len(warmup_bars) == 0:
+        # HARD ERROR: No warmup bars found when they are required
+        raise ValueError(
+            f"CRITICAL: No warmup bars found for scenario '{config.name}'!\n"
+            f"  Required timeframes: {required_timeframes}\n"
+            f"  Config start_time: {config_start}\n"
+            f"  Config symbol: {config.symbol}\n"
+            f"  Available keys in shared_data.bars: {len(shared_data.bars)}\n"
+            f"  This indicates a data preparation failure or config mismatch."
+        )
+
     scenario_logger.debug(
-        f"🔍 Result: {len(warmup_bars)} timeframes collected")
+        f"📊 Result: {len(warmup_bars)}/{len(required_timeframes)} timeframes collected"
+    )
 
     # Inject warmup bars
     bar_rendering_controller.inject_warmup_bars(
