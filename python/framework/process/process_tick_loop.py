@@ -6,7 +6,7 @@ import time
 import traceback
 from collections import defaultdict
 from multiprocessing import Queue
-from typing import Optional
+from typing import Any, Optional
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
@@ -24,7 +24,8 @@ from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 def execute_tick_loop(
     config: ProcessScenarioConfig,
     prepared_objects: ProcessPreparedDataObjects,
-    live_queue: Optional[Queue] = None
+    live_queue: Optional[Queue] = None,
+    sync_barrier: Optional[Any] = None
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -36,6 +37,7 @@ def execute_tick_loop(
         config: Scenario configuration
         prepared_objects: Objects from startup_preparation
         live_queue: Queue for live updates (optional)
+        sync_barrier: Barrier for synchronized start (optional)
 
     Returns:
         ProcessTickLoopResult with loop results
@@ -62,10 +64,22 @@ def execute_tick_loop(
             scenario_logger, config, ticks, live_queue)
         live_update_count = 0
 
+        tick_loop_error: Exception = None
+
         scenario_logger.info(
             f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
 
-        tick_loop_error: Exception = None
+        # === NEW: BARRIER SYNCHRONIZATION ===
+        if sync_barrier is not None:
+            scenario_logger.info(
+                "🚦 Waiting at barrier for synchronized start...")
+            try:
+                sync_barrier.wait(timeout=60.0)
+                scenario_logger.info(
+                    "✅ Barrier released - starting tick loop NOW!")
+            except Exception as e:
+                scenario_logger.error(f"❌ Barrier wait failed: {e}")
+                # Continue anyway - don't block execution
 
         # === TICK LOOP ===
         # from now on, log shows ticks.

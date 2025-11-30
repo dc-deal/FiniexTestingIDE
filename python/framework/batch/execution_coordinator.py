@@ -4,6 +4,7 @@ Phase 2: Coordinates sequential and parallel scenario execution
 
 Extracted from BatchOrchestrator to separate execution logic.
 """
+import pickle
 from python.framework.process.process_executor import ProcessExecutor
 from python.framework.process.process_live_queue_helper import broadcast_status_update
 from python.framework.process.process_main import process_main
@@ -218,6 +219,13 @@ class ExecutionCoordinator:
                     run_timestamp=self._run_timestamp,
                     live_stats_config=self._live_stats_config
                 )
+
+                # VOR executor.submit():
+                # pickle_start = time.time()
+                # pickled = pickle.dumps((executor_obj.config, shared_data))
+                # pickle_time = time.time() - pickle_start
+                # self._logger.info(
+                #     f"⏱️  Pickle time: {pickle_time:.2f}s, Size: {len(pickled)/1024/1024:.1f} MB")
 
                 # Submit to executor
                 future = executor.submit(

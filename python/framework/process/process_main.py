@@ -33,6 +33,7 @@ def process_main(
     """
     try:
         start_time = time.time()
+
         # === STATUS: INIT_PROCESS ===
         send_status_update_process(
             live_queue, config, ScenarioStatus.INIT_PROCESS)
@@ -45,6 +46,7 @@ def process_main(
                 config.scenario_index, config.name),
             run_timestamp=config.run_timestamp
         )
+        scenario_logger.info(f"⏱️  Process started at {start_time}")
 
         # === STARTUP PREPARATION ===
         prepared_objects = process_startup_preparation(
@@ -57,8 +59,10 @@ def process_main(
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
         # === TICK LOOP EXECUTION ===
+        # Extract barrier from shared_data
+        sync_barrier = shared_data.sync_barrier
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects, live_queue)
+            config, prepared_objects, live_queue, sync_barrier)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 

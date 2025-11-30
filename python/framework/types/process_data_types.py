@@ -118,6 +118,9 @@ class ProcessDataPackage:
     # Each subprocess re-hydrates BrokerConfig from this dict (no file I/O)
     broker_configs: Tuple[str, Tuple[Tuple[str, Any], ...]]
 
+    # === BARRIER FOR SYNCHRONIZED START ===
+    sync_barrier: Optional[Any] = None  # multiprocessing.Barrier
+
     # === METADATA (human-readable, minimal overhead) ===
     # Tick counts per symbol (for progress logging)
     tick_counts: Dict[str, int] = field(default_factory=dict)

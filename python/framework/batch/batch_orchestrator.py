@@ -114,23 +114,23 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
+from python.framework.validators.scenario_validator import ScenarioValidator
+import time
+from multiprocessing import Manager
+from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.factory.worker_factory import WorkerFactory
+from python.components.display.live_progress_display import LiveProgressDisplay
+from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
+from python.framework.batch.execution_coordinator import ExecutionCoordinator
+from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.batch.coverage_report_manager import CoverageReportManager
-from python.framework.batch.requirements_collector import RequirementsCollector
-from python.framework.batch.execution_coordinator import ExecutionCoordinator
-from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
-from python.components.display.live_progress_display import LiveProgressDisplay
-from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.scenario_set_types import ScenarioSet
-from python.configuration.app_config_manager import AppConfigManager
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.components.logger.abstract_logger import AbstractLogger
-from multiprocessing import Manager
-import time
-from python.framework.validators.scenario_validator import ScenarioValidator
 
 
 class BatchOrchestrator:
@@ -285,7 +285,7 @@ class BatchOrchestrator:
         if self._display:
             self._display.start()
 
-            # ========================================================================
+        # ========================================================================
         # PHASE 0: CONFIG VALIDATION
         # ========================================================================
         self._logger.info("🔍 Phase 0: Validating configuration...")
@@ -387,6 +387,31 @@ class BatchOrchestrator:
             f"✅ Continuing with {len(valid_scenarios)}/{len(self._scenarios)} "
             f"valid scenario(s) ({total_invalid} filtered out)"
         )
+
+        # ========================================================================
+        # PHASE 5.5: CREATE SYNCHRONIZATION BARRIER
+        # ========================================================================
+        self._logger.info("🚦 Phase 5.5: Creating synchronization barrier...")
+
+        # Count ONLY valid scenarios (exclude validation failures)
+        valid_scenario_count = sum(1 for s in self._scenarios if s.is_valid())
+
+        if valid_scenario_count > 1 and self._parallel_scenarios:
+            # Create barrier for synchronized start
+            sync_barrier = self._manager.Barrier(
+                parties=valid_scenario_count,
+                timeout=60.0  # Max 60s wait time
+            )
+            shared_data.sync_barrier = sync_barrier
+
+            self._logger.info(
+                f"✅ Barrier created: {valid_scenario_count} scenarios will synchronize"
+            )
+        else:
+            # Sequential or single scenario - no barrier needed
+            shared_data.sync_barrier = None
+            self._logger.info(
+                "ℹ️  Barrier disabled (sequential or single scenario)")
 
         # ========================================================================
         # PHASE 6: EXECUTION
