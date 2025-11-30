@@ -249,6 +249,22 @@ class AbstractLogger(ABC):
         # Ensure all entries are plain strings
         return [(str(level), str(line)) for level, line in self.console_buffer]
 
+    def get_buffer_errors(self) -> list[tuple[str, str]]:
+        """
+        Return only ERROR entries from the console buffer.
+
+        Filters buffer for ERROR level logs only.
+        Useful for summary reports and error detection.
+
+        Returns:
+            List of (level, line) tuples containing only ERROR entries
+        """
+        return [
+            (level, line)
+            for level, line in self.console_buffer
+            if level == LogLevel.ERROR
+        ]
+
     def set_buffer(self, buffer: list[tuple[str, str]]):
         """
         Replace the current console buffer with a provided list.

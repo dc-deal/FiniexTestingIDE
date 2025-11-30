@@ -62,15 +62,18 @@ def process_main(
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
-        # === Get Log Buffer ===
-        log_buffer = scenario_logger.get_buffer()
-        scenario_logger.close()
-
         # === Process Final status ===
         success = True
         error_type = None
         error_message = None
         error_traceback = None
+
+        # === Get Log Buffer ===
+        log_buffer = scenario_logger.get_buffer()
+        errors_in_buffer = scenario_logger.get_buffer_errors()
+        scenario_logger.close()
+
+        # === Tick loop Error Check ===
         tick_loop_error = tick_loop_results.tick_loop_error
         if (tick_loop_error is not None):
             # tick loop failed, pare error, sucess is false.
@@ -84,6 +87,16 @@ def process_main(
             ))
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
+
+        # === Errors in Buffer check ===
+        if len(errors_in_buffer) > 0 and tick_loop_error is None:
+            # Logged errors WITHOUT exception
+            success = False
+            error_type = "LoggedErrors"
+            error_message = f"Scenario logged {len(errors_in_buffer)} ERROR(s)"
+            send_status_update_process(
+                live_queue, config, ScenarioStatus.FINISHED_WITH_ERROR)
+
         if success == True:
             send_status_update_process(
                 live_queue, config, ScenarioStatus.COMPLETED)
@@ -96,6 +109,7 @@ def process_main(
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
+            scenario_logger_errors=errors_in_buffer,
             error_type=error_type,
             error_message=error_message,
             traceback=error_traceback

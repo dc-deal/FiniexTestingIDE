@@ -33,7 +33,7 @@
             "enabled": true,
             "log_level": null,
             "log_root_path": "logs/scenario_sets",
-            "file_name_prefix": "single1run"
+            "file_name_prefix": "scenario"
         }
     },
     "importer": {

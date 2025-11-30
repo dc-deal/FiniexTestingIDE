@@ -1,5 +1,7 @@
 
 
+from datetime import timezone
+from typing import Dict, Tuple
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -94,45 +96,30 @@ def process_startup_preparation(
         logger=scenario_logger)
     bar_rendering_controller.register_workers(workers)
 
-    warmup_bars = {}
-    for key, bars_tuple in shared_data.bars.items():
-        symbol, timeframe, start_time = key
-        # Debug: Vergleich
-        symbol_match = symbol == config.symbol
-        time_match = start_time == config.start_time
+    # === MATCH AND VALIDATE WARMUP BARS ===
+    warmup_bars = _match_and_validate_warmup_bars(
+        config=config,
+        shared_data=shared_data,
+        bar_rendering_controller=bar_rendering_controller,
+        scenario_logger=scenario_logger
+    )
 
-        # Only inject bars matching this scenario
-        if symbol_match:
-
-            scenario_logger.debug(
-                f"🔍 Checking: ({symbol}, {timeframe}, {start_time})"
-            )
-            scenario_logger.debug(
-                f"  symbol_match: {symbol_match} ({symbol} == {config.symbol})"
-            )
-            scenario_logger.debug(
-                f"  time_match: {time_match} ({start_time} == {config.start_time})"
-            )
-            scenario_logger.debug(f"  ✅ MATCH! Adding {len(bars_tuple)} bars")
-
-            warmup_bars[timeframe] = bars_tuple
-
-    scenario_logger.debug(
-        f"🔍 Result: {len(warmup_bars)} timeframes collected")
-
-    # Inject warmup bars
+    # Inject warmup bars (line 149, unchanged)
     bar_rendering_controller.inject_warmup_bars(
         symbol=config.symbol, warmup_bars=warmup_bars)
-    # debug bars from warmup
+
+    # Debug bars from warmup (line 151, unchanged)
     debug_warmup_bars_check(
         warmup_bars=warmup_bars,
-        config=config, logger=scenario_logger, bar_rendering_controller=bar_rendering_controller)
+        config=config,
+        logger=scenario_logger,
+        bar_rendering_controller=bar_rendering_controller
+    )
 
     scenario_logger.debug(
         f"✅ Injected warmup bars: "
         f"{', '.join(f'{tf}:{len(bars)}' for tf, bars in warmup_bars.items())}"
     )
-
     # Ticks deserialisieren
     ticks = process_deserialize_ticks_batch(
         scenario_name=config.name, scenario_symbol=config.symbol, ticks_tuple_list=shared_data.ticks)
@@ -147,3 +134,99 @@ def process_startup_preparation(
         scenario_logger=scenario_logger,
         ticks=ticks
     )
+
+
+def _match_and_validate_warmup_bars(
+    config: ProcessScenarioConfig,
+    shared_data: ProcessDataPackage,
+    bar_rendering_controller: BarRenderingController,
+    scenario_logger: ScenarioLogger
+) -> Dict[str, Tuple]:
+    """
+    Match warmup bars from shared_data to scenario and validate sufficiency.
+
+    Logs ERROR if insufficient bars found but allows run to continue.
+    This handles scenarios starting at data coverage boundaries.
+
+    Args:
+        config: Scenario configuration
+        shared_data: Shared data package with warmup bars
+        bar_rendering_controller: Controller with worker requirements
+        scenario_logger: Logger for this scenario
+
+    Returns:
+        Dict[timeframe, bars_tuple] - Matched warmup bars
+    """
+    # UTC-AWARE COMPARISON FIX
+    # shared_data keys use UTC-aware datetime (from SharedDataPreparator)
+    # config.start_time may be naive (from JSON parsing)
+    config_start = config.start_time
+    if config_start.tzinfo is None:
+        config_start = config_start.replace(tzinfo=timezone.utc)
+
+    # Match bars from shared_data to this specific scenario
+    # Keys in shared_data.bars: (symbol, timeframe, scenario_start_time)
+    warmup_bars = {}
+    for key, bars_tuple in shared_data.bars.items():
+        symbol, timeframe, start_time = key
+
+        # Match criteria: symbol AND start_time must match exactly
+        symbol_match = symbol == config.symbol
+        time_match = start_time == config_start
+
+        if symbol_match and time_match:
+            scenario_logger.debug(
+                f"✅ MATCH: ({symbol}, {timeframe}, {start_time}) → {len(bars_tuple)} bars"
+            )
+            warmup_bars[timeframe] = bars_tuple
+
+    # Validate bar count vs requirements
+    required_timeframes = bar_rendering_controller._required_timeframes
+
+    if len(required_timeframes) > 0:
+        # Check each timeframe for sufficient bars
+        insufficient_bars = []
+
+        for timeframe in required_timeframes:
+            bars_tuple = warmup_bars.get(timeframe)
+            if bars_tuple is None:
+                # No bars found for this timeframe at all
+                insufficient_bars.append(
+                    f"{timeframe}: 0 bars (missing completely)"
+                )
+            else:
+                # Get required count from worker
+                # Note: bars_tuple length is actual bar count
+                actual_count = len(bars_tuple)
+
+                # Find worker requiring this timeframe to get period requirement
+                # This is imperfect but safe: we log if ANY bars are missing
+                # The worker itself knows its exact requirement
+                for worker in bar_rendering_controller._workers:
+                    worker_requirements = worker.get_warmup_requirements()
+                    if timeframe in worker_requirements:
+                        required_count = worker_requirements[timeframe]
+
+                        if actual_count < required_count:
+                            insufficient_bars.append(
+                                f"{timeframe}: {actual_count}/{required_count} bars"
+                            )
+                        break
+
+        # Log ERROR if insufficient bars found
+        if insufficient_bars:
+            scenario_logger.error(
+                f"⚠️  INSUFFICIENT WARMUP BARS for scenario '{config.name}'!\n"
+                f"  This scenario likely starts at the edge of data coverage.\n"
+                f"  Insufficient bars: {', '.join(insufficient_bars)}\n"
+                f"  Config start_time: {config_start}\n"
+                f"  Strategy will run with incomplete indicator warmup.\n"
+                f"  Results may be unreliable until indicators have full history."
+            )
+
+        # Log result summary
+        scenario_logger.debug(
+            f"📊 Result: {len(warmup_bars)}/{len(required_timeframes)} timeframes collected"
+        )
+
+    return warmup_bars

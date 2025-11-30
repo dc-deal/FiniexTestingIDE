@@ -51,16 +51,6 @@ class ScenarioStateError(Exception):
     pass
 
 
-class ScenarioExecutionError(Exception):
-    """Base exception for scenario execution errors."""
-    pass
-
-
-class ScenarioPreparationError(ScenarioExecutionError):
-    """Raised when scenario preparation fails."""
-    pass
-
-
 class WarmupBarValidationError(ScenarioExecutionError):
     """
     Raised when warmup bar validation fails.
@@ -83,6 +73,11 @@ class BatchExecutionError(ScenarioExecutionError):
     2. Successful scenarios return ProcessResult(success=True)
     3. Failed scenarios return ProcessResult(success=False, error=...)
     4. After all execution, if failures exist: raise BatchExecutionError
+
+    ERROR SOURCES:
+    - Exception tracebacks (tick_loop failures)
+    - Logged errors from scenario_logger_buffer
+    - Both sources displayed separately for clarity
 
     Attributes:
         failed_results: List of ProcessResult objects with success=False
@@ -112,14 +107,25 @@ class BatchExecutionError(ScenarioExecutionError):
                 f"{'─'*80}\n"
                 f"  Error Type: {result.error_type}\n"
                 f"  Error Message: {result.error_message}\n"
-                f"\n  Traceback:\n"
             )
 
-            # Indent traceback
+            # Show exception traceback if exists
             if result.traceback:
+                self._message += f"\n  Exception Traceback:\n"
                 for line in result.traceback.split('\n'):
                     if line.strip():
                         self._message += f"    {line}\n"
+
+            # Extract and show logged errors from buffer
+            logged_errors = self._extract_logged_errors(
+                result.scenario_logger_buffer)
+            if logged_errors:
+                self._message += f"\n  Logged Errors ({len(logged_errors)}):\n"
+                # Show first 5 errors
+                for _, error_line in logged_errors[:5]:
+                    self._message += f"    • {error_line}\n"
+                if len(logged_errors) > 5:
+                    self._message += f"    ... and {len(logged_errors) - 5} more\n"
 
             self._message += f"{'─'*80}\n"
 
@@ -127,7 +133,23 @@ class BatchExecutionError(ScenarioExecutionError):
 
         super().__init__(self._message)
 
+    def _extract_logged_errors(self, buffer: list) -> list:
+        """
+        Extract ERROR-level entries from scenario logger buffer.
+
+        Args:
+            buffer: Logger buffer as list of (level, line) tuples
+
+        Returns:
+            List of (level, line) tuples containing only ERROR entries
+        """
+        if not buffer:
+            return []
+
+        return [(level, line) for level, line in buffer if level == "ERROR"]
+
     def get_message(self) -> str:
+        """Get formatted error message."""
         return self._message
 
     def get_failed_scenario_names(self) -> List[str]:
