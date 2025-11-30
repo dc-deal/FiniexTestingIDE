@@ -44,7 +44,7 @@
       "end_date": "2025-09-17T21:00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

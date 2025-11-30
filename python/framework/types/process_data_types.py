@@ -365,6 +365,7 @@ class ProcessResult:
 
     # logger lines to print after scenario run.
     scenario_logger_buffer: list[tuple[str, str]] = None
+    scenario_logger_errors: list[tuple[str, str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

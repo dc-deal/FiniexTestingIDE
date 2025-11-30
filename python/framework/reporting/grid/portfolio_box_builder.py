@@ -304,6 +304,9 @@ def _build_hybrid_portfolio_box(
         f"Long/Short: {long_trades}/{short_trades}",
     ]
 
+    # CRITICAL warning (always shown for hybrid)
+    lines.append(renderer.red("⚠️ CRITICAL: Errors detected"))
+
     return render_box(lines, renderer, box_width)
 
 
