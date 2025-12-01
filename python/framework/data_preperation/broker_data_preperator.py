@@ -119,20 +119,39 @@ class BrokerDataPreparator:
 
     def _serialize_broker_configs(self) -> Dict[BrokerType, Dict[str, Any]]:
         """
-        Serialize broker configs for subprocess sharing.
+        Serialize broker configs for subprocess sharing with symbol filtering.
+
+        OPTIMIZATION: Only includes symbols actually used by scenarios.
+        Reduces pickle size from ~1.5 MB (956 symbols) to ~2 KB (1-10 symbols).
 
         Returns raw JSON dicts - CoW-safe and pickleable.
         Subprocesses can re-hydrate adapters from these dicts.
 
         Returns:
-            Dict mapping broker_type to serialized config dict
+            Dict mapping broker_type to filtered serialized config dict
         """
+        # Collect all symbols needed across all scenarios
+        all_needed_symbols = {scenario.symbol for scenario in self.scenarios}
+
         serialized_configs: Dict[BrokerType, Dict[str, Any]] = {}
 
         for broker_type, info in self._broker_scenario_map.items():
-            serialized_configs[broker_type] = (
-                BrokerConfigFactory.to_serializable_dict(info.broker_config)
-            )
+            # Get full serialized config
+            full_dict = BrokerConfigFactory.to_serializable_dict(
+                info.broker_config)
+
+            # Filter: Only keep symbols that are actually used
+            filtered_dict = {
+                'broker_info': full_dict['broker_info'],
+                'trading_permissions': full_dict['trading_permissions'],
+                'symbols': {
+                    symbol: spec
+                    for symbol, spec in full_dict['symbols'].items()
+                    if symbol in all_needed_symbols
+                }
+            }
+
+            serialized_configs[broker_type] = filtered_dict
 
         return serialized_configs
 
