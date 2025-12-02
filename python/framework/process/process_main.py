@@ -48,6 +48,9 @@ def process_main(
         )
         scenario_logger.info(f"⏱️  Process started at {start_time}")
 
+        if config.scenario_index == 1:
+            scenario_logger.error("test err 01")
+
         # === STARTUP PREPARATION ===
         prepared_objects = process_startup_preparation(
             config, shared_data, scenario_logger)
@@ -113,7 +116,6 @@ def process_main(
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
-            scenario_logger_errors=errors_in_buffer,
             error_type=error_type,
             error_message=error_message,
             traceback=error_traceback
@@ -142,3 +144,8 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
+    finally:
+        if shared_data.sync_barrier:
+            shared_data.sync_barrier.abort()
+            scenario_logger.warning(
+                "⚠️ Barrier aborted - releasing all processes!")
