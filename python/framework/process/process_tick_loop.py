@@ -2,6 +2,21 @@
 FiniexTestingIDE - Process Executor
 Process-based scenario execution with live update support
 """
+# ============================================================================
+# BARRIER SYNCHRONIZATION IMPORT
+# ============================================================================
+# CRITICAL: Import from threading, NOT multiprocessing or asyncio!
+#
+# Why threading?
+# - Manager.Barrier() is a proxy to a threading.Barrier object
+# - The Manager runs a server process that uses threading internally
+# - Therefore, it raises threading.BrokenBarrierError, not multiprocessing
+#
+# Common mistakes:
+# ❌ from asyncio import BrokenBarrierError        # Wrong module
+# ✅ from threading import BrokenBarrierError       # Correct!
+# ============================================================================
+from threading import BrokenBarrierError
 import time
 import traceback
 from collections import defaultdict
@@ -69,17 +84,40 @@ def execute_tick_loop(
         scenario_logger.info(
             f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
 
-        # === NEW: BARRIER SYNCHRONIZATION ===
+        # === BARRIER SYNCHRONIZATION ===
         if sync_barrier is not None:
             scenario_logger.info(
-                "🚦 Waiting at barrier for synchronized start...")
+                "🚦 Waiting at barrier for synchronized start..."
+            )
             try:
-                sync_barrier.wait(timeout=60.0)
+                # Wait for all processes to reach barrier (timeout prevents infinite hang)
+                sync_barrier.wait(timeout=25.0)
+
                 scenario_logger.info(
-                    "✅ Barrier released - starting tick loop NOW!")
+                    "✅ Barrier released - starting tick loop NOW!"
+                )
+            except BrokenBarrierError:
+                # Another process failed and aborted barrier - this is expected.
+                # This scenario can continue normally. SEE IMPORT COMMENT ABOVE
+                scenario_logger.info(
+                    "⚠️ Barrier broken (another scenario failed during setup) - "
+                    "continuing execution without synchronization"
+                )
+            except TimeoutError:
+                # Barrier timeout indicates process hang or crash.
+                # Continue anyway to collect whatever data possible.
+                scenario_logger.error(
+                    "❌ Barrier timeout after 25s - possible process hang or crash! "
+                    "Continuing without synchronization..."
+                )
             except Exception as e:
-                scenario_logger.error(f"❌ Barrier wait failed: {e}")
-                # Continue anyway - don't block execution
+                # Unexpected barrier error - log and continue
+                scenario_logger.error(
+                    f"❌ Unexpected barrier error: {type(e).__name__}: {e}"
+                )
+                scenario_logger.warning(
+                    "⚠️ Continuing without synchronization..."
+                )
 
         # === TICK LOOP ===
         # from now on, log shows ticks.

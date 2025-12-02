@@ -113,7 +113,6 @@ def process_main(
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
-            scenario_logger_errors=errors_in_buffer,
             error_type=error_type,
             error_message=error_message,
             traceback=error_traceback
@@ -142,3 +141,8 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
+    finally:
+        if shared_data.sync_barrier:
+            shared_data.sync_barrier.abort()
+            scenario_logger.warning(
+                "⚠️ Barrier aborted - releasing all processes!")

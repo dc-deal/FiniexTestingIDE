@@ -5,6 +5,7 @@ Exception types for scenario execution failures
 
 
 from typing import List
+from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import ProcessResult
 
 
@@ -146,7 +147,22 @@ class BatchExecutionError(ScenarioExecutionError):
         if not buffer:
             return []
 
-        return [(level, line) for level, line in buffer if level == "ERROR"]
+        return [(level, line) for level, line in buffer if level == LogLevel.ERROR]
+
+    def _extract_logged_warnings(self, buffer: list) -> list:
+        """
+        Extract ERROR-level entries from scenario logger buffer.
+
+        Args:
+            buffer: Logger buffer as list of (level, line) tuples
+
+        Returns:
+            List of (level, line) tuples containing only ERROR entries
+        """
+        if not buffer:
+            return []
+
+        return [(level, line) for level, line in buffer if level == LogLevel.WARNING]
 
     def get_message(self) -> str:
         """Get formatted error message."""
