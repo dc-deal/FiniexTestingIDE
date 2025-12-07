@@ -80,6 +80,9 @@ def execute_tick_loop(
         live_update_count = 0
 
         tick_loop_error: Exception = None
+        current_bars = {}
+        current_tick = None
+        current_index = 0
 
         scenario_logger.info(
             f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
@@ -126,6 +129,8 @@ def execute_tick_loop(
             scenario_logger.set_current_tick(
                 tick_idx + 1, tick)
             tick_start = time.perf_counter()
+            current_tick = tick
+            current_index = tick_idx
 
             # === 1. Trade Simulator ===
             t1 = time.perf_counter()
@@ -193,6 +198,9 @@ def execute_tick_loop(
 
         # === CLOSE OPEN TRADES ===
         trade_simulator.close_all_remaining_orders()
+        # update live the last time - to show final balance correctly
+        live_updated = process_live_export(
+            live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
 
     except Exception as e:
         # in case of an error, abort & try to collect the rest of data.
