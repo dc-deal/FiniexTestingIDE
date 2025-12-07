@@ -19,6 +19,7 @@ from typing import List, Optional
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.scenario.scenario_generator import ScenarioGenerator
 from python.framework.types.scenario_generator_types import (
+    GenerationResult,
     GenerationStrategy,
     SymbolAnalysis,
     TradingSession,
@@ -217,7 +218,7 @@ class ScenarioCLI:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
         return f"{symbol_part}_{strategy.value}_{timestamp}.json"
 
-    def _print_generation_summary(self, result, config_path: Path) -> None:
+    def _print_generation_summary(self, result: GenerationResult, config_path: Path) -> None:
         """
         Print generation result summary.
 
@@ -225,8 +226,6 @@ class ScenarioCLI:
             result: GenerationResult
             config_path: Path to saved config
         """
-        from python.framework.types.scenario_generator_types import GenerationStrategy
-
         print("\n" + "=" * 60)
         print(
             f"✅ Generated {len(result.scenarios)} {'blocks' if result.strategy == GenerationStrategy.BLOCKS else 'scenarios'}")

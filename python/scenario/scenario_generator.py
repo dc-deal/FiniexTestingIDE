@@ -743,8 +743,9 @@ class ScenarioGenerator:
         config['created'] = datetime.now(timezone.utc).isoformat()
 
         # Add scenarios
+        scenarios = result.get_all_scenarios()
         config['scenarios'] = []
-        for i, candidate in enumerate(result.scenarios, 1):
+        for i, candidate in enumerate(scenarios, 1):
             name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
             # Blocks strategy: max_ticks = None (time-based only)
             use_max_ticks = None if result.strategy == GenerationStrategy.BLOCKS else candidate.estimated_ticks
@@ -756,7 +757,7 @@ class ScenarioGenerator:
         with open(output_path, 'w') as f:
             json.dump(config, f, indent=2, default=str)
 
-        vLog.info(f"Saved {len(result.scenarios)} scenarios to {output_path}")
+        vLog.info(f"Saved {len(scenarios)} scenarios to {output_path}")
 
         return output_path
 

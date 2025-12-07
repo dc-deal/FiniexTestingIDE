@@ -6,9 +6,7 @@ Phase 1.5: Post-Load Data Quality Validation
 Location: python/framework/validators/scenario_data_validator.py
 """
 
-from datetime import datetime, timezone
 from typing import Dict, List, Tuple
-from dateutil import parser
 
 from python.components.logger.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
@@ -17,6 +15,7 @@ from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.types.coverage_report_types import GapCategory
+from python.framework.utils.time_utils import ensure_utc_aware
 
 
 class ScenarioDataValidator:
@@ -102,9 +101,8 @@ class ScenarioDataValidator:
         """
         errors = []
 
-        start_date = self._parse_datetime(scenario.start_date)
-        end_date = self._parse_datetime(
-            scenario.end_date) if scenario.end_date else None
+        start_date = scenario.start_date
+        end_date = scenario.end_date if scenario.end_date else None
 
         # Check basic logic
         if end_date and end_date < start_date:
@@ -139,13 +137,12 @@ class ScenarioDataValidator:
         """
         errors = []
 
-        start_date = self._parse_datetime(scenario.start_date)
-        end_date = self._parse_datetime(
-            scenario.end_date) if scenario.end_date else None
+        start_date = scenario.start_date
+        end_date = scenario.end_date if scenario.end_date else None
 
         # Get data range from coverage report
-        data_start = self._ensure_utc_aware(report.start_time)
-        data_end = self._ensure_utc_aware(report.end_time)
+        data_start = ensure_utc_aware(report.start_time)
+        data_end = ensure_utc_aware(report.end_time)
 
         # Check if start_date is before available data
         if start_date < data_start:
@@ -165,28 +162,12 @@ class ScenarioDataValidator:
 
         return errors
 
-    def _ensure_utc_aware(self, dt: datetime) -> datetime:
-        """
-        Ensure datetime is UTC-aware.
-
-        Project policy: All datetimes must be UTC-aware.
-
-        Args:
-            dt: Datetime object (naive or aware)
-
-        Returns:
-            UTC-aware datetime
-        """
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt
-
     def validate_loaded_data(
         self,
         scenarios: List[SingleScenario],
-        shared_data: ProcessDataPackage,
+        scenario_packages: Dict[int, ProcessDataPackage],
         requirements_map: RequirementsMap
-    ) -> Tuple[List[Tuple[SingleScenario, ValidationResult]], List[Tuple[SingleScenario, ValidationResult]]]:
+    ):
         """
         Validate scenarios after data has been loaded.
 
@@ -197,49 +178,44 @@ class ScenarioDataValidator:
 
         Args:
             scenarios: List of scenarios to validate
-            shared_data: Loaded tick and bar data
+            scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
         Returns:
             Tuple of (valid_scenarios, invalid_scenarios_with_results)
         """
-        valid_scenarios: List[Tuple[SingleScenario, ValidationResult]] = []
-        invalid_scenarios: List[Tuple[SingleScenario, ValidationResult]] = []
 
-        for scenario in scenarios:
-            if not scenario.is_valid():
-                # perhaps something went wrong before---
-                invalid_scenarios.append(
-                    (scenario, scenario.validation_result))
+        for idx, scenario in enumerate(scenarios):
+            # Get scenario-specific data package
+            scenario_package = scenario_packages.get(idx)
+            if not scenario_package:
+                # Missing package - create error result
+                result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[
+                        f"No data package found for scenario index {idx}"],
+                    warnings=[]
+                )
                 continue
 
             result = self._validate_single_scenario(
-                scenario, shared_data, requirements_map
+                scenario, scenario_package, requirements_map
             )
 
             if result.is_valid:
                 # Log warnings if any
                 for warning in result.warnings:
                     self._logger.warning(f"⚠️  {scenario.name}: {warning}")
-                valid_scenarios.append((scenario, result))
             else:
                 # Log errors
                 for error in result.errors:
                     self._logger.error(f"❌ {scenario.name}: {error}")
-                invalid_scenarios.append((scenario, result))
-
-        # Summary
-        if invalid_scenarios:
-            self._logger.warning(
-                f"⚠️  {len(invalid_scenarios)}/{len(scenarios)} scenarios failed validation"
-            )
-
-        return valid_scenarios, invalid_scenarios
 
     def _validate_single_scenario(
         self,
         scenario: SingleScenario,
-        shared_data: ProcessDataPackage,
+        scenario_package: ProcessDataPackage,
         requirements_map: RequirementsMap
     ) -> ValidationResult:
         """
@@ -247,7 +223,7 @@ class ScenarioDataValidator:
 
         Args:
             scenario: Scenario to validate
-            shared_data: Loaded data package
+            scenario_package: Data package for this specific scenario
             requirements_map: Requirements map
 
         Returns:
@@ -275,12 +251,12 @@ class ScenarioDataValidator:
 
         # === VALIDATION 2: Tick stretch gaps ===
         stretch_errors = self._validate_tick_stretch(
-            scenario, report, shared_data)
+            scenario, report, scenario_package)
         errors.extend(stretch_errors)
 
         # === VALIDATION 3: Warmup quality ===
         warmup_errors, warmup_warnings = self._validate_warmup_quality(
-            scenario, shared_data, requirements_map
+            scenario, scenario_package, requirements_map
         )
         errors.extend(warmup_errors)
         warnings.extend(warmup_warnings)
@@ -308,12 +284,12 @@ class ScenarioDataValidator:
             List of error messages (empty if valid)
         """
         errors = []
-        start_date = self._parse_datetime(scenario.start_date)
+        start_date = scenario.start_date
 
         for gap in report.gaps:
             # Ensure all datetimes are UTC-aware for comparison
-            gap_start = self._ensure_utc_aware(gap.file1.end_time)
-            gap_end = self._ensure_utc_aware(gap.file2.start_time)
+            gap_start = ensure_utc_aware(gap.file1.end_time)
+            gap_end = ensure_utc_aware(gap.file2.start_time)
 
             if gap_start < start_date < gap_end:
                 errors.append(
@@ -330,7 +306,7 @@ class ScenarioDataValidator:
         self,
         scenario: SingleScenario,
         report: CoverageReport,
-        shared_data: ProcessDataPackage
+        scenario_package: ProcessDataPackage
     ) -> List[str]:
         """
         Validate that tick stretch is free of forbidden gaps.
@@ -338,7 +314,7 @@ class ScenarioDataValidator:
         Args:
             scenario: Scenario to validate
             report: Coverage report for symbol
-            shared_data: Loaded data package
+            scenario_package: Data package for this specific scenario
 
         Returns:
             List of error messages (empty if valid)
@@ -346,19 +322,19 @@ class ScenarioDataValidator:
         errors = []
 
         # Get actual loaded tick range
-        tick_data = shared_data.ticks.get(scenario.name)
+        tick_data = scenario_package.ticks.get(scenario.name)
         if not tick_data:
             # No ticks loaded - cannot validate stretch
             return errors
 
-        first_tick = self._ensure_utc_aware(tick_data[0]['timestamp'])
-        last_tick = self._ensure_utc_aware(tick_data[-1]['timestamp'])
+        first_tick = ensure_utc_aware(tick_data[0]['timestamp'])
+        last_tick = ensure_utc_aware(tick_data[-1]['timestamp'])
 
         # Check gaps in this stretch
         for gap in report.gaps:
             # Ensure gap timestamps are UTC-aware
-            gap_start = self._ensure_utc_aware(gap.file1.end_time)
-            gap_end = self._ensure_utc_aware(gap.file2.start_time)
+            gap_start = ensure_utc_aware(gap.file1.end_time)
+            gap_end = ensure_utc_aware(gap.file2.start_time)
 
             # Gap overlaps with tick stretch?
             if (gap_start >= first_tick and gap_end <= last_tick):
@@ -377,7 +353,7 @@ class ScenarioDataValidator:
     def _validate_warmup_quality(
         self,
         scenario: SingleScenario,
-        shared_data: ProcessDataPackage,
+        scenario_package: ProcessDataPackage,
         requirements_map: RequirementsMap
     ) -> Tuple[List[str], List[str]]:
         """
@@ -385,7 +361,7 @@ class ScenarioDataValidator:
 
         Args:
             scenario: Scenario to validate
-            shared_data: Loaded data package
+            scenario_package: Data package for this specific scenario
             requirements_map: Requirements map with bar requirements
 
         Returns:
@@ -405,7 +381,7 @@ class ScenarioDataValidator:
 
             # Get bar data
             bar_key = (bar_req.symbol, bar_req.timeframe, bar_req.start_time)
-            bar_data = shared_data.bars.get(bar_key)
+            bar_data = scenario_package.bars.get(bar_key)
 
             if not bar_data:
                 continue
@@ -427,18 +403,3 @@ class ScenarioDataValidator:
                 )
 
         return errors, warnings
-
-    def _parse_datetime(self, dt_str: str) -> datetime:
-        """
-        Parse datetime string to UTC-aware datetime object.
-
-        Args:
-            dt_str: Datetime string (ISO format)
-
-        Returns:
-            UTC-aware datetime object
-        """
-        dt = parser.parse(dt_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt

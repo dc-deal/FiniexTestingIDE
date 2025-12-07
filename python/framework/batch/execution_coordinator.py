@@ -4,6 +4,7 @@ Phase 2: Coordinates sequential and parallel scenario execution
 
 Extracted from BatchOrchestrator to separate execution logic.
 """
+import pickle
 from python.framework.process.process_executor import ProcessExecutor
 from python.framework.process.process_live_queue_helper import broadcast_status_update
 from python.framework.process.process_main import process_main
@@ -14,13 +15,13 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.components.logger.abstract_logger import AbstractLogger
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing import Queue
-from typing import List, Optional
+from typing import Dict, List, Optional
 import os
 import sys
 import time
 import traceback
 
-from python.framework.types.validation_types import get_validation_list_report
+from python.framework.types.validation_types import ValidationResult, get_validation_list_report
 
 
 # Auto-detect if debugger is attached
@@ -69,7 +70,7 @@ class ExecutionCoordinator:
     def execute_sequential(
         self,
         scenarios: List[SingleScenario],
-        shared_data: ProcessDataPackage,
+        scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
     ) -> List[ProcessResult]:
         """
@@ -77,38 +78,23 @@ class ExecutionCoordinator:
 
         Args:
             scenarios: List of scenarios to execute
-            shared_data: Prepared shared data package
+            scenario_packages: Dict mapping scenario_index → ProcessDataPackage
             live_queue: Optional queue for live updates
 
         Returns:
             List of ProcessResult objects
         """
-        results = []
+        results = [None] * len(scenarios)
 
         for idx, scenario in enumerate(scenarios):
             readable_index = idx + 1
 
-            # === CHECK VALIDATION STATUS (NEW) ===
+            # === CHECK VALIDATION STATUS ===
             if not scenario.is_valid():
-                self._logger.warning(
-                    f"⚠️  Scenario {readable_index}/{len(scenarios)}: "
-                    f"{scenario.name} - SKIPPED (validation failed)"
-                )
-
-                # Create failed result
-                failed_result = self._create_validation_failed_result(
-                    scenario, idx)
-                results.append(failed_result)
-
-                # Broadcast FAILED status to display
-                broadcast_status_update(live_queue=live_queue,
-                                        scenario_index=idx,
-                                        scenario_name=scenario.name,
-                                        status=ScenarioStatus.FINISHED_WITH_ERROR,
-                                        live_stats_config=self._live_stats_config
-                                        )
-
-                continue  # Skip to next scenario
+                # Create failed result immediately
+                results[idx] = self._create_validation_failed_result(
+                    scenario, idx, live_queue)
+                continue
 
             self._logger.info(
                 f"▶️  Executing scenario {readable_index}/{len(scenarios)}: "
@@ -125,14 +111,22 @@ class ExecutionCoordinator:
                 live_stats_config=self._live_stats_config
             )
 
-            # Execute
-            result = executor.run(shared_data, live_queue)
-            results.append(result)
+            # === Use scenario-specific package ===
+            scenario_data = scenario_packages.get(idx)
+            if scenario_data is None:
+                # Should never happen if validation passed
+                results[idx] = self._create_validation_failed_result(
+                    scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
+                continue
 
-            if result.success:
+            # Execute with scenario-specific data
+            # Changed: scenario_data
+            results[idx] = executor.run(scenario_data, live_queue)
+
+            if results[idx].success:
                 self._logger.info(
                     f"✅ Scenario {readable_index} completed in "
-                    f"{result.execution_time_ms:.0f}ms"
+                    f"{results[idx].execution_time_ms:.0f}ms"
                 )
             else:
                 self._logger.error(
@@ -144,18 +138,18 @@ class ExecutionCoordinator:
     def execute_parallel(
         self,
         scenarios: List[SingleScenario],
-        shared_data: ProcessDataPackage,
+        scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
     ) -> List[ProcessResult]:
         """
         Execute scenarios in parallel with auto-detection.
 
-        Automatically switches between ProcessPoolExecutor and ThreadPoolExecutor
-        based on debugger detection.
+        OPTIMIZATION: Each scenario receives only its required data (3-5 MB)
+        instead of global package (61 MB). Reduces pickle time by 5x.
 
         Args:
             scenarios: List of scenarios to execute
-            shared_data: Prepared shared data package
+            scenario_packages: Dict mapping scenario_index → ProcessDataPackage
             live_queue: Optional queue for live updates
 
         Returns:
@@ -187,26 +181,11 @@ class ExecutionCoordinator:
             futures = {}
             for idx, scenario in enumerate(scenarios):
 
-                # === CHECK VALIDATION STATUS (NEW) ===
+                # === CHECK VALIDATION STATUS ===
                 if not scenario.is_valid():
-                    readable_index = idx + 1
-                    self._logger.warning(
-                        f"⚠️  Scenario {readable_index}: {scenario.name} - "
-                        f"SKIPPED (validation failed)"
-                    )
-
                     # Create failed result immediately
                     results[idx] = self._create_validation_failed_result(
-                        scenario, idx)
-
-                    # Broadcast FAILED status to display
-                    broadcast_status_update(live_queue=live_queue,
-                                            scenario_index=idx,
-                                            scenario_name=scenario.name,
-                                            status=ScenarioStatus.FINISHED_WITH_ERROR,
-                                            live_stats_config=self._live_stats_config
-                                            )
-
+                        scenario, idx, live_queue)
                     continue
 
                 # Create executor config
@@ -219,16 +198,32 @@ class ExecutionCoordinator:
                     live_stats_config=self._live_stats_config
                 )
 
-                # Submit to executor
+                # === Use scenario-specific package ===
+                scenario_data = scenario_packages.get(idx)
+                if scenario_data is None:
+                    results[idx] = self._create_validation_failed_result(
+                        scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
+                    continue
+
+                # pickle time measurement: Check how long it takes to shovel the object data via serialization into the sub process...
+                # USE WITH CAUTION!! This is a DEBUG Test which slows down Pickle time (we do it twice - one for the measurement, one later as to fill the subProcess)
+                # pickle_start = time.time()
+                # pickled = pickle.dumps((executor_obj.config, scenario_data))
+                # pickle_time = time.time() - pickle_start
+                # self._logger.info(
+                #     f"⏱️  Pickle time: {pickle_time:.2f}s, Size: {len(pickled)/1024/1024:.1f} MB")
+
+                # Submit to executor with scenario-specific data
                 future = executor.submit(
                     process_main,
                     executor_obj.config,
-                    shared_data,
+                    # Changed: scenario-specific package (~3-5 MB)
+                    scenario_data,
                     live_queue
                 )
                 futures[future] = idx
 
-            # Collect results
+            # Collect results (unchanged)
             for future in as_completed(futures):
                 idx = futures[future]
                 readable_index = idx + 1
@@ -282,7 +277,9 @@ class ExecutionCoordinator:
     def _create_validation_failed_result(
         self,
         scenario: SingleScenario,
-        scenario_index: int
+        scenario_index: int,
+        live_queue: Optional[Queue],
+        additional_error_message: Optional[str] = None
     ) -> ProcessResult:
         """
         Create ProcessResult for validation-failed scenario.
@@ -294,8 +291,33 @@ class ExecutionCoordinator:
         Returns:
             ProcessResult with validation error details
         """
-        validation_result = scenario.validation_result
 
+        readable_index = scenario_index + 1
+        self._logger.warning(
+            f"⚠️  Scenario {readable_index}: {scenario.name} - "
+            f"SKIPPED (validation failed)"
+        )
+
+        # Broadcast FAILED status to display
+        broadcast_status_update(live_queue=live_queue,
+                                scenario_index=scenario_index,
+                                scenario_name=scenario.name,
+                                status=ScenarioStatus.FINISHED_WITH_ERROR,
+                                live_stats_config=self._live_stats_config
+                                )
+
+        # append an additional error, if nessecary (commonly used right before execution)
+        if (additional_error_message is not None):
+            self._logger.error(additional_error_message)
+            validation_error = ValidationResult(
+                is_valid=False,
+                scenario_name=scenario.name,
+                errors=[additional_error_message],
+                warnings=[]
+            )
+            scenario.validation_result.append(validation_error)
+
+        validation_result = scenario.validation_result
         return ProcessResult(
             success=False,
             scenario_name=scenario.name,

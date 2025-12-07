@@ -3,7 +3,8 @@ Time utility functions for readable duration formatting
 """
 
 
-from datetime import datetime
+from datetime import datetime, timezone
+from dateutil import parser
 
 # Typed weekday abbreviations constant
 WEEKDAYS: dict[int, str] = {0: "Mo", 1: "Di",
@@ -152,3 +153,36 @@ def format_tick_timespan(
         start_time = first_tick_time.strftime("%b %d %H:%M")
         end_time = last_tick_time.strftime("%b %d %H:%M")
         return f"{start_weekday} {start_time} → {end_weekday} {end_time} ({duration})"
+
+
+def parse_datetime(dt_str: str) -> datetime:
+    """
+    Parse datetime string to UTC-aware datetime object.
+
+    Args:
+        dt_str: Datetime string (ISO format)
+
+    Returns:
+        UTC-aware datetime object
+    """
+    dt = parser.parse(dt_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def ensure_utc_aware(dt: datetime) -> datetime:
+    """
+    Ensure datetime is UTC-aware.
+
+    Project policy: All datetimes must be UTC-aware.
+
+    Args:
+        dt: Datetime object (naive or aware)
+
+    Returns:
+        UTC-aware datetime
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt

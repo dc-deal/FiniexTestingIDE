@@ -13,6 +13,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.time_utils import parse_datetime
 from python.scenario.scenario_cascade import ScenarioCascade
 vLog = get_logger()
 
@@ -33,7 +34,7 @@ class ScenarioConfigLoader:
         self.config_path = Path(config_path)
         self.config_path.mkdir(parents=True, exist_ok=True)
 
-    def load_config(self, config_file: str) -> ScenarioSet:
+    def load_config(self, config_file: str) -> LoadedScenarioConfig:
         """
         Load scenarios from JSON config file
 
@@ -71,6 +72,7 @@ class ScenarioConfigLoader:
 
         scenario_set_name = config.get('scenario_set_name', "unknown")
 
+        current_scenario_index = 0
         for scenario_data in config.get('scenarios', []):
             # Filters out disabled scenarios during load
             is_enabled = scenario_data.get('enabled', True)  # Default: True
@@ -120,9 +122,11 @@ class ScenarioConfigLoader:
 
             scenario = SingleScenario(
                 name=scenario_data['name'],
+                # important for data packages in parallel processing -> sub processes.
+                scenario_index=current_scenario_index,
                 symbol=scenario_data['symbol'],
-                start_date=scenario_data['start_date'],
-                end_date=scenario_data['end_date'],
+                start_date=parse_datetime(scenario_data['start_date']),
+                end_date=parse_datetime(scenario_data['end_date']),
                 data_mode=scenario_data.get('data_mode', 'realistic'),
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,
@@ -131,6 +135,7 @@ class ScenarioConfigLoader:
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
             )
             scenarios.append(scenario)
+            current_scenario_index += 1
 
         if disabled_count > 0:
             vLog.debug(

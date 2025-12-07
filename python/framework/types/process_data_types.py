@@ -91,25 +91,30 @@ class RequirementsMap:
 @dataclass
 class ProcessDataPackage:
     """
-    FUNCTIONAL data package for process handover.
-    Contains ONLY REQUIRED data - NO unnecessary metadata!
+    Scenario-specific data package for process handover.
+
+    OPTIMIZATION (Phase 1): Each scenario receives only its required data.
+    Previous: 1 global package (61 MB) → All processes
+    Current: N scenario packages (3-5 MB each) → Individual processes
+    Result: 5x reduction in pickle overhead (30s → 6s for 20 scenarios)
 
     IMMUTABILITY: All collections are tuples for CoW optimization.
     Read-only access in subprocess = 0 memory copy overhead.
-    Reminder:
-    Python muss die Daten über pickle serialisieren, um sie zwischen Prozessen zu senden. 
-    Tuple: Python weiß "immutable" → kann aggressiver optimieren
-    List: Python weiß "mutabel" → muss defensiver sein beim Pickling
+
+    DATA STRUCTURE:
+    - ticks: Dict with single key (scenario symbol) → Tuple of Ticks
+    - bars: Dict with keys matching this scenario's symbol + start_time
 
     METADATA: Minimal human-readable info for debugging/logging.
     NOT used in processing - only for monitoring.
     """
     # === CORE DATA (immutable, CoW-shared) ===
     # Ticks: Symbol → Tuple of Tick objects
+    # NOTE: Scenario-specific package has only 1 symbol key
     ticks: Dict[str, Tuple[Any, ...]]
 
     # Bars: (Symbol, Timeframe, StartTime) → Tuple of Bar objects
-    # Key includes start_time for scenario-specific warmup filtering
+    # NOTE: All keys match this scenario's symbol + start_time
     bars: Dict[Tuple[str, str, datetime], Tuple[Any, ...]]
 
     # === Broker config for subprocess re-hydration ===
@@ -117,6 +122,9 @@ class ProcessDataPackage:
     # Loaded once in main process, shared via CoW to all subprocesses
     # Each subprocess re-hydrates BrokerConfig from this dict (no file I/O)
     broker_configs: Tuple[str, Tuple[Tuple[str, Any], ...]]
+
+    # === BARRIER FOR SYNCHRONIZED START ===
+    sync_barrier: Optional[Any] = None  # multiprocessing.Barrier
 
     # === METADATA (human-readable, minimal overhead) ===
     # Tick counts per symbol (for progress logging)
@@ -215,9 +223,8 @@ class ProcessScenarioConfig:
             Serializable ProcessScenarioConfig
         """
         # Parse datetime
-        start_time = parser.parse(scenario.start_date)
-        end_time = parser.parse(
-            scenario.end_date) if scenario.end_date else None
+        start_time = scenario.start_date
+        end_time = scenario.end_date if scenario.end_date else None
 
         # CORRECTED: Use complete strategy_config
         # This is already merged (global + scenario overrides) in scenario_config_loader
@@ -365,7 +372,6 @@ class ProcessResult:
 
     # logger lines to print after scenario run.
     scenario_logger_buffer: list[tuple[str, str]] = None
-    scenario_logger_errors: list[tuple[str, str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

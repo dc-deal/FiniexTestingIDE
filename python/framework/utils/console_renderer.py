@@ -62,10 +62,9 @@ class ConsoleRenderer:
         amount_str = format_currency_simple(input, currency)
 
         if input > 0:
-            return self.green(
-                f"+{amount_str}")
+            return self.green(f"+{amount_str}")
         elif input < 0:
-            return self.red(amount_str)
+            return self.red(f"-{amount_str}")  # ← MINUS HINZUFÜGEN!
         else:
             return amount_str
 

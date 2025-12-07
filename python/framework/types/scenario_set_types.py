@@ -24,9 +24,11 @@ class SingleScenario:
     """Test scenario configuration for batch testing"""
     # identification for Scenario, must be unique
     name: str
+    # internal index, the only scurce of truth for scenario picking.
+    scenario_index: int
     symbol: str
-    start_date: str
-    end_date: str
+    start_date: datetime
+    end_date: datetime
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
@@ -54,7 +56,8 @@ class SingleScenario:
 
     def __post_init__(self):
         if self.name is None:
-            self.name = f"{self.symbol}_{self.start_date}_{self.end_date}"
+            raise ValueError(
+                "Property name of scenario array Objects must be filled.")
 
         # Smart Defaults für Execution Config
         if self.execution_config is None:
@@ -120,7 +123,7 @@ class ScenarioSet:
     def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager):
 
         self.scenario_set_name = scenario_config.scenario_set_name
-        self.scenarios = scenario_config.scenarios
+        self._scenarios = scenario_config.scenarios
         self.config_path = scenario_config.config_path
         self.app_config = app_config
 
@@ -169,6 +172,18 @@ class ScenarioSet:
 
             write_system_version_parameters(system_info_logger)
             system_info_logger.close(flush_buffer=True)
+
+    def get_valid_scenarios(self) -> List[SingleScenario]:
+        """Get all scenarios that passed validation."""
+        return [scenario for scenario in self._scenarios if scenario.is_valid()]
+
+    def get_failed_scenarios(self) -> List[SingleScenario]:
+        """Get all scenarios that passed validation."""
+        return [scenario for scenario in self._scenarios if not scenario.is_valid()]
+
+    def get_all_scenarios(self) -> List[SingleScenario]:
+        """Get all scenarios that passed validation."""
+        return self._scenarios
 
 
 @dataclass

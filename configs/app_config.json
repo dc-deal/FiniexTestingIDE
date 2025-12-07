@@ -19,7 +19,7 @@
         "log_level": "INFO",
         "warn_on_parameter_override": true,
         "scenario": {
-            "enabled": true,
+            "enabled": false,
             "log_level": "WARN",
             "write_system_info": true
         }

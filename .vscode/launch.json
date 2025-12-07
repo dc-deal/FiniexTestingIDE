@@ -205,19 +205,31 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Strategy Runner - Run (eurusd_3_windows)",
+            "name": "🔬 Run (eurusd_3 - SANDBOX)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "eurusd_3_windows.json"
+                "eurusd_3_windows_sandbox.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🔬 Strategy Runner - Run (USDJPY_blocks_*)",
+            "name": "🔬 Run (eurusd_3 - REFERENCE)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows_reference.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Run (USDJPY_blocks_*)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -229,7 +241,19 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Strategy Runner - List Scenarios",
+            "name": "🔬 Run (USDJPY__SOLO BLOCK)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "USDJPY_blocks_one.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 List Scenarios",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",

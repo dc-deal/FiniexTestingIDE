@@ -33,6 +33,7 @@ def process_main(
     """
     try:
         start_time = time.time()
+
         # === STATUS: INIT_PROCESS ===
         send_status_update_process(
             live_queue, config, ScenarioStatus.INIT_PROCESS)
@@ -45,6 +46,7 @@ def process_main(
                 config.scenario_index, config.name),
             run_timestamp=config.run_timestamp
         )
+        scenario_logger.info(f"⏱️  Process started at {start_time}")
 
         # === STARTUP PREPARATION ===
         prepared_objects = process_startup_preparation(
@@ -57,8 +59,10 @@ def process_main(
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
         # === TICK LOOP EXECUTION ===
+        # Extract barrier from shared_data
+        sync_barrier = shared_data.sync_barrier
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects, live_queue)
+            config, prepared_objects, live_queue, sync_barrier)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
@@ -109,7 +113,6 @@ def process_main(
             execution_time_ms=time.time() - start_time,
             tick_loop_results=tick_loop_results,
             scenario_logger_buffer=log_buffer,
-            scenario_logger_errors=errors_in_buffer,
             error_type=error_type,
             error_message=error_message,
             traceback=error_traceback
@@ -138,3 +141,8 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
+    finally:
+        if shared_data.sync_barrier:
+            shared_data.sync_barrier.abort()
+            scenario_logger.warning(
+                "⚠️ Barrier aborted - releasing all processes!")

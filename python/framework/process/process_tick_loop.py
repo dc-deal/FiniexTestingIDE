@@ -2,11 +2,26 @@
 FiniexTestingIDE - Process Executor
 Process-based scenario execution with live update support
 """
+# ============================================================================
+# BARRIER SYNCHRONIZATION IMPORT
+# ============================================================================
+# CRITICAL: Import from threading, NOT multiprocessing or asyncio!
+#
+# Why threading?
+# - Manager.Barrier() is a proxy to a threading.Barrier object
+# - The Manager runs a server process that uses threading internally
+# - Therefore, it raises threading.BrokenBarrierError, not multiprocessing
+#
+# Common mistakes:
+# ❌ from asyncio import BrokenBarrierError        # Wrong module
+# ✅ from threading import BrokenBarrierError       # Correct!
+# ============================================================================
+from threading import BrokenBarrierError
 import time
 import traceback
 from collections import defaultdict
 from multiprocessing import Queue
-from typing import Optional
+from typing import Any, Optional
 
 from python.components.logger.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
@@ -24,7 +39,8 @@ from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 def execute_tick_loop(
     config: ProcessScenarioConfig,
     prepared_objects: ProcessPreparedDataObjects,
-    live_queue: Optional[Queue] = None
+    live_queue: Optional[Queue] = None,
+    sync_barrier: Optional[Any] = None
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -36,6 +52,7 @@ def execute_tick_loop(
         config: Scenario configuration
         prepared_objects: Objects from startup_preparation
         live_queue: Queue for live updates (optional)
+        sync_barrier: Barrier for synchronized start (optional)
 
     Returns:
         ProcessTickLoopResult with loop results
@@ -62,10 +79,48 @@ def execute_tick_loop(
             scenario_logger, config, ticks, live_queue)
         live_update_count = 0
 
+        tick_loop_error: Exception = None
+        current_bars = {}
+        current_tick = None
+        current_index = 0
+
         scenario_logger.info(
             f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
 
-        tick_loop_error: Exception = None
+        # === BARRIER SYNCHRONIZATION ===
+        if sync_barrier is not None:
+            scenario_logger.info(
+                "🚦 Waiting at barrier for synchronized start..."
+            )
+            try:
+                # Wait for all processes to reach barrier (timeout prevents infinite hang)
+                sync_barrier.wait(timeout=25.0)
+
+                scenario_logger.info(
+                    "✅ Barrier released - starting tick loop NOW!"
+                )
+            except BrokenBarrierError:
+                # Another process failed and aborted barrier - this is expected.
+                # This scenario can continue normally. SEE IMPORT COMMENT ABOVE
+                scenario_logger.info(
+                    "⚠️ Barrier broken (another scenario failed during setup) - "
+                    "continuing execution without synchronization"
+                )
+            except TimeoutError:
+                # Barrier timeout indicates process hang or crash.
+                # Continue anyway to collect whatever data possible.
+                scenario_logger.error(
+                    "❌ Barrier timeout after 25s - possible process hang or crash! "
+                    "Continuing without synchronization..."
+                )
+            except Exception as e:
+                # Unexpected barrier error - log and continue
+                scenario_logger.error(
+                    f"❌ Unexpected barrier error: {type(e).__name__}: {e}"
+                )
+                scenario_logger.warning(
+                    "⚠️ Continuing without synchronization..."
+                )
 
         # === TICK LOOP ===
         # from now on, log shows ticks.
@@ -74,6 +129,8 @@ def execute_tick_loop(
             scenario_logger.set_current_tick(
                 tick_idx + 1, tick)
             tick_start = time.perf_counter()
+            current_tick = tick
+            current_index = tick_idx
 
             # === 1. Trade Simulator ===
             t1 = time.perf_counter()
@@ -141,6 +198,9 @@ def execute_tick_loop(
 
         # === CLOSE OPEN TRADES ===
         trade_simulator.close_all_remaining_orders()
+        # update live the last time - to show final balance correctly
+        live_updated = process_live_export(
+            live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
 
     except Exception as e:
         # in case of an error, abort & try to collect the rest of data.

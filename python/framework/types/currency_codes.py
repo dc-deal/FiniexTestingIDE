@@ -80,10 +80,83 @@ CURRENCY_SYMBOLS = {
     "BTC": "₿",      # Bitcoin (if trading crypto CFDs)
 }
 
+# ============================================================================
+# NUMBER FORMAT TEMPLATES (REUSABLE)
+# ============================================================================
+
+FMT_EN = {"thousands": ",", "decimal": "."}
+FMT_DE = {"thousands": ".", "decimal": ","}
+FMT_CH = {"thousands": "'", "decimal": "."}
+FMT_NONE = {"thousands": "", "decimal": "."}  # fallback / simple
+
+
+# ============================================================================
+# CURRENCY -> NUMBER FORMAT MAPPING
+# ============================================================================
+
+CURRENCY_FORMATS = {
+    # Anglo style
+    "USD": FMT_EN,
+    "GBP": FMT_EN,
+    "CAD": FMT_EN,
+    "AUD": FMT_EN,
+    "NZD": FMT_EN,
+    "HKD": FMT_EN,
+    "SGD": FMT_EN,
+    "MXN": FMT_EN,
+    "ZAR": FMT_EN,
+
+    # Euro / European style
+    "EUR": FMT_DE,
+    "PLN": FMT_DE,
+    "CZK": FMT_DE,
+    "HUF": FMT_DE,
+    "RON": FMT_DE,
+    "TRY": FMT_DE,
+    "RUB": FMT_DE,
+
+    # Swiss
+    "CHF": FMT_CH,
+
+    # Asian mostly English style
+    "JPY": FMT_EN,
+    "CNY": FMT_EN,
+    "KRW": FMT_EN,
+    "INR": FMT_EN,
+    "IDR": FMT_EN,
+    "MYR": FMT_EN,
+    "PHP": FMT_EN,
+    "THB": FMT_EN,
+    "TWD": FMT_EN,
+
+    # Middle East
+    "ILS": FMT_EN,
+    "SAR": FMT_EN,
+    "AED": FMT_EN,
+    "KWD": FMT_EN,
+
+    # Latin America
+    "BRL": FMT_DE,
+    "ARS": FMT_DE,
+    "CLP": FMT_DE,
+    "COP": FMT_DE,
+    "PEN": FMT_DE,
+
+    # Africa
+    "EGP": FMT_EN,
+    "NGN": FMT_EN,
+    "KES": FMT_EN,
+
+    # Commodities / Crypto
+    "XAU": FMT_EN,
+    "XAG": FMT_EN,
+    "BTC": FMT_EN,
+}
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
 
 def get_currency_symbol(currency_code: str) -> str:
     """
@@ -127,7 +200,7 @@ def has_currency_symbol(currency_code: str) -> bool:
     return currency_code.upper() in CURRENCY_SYMBOLS
 
 
-def format_currency_simple(amount: float, currency_code: str) -> str:
+def format_currency_simple(amount: float, currency_code: str, use_decimals: bool = True) -> str:
     """
     Simple currency formatter with symbol.
 
@@ -153,8 +226,24 @@ def format_currency_simple(amount: float, currency_code: str) -> str:
     """
     symbol = get_currency_symbol(currency_code)
 
-    # If symbol is same as code (unknown currency), add space
+    fmt = CURRENCY_FORMATS.get(currency_code.upper(), FMT_NONE)
+
+    # build number string
+    raw = f"{abs(amount):.2f}" if use_decimals else f"{abs(amount):.0f}"
+    int_part, dec_part = raw.split(".") if use_decimals else (raw, None)
+
+    # apply thousands separator
+    int_part = f"{int(int_part):,}".replace(",", fmt["thousands"])
+
+    # combine integer + decimals
+    formatted_amount = (
+        f"{int_part}{fmt['decimal']}{dec_part}"
+        if use_decimals else
+        int_part
+    )
+
+    # handle symbol + fallback formatting
     if symbol == currency_code:
-        return f"{symbol} {amount:.2f}"
+        return f"{symbol} {formatted_amount}"
     else:
-        return f"{symbol}{amount:.2f}"
+        return f"{symbol}{formatted_amount}"

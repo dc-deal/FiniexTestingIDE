@@ -69,7 +69,8 @@ class ScenarioSetFinder:
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
         # Load via ScenarioConfigLoader (full validation)
-        loaded_config = self._config_loader.load_config(filename)
+        loaded_scenario_set = self._config_loader.load_config(filename)
+        scenarios = loaded_scenario_set.get_all_scenarios()
 
         # Load raw JSON for full counts
         with open(config_path, 'r') as f:
@@ -77,18 +78,17 @@ class ScenarioSetFinder:
 
         # === BASIC COUNTS ===
         total_count = len(raw_data.get('scenarios', []))
-        enabled_count = len(loaded_config.scenarios)
+        enabled_count = len(scenarios)
         disabled_count = total_count - enabled_count
 
         # Extract symbols (unique)
-        symbols = list(
-            set(scenario.symbol for scenario in loaded_config.scenarios))
+        symbols = list(set(scenario.symbol for scenario in scenarios))
 
         # === TIME ANALYSIS ===
         timespan_scenarios = []
         tick_scenarios = []
 
-        for scenario in loaded_config.scenarios:
+        for scenario in scenarios:
             if scenario.max_ticks is None:
                 # Timespan mode - calculate duration
                 start_dt = datetime.fromisoformat(scenario.start_date)
@@ -106,7 +106,7 @@ class ScenarioSetFinder:
 
         # === DECISION LOGIC ANALYSIS ===
         decision_logic_types = set()
-        for scenario in loaded_config.scenarios:
+        for scenario in scenarios:
             logic_type = scenario.strategy_config.get('decision_logic_type')
             if logic_type:
                 decision_logic_types.add(logic_type)
@@ -123,7 +123,7 @@ class ScenarioSetFinder:
 
         # === WORKER COUNT ANALYSIS ===
         worker_counts = set()
-        for scenario in loaded_config.scenarios:
+        for scenario in scenarios:
             workers = scenario.strategy_config.get('workers', {})
             worker_counts.add(len(workers))
 
