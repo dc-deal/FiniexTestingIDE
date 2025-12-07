@@ -114,8 +114,8 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
-from python.framework.validators.scenario_validator import ScenarioValidator
 import time
+from python.framework.validators.scenario_validator import ScenarioValidator
 from multiprocessing import Manager
 from python.components.logger.abstract_logger import AbstractLogger
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
@@ -129,8 +129,8 @@ from python.components.display.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
-from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.batch.coverage_report_manager import CoverageReportManager
+from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 
 
 class BatchOrchestrator:
@@ -359,7 +359,7 @@ class BatchOrchestrator:
         self._logger.info("📦 Phase 4: Loading data...")
 
         # Prepare data only for scenarios in requirements_map
-        shared_data = data_coordinator.prepare(
+        scenario_packages = data_coordinator.prepare(
             requirements_map=requirements_map,
             status_broadcaster=self._live_stats_coordinator
         )
@@ -375,7 +375,7 @@ class BatchOrchestrator:
         valid_scenarios, invalid_scenarios = (
             coverage_report_manager.validate_after_load(
                 scenarios=self._scenarios,
-                shared_data=shared_data,
+                scenario_packages=scenario_packages,  # Dict of packages
                 requirements_map=requirements_map
             )
         )
@@ -400,16 +400,23 @@ class BatchOrchestrator:
             # Create barrier for synchronized start
             sync_barrier = self._manager.Barrier(
                 parties=valid_scenario_count,
-                timeout=60.0  # Max 60s wait time
+                timeout=60.0
             )
-            shared_data.sync_barrier = sync_barrier
+
+            # Set barrier on ALL scenario packages
+            for idx, package in scenario_packages.items():
+                package.sync_barrier = sync_barrier
 
             self._logger.info(
                 f"✅ Barrier created: {valid_scenario_count} scenarios will synchronize"
             )
+
         else:
             # Sequential or single scenario - no barrier needed
-            shared_data.sync_barrier = None
+            # Set None on all packages
+            for idx, package in scenario_packages.items():
+                package.sync_barrier = None
+
             self._logger.info(
                 "ℹ️  Barrier disabled (sequential or single scenario)")
 
@@ -422,16 +429,18 @@ class BatchOrchestrator:
         if self._parallel_scenarios and scenario_count > 1:
             results = self._execution_coordinator.execute_parallel(
                 scenarios=self._scenarios,
-                shared_data=shared_data,
-                live_queue=self._live_queue
-            )
-        else:
-            results = self._execution_coordinator.execute_sequential(
-                scenarios=self._scenarios,
-                shared_data=shared_data,
+                scenario_packages=scenario_packages,  # Dict of packages
                 live_queue=self._live_queue
             )
 
+        else:
+            results = self._execution_coordinator.execute_sequential(
+                scenarios=self._scenarios,
+                scenario_packages=scenario_packages,  # Dict of packages
+                live_queue=self._live_queue
+            )
+
+        # calc execution time
         batch_execution_time = time.time() - start_time
 
         # ========================================================================

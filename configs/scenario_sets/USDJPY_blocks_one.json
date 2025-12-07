@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "scenario_set_name": "USDJPY_blocks_20251128_1448",
+  "scenario_set_name": "USDJPY_blocks_one",
   "created": "2025-11-28T14:48:51.750999+00:00",
   "global": {
     "data_mode": "realistic",

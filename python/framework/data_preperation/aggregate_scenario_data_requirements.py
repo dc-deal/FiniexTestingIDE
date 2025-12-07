@@ -64,16 +64,11 @@ class AggregateScenarioDataRequirements:
         self._scenario_count += 1
 
         # === TICK REQUIREMENTS ===
-        # UTC-FIX: Parse and make UTC-aware
-        start_time = parser.parse(scenario.start_date)
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
+        start_time = scenario.start_date
 
         end_time = None
         if scenario.end_date:
-            end_time = parser.parse(scenario.end_date)
-            if end_time.tzinfo is None:
-                end_time = end_time.replace(tzinfo=timezone.utc)
+            end_time = scenario.end_date
 
         tick_req = TickRequirement(
             scenario_name=scenario.name,

@@ -25,8 +25,8 @@ class SingleScenario:
     # identification for Scenario, must be unique
     name: str
     symbol: str
-    start_date: str
-    end_date: str
+    start_date: datetime
+    end_date: datetime
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
@@ -54,7 +54,8 @@ class SingleScenario:
 
     def __post_init__(self):
         if self.name is None:
-            self.name = f"{self.symbol}_{self.start_date}_{self.end_date}"
+            raise ValueError(
+                "Property name of scenario array Objects must be filled.")
 
         # Smart Defaults für Execution Config
         if self.execution_config is None:

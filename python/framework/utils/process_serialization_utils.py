@@ -5,16 +5,16 @@ from typing import Any, Dict, Tuple
 from python.framework.types.market_data_types import Bar, TickData
 
 
-def process_deserialize_ticks_batch(scenario_name: str, scenario_symbol: str, ticks_tuple_list: Dict[str, Tuple[Any, ...]]) -> Tuple[TickData, ...]:
+def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict[str, Tuple[Any, ...]]) -> Tuple[TickData, ...]:
     """
     Optimierte Batch-Deserialisierung für große Tick-Mengen.
 
     Nutzt list comprehension für bessere Performance.
     """
-    ticks_tuple = ticks_tuple_list[scenario_name]
+    ticks_tuple = ticks_tuple_list[scenario_symbol]
     if not ticks_tuple:
         raise KeyError(
-            f"Ticks for scenario {scenario_name} could not be found in sharded data for process (ticks)")
+            f"Ticks for scenario {scenario_symbol} could not be found in sharded data for process (ticks)")
     result = []
     for tick_data in ticks_tuple:
         if isinstance(tick_data, TickData):

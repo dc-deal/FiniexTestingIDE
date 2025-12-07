@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "scenario_set_name": "EURUSD_3_windows",
+  "scenario_set_name": "EURUSD_3_windows_reference",
   "created": "2025-10-12T08:41:31.685102",
   "global": {
     "data_mode": "realistic",

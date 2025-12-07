@@ -13,6 +13,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.components.logger.bootstrap_logger import get_logger
+from python.framework.utils.time_utils import parse_datetime
 from python.scenario.scenario_cascade import ScenarioCascade
 vLog = get_logger()
 
@@ -121,8 +122,8 @@ class ScenarioConfigLoader:
             scenario = SingleScenario(
                 name=scenario_data['name'],
                 symbol=scenario_data['symbol'],
-                start_date=scenario_data['start_date'],
-                end_date=scenario_data['end_date'],
+                start_date=parse_datetime(scenario_data['start_date']),
+                end_date=parse_datetime(scenario_data['end_date']),
                 data_mode=scenario_data.get('data_mode', 'realistic'),
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,

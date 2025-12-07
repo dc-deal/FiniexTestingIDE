@@ -197,7 +197,7 @@ class CoverageReportManager:
     def validate_after_load(
         self,
         scenarios: List[SingleScenario],
-        shared_data: ProcessDataPackage,
+        scenario_packages: Dict[int, ProcessDataPackage],
         requirements_map: RequirementsMap
     ) -> Tuple[List[SingleScenario], List[Tuple[SingleScenario, ValidationResult]]]:
         """
@@ -207,7 +207,7 @@ class CoverageReportManager:
 
         Args:
             scenarios: List of scenarios to validate
-            shared_data: Loaded tick and bar data
+            scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
         Returns:
@@ -218,7 +218,7 @@ class CoverageReportManager:
         # Validate all scenarios
         valid_scenarios, invalid_scenarios, = self._validator.validate_loaded_data(
             scenarios=scenarios,
-            shared_data=shared_data,
+            scenario_packages=scenario_packages,
             requirements_map=requirements_map
         )
         if invalid_scenarios:
