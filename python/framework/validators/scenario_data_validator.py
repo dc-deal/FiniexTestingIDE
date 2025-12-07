@@ -167,7 +167,7 @@ class ScenarioDataValidator:
         scenarios: List[SingleScenario],
         scenario_packages: Dict[int, ProcessDataPackage],
         requirements_map: RequirementsMap
-    ) -> Tuple[List[Tuple[SingleScenario, ValidationResult]], List[Tuple[SingleScenario, ValidationResult]]]:
+    ):
         """
         Validate scenarios after data has been loaded.
 
@@ -184,16 +184,8 @@ class ScenarioDataValidator:
         Returns:
             Tuple of (valid_scenarios, invalid_scenarios_with_results)
         """
-        valid_scenarios: List[Tuple[SingleScenario, ValidationResult]] = []
-        invalid_scenarios: List[Tuple[SingleScenario, ValidationResult]] = []
 
         for idx, scenario in enumerate(scenarios):
-            if not scenario.is_valid():
-                # perhaps something went wrong before---
-                invalid_scenarios.append(
-                    (scenario, scenario.validation_result))
-                continue
-
             # Get scenario-specific data package
             scenario_package = scenario_packages.get(idx)
             if not scenario_package:
@@ -205,7 +197,6 @@ class ScenarioDataValidator:
                         f"No data package found for scenario index {idx}"],
                     warnings=[]
                 )
-                invalid_scenarios.append((scenario, result))
                 continue
 
             result = self._validate_single_scenario(
@@ -216,20 +207,10 @@ class ScenarioDataValidator:
                 # Log warnings if any
                 for warning in result.warnings:
                     self._logger.warning(f"⚠️  {scenario.name}: {warning}")
-                valid_scenarios.append((scenario, result))
             else:
                 # Log errors
                 for error in result.errors:
                     self._logger.error(f"❌ {scenario.name}: {error}")
-                invalid_scenarios.append((scenario, result))
-
-        # Summary
-        if invalid_scenarios:
-            self._logger.warning(
-                f"⚠️  {len(invalid_scenarios)}/{len(scenarios)} scenarios failed validation"
-            )
-
-        return valid_scenarios, invalid_scenarios
 
     def _validate_single_scenario(
         self,

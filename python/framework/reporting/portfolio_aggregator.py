@@ -39,7 +39,7 @@ class PortfolioAggregator:
         Args:
             scenarios: List of scenario results to aggregate
         """
-        self.scenarios = scenarios
+        self._scenarios = scenarios
 
     def aggregate_by_currency(self) -> Dict[str, AggregatedPortfolio]:
         """
@@ -55,7 +55,7 @@ class PortfolioAggregator:
         # Group scenarios by currency
         currency_groups: Dict[str, List[ProcessResult]] = {}
 
-        for scenario in self.scenarios:
+        for scenario in self._scenarios:
             if not scenario.tick_loop_results:
                 continue
             currency = scenario.tick_loop_results.portfolio_stats.currency

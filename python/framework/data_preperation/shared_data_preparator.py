@@ -118,14 +118,7 @@ class SharedDataPreparator:
         scenario_packages = {}
 
         for idx, scenario in enumerate(scenarios):
-            # Skip invalid scenarios (already validated in Phase 0.5)
-            if not scenario.is_valid():
-                self._logger.debug(
-                    f"⏭️  Skipping package for scenario {idx}: "
-                    f"{scenario.name} (validation failed)"
-                )
-                continue
-
+            scenario_index = scenario.scenario_index
             # Filter ticks for this scenario
             scenario_ticks = self._filter_ticks_for_scenario(
                 scenario, all_ticks_dict, all_tick_counts, all_tick_ranges
@@ -137,7 +130,7 @@ class SharedDataPreparator:
             )
 
             # Create scenario-specific package
-            scenario_packages[idx] = ProcessDataPackage(
+            scenario_packages[scenario_index] = ProcessDataPackage(
                 ticks=scenario_ticks['ticks'],
                 bars=scenario_bars['bars'],
                 broker_configs=broker_configs,

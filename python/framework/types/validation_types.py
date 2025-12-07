@@ -67,6 +67,6 @@ def get_validation_list_report(validation_list:  List[ValidationResult]) -> str:
             reports.append(validation.get_full_report())
 
     if not reports:
-        return "Scenario is valid"
+        return "Scenario is valid - Errors may Remain in Scenario Log."
 
     return "\n\n".join(reports)

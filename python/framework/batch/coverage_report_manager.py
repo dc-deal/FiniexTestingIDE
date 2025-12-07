@@ -91,7 +91,7 @@ class CoverageReportManager:
     def validate_availability(
         self,
         scenarios: List[SingleScenario]
-    ) -> Tuple[List[SingleScenario], List[Tuple[SingleScenario, ValidationResult]]]:
+    ):
         """
         Validate data availability BEFORE loading (Phase 0.5).
 
@@ -102,7 +102,6 @@ class CoverageReportManager:
 
         Side Effects:
         - Sets scenario.validation_result for ALL scenarios
-        - Invalid scenarios get is_valid() = False
 
         Args:
             scenarios: List of scenarios to validate
@@ -112,15 +111,7 @@ class CoverageReportManager:
         """
         self._logger.info("🔍 Phase 0.5: Validating data availability...")
 
-        valid_scenarios = []
-        invalid_scenarios = []
-
         for scenario in scenarios:
-            if not scenario.is_valid():
-                # perhaps something went wrong before---
-                invalid_scenarios.append(
-                    (scenario, scenario.validation_result))
-                continue
             # === STEP 1: Validate date logic (config sanity) ===
             date_logic_errors = self._validator.validate_date_logic(scenario)
 
@@ -136,7 +127,6 @@ class CoverageReportManager:
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-                invalid_scenarios.append((scenario, validation_result))
                 continue
 
             # === STEP 2: Check coverage report availability ===
@@ -150,7 +140,6 @@ class CoverageReportManager:
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-                invalid_scenarios.append((scenario, validation_result))
                 self._logger.error(
                     f"❌ {scenario.name}: No coverage report for {scenario.symbol}"
                 )
@@ -171,7 +160,6 @@ class CoverageReportManager:
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-                invalid_scenarios.append((scenario, validation_result))
             else:
                 # All checks passed
                 validation_result = ValidationResult(
@@ -181,25 +169,13 @@ class CoverageReportManager:
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-                valid_scenarios.append((scenario, validation_result))
-
-        if invalid_scenarios:
-            self._logger.warning(
-                f"⚠️  {len(invalid_scenarios)} scenario(s) failed availability check - skipped"
-            )
-
-        self._logger.info(
-            f"✅ Availability check: {len(valid_scenarios)}/{len(scenarios)} scenarios valid"
-        )
-
-        return valid_scenarios, invalid_scenarios
 
     def validate_after_load(
         self,
         scenarios: List[SingleScenario],
         scenario_packages: Dict[int, ProcessDataPackage],
         requirements_map: RequirementsMap
-    ) -> Tuple[List[SingleScenario], List[Tuple[SingleScenario, ValidationResult]]]:
+    ):
         """
         Validate scenarios after data has been loaded.
 
@@ -216,18 +192,8 @@ class CoverageReportManager:
         self._logger.info("🔍 Phase 1.5: Validating data quality...")
 
         # Validate all scenarios
-        valid_scenarios, invalid_scenarios, = self._validator.validate_loaded_data(
+        self._validator.validate_loaded_data(
             scenarios=scenarios,
             scenario_packages=scenario_packages,
             requirements_map=requirements_map
         )
-        if invalid_scenarios:
-            self._logger.warning(
-                f"⚠️  {len(invalid_scenarios)} scenario(s) failed validation - skipped"
-            )
-
-        self._logger.info(
-            f"✅ Validation complete: {len(valid_scenarios)}/{len(scenarios)} scenarios valid"
-        )
-
-        return valid_scenarios, invalid_scenarios

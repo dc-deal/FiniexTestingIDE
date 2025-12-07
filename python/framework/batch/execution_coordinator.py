@@ -21,7 +21,7 @@ import sys
 import time
 import traceback
 
-from python.framework.types.validation_types import get_validation_list_report
+from python.framework.types.validation_types import ValidationResult, get_validation_list_report
 
 
 # Auto-detect if debugger is attached
@@ -70,7 +70,6 @@ class ExecutionCoordinator:
     def execute_sequential(
         self,
         scenarios: List[SingleScenario],
-        # NEW: Per-scenario packages
         scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
     ) -> List[ProcessResult]:
@@ -85,31 +84,16 @@ class ExecutionCoordinator:
         Returns:
             List of ProcessResult objects
         """
-        results = []
+        results = [None] * len(scenarios)
 
         for idx, scenario in enumerate(scenarios):
             readable_index = idx + 1
 
             # === CHECK VALIDATION STATUS ===
             if not scenario.is_valid():
-                self._logger.warning(
-                    f"⚠️  Scenario {readable_index}/{len(scenarios)}: "
-                    f"{scenario.name} - SKIPPED (validation failed)"
-                )
-
-                # Create failed result
-                failed_result = self._create_validation_failed_result(
-                    scenario, idx)
-                results.append(failed_result)
-
-                # Broadcast FAILED status to display
-                broadcast_status_update(live_queue=live_queue,
-                                        scenario_index=idx,
-                                        scenario_name=scenario.name,
-                                        status=ScenarioStatus.FINISHED_WITH_ERROR,
-                                        live_stats_config=self._live_stats_config
-                                        )
-
+                # Create failed result immediately
+                results[idx] = self._create_validation_failed_result(
+                    scenario, idx, live_queue)
                 continue
 
             self._logger.info(
@@ -127,24 +111,22 @@ class ExecutionCoordinator:
                 live_stats_config=self._live_stats_config
             )
 
-            # === CHANGE: Use scenario-specific package ===
+            # === Use scenario-specific package ===
             scenario_data = scenario_packages.get(idx)
             if scenario_data is None:
                 # Should never happen if validation passed
-                self._logger.error(
-                    f"❌ No data package for scenario {idx}: {scenario.name}"
-                )
+                results[idx] = self._create_validation_failed_result(
+                    scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
                 continue
 
             # Execute with scenario-specific data
             # Changed: scenario_data
-            result = executor.run(scenario_data, live_queue)
-            results.append(result)
+            results[idx] = executor.run(scenario_data, live_queue)
 
-            if result.success:
+            if results[idx].success:
                 self._logger.info(
                     f"✅ Scenario {readable_index} completed in "
-                    f"{result.execution_time_ms:.0f}ms"
+                    f"{results[idx].execution_time_ms:.0f}ms"
                 )
             else:
                 self._logger.error(
@@ -156,7 +138,7 @@ class ExecutionCoordinator:
     def execute_parallel(
         self,
         scenarios: List[SingleScenario],
-        scenario_packages: Dict[int, ProcessDataPackage],  # NEW
+        scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
     ) -> List[ProcessResult]:
         """
@@ -201,24 +183,9 @@ class ExecutionCoordinator:
 
                 # === CHECK VALIDATION STATUS ===
                 if not scenario.is_valid():
-                    readable_index = idx + 1
-                    self._logger.warning(
-                        f"⚠️  Scenario {readable_index}: {scenario.name} - "
-                        f"SKIPPED (validation failed)"
-                    )
-
                     # Create failed result immediately
                     results[idx] = self._create_validation_failed_result(
-                        scenario, idx)
-
-                    # Broadcast FAILED status to display
-                    broadcast_status_update(live_queue=live_queue,
-                                            scenario_index=idx,
-                                            scenario_name=scenario.name,
-                                            status=ScenarioStatus.FINISHED_WITH_ERROR,
-                                            live_stats_config=self._live_stats_config
-                                            )
-
+                        scenario, idx, live_queue)
                     continue
 
                 # Create executor config
@@ -231,12 +198,11 @@ class ExecutionCoordinator:
                     live_stats_config=self._live_stats_config
                 )
 
-                # === CHANGE: Use scenario-specific package ===
+                # === Use scenario-specific package ===
                 scenario_data = scenario_packages.get(idx)
                 if scenario_data is None:
-                    self._logger.error(
-                        f"❌ No data package for scenario {idx}: {scenario.name}"
-                    )
+                    results[idx] = self._create_validation_failed_result(
+                        scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
                     continue
 
                 # pickle time measurement: Check how long it takes to shovel the object data via serialization into the sub process...
@@ -311,7 +277,9 @@ class ExecutionCoordinator:
     def _create_validation_failed_result(
         self,
         scenario: SingleScenario,
-        scenario_index: int
+        scenario_index: int,
+        live_queue: Optional[Queue],
+        additional_error_message: Optional[str] = None
     ) -> ProcessResult:
         """
         Create ProcessResult for validation-failed scenario.
@@ -323,8 +291,33 @@ class ExecutionCoordinator:
         Returns:
             ProcessResult with validation error details
         """
-        validation_result = scenario.validation_result
 
+        readable_index = scenario_index + 1
+        self._logger.warning(
+            f"⚠️  Scenario {readable_index}: {scenario.name} - "
+            f"SKIPPED (validation failed)"
+        )
+
+        # Broadcast FAILED status to display
+        broadcast_status_update(live_queue=live_queue,
+                                scenario_index=scenario_index,
+                                scenario_name=scenario.name,
+                                status=ScenarioStatus.FINISHED_WITH_ERROR,
+                                live_stats_config=self._live_stats_config
+                                )
+
+        # append an additional error, if nessecary (commonly used right before execution)
+        if (additional_error_message is not None):
+            self._logger.error(additional_error_message)
+            validation_error = ValidationResult(
+                is_valid=False,
+                scenario_name=scenario.name,
+                errors=[additional_error_message],
+                warnings=[]
+            )
+            scenario.validation_result.append(validation_error)
+
+        validation_result = scenario.validation_result
         return ProcessResult(
             success=False,
             scenario_name=scenario.name,
