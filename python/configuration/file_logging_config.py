@@ -52,6 +52,7 @@ class FileLoggingConfig:
                 "file_logging.append_mode is required (must be true/false)")
 
         self._global_enabled = self._config['enabled']
+        # CHANGED: Validate global log level - will raise ValueError if invalid
         self._global_log_level = LogLevel.validate(
             self._config['log_level']
         )
@@ -72,10 +73,15 @@ class FileLoggingConfig:
                     f"file_logging.scenario.enabled must be true/false/null, got: {type(self._scenario_enabled).__name__}"
                 )
 
-        # Scenario log level (inherit if null)
+        # Scenario log level (inherit if null, validate if string)
         self._scenario_log_level = scenario_config.get('log_level')
         if self._scenario_log_level is None:
+            # Inherit from parent
             self._scenario_log_level = self._global_log_level
+        else:
+            # Validate the provided log level - will raise ValueError if invalid
+            self._scenario_log_level = LogLevel.validate(
+                self._scenario_log_level)
 
         # Scenario log root path (required)
         if 'log_root_path' not in scenario_config:

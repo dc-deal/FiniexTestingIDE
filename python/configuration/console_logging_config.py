@@ -45,6 +45,7 @@ class ConsoleLoggingConfig:
             raise ValueError("logging.log_level is required")
 
         self._console_enabled = self._config['enabled']
+        # Validate global log level - will raise ValueError if invalid
         self._global_log_level = LogLevel.validate(
             self._config['log_level']
         )
@@ -69,10 +70,15 @@ class ConsoleLoggingConfig:
                     f"logging.scenario.enabled must be true/false/null, got: {type(self._scenario_enabled).__name__}"
                 )
 
-        # Scenario log level (inherit if null)
+        # Scenario log level (inherit if null, validate if string)
         self._scenario_log_level = scenario_config.get('log_level')
         if self._scenario_log_level is None:
+            # Inherit from parent
             self._scenario_log_level = self._global_log_level
+        else:
+            # Validate the provided log level - will raise ValueError if invalid
+            self._scenario_log_level = LogLevel.validate(
+                self._scenario_log_level)
 
         # Scenario write_system_info (required)
         if 'write_system_info' not in scenario_config:
