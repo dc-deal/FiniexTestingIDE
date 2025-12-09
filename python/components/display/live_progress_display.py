@@ -367,7 +367,8 @@ class LiveProgressDisplay:
                 ScenarioStatus.WARMUP_DATA_TICKS,
                 ScenarioStatus.WARMUP_DATA_BARS,
                 ScenarioStatus.WARMUP_TRADER,
-                ScenarioStatus.INIT_PROCESS
+                ScenarioStatus.INIT_PROCESS,
+                ScenarioStatus.BARRIER
             ):
                 trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
 
@@ -422,6 +423,8 @@ class LiveProgressDisplay:
                 return "🔥", "yellow"
             case ScenarioStatus.INIT_PROCESS:
                 return "⚙️", "cyan"
+            case ScenarioStatus.BARRIER:
+                return "🚦", "cyan"
             case ScenarioStatus.RUNNING:
                 return "🔬", "cyan"
             case ScenarioStatus.COMPLETED:
@@ -455,6 +458,8 @@ class LiveProgressDisplay:
                 return "[yellow]Loading broker...[/yellow]"
             case ScenarioStatus.INIT_PROCESS:
                 return "[cyan]Starting...[/cyan]"
+            case ScenarioStatus.BARRIER:
+                return "[cyan]Waiting...[/cyan]"
 
         # For RUNNING and COMPLETED: show progress bar
         progress_percent = stats.progress_percent

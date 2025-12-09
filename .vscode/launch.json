@@ -241,6 +241,18 @@
             "justMyCode": false
         },
         {
+            "name": "🔬 Run (USDJPY_blocks_big_*)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "USDJPY_blocks_20251208_0625.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run (USDJPY__SOLO BLOCK)",
             "type": "debugpy",
             "request": "launch",
@@ -306,9 +318,9 @@
                 "--strategy",
                 "blocks",
                 "--block-size",
-                "6",
+                "12",
                 "--count",
-                "20",
+                "40",
                 "--sessions",
                 "new_york"
             ],

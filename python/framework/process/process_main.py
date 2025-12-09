@@ -60,9 +60,8 @@ def process_main(
 
         # === TICK LOOP EXECUTION ===
         # Extract barrier from shared_data
-        sync_barrier = shared_data.sync_barrier
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects, live_queue, sync_barrier)
+            config, prepared_objects, live_queue)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
@@ -141,8 +140,3 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
-    finally:
-        if shared_data.sync_barrier:
-            shared_data.sync_barrier.abort()
-            scenario_logger.warning(
-                "⚠️ Barrier aborted - releasing all processes!")

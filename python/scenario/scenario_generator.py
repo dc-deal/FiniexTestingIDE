@@ -743,7 +743,7 @@ class ScenarioGenerator:
         config['created'] = datetime.now(timezone.utc).isoformat()
 
         # Add scenarios
-        scenarios = result.get_all_scenarios()
+        scenarios = result.scenarios
         config['scenarios'] = []
         for i, candidate in enumerate(scenarios, 1):
             name = f"{result.symbol}_{result.strategy.value}_{i:02d}"

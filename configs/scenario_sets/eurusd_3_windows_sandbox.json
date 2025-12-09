@@ -67,7 +67,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_02",
+      "name": "GBPUSD_window_03",
       "symbol": "GBPUSD",
       "start_date": "2025-09-25T16:00:00+00:00",
       "end_date": "2025-09-25T23:00:00+00:00",

@@ -383,38 +383,6 @@ class BatchOrchestrator:
         )
 
         # ========================================================================
-        # PHASE 5.5: CREATE SYNCHRONIZATION BARRIER
-        # ========================================================================
-        self._logger.info("🚦 Phase 5.5: Creating synchronization barrier...")
-
-        # Count ONLY valid scenarios (exclude validation failures)
-        valid_scenario_count = len(self._scenario_set.get_valid_scenarios())
-
-        if valid_scenario_count > 1 and self._parallel_scenarios:
-            # Create barrier for synchronized start
-            sync_barrier = self._manager.Barrier(
-                parties=valid_scenario_count,
-                timeout=10.0
-            )
-
-            # Set barrier on ALL scenario packages
-            for idx, package in scenario_packages.items():
-                package.sync_barrier = sync_barrier
-
-            self._logger.info(
-                f"✅ Barrier created: {valid_scenario_count} scenarios will synchronize"
-            )
-
-        else:
-            # Sequential or single scenario - no barrier needed
-            # Set None on all packages
-            for idx, package in scenario_packages.items():
-                package.sync_barrier = None
-
-            self._logger.info(
-                "ℹ️  Barrier disabled (sequential or single scenario)")
-
-        # ========================================================================
         # PHASE 6: EXECUTION
         # ========================================================================
         self._logger.info("🚀 Phase 6: Executing scenarios...")

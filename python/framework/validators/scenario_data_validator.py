@@ -211,6 +211,7 @@ class ScenarioDataValidator:
                 # Log errors
                 for error in result.errors:
                     self._logger.error(f"❌ {scenario.name}: {error}")
+                    scenario.validation_result.append(result)
 
     def _validate_single_scenario(
         self,
