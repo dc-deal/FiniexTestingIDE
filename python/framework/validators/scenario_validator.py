@@ -141,7 +141,7 @@ class ScenarioValidator:
                 detected_currency = ScenarioValidator.detect_quote_currency(
                     symbol)
 
-                logger.warning(
+                logger.debug(
                     f"💱 CURRENCY AUTO-DETECTION:\n"
                     f"   Symbol: {symbol} → Detected: {detected_currency}\n"
                     f"   Using: {detected_currency} (auto-detection overrides broker)\n"

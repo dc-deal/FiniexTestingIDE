@@ -25,6 +25,7 @@ from python.framework.types.process_data_types import (
 from python.data_worker.data_loader.tick_index_manager import TickIndexManager
 from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.validation_types import ValidationResult
 
 
 class SharedDataPreparator:
@@ -123,6 +124,8 @@ class SharedDataPreparator:
             scenario_ticks = self._filter_ticks_for_scenario(
                 scenario, all_ticks_dict, all_tick_counts, all_tick_ranges
             )
+            if (scenario_ticks is None):
+                continue
 
             # Filter bars for this scenario
             scenario_bars = self._filter_bars_for_scenario(
@@ -179,10 +182,16 @@ class SharedDataPreparator:
 
         # Get ticks for this scenario (already loaded by scenario_name)
         if scenario_name not in all_ticks_dict:
-            raise ValueError(
-                f"No tick data found for scenario '{scenario_name}' "
+            error_message = f"No tick data found for scenario '{scenario_name}' " + \
                 f"(available: {list(all_ticks_dict.keys())})"
+            validation_error = ValidationResult(
+                is_valid=False,
+                scenario_name=scenario.name,
+                errors=[error_message],
+                warnings=[]
             )
+            scenario.validation_result.append(validation_error)
+            return None
 
         ticks_tuple = all_ticks_dict[scenario_name]
 

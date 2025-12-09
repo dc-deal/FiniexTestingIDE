@@ -1,0 +1,314 @@
+"""
+FiniexTestingIDE - Executive Summary
+One-screen overview of batch execution results
+
+Provides comprehensive summary:
+- Execution results (success rate, timing with warmup/tickrun split)
+- In-time performance (simulated market time)
+- Real-time performance (tick processing speed)
+- Portfolio aggregation (P&L, win rate, metrics)
+- System resources
+"""
+
+import psutil
+from typing import Dict
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.utils.console_renderer import ConsoleRenderer
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
+from python.framework.types.currency_codes import format_currency_simple
+
+
+class ExecutiveSummary:
+    """
+    Generates executive summary for batch execution.
+
+    Aggregates all key metrics into single-screen overview.
+    Designed for quick performance assessment.
+    """
+
+    def __init__(
+        self,
+        batch_execution_summary: BatchExecutionSummary,
+        app_config: AppConfigManager
+    ):
+        """
+        Initialize executive summary.
+
+        Args:
+            batch_execution_summary: Batch execution results
+            app_config: Application configuration
+        """
+        self._batch_summary = batch_execution_summary
+        self._app_config = app_config
+
+    def render(self, renderer: ConsoleRenderer):
+        """
+        Render executive summary sections.
+
+        Args:
+            renderer: Console renderer for formatting
+        """
+        self._render_execution_results(renderer)
+        print()
+        self._render_time_performance(renderer)
+        print()
+        self._render_portfolio_performance(renderer)
+        print()
+        self._render_system_resources(renderer)
+
+    def _render_execution_results(self, renderer: ConsoleRenderer):
+        """Render execution results section."""
+        process_results = self._batch_summary.process_result_list
+        scenarios = self._batch_summary.single_scenario_list
+
+        total_scenarios = len(scenarios)
+        successful = sum(1 for r in process_results if r.success)
+        failed = total_scenarios - successful
+        success_rate = (successful / total_scenarios *
+                        100) if total_scenarios > 0 else 0
+
+        # Get timing breakdown
+        batch_time = self._batch_summary.batch_execution_time
+        warmup_time = self._batch_summary.batch_warmup_time
+        tickrun_time = self._batch_summary.batch_tickrun_time
+
+        # Get execution config
+        parallel = self._app_config.get_default_parallel_scenarios()
+        max_workers = self._app_config.get_default_max_parallel_scenarios()
+
+        # Calculate status
+        if failed == 0:
+            status_str = renderer.green("✅ Complete Success")
+        elif successful == 0:
+            status_str = renderer.red("❌ Complete Failure")
+        else:
+            status_str = renderer.yellow(
+                f"⚠️ Partial ({successful}/{total_scenarios})")
+
+        # Count disabled scenarios
+        disabled = sum(1 for s in scenarios if hasattr(
+            s, 'enabled') and not s.enabled)
+
+        # Render section
+        renderer.print_bold("EXECUTION RESULTS")
+        renderer.print_separator(width=68)
+        print(f"Scenarios:          {total_scenarios} executed" +
+              (f" ({disabled} disabled)" if disabled > 0 else ""))
+        print(
+            f"Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)")
+        print(f"Status:             {status_str}")
+
+        # Batch time with warmup/tickrun split
+        if warmup_time > 0:
+            print(
+                f"Batch Time:         {batch_time:.1f}s (warmup: {warmup_time:.1f}s | tickrun: {tickrun_time:.1f}s)")
+        else:
+            # Mounted mode - no warmup
+            print(f"Batch Time:         {batch_time:.1f}s")
+
+        print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
+              (f" (max {max_workers} workers)" if parallel else ""))
+
+    def _render_time_performance(self, renderer: ConsoleRenderer):
+        """Render in-time and real-time performance sections."""
+        # Calculate in-time stats
+        in_time_stats = self._calculate_in_time_stats()
+
+        # Calculate real-time stats using ONLY tick run time
+        total_ticks = sum(
+            r.tick_loop_results.coordination_statistics.ticks_processed
+            for r in self._batch_summary.process_result_list
+            if r.tick_loop_results and r.tick_loop_results.coordination_statistics
+        )
+
+        # Use tick run time (excludes warmup)
+        tickrun_time = self._batch_summary.batch_tickrun_time
+        ticks_per_second = total_ticks / tickrun_time if tickrun_time > 0 else 0
+        speedup = (in_time_stats['total_hours'] * 3600) / \
+            tickrun_time if tickrun_time > 0 else 0
+
+        # Render IN-TIME section
+        renderer.print_bold("IN-TIME PERFORMANCE (Simulated Market Time)")
+        renderer.print_separator(width=68)
+        print(
+            f"Total Simulation:   {in_time_stats['total_hours']:.1f} hours ({in_time_stats['total_days']:.1f} days)")
+        print(f"Avg per Scenario:   {in_time_stats['avg_hours']:.2f} hours")
+        print(f"Ticks Processed:    {total_ticks:,} total")
+        print(
+            f"Ticks/Hour:         {in_time_stats['ticks_per_hour']:,.0f} (market density)")
+
+        print()
+
+        # Render REAL-TIME section (tick processing speed)
+        renderer.print_bold("REAL-TIME PERFORMANCE (Tick Processing Speed)")
+        renderer.print_separator(width=68)
+        print(f"Tick Run Time:      {tickrun_time:.1f} seconds")
+        print(
+            f"Ticks/Second:       {ticks_per_second:,.0f} (processing rate)")
+        print(
+            f"Speedup:            {speedup:,.0f}x ({in_time_stats['total_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
+
+    def _render_portfolio_performance(self, renderer: ConsoleRenderer):
+        """Render aggregated portfolio performance."""
+        # Aggregate portfolios by currency
+        aggregator = PortfolioAggregator(
+            self._batch_summary.process_result_list)
+        aggregated = aggregator.aggregate_by_currency()
+
+        if not aggregated:
+            renderer.print_bold("PORTFOLIO PERFORMANCE")
+            renderer.print_separator(width=68)
+            print("No portfolio data available")
+            return
+
+        # Render each currency
+        for currency, agg_portfolio in aggregated.items():
+            self._render_currency_portfolio(
+                renderer, currency, agg_portfolio)
+
+    def _render_currency_portfolio(self, renderer: ConsoleRenderer, currency: str, agg_portfolio):
+        """
+        Render portfolio metrics for single currency.
+
+        Args:
+            renderer: Console renderer
+            currency: Currency code (EUR, USD, etc.)
+            agg_portfolio: Aggregated portfolio statistics
+        """
+        # Get all ProcessResults for this currency
+        currency_results = [
+            r for r in self._batch_summary.process_result_list
+            if r.tick_loop_results and
+            r.tick_loop_results.portfolio_stats.currency == currency
+        ]
+
+        # Calculate initial and final balances from ProcessResults
+        initial = sum(
+            r.tick_loop_results.portfolio_stats.initial_balance
+            for r in currency_results
+        )
+        final = sum(
+            r.tick_loop_results.portfolio_stats.current_balance
+            for r in currency_results
+        )
+        pnl = final - initial
+        pnl_pct = (pnl / initial * 100) if initial > 0 else 0
+
+        # Get metrics from aggregated portfolio stats
+        portfolio_stats = agg_portfolio.portfolio_stats
+        total_trades = portfolio_stats.total_trades
+        winning = portfolio_stats.winning_trades
+        losing = portfolio_stats.losing_trades
+        win_rate = portfolio_stats.win_rate
+
+        # Avg win/loss size
+        avg_win = portfolio_stats.total_profit / winning if winning > 0 else 0
+        avg_loss = abs(portfolio_stats.total_loss) / \
+            losing if losing > 0 else 0
+
+        # Profit factor
+        profit_factor = portfolio_stats.total_profit / \
+            abs(portfolio_stats.total_loss) if portfolio_stats.total_loss != 0 else 0
+
+        # Recovery factor
+        recovery_factor = pnl / \
+            abs(portfolio_stats.max_drawdown) if portfolio_stats.max_drawdown != 0 else 0
+
+        # Max drawdown percentage
+        max_dd_pct = (portfolio_stats.max_drawdown / portfolio_stats.max_equity *
+                      100) if portfolio_stats.max_equity > 0 else 0
+
+        # print(f"DEBUG: portfolio_stats.win_rate = {portfolio_stats.win_rate}")
+        # print(f"DEBUG: win_rate variable = {win_rate}")
+
+        # Calculate scenario count and avg initial
+        scenario_count = agg_portfolio.scenario_count
+        avg_initial = initial / scenario_count if scenario_count > 0 else 0
+
+        avg_spread = portfolio_stats.total_spread_cost / \
+            total_trades if total_trades > 0 else 0
+
+        # Render section
+        renderer.print_bold(f"PORTFOLIO PERFORMANCE ({currency})")
+        renderer.print_separator(width=68)
+        print(f"Scenarios:          {scenario_count}")
+        print(
+            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(avg_initial, currency)}/scenario)")
+        print(f"Final Balance:      {format_currency_simple(final, currency)}")
+
+        pnl_str = renderer.pnl(pnl, currency)
+        print(f"Total P&L:          {pnl_str} ({pnl_pct:+.2f}%)")
+        print("")
+        print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
+        print(f"Win Rate:           {win_rate * 100:.1f}%")
+        print(
+            f"Avg Win:            {format_currency_simple(avg_win, currency)}")
+        print(
+            f"Avg Loss:           {format_currency_simple(avg_loss, currency)}")
+        print(f"Profit Factor:      {profit_factor:.2f}")
+        print("")
+        print(
+            f"Max Drawdown:       {format_currency_simple(abs(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+        print(
+            f"Max Equity:         {format_currency_simple(portfolio_stats.max_equity, currency)}")
+        print(f"Recovery Factor:    {recovery_factor:.2f}")
+        print("")
+        print(
+            f"Spread Cost:        {format_currency_simple(portfolio_stats.total_spread_cost, currency)} (avg {format_currency_simple(avg_spread, currency)}/trade)")
+        print(
+            f"Commission:         {format_currency_simple(portfolio_stats.total_commission, currency)}")
+        print(
+            f"Swap:               {format_currency_simple(portfolio_stats.total_swap, currency)}")
+
+    def _render_system_resources(self, renderer: ConsoleRenderer):
+        """Render system resources section."""
+        try:
+            cpu_count = psutil.cpu_count()
+            mem = psutil.virtual_memory()
+            ram_total_gb = mem.total / (1024**3)
+            ram_available_gb = mem.available / (1024**3)
+        except:
+            cpu_count = "N/A"
+            ram_total_gb = 0
+            ram_available_gb = 0
+
+        renderer.print_bold("SYSTEM RESOURCES")
+        renderer.print_separator(width=68)
+        print(f"CPU Cores:          {cpu_count}")
+        print(
+            f"RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total")
+
+    def _calculate_in_time_stats(self) -> Dict[str, float]:
+        """
+        Calculate in-time statistics from scenarios.
+
+        Returns:
+            Dict with total_hours, avg_hours, total_days, ticks_per_hour
+        """
+        scenarios = self._batch_summary.single_scenario_list
+
+        total_hours = 0.0
+        for scenario in scenarios:
+            if scenario.end_date and scenario.start_date:
+                duration = scenario.end_date - scenario.start_date
+                total_hours += duration.total_seconds() / 3600
+
+        scenario_count = len(scenarios)
+        avg_hours = total_hours / scenario_count if scenario_count > 0 else 0
+        total_days = total_hours / 24
+
+        # Calculate ticks per hour
+        total_ticks = sum(
+            r.tick_loop_results.coordination_statistics.ticks_processed
+            for r in self._batch_summary.process_result_list
+            if r.tick_loop_results and r.tick_loop_results.coordination_statistics
+        )
+        ticks_per_hour = total_ticks / total_hours if total_hours > 0 else 0
+
+        return {
+            'total_hours': total_hours,
+            'avg_hours': avg_hours,
+            'total_days': total_days,
+            'ticks_per_hour': ticks_per_hour
+        }

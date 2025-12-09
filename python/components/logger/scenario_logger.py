@@ -195,7 +195,10 @@ class ScenarioLogger(AbstractLogger):
 
         # Output all buffered logs
         for level, formatted_line in self.console_buffer:
-            print(formatted_line)
+            should_log = LogLevel.should_log(
+                level, self._console_logging_config.scenario_log_level)
+            if should_log:
+                print(formatted_line)
 
         # Clear buffer
         self.console_buffer.clear()
