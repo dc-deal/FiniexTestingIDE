@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
-from python.scenario.scenario_generator import ScenarioGenerator
+from python.scenario.generator.scenario_generator import ScenarioGenerator
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
