@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from python.framework.utils.time_utils import format_duration
 
@@ -33,13 +34,16 @@ class IndexEntry:
 @dataclass
 class Gap:
     """
-    Represents a time gap between two files.
+    Gap between two files or within a file.
+
+    For file-to-file gaps: file1 and file2 are populated
+    For intra-file gaps: file1 and file2 are None
     """
-    file1: IndexEntry
-    file2: IndexEntry
     gap_seconds: float
     category: GapCategory
     reason: str
+    gap_start: Optional[datetime] = None
+    gap_end: Optional[datetime] = None
 
     @property
     def gap_hours(self) -> float:

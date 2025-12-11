@@ -289,8 +289,8 @@ class ScenarioDataValidator:
 
         for gap in report.gaps:
             # Ensure all datetimes are UTC-aware for comparison
-            gap_start = ensure_utc_aware(gap.file1.end_time)
-            gap_end = ensure_utc_aware(gap.file2.start_time)
+            gap_start = ensure_utc_aware(gap.gap_start)
+            gap_end = ensure_utc_aware(gap.gap_end)
 
             if gap_start < start_date < gap_end:
                 errors.append(
@@ -334,8 +334,8 @@ class ScenarioDataValidator:
         # Check gaps in this stretch
         for gap in report.gaps:
             # Ensure gap timestamps are UTC-aware
-            gap_start = ensure_utc_aware(gap.file1.end_time)
-            gap_end = ensure_utc_aware(gap.file2.start_time)
+            gap_start = ensure_utc_aware(gap.gap_start)
+            gap_end = ensure_utc_aware(gap.gap_end)
 
             # Gap overlaps with tick stretch?
             if (gap_start >= first_tick and gap_end <= last_tick):

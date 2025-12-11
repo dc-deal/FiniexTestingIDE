@@ -1,4 +1,12 @@
 {
+    "gap_detection": {
+        "enabled": true,
+        "granularity": "M5",
+        "thresholds": {
+            "short": 0.5,
+            "moderate": 4.0
+        }
+    },
     "analysis": {
         "timeframe": "M5",
         "atr_period": 14,

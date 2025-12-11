@@ -3,10 +3,11 @@ Market Calendar - Forex Market Hours and Weekend Detection
 Handles market open/close times and weekend gaps
 
 EXTENDED  Comprehensive weekend analysis and gap classification
+ENHANCED  Calendar-based weekend detection for extended gaps
 """
 
 from datetime import datetime, timedelta
-from typing import Tuple, Dict, Union
+from typing import Optional, Tuple, Dict, Union
 
 import pytz
 
@@ -22,6 +23,7 @@ class MarketCalendar:
     Closed: Saturday and Sunday
 
     EXTENDED  Added detailed weekend statistics and gap classification
+    ENHANCED  Calendar-based weekend detection for data outages spanning weekends
     """
 
     # Weekend closure window configuration
@@ -229,10 +231,37 @@ class MarketCalendar:
         }
 
     @staticmethod
+    def gap_contains_weekend(start: datetime, end: datetime) -> bool:
+        """
+        Check if time gap contains any weekend days (Saturday or Sunday).
+
+        Uses calendar-based detection independent of gap pattern.
+        Useful for detecting weekends in data outages that don't follow
+        typical Friday evening → Monday morning pattern.
+
+        Args:
+            start: Gap start timestamp
+            end: Gap end timestamp
+
+        Returns:
+            True if gap contains at least one Saturday or Sunday
+        """
+        current = start.date()
+        end_date = end.date()
+
+        while current <= end_date:
+            if current.weekday() in [5, 6]:  # Saturday=5, Sunday=6
+                return True
+            current += timedelta(days=1)
+
+        return False
+
+    @staticmethod
     def classify_gap(
         start: datetime,
         end: datetime,
-        gap_seconds: float
+        gap_seconds: float,
+        thresholds: Optional[Dict[str, float]] = None
     ) -> Tuple[GapCategory, str]:
         """
         Classify a time gap between two timestamps.
@@ -249,11 +278,18 @@ class MarketCalendar:
 
         Categories:
             - SEAMLESS: < 5 seconds (perfect continuity)
-            - WEEKEND: Fr evening → Mo morning, 40-80 hours
+            - WEEKEND: Fr evening → Mo morning, 40-80 hours OR any gap ≥24h containing Sat/Sun
             - SHORT: 5s - 30min (connection blip, restart)
             - MODERATE: 30min - 4h (potential data loss)
             - LARGE: > 4h (significant data loss)
         """
+        # Default thresholds if not provided
+        if thresholds is None:
+            thresholds = {
+                'short': 0.5,      # < 30 minutes
+                'moderate': 4.0    # 30min - 4h
+            }
+
         gap_hours = gap_seconds / 3600
 
         # 1. SEAMLESS (< 5 seconds)
@@ -278,14 +314,20 @@ class MarketCalendar:
         ):
             return GapCategory.WEEKEND, f'✅ Weekend gap (Sat→Mon, {gap_hours:.1f}h)'
 
-        # 3. SHORT GAP (< 30 min)
+        # Extended weekend detection: Calendar-based fallback
+        # Handles data outages that span weekends but don't match typical patterns
+        # Example: Wed 15:40 → Mon 01:57 (contains Sat+Sun but doesn't start Friday)
+        if MarketCalendar.gap_contains_weekend(start, end) and gap_hours >= 24:
+            return GapCategory.WEEKEND, f'✅ Weekend gap (extended, {gap_hours:.1f}h)'
+
+        # 3. SHORT GAP
         # Common causes: Server restart, connection blip, MT5 restart
-        if gap_hours < 0.5:  # < 30 minutes
+        if gap_hours < thresholds['short']:
             return GapCategory.SHORT, f'⚠️  Short interruption ({int(gap_seconds/60)} min - restart/connection?)'
 
-        # 4. MODERATE GAP (30 min - 4h)
+        # 4. MODERATE GAP
         # Potential data loss, but could be planned maintenance
-        if gap_hours < 4:
+        if gap_hours < thresholds['moderate']:
             if MarketCalendar.is_market_open(start):
                 return GapCategory.MODERATE, f'⚠️  Moderate gap during trading hours ({gap_hours:.2f}h)'
             else:

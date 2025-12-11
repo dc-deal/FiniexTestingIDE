@@ -227,7 +227,7 @@ class TickIndexManager:
         return False
 
     # =========================================================================
-    # FILE SELECTION - UNCHANGED
+    # FILE SELECTION
     # =========================================================================
 
     def get_relevant_files(
@@ -253,7 +253,7 @@ class TickIndexManager:
         return relevant
 
     # =========================================================================
-    # INDEX PERSISTENCE - UNCHANGED
+    # INDEX PERSISTENCE
     # =========================================================================
 
     def save_index(self) -> None:
@@ -280,7 +280,7 @@ class TickIndexManager:
             self.index = {}
 
     # =========================================================================
-    # COVERAGE REPORTS - UNCHANGED
+    # COVERAGE REPORTS
     # =========================================================================
 
     def get_coverage_report(self, symbol: str) -> CoverageReport:
@@ -289,26 +289,33 @@ class TickIndexManager:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
             return None
 
-        entries = self.index[symbol]
+        # Load config for gap detection
+        config = self._load_gap_detection_config()
 
-        index_entries = [
-            IndexEntry(
-                file=entry['file'],
-                path=entry['path'],
-                symbol=entry['symbol'],
-                start_time=pd.to_datetime(entry['start_time']),
-                end_time=pd.to_datetime(entry['end_time']),
-                tick_count=entry['tick_count'],
-                file_size_mb=entry['file_size_mb'],
-                source_file=entry['source_file'],
-                num_row_groups=entry['num_row_groups']
-            )
-            for entry in entries
-        ]
-
-        report = CoverageReport(symbol, index_entries)
-        report.analyze()
+        # Create report with data_dir for intra-file gap detection
+        report = CoverageReport(symbol, data_dir=self.data_dir)
+        report.analyze(config=config)
         return report
+
+    def _load_gap_detection_config(self) -> Dict:
+        """
+        Load gap detection configuration from analysis_config.json.
+
+        Returns:
+            Config dict with gap_detection settings, or empty dict if not found
+        """
+        config_path = Path("./configs/generator/analysis_config.json")
+
+        if not config_path.exists():
+            return {}
+
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config
+        except Exception as e:
+            self.logger.warning(f"Failed to load gap detection config: {e}")
+            return {}
 
     def get_symbol_coverage(self, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol """
@@ -327,7 +334,7 @@ class TickIndexManager:
         }
 
     # =========================================================================
-    # UTILITY METHODS - UNCHANGED
+    # UTILITY METHODS
     # =========================================================================
 
     def list_symbols(self) -> List[str]:

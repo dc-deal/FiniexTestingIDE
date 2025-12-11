@@ -81,9 +81,6 @@ class BlocksGenerator:
 
         coverage_report = tick_index.get_coverage_report(symbol)
 
-        if not coverage_report.files:
-            raise ValueError(f"No tick data found for {symbol}")
-
         # Extract continuous regions with gap information
         continuous_regions = self._extract_continuous_regions(coverage_report)
 
@@ -381,8 +378,6 @@ class BlocksGenerator:
         Returns:
             List of dicts with 'start', 'end', and 'following_gap' keys
         """
-        if not coverage_report.files:
-            return []
 
         # Gap categories that interrupt blocks
         interrupting_categories = {
@@ -392,12 +387,12 @@ class BlocksGenerator:
         }
 
         regions = []
-        current_start = coverage_report.files[0].start_time
+        current_start = coverage_report.start_time
 
         for gap in coverage_report.gaps:
             if gap.category in interrupting_categories:
                 # End current region at gap start
-                region_end = gap.file1.end_time
+                region_end = gap.gap_start
 
                 if region_end > current_start:
                     regions.append({
@@ -407,10 +402,10 @@ class BlocksGenerator:
                     })
 
                 # Start new region after gap
-                current_start = gap.file2.start_time
+                current_start = gap.gap_end
 
         # Add final region (no following gap)
-        final_end = coverage_report.files[-1].end_time
+        final_end = coverage_report.end_time
         if final_end > current_start:
             regions.append({
                 'start': current_start,
