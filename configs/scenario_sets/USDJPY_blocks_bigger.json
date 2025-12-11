@@ -512,7 +512,7 @@
       "end_date": "2025-11-16T04:00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

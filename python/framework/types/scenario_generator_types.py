@@ -43,7 +43,6 @@ class TradingSession(Enum):
 
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
-    BALANCED = "balanced"
     BLOCKS = "blocks"
     STRESS = "stress"
 
@@ -205,10 +204,12 @@ class BlocksStrategyConfig:
 
 @dataclass
 class StressStrategyConfig:
-    """Configuration for stress test strategy."""
-    volatility_percentile: int = 90
-    density_percentile: int = 90
-    min_periods: int = 3
+    """Stress testing strategy configuration."""
+    stress_scenario_hours: int = 6
+    warmup_hours: int = 13
+    min_real_bar_ratio: float = 0.5
+    volatility_percentile: float = 0.90
+    activity_percentile: float = 0.90
 
 
 @dataclass
@@ -271,11 +272,14 @@ class GeneratorConfig:
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
             stress=StressStrategyConfig(
+                stress_scenario_hours=stress_data.get(
+                    'stress_scenario_hours', 6),
+                warmup_hours=stress_data.get('warmup_hours', 13),
+                min_real_bar_ratio=stress_data.get('min_real_bar_ratio', 0.5),
                 volatility_percentile=stress_data.get(
-                    'volatility_percentile', 90
-                ),
-                density_percentile=stress_data.get('density_percentile', 90),
-                min_periods=stress_data.get('min_periods', 3)
+                    'volatility_percentile', 0.90),
+                activity_percentile=stress_data.get(
+                    'activity_percentile', 0.90)
             ),
             cross_instrument_ranking=CrossInstrumentRankingConfig(
                 top_count=ranking_data.get('top_count', 3)

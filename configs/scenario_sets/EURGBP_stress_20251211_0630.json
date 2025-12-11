@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_set_name": "EURGBP_stress_20251119_1505",
-  "created": "2025-11-19T15:05:55.837310+00:00",
+  "scenario_set_name": "EURGBP_stress_20251211_0630",
+  "created": "2025-12-11T06:30:05.407266+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -18,7 +18,7 @@
         },
         "envelope_main": {
           "periods": {
-            "M5": 20
+            "M30": 20
           },
           "deviation": 0.02
         }
@@ -40,9 +40,9 @@
     {
       "name": "EURGBP_stress_01",
       "symbol": "EURGBP",
-      "start_date": "2025-11-14T07:00:00+00:00",
-      "end_date": "2025-11-14T08:00:00+00:00",
-      "max_ticks": 4473,
+      "start_date": "2025-11-26T08:00:00+00:00",
+      "end_date": "2025-11-26T14:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
@@ -52,9 +52,9 @@
     {
       "name": "EURGBP_stress_02",
       "symbol": "EURGBP",
-      "start_date": "2025-10-10T15:00:00+00:00",
-      "end_date": "2025-10-10T16:00:00+00:00",
-      "max_ticks": 5601,
+      "start_date": "2025-11-25T11:00:00+00:00",
+      "end_date": "2025-11-25T17:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
@@ -64,9 +64,9 @@
     {
       "name": "EURGBP_stress_03",
       "symbol": "EURGBP",
-      "start_date": "2025-11-14T08:00:00+00:00",
-      "end_date": "2025-11-14T09:00:00+00:00",
-      "max_ticks": 3295,
+      "start_date": "2025-11-24T11:00:00+00:00",
+      "end_date": "2025-11-24T17:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
@@ -76,9 +76,9 @@
     {
       "name": "EURGBP_stress_04",
       "symbol": "EURGBP",
-      "start_date": "2025-10-29T19:00:00+00:00",
-      "end_date": "2025-10-29T20:00:00+00:00",
-      "max_ticks": 4785,
+      "start_date": "2025-11-25T04:00:00+00:00",
+      "end_date": "2025-11-25T10:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
@@ -88,9 +88,9 @@
     {
       "name": "EURGBP_stress_05",
       "symbol": "EURGBP",
-      "start_date": "2025-11-06T11:00:00+00:00",
-      "end_date": "2025-11-06T12:00:00+00:00",
-      "max_ticks": 3266,
+      "start_date": "2025-12-03T11:00:00+00:00",
+      "end_date": "2025-12-03T17:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},

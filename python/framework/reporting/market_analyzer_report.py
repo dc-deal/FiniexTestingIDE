@@ -4,7 +4,7 @@ Market Analyzer
 Analyzes bar data for volatility regimes, tick density, and session patterns.
 Used by scenario generator to select optimal time periods.
 
-Location: python/scenario/market_analyzer.py
+Location: python/framework/reporting/market_analyzer_report.py
 """
 
 from datetime import datetime, timezone, timedelta
@@ -206,12 +206,8 @@ class MarketAnalyzer:
 
         vLog.info(f"Analyzing {symbol} {tf} ({market_type})")
 
-        # Load bar data
-        df = pd.read_parquet(bar_file)
-        df = self._prepare_dataframe(df)
-
-        # Calculate ATR for all bars
-        df = self._calculate_atr(df)
+        # Load and prepare bar data (using refactored helper)
+        df = self._load_and_prepare_bars(symbol, tf)
 
         # Group into analysis periods (filters synthetic-only periods)
         periods = self._analyze_periods(df, symbol)
@@ -278,6 +274,117 @@ class MarketAnalyzer:
             session_summaries=session_summaries,
             periods=periods
         )
+
+    def get_periods(
+        self,
+        symbol: str,
+        timeframe: Optional[str] = None
+    ) -> List[PeriodAnalysis]:
+        """
+        Get gap-filtered periods for scenario generation.
+
+        Returns only periods with real bar data (no synthetic-only periods).
+        Periods are regime-classified and gap-aware.
+
+        Public accessor for stress/custom scenario generators.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe (default from config)
+
+        Returns:
+            List of PeriodAnalysis with regime classification
+
+        Raises:
+            ValueError: If no bar data or no valid periods found
+        """
+        tf = timeframe or self._config.analysis.timeframe
+
+        vLog.debug(f"Extracting periods for {symbol} {tf}")
+
+        df = self._load_and_prepare_bars(symbol, tf)
+        periods = self._analyze_periods(df, symbol)
+
+        if not periods:
+            raise ValueError(
+                f"No valid trading periods found for {symbol} {tf}. "
+                f"All periods may be synthetic-only (weekends/gaps)."
+            )
+
+        vLog.debug(f"Found {len(periods)} valid periods (real-bar filtered)")
+
+        return periods
+
+    def get_stress_periods(
+        self,
+        symbol: str,
+        timeframe: Optional[str] = None,
+        regimes: Optional[List[VolatilityRegime]] = None
+    ) -> List[PeriodAnalysis]:
+        """
+        Get high-volatility periods for stress testing.
+
+        Convenience method that filters for HIGH/VERY_HIGH regimes
+        and sorts by tick activity.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe (default from config)
+            regimes: Regimes to include (default: [HIGH, VERY_HIGH])
+
+        Returns:
+            Filtered periods sorted by tick_count (highest first)
+        """
+        all_periods = self.get_periods(symbol, timeframe)
+
+        if regimes is None:
+            regimes = [VolatilityRegime.HIGH, VolatilityRegime.VERY_HIGH]
+
+        stress_periods = [p for p in all_periods if p.regime in regimes]
+
+        # Sort by tick count (highest activity first)
+        stress_periods = sorted(
+            stress_periods,
+            key=lambda p: p.tick_count,
+            reverse=True
+        )
+
+        vLog.info(
+            f"Found {len(stress_periods)} stress periods "
+            f"(HIGH/VERY_HIGH) from {len(all_periods)} total"
+        )
+
+        return stress_periods
+
+    # =========================================================================
+    # INTERNAL HELPERS
+    # =========================================================================
+
+    def _load_and_prepare_bars(self, symbol: str, timeframe: str) -> pd.DataFrame:
+        """
+        Load and prepare bar data for analysis.
+
+        Shared helper for analyze_symbol() and get_periods().
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe string
+
+        Returns:
+            Prepared dataframe with ATR calculated
+
+        Raises:
+            ValueError: If no bar data found
+        """
+        bar_file = self._bar_index.get_bar_file(symbol, timeframe)
+        if not bar_file:
+            raise ValueError(f"No bar data found for {symbol} {timeframe}")
+
+        df = pd.read_parquet(bar_file)
+        df = self._prepare_dataframe(df)
+        df = self._calculate_atr(df)
+
+        return df
 
     # =========================================================================
     # DATA PREPARATION

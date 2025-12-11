@@ -241,6 +241,18 @@
             "justMyCode": false
         },
         {
+            "name": "🔬 Run (USDJPY_stress)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "EURGBP_stress_20251211_0630.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 List Scenarios",
             "type": "debugpy",
             "request": "launch",
@@ -263,22 +275,6 @@
             "args": [
                 "analyze",
                 "USDJPY"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "📊 Scenario Generator - Generate Balanced",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
-            "args": [
-                "generate",
-                "EURGBP",
-                "--strategy",
-                "balanced",
-                "--count",
-                "12"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

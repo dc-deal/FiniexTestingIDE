@@ -2,6 +2,8 @@
 Scenario Generator - Main Orchestrator
 ======================================
 Coordinates analysis and dispatches to strategy-specific generators.
+
+Location: python/scenario/generator/scenario_generator.py
 """
 
 import json
@@ -14,15 +16,14 @@ from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
     GeneratorConfig,
-    PeriodAnalysis,
     ScenarioCandidate,
     TradingSession,
     VolatilityRegime,
 )
 from python.components.logger.bootstrap_logger import get_logger
-from python.scenario.generator.balanced_generator import BalancedGenerator
-from python.scenario.generator.blocks_generator import BlocksGenerator
-from python.scenario.generator.stress_generator import StressGenerator
+
+from .blocks_generator import BlocksGenerator
+from .stress_generator import StressGenerator
 
 vLog = get_logger()
 
@@ -57,9 +58,8 @@ class ScenarioGenerator:
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
-        self._balanced_gen = BalancedGenerator(self._config)
         self._blocks_gen = BlocksGenerator(self._data_dir, self._config)
-        self._stress_gen = StressGenerator(self._config)
+        self._stress_gen = StressGenerator(self._config, self._analyzer)
 
     # =========================================================================
     # MAIN GENERATION
@@ -84,8 +84,8 @@ class ScenarioGenerator:
             symbols: List of symbols to generate for
             strategy: Generation strategy
             count: Number of scenarios
-            block_hours: Block size for blocks strategy
-            session_filter: Filter by session name
+            block_hours: Block size for blocks/stress strategy
+            session_filter: Filter by session name (deprecated)
             sessions_filter: Filter by multiple session names
             start_filter: Start date filter
             end_filter: End date filter
@@ -101,34 +101,14 @@ class ScenarioGenerator:
 
         symbol = symbols[0]
 
-        # Analyze the symbol
+        # Analyze the symbol (for metadata)
         analysis = self._analyzer.analyze_symbol(symbol)
 
-        # Filter periods (for balanced/stress strategies)
-        periods = self._filter_periods(
-            analysis.periods,
-            session_filter,
-            start_filter,
-            end_filter
-        )
-
-        if not periods and strategy != GenerationStrategy.BLOCKS:
-            raise ValueError(
-                f"No periods match the given filters for {symbol}")
-
-        vLog.info(f"Generating {count} {strategy.value} scenarios from "
-                  f"{len(periods)} periods")
+        # Note: Blocks and Stress generators handle their own data access
+        vLog.info(f"Generating scenarios using {strategy.value} strategy")
 
         # Dispatch to strategy-specific generator
-        if strategy == GenerationStrategy.BALANCED:
-            effective_count = count or 10
-            vLog.info(f"Generating {effective_count} {strategy.value} scenarios from "
-                      f"{len(periods)} periods")
-            scenarios = self._balanced_gen.generate(
-                symbol, periods, effective_count, max_ticks
-            )
-
-        elif strategy == GenerationStrategy.BLOCKS:
+        if strategy == GenerationStrategy.BLOCKS:
             hours = block_hours or self._config.blocks.default_block_hours
             scenarios = self._blocks_gen.generate(
                 symbol, hours, count, sessions_filter
@@ -138,11 +118,12 @@ class ScenarioGenerator:
                 f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
 
         elif strategy == GenerationStrategy.STRESS:
+            hours = block_hours or self._config.stress.stress_scenario_hours
             effective_count = count or 5
-            vLog.info(f"Generating {effective_count} {strategy.value} scenarios from "
-                      f"{len(periods)} periods")
+            vLog.info(
+                f"Generating {effective_count} {strategy.value} scenarios")
             scenarios = self._stress_gen.generate(
-                symbol, periods, effective_count, max_ticks
+                symbol, hours, effective_count, max_ticks
             )
 
         else:
@@ -151,51 +132,8 @@ class ScenarioGenerator:
         return self._build_result(symbol, strategy, scenarios)
 
     # =========================================================================
-    # SHARED HELPER METHODS
+    # RESULT BUILDING
     # =========================================================================
-
-    def _filter_periods(
-        self,
-        periods: List[PeriodAnalysis],
-        session_filter: Optional[str],
-        start_filter: Optional[datetime],
-        end_filter: Optional[datetime]
-    ) -> List[PeriodAnalysis]:
-        """
-        Filter periods by session and time range.
-
-        Args:
-            periods: All periods
-            session_filter: Session name filter
-            start_filter: Start datetime
-            end_filter: End datetime
-
-        Returns:
-            Filtered periods
-        """
-        filtered = periods
-
-        # Session filter
-        if session_filter:
-            session = TradingSession(session_filter)
-            filtered = [p for p in filtered if p.session == session]
-
-        # Time filters
-        if start_filter:
-            filtered = [p for p in filtered if p.start_time >= start_filter]
-
-        if end_filter:
-            filtered = [p for p in filtered if p.end_time <= end_filter]
-
-        # Quality filter: prefer real bars
-        if self._config.balanced.prefer_real_bars:
-            filtered = sorted(
-                filtered,
-                key=lambda p: p.real_bar_count / max(p.bar_count, 1),
-                reverse=True
-            )
-
-        return filtered
 
     def _build_result(
         self,
@@ -279,8 +217,11 @@ class ScenarioGenerator:
         config['scenarios'] = []
         for i, candidate in enumerate(scenarios, 1):
             name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
-            # Blocks strategy: max_ticks = None (time-based only)
-            use_max_ticks = None if result.strategy == GenerationStrategy.BLOCKS else candidate.estimated_ticks
+            # Blocks/Stress strategy: max_ticks = None (time-based only)
+            use_max_ticks = None if result.strategy in [
+                GenerationStrategy.BLOCKS,
+                GenerationStrategy.STRESS
+            ] else candidate.estimated_ticks
             scenario_dict = candidate.to_scenario_dict(name, use_max_ticks)
             config['scenarios'].append(scenario_dict)
 
