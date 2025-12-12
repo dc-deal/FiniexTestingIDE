@@ -12,7 +12,7 @@ UTC-FIX:
 
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from python.components.logger.scenario_logger import ScenarioLogger
@@ -283,6 +283,7 @@ class SharedDataPreparator:
 
         Returns:
             (ticks_data, tick_counts, tick_ranges)
+            Failed scenarios are skipped (not included in dicts)
         """
         ticks_data = {}
         tick_counts = {}
@@ -294,18 +295,28 @@ class SharedDataPreparator:
             # Determine loading strategy
             if req.max_ticks is not None:
                 # Tick-limited mode
-                ticks, count, time_range = self._load_ticks_tick_mode(
+                result = self._load_ticks_tick_mode(
                     symbol=req.symbol,
                     start_time=req.start_time,
                     max_ticks=req.max_ticks
                 )
             else:
                 # Timespan mode
-                ticks, count, time_range = self._load_ticks_timespan_mode(
+                result = self._load_ticks_timespan_mode(
                     symbol=req.symbol,
                     start_time=req.start_time,
                     end_time=req.end_time
                 )
+
+            # Handle None (loading failed)
+            if result is None:
+                self._logger.warning(
+                    f"⚠️  Skipping scenario '{req.scenario_name}' - tick loading failed"
+                )
+                continue  # Skip this scenario, don't add to dicts
+
+            # Unpack result
+            ticks, count, time_range = result
 
             # Store as tuple (immutable, CoW-friendly)
             ticks_data[req.scenario_name] = tuple(ticks)
@@ -322,7 +333,7 @@ class SharedDataPreparator:
         symbol: str,
         start_time: datetime,
         max_ticks: int
-    ) -> Tuple[List[Any], int, Tuple[datetime, datetime]]:
+    ) -> Optional[Tuple[List[Any], int, Tuple[datetime, datetime]]]:
         """
         Load ticks in tick-limited mode.
 
@@ -334,11 +345,16 @@ class SharedDataPreparator:
             max_ticks: Maximum ticks to load
 
         Returns:
-            (ticks, count, time_range)
+            (ticks, count, time_range) or None if loading failed
         """
         # Get files from index
         if symbol not in self.tick_index_manager.index:
-            raise ValueError(f"Symbol {symbol} not found in tick index")
+            # Log and return None
+            self._logger.error(
+                f"❌ Symbol {symbol} not found in tick index. "
+                f"Available symbols: {list(self.tick_index_manager.index.keys())}"
+            )
+            return None
 
         files = self.tick_index_manager.index[symbol]
 
@@ -357,19 +373,17 @@ class SharedDataPreparator:
                 break
 
         if start_file_idx is None:
-            # CRITICAL: No silent fallback! Hard error if start_date not available
-            # This error should never occur if Phase 0.5 validation ran correctly
-
-            # Build helpful error message with available range
+            # Log detailed error and return None
             first_available = pd.to_datetime(files[0]['start_time'], utc=True)
             last_available = pd.to_datetime(files[-1]['end_time'], utc=True)
 
-            raise ValueError(
-                f"No tick data available for {symbol} starting at {start_time}. "
+            self._logger.error(
+                f"❌ No tick data available for {symbol} starting at {start_time}. "
                 f"Available data range: {first_available.strftime('%Y-%m-%d %H:%M:%S')} UTC "
                 f"→ {last_available.strftime('%Y-%m-%d %H:%M:%S')} UTC. "
-                f"This error indicates Phase 0.5 validation was skipped or failed."
+                f"This indicates Phase 0.5 validation was skipped or failed."
             )
+            return None
 
         # Load files until max_ticks reached
         all_ticks = []
@@ -395,8 +409,11 @@ class SharedDataPreparator:
         all_ticks = all_ticks[:max_ticks]
 
         if not all_ticks:
-            raise ValueError(
-                f"No ticks loaded for {symbol} (check start_time)")
+            # Log and return None
+            self._logger.error(
+                f"❌ No ticks loaded for {symbol} (check start_time: {start_time})"
+            )
+            return None
 
         # Get time range
         time_range = (
@@ -411,7 +428,7 @@ class SharedDataPreparator:
         symbol: str,
         start_time: datetime,
         end_time: datetime
-    ) -> Tuple[List[Any], int, Tuple[datetime, datetime]]:
+    ) -> Optional[Tuple[List[Any], int, Tuple[datetime, datetime]]]:
         """
         Load ticks in timespan mode.
 
@@ -423,7 +440,7 @@ class SharedDataPreparator:
             end_time: End time (UTC-aware)
 
         Returns:
-            (ticks, count, time_range)
+            (ticks, count, time_range) or None if loading failed
         """
         # UTC-FIX: Ensure times are UTC-aware
         if start_time.tzinfo is None:
@@ -439,9 +456,11 @@ class SharedDataPreparator:
         )
 
         if not relevant_files:
-            raise ValueError(
-                f"No tick data found for {symbol} in range {start_time} - {end_time}"
+            # Log and return None
+            self._logger.error(
+                f"❌ No tick data found for {symbol} in range {start_time} - {end_time}"
             )
+            return None
 
         # Load and concatenate files
         all_ticks = []
@@ -459,10 +478,12 @@ class SharedDataPreparator:
             all_ticks.extend(df.to_dict('records'))
 
         if not all_ticks:
-            raise ValueError(
-                f"No ticks found for {symbol} in range {start_time} - {end_time} "
+            # Log and return None
+            self._logger.error(
+                f"❌ No ticks found for {symbol} in range {start_time} - {end_time} "
                 f"(files loaded but empty after filtering)"
             )
+            return None
 
         # Get time range
         time_range = (

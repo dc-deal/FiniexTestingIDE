@@ -18,6 +18,7 @@ from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.validation_types import ValidationResult
 
 
 class BrokerDataPreparator:
@@ -83,10 +84,15 @@ class BrokerDataPreparator:
                 "broker_config_path", None)
 
             if config_path is None:
-                raise ValueError(
-                    f"Scenario '{scenario.name}' missing 'broker_config_path' "
-                    f"in trade_simulator_config"
+                validation_error = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[
+                        f"Missing 'broker_config_path' in trade_simulator_config"],
+                    warnings=[]
                 )
+                scenario.validation_result.append(validation_error)
+                continue  # Skip this scenario, continue with others
 
             # Load broker config (cached: only once per unique config_path)
             if config_path not in self._config_path_cache:
