@@ -1,17 +1,17 @@
 """
 FiniexTestingIDE - Extended GIL Benchmark Experiment
 ====================================================
-Wissenschaftliche Feldstudie: Threading vs Multiprocessing für CPU-bound Work
+Scientific Field Study: Threading vs Multiprocessing for CPU-bound Work
 
 EXTENDED VERSION:
-- Variable Workload-Größen (5ms bis 50ms)
+- Variable Workload Sizes (5ms to 50ms)
 - Shared State Contention Simulation
-- Realistische bar_history Strukturen
-- Multiple Workers pro Scenario
-- Umfassende Umgebungs-Erkennung
-- Automatisches Log-File mit intelligentem Naming
+- Realistic bar_history Structures
+- Multiple Workers per Scenario
+- Comprehensive Environment Detection
+- Automatic Log File with Intelligent Naming
 
-Ziel: Realistische Simulation der FiniexTestingIDE Scenario Parallelization
+Goal: Realistic Simulation of FiniexTestingIDE Scenario Parallelization
 """
 
 import time
@@ -31,8 +31,8 @@ import re
 
 class LogWriter:
     """
-    Schreibt Output sowohl in Console als auch in Log-File.
-    Erstellt automatisch intelligente Filenamen.
+    Writes output to both console and log file.
+    Automatically creates intelligent filenames.
     """
 
     def __init__(self, script_dir: str):
@@ -42,10 +42,10 @@ class LogWriter:
 
     def start_logging(self, platform_name: str, execution_mode: str):
         """
-        Startet Logging in File mit intelligentem Namen.
+        Starts logging to file with intelligent name.
 
         Format: gil_benchmark_<platform>_<mode>_<date>.log
-        Beispiel: gil_benchmark_windows_native_20250118-1430.log
+        Example: gil_benchmark_windows_native_20250118-1430.log
         """
         # Sanitize platform name
         safe_platform = re.sub(r'[^\w\-]', '_', platform_name.lower())
@@ -71,14 +71,14 @@ class LogWriter:
         self.write(f"{'='*80}\n")
 
     def write(self, message: str):
-        """Schreibt Message zu Console und File"""
+        """Writes message to console and file"""
         print(message)
         if self.log_file:
             self.log_file.write(message + '\n')
             self.log_file.flush()
 
     def close(self):
-        """Schließt Log-File"""
+        """Closes log file"""
         if self.log_file:
             self.write(f"\n{'='*80}")
             self.write(f"📁 Full log saved to:")
@@ -89,7 +89,7 @@ class LogWriter:
 
 @dataclass
 class BenchmarkResult:
-    """Einzelnes Benchmark-Ergebnis - kompakt für übersichtliches Logging"""
+    """Single benchmark result - compact for clear logging"""
     method: str
     workload_ms: float
     scenario_type: str
@@ -99,11 +99,11 @@ class BenchmarkResult:
 
 
 class EnvironmentDetector:
-    """Erkennt und loggt die komplette Ausführungsumgebung"""
+    """Detects and logs the complete execution environment"""
 
     @staticmethod
     def detect_execution_context() -> Dict[str, Any]:
-        """Erkennt wie das Script aufgerufen wurde"""
+        """Detects how the script was invoked"""
         context = {
             'execution_mode': 'unknown',
             'is_docker': False,
@@ -131,7 +131,7 @@ class EnvironmentDetector:
 
     @staticmethod
     def get_system_info() -> Dict[str, Any]:
-        """Sammelt detaillierte System-Informationen"""
+        """Collects detailed system information"""
         info = {
             'platform': platform.platform(),
             'system': platform.system(),
@@ -145,7 +145,7 @@ class EnvironmentDetector:
 
     @staticmethod
     def print_environment_report(logger):
-        """Gibt kompakten Environment-Report aus"""
+        """Prints compact environment report"""
         logger.write("="*80)
         logger.write("ENVIRONMENT REPORT")
         logger.write("="*80)
@@ -167,7 +167,7 @@ class EnvironmentDetector:
 
 
 class RealisticScenarioSimulator:
-    """Simuliert ein realistisches FiniexTestingIDE Scenario"""
+    """Simulates a realistic FiniexTestingIDE scenario"""
 
     @staticmethod
     def simulate_scenario(
@@ -176,17 +176,17 @@ class RealisticScenarioSimulator:
         num_workers: int = 2,
         bar_history_size: int = 200
     ) -> Dict[str, Any]:
-        """Simuliert komplettes Scenario mit mehreren Workers"""
+        """Simulates complete scenario with multiple workers"""
         start = time.perf_counter()
 
-        # Simuliere bar_history für mehrere Timeframes
+        # Simulate bar_history for multiple timeframes
         bar_history = {
             'M5': np.random.uniform(1.0, 2.0, bar_history_size),
             'M15': np.random.uniform(1.0, 2.0, bar_history_size // 3),
             'H1': np.random.uniform(1.0, 2.0, bar_history_size // 12),
         }
 
-        # Simuliere mehrere Workers
+        # Simulate multiple workers
         for worker_id in range(num_workers):
             RealisticScenarioSimulator._simulate_worker(
                 bar_history=bar_history,
@@ -198,14 +198,14 @@ class RealisticScenarioSimulator:
 
     @staticmethod
     def _simulate_worker(bar_history: Dict[str, np.ndarray], workload_ms: float) -> None:
-        """Simuliert einen Worker mit RSI-ähnlichen Berechnungen"""
+        """Simulates a worker with RSI-like calculations"""
         start = time.perf_counter()
         target_duration = workload_ms / 1000.0
 
         prices = bar_history['M5']
 
         while (time.perf_counter() - start) < target_duration:
-            # RSI-ähnliche Berechnungen (NumPy releases GIL)
+            # RSI-like calculations (NumPy releases GIL)
             deltas = np.diff(prices)
             gains = np.where(deltas > 0, deltas, 0)
             losses = np.where(deltas < 0, -deltas, 0)
@@ -217,14 +217,14 @@ class RealisticScenarioSimulator:
                 rs = avg_gain / avg_loss
                 _ = 100.0 - (100.0 / (1.0 + rs))
 
-            # Zusätzliche NumPy ops
+            # Additional NumPy ops
             matrix = np.random.rand(20, 20)
             result = np.dot(matrix, matrix.T)
             _ = np.linalg.eigvals(result)
 
 
 class ExtendedGILBenchmark:
-    """Erweiterter GIL Benchmark mit realistischen Szenarien"""
+    """Extended GIL benchmark with realistic scenarios"""
 
     def __init__(self, logger, num_scenarios: int = 20):
         self.logger = logger
@@ -232,7 +232,7 @@ class ExtendedGILBenchmark:
         self.results: List[BenchmarkResult] = []
 
     def run_test_suite(self, workload_ms: float, scenario_type: str):
-        """Führt komplette Test-Suite durch"""
+        """Runs complete test suite"""
         self.logger.write(f"\n{'='*80}")
         self.logger.write(
             f"TEST: {scenario_type} (Workload: {workload_ms}ms per scenario)")
@@ -251,7 +251,7 @@ class ExtendedGILBenchmark:
             workload_ms, scenario_type, seq.total_time)
         self.results.append(mp)
 
-        # Kompakte Zusammenfassung
+        # Compact summary
         self.logger.write(f"\nResults:")
         self.logger.write(f"  Sequential:      {seq.total_time:.3f}s")
         self.logger.write(
@@ -259,7 +259,7 @@ class ExtendedGILBenchmark:
         self.logger.write(
             f"  Multiprocessing: {mp.total_time:.3f}s  ({mp.speedup:.2f}x speedup, {mp.efficiency:.0%} eff)")
 
-        # Schnelle Analyse
+        # Quick analysis
         winner = "Threading" if thr.speedup > mp.speedup else "Multiprocessing"
         margin = abs(thr.speedup - mp.speedup) / max(thr.speedup, mp.speedup)
 
@@ -335,12 +335,12 @@ class ExtendedGILBenchmark:
         )
 
     def print_final_summary(self):
-        """Finale kompakte Zusammenfassung"""
+        """Final compact summary"""
         self.logger.write(f"\n{'='*80}")
         self.logger.write("FINAL SUMMARY")
         self.logger.write(f"{'='*80}")
 
-        # Gruppiere nach Workload
+        # Group by workload
         workloads = sorted(set(r.workload_ms for r in self.results))
 
         self.logger.write(
@@ -364,7 +364,7 @@ class ExtendedGILBenchmark:
         self.logger.write("RECOMMENDATION")
         self.logger.write(f"{'='*80}")
 
-        # Finde besten Ansatz über alle Workloads
+        # Find best approach across all workloads
         thr_results = [r for r in self.results if "Threading" in r.method]
         mp_results = [r for r in self.results if "Multiprocessing" in r.method]
 
@@ -394,9 +394,9 @@ class ExtendedGILBenchmark:
 
 
 def run_extended_benchmark():
-    """Hauptfunktion für erweiterten Benchmark"""
+    """Main function for extended benchmark"""
 
-    # Initialisiere Logger
+    # Initialize logger
     script_dir = os.path.dirname(os.path.abspath(__file__))
     logger = LogWriter(script_dir)
 
@@ -404,7 +404,7 @@ def run_extended_benchmark():
     logger.write("EXTENDED GIL BENCHMARK - SCIENTIFIC FIELD STUDY")
     logger.write("="*80)
     logger.write(
-        "\nRealistische Simulation der FiniexTestingIDE Scenario Parallelization")
+        "\nRealistic Simulation of FiniexTestingIDE Scenario Parallelization")
     logger.write(
         f"Timestamp: {datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')}\n")
 
@@ -427,23 +427,23 @@ def run_extended_benchmark():
 
     input("Press ENTER to start benchmark (takes ~2-3 minutes)...")
 
-    # Erstelle Benchmark
+    # Create benchmark
     benchmark = ExtendedGILBenchmark(logger, num_scenarios=20)
 
-    # Run Tests mit verschiedenen Workloads
+    # Run tests with different workloads
     benchmark.run_test_suite(workload_ms=5.0, scenario_type="Light-5ms")
     benchmark.run_test_suite(workload_ms=15.0, scenario_type="Medium-15ms")
     benchmark.run_test_suite(workload_ms=30.0, scenario_type="Heavy-30ms")
     benchmark.run_test_suite(workload_ms=50.0, scenario_type="VeryHeavy-50ms")
 
-    # Finale Zusammenfassung
+    # Final summary
     benchmark.print_final_summary()
 
     logger.write(f"\n{'='*80}")
     logger.write("BENCHMARK COMPLETE")
     logger.write(f"{'='*80}\n")
 
-    # Close Logger
+    # Close logger
     logger.close()
 
 

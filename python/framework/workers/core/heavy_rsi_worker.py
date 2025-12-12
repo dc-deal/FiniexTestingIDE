@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Heavy Workers für Parallelisierungs-Tests
-Workers mit künstlicher CPU-Last zum Testen von Parallel-Performance
+FiniexTestingIDE - Heavy Workers for Parallelization Tests
+Workers with artificial CPU load for testing parallel performance
 """
 
 import time
@@ -17,8 +17,8 @@ from python.framework.workers.abstract_worker import \
 
 class HeavyRSIWorker(AbstactWorker):
     """
-    RSI Worker mit künstlicher CPU-Last.
-    Simuliert komplexe Berechnungen (z.B. ML-Model, FFT, etc.)
+    RSI worker with artificial CPU load.
+    Simulates complex calculations (e.g., ML models, FFT, etc.)
     """
 
     def __init__(self, name, parameters: Dict, logger: ScenarioLogger, **kwargs):
@@ -140,7 +140,7 @@ class HeavyRSIWorker(AbstactWorker):
         )
 
     def _simulate_heavy_computation(self):
-        """Simuliert CPU-intensive Berechnungen (Matrix ops)"""
+        """Simulates CPU-intensive calculations (matrix ops)"""
         start = time.perf_counter()
         target_duration = self.artificial_load_ms / 1000.0
 

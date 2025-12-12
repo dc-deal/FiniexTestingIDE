@@ -3,26 +3,26 @@
 FiniexTestingIDE Project Structure Analyzer
 ============================================
 
-Erstellt eine strukturierte Übersicht aller Python-Klassen im Projekt.
-Zeigt:
-- Verzeichnisstruktur
-- Alle Klassen mit Vererbung
-- Dateigrößen und Zeilenanzahl
-- Namespace-Probleme (doppelte Klassennamen)
+Creates a structured overview of all Python classes in the project.
+Shows:
+- Directory structure
+- All classes with inheritance
+- File sizes and line counts
+- Namespace issues (duplicate class names)
 
-Verwendung:
+Usage:
     python analyze_project_structure.py [--output FILE] [--detailed]
 
-    # Einfache Übersicht (empfohlen für Refactoring)
+    # Simple overview (recommended for refactoring)
     python analyze_project_structure.py
 
-    # Oder mit spezifischem Pfad
-    python analyze_project_structure.py --path /pfad/zu/deinem/projekt
+    # Or with specific path
+    python analyze_project_structure.py --path /path/to/your/project
 
-    # Detaillierte Ansicht mit allen Methoden
+    # Detailed view with all methods
     python analyze_project_structure.py --detailed
 
-    # Eigene Ausgabedatei
+    # Custom output file
     python analyze_project_structure.py --output my_analysis.txt
 """
 
@@ -35,7 +35,7 @@ import argparse
 
 
 class ClassInfo:
-    """Information über eine Python-Klasse."""
+    """Information about a Python class."""
 
     def __init__(self, name: str, file_path: str, line_number: int,
                  base_classes: List[str], decorators: List[str], docstring: str = None):
@@ -49,7 +49,7 @@ class ClassInfo:
 
 
 class ProjectAnalyzer:
-    """Analysiert Python-Projekt-Struktur."""
+    """Analyzes Python project structure."""
 
     def __init__(self, root_dir: str = "."):
         self.root_dir = Path(root_dir).resolve()
@@ -58,32 +58,32 @@ class ProjectAnalyzer:
         self.errors: List[Tuple[str, str]] = []
 
     def analyze(self) -> Dict:
-        """Analysiert das gesamte Projekt."""
-        print(f"🔍 Analysiere Projekt: {self.root_dir}")
+        """Analyzes the entire project."""
+        print(f"🔍 Analyzing project: {self.root_dir}")
 
-        # Finde alle Python-Dateien
+        # Find all Python files
         python_files = list(self.root_dir.rglob("*.py"))
-        print(f"📁 Gefunden: {len(python_files)} Python-Dateien")
+        print(f"📁 Found: {len(python_files)} Python files")
 
-        # Analysiere jede Datei
+        # Analyze each file
         for py_file in python_files:
-            # Skip virtual environments und build directories
+            # Skip virtual environments and build directories
             if any(skip in py_file.parts for skip in ['.venv', 'venv', '__pycache__', 'build', 'dist']):
                 continue
 
             self._analyze_file(py_file)
 
-        print(f"✅ Verarbeitet: {self.files_processed} Dateien")
-        print(f"📊 Gefunden: {len(self.classes)} Klassen")
+        print(f"✅ Processed: {self.files_processed} files")
+        print(f"📊 Found: {len(self.classes)} classes")
 
         if self.errors:
             print(
-                f"⚠️  Fehler: {len(self.errors)} Dateien konnten nicht geparst werden")
+                f"⚠️  Errors: {len(self.errors)} files could not be parsed")
 
         return self._generate_report()
 
     def _analyze_file(self, file_path: Path):
-        """Analysiert eine einzelne Python-Datei."""
+        """Analyzes a single Python file."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -92,13 +92,13 @@ class ProjectAnalyzer:
 
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
-                    # Extrahiere Basisklassen
+                    # Extract base classes
                     base_classes = []
                     for base in node.bases:
                         if isinstance(base, ast.Name):
                             base_classes.append(base.id)
                         elif isinstance(base, ast.Attribute):
-                            # Für Klassen wie abc.ABC
+                            # For classes like abc.ABC
                             parts = []
                             current = base
                             while isinstance(current, ast.Attribute):
@@ -108,7 +108,7 @@ class ProjectAnalyzer:
                                 parts.append(current.id)
                             base_classes.append('.'.join(reversed(parts)))
 
-                    # Extrahiere Decorators
+                    # Extract decorators
                     decorators = []
                     for dec in node.decorator_list:
                         if isinstance(dec, ast.Name):
@@ -116,10 +116,10 @@ class ProjectAnalyzer:
                         elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
                             decorators.append(f"{dec.func.id}(...)")
 
-                    # Relative Pfad zum Projekt-Root
+                    # Relative path to project root
                     rel_path = file_path.relative_to(self.root_dir)
 
-                    # Extrahiere Klassen-Docstring
+                    # Extract class docstring
                     class_docstring = ast.get_docstring(node)
 
                     class_info = ClassInfo(
@@ -131,7 +131,7 @@ class ProjectAnalyzer:
                         docstring=class_docstring
                     )
 
-                    # Extrahiere Methoden mit Docstrings
+                    # Extract methods with docstrings
                     for item in node.body:
                         if isinstance(item, ast.FunctionDef):
                             method_docstring = ast.get_docstring(item)
@@ -148,14 +148,14 @@ class ProjectAnalyzer:
             self.errors.append((str(file_path), f"Error: {e}"))
 
     def _generate_report(self) -> Dict:
-        """Generiert Analyse-Report."""
-        # Gruppiere nach Verzeichnis
+        """Generates analysis report."""
+        # Group by directory
         by_directory = defaultdict(list)
         for cls in self.classes:
             directory = str(Path(cls.file_path).parent)
             by_directory[directory].append(cls)
 
-        # Finde Duplikate (gleiche Klassennamen)
+        # Find duplicates (same class names)
         class_names = defaultdict(list)
         for cls in self.classes:
             class_names[cls.name].append(cls)
@@ -163,7 +163,7 @@ class ProjectAnalyzer:
         duplicates = {name: classes for name, classes in class_names.items()
                       if len(classes) > 1}
 
-        # Dokumentations-Statistiken
+        # Documentation statistics
         total_methods = sum(len(cls.methods) for cls in self.classes)
         documented_classes = sum(1 for cls in self.classes if cls.docstring)
         documented_methods = sum(
@@ -172,7 +172,7 @@ class ProjectAnalyzer:
             if docstring
         )
 
-        # Undokumentierte sammeln
+        # Collect undocumented items
         undocumented_classes = [
             cls for cls in self.classes if not cls.docstring]
         undocumented_methods = []
@@ -181,11 +181,11 @@ class ProjectAnalyzer:
                 if not docstring:
                     undocumented_methods.append((cls, method_name))
 
-        # Vererbungs-Statistiken
+        # Inheritance statistics
         classes_with_inheritance = sum(
             1 for cls in self.classes if cls.base_classes)
 
-        # Top 5 größte Klassen
+        # Top 5 largest classes
         largest_classes = sorted(
             self.classes, key=lambda c: len(c.methods), reverse=True)[:5]
 
@@ -207,7 +207,7 @@ class ProjectAnalyzer:
 
 
 def format_statistics_header(report: Dict) -> str:
-    """Formatiert die Statistics Overview Section."""
+    """Formats the statistics overview section."""
     lines = []
     lines.append("=" * 80)
     lines.append("FINIEXTESTINGIDE - PROJECT STRUCTURE ANALYSIS")
@@ -216,18 +216,18 @@ def format_statistics_header(report: Dict) -> str:
     lines.append("📊 STATISTICS OVERVIEW")
     lines.append("-" * 80)
 
-    # Basis-Statistiken
+    # Basic statistics
     lines.append(f"Total Files Analyzed:        {report['total_files']}")
     lines.append(f"Total Directories:           {len(report['by_directory'])}")
     lines.append(f"Total Classes:               {report['total_classes']}")
     lines.append(f"Total Methods:               {report['total_methods']}")
 
-    # Durchschnitt
+    # Average
     avg_methods = report['total_methods'] / \
         report['total_classes'] if report['total_classes'] > 0 else 0
     lines.append(f"Avg Methods per Class:       {avg_methods:.1f}")
 
-    # Dokumentation
+    # Documentation
     class_coverage = (report['documented_classes'] / report['total_classes']
                       * 100) if report['total_classes'] > 0 else 0
     method_coverage = (report['documented_methods'] / report['total_methods']
@@ -239,13 +239,13 @@ def format_statistics_header(report: Dict) -> str:
     lines.append(
         f"  Methods:                   {report['documented_methods']}/{report['total_methods']} ({method_coverage:.1f}%)")
 
-    # Vererbung
+    # Inheritance
     lines.append(f"")
     lines.append(
         f"Classes with Inheritance:    {report['classes_with_inheritance']}/{report['total_classes']}")
     lines.append(f"Namespace Conflicts:         {len(report['duplicates'])}")
 
-    # Top 5 größte Klassen
+    # Top 5 largest classes
     if report['largest_classes']:
         lines.append(f"")
         lines.append(f"Top 5 Largest Classes (by method count):")
@@ -258,14 +258,14 @@ def format_statistics_header(report: Dict) -> str:
 
 
 def format_tree_output(report: Dict) -> str:
-    """Formatiert Report als Baum-Struktur."""
+    """Formats report as tree structure."""
     lines = []
 
-    # Statistics Header
+    # Statistics header
     lines.append(format_statistics_header(report))
 
     # ====================================================================
-    # NAMESPACE-KONFLIKTE
+    # NAMESPACE CONFLICTS
     # ====================================================================
     if report['duplicates']:
         lines.append("")
@@ -283,7 +283,7 @@ def format_tree_output(report: Dict) -> str:
             lines.append("")
 
     # ====================================================================
-    # UNDOKUMENTIERTE CODE
+    # UNDOCUMENTED CODE
     # ====================================================================
     if report['undocumented_classes'] or report['undocumented_methods']:
         lines.append("")
@@ -314,7 +314,7 @@ def format_tree_output(report: Dict) -> str:
                     lines.append(f"     ... and {len(methods) - 10} more")
 
     # ====================================================================
-    # VERZEICHNIS-STRUKTUR MIT KLASSEN
+    # DIRECTORY STRUCTURE WITH CLASSES
     # ====================================================================
     lines.append("")
     lines.append("")
@@ -326,7 +326,7 @@ def format_tree_output(report: Dict) -> str:
         lines.append(f"\n📂 {directory}/")
         lines.append(f"   ({len(classes)} classes)")
 
-        # Gruppiere nach Datei
+        # Group by file
         by_file = defaultdict(list)
         for cls in classes:
             by_file[cls.file_path].append(cls)
@@ -337,7 +337,7 @@ def format_tree_output(report: Dict) -> str:
             lines.append(f"\n   📄 {filename}")
 
             for cls in sorted(file_classes, key=lambda c: c.line_number):
-                # Basisklassen
+                # Base classes
                 inheritance = ""
                 if cls.base_classes:
                     inheritance = f"({', '.join(cls.base_classes)})"
@@ -347,10 +347,10 @@ def format_tree_output(report: Dict) -> str:
                 if cls.decorators:
                     decorators = f" @{', @'.join(cls.decorators)}"
 
-                # Docstring als One-Liner
+                # Docstring as one-liner
                 doc_info = ""
                 if cls.docstring:
-                    # Erste Zeile, max 60 Zeichen
+                    # First line, max 60 characters
                     first_line = cls.docstring.split('\n')[0].strip()
                     if len(first_line) > 60:
                         first_line = first_line[:57] + "..."
@@ -363,7 +363,7 @@ def format_tree_output(report: Dict) -> str:
                 lines.append(
                     f"      │  └─ Line {cls.line_number}, {len(cls.methods)} methods")
 
-                # Methoden mit Docstrings
+                # Methods with docstrings
                 if cls.methods:
                     for i, (method_name, method_doc) in enumerate(cls.methods):
                         is_last = (i == len(cls.methods) - 1)
@@ -371,7 +371,7 @@ def format_tree_output(report: Dict) -> str:
 
                         marker = "🔒" if method_name.startswith('_') else "🔓"
 
-                        # Methoden-Docstring als One-Liner
+                        # Method docstring as one-liner
                         method_doc_info = ""
                         if method_doc:
                             first_line = method_doc.split('\n')[0].strip()
@@ -385,7 +385,7 @@ def format_tree_output(report: Dict) -> str:
                             f"{prefix}└─ {marker} {method_name}(){method_doc_info}")
 
     # ====================================================================
-    # FEHLER
+    # PARSING ERRORS
     # ====================================================================
     if report['errors']:
         lines.append("")
@@ -402,10 +402,10 @@ def format_tree_output(report: Dict) -> str:
 
 
 def format_detailed_output(report: Dict) -> str:
-    """Formatiert detaillierten Report mit allen Methoden und Docstrings."""
+    """Formats detailed report with all methods and docstrings."""
     lines = []
 
-    # Statistics Header
+    # Statistics header
     lines.append(format_statistics_header(report))
 
     lines.append("")
@@ -425,7 +425,7 @@ def format_detailed_output(report: Dict) -> str:
 
         lines.append(f"  File: {cls.file_path}:{cls.line_number}")
 
-        # Klassen-Docstring
+        # Class docstring
         if cls.docstring:
             lines.append(f"\n  Class Docstring:")
             for line in cls.docstring.split('\n'):
@@ -433,7 +433,7 @@ def format_detailed_output(report: Dict) -> str:
         else:
             lines.append(f"\n  ⚠️  NO CLASS DOCSTRING")
 
-        # Methoden mit Docstrings
+        # Methods with docstrings
         if cls.methods:
             lines.append(f"\n  Methods ({len(cls.methods)}):")
             for method_name, method_doc in cls.methods:
@@ -452,43 +452,43 @@ def format_detailed_output(report: Dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Analysiert FiniexTestingIDE Projektstruktur'
+        description='Analyzes FiniexTestingIDE project structure'
     )
     parser.add_argument(
         '--output', '-o',
-        help='Ausgabedatei (Standard: project_structure.txt)',
+        help='Output file (default: project_structure.txt)',
         default='project_structure.txt'
     )
     parser.add_argument(
         '--detailed', '-d',
         action='store_true',
-        help='Detaillierte Ausgabe mit allen Methoden'
+        help='Detailed output with all methods'
     )
     parser.add_argument(
         '--path', '-p',
-        help='Projekt-Root-Verzeichnis (Standard: aktuelles Verzeichnis)',
+        help='Project root directory (default: current directory)',
         default='.'
     )
 
     args = parser.parse_args()
 
-    # Analysiere Projekt
+    # Analyze project
     analyzer = ProjectAnalyzer(args.path)
     report = analyzer.analyze()
 
-    # Generiere Output
+    # Generate output
     if args.detailed:
         output = format_detailed_output(report)
     else:
         output = format_tree_output(report)
 
-    # Schreibe in Datei
+    # Write to file
     with open(args.output, 'w', encoding='utf-8') as f:
         f.write(output)
 
-    print(f"\n✅ Analyse gespeichert in: {args.output}")
+    print(f"\n✅ Analysis saved to: {args.output}")
 
-    # Zeige auch auf Konsole
+    # Also display on console
     print("\n" + output)
 
 

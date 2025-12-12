@@ -87,7 +87,7 @@ class AbstactWorker(ABC):
         """
         Get max computation time for this worker instance.
 
-        Optional - für Monitoring/Timeouts.
+        Optional - for monitoring/timeouts.
         Default: 100ms
 
         Returns:

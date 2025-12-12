@@ -48,15 +48,6 @@ class WorkerOrchestrator:
             parallel_workers: Enable parallel worker execution (None = auto-detect)
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
             scenario_name: Name of the scenario being executed
-
-            Der WorkerOrchestrator selbst bekommt KEINEN separaten Logger-Parameter,
-            weil er bereits die DecisionLogic bekommt, die einen Logger hat.
-
-            Der Coordinator nutzt einfach den Logger der DecisionLogic für seine Logs.
-            Das macht Sinn weil:
-            - Coordinator läuft im Kontext eines Scenarios
-            - DecisionLogic hat bereits den richtigen ScenarioLogger
-            - Vermeidet doppelte Logger-Übergabe
         """
         # ============================================
         # Injected dependencies

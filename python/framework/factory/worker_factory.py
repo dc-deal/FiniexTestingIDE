@@ -108,11 +108,9 @@ class WorkerFactory:
         """
         Create a worker instance with validation.
 
-        Keine temp_instance mehr - nutzt classmethods!
-
         New Flow:
         1. Resolve worker class
-        2. Get required/optional params via CLASSMETHODS (ohne Instanz!)
+        2. Get required/optional params via CLASSMETHODS
         3. Validate required parameters
         4. Merge user config with optional defaults
         5. Instantiate worker ONCE with merged parameters

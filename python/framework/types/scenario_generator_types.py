@@ -160,8 +160,6 @@ class SymbolAnalysis:
 class AnalysisConfig:
     """
     Configuration for market analysis.
-
-    Loaded from configs/generator/analysis_config.json
     """
     # Analysis parameters
     timeframe: str = "M5"
