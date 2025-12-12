@@ -16,6 +16,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -59,7 +60,8 @@ class MarketAnalyzer:
             config_path: Path to analysis config JSON (optional)
         """
         self._data_dir = Path(data_dir)
-        self._config = self._load_analysis_config(config_path)
+        analysis_config = AnalysisConfigLoader()
+        self._config = analysis_config.get_generator_config()
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
@@ -73,35 +75,6 @@ class MarketAnalyzer:
         # Load broker configs and build symbol specification cache
         self._market_symbol_specs: Dict[str, SymbolSpecification] = {}
         self._load_broker_configs()
-
-    def _load_analysis_config(self, config_path: Optional[str]) -> GeneratorConfig:
-        """
-        Load configuration from JSON file.
-
-        Args:
-            config_path: Path to config file
-
-        Returns:
-            GeneratorConfig instance
-        """
-        default_path = Path("./configs/generator/analysis_config.json")
-
-        if config_path:
-            path = Path(config_path)
-        elif default_path.exists():
-            path = default_path
-        else:
-            vLog.info("Using default analysis configuration")
-            return GeneratorConfig.from_dict({})
-
-        try:
-            with open(path, 'r') as f:
-                data = json.load(f)
-            vLog.info(f"Loaded analysis config from {path}")
-            return GeneratorConfig.from_dict(data)
-        except Exception as e:
-            vLog.warning(f"Failed to load config from {path}: {e}")
-            return GeneratorConfig.from_dict({})
 
     def get_config(self) -> GeneratorConfig:
         """Get current configuration."""

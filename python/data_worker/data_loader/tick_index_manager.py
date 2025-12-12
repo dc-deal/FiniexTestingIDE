@@ -289,33 +289,10 @@ class TickIndexManager:
             self.logger.warning(f"Symbol '{symbol}' not found in index")
             return None
 
-        # Load config for gap detection
-        config = self._load_gap_detection_config()
-
         # Create report with data_dir for intra-file gap detection
         report = CoverageReport(symbol, data_dir=self.data_dir)
-        report.analyze(config=config)
+        report.analyze()
         return report
-
-    def _load_gap_detection_config(self) -> Dict:
-        """
-        Load gap detection configuration from analysis_config.json.
-
-        Returns:
-            Config dict with gap_detection settings, or empty dict if not found
-        """
-        config_path = Path("./configs/generator/analysis_config.json")
-
-        if not config_path.exists():
-            return {}
-
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                return config
-        except Exception as e:
-            self.logger.warning(f"Failed to load gap detection config: {e}")
-            return {}
 
     def get_symbol_coverage(self, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol """

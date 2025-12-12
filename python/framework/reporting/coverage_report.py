@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
+from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
@@ -71,12 +72,12 @@ class CoverageReport:
                 - gap_detection.thresholds.moderate (float, default 4.0)
         """
         # Detect intra-file gaps if data_dir and config provided
-        intra_gaps = self._detect_gaps_from_bars(config)
+        intra_gaps = self._detect_gaps_from_bars()
         for gap in intra_gaps:
             self.gaps.append(gap)
             self.gap_counts[gap.category.value] += 1
 
-    def _detect_gaps_from_bars(self, config: Dict) -> List[Gap]:
+    def _detect_gaps_from_bars(self) -> List[Gap]:
         """
         Detect gaps within files using bar data.
 
@@ -91,6 +92,9 @@ class CoverageReport:
             List of Gap objects for intra-file gaps
         """
         gaps = []
+
+        alysis_config = AnalysisConfigLoader()
+        config = alysis_config.get_config_raw()
 
         # Get configuration
         gap_config = config.get('gap_detection', {})
