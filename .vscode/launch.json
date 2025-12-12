@@ -319,6 +319,21 @@
         // 🔬 FIELD STUDYS, PoC
         // ====================================================
         {
+            "name": "🔍 Project Structure - Detailed",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/analyze_project_sructure/analyze_project_structure.py",
+            "args": [
+                "--detailed",
+                "--output",
+                "project_analysis_detailed.txt",
+                "--path",
+                "python"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 GIL Benchmark - Threading vs Multiprocessing",
             "type": "debugpy",
             "request": "launch",
