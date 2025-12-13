@@ -8,19 +8,7 @@ Central config management for cascade detection and override extraction
  (V0.8):
 - ✅ detect_overrides() - Find differences between global/scenario
 - ✅ format_overrides_for_display() - Pretty print for logs
-- ✅ extract_overrides_for_save() - NEW! Get only overrides for JSON save
 - ✅ Supports all config sections: workers, decision_logic_config, execution_config, trade_simulator_config
-
-Usage:
-    # In scenario_config_loader.py load_config():
-    overrides = ParameterOverrideDetector.detect_overrides(global, scenario)
-    formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
-    
-    # In scenario_config_loader.py save_config():
-    strategy_overrides = ParameterOverrideDetector.extract_overrides_for_save(
-        global_strategy, scenario.strategy_config, 
-        sections=['workers', 'decision_logic_config']
-    )
 """
 
 from typing import Dict, Any, List, Tuple, Optional
@@ -33,7 +21,6 @@ class ParameterOverrideDetector:
     Provides three key functions:
     1. detect_overrides() - Find all differences (for warnings)
     2. format_overrides_for_display() - Pretty print
-    3. extract_overrides_for_save() - Get only overrides (for save_config)
 
     This centralizes all override logic that was scattered across scenario_config_loader.
     """
@@ -90,11 +77,6 @@ class ParameterOverrideDetector:
         Returns:
             Dict mapping parameter paths to formatted strings
 
-        Example:
-            formatted = format_overrides_for_display([
-                ("workers.CORE/rsi.period", 14, 5)
-            ])
-            # Returns: {"workers.CORE/rsi.period": "14 → 5"}
         """
         formatted = {}
 
@@ -105,54 +87,6 @@ class ParameterOverrideDetector:
                 formatted[path] = f"{global_val} → {scenario_val}"
 
         return formatted
-
-    # ============================================
-    # PUBLIC API: Override Extraction (for saving)
-    # ============================================
-
-    @staticmethod
-    def extract_overrides_for_save(
-        global_config: Dict[str, Any],
-        scenario_config: Dict[str, Any],
-        sections: List[str]
-    ) -> Dict[str, Any]:
-        """
-        Extract ONLY the overrides from scenario config for saving.
-
-        This is the KEY function that replaces all manual override loops
-        in save_config(). It returns a dict containing ONLY parameters
-        that differ from global config.
-
-        Args:
-            global_config: Global configuration dict
-            scenario_config: Scenario-specific configuration dict
-            sections: List of section keys to check (e.g., ['workers', 'decision_logic_config'])
-
-        Returns:
-            Dict with ONLY overridden parameters
-        """
-        result = {}
-
-        for section in sections:
-            if section not in scenario_config or not scenario_config[section]:
-                continue
-
-            global_section = global_config.get(section, {})
-            scenario_section = scenario_config[section]
-
-            # Handle nested dicts (like workers)
-            if isinstance(scenario_section, dict):
-                section_overrides = ParameterOverrideDetector._extract_dict_overrides(
-                    global_section,
-                    scenario_section
-                )
-                if section_overrides:
-                    result[section] = section_overrides
-            # Handle simple values (shouldn't happen in our use case, but for completeness)
-            elif scenario_section != global_section:
-                result[section] = scenario_section
-
-        return result
 
     # ============================================
     # PRIVATE HELPERS
@@ -204,52 +138,6 @@ class ParameterOverrideDetector:
         return overrides
 
     @staticmethod
-    def _extract_dict_overrides(
-        global_dict: Dict[str, Any],
-        scenario_dict: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Extract ONLY overridden parameters from nested dicts.
-
-        Used by extract_overrides_for_save() for save_config().
-
-        This is the workhorse function that replaces all manual
-        for loops in save_config().
-
-        Args:
-            global_dict: Global dict values
-            scenario_dict: Scenario dict values
-
-        Returns:
-            Dict containing ONLY overridden values
-        """
-        result = {}
-
-        for key, scenario_value in scenario_dict.items():
-            global_value = global_dict.get(key)
-
-            # Handle nested dicts (e.g., worker parameters)
-            if isinstance(scenario_value, dict) and isinstance(global_value, dict):
-                # Recursively extract overrides from nested dict
-                nested_overrides = {}
-                for param_key, param_value in scenario_value.items():
-                    global_param_value = global_value.get(param_key)
-
-                    # Only include if different from global
-                    if param_value != global_param_value:
-                        nested_overrides[param_key] = param_value
-
-                # Only include this key if it has overrides
-                if nested_overrides:
-                    result[key] = nested_overrides
-
-            # Handle simple values
-            elif scenario_value != global_value:
-                result[key] = scenario_value
-
-        return result
-
-    @staticmethod
     def detect_and_log_overrides(
         scenario_name: str,
         global_strategy: Dict[str, Any],
@@ -285,19 +173,6 @@ class ParameterOverrideDetector:
 
         Returns:
             List of all override tuples (for further processing if needed)
-
-        Example:
-            overrides = ParameterOverrideDetector.detect_and_log_overrides(
-                scenario_name="EURUSD_window_02",
-                global_strategy=global_strategy,
-                global_execution=global_execution,
-                global_trade_simulator=global_trade_simulator,
-                scenario_strategy=scenario_data.get('strategy_config', {}),
-                scenario_execution=scenario_data.get('execution_config', {}),
-                scenario_trade_simulator=scenario_data.get('trade_simulator_config', {}),
-                logger=vLog,
-                warn_on_override=True
-            )
         """
         if not warn_on_override:
             return []
