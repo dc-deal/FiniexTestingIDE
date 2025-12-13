@@ -90,6 +90,10 @@ class ExecutiveSummary:
         disabled = sum(1 for s in scenarios if hasattr(
             s, 'enabled') and not s.enabled)
 
+        # Get first failed scenario info
+        first_failed = next(
+            (r for r in process_results if not r.success), None)
+
         # Render section
         renderer.print_bold("EXECUTION RESULTS")
         renderer.print_separator(width=68)
@@ -98,6 +102,10 @@ class ExecutiveSummary:
         print(
             f"Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)")
         print(f"Status:             {status_str}")
+
+        # Show first failed scenario details
+        if first_failed:
+            self._render_first_failure(renderer, first_failed, failed)
 
         # Batch time with warmup/tickrun split
         if warmup_time > 0:
@@ -110,9 +118,47 @@ class ExecutiveSummary:
         print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
               (f" (max {max_workers} workers)" if parallel else ""))
 
+    def _render_first_failure(self, renderer: ConsoleRenderer, failed_result, total_failed: int):
+        """
+        Render first failed scenario details.
+
+        Args:
+            renderer: Console renderer
+            failed_result: First failed ProcessResult
+            total_failed: Total count of failed scenarios
+        """
+        scenario_name = failed_result.scenario_name
+        error_msg = failed_result.error_message or "No error message available"
+
+        # Extract first meaningful error line
+        lines = [line.strip()
+                 for line in error_msg.split('\n') if line.strip()]
+        error_lines = [
+            line for line in lines
+            if not (line.startswith("Scenario '") and "failed validation:" in line)
+        ]
+
+        first_error = error_lines[0] if error_lines else "Unknown error"
+        remaining_errors = len(error_lines) - 1
+        remaining_scenarios = total_failed - 1
+
+        # Truncate error if too long
+        max_len = 80
+        if len(first_error) > max_len:
+            first_error = first_error[:max_len - 3] + "..."
+
+        # Add suffixes
+        error_suffix = f" (+ {remaining_errors} more)" if remaining_errors > 0 else ""
+        scenario_suffix = f" (+ {remaining_scenarios} more)" if remaining_scenarios > 0 else ""
+
+        # Color highlights for errors
+        print(
+            f"{renderer.red('Failed Scenario:    ')}{scenario_name}{scenario_suffix}")
+        print(f"{renderer.red('Error:              ')}{first_error}{error_suffix}")
+
     def _render_time_performance(self, renderer: ConsoleRenderer):
         """Render in-time and real-time performance sections."""
-        # Calculate in-time stats
+        # Calculate in-time statsf
         in_time_stats = self._calculate_in_time_stats()
 
         # Calculate real-time stats using ONLY tick run time
