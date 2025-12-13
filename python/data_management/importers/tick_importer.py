@@ -441,7 +441,8 @@ class TickDataImporter:
         does NOT automatically delete (caller does that).
         """
 
-        search_pattern = f"*/{symbol}/{symbol}_*.parquet"
+        # OPTION 2: Cross-Collector Search (wie in Doku)
+        search_pattern = f"*/ticks/{symbol}/{symbol}_*.parquet"
         existing_files = list(self.target_dir.glob(search_pattern))
 
         if not existing_files:
