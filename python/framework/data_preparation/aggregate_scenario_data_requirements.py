@@ -13,7 +13,7 @@ from datetime import timezone
 from typing import Dict
 from dateutil import parser
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import (
     RequirementsMap,
     TickRequirement,

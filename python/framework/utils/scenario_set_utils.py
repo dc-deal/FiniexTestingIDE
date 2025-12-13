@@ -4,11 +4,11 @@ from logging import config
 from pathlib import Path
 import shutil
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.file_logging_config import FileLoggingConfig
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class ScenarioSetUtils:

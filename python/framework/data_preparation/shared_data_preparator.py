@@ -15,15 +15,15 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.process_data_types import (
     ProcessDataPackage,
     RequirementsMap,
     TickRequirement,
     BarRequirement
 )
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
 

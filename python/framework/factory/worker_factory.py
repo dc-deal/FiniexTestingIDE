@@ -18,7 +18,7 @@ import importlib
 import json
 from typing import Any, Dict, List, Type
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.workers.abstract_worker import AbstactWorker
 from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker

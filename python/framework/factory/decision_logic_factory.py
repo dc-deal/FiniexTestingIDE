@@ -29,8 +29,8 @@ Example Config:
 import importlib
 from typing import Any, Dict, Optional, Type
 
-from python.components.logger.abstract_logger import AbstractLogger
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 
 

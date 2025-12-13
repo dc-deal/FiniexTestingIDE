@@ -3,10 +3,10 @@ FiniexTestingIDE - Warmup Quality Reporter
 Reports quality metrics for warmup bar data
 """
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 def print_warmup_quality_metrics(bar_rendering_controller: BarRenderingController) -> None:

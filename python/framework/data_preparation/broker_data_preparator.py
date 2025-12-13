@@ -13,7 +13,7 @@ Responsibilities:
 from typing import Dict, List, Any
 from dataclasses import dataclass
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
@@ -25,9 +25,9 @@ from python.framework.types.scenario_generator_types import (
     TradingSession,
     VolatilityRegime,
 )
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class BlocksGenerator:

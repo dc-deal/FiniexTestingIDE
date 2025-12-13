@@ -2,7 +2,7 @@
 FiniexTestingIDE Data Loader - Reports Module
 Summary reports, formatted output, and developer convenience tools
 
-Location: python/data_worker/reports.py
+Location: python/data_management/reports.py
 """
 
 from pathlib import Path
@@ -11,10 +11,10 @@ import traceback
 import pandas as pd
 from typing import Dict
 
-from python.components.logger.bootstrap_logger import get_logger
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.framework.logging.bootstrap_logger import get_global_logger
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class TickDataReporter:

@@ -13,12 +13,12 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.activity_volume_provider import get_activity_provider
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class BarIndexCLI:
@@ -159,7 +159,7 @@ class BarIndexCLI:
 
     def cmd_render(self, clean: bool = False):
         """Render bars from tick data"""
-        from python.data_worker.importer.bar_importer import BarImporter
+        from python.data_management.importers.bar_importer import BarImporter
 
         print("\n" + "="*80)
         print("🔄 Bar Rendering")

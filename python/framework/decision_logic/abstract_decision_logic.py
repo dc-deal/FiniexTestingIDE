@@ -18,7 +18,7 @@ on decision-making strategy AND trade execution, not on worker management.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.decision_logic_types import Decision

@@ -36,9 +36,9 @@ from rich import box
 from python.framework.types.currency_codes import format_currency_simple, get_currency_symbol
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.live_scenario_stats_types import LiveScenarioStats, ScenarioStatus
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class LiveProgressDisplay:

@@ -11,10 +11,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class BarIndexReportGenerator:

@@ -23,7 +23,7 @@ from collections import defaultdict
 from multiprocessing import Queue
 from typing import Any, Optional
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.types.currency_codes import format_currency_simple

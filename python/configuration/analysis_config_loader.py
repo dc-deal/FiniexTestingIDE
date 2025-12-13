@@ -6,9 +6,9 @@ Simple loader for analysis_config.json
 import json
 from pathlib import Path
 from typing import Any, Dict
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_generator_types import GeneratorConfig
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class AnalysisConfigLoader:

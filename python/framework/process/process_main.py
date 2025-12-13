@@ -4,7 +4,7 @@ from multiprocessing import Queue
 import time
 import traceback
 from typing import Optional
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_prepreation import process_startup_preparation
@@ -53,7 +53,7 @@ def process_main(
             config, shared_data, scenario_logger)
         scenario_logger = prepared_objects.scenario_logger
         scenario_logger.debug(
-            f"🔄 Process preperation finished")
+            f"🔄 Process preparation finished")
 
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)

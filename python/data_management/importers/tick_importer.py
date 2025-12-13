@@ -21,18 +21,18 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.data_worker.importer.bar_importer import BarImporter
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_management.importers.bar_importer import BarImporter
+from python.data_management.index.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
-from python.data_worker.data_loader.data_loader_exceptions import (
+from python.data_management.index.data_loader_exceptions import (
     ArtificialDuplicateException,
     DuplicateReport
 )
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class TickDataImporter:

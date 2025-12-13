@@ -2,7 +2,7 @@
 FiniexTestingIDE Data Quality Exceptions
 Custom exceptions for data validation and quality issues
 
-Location: python/data_worker/data_loader/exceptions.py
+Location: python/data_management/index/exceptions.py
 Version: 1.2 (Enhanced with data_collector display)
 """
 

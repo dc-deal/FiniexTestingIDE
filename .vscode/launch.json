@@ -322,7 +322,7 @@
             "name": "🔍 Project Structure - Detailed",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/analyze_project_sructure/analyze_project_structure.py",
+            "program": "${workspaceFolder}/python/experiments/analyze_project_structure/analyze_project_structure.py",
             "args": [
                 "--detailed",
                 "--output",

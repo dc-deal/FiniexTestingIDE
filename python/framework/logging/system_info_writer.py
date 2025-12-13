@@ -7,7 +7,7 @@ Multi-Level Logging:
 - DEBUG: Detailed specs for deep analysis (file only)
 
 Usage:
-    from python.components.logger.system_info_writer import write_system_version_parameters
+    from python.framework.logging.system_info_writer import write_system_version_parameters
     
     system_info_logger = ScenarioLogger(...)
     write_system_version_parameters(system_info_logger)
@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 
 
 def write_system_version_parameters(logger: ScenarioLogger) -> None:

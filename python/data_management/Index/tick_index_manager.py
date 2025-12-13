@@ -11,14 +11,14 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.coverage_report import (
     CoverageReport,
     IndexEntry
 )
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class TickIndexManager:

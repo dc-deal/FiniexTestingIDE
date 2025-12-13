@@ -20,12 +20,12 @@ from python.framework.types.scenario_generator_types import (
     TradingSession,
     VolatilityRegime,
 )
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 
 from .blocks_generator import BlocksGenerator
 from .stress_generator import StressGenerator
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class ScenarioGenerator:

@@ -2,7 +2,7 @@
 FiniexTestingIDE - Data Inspector
 Inspect tick and bar data: metadata, schema, and sample rows
 
-Location: python/data_worker/data_loader/data_inspector.py
+Location: python/data_management/index/data_inspector.py
 
 Usage:
     inspector = DataInspector(tick_index, bar_index)
@@ -23,11 +23,11 @@ import json
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class DataInspector:

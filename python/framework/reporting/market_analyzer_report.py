@@ -17,10 +17,10 @@ import numpy as np
 import pandas as pd
 
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.scenario_generator_types import (
     GeneratorConfig,
@@ -31,10 +31,10 @@ from python.framework.types.scenario_generator_types import (
     VolatilityRegime,
 )
 from python.framework.types.broker_types import SymbolSpecification
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class MarketAnalyzer:

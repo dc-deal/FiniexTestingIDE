@@ -15,7 +15,7 @@ import pandas as pd
 import pytz
 
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
 from python.framework.types.market_types import VALIDATION_TIMEZONE

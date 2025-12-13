@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
-from python.components.logger.scenario_logger import ScenarioLogger
-from python.components.logger.system_info_writer import write_system_version_parameters
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.validation_types import ValidationResult

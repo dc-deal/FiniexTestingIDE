@@ -119,7 +119,7 @@ from python.framework.batch.data_preparation_coordinator import DataPreparationC
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
-from python.components.display.live_progress_display import LiveProgressDisplay
+from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -127,7 +127,7 @@ from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from multiprocessing import Manager
 from python.framework.validators.scenario_validator import ScenarioValidator
 import time

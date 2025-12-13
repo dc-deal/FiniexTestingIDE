@@ -1,4 +1,4 @@
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI

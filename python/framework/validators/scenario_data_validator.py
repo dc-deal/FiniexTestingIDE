@@ -8,7 +8,7 @@ Location: python/framework/validators/scenario_data_validator.py
 
 from typing import Dict, List, Tuple
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_set_types import SingleScenario

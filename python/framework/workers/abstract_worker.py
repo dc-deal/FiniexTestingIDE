@@ -10,7 +10,7 @@ from python.framework.workers.worker_performance_tracker import WorkerPerformanc
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
     WorkerResult, WorkerState, WorkerType)
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 

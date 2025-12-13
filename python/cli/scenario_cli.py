@@ -28,9 +28,9 @@ from python.framework.types.scenario_generator_types import (
 from python.framework.reporting.market_report import print_analysis_report
 from python.framework.reporting.comparison_report import print_cross_instrument_ranking
 from python.framework.utils.activity_volume_provider import get_activity_provider
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class ScenarioCLI:

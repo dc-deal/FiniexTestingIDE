@@ -19,9 +19,9 @@ import json
 import pandas as pd
 import numpy as np
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class VectorizedBarRenderer:

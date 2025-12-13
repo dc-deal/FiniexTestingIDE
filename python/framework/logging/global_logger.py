@@ -9,15 +9,15 @@ Characteristics:
 - Singleton pattern
 
 Usage:
-    from python.components.logger.bootstrap_logger import get_logger
-    logger = get_logger()
+    from python.framework.logging.bootstrap_logger import get_global_logger
+    logger = get_global_logger()
     logger.info("Application started")
 """
 
 from datetime import datetime, timezone
 
-from python.components.logger.abstract_logger import AbstractLogger
-from python.components.logger.file_logger import FileLogger
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
 
 

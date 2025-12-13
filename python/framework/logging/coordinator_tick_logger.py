@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Dict, List, Any
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.log_level import LogLevel
 from python.framework.types.market_data_types import Bar, TickData

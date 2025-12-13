@@ -158,11 +158,11 @@ FiniexTestingIDE/
 ├── mql5/
 │   └── TickCollector.mq5          # Live tick collection
 ├── python/
-│   ├── data_worker/               # Data pipeline
+│   ├── data_management/               # Data pipeline
 │   │   ├── tick_importer.py       # JSON → Parquet conversion
 │   │   ├── bar_importer.py        # Pre-render bars from ticks (NEW)
 │   │   ├── scenario_generator.py  # Auto-generate test configs
-│   │   └── data_loader/           # Parquet index managers
+│   │   └── index/           # Parquet index managers
 │   ├── framework/                 # Core framework (MVP stable)
 │   │   ├── bar_renderer/          # Multi-timeframe bar generation
 │   │   ├── workers/               # Worker system + coordinator
@@ -495,7 +495,7 @@ Want to experiment with FiniexTestingIDE immediately? Use our sample data packag
    - **In VS Code:** Start launch configuration **"📊 Data Pipeline: Import Ticks (PROD)"**
    - **Or via command line:**
      ```bash
-     python python/data_worker/tick_importer.py
+     python python/data_management/tick_importer.py
      ```
    - JSON data will be automatically converted to Parquet with quality scores
    - **NEW:** Bars are automatically pre-rendered after tick import

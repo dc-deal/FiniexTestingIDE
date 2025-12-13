@@ -24,13 +24,13 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.data_worker.importer.vectorized_bar_renderer import VectorizedBarRenderer
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
+from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class BarImporter:
@@ -45,7 +45,7 @@ class BarImporter:
 
     def __init__(self, data_dir: str = "./data/parquet/"):
         """
-        Initialize Bar Importer.
+        Initialize Bar importers
 
         Args:
             data_dir: Root data directory (default: ./data/parquet/)
@@ -345,7 +345,7 @@ class BarImporter:
         vLog.info("\n📄 Updating bar index...")
         try:
             # Try to import bar index manager
-            # NOTE: File must be at python/data_worker/data_loader/parquet_bars_index.py
+            # NOTE: File must be at python/data_management/index/parquet_bars_index.py
 
             bar_index = BarsIndexManager(self.data_dir)
             bar_index.build_index(force_rebuild=True)
@@ -357,7 +357,7 @@ class BarImporter:
             vLog.error(f"❌ Failed to import BarsIndexManager: {e}")
             vLog.error("   Make sure parquet_bars_index.py is at:")
             vLog.error(
-                "   python/data_worker/data_loader/parquet_bars_index.py")
+                "   python/data_management/index/parquet_bars_index.py")
             vLog.error("   You can manually build the index later.")
         except Exception as e:
             vLog.error(f"❌ Failed to update bar index: {e}")

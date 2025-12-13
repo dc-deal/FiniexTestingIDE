@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.logger.coordinator_tick_logger import CoordinatorTickLogger
+from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.decision_logic_types import Decision

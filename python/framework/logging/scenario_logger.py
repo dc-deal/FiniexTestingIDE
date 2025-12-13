@@ -18,8 +18,8 @@ Usage:
 
 from datetime import datetime, timezone
 
-from python.components.logger.abstract_logger import AbstractLogger, ColorCodes
-from python.components.logger.file_logger import FileLogger
+from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
+from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
 from python.framework.types.market_data_types import TickData
 from python.framework.utils.time_utils import format_timestamp
