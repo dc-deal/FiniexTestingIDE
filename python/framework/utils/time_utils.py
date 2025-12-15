@@ -166,8 +166,7 @@ def parse_datetime(dt_str: str) -> datetime:
         UTC-aware datetime object
     """
     dt = parser.parse(dt_str)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    dt = ensure_utc_aware(dt)
     return dt
 
 
