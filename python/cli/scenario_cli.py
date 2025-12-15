@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
+from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.scenario_generator import ScenarioGenerator
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
@@ -157,14 +158,9 @@ class ScenarioCLI:
         start_dt: Optional[datetime] = None
         end_dt: Optional[datetime] = None
         if start:
-            start_dt = datetime.fromisoformat(start)
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            start_dt = ensure_utc_aware(datetime.fromisoformat(start))
         if end:
-            end_dt = datetime.fromisoformat(end)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=timezone.utc)
-
+            end_dt = ensure_utc_aware(datetime.fromisoformat(end))
         try:
             generator = ScenarioGenerator(str(self._data_dir))
 

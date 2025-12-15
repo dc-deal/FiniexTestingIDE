@@ -26,6 +26,7 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.time_utils import ensure_utc_aware
 
 
 class SharedDataPreparator:
@@ -359,8 +360,7 @@ class SharedDataPreparator:
         files = self.tick_index_manager.index[symbol]
 
         # UTC-FIX: Ensure start_time is UTC-aware
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
+        start_time = ensure_utc_aware(start_time)
 
         # Find starting file
         start_file_idx = None
@@ -443,10 +443,8 @@ class SharedDataPreparator:
             (ticks, count, time_range) or None if loading failed
         """
         # UTC-FIX: Ensure times are UTC-aware
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=timezone.utc)
+        start_time = ensure_utc_aware(start_time)
+        end_time = ensure_utc_aware(end_time)
 
         # Use manager's API to get relevant files
         relevant_files = self.tick_index_manager.get_relevant_files(
@@ -549,9 +547,7 @@ class SharedDataPreparator:
             for req in reqs:
                 # UTC-FIX: Ensure req.start_time is UTC-aware
                 req_start_time = req.start_time
-                if req_start_time.tzinfo is None:
-                    req_start_time = req_start_time.replace(
-                        tzinfo=timezone.utc)
+                req_start_time = ensure_utc_aware(req_start_time)
 
                 # Get warmup bars (bars BEFORE start_time)
                 warmup_bars_df = bars_df[bars_df['timestamp'] < req_start_time]
