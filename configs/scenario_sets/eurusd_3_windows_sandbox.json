@@ -38,7 +38,11 @@
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 100000,
-      "account_currency": "auto"
+      "account_currency": "auto",
+      "seeds": {
+        "api_latency_seed": 50,
+        "market_execution_seed": 100
+      }
     }
   },
   "scenarios": [

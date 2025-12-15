@@ -38,7 +38,7 @@ class ProcessExecutor:
         """
         Initialize process executor.
 
-        CORRECTED: Added scenario_set_name and run_timestamp
+        Added scenario_set_name and run_timestamp
 
         Args:
             scenario: Scenario to execute
