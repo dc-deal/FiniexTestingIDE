@@ -17,11 +17,15 @@ class BatchExecutionSummary:
     def __init__(
         self,
         batch_execution_time: float,
+        batch_warmup_time: float,
+        batch_tickrun_time: float,
         process_result_list: List[ProcessResult] | None = None,
         single_scenario_list: List[SingleScenario] | None = None,
         broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo] | None = None
     ):
         self._batch_execution_time = batch_execution_time
+        self._batch_warmup_time = batch_warmup_time
+        self._batch_tickrun_time = batch_tickrun_time
         self._process_result_list = process_result_list or []
         self._single_scenario_list = single_scenario_list or []
         self._broker_scenario_map = broker_scenario_map or {}
@@ -29,6 +33,14 @@ class BatchExecutionSummary:
     @property
     def batch_execution_time(self) -> float:
         return self._batch_execution_time
+
+    @property
+    def batch_warmup_time(self) -> float:
+        return self._batch_warmup_time
+
+    @property
+    def batch_tickrun_time(self) -> float:
+        return self._batch_tickrun_time
 
     @property
     def process_result_list(self) -> List[ProcessResult]:

@@ -10,6 +10,7 @@ Architecture:
 
 from typing import Any, Dict
 from python.framework.reporting.broker_summary import BrokerSummary
+from python.framework.reporting.executive_summary import ExecutiveSummary
 from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.portfolio_summary import PortfolioSummary
@@ -184,6 +185,18 @@ class BatchSummary:
         self.worker_decision_breakdown.render_per_scenario(self._renderer)
         self.worker_decision_breakdown.render_aggregated()
         self.worker_decision_breakdown.render_overhead_analysis(self._renderer)
+
+        # === Executive Summary ===
+        self._renderer.section_separator()
+        self._renderer.print_bold("🎯 EXECUTIVE SUMMARY")
+        self._renderer.section_separator()
+
+        executive = ExecutiveSummary(
+            self.batch_execution_summary, self.app_config)
+        executive.render(self._renderer)
+
+        # Footer
+        self._renderer.print_separator(width=120)
 
         # Footer
         self._renderer.print_separator(width=120)

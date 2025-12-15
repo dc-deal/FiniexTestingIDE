@@ -1,0 +1,101 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "EURGBP_stress_20251211_0630",
+  "created": "2025-12-11T06:30:05.407266+00:00",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "CORE/envelope"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "envelope_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 0.02
+        }
+      },
+      "decision_logic_config": {
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confidence": 0.6
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
+      "initial_balance": 10000,
+      "currency": "EUR"
+    }
+  },
+  "scenarios": [
+    {
+      "name": "EURGBP_stress_01",
+      "symbol": "EURGBP",
+      "start_date": "2025-11-26T08:00:00+00:00",
+      "end_date": "2025-11-26T14:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "EURGBP_stress_02",
+      "symbol": "EURGBP",
+      "start_date": "2025-11-25T11:00:00+00:00",
+      "end_date": "2025-11-25T17:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "EURGBP_stress_03",
+      "symbol": "EURGBP",
+      "start_date": "2025-11-24T11:00:00+00:00",
+      "end_date": "2025-11-24T17:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "EURGBP_stress_04",
+      "symbol": "EURGBP",
+      "start_date": "2025-11-25T04:00:00+00:00",
+      "end_date": "2025-11-25T10:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "EURGBP_stress_05",
+      "symbol": "EURGBP",
+      "start_date": "2025-12-03T11:00:00+00:00",
+      "end_date": "2025-12-03T17:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    }
+  ]
+}

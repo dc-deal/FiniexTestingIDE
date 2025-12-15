@@ -19,14 +19,14 @@ from datetime import datetime
 import traceback
 import pandas as pd
 
-from python.data_worker.data_loader.bars_index_manager import BarsIndexManager
-from python.data_worker.data_loader.data_inspector import DataInspector
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
-from python.data_worker.data_loader.tick_data_report import run_summary_report
-from python.data_worker.importer.tick_importer import TickDataImporter
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.data_inspector import DataInspector
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.data_management.importers.tick_data_report import run_summary_report
+from python.data_management.importers.tick_importer import TickDataImporter
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class DataIndexCLI:

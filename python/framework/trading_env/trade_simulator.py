@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import json
 from typing import Optional, List, Dict, Tuple
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction

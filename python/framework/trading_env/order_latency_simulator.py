@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 import random
 from typing import Dict, List, Optional
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.order_types import OrderDirection
 

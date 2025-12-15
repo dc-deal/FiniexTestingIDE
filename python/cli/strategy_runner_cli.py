@@ -16,9 +16,9 @@ import traceback
 from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.framework.utils.time_utils import format_duration
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.scenario.scenario_strategy_runner import run_strategy_test
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class StrategyRunnerCLI:

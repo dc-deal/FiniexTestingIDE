@@ -23,9 +23,11 @@ from collections import defaultdict
 from multiprocessing import Queue
 from typing import Any, Optional
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
+from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.types.currency_codes import format_currency_simple
+from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
@@ -39,8 +41,7 @@ from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 def execute_tick_loop(
     config: ProcessScenarioConfig,
     prepared_objects: ProcessPreparedDataObjects,
-    live_queue: Optional[Queue] = None,
-    sync_barrier: Optional[Any] = None
+    live_queue: Optional[Queue] = None
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -86,41 +87,6 @@ def execute_tick_loop(
 
         scenario_logger.info(
             f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
-
-        # === BARRIER SYNCHRONIZATION ===
-        if sync_barrier is not None:
-            scenario_logger.info(
-                "🚦 Waiting at barrier for synchronized start..."
-            )
-            try:
-                # Wait for all processes to reach barrier (timeout prevents infinite hang)
-                sync_barrier.wait(timeout=25.0)
-
-                scenario_logger.info(
-                    "✅ Barrier released - starting tick loop NOW!"
-                )
-            except BrokenBarrierError:
-                # Another process failed and aborted barrier - this is expected.
-                # This scenario can continue normally. SEE IMPORT COMMENT ABOVE
-                scenario_logger.info(
-                    "⚠️ Barrier broken (another scenario failed during setup) - "
-                    "continuing execution without synchronization"
-                )
-            except TimeoutError:
-                # Barrier timeout indicates process hang or crash.
-                # Continue anyway to collect whatever data possible.
-                scenario_logger.error(
-                    "❌ Barrier timeout after 25s - possible process hang or crash! "
-                    "Continuing without synchronization..."
-                )
-            except Exception as e:
-                # Unexpected barrier error - log and continue
-                scenario_logger.error(
-                    f"❌ Unexpected barrier error: {type(e).__name__}: {e}"
-                )
-                scenario_logger.warning(
-                    "⚠️ Continuing without synchronization..."
-                )
 
         # === TICK LOOP ===
         # from now on, log shows ticks.

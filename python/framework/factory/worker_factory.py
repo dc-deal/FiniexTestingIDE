@@ -18,7 +18,7 @@ import importlib
 import json
 from typing import Any, Dict, List, Type
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.workers.abstract_worker import AbstactWorker
 from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker
@@ -108,11 +108,9 @@ class WorkerFactory:
         """
         Create a worker instance with validation.
 
-        Keine temp_instance mehr - nutzt classmethods!
-
         New Flow:
         1. Resolve worker class
-        2. Get required/optional params via CLASSMETHODS (ohne Instanz!)
+        2. Get required/optional params via CLASSMETHODS
         3. Validate required parameters
         4. Merge user config with optional defaults
         5. Instantiate worker ONCE with merged parameters

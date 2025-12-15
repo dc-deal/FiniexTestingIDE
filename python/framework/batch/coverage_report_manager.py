@@ -12,9 +12,9 @@ Responsibilities:
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
-from python.data_worker.data_loader.tick_index_manager import TickIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.reporting.coverage_report import CoverageReport
 from python.framework.types.coverage_report_types import IndexEntry
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap

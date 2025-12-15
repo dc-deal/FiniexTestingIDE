@@ -6,7 +6,7 @@
     },
     "execution": {
         "parallel_scenarios": true,
-        "max_parallel_scenarios": 20,
+        "max_parallel_scenarios": 99,
         "default_scenario_execution_config": {
             "parallel_workers": false,
             "worker_parallel_threshold_ms": 1.0,
@@ -20,7 +20,7 @@
         "warn_on_parameter_override": true,
         "scenario": {
             "enabled": false,
-            "log_level": "WARN",
+            "log_level": "WARNING",
             "write_system_info": true
         }
     },

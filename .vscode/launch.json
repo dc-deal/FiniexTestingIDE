@@ -229,25 +229,25 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (USDJPY_blocks_*)",
+            "name": "🔬 Run (USDJPY_blocks_big_*)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "USDJPY_blocks_20251128_1448.json"
+                "USDJPY_blocks_bigger.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (USDJPY__SOLO BLOCK)",
+            "name": "🔬 Run (USDJPY_stress)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "USDJPY_blocks_one.json"
+                "EURGBP_stress_20251211_0630.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -280,22 +280,6 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Generator - Generate Balanced",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
-            "args": [
-                "generate",
-                "EURGBP",
-                "--strategy",
-                "balanced",
-                "--count",
-                "12"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "📊 Scenario Generator - Generate Blocks",
             "type": "debugpy",
             "request": "launch",
@@ -306,9 +290,9 @@
                 "--strategy",
                 "blocks",
                 "--block-size",
-                "6",
+                "12",
                 "--count",
-                "20",
+                "40",
                 "--sessions",
                 "new_york"
             ],
@@ -334,6 +318,21 @@
         // ====================================================
         // 🔬 FIELD STUDYS, PoC
         // ====================================================
+        {
+            "name": "🔍 Project Structure - Detailed",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/analyze_project_structure/analyze_project_structure.py",
+            "args": [
+                "--detailed",
+                "--output",
+                "project_analysis_detailed.txt",
+                "--path",
+                "python"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         {
             "name": "🔬 GIL Benchmark - Threading vs Multiprocessing",
             "type": "debugpy",

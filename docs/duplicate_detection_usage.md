@@ -298,8 +298,8 @@ Der Duplicate Report vergleicht jetzt auch `data_collector`:
 ### Direct API Usage
 
 ```python
-from python.data_worker.data_loader.core import TickDataLoader
-from python.data_worker.data_loader.exceptions import ArtificialDuplicateException
+from python.data_management.index.core import TickDataLoader
+from python.data_management.index.data_loader_exceptions import ArtificialDuplicateException
 
 loader = TickDataLoader('./data/processed/')
 

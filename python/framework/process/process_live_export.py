@@ -4,7 +4,7 @@ from dataclasses import asdict
 from multiprocessing import Queue
 import time
 from typing import Dict, Optional, Tuple
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.portfolio_manager import PortfolioManager
 from python.framework.types.live_stats_config_types import ProcessLiveSetup
 from python.framework.types.market_data_types import Bar, TickData

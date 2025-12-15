@@ -114,23 +114,23 @@ RECOMMENDATION:
 - Production:  Use ProcessPool (maximum performance)
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
+from python.framework.batch.coverage_report_manager import CoverageReportManager
+from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
+from python.framework.batch.requirements_collector import RequirementsCollector
+from python.framework.batch.execution_coordinator import ExecutionCoordinator
+from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
+from python.system.ui.live_progress_display import LiveProgressDisplay
+from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.scenario_set_types import ScenarioSet
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.framework.logging.abstract_logger import AbstractLogger
+from multiprocessing import Manager
 from python.framework.validators.scenario_validator import ScenarioValidator
 import time
-from multiprocessing import Manager
-from python.components.logger.abstract_logger import AbstractLogger
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
-from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.factory.worker_factory import WorkerFactory
-from python.components.display.live_progress_display import LiveProgressDisplay
-from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
-from python.framework.batch.execution_coordinator import ExecutionCoordinator
-from python.framework.batch.requirements_collector import RequirementsCollector
-from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
-from python.framework.batch.coverage_report_manager import CoverageReportManager
 
 
 class BatchOrchestrator:
@@ -383,41 +383,12 @@ class BatchOrchestrator:
         )
 
         # ========================================================================
-        # PHASE 5.5: CREATE SYNCHRONIZATION BARRIER
-        # ========================================================================
-        self._logger.info("🚦 Phase 5.5: Creating synchronization barrier...")
-
-        # Count ONLY valid scenarios (exclude validation failures)
-        valid_scenario_count = len(self._scenario_set.get_valid_scenarios())
-
-        if valid_scenario_count > 1 and self._parallel_scenarios:
-            # Create barrier for synchronized start
-            sync_barrier = self._manager.Barrier(
-                parties=valid_scenario_count,
-                timeout=10.0
-            )
-
-            # Set barrier on ALL scenario packages
-            for idx, package in scenario_packages.items():
-                package.sync_barrier = sync_barrier
-
-            self._logger.info(
-                f"✅ Barrier created: {valid_scenario_count} scenarios will synchronize"
-            )
-
-        else:
-            # Sequential or single scenario - no barrier needed
-            # Set None on all packages
-            for idx, package in scenario_packages.items():
-                package.sync_barrier = None
-
-            self._logger.info(
-                "ℹ️  Barrier disabled (sequential or single scenario)")
-
-        # ========================================================================
         # PHASE 6: EXECUTION
         # ========================================================================
         self._logger.info("🚀 Phase 6: Executing scenarios...")
+
+        batch_warmup_time = time.time() - start_time
+        batch_tickrun_start = time.time()
 
         # Execute scenarios
         if self._parallel_scenarios and scenario_count > 1:
@@ -435,6 +406,7 @@ class BatchOrchestrator:
             )
 
         # calc execution time
+        batch_tickrun_time = time.time() - batch_tickrun_start
         batch_execution_time = time.time() - start_time
 
         # ========================================================================
@@ -460,6 +432,8 @@ class BatchOrchestrator:
             single_scenario_list=self._scenarios,
             # stats for batch execution
             batch_execution_time=batch_execution_time,
+            batch_warmup_time=batch_warmup_time,
+            batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
         )

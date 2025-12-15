@@ -12,10 +12,10 @@ from python.configuration.app_config_manager import AppConfigManager
 
 from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
-from python.components.logger.bootstrap_logger import get_logger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.time_utils import parse_datetime
 from python.scenario.scenario_cascade import ScenarioCascade
-vLog = get_logger()
+vLog = get_global_logger()
 
 
 class ScenarioConfigLoader:

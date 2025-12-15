@@ -12,7 +12,7 @@ from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.configuration.app_config_manager import AppConfigManager
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing import Queue
 from typing import Dict, List, Optional

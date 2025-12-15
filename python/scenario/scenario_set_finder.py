@@ -13,8 +13,8 @@ import json
 from python.framework.types.scenario_set_types import ScenarioSetMetadata
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-from python.components.logger.bootstrap_logger import get_logger
-vLog = get_logger()
+from python.framework.logging.bootstrap_logger import get_global_logger
+vLog = get_global_logger()
 
 
 class ScenarioSetFinder:
@@ -172,8 +172,7 @@ class ScenarioSetFinder:
                 results.append(metadata)
             except Exception as e:
                 vLog.warning(
-                    f"⚠️ Skipping invalid config: {file_path.name}",
-                    exception=e
+                    f"⚠️ Skipping invalid config: {file_path.name}"
                 )
 
         return results

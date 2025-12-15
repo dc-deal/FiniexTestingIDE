@@ -15,10 +15,10 @@ Usage:
 """
 
 from typing import Dict, List
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
-from python.components.logger.abstract_logger import AbstractLogger
+from python.framework.logging.abstract_logger import AbstractLogger
 
 
 class ScenarioValidator:
@@ -141,7 +141,7 @@ class ScenarioValidator:
                 detected_currency = ScenarioValidator.detect_quote_currency(
                     symbol)
 
-                logger.warning(
+                logger.debug(
                     f"💱 CURRENCY AUTO-DETECTION:\n"
                     f"   Symbol: {symbol} → Detected: {detected_currency}\n"
                     f"   Using: {detected_currency} (auto-detection overrides broker)\n"

@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.trading_env.adapters.base_adapter import IOrderCapabilities

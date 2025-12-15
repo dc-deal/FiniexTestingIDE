@@ -36,6 +36,7 @@ class ScenarioStatus(Enum):
         WARMUP_DATA_BARS: Loading bars (BatchOrchestrator, Phase 1)
         WARMUP_TRADER: Loading broker config (BatchOrchestrator, Phase 1)
         INIT_PROCESS: Process started, initializing objects (Subprocess)
+        BARRIER: Wait for other processes to pickle / deserialize
         RUNNING: Tick loop running (Subprocess)
         COMPLETED: Tick loop finished successfully (Subprocess)
         FINISHED_WITH_ERROR: Error during init or run (Subprocess)
@@ -49,6 +50,7 @@ class ScenarioStatus(Enum):
 
     # Subprocess States (ProcessPool)
     INIT_PROCESS = "init_process"
+    BARRIER = "barrier"
     RUNNING = "running"
     COMPLETED = "completed"
     FINISHED_WITH_ERROR = "finished_with_error"

@@ -43,7 +43,6 @@ class TradingSession(Enum):
 
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
-    BALANCED = "balanced"
     BLOCKS = "blocks"
     STRESS = "stress"
 
@@ -161,8 +160,6 @@ class SymbolAnalysis:
 class AnalysisConfig:
     """
     Configuration for market analysis.
-
-    Loaded from configs/generator/analysis_config.json
     """
     # Analysis parameters
     timeframe: str = "M5"
@@ -196,16 +193,21 @@ class BalancedStrategyConfig:
 class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
-    merge_remainder_threshold_minutes: int = 60
+    warmup_hours: int = 13  # Warmup period after interrupting gaps
+    min_block_hours: int = 1  # Minimum block duration to generate
+    # Allow blocks to extend past session boundaries
+    extend_blocks_beyond_session: bool = True
     min_real_bar_ratio: float = 0.5
 
 
 @dataclass
 class StressStrategyConfig:
-    """Configuration for stress test strategy."""
-    volatility_percentile: int = 90
-    density_percentile: int = 90
-    min_periods: int = 3
+    """Stress testing strategy configuration."""
+    stress_scenario_hours: int = 6
+    warmup_hours: int = 13
+    min_real_bar_ratio: float = 0.5
+    volatility_percentile: float = 0.90
+    activity_percentile: float = 0.90
 
 
 @dataclass
@@ -261,17 +263,21 @@ class GeneratorConfig:
             ),
             blocks=BlocksStrategyConfig(
                 default_block_hours=blocks_data.get('default_block_hours', 6),
-                merge_remainder_threshold_minutes=blocks_data.get(
-                    'merge_remainder_threshold_minutes', 60
-                ),
+                warmup_hours=blocks_data.get('warmup_hours', 13),
+                min_block_hours=blocks_data.get('min_block_hours', 1),
+                extend_blocks_beyond_session=blocks_data.get(
+                    'extend_blocks_beyond_session', True),
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
             stress=StressStrategyConfig(
+                stress_scenario_hours=stress_data.get(
+                    'stress_scenario_hours', 6),
+                warmup_hours=stress_data.get('warmup_hours', 13),
+                min_real_bar_ratio=stress_data.get('min_real_bar_ratio', 0.5),
                 volatility_percentile=stress_data.get(
-                    'volatility_percentile', 90
-                ),
-                density_percentile=stress_data.get('density_percentile', 90),
-                min_periods=stress_data.get('min_periods', 3)
+                    'volatility_percentile', 0.90),
+                activity_percentile=stress_data.get(
+                    'activity_percentile', 0.90)
             ),
             cross_instrument_ranking=CrossInstrumentRankingConfig(
                 top_count=ranking_data.get('top_count', 3)

@@ -4,7 +4,7 @@ from multiprocessing import Queue
 import time
 import traceback
 from typing import Optional
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_prepreation import process_startup_preparation
@@ -53,16 +53,15 @@ def process_main(
             config, shared_data, scenario_logger)
         scenario_logger = prepared_objects.scenario_logger
         scenario_logger.debug(
-            f"🔄 Process preperation finished")
+            f"🔄 Process preparation finished")
 
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
         # === TICK LOOP EXECUTION ===
         # Extract barrier from shared_data
-        sync_barrier = shared_data.sync_barrier
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects, live_queue, sync_barrier)
+            config, prepared_objects, live_queue)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 
@@ -141,8 +140,3 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
-    finally:
-        if shared_data.sync_barrier:
-            shared_data.sync_barrier.abort()
-            scenario_logger.warning(
-                "⚠️ Barrier aborted - releasing all processes!")

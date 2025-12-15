@@ -1,5 +1,5 @@
 from typing import Any, Dict, Tuple
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.trade_simulator import TradeSimulator

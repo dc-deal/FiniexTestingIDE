@@ -37,7 +37,7 @@ This logic requires two workers:
 import traceback
 from typing import Any, Dict, List, Optional
 
-from python.components.logger.scenario_logger import ScenarioLogger
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_data_types import Bar, TickData

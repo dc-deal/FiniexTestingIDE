@@ -160,16 +160,12 @@ class AppConfigManager:
 
         Returns:
             True if warnings should be shown
+
+        Raises:
+            ValueError: If logging config is invalid (no fallback to defaults)
         """
-        try:
-            logging_config = self.get_console_logging_config_object()
-            return logging_config.warn_on_parameter_override
-        except Exception as e:
-            # Fallback for backwards compatibility
-            print(
-                f"Failed to load logging config, using defaults: {e}"
-            )
-            return True  # Default: warn
+        logging_config = self.get_console_logging_config_object()
+        return logging_config.warn_on_parameter_override
 
     # ============================================
     # Log Level Methods (Validated)
@@ -179,19 +175,14 @@ class AppConfigManager:
         """
         Get console log level (validated).
 
-        UPDATED: Now uses LoggingConfig with inheritance.
-
         Returns:
             Validated log level string (DEBUG, INFO, WARNING, ERROR)
+
+        Raises:
+            ValueError: If log level is invalid (no fallback to defaults)
         """
-        try:
-            logging_config = self.get_console_logging_config_object()
-            return logging_config.global_log_level
-        except Exception as e:
-            print(
-                f"Failed to load logging config, using INFO: {e}"
-            )
-            return LogLevel.INFO
+        logging_config = self.get_console_logging_config_object()
+        return logging_config.global_log_level
 
     # ============================================
     # Development Config
