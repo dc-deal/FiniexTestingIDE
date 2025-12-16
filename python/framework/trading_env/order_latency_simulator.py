@@ -119,8 +119,26 @@ class OrderLatencySimulator:
         self.logger = logger
 
         # Extract seeds with defaults
-        api_seed = seeds.get('api_latency_seed', 42)
-        exec_seed = seeds.get('market_execution_seed', 123)
+        DEFAULT_API_LATENCY_SEED = 42
+        DEFAULT_MARKET_EXECUTION_SEED = 123
+
+        api_seed = seeds.get('api_latency_seed')
+        exec_seed = seeds.get('market_execution_seed')
+
+        # Validate and apply defaults with specific warnings
+        if api_seed is None:
+            api_seed = DEFAULT_API_LATENCY_SEED
+            self.logger.warning(
+                f"⚠️ Missing 'api_latency_seed' in config - "
+                f"using default: {DEFAULT_API_LATENCY_SEED}"
+            )
+
+        if exec_seed is None:
+            exec_seed = DEFAULT_MARKET_EXECUTION_SEED
+            self.logger.warning(
+                f"⚠️ Missing 'market_execution_seed' in config - "
+                f"using default: {DEFAULT_MARKET_EXECUTION_SEED}"
+            )
 
         # Create delay generators
         # API latency: 1-3 ticks (order reaches broker)

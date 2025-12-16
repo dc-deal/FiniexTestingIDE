@@ -41,9 +41,9 @@ def prepare_trade_simulator_for_scenario(logger: ScenarioLogger,
     trade_simulator = TradeSimulator(
         broker_config=broker_config,
         initial_balance=config.initial_balance,
-        account_currency=config.account_currency,  # Changed from 'currency'
-        symbol=config.symbol,  # Required for auto-detection
-        logger=logger
+        account_currency=config.account_currency,
+        logger=logger,
+        seeds=config.seeds
     )
 
     # Create and validate DecisionTradingAPI

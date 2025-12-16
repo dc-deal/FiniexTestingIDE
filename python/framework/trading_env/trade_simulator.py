@@ -56,8 +56,7 @@ class TradeSimulator:
         self,
         broker_config: BrokerConfig,
         initial_balance: float,
-        account_currency: str,  # Changed from 'currency', supports "auto"
-        symbol: str,  # Required for auto-detection
+        account_currency: str,
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
     ):
@@ -68,7 +67,6 @@ class TradeSimulator:
             broker_config: Broker configuration with spreads and capabilities
             initial_balance: Starting account balance
             account_currency: Account currency (or "auto" for symbol-based detection)
-            symbol: Trading symbol (required for auto-detection)
             logger: Logger instance
             seeds: Seeds for order execution delays (from config)
         """
@@ -88,7 +86,6 @@ class TradeSimulator:
             stop_out_level=broker_spec.stopout_level
         )
         # Current market prices
-        # symbol: (bid, ask)
         self._current_prices: Dict[str, Tuple[float, float]] = {}
 
         # Order latency simulator with deterministic delays

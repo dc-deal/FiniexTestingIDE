@@ -168,7 +168,7 @@ class ProcessScenarioConfig:
     max_ticks: Optional[int] = None
 
     # === STRATEGY CONFIGURATION ===
-    # CORRECTED: Complete strategy_config for worker creation
+    # Complete strategy_config for worker creation
     strategy_config: Dict[str, Any] = field(default_factory=dict)
 
     # Decision logic type (for compatibility)
@@ -180,7 +180,7 @@ class ProcessScenarioConfig:
     parallel_threshold: float = 1.0
 
     # === LOGGER METADATA ===
-    # CORRECTED: For ScenarioLogger initialization
+    # For ScenarioLogger initialization
     scenario_set_name: str = ""
     run_timestamp: str = ""
 
@@ -191,6 +191,7 @@ class ProcessScenarioConfig:
     broker_type: BrokerType = None
     initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
+    seeds: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def from_scenario(
@@ -223,7 +224,7 @@ class ProcessScenarioConfig:
         start_time = scenario.start_date
         end_time = scenario.end_date if scenario.end_date else None
 
-        # CORRECTED: Use complete strategy_config
+        # Use complete strategy_config
         # This is already merged (global + scenario overrides) in scenario_config_loader
         strategy_config = scenario.strategy_config
 
@@ -243,6 +244,8 @@ class ProcessScenarioConfig:
         account_currency = scenario.account_currency
         initial_balance = scenario.trade_simulator_config.get(
             'initial_balance')
+        seeds = scenario.trade_simulator_config.get(
+            'seeds')
 
         # Default live stats config if not provided
         if live_stats_config is None:
@@ -265,7 +268,8 @@ class ProcessScenarioConfig:
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
             initial_balance=initial_balance,
-            account_currency=account_currency  # Changed from 'currency'
+            account_currency=account_currency,
+            seeds=seeds
         )
 
 
