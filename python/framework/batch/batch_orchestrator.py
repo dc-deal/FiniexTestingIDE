@@ -438,6 +438,8 @@ class BatchOrchestrator:
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
         )
 
+        self._logger.debug(summary.process_result_list)
+
         # Error handling
         failed_results = [r for r in results if not r.success]
         if failed_results:
