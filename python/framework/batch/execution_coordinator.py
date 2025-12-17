@@ -130,7 +130,7 @@ class ExecutionCoordinator:
                 )
             else:
                 self._logger.error(
-                    f"❌ Scenario {readable_index} failed: {result.error_message}"
+                    f"❌ Scenario {readable_index} failed: {results[idx].error_message}"
                 )
 
         return results

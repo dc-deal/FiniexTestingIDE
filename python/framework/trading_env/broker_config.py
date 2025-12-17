@@ -202,10 +202,6 @@ class BrokerConfig:
 
         Raises:
             ValueError: If symbol not found
-
-        Example:
-            spec = broker_config.get_symbol_specification("GBPUSD")
-            is_valid, error = spec.validate_lot_size(0.1)
         """
         symbol_spec = self._symbol_specification.get(symbol)
 

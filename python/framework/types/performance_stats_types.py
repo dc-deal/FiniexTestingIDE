@@ -13,6 +13,9 @@ UNIQUE KEYWORDS with prefixes for easy searching:
 """
 
 from dataclasses import dataclass
+from typing import Optional
+
+from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
 
 @dataclass
@@ -60,6 +63,9 @@ class DecisionLogicStats:
     decision_avg_time_ms: float = 0.0
     decision_min_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
+
+    # Optional backtesting metadata for validation
+    backtesting_metadata: Optional[BacktestingMetadata] = None
 
 
 @dataclass

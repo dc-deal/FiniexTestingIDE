@@ -53,6 +53,18 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧪 Run (BACKTESTING Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "mvp_backtesting_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔍 INDEX MANAGEMENT
         // ====================================================
