@@ -317,7 +317,8 @@ class IOrderCapabilities(ABC):
         # Check step compliance
         if lot_step > 0:
             remainder = (lots - min_lot) % lot_step
-            if abs(remainder) > 1e-8:  # Floating point tolerance
+            # Handle floating point: remainder should be ~0 or ~lot_step
+            if remainder > 1e-6 and (lot_step - remainder) > 1e-6:
                 return False, f"Lot size {lots} not aligned with step {lot_step}"
 
         return True, None
