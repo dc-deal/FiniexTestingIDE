@@ -24,3 +24,6 @@ seaborn>=0.11.0
 # Console
 rich>=14.2.0
 psutil>=7.1.0
+
+# Testing
+pytest>=7.0.0
