@@ -164,9 +164,12 @@ class PortfolioAggregator:
 
         unique_brokers = set(
             s.tick_loop_results.portfolio_stats.broker_name for s in scenarios)
+        unique_broker_type = set(
+            s.tick_loop_results.portfolio_stats.broker_type for s in scenarios)
 
         if len(unique_brokers) == 1:
             broker_name = list(unique_brokers)[0]
+            broker_type = list(unique_broker_type)[0]
         else:
             first_broker = scenarios[0].tick_loop_results.portfolio_stats.broker_name
             broker_name = f"{first_broker} (+{len(unique_brokers)-1} more)"
@@ -192,6 +195,7 @@ class PortfolioAggregator:
             total_fees=total_spread_cost + total_commission + total_swap,
             currency=currency,
             broker_name=broker_name,
+            broker_type=broker_type,
             current_conversion_rate=None
         )
 

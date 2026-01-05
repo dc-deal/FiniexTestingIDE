@@ -536,6 +536,7 @@ class PortfolioManager:
             total_fees=self._cost_tracking.total_fees,
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),
+            broker_type=self.broker_config.broker_type,
             current_conversion_rate=self._last_conversion_rate,
             current_balance=self.balance,
             initial_balance=self.initial_balance

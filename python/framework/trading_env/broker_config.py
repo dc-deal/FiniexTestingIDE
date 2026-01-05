@@ -6,6 +6,7 @@ Loads broker-specific JSON configs and delegates to appropriate adapter.
 Provides common interface for TradeSimulator regardless of broker type.
 """
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional

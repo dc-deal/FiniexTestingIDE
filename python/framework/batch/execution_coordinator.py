@@ -252,7 +252,6 @@ class ExecutionCoordinator:
                     results[idx] = ProcessResult(
                         success=False,
                         scenario_name=scenarios[idx].name,
-                        symbol=scenarios[idx].symbol,
                         scenario_index=idx,
                         error_type=type(e).__name__,
                         error_message=str(e),

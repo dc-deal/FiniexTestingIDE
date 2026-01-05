@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List
 
 
+from python.framework.trading_env.broker_config import BrokerType
 from python.framework.types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown
@@ -21,6 +22,8 @@ class BasePortfolioStats:
 
     Contains all common trading metrics, P&L, costs, and metadata.
     """
+    broker_type: BrokerType
+
     # Trading statistics
     total_trades: int
     total_long_trades: int

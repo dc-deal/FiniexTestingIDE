@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.types.broker_types import SymbolSpecification
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
@@ -268,33 +269,61 @@ def tick_dataframe(
 
 
 @pytest.fixture(scope="session")
-def broker_symbol_spec(scenario_config: Dict[str, Any]) -> Dict[str, Any]:
+def symbol_specification(
+    batch_execution_summary: BatchExecutionSummary,
+    process_result: ProcessResult,
+    scenario_config: Dict[str, Any]
+) -> SymbolSpecification:
     """
-    Load broker symbol specification for P&L calculation.
+    Get SymbolSpecification from broker_scenario_map.
+
+    Uses the actual broker config loaded during execution,
+    ensuring digits and other specs match the real system.
 
     Args:
-        scenario_config: Scenario config for broker path extraction
+        batch_execution_summary: Executed batch summary
+        process_result: First scenario result (contains broker_type)
+        scenario_config: Raw config for symbol extraction
 
     Returns:
-        Dict with digits, tick_size, tick_value, contract_size
+        SymbolSpecification with actual broker data
     """
-    broker_path = scenario_config['global']['trade_simulator_config']['broker_config_path']
     symbol = scenario_config['scenarios'][0]['symbol']
+    broker_type = process_result.tick_loop_results.portfolio_stats.broker_type
 
-    with open(broker_path, 'r') as f:
-        broker_data = json.load(f)
+    broker_scenario_info = batch_execution_summary.broker_scenario_map[broker_type]
+    broker_config = broker_scenario_info.broker_config
 
-    symbols = broker_data.get('symbols', {})
-    symbol_data = symbols.get(symbol, {})
+    return broker_config.get_symbol_specification(symbol)
+
+
+@pytest.fixture(scope="session")
+def broker_symbol_spec(
+    symbol_specification: SymbolSpecification,
+    scenario_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Legacy dict format for backward compatibility with existing tests.
+
+    Wraps SymbolSpecification in dict format expected by build_expected_trades.
+
+    Args:
+        symbol_specification: Actual SymbolSpecification from broker
+        scenario_config: Raw config for symbol extraction
+
+    Returns:
+        Dict with digits, tick_size, contract_size, currencies
+    """
+    symbol = scenario_config['scenarios'][0]['symbol']
 
     return {
         'symbol': symbol,
-        'digits': symbol_data.get('digits', 5),
-        'tick_size': symbol_data.get('tick_size', 0.00001),
-        'tick_value': symbol_data.get('tick_value', 1.0),
-        'contract_size': symbol_data.get('contract_size', 100000),
-        'base_currency': symbol_data.get('base_currency', symbol[:3]),
-        'quote_currency': symbol_data.get('quote_currency', symbol[3:])
+        'digits': symbol_specification.digits,
+        'tick_size': symbol_specification.tick_size,
+        'tick_value': 1.0,  # Calculated dynamically in test
+        'contract_size': symbol_specification.contract_size,
+        'base_currency': symbol_specification.base_currency,
+        'quote_currency': symbol_specification.quote_currency
     }
 
 
