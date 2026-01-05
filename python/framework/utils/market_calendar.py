@@ -7,9 +7,7 @@ ENHANCED  Calendar-based weekend detection for extended gaps
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict, Union
-
-import pytz
+from typing import Optional, Tuple, Dict
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types import WeekendClosureWindow
@@ -28,6 +26,11 @@ class MarketCalendar:
 
     # Weekend closure window configuration
     WEEKEND_CLOSURE = WeekendClosureWindow()
+
+    MARKET_HOLIDAYS = frozenset([
+        (12, 25),  # Christmas Day
+        (1, 1),    # New Year's Day
+    ])
 
     @staticmethod
     def get_weekend_closure_description() -> str:
@@ -257,6 +260,41 @@ class MarketCalendar:
         return False
 
     @staticmethod
+    def is_market_holiday(date: datetime) -> bool:
+        """
+        Check if date is a known market holiday.
+
+        Args:
+            date: Date to check
+
+        Returns:
+            True if date is a market holiday
+        """
+        return (date.month, date.day) in MarketCalendar.MARKET_HOLIDAYS
+
+    @staticmethod
+    def gap_contains_holiday(start: datetime, end: datetime) -> bool:
+        """
+        Check if time gap contains any market holidays.
+
+        Args:
+            start: Gap start timestamp
+            end: Gap end timestamp
+
+        Returns:
+            True if gap contains at least one market holiday
+        """
+        current = start.date()
+        end_date = end.date()
+
+        while current <= end_date:
+            if (current.month, current.day) in MarketCalendar.MARKET_HOLIDAYS:
+                return True
+            current += timedelta(days=1)
+
+        return False
+
+    @staticmethod
     def classify_gap(
         start: datetime,
         end: datetime,
@@ -319,6 +357,11 @@ class MarketCalendar:
         # Example: Wed 15:40 → Mon 01:57 (contains Sat+Sun but doesn't start Friday)
         if MarketCalendar.gap_contains_weekend(start, end) and gap_hours >= 24:
             return GapCategory.WEEKEND, f'✅ Weekend gap (extended, {gap_hours:.1f}h)'
+
+        # 2b. HOLIDAY CHECK
+        # Market holidays (Christmas, New Year) - typically 24h closure
+        if gap_hours >= 20 and MarketCalendar.gap_contains_holiday(start, end):
+            return GapCategory.HOLIDAY, f'✅ Holiday gap ({gap_hours:.1f}h)'
 
         # 3. SHORT GAP
         # Common causes: Server restart, connection blip, MT5 restart

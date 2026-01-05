@@ -383,7 +383,8 @@ class BlocksGenerator:
         interrupting_categories = {
             GapCategory.MODERATE,
             GapCategory.LARGE,
-            GapCategory.WEEKEND
+            GapCategory.WEEKEND,
+            GapCategory.HOLIDAY
         }
 
         regions = []
@@ -548,7 +549,7 @@ class BlocksGenerator:
         """
         filtered_gaps = [
             g for g in coverage_report.gaps
-            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND]
+            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
         ]
 
         total_coverage_hours = sum(
@@ -562,6 +563,7 @@ class BlocksGenerator:
             f"{total_gap_hours:.1f}h gaps filtered "
             f"({len(filtered_gaps)} gaps: "
             f"{coverage_report.gap_counts['weekend']} weekend, "
+            f"{coverage_report.gap_counts['holiday']} holiday, "
             f"{coverage_report.gap_counts['moderate']} moderate, "
             f"{coverage_report.gap_counts['large']} large)"
         )
@@ -585,6 +587,7 @@ class BlocksGenerator:
         # Color coding by gap type
         icons = {
             GapCategory.WEEKEND: '🟢',
+            GapCategory.HOLIDAY: '🟢',
             GapCategory.MODERATE: '🟡',
             GapCategory.LARGE: '🔴'
         }

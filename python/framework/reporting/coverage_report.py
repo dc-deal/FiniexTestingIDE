@@ -53,6 +53,7 @@ class CoverageReport:
         self.gap_counts = {
             'seamless': 0,
             'weekend': 0,
+            'holiday': 0,
             'short': 0,
             'moderate': 0,
             'large': 0
@@ -263,6 +264,8 @@ class CoverageReport:
         report.append(
             f"✅ Weekend:      {self.gap_counts['weekend']} gaps (expected)")
         report.append(
+            f"✅ Holiday:      {self.gap_counts['holiday']} gaps (expected)")
+        report.append(
             f"⚠️  Short:        {self.gap_counts['short']} gaps (< 30 min)")
         report.append(
             f"⚠️  Moderate:     {self.gap_counts['moderate']} gaps (30min - 4h)")
@@ -306,6 +309,33 @@ class CoverageReport:
                 report.append("")
                 gap_counter += 1
                 continue
+
+        # === SECTION 3b: Holiday Gaps ===
+        holiday_gaps = [
+            g for g in self.gaps if g.category == GapCategory.HOLIDAY]
+
+        if holiday_gaps:
+            report.append(f"\n{'─'*60}")
+            report.append("✅ HOLIDAY GAPS (Expected Market Closures):")
+            report.append(f"{'─'*60}")
+            report.append("ℹ️  Known Market Holidays:")
+            report.append("   • December 25 (Christmas)")
+            report.append("   • January 1 (New Year)")
+            report.append(f"{'─'*60}")
+
+            gap_counter = 1
+            for gap in holiday_gaps:
+                utc_start = gap.gap_start.strftime('%Y-%m-%d %H:%M')
+                utc_end = gap.gap_end.strftime('%Y-%m-%d %H:%M')
+
+                report.append(
+                    f"🎄 Holiday Gap #{gap_counter} (intra-file):")
+                report.append(f"   Start:  {utc_start} UTC")
+                report.append(f"   End:    {utc_end} UTC")
+                report.append(f"   Gap:    {gap.gap_hours:.1f} hours")
+                report.append(f"   Note:   {gap.reason}")
+                report.append("")
+                gap_counter += 1
 
         # === SECTION 4: Detailed Gap List ===
         problematic_gaps = [g for g in self.gaps if g.category in [

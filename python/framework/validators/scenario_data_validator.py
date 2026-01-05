@@ -66,6 +66,7 @@ class ScenarioDataValidator:
         category_map = {
             'seamless': GapCategory.SEAMLESS,
             'weekend': GapCategory.WEEKEND,
+            'holiday': GapCategory.HOLIDAY,
             'short': GapCategory.SHORT,
             'moderate': GapCategory.MODERATE,
             'large': GapCategory.LARGE
