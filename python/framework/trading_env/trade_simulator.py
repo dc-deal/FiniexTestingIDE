@@ -116,37 +116,29 @@ class TradeSimulator:
     # ============================================
     def update_prices(self, tick: TickData) -> None:
         """
-        Update prices and process pending orders (OPTIMIZED).
-
-        Called by BatchOrchestrator on every tick to:
-        1. Update current tick data
-        2. Process pending orders that are ready to fill
-        3. Update portfolio with new tick (LAZY - no specs overhead!)
-
-        Args:
-            tick: Current tick data with bid/ask prices
-
-        Performance Optimization:
-        - BEFORE: Built symbol_specs + tick_values every tick (99.8% wasted)
-        - AFTER: Just pass tick to portfolio (500× faster!)
-        - Portfolio builds specs only when needed (get_account_info, close_position)
+        Update prices and process pending orders.
         """
         self._current_tick = tick
         self._tick_counter += 1
 
-        # Process pending orders from latency simulator
+        self._current_prices[tick.symbol] = (tick.bid, tick.ask)
+        self.portfolio.mark_dirty(tick)
+
+    def process_pending_orders(self) -> None:
+        """process orders"""
         filled_orders = self.latency_simulator.process_tick(self._tick_counter)
 
         for pending_order in filled_orders:
-            if pending_order.order_action == PendingOrderAction.OPEN:
-                self._check_and_open_order_in_portfolio(pending_order)
-            elif pending_order.order_action == PendingOrderAction.CLOSE:
-                self._close_and_fill_order_in_portfolio(pending_order)
-
-        self._current_prices[tick.symbol] = (tick.bid, tick.ask)
-
-        # Portfolio will build symbol specs on-demand when needed
-        self.portfolio.mark_dirty(tick)
+            match pending_order.order_action:
+                case PendingOrderAction.OPEN:
+                    self._check_and_open_order_in_portfolio(pending_order)
+                case PendingOrderAction.CLOSE:
+                    self._close_and_fill_order_in_portfolio(pending_order)
+                # Post-MVP:
+                # case PendingOrderAction.MODIFY:
+                #     self._modify_order(pending_order)
+                # case PendingOrderAction.PARTIAL_CLOSE:
+                #     self._partial_close(pending_order)
 
     def get_current_price(self, symbol: str) -> tuple[float, float]:
         """

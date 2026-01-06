@@ -99,8 +99,10 @@ def execute_tick_loop(
             current_index = tick_idx
 
             # === 1. Trade Simulator ===
+            # FIRST update prices. Then process orders which may be opend/filled/etc
             t1 = time.perf_counter()
             trade_simulator.update_prices(tick)
+            trade_simulator.process_pending_orders()
             t2 = time.perf_counter()
             profile_times['trade_simulator'] += (t2 - t1) * 1000
             profile_counts['trade_simulator'] += 1
