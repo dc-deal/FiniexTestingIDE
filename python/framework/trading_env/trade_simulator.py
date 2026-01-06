@@ -78,6 +78,7 @@ class TradeSimulator:
         # Create portfolio manager with broker specifications
         broker_spec = self.broker.get_broker_specification()
         self.portfolio = PortfolioManager(
+            logger=logger,
             initial_balance=initial_balance,
             account_currency=account_currency,
             broker_config=broker_config,
@@ -307,13 +308,19 @@ class TradeSimulator:
                 message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
             )
 
-        # Open position in portfolio
+        # Open position in portfolio with trade record data
         position = self.portfolio.open_position(
-            order_id=pending_order.pending_order_id,  # Pass order_id to portfolio
+            order_id=pending_order.pending_order_id,
             symbol=pending_order.symbol,
             direction=pending_order.direction,
             lots=pending_order.lots,
             entry_price=entry_price,
+            entry_tick_value=tick_value,
+            entry_bid=bid,
+            entry_ask=ask,
+            digits=symbol_spec.digits,
+            contract_size=symbol_spec.contract_size,
+            entry_tick_index=self._tick_counter,
             entry_fee=spread_fee,
             stop_loss=pending_order.order_kwargs.get('stop_loss'),
             take_profit=pending_order.order_kwargs.get('take_profit'),
@@ -493,10 +500,19 @@ class TradeSimulator:
         else:
             close_price = ask  # Buy back at ask
 
-        # Close position
+        # Calculate exit tick_value for trade record
+        symbol_spec = self.broker.get_symbol_specification(position.symbol)
+        exit_tick_value = self._calculate_tick_value(
+            symbol_spec,
+            (bid + ask) / 2.0
+        )
+
+        # Close position with exit tick_value
         realized_pnl = self.portfolio.close_position_portfolio(
             position_id=pending_order.pending_order_id,
             exit_price=close_price,
+            exit_tick_value=exit_tick_value,
+            exit_tick_index=self._tick_counter,
             exit_fee=None  # MVP: No exit commission
         )
 
@@ -703,25 +719,14 @@ class TradeSimulator:
         """
         return self._order_history.copy()
 
-    def get_closed_positions(self) -> List[Position]:
+    def get_trade_history(self) -> List:
         """
-        Get all closed positions.
-
-        NEW METHOD for performance reports and P&L analysis.
+        Get all completed trades with full audit trail.
 
         Returns:
-            List of closed Position objects with full fee breakdown
-
-        Example:
-            closed = trading_env.get_closed_positions()
-
-            for pos in closed:
-                vLog.info(f"Position {pos.position_id}:")
-                vLog.info(f"  P&L: {pos.unrealized_pnl:.2f}")
-                vLog.info(f"  Spread: {pos.get_spread_cost():.2f}")
-                vLog.info(f"  Duration: {pos.close_time - pos.entry_time}")
+            List of TradeRecord objects for P&L verification
         """
-        return self.portfolio.get_closed_positions()
+        return self.portfolio.get_trade_history()
 
     # ============================================
     # Broker Information

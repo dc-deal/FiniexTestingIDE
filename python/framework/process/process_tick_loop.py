@@ -186,10 +186,11 @@ def execute_tick_loop(
         worker_statistics = worker_coordinator.get_worker_statistics()
         coordination_statistics = worker_coordinator.get_coordination_statistics()
 
-        # collect stistics from Trader section
+        # collect statistics from Trader section
         portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
+        trade_history = trade_simulator.get_trade_history()
 
         _print_tick_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
@@ -202,6 +203,7 @@ def execute_tick_loop(
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,
             cost_breakdown=cost_breakdown,
+            trade_history=trade_history,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
                 profile_counts=profile_counts

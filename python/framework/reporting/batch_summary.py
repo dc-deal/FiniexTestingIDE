@@ -16,6 +16,7 @@ from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.portfolio_summary import PortfolioSummary
 from python.framework.reporting.performance_summary import PerformanceSummary
 from python.framework.reporting.profiling_summary import ProfilingSummary
+from python.framework.reporting.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -63,6 +64,11 @@ class BatchSummary:
             batch_summary=batch_execution_summary,
             app_config=app_config
         )
+
+        # Trade history summary
+        self.trade_history_summary = TradeHistorySummary(
+            batch_execution_summary)
+
         # Renderer for unified console output
         self._renderer = ConsoleRenderer()
         self._box_renderer = ConsoleBoxRenderer(self._renderer)
@@ -155,6 +161,13 @@ class BatchSummary:
         aggregated_portfolios = aggregator.aggregate_by_currency()
         self.portfolio_summary.render_aggregated(
             self._renderer, aggregated_portfolios)
+
+        # Trade History
+        self._renderer.section_separator()
+        self._renderer.print_bold("📋 TRADE HISTORY (PER SCENARIO)")
+        self._renderer.section_separator()
+        self.trade_history_summary.render_per_scenario(self._renderer)
+        self.trade_history_summary.render_aggregated(self._renderer)
 
         # Broker configuration
         self._renderer.section_separator()

@@ -14,8 +14,10 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.broker_types import SymbolSpecification
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_trade_record_types import CloseType, TradeRecord
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
@@ -39,6 +41,7 @@ class PortfolioManager:
 
     def __init__(
         self,
+        logger: AbstractLogger,
         initial_balance: float,
         account_currency: str,
         broker_config: BrokerConfig,
@@ -57,6 +60,7 @@ class PortfolioManager:
             margin_call_level: Margin call threshold percentage
             stop_out_level: Stop out threshold percentage
         """
+        self._logger = logger
         self.initial_balance = initial_balance
         self.account_currency = account_currency
         self.broker_config = broker_config
@@ -72,7 +76,7 @@ class PortfolioManager:
         # Positions
         self._positions_dirty = False  # Performance: Lazy evaluation state
         self.open_positions: Dict[str, Position] = {}
-        self.closed_positions: List[Position] = []
+        self._trade_history: List[TradeRecord] = []
 
         # Position counter
         self._position_counter = 0
@@ -106,11 +110,17 @@ class PortfolioManager:
 
     def open_position(
         self,
-        order_id: str,  # Link to original order
+        order_id: str,
         symbol: str,
         direction: OrderDirection,
         lots: float,
         entry_price: float,
+        entry_tick_value: float,
+        entry_bid: float,
+        entry_ask: float,
+        digits: int,
+        contract_size: int,
+        entry_tick_index: int,
         entry_fee: Optional[AbstractTradingFee] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
@@ -136,7 +146,14 @@ class PortfolioManager:
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,
-            magic_number=magic_number
+            magic_number=magic_number,
+            # Trade record fields
+            entry_tick_value=entry_tick_value,
+            entry_bid=entry_bid,
+            entry_ask=entry_ask,
+            digits=digits,
+            contract_size=contract_size,
+            entry_tick_index=entry_tick_index
         )
 
         # Attach entry fee
@@ -160,6 +177,8 @@ class PortfolioManager:
         self,
         position_id: str,
         exit_price: float,
+        exit_tick_value: float,
+        exit_tick_index: int,
         exit_fee: Optional[AbstractTradingFee] = None
     ) -> float:
         """
@@ -198,15 +217,65 @@ class PortfolioManager:
         position.status = PositionStatus.CLOSED
         position.close_time = datetime.now(timezone.utc)
         position.close_price = exit_price
+        position.exit_tick_value = exit_tick_value
+        position.exit_tick_index = exit_tick_index
 
-        # Move to closed positions
-        self.closed_positions.append(position)
+        # Create TradeRecord from closed position
+        trade_record = self._create_trade_record(position, CloseType.FULL)
+        self._trade_history.append(trade_record)
+        self._log_trade_record(trade_record)
         del self.open_positions[position_id]
 
         # Update statistics
         self._update_statistics(position, realized_pnl)
 
         return realized_pnl
+
+    def _create_trade_record(
+        self,
+        position: Position,
+        close_type: CloseType
+    ) -> TradeRecord:
+        """
+        Convert closed Position to TradeRecord.
+
+        Args:
+            position: Closed position with all data
+            close_type: FULL or PARTIAL close
+
+        Returns:
+            TradeRecord with all fields for P&L verification
+        """
+        return TradeRecord(
+            position_id=position.position_id,
+            symbol=position.symbol,
+            direction=position.direction.value.upper(),
+            lots=position.lots,
+            close_type=close_type,
+            entry_price=position.entry_price,
+            entry_time=position.entry_time,
+            entry_tick_value=position.entry_tick_value,
+            entry_bid=position.entry_bid,
+            entry_ask=position.entry_ask,
+            exit_price=position.close_price,
+            exit_time=position.close_time,
+            exit_tick_value=position.exit_tick_value,
+            entry_tick_index=position.entry_tick_index,
+            exit_tick_index=position.exit_tick_index,
+            digits=position.digits,
+            contract_size=position.contract_size,
+            spread_cost=position.get_spread_cost(),
+            commission_cost=position.get_commission_cost(),
+            swap_cost=position.get_swap_cost(),
+            total_fees=position.get_total_fees(),
+            gross_pnl=position.gross_pnl,
+            net_pnl=position.unrealized_pnl,
+            stop_loss=position.stop_loss,
+            take_profit=position.take_profit,
+            comment=position.comment,
+            magic_number=position.magic_number,
+            account_currency=self.account_currency
+        )
 
     # ============================================
     # Performance - Caching
@@ -334,13 +403,14 @@ class PortfolioManager:
         """Get list of all open positions"""
         return list(self.open_positions.values())
 
-    def get_closed_positions(self) -> List[Position]:
+    def get_trade_history(self) -> List[TradeRecord]:
         """
-        Get list of all closed positions.
+        Get list of all completed trades.
 
-        NEW METHOD for order history and performance analysis.
+        Returns:
+            List of TradeRecord objects with full audit trail
         """
-        return self.closed_positions.copy()
+        return self._trade_history.copy()
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""
@@ -547,7 +617,7 @@ class PortfolioManager:
         self.balance = self.initial_balance
         self.realized_pnl = 0.0
         self.open_positions.clear()
-        self.closed_positions.clear()
+        self._trade_history.clear()
         self._position_counter = 0
 
         # Reset cost tracking object
@@ -563,3 +633,23 @@ class PortfolioManager:
         self._total_loss = 0.0
         self._max_drawdown = 0.0
         self._max_equity = self.initial_balance
+
+    def _log_trade_record(self, record: TradeRecord) -> None:
+        """
+        Log trade record details for debugging.
+
+        Args:
+            record: Completed TradeRecord to log
+        """
+        duration_ticks = record.exit_tick_index - record.entry_tick_index
+
+        self._logger.debug(
+            f"📊 TRADE RECORD #{len(self._trade_history)} | {record.position_id}\n"
+            f"   {record.symbol} {record.direction} {record.lots} lots\n"
+            f"   Entry: {record.entry_price:.5f} @ tick {record.entry_tick_index} | "
+            f"Exit: {record.exit_price:.5f} @ tick {record.exit_tick_index} | "
+            f"Duration: {duration_ticks} ticks\n"
+            f"   Tick Value: entry={record.entry_tick_value:.5f}, exit={record.exit_tick_value:.5f}\n"
+            f"   Gross P&L: {record.gross_pnl:.2f} | Fees: {record.total_fees:.2f} "
+            f"(spread={record.spread_cost:.2f}) | Net P&L: {record.net_pnl:.2f} {record.account_currency}"
+        )
