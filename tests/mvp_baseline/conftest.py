@@ -12,21 +12,20 @@ Provides:
 import json
 import pytest
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.performance_stats_types import DecisionLogicStats
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.trading_env.order_latency_simulator import SeededDelayGenerator
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.data_management.index.tick_index_manager import TickIndexManager
 
 import pandas as pd
 
@@ -117,6 +116,23 @@ def portfolio_stats(tick_loop_results: ProcessTickLoopResult) -> PortfolioStats:
     return tick_loop_results.portfolio_stats
 
 
+@pytest.fixture(scope="session")
+def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
+    """
+    Extract trade history from tick loop results.
+
+    Provides complete audit trail for P&L verification.
+
+    Args:
+        tick_loop_results: Tick loop execution results
+
+    Returns:
+        List of TradeRecord with full calculation details
+    """
+    assert tick_loop_results.trade_history is not None, "No trade history"
+    return tick_loop_results.trade_history
+
+
 # =============================================================================
 # CONFIG FIXTURES
 # =============================================================================
@@ -205,147 +221,6 @@ def prerendered_bars(
             bars[timeframe] = pd.read_parquet(bar_file)
 
     return bars
-
-
-# =============================================================================
-# TICK DATA FIXTURES (For P&L Calculation)
-# =============================================================================
-
-@pytest.fixture(scope="session")
-def tick_index_manager() -> TickIndexManager:
-    """
-    Initialize TickIndexManager for tick file access.
-
-    Returns:
-        Configured TickIndexManager
-    """
-    data_dir = Path("data/processed")
-    manager = TickIndexManager(data_dir)
-    manager.build_index()
-    return manager
-
-
-@pytest.fixture(scope="session")
-def tick_dataframe(
-    tick_index_manager: TickIndexManager,
-    scenario_config: Dict[str, Any]
-) -> pd.DataFrame:
-    """
-    Load tick data for P&L calculation validation.
-
-    Args:
-        tick_index_manager: Tick index manager
-        scenario_config: Scenario config for symbol/date extraction
-
-    Returns:
-        DataFrame with tick data (bid, ask, timestamp)
-    """
-    scenario = scenario_config['scenarios'][0]
-    symbol = scenario['symbol']
-
-    start_date = scenario['start_date']
-    end_date = scenario['end_date']
-    max_ticks = scenario.get('max_ticks')
-
-    # Normalize input dates to UTC timestamps
-    start_dt = pd.to_datetime(start_date, utc=True)
-    end_dt = pd.to_datetime(end_date, utc=True)
-    tick_files = tick_index_manager.get_relevant_files(
-        symbol=symbol,
-        start_date=start_dt,
-        end_date=end_dt
-    )
-
-    if not tick_files:
-        pytest.skip(f"No tick files found for {symbol}")
-
-    dfs = [pd.read_parquet(f) for f in tick_files]
-    ticks_df = pd.concat(dfs, ignore_index=True)
-
-    if max_ticks:
-        ticks_df = ticks_df.head(max_ticks)
-
-    return ticks_df
-
-
-@pytest.fixture(scope="session")
-def symbol_specification(
-    batch_execution_summary: BatchExecutionSummary,
-    process_result: ProcessResult,
-    scenario_config: Dict[str, Any]
-) -> SymbolSpecification:
-    """
-    Get SymbolSpecification from broker_scenario_map.
-
-    Uses the actual broker config loaded during execution,
-    ensuring digits and other specs match the real system.
-
-    Args:
-        batch_execution_summary: Executed batch summary
-        process_result: First scenario result (contains broker_type)
-        scenario_config: Raw config for symbol extraction
-
-    Returns:
-        SymbolSpecification with actual broker data
-    """
-    symbol = scenario_config['scenarios'][0]['symbol']
-    broker_type = process_result.tick_loop_results.portfolio_stats.broker_type
-
-    broker_scenario_info = batch_execution_summary.broker_scenario_map[broker_type]
-    broker_config = broker_scenario_info.broker_config
-
-    return broker_config.get_symbol_specification(symbol)
-
-
-@pytest.fixture(scope="session")
-def broker_symbol_spec(
-    symbol_specification: SymbolSpecification,
-    scenario_config: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Legacy dict format for backward compatibility with existing tests.
-
-    Wraps SymbolSpecification in dict format expected by build_expected_trades.
-
-    Args:
-        symbol_specification: Actual SymbolSpecification from broker
-        scenario_config: Raw config for symbol extraction
-
-    Returns:
-        Dict with digits, tick_size, contract_size, currencies
-    """
-    symbol = scenario_config['scenarios'][0]['symbol']
-
-    return {
-        'symbol': symbol,
-        'digits': symbol_specification.digits,
-        'tick_size': symbol_specification.tick_size,
-        'tick_value': 1.0,  # Calculated dynamically in test
-        'contract_size': symbol_specification.contract_size,
-        'base_currency': symbol_specification.base_currency,
-        'quote_currency': symbol_specification.quote_currency
-    }
-
-
-@pytest.fixture(scope="session")
-def account_currency(scenario_config: Dict[str, Any]) -> str:
-    """
-    Extract account currency from config.
-
-    Args:
-        scenario_config: Raw scenario config
-
-    Returns:
-        Account currency string (e.g., 'USD', 'JPY')
-    """
-    currency = scenario_config['global']['trade_simulator_config'].get(
-        'account_currency', 'auto')
-
-    if currency == 'auto':
-        symbol = scenario_config['scenarios'][0]['symbol']
-        return symbol[3:6]
-
-    return currency
 
 
 # =============================================================================
