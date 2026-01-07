@@ -12,7 +12,10 @@ Unregistered systems will cause pytest.fail() in the validated_system fixture.
 """
 
 import pytest
+from pathlib import Path
 from typing import Dict, Any
+
+from tests.mvp_benchmark.conftest import _save_benchmark_report
 
 
 class TestThroughputRegression:
@@ -203,3 +206,52 @@ class TestBenchmarkExecution:
             f"Baseline: {reference}\n"
             f"The benchmark scenario configuration has changed."
         )
+
+
+class TestReportGeneration:
+    """
+    Report generation test.
+
+    IMPORTANT: This test runs LAST (alphabetically: zz_) to ensure
+    all other tests have completed before saving the report.
+    """
+
+    def test_zz_save_benchmark_report(
+        self,
+        benchmark_report: Dict[str, Any]
+    ):
+        """
+        Save benchmark report after all tests complete.
+
+        This test runs last due to its name (zz_ prefix).
+        The report is saved to tests/mvp_benchmark/reports/ and should
+        be committed to the repository for CI validation.
+
+        The report contains:
+        - Timestamp and validity period (90 days)
+        - System identification
+        - All metrics with deviations and pass/fail status
+        - Debug mode detection flag
+        - Warnings (e.g., faster than baseline)
+        """
+        filepath = _save_benchmark_report(benchmark_report)
+
+        assert filepath.exists(), (
+            f"Failed to save benchmark report to {filepath}"
+        )
+
+        print(f"\n{'='*60}")
+        print(f"📊 Benchmark report saved: {filepath.name}")
+        print(f"   Status: {benchmark_report['overall_status']}")
+        print(f"   System: {benchmark_report['system_id']}")
+        print(f"   Valid until: {benchmark_report['valid_until'][:10]}")
+
+        if benchmark_report['warnings']:
+            print(f"\n   ⚠️  Warnings ({len(benchmark_report['warnings'])}):")
+            for w in benchmark_report['warnings']:
+                print(f"      - {w}")
+
+        print(f"{'='*60}")
+        print(f"\n💡 Remember to commit this report for CI validation:")
+        print(f"   git add {filepath}")
+        print(f"   git commit -m 'Update benchmark report'")

@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-01-07T18:43:58.152697+00:00",
-  "valid_until": "2026-04-07T18:43:58.152697+00:00",
-  "git_commit": "986911d",
+  "timestamp": "2026-01-08T10:18:14.081297+00:00",
+  "valid_until": "2026-04-08T10:18:14.081297+00:00",
+  "git_commit": "5ae8714",
   "system_id": "ryzen_7_8845hs_16core",
   "system_details": {
     "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
@@ -15,26 +15,26 @@
   "metrics": [
     {
       "name": "ticks_per_second",
-      "measured": 49208.76,
+      "measured": 69789.83,
       "reference": 49133,
-      "deviation_percent": 0.15,
-      "tolerance_percent": 10.0,
+      "deviation_percent": 42.04,
+      "tolerance_percent": 30.0,
       "status": "PASSED"
     },
     {
       "name": "tickrun_time_s",
-      "measured": 30.41,
-      "reference": 30.5,
-      "deviation_percent": -0.31,
-      "tolerance_percent": 10.0,
+      "measured": 21.44,
+      "reference": 24.9,
+      "deviation_percent": -13.9,
+      "tolerance_percent": 30.0,
       "status": "PASSED"
     },
     {
       "name": "warmup_time_s",
-      "measured": 18.96,
-      "reference": 22.3,
-      "deviation_percent": -14.98,
-      "tolerance_percent": 15.0,
+      "measured": 15.1,
+      "reference": 15.46,
+      "deviation_percent": -2.36,
+      "tolerance_percent": 30.0,
       "status": "PASSED"
     },
     {
@@ -54,5 +54,7 @@
       "status": "INFO"
     }
   ],
-  "warnings": []
+  "warnings": [
+    "Performance 42.0% BETTER than baseline for ticks_per_second. Consider updating baseline if code was optimized."
+  ]
 }

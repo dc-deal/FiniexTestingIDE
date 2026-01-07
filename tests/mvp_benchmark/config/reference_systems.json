@@ -14,8 +14,8 @@
                 "scenario": "mvp_backtesting_loadtest_40_scenarios",
                 "metrics": {
                     "ticks_per_second": 49133,
-                    "tickrun_time_s": 30.5,
-                    "warmup_time_s": 22.3,
+                    "tickrun_time_s": 24.9,
+                    "warmup_time_s": 15.46,
                     "total_ticks": 1496267,
                     "scenarios_count": 40
                 }

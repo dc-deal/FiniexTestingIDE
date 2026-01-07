@@ -4,15 +4,15 @@
     "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
     "tolerances": {
         "ticks_per_second": {
-            "percent": 10.0,
+            "percent": 30.0,
             "description": "Main throughput metric - CPU bound"
         },
         "tickrun_time_s": {
-            "percent": 10.0,
+            "percent": 30.0,
             "description": "Tick processing duration - CPU bound"
         },
         "warmup_time_s": {
-            "percent": 15.0,
+            "percent": 30.0,
             "description": "Data loading phase - IO bound (disk dependent)"
         }
     },

@@ -382,22 +382,12 @@ def _save_benchmark_report(report: Dict[str, Any]) -> Path:
 # SESSION FINISH HOOK - SAVE REPORT
 # =============================================================================
 
-@pytest.fixture(scope="session", autouse=True)
-def save_report_on_finish(request, benchmark_report):
-    """
-    Automatically save benchmark report after all tests complete.
+# =============================================================================
+# REPORT SAVING (Called explicitly by test_zz_save_report)
+# =============================================================================
 
-    Uses pytest's request.addfinalizer to run after session.
-    """
-    def finalizer():
-        filepath = _save_benchmark_report(benchmark_report)
-        print(f"\n{'='*60}")
-        print(f"Benchmark report saved: {filepath}")
-        print(f"Overall status: {benchmark_report['overall_status']}")
-        if benchmark_report['warnings']:
-            print(f"Warnings: {len(benchmark_report['warnings'])}")
-            for w in benchmark_report['warnings']:
-                print(f"  ⚠️  {w}")
-        print(f"{'='*60}")
-
-    request.addfinalizer(finalizer)
+# NOTE: We intentionally do NOT use autouse=True here.
+# Reason: When running only test_benchmark_certificate.py, we don't want
+# to trigger the full benchmark execution just to save a report.
+# The report is saved explicitly by test_zz_save_report in
+# test_throughput_regression.py which runs last (alphabetically).
