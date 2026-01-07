@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-01-07T18:43:58.152697+00:00",
+  "valid_until": "2026-04-07T18:43:58.152697+00:00",
+  "git_commit": "986911d",
+  "system_id": "ryzen_7_8845hs_16core",
+  "system_details": {
+    "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "cpu_cores": 16,
+    "ram_total_gb": 30.3,
+    "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
+  },
+  "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+  "debug_mode_detected": false,
+  "overall_status": "PASSED",
+  "metrics": [
+    {
+      "name": "ticks_per_second",
+      "measured": 49208.76,
+      "reference": 49133,
+      "deviation_percent": 0.15,
+      "tolerance_percent": 10.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "tickrun_time_s",
+      "measured": 30.41,
+      "reference": 30.5,
+      "deviation_percent": -0.31,
+      "tolerance_percent": 10.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "warmup_time_s",
+      "measured": 18.96,
+      "reference": 22.3,
+      "deviation_percent": -14.98,
+      "tolerance_percent": 15.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "total_ticks",
+      "measured": 1496267,
+      "reference": 1496267,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "scenarios_count",
+      "measured": 40,
+      "reference": 40,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    }
+  ],
+  "warnings": []
+}

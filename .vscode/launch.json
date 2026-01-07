@@ -41,7 +41,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 TEST LOAD: Ticks&Bars",
+            "name": "📊 TEST LOAD: Ticks&Bars",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -53,6 +53,9 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        // ====================================================
+        // 🧩 PYTEST MVP VALIDATION
+        // ====================================================
         {
             "name": "🧪 Run (BACKTESTING Scenario)",
             "type": "debugpy",
@@ -65,9 +68,18 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
-        // ====================================================
-        // 🧩 PYTEST MVP VALIDATION
-        // ====================================================
+        {
+            "name": "🧪 Run (BENCHMARK Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "mvp_backtesting_loadtest_40_scenarios.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         {
             "name": "🧩 Pytest: MVP Baseline (All)",
             "type": "debugpy",
@@ -82,38 +94,14 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: Warmup Tests",
+            "name": "🧩 Pytest: MVP Benchmark (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/mvp_baseline/test_warmup_validation.py",
-                "-v"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🧩 Pytest: Trade Execution Tests",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/mvp_baseline/test_trade_execution.py",
-                "-v"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🧩 Pytest: Single Test (Debug)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/mvp_baseline/test_trade_execution.py::TestTradeExecution::test_executed_trade_count",
+                "tests/mvp_benchmark/",
                 "-v",
-                "-s"
+                "--tb=short"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
