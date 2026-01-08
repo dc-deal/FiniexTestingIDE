@@ -1,0 +1,33 @@
+{
+    "version": "1.0",
+    "description": "Registered systems with performance baselines",
+    "systems": {
+        "ryzen_7_8845hs_16core": {
+            "description": "Frank's Development System - WSL2/Docker",
+            "hardware": {
+                "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+                "cpu_cores": 16,
+                "ram_minimum_gb": 28.0
+            },
+            "baseline": {
+                "created": "2026-01-07T07:12:34Z",
+                "scenario": "mvp_backtesting_loadtest_40_scenarios",
+                "metrics": {
+                    "ticks_per_second": 49133,
+                    "tickrun_time_s": 24.9,
+                    "warmup_time_s": 15.46,
+                    "total_ticks": 1496267,
+                    "scenarios_count": 40
+                }
+            }
+        }
+    },
+    "registration_instructions": [
+        "To register a new system:",
+        "1. Run the benchmark scenario on your system",
+        "2. Note the performance metrics from the output",
+        "3. Add a new entry to 'systems' with your hardware specs",
+        "4. Set baseline metrics from your run",
+        "5. Use a descriptive system_id (e.g., 'intel_i9_12900k_24core')"
+    ]
+}

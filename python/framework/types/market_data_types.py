@@ -75,3 +75,30 @@ class Bar:
         self.close = tick_price
         self.volume += tick_volume
         self.tick_count += 1
+
+    def to_dict(self) -> dict:
+        """
+        Convert Bar to dictionary for serialization.
+
+        Used for:
+        - BacktestingMetadata bar snapshots
+        - Cross-process data transfer
+        - JSON serialization
+
+        Note: timestamp is already a string in Bar (not datetime).
+
+        Returns:
+            Dict with all bar fields
+        """
+        return {
+            'symbol': self.symbol,
+            'timeframe': self.timeframe,
+            'timestamp': self.timestamp,  # Already ISO string
+            'open': self.open,
+            'high': self.high,
+            'low': self.low,
+            'close': self.close,
+            'volume': self.volume,
+            'tick_count': self.tick_count,
+            'is_complete': self.is_complete
+        }

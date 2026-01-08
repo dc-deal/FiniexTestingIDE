@@ -6,6 +6,7 @@ Loads broker-specific JSON configs and delegates to appropriate adapter.
 Provides common interface for TradeSimulator regardless of broker type.
 """
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -202,10 +203,6 @@ class BrokerConfig:
 
         Raises:
             ValueError: If symbol not found
-
-        Example:
-            spec = broker_config.get_symbol_specification("GBPUSD")
-            is_valid, error = spec.validate_lot_size(0.1)
         """
         symbol_spec = self._symbol_specification.get(symbol)
 

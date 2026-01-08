@@ -41,7 +41,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 TEST LOAD: Ticks&Bars",
+            "name": "📊 TEST LOAD: Ticks&Bars",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -49,6 +49,59 @@
                 "inspect",
                 "EURUSD",
                 "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
+        // 🧩 PYTEST MVP VALIDATION
+        // ====================================================
+        {
+            "name": "🧪 Run (BACKTESTING Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "mvp_backtesting_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Run (BENCHMARK Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "mvp_backtesting_loadtest_40_scenarios.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: MVP Baseline (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/mvp_baseline/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: MVP Benchmark (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/mvp_benchmark/",
+                "-v",
+                "--tb=short"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

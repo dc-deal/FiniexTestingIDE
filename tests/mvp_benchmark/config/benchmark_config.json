@@ -1,0 +1,37 @@
+{
+    "version": "1.0",
+    "description": "MVP Benchmark Test Configuration",
+    "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+    "tolerances": {
+        "ticks_per_second": {
+            "percent": 30.0,
+            "description": "Main throughput metric - CPU bound"
+        },
+        "tickrun_time_s": {
+            "percent": 30.0,
+            "description": "Tick processing duration - CPU bound"
+        },
+        "warmup_time_s": {
+            "percent": 30.0,
+            "description": "Data loading phase - IO bound (disk dependent)"
+        }
+    },
+    "certificate": {
+        "validity_days": 90,
+        "description": "Benchmark report expires after this many days"
+    },
+    "failure_hints": {
+        "warmup_slow": [
+            "Possible causes for slow warmup:",
+            "1. Disk change or degradation (HDD vs SSD)",
+            "2. Warmup algorithm modified",
+            "3. Parquet file structure changed"
+        ],
+        "tickrun_slow": [
+            "Possible causes for slow tick processing:",
+            "1. CPU throttling or background load",
+            "2. Algorithm regression in worker/decision logic",
+            "3. Memory pressure causing swapping"
+        ]
+    }
+}

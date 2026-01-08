@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Type
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.workers.abstract_worker import AbstactWorker
+from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
@@ -63,6 +64,9 @@ class WorkerFactory:
             self._registry["CORE/envelope"] = EnvelopeWorker
             self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
             self._registry["CORE/macd"] = MACDWorker
+
+            # Backtesting workers
+            self._registry["CORE/backtesting/backtesting_sample_worker"] = BacktestingSampleWorker
 
             self._logger.debug(
                 f"Core workers registered: {list(self._registry.keys())}"

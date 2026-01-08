@@ -23,6 +23,7 @@ from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_stats_types import CostBreakdown, ExecutionStats
@@ -331,6 +332,9 @@ class ProcessTickLoopResult:
     portfolio_stats: PortfolioStats = None
     execution_stats: ExecutionStats = None
     cost_breakdown: CostBreakdown = None
+
+    # Trade-by-trade history for P&L verification
+    trade_history: List[TradeRecord] = None
 
     # Profiling data
     profiling_data: ProcessProfileData = None

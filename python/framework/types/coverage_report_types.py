@@ -10,6 +10,7 @@ class GapCategory(Enum):
     """Gap classification categories"""
     SEAMLESS = "seamless"
     WEEKEND = "weekend"
+    HOLIDAY = "holiday"
     SHORT = "short"
     MODERATE = "moderate"
     LARGE = "large"
@@ -61,6 +62,7 @@ class Gap:
         return {
             GapCategory.SEAMLESS: '✅',
             GapCategory.WEEKEND: '✅',
+            GapCategory.HOLIDAY: '✅',  # Expected market closure
             GapCategory.SHORT: '⚠️ ',
             GapCategory.MODERATE: '⚠️ ',
             GapCategory.LARGE: '🔴'

@@ -87,39 +87,6 @@ class SymbolSpecification:
     stops_level: int
     freeze_level: int        # Freeze distance in points (0 = no restriction)
 
-    def get_min_stop_distance(self) -> float:
-        """Get minimum SL/TP distance in price units"""
-        return self.stops_level * self.tick_size
-
-    def get_freeze_distance(self) -> float:
-        """Get freeze distance in price units"""
-        return self.freeze_level * self.tick_size
-
-    def validate_lot_size(self, lots: float) -> tuple[bool, Optional[str]]:
-        """
-        Validate lot size against symbol limits.
-
-        Returns:
-            (is_valid, error_message)
-        """
-        if lots < self.volume_min:
-            return False, f"Lot size {lots} below minimum {self.volume_min}"
-
-        if lots > self.volume_max:
-            return False, f"Lot size {lots} exceeds maximum {self.volume_max}"
-
-        # Check lot step compliance
-        if self.volume_step > 0:
-            remainder = (lots - self.volume_min) % self.volume_step
-            if abs(remainder) > 1e-8:  # Floating point tolerance
-                return False, f"Lot size {lots} not aligned with step {self.volume_step}"
-
-        return True, None
-
-    def format_price(self, price: float) -> str:
-        """Format price with correct decimal places"""
-        return f"{price:.{self.digits}f}"
-
 
 @dataclass(frozen=True)
 class BrokerSpecification:
@@ -155,22 +122,6 @@ class BrokerSpecification:
     expert_allowed: bool     # Can run expert advisors (EAs)?
     hedging_allowed: bool    # Can open opposite positions on same symbol?
     limit_orders: int        # Max number of pending orders (0 = unlimited)
-
-    def get_margin_call_ratio(self) -> float:
-        """Get margin call level as ratio (e.g., 50% → 0.5)"""
-        return self.margin_call_level / 100.0
-
-    def get_stopout_ratio(self) -> float:
-        """Get stopout level as ratio (e.g., 20% → 0.2)"""
-        return self.stopout_level / 100.0
-
-    def is_demo_account(self) -> bool:
-        """Check if this is a demo account"""
-        return self.trade_mode.lower() == "demo"
-
-    def is_real_account(self) -> bool:
-        """Check if this is a real account"""
-        return self.trade_mode.lower() == "real"
 
 
 # ============================================

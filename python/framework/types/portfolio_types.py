@@ -50,6 +50,19 @@ class Position:
     close_time: Optional[datetime] = None
     close_price: Optional[float] = None
 
+    # === Trade Record Fields (for P&L verification) ===
+    entry_tick_value: float = 0.0
+    entry_bid: float = 0.0
+    entry_ask: float = 0.0
+    exit_tick_value: float = 0.0
+    digits: int = 5
+    contract_size: int = 100000
+    gross_pnl: float = 0.0
+
+    # === Tick Index (for backtesting analysis) ===
+    entry_tick_index: int = 0
+    exit_tick_index: int = 0
+
     def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
         """
         Update current price and recalculate unrealized P&L.
@@ -75,6 +88,8 @@ class Position:
         gross_pnl = points * tick_value * self.lots
         total_fees = self.get_total_fees()
 
+        # Store gross_pnl for trade record
+        self.gross_pnl = gross_pnl
         self.unrealized_pnl = gross_pnl - total_fees
 
     def add_fee(self, fee: AbstractTradingFee) -> None:

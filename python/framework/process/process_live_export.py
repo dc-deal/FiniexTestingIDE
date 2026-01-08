@@ -91,7 +91,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
             "initial_balance": portfolio.initial_balance,
             # dirty states
             "current_balance": portfolio.balance,
-            "total_trades": len(portfolio.closed_positions),
+            "total_trades": len(portfolio._trade_history),
             "winning_trades": portfolio._winning_trades,
             "losing_trades": portfolio._losing_trades,
             "portfolio_dirty_flag": portfolio._positions_dirty,
