@@ -321,13 +321,13 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - USDJPY",
+            "name": "📊 MARKET ANALYSIS REPORT - GBPUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
-                "USDJPY"
+                "GBPUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
