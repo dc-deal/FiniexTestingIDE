@@ -2,6 +2,8 @@
 
 **Parameter-centric backtesting for algorithmic trading strategies**
 
+> ⚠️ **No financial advice.** This software is for educational and research purposes only.
+
 > **Version:** 1.0 Alpha  
 > **Status:** MVP Complete - Core backtesting validated  
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
@@ -60,6 +62,59 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 ```
 
 → See [Quickstart Guide](docs/quickstart_guide.md) for step-by-step instructions.
+
+---
+
+## Sample Data
+
+A sample dataset is available for testing and learning:
+
+**Download:** [download link](https://drive.google.com/file/d/1GEdkwWDWKV5n7hUoRALvSB2PR7olkUjR/view?usp=sharing)
+
+### Installation
+
+Extract the ZIP contents to `data/processed/`:
+
+```
+data/processed/
+├── .parquet_tick_index.json
+├── .parquet_bars_index.json
+└── mt5/
+    ├── ticks/
+    │   ├── AUDUSD/
+    │   ├── EURGBP/
+    │   ├── EURUSD/
+    │   ├── GBPUSD/
+    │   ├── NZDUSD/
+    │   ├── USDCAD/
+    │   ├── USDCHF/
+    │   └── USDJPY/
+    └── bars/
+        └── (same structure)
+```
+
+### Dataset Overview
+
+| Symbol | Time Range | Ticks | Duration |
+|--------|------------|-------|----------|
+| AUDUSD | 2025-09-17 → 2026-01-02 | 5.3M | 107 days |
+| EURGBP | 2025-09-21 → 2026-01-02 | 4.6M | 102 days |
+| EURUSD | 2025-09-17 → 2026-01-02 | 5.3M | 107 days |
+| GBPUSD | 2025-09-17 → 2026-01-02 | 8.5M | 107 days |
+| NZDUSD | 2025-09-21 → 2026-01-02 | 3.5M | 102 days |
+| USDCAD | 2025-09-21 → 2026-01-02 | 5.4M | 102 days |
+| USDCHF | 2025-09-21 → 2026-01-02 | 4.7M | 102 days |
+| USDJPY | 2025-09-17 → 2026-01-02 | 9.9M | 107 days |
+
+**Total: ~47M ticks across 8 forex pairs (~3.5 months)**
+
+> ⚠️ **Data Disclaimer:** The provided dataset consists of historical tick and bar data
+collected locally via MetaTrader 5 and processed into Parquet format.
+
+The data is provided strictly for research, backtesting and
+educational purposes. It is not a licensed market data feed,
+may contain gaps or inaccuracies, and must not be used for
+live trading or commercial redistribution.
 
 ---
 
