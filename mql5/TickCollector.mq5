@@ -1,7 +1,10 @@
 //+------------------------------------------------------------------+
 //| FiniexTestingIDE Tick Data Collector - Enhanced Error Version    |
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
-//| Version 1.0.5 - UTC Offset Auto-Detection                       |
+//| Version 1.0.6 - UTC Offset Auto-Detection                       |
+//|                                                                  |
+//| NEW in V1.0.6:                                                   |
+//| - added broker_type : "mt5" to json                    |
 //|                                                                  |
 //| NEW in V1.0.5:                                                   |
 //| - Automatic broker UTC offset detection                         |
@@ -40,7 +43,7 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.1.0"; 
+input string DataFormatVersion = "1.2.0"; 
 // Identifies the data collection platform (mt5, ib, etc.)
 // Only change when importing from a different broker platform!
 input string DataCollectorName = "mt5"; 
@@ -85,7 +88,7 @@ int warningDataGapSeconds = 60;       // Warning bei 1 Min Lücke
 int OnInit()
 {
     Print("═══════════════════════════════════════════════════════════");
-    Print("  FiniexTestingIDE TickCollector V1.0.5                    ");
+    Print("  FiniexTestingIDE TickCollector V1.0.6                    ");
     Print("  UTC Offset Auto-Detection ENABLED (time_msc method)      ");
     Print("═══════════════════════════════════════════════════════════");
     
@@ -153,7 +156,7 @@ int OnInit()
         return INIT_FAILED;
     }
     
-    Print("✅ TickCollector V1.0.5 erfolgreich gestartet für ", Symbol());
+    Print("✅ TickCollector V1.0.6 erfolgreich gestartet für ", Symbol());
     Print("✅ Export-Pfad: ", ExportPath);
     Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
@@ -472,6 +475,7 @@ bool CreateNewExportFile()
         "{\n"
         "  \"metadata\": {\n"
         "    \"symbol\": \"%s\",\n"
+        "    \"broker_type\": \"%s\",\n"           // NEW V1.0.6
         "    \"broker\": \"%s\",\n"
         "    \"server\": \"%s\",\n"
         "    \"broker_utc_offset_hours\": %d,\n"
@@ -512,6 +516,7 @@ bool CreateNewExportFile()
         "  },\n"
         "  \"ticks\": [",
         Symbol(),
+        "mt5",
         AccountInfoString(ACCOUNT_COMPANY),
         serverName,
         g_brokerUtcOffsetHours,
@@ -783,7 +788,7 @@ void OnDeinit(const int reason)
     // Finale Statistiken
     int totalErrors = errorCounts[ERROR_NEGLIGIBLE] + errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL];
     Print("========================================");
-    Print("TickCollector V1.0.5 gestoppt");
+    Print("TickCollector V1.0.6 gestoppt");
     Print("Grund: ", reasonText);
     Print(StringFormat("Finale Statistiken: %d Ticks, %d Errors", tickCounter, totalErrors));
     if (totalErrors > 0)
