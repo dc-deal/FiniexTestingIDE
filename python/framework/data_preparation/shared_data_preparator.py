@@ -291,22 +291,27 @@ class SharedDataPreparator:
         tick_ranges = {}
 
         for req in requirements:
-            self._logger.info(f"📊 Loading ticks for {req.symbol}...")
+            self._logger.info(
+                f"📥 Loading ticks for {req.broker_type}/{req.symbol} "
+                f"(scenario: {req.scenario_name})..."
+            )
 
-            # Determine loading strategy
+            # Determine mode and load
             if req.max_ticks is not None:
                 # Tick-limited mode
                 result = self._load_ticks_tick_mode(
-                    symbol=req.symbol,
-                    start_time=req.start_time,
-                    max_ticks=req.max_ticks
+                    req.broker_type,
+                    req.symbol,
+                    req.start_time,
+                    req.max_ticks
                 )
             else:
                 # Timespan mode
                 result = self._load_ticks_timespan_mode(
-                    symbol=req.symbol,
-                    start_time=req.start_time,
-                    end_time=req.end_time
+                    req.broker_type,
+                    req.symbol,
+                    req.start_time,
+                    req.end_time
                 )
 
             # Handle None (loading failed)
@@ -331,6 +336,7 @@ class SharedDataPreparator:
 
     def _load_ticks_tick_mode(
         self,
+        broker_type: str,
         symbol: str,
         start_time: datetime,
         max_ticks: int
@@ -338,9 +344,8 @@ class SharedDataPreparator:
         """
         Load ticks in tick-limited mode.
 
-        UTC-FIX: Ensures all timestamp comparisons are UTC-aware.
-
         Args:
+            broker_type: Broker type identifier
             symbol: Symbol to load
             start_time: Start time (UTC-aware)
             max_ticks: Maximum ticks to load
@@ -348,16 +353,21 @@ class SharedDataPreparator:
         Returns:
             (ticks, count, time_range) or None if loading failed
         """
-        # Get files from index
-        if symbol not in self.tick_index_manager.index:
-            # Log and return None
+        # Check if broker_type exists in index
+        if broker_type not in self.tick_index_manager.index:
             self._logger.error(
-                f"❌ Symbol {symbol} not found in tick index. "
-                f"Available symbols: {list(self.tick_index_manager.index.keys())}"
+                f"❌ Broker type '{broker_type}' not found in tick index"
             )
             return None
 
-        files = self.tick_index_manager.index[symbol]
+        # Check if symbol exists for this broker_type
+        if symbol not in self.tick_index_manager.index[broker_type]:
+            self._logger.error(
+                f"❌ Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'"
+            )
+            return None
+
+        files = self.tick_index_manager.index[broker_type][symbol]
 
         # UTC-FIX: Ensure start_time is UTC-aware
         start_time = ensure_utc_aware(start_time)
@@ -378,7 +388,7 @@ class SharedDataPreparator:
             last_available = pd.to_datetime(files[-1]['end_time'], utc=True)
 
             self._logger.error(
-                f"❌ No tick data available for {symbol} starting at {start_time}. "
+                f"❌ No tick data available for {broker_type}/{symbol} starting at {start_time}. "
                 f"Available data range: {first_available.strftime('%Y-%m-%d %H:%M:%S')} UTC "
                 f"→ {last_available.strftime('%Y-%m-%d %H:%M:%S')} UTC. "
                 f"This indicates Phase 0.5 validation was skipped or failed."
@@ -411,7 +421,7 @@ class SharedDataPreparator:
         if not all_ticks:
             # Log and return None
             self._logger.error(
-                f"❌ No ticks loaded for {symbol} (check start_time: {start_time})"
+                f"❌ No ticks loaded for {broker_type}/{symbol} (check start_time: {start_time})"
             )
             return None
 
@@ -425,6 +435,7 @@ class SharedDataPreparator:
 
     def _load_ticks_timespan_mode(
         self,
+        broker_type: str,
         symbol: str,
         start_time: datetime,
         end_time: datetime
@@ -432,9 +443,8 @@ class SharedDataPreparator:
         """
         Load ticks in timespan mode.
 
-        UTC-FIX: Ensures all timestamp comparisons are UTC-aware.
-
         Args:
+            broker_type: Broker type identifier
             symbol: Symbol to load
             start_time: Start time (UTC-aware)
             end_time: End time (UTC-aware)
@@ -448,15 +458,15 @@ class SharedDataPreparator:
 
         # Use manager's API to get relevant files
         relevant_files = self.tick_index_manager.get_relevant_files(
+            broker_type=broker_type,
             symbol=symbol,
             start_date=start_time,
             end_date=end_time
         )
 
         if not relevant_files:
-            # Log and return None
             self._logger.error(
-                f"❌ No tick data found for {symbol} in range {start_time} - {end_time}"
+                f"❌ No tick data found for {broker_type}/{symbol} in range {start_time} - {end_time}"
             )
             return None
 
@@ -476,9 +486,8 @@ class SharedDataPreparator:
             all_ticks.extend(df.to_dict('records'))
 
         if not all_ticks:
-            # Log and return None
             self._logger.error(
-                f"❌ No ticks found for {symbol} in range {start_time} - {end_time} "
+                f"❌ No ticks found for {broker_type}/{symbol} in range {start_time} - {end_time} "
                 f"(files loaded but empty after filtering)"
             )
             return None
@@ -518,16 +527,28 @@ class SharedDataPreparator:
             by_symbol_tf[key].append(req)
 
         # Load and filter for each (symbol, timeframe)
-        for (symbol, timeframe), reqs in by_symbol_tf.items():
-            self._logger.info(f"📊 Loading bars for {symbol} {timeframe}...")
+        by_broker_symbol_tf: Dict[Tuple[str,
+                                        str, str], List[BarRequirement]] = {}
+
+        for req in requirements:
+            key = (req.broker_type, req.symbol, req.timeframe)
+            if key not in by_broker_symbol_tf:
+                by_broker_symbol_tf[key] = []
+            by_broker_symbol_tf[key].append(req)
+
+        # Load and filter for each (broker_type, symbol, timeframe)
+        for (broker_type, symbol, timeframe), reqs in by_broker_symbol_tf.items():
+            self._logger.info(
+                f"📊 Loading bars for {broker_type}/{symbol} {timeframe}...")
 
             # Use manager's API to get bar file
-            bar_file = self.bar_index_manager.get_bar_file(symbol, timeframe)
+            bar_file = self.bar_index_manager.get_bar_file(
+                broker_type, symbol, timeframe)
 
             if bar_file is None:
                 self._logger.error(
-                    f"Bar file not found for {symbol} {timeframe} - "
-                    f"available timeframes: {self.bar_index_manager.get_available_timeframes(symbol)}"
+                    f"Bar file not found for {broker_type}/{symbol} {timeframe} - "
+                    f"available timeframes: {self.bar_index_manager.get_available_timeframes(broker_type, symbol)}"
                 )
                 continue
 

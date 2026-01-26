@@ -62,26 +62,36 @@ class DataInspector:
         self._tick_index = tick_index_manager
         self._bar_index = bar_index_manager
 
-    def inspect_ticks(self, symbol: str) -> Dict[str, Any]:
+    def inspect_ticks(self, broker_type: str, symbol: str) -> Dict[str, Any]:
         """
         Inspect tick data for a symbol.
 
         Loads FIRST tick file for inspection (not all files).
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
 
         Returns:
             Dict with metadata, schema, and sample rows
         """
-        # Get first file from index
-        if symbol not in self._tick_index.index:
+        # Check broker_type exists
+        if broker_type not in self._tick_index.index:
             return {
-                'error': f"Symbol {symbol} not found in tick index",
+                'error': f"Broker type '{broker_type}' not found in tick index",
+                'broker_type': broker_type,
                 'symbol': symbol
             }
 
-        files = self._tick_index.index[symbol]
+        # Check symbol exists for broker_type
+        if symbol not in self._tick_index.index[broker_type]:
+            return {
+                'error': f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'",
+                'broker_type': broker_type,
+                'symbol': symbol
+            }
+
+        files = self._tick_index.index[broker_type][symbol]
         first_file = Path(files[0]['path'])
 
         # Load parquet metadata
@@ -107,6 +117,7 @@ class DataInspector:
         }
 
         return {
+            'broker_type': broker_type,
             'symbol': symbol,
             'data_type': 'ticks',
             'metadata': metadata,
@@ -115,11 +126,12 @@ class DataInspector:
             'stats': stats
         }
 
-    def inspect_bars(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def inspect_bars(self, broker_type: str, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
         Inspect bar data for a symbol and timeframe.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe (e.g., 'M5')
 
@@ -129,16 +141,18 @@ class DataInspector:
         if not self._bar_index:
             return {
                 'error': 'Bar index manager not provided',
+                'broker_type': broker_type,
                 'symbol': symbol,
                 'timeframe': timeframe
             }
 
         # Get bar file from index
-        bar_file = self._bar_index.get_bar_file(symbol, timeframe)
+        bar_file = self._bar_index.get_bar_file(broker_type, symbol, timeframe)
 
         if not bar_file:
             return {
-                'error': f"Bar file not found for {symbol} {timeframe}",
+                'error': f"Bar file not found for {broker_type}/{symbol} {timeframe}",
+                'broker_type': broker_type,
                 'symbol': symbol,
                 'timeframe': timeframe
             }
@@ -166,6 +180,7 @@ class DataInspector:
         }
 
         return {
+            'broker_type': broker_type,
             'symbol': symbol,
             'timeframe': timeframe,
             'data_type': 'bars',
@@ -230,10 +245,11 @@ class DataInspector:
         # Header
         vLog.info("\n" + "=" * 80)
         if result['data_type'] == 'ticks':
-            vLog.info(f"🔍 TICK DATA INSPECTION: {result['symbol']}")
+            vLog.info(
+                f"🔍 TICK DATA INSPECTION: {result['broker_type']}/{result['symbol']}")
         else:
             vLog.info(
-                f"🔍 BAR DATA INSPECTION: {result['symbol']} {result['timeframe']}")
+                f"🔍 BAR DATA INSPECTION: {result['broker_type']}/{result['symbol']} {result['timeframe']}")
         vLog.info("=" * 80)
 
         # File statistics

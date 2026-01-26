@@ -24,9 +24,19 @@ class SingleScenario:
     """Test scenario configuration for batch testing"""
     # identification for Scenario, must be unique
     name: str
-    # internal index, the only scurce of truth for scenario picking.
+    # internal index, the only source of truth for scenario picking.
     scenario_index: int
     symbol: str
+
+    # ============================================
+    # DATA SOURCE (NEW - REQUIRED)
+    # ============================================
+    # Determines which tick/bar data collection to load from
+    # Examples: "mt5", "kraken_spot"
+    # Maps to: data/processed/{data_broker_type}/ticks/{symbol}/
+    # This is SEPARATE from broker_type (trading simulation config)
+    data_broker_type: str  # REQUIRED - no default!
+
     start_date: datetime
     end_date: datetime
     max_ticks: Optional[int] = None
@@ -35,23 +45,18 @@ class SingleScenario:
     # ============================================
     # STRATEGY PARAMETERS
     # ============================================
-    # Strategy-Logic (→ WorkerOrchestrator sammelt Requirements & dessen Parameter)
     strategy_config: Dict[str, Any] = field(default_factory=dict)
-
-    # Execution-Optimization (→ Framework)
     execution_config: Optional[Dict[str, Any]] = None
 
     # TradeSimulator configuration (per scenario)
-    # Allows each scenario to have different balance/currency/leverage
-    # broker_type must be set in startup.
+    # broker_type here is for TRADING simulation, not data source!
     broker_type: BrokerType = None
     trade_simulator_config: Optional[Dict[str, Any]] = None
 
-    # account currency and the original value from configuration (can be "auto")
     account_currency: str = ''
     configured_account_currency: str = ''
 
-    # === VALIDATION TRACKING  ===
+    # === VALIDATION TRACKING ===
     validation_result: List[ValidationResult] = field(default_factory=list)
 
     def __post_init__(self):
@@ -81,14 +86,12 @@ class SingleScenario:
         """
         Display string for scenario configuration.
 
-        NOTE: Actual config creation is in ProcessScenarioConfig.from_scenario()
-        This is just for display/debugging purposes.
-
         Returns:
             Human-readable config summary
         """
         return (
             f"Scenario: {self.name}\n"
+            f"  Data Source: {self.data_broker_type}\n"
             f"  Symbol: {self.symbol}\n"
             f"  Period: {self.start_date} → {self.end_date}\n"
             f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"

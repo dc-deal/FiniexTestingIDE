@@ -32,7 +32,8 @@ class TickIndexManager:
         self.data_dir = Path(data_dir)
         # CHANGED: Index-Dateiname für Ticks
         self.index_file = self.data_dir / ".parquet_tick_index.json"
-        self.index: Dict[str, List[Dict]] = {}
+        # {broker_type: {symbol: [files]}}
+        self.index: Dict[str, Dict[str, List[Dict]]] = {}
         self.logger.info("📚 Parquet Index Manager initialized.")
 
     # =========================================================================
@@ -64,20 +65,27 @@ class TickIndexManager:
         for parquet_file in parquet_files:
             try:
                 entry = self._scan_file(parquet_file)
+                broker_type = entry['broker_type']
                 symbol = entry['symbol']
 
-                if symbol not in self.index:
-                    self.index[symbol] = []
+                # Initialize nested structure
+                if broker_type not in self.index:
+                    self.index[broker_type] = {}
 
-                self.index[symbol].append(entry)
+                if symbol not in self.index[broker_type]:
+                    self.index[broker_type][symbol] = []
+
+                self.index[broker_type][symbol].append(entry)
 
             except Exception as e:
                 self.logger.warning(
                     f"Failed to index {parquet_file.name}: {e}")
 
-        # Sort files chronologically per symbol
-        for symbol in self.index:
-            self.index[symbol].sort(key=lambda x: x['start_time'])
+        # Sort files chronologically per broker_type/symbol
+        for broker_type in self.index:
+            for symbol in self.index[broker_type]:
+                self.index[broker_type][symbol].sort(
+                    key=lambda x: x['start_time'])
 
         self.save_index()
 
@@ -164,22 +172,19 @@ class TickIndexManager:
         tick_frequency = round(tick_count / duration_seconds,
                                2) if duration_seconds > 0 else 0.0
 
-        # === NEW: MARKET TYPE AND DATA SOURCE ===
-        # Try to get from metadata, fallback to defaults
+        broker_type_raw = custom_metadata.get(b'broker_type')
+        if broker_type_raw:
+            broker_type = broker_type_raw.decode('utf-8')
+        else:
+            # TEMPORARY FALLBACK: Support old files with data_collector
+            broker_type = custom_metadata.get(
+                b'data_collector', b'mt5').decode('utf-8')
+
         market_type = custom_metadata.get(
             b'market_type', b'forex_cfd').decode('utf-8')
-        data_source = custom_metadata.get(
-            b'data_source', b'mt5').decode('utf-8')
-
-        # Fallback: If not in metadata, use defaults based on source
-        if market_type == 'forex_cfd' and b'market_type' not in custom_metadata:
-            market_type = 'forex_cfd'  # Default for MT5 data
-        if data_source == 'mt5' and b'data_source' not in custom_metadata:
-            data_source = 'mt5'  # Default source
 
         # === BUILD EXTENDED INDEX ENTRY ===
         return {
-            # Basic metadata (unchanged)
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
             'symbol': symbol,
@@ -190,19 +195,17 @@ class TickIndexManager:
             'source_file': source_file,
             'num_row_groups': pq_file.num_row_groups,
 
-            # NEW: Statistics
             'statistics': {
                 'avg_spread_points': round(avg_spread_points, 2) if avg_spread_points else None,
                 'avg_spread_pct': round(avg_spread_pct, 6) if avg_spread_pct else None,
                 'tick_frequency_per_second': tick_frequency
             },
 
-            # NEW: Session distribution (convert numpy int64 to Python int)
             'sessions': {str(k): int(v) for k, v in sessions.items()},
 
-            # NEW: Market metadata
-            'market_type': market_type,
-            'data_source': data_source
+            # CHANGED: broker_type instead of data_source
+            'broker_type': broker_type,
+            'market_type': market_type
         }
 
     def needs_rebuild(self) -> bool:
@@ -232,18 +235,36 @@ class TickIndexManager:
 
     def get_relevant_files(
         self,
+        broker_type: str,
         symbol: str,
         start_date: datetime,
         end_date: datetime
     ) -> List[Path]:
-        """Find ONLY files covering requested time range """
-        if symbol not in self.index:
-            self.logger.warning(f"Symbol '{symbol}' not found in index")
+        """
+        Find ONLY files covering requested time range for specific broker_type.
+
+        Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+            symbol: Trading symbol
+            start_date: Start datetime (UTC)
+            end_date: End datetime (UTC)
+
+        Returns:
+            List of relevant file paths
+        """
+        if broker_type not in self.index:
+            self.logger.warning(
+                f"Broker type '{broker_type}' not found in index")
+            return []
+
+        if symbol not in self.index[broker_type]:
+            self.logger.warning(
+                f"Symbol '{symbol}' not found in index for broker_type '{broker_type}'")
             return []
 
         relevant = []
 
-        for entry in self.index[symbol]:
+        for entry in self.index[broker_type][symbol]:
             file_start = pd.to_datetime(entry['start_time'], utc=True)
             file_end = pd.to_datetime(entry['end_time'], utc=True)
 
@@ -283,23 +304,50 @@ class TickIndexManager:
     # COVERAGE REPORTS
     # =========================================================================
 
-    def get_coverage_report(self, symbol: str) -> CoverageReport:
-        """Generate coverage report for a symbol """
-        if symbol not in self.index:
-            self.logger.warning(f"Symbol '{symbol}' not found in index")
+    def get_coverage_report(self, broker_type: str, symbol: str) -> CoverageReport:
+        """
+        Generate coverage report for a symbol.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            CoverageReport instance or None
+        """
+        if broker_type not in self.index:
+            self.logger.warning(
+                f"Broker type '{broker_type}' not found in index")
             return None
 
-        # Create report with data_dir for intra-file gap detection
-        report = CoverageReport(symbol, data_dir=self.data_dir)
+        if symbol not in self.index[broker_type]:
+            self.logger.warning(
+                f"Symbol '{symbol}' not found in index for broker_type '{broker_type}'")
+            return None
+
+        report = CoverageReport(
+            symbol, broker_type=broker_type, data_dir=self.data_dir)
         report.analyze()
         return report
 
-    def get_symbol_coverage(self, symbol: str) -> Dict:
-        """Get basic coverage statistics for a symbol """
-        if symbol not in self.index:
+    def get_symbol_coverage(self, broker_type: str, symbol: str) -> Dict:
+        """
+        Get basic coverage statistics for a symbol.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Dict with coverage statistics
+        """
+        if broker_type not in self.index:
             return {}
 
-        entries = self.index[symbol]
+        if symbol not in self.index[broker_type]:
+            return {}
+
+        entries = self.index[broker_type][symbol]
 
         return {
             'num_files': len(entries),
@@ -314,12 +362,39 @@ class TickIndexManager:
     # UTILITY METHODS
     # =========================================================================
 
-    def list_symbols(self) -> List[str]:
-        """List all available symbols """
+    def list_symbols(self, broker_type: Optional[str] = None) -> List[str]:
+        """
+        List all available symbols.
+
+        Args:
+            broker_type: If provided, list symbols for this broker_type only.
+                        If None, list all symbols across all broker_types.
+
+        Returns:
+            Sorted list of symbol names
+        """
+        if broker_type:
+            if broker_type not in self.index:
+                return []
+            return sorted(self.index[broker_type].keys())
+
+        # All symbols across all broker_types
+        all_symbols = set()
+        for bt in self.index:
+            all_symbols.update(self.index[bt].keys())
+        return sorted(all_symbols)
+
+    def list_broker_types(self) -> List[str]:
+        """
+        List all available broker types.
+
+        Returns:
+            Sorted list of broker_type names
+        """
         return sorted(self.index.keys())
 
     def print_summary(self) -> None:
-        """Print index summary """
+        """Print index summary grouped by broker_type"""
         print("\n" + "="*60)
         print("📚 Parquet Index Summary")
         print("="*60)
@@ -328,19 +403,28 @@ class TickIndexManager:
             print("   (empty index)")
             return
 
-        for symbol in sorted(self.index.keys()):
-            coverage = self.get_symbol_coverage(symbol)
-            print(f"\n{symbol}:")
-            print(f"   Files:      {coverage['num_files']}")
-            print(f"   Ticks:      {coverage['total_ticks']:,}")
-            print(f"   Size:       {coverage['total_size_mb']:.1f} MB")
-            print(
-                f"   Range:      {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
+        for broker_type in sorted(self.index.keys()):
+            print(f"\n📂 {broker_type}:")
+
+            for symbol in sorted(self.index[broker_type].keys()):
+                coverage = self.get_symbol_coverage(broker_type, symbol)
+                print(f"   {symbol}:")
+                print(f"      Files:  {coverage['num_files']}")
+                print(f"      Ticks:  {coverage['total_ticks']:,}")
+                print(f"      Size:   {coverage['total_size_mb']:.1f} MB")
+                print(
+                    f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
         print("="*60 + "\n")
 
-    def print_coverage_report(self, symbol: str) -> None:
-        """Print coverage report for a symbol """
-        report = self.get_coverage_report(symbol)
+    def print_coverage_report(self, broker_type: str, symbol: str) -> None:
+        """
+        Print coverage report for a symbol.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+        """
+        report = self.get_coverage_report(broker_type, symbol)
         if report is not None:
             print(report.generate_report())

@@ -41,10 +41,11 @@ class ScenarioDataValidator:
         Initialize validator.
 
         Args:
-            coverage_reports: Dict mapping symbol to CoverageReport
+            coverage_reports: Dict mapping (broker_type, symbol) tuple to CoverageReport
             app_config: Application config manager
             logger: Logger instance
         """
+
         self._coverage_reports = coverage_reports
         self._app_config = app_config
         self._logger = logger
@@ -235,10 +236,11 @@ class ScenarioDataValidator:
         warnings = []
 
         # Get coverage report for this symbol
-        report = self._coverage_reports.get(scenario.symbol)
+        report_key = (scenario.data_broker_type, scenario.symbol)
+        report = self._coverage_reports.get(report_key)
         if not report:
             errors.append(
-                f"No coverage report available for {scenario.symbol}")
+                f"No coverage report available for {scenario.data_broker_type}/{scenario.symbol}")
             return ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,

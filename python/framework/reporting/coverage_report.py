@@ -34,16 +34,17 @@ class CoverageReport:
     - Weekend gap listing with Berlin local time
     """
 
-    def __init__(self, symbol: str, data_dir: Path = None):
+    def __init__(self, symbol: str, broker_type: str = "mt5", data_dir: Path = None):
         """
         Initialize coverage report.
 
         Args:
             symbol: Trading symbol
-            files: List of index entries (must be sorted chronologically)
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             data_dir: Data directory for bar access (optional, for intra-file gaps)
         """
         self.symbol = symbol
+        self.broker_type = broker_type  # NEW
         self._data_dir = data_dir
         self.start_time = None
         self.end_time = None
@@ -108,7 +109,9 @@ class CoverageReport:
         bar_index.build_index()
 
         # Get bar file for symbol
-        bar_file = bar_index.get_bar_file(self.symbol, granularity)
+        bar_file = bar_index.get_bar_file(
+            self.broker_type, self.symbol, granularity)
+
         if not bar_file or not bar_file.exists():
             return gaps
 
@@ -241,7 +244,8 @@ class CoverageReport:
 
         # === SECTION 1: Overview ===
         report.append(f"\n{'='*60}")
-        report.append(f"📊 DATA COVERAGE REPORT: {self.symbol}")
+        report.append(
+            f"📊 DATA COVERAGE REPORT: {self.broker_type}/{self.symbol}")
         report.append(f"{'='*60}")
 
         report.append(

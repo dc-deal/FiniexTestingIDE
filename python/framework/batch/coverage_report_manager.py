@@ -53,27 +53,21 @@ class CoverageReportManager:
         self._validator = None
 
     def generate_reports(self):
-        """
-        Generate coverage reports for all symbols.
-
-        Args:
-            symbols: Set of unique symbol names
-
-        Returns:
-            Dict mapping symbol to CoverageReport
-        """
         coverage_reports = {}
 
-        # Get unique symbols from scenarios
-        symbols = set(
-            scenario.symbol for scenario in self._scenarios)
+        # Get unique (broker_type, symbol) pairs from scenarios
+        pairs = set(
+            (scenario.data_broker_type, scenario.symbol)
+            for scenario in self._scenarios
+        )
 
-        # Generate report for each symbol
-        for symbol in symbols:
+        # Generate report for each (broker_type, symbol) pair
+        for broker_type, symbol in pairs:
             report = self._tick_index_manager.get_coverage_report(
-                symbol)
+                broker_type, symbol)
             if report:
-                coverage_reports[symbol] = report
+                # Key is now tuple (broker_type, symbol)
+                coverage_reports[(broker_type, symbol)] = report
 
         self._logger.info(
             f"✅ Generated {len(coverage_reports)} gap report(s)"
@@ -130,18 +124,19 @@ class CoverageReportManager:
                 continue
 
             # === STEP 2: Check coverage report availability ===
-            report = self._coverage_reports.get(scenario.symbol)
+            report_key = (scenario.data_broker_type, scenario.symbol)
+            report = self._coverage_reports.get(report_key)
             if not report:
                 validation_result = ValidationResult(
                     is_valid=False,
                     scenario_name=scenario.name,
                     errors=[
-                        f"No coverage report available for {scenario.symbol}"],
+                        f"No coverage report available for {scenario.data_broker_type}/{scenario.symbol}"],
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
                 self._logger.error(
-                    f"❌ {scenario.name}: No coverage report for {scenario.symbol}"
+                    f"❌ {scenario.name}: No coverage report for {scenario.data_broker_type}/{scenario.symbol}"
                 )
                 continue
 

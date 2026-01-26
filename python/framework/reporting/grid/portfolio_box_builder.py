@@ -159,12 +159,13 @@ def _build_success_portfolio_box(
 
     # Broker name truncation
     broker_display = broker_name[:30] if len(broker_name) > 30 else broker_name
+    data_source = scenario.data_broker_type
 
     # Create content lines (13 stats)
     lines = [
         f"{scenario_name}",
         f"Broker: {broker_display}",
-        f"Account: {currency_display}",
+        f"Account: {currency_display} | Data: {data_source}",
         f"Trades executed: {total_trades} ({winning}W/{losing}L)",
         f"Win Rate: {win_rate:.1%}",
         f"P&L: {renderer.pnl(total_pnl, currency)}{rate_display}",
@@ -286,12 +287,13 @@ def _build_hybrid_portfolio_box(
 
     # Broker name truncation
     broker_display = broker_name[:30] if len(broker_name) > 30 else broker_name
+    data_source = scenario.data_broker_type
 
     # Create content lines (13 stats)
     lines = [
         f"{scenario_name}",
         f"Broker: {broker_display}",
-        f"Account: {currency_display}",
+        f"Account: {currency_display} | Data: {data_source}",
         f"Trades executed: {total_trades} ({winning}W/{losing}L)",
         f"Win Rate: {win_rate:.1%}",
         f"P&L: {renderer.pnl(total_pnl, currency)}{rate_display}",
@@ -337,7 +339,7 @@ def _build_error_portfolio_box(
     # Minimal error display
     lines = [
         renderer.red(f"❌ {scenario_name}"),
-        f"Symbol: {symbol}",
+        f"Symbol: {scenario.data_broker_type}/{symbol}",
         "",
         "No portfolio data available",
         "(Validation failed)",

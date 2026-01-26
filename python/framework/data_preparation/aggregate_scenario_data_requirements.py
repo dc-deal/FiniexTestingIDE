@@ -72,12 +72,14 @@ class AggregateScenarioDataRequirements:
 
         tick_req = TickRequirement(
             scenario_name=scenario.name,
+            broker_type=scenario.data_broker_type,
             symbol=scenario.symbol,
             start_time=start_time,
             end_time=end_time,
             max_ticks=scenario.max_ticks,
             start_readable=start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            end_readable=end_time.strftime("%Y-%m-%d %H:%M:%S")
+            end_readable=end_time.strftime(
+                "%Y-%m-%d %H:%M:%S") if end_time else ""
         )
         self.requirements.add_tick_requirement(tick_req)
 
@@ -105,8 +107,9 @@ class AggregateScenarioDataRequirements:
             requirements = worker_class.calculate_requirements(worker_config)
 
             self._logger.debug(
-                f"[Requirements] {instance_name} ({worker_type}): "
-                f"{requirements}"
+                f"[Requirements] Scenario {scenario_index + 1}: "
+                f"{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
+                f"warmup_by_timeframe={warmup_by_timeframe}"
             )
 
             # Merge with other workers (max per timeframe)
@@ -117,7 +120,7 @@ class AggregateScenarioDataRequirements:
 
         self._logger.debug(
             f"[Requirements] Scenario {scenario_index + 1}: "
-            f"{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
+            f"{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
             f"warmup_by_timeframe={warmup_by_timeframe}"
         )
 
@@ -125,6 +128,7 @@ class AggregateScenarioDataRequirements:
         for timeframe, warmup_count in warmup_by_timeframe.items():
             bar_req = BarRequirement(
                 scenario_name=scenario.name,
+                broker_type=scenario.data_broker_type,
                 symbol=scenario.symbol,
                 timeframe=timeframe,
                 warmup_count=warmup_count,

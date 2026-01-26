@@ -40,6 +40,7 @@
     {
       "name": "USDJPY_blocks_01",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-18T16:00:00+00:00",
       "end_date": "2025-09-19T04:00:00+00:00",
       "max_ticks": null,
@@ -52,6 +53,7 @@
     {
       "name": "USDJPY_blocks_02",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-19T16:00:00+00:00",
       "end_date": "2025-09-19T21:00:00+00:00",
       "max_ticks": null,
@@ -64,6 +66,7 @@
     {
       "name": "USDJPY_blocks_03",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-22T16:00:00+00:00",
       "end_date": "2025-09-23T04:00:00+00:00",
       "max_ticks": null,
@@ -76,6 +79,7 @@
     {
       "name": "USDJPY_blocks_04",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
       "end_date": "2025-09-24T04:00:00+00:00",
       "max_ticks": null,
@@ -88,6 +92,7 @@
     {
       "name": "USDJPY_blocks_05",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-24T16:00:00+00:00",
       "end_date": "2025-09-25T04:00:00+00:00",
       "max_ticks": null,
@@ -100,6 +105,7 @@
     {
       "name": "USDJPY_blocks_06",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-25T16:00:00+00:00",
       "end_date": "2025-09-26T04:00:00+00:00",
       "max_ticks": null,
@@ -112,6 +118,7 @@
     {
       "name": "USDJPY_blocks_07",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-26T16:00:00+00:00",
       "end_date": "2025-09-26T21:00:00+00:00",
       "max_ticks": null,
@@ -124,6 +131,7 @@
     {
       "name": "USDJPY_blocks_08",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-29T16:00:00+00:00",
       "end_date": "2025-09-30T04:00:00+00:00",
       "max_ticks": null,
@@ -136,6 +144,7 @@
     {
       "name": "USDJPY_blocks_09",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-30T16:00:00+00:00",
       "end_date": "2025-10-01T04:00:00+00:00",
       "max_ticks": null,
@@ -148,6 +157,7 @@
     {
       "name": "USDJPY_blocks_10",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-01T16:00:00+00:00",
       "end_date": "2025-10-02T04:00:00+00:00",
       "max_ticks": null,
@@ -160,6 +170,7 @@
     {
       "name": "USDJPY_blocks_11",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-02T16:00:00+00:00",
       "end_date": "2025-10-03T04:00:00+00:00",
       "max_ticks": null,
@@ -172,6 +183,7 @@
     {
       "name": "USDJPY_blocks_12",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-03T16:00:00+00:00",
       "end_date": "2025-10-03T21:00:00+00:00",
       "max_ticks": null,
@@ -184,6 +196,7 @@
     {
       "name": "USDJPY_blocks_13",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-06T16:00:00+00:00",
       "end_date": "2025-10-07T04:00:00+00:00",
       "max_ticks": null,
@@ -196,6 +209,7 @@
     {
       "name": "USDJPY_blocks_14",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-07T16:00:00+00:00",
       "end_date": "2025-10-08T04:00:00+00:00",
       "max_ticks": null,
@@ -208,6 +222,7 @@
     {
       "name": "USDJPY_blocks_15",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-08T16:00:00+00:00",
       "end_date": "2025-10-09T04:00:00+00:00",
       "max_ticks": null,
@@ -220,6 +235,7 @@
     {
       "name": "USDJPY_blocks_16",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-09T16:00:00+00:00",
       "end_date": "2025-10-10T04:00:00+00:00",
       "max_ticks": null,
@@ -232,6 +248,7 @@
     {
       "name": "USDJPY_blocks_17",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-10T16:00:00+00:00",
       "end_date": "2025-10-10T21:00:00+00:00",
       "max_ticks": null,
@@ -244,6 +261,7 @@
     {
       "name": "USDJPY_blocks_18",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-13T16:00:00+00:00",
       "end_date": "2025-10-14T04:00:00+00:00",
       "max_ticks": null,
@@ -256,6 +274,7 @@
     {
       "name": "USDJPY_blocks_19",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-14T16:00:00+00:00",
       "end_date": "2025-10-15T04:00:00+00:00",
       "max_ticks": null,
@@ -268,6 +287,7 @@
     {
       "name": "USDJPY_blocks_20",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-16T16:00:00+00:00",
       "end_date": "2025-10-17T04:00:00+00:00",
       "max_ticks": null,
@@ -280,6 +300,7 @@
     {
       "name": "USDJPY_blocks_21",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-17T16:00:00+00:00",
       "end_date": "2025-10-17T21:00:00+00:00",
       "max_ticks": null,
@@ -292,6 +313,7 @@
     {
       "name": "USDJPY_blocks_22",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-20T16:00:00+00:00",
       "end_date": "2025-10-21T04:00:00+00:00",
       "max_ticks": null,
@@ -304,6 +326,7 @@
     {
       "name": "USDJPY_blocks_23",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-21T16:00:00+00:00",
       "end_date": "2025-10-22T04:00:00+00:00",
       "max_ticks": null,
@@ -316,6 +339,7 @@
     {
       "name": "USDJPY_blocks_24",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-22T16:00:00+00:00",
       "end_date": "2025-10-23T04:00:00+00:00",
       "max_ticks": null,
@@ -328,6 +352,7 @@
     {
       "name": "USDJPY_blocks_25",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-23T16:00:00+00:00",
       "end_date": "2025-10-24T04:00:00+00:00",
       "max_ticks": null,
@@ -340,6 +365,7 @@
     {
       "name": "USDJPY_blocks_26",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-24T16:00:00+00:00",
       "end_date": "2025-10-24T21:00:00+00:00",
       "max_ticks": null,
@@ -352,6 +378,7 @@
     {
       "name": "USDJPY_blocks_27",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-27T16:00:00+00:00",
       "end_date": "2025-10-28T04:00:00+00:00",
       "max_ticks": null,
@@ -364,6 +391,7 @@
     {
       "name": "USDJPY_blocks_28",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-28T16:00:00+00:00",
       "end_date": "2025-10-29T04:00:00+00:00",
       "max_ticks": null,
@@ -376,6 +404,7 @@
     {
       "name": "USDJPY_blocks_29",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-29T16:00:00+00:00",
       "end_date": "2025-10-30T04:00:00+00:00",
       "max_ticks": null,
@@ -388,6 +417,7 @@
     {
       "name": "USDJPY_blocks_30",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-30T16:00:00+00:00",
       "end_date": "2025-10-31T04:00:00+00:00",
       "max_ticks": null,
@@ -400,6 +430,7 @@
     {
       "name": "USDJPY_blocks_31",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-31T16:00:00+00:00",
       "end_date": "2025-10-31T21:00:00+00:00",
       "max_ticks": null,
@@ -412,6 +443,7 @@
     {
       "name": "USDJPY_blocks_32",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-03T16:00:00+00:00",
       "end_date": "2025-11-04T04:00:00+00:00",
       "max_ticks": null,
@@ -424,6 +456,7 @@
     {
       "name": "USDJPY_blocks_33",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-04T16:00:00+00:00",
       "end_date": "2025-11-05T04:00:00+00:00",
       "max_ticks": null,
@@ -436,6 +469,7 @@
     {
       "name": "USDJPY_blocks_34",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-05T16:00:00+00:00",
       "end_date": "2025-11-06T04:00:00+00:00",
       "max_ticks": null,
@@ -448,6 +482,7 @@
     {
       "name": "USDJPY_blocks_35",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-06T16:00:00+00:00",
       "end_date": "2025-11-07T04:00:00+00:00",
       "max_ticks": null,
@@ -460,6 +495,7 @@
     {
       "name": "USDJPY_blocks_36",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-07T16:00:00+00:00",
       "end_date": "2025-11-07T21:00:00+00:00",
       "max_ticks": null,
@@ -472,6 +508,7 @@
     {
       "name": "USDJPY_blocks_37",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-10T16:00:00+00:00",
       "end_date": "2025-11-11T04:00:00+00:00",
       "max_ticks": null,
@@ -484,6 +521,7 @@
     {
       "name": "USDJPY_blocks_38",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-11T16:00:00+00:00",
       "end_date": "2025-11-12T04:00:00+00:00",
       "max_ticks": null,
@@ -496,6 +534,7 @@
     {
       "name": "USDJPY_blocks_39",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-14T16:00:00+00:00",
       "end_date": "2025-11-14T21:00:00+00:00",
       "max_ticks": null,
@@ -508,6 +547,7 @@
     {
       "name": "USDJPY_blocks_40",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-17T16:00:00+00:00",
       "end_date": "2025-11-18T02:00:00+00:00",
       "max_ticks": null,

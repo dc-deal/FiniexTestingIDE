@@ -42,7 +42,8 @@ class BarsIndexManager:
         self.data_dir = Path(data_dir)
         self.index_file = self.data_dir / ".parquet_bars_index.json"
         # {symbol: {timeframe: entry}}
-        self.index: Dict[str, Dict[str, Dict]] = {}
+        # {broker_type: {symbol: {tf: entry}}}
+        self.index: Dict[str, Dict[str, Dict[str, Dict]]] = {}
         self.logger = logger
 
     def _version_less_than(self, version: str, compare_to: str) -> bool:
@@ -105,13 +106,18 @@ class BarsIndexManager:
         for bar_file in bar_files:
             try:
                 entry = self._scan_bar_file(bar_file)
+                broker_type = entry['broker_type']
                 symbol = entry['symbol']
                 timeframe = entry['timeframe']
 
-                if symbol not in self.index:
-                    self.index[symbol] = {}
+                # Initialize nested structure
+                if broker_type not in self.index:
+                    self.index[broker_type] = {}
 
-                self.index[symbol][timeframe] = entry
+                if symbol not in self.index[broker_type]:
+                    self.index[broker_type][symbol] = {}
+
+                self.index[broker_type][symbol][timeframe] = entry
 
             except Exception as e:
                 self.logger.warning(f"Failed to index {bar_file.name}: {e}")
@@ -224,7 +230,8 @@ class BarsIndexManager:
             # Version and market type metadata
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
-            'data_source': metadata.get('data_collector', 'mt5'),
+            # legacy compability : data_collector
+            'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
             'market_type': market_type,
             'primary_activity_metric': primary_activity_metric,
 
@@ -267,54 +274,58 @@ class BarsIndexManager:
 
     def get_bar_file(
         self,
+        broker_type: str,
         symbol: str,
         timeframe: str
     ) -> Optional[Path]:
         """
-        Get bar file path for symbol/timeframe.
-
-        THIS IS THE CORE FUNCTION!
-        Returns the single bar file for warmup or backtesting.
+        Get bar file path for broker_type/symbol/timeframe.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol (e.g., 'EURUSD')
             timeframe: Timeframe (e.g., 'M5')
 
         Returns:
             Path to bar file or None if not found
-
-        Example:
-            >>> index = BarsIndexManager(data_dir)
-            >>> bar_file = index.get_bar_file('EURUSD', 'M5')
-            >>> bars = pd.read_parquet(bar_file)  # Load M5 bars instantly!
         """
-        if symbol not in self.index:
-            self.logger.warning(f"Symbol '{symbol}' not found in bar index")
+        if broker_type not in self.index:
+            self.logger.warning(
+                f"Broker type '{broker_type}' not found in bar index")
             return None
 
-        if timeframe not in self.index[symbol]:
+        if symbol not in self.index[broker_type]:
             self.logger.warning(
-                f"Timeframe '{timeframe}' not found for {symbol} in bar index"
+                f"Symbol '{symbol}' not found in bar index for broker_type '{broker_type}'")
+            return None
+
+        if timeframe not in self.index[broker_type][symbol]:
+            self.logger.warning(
+                f"Timeframe '{timeframe}' not found for {symbol} in bar index (broker_type: {broker_type})"
             )
             return None
 
-        entry = self.index[symbol][timeframe]
+        entry = self.index[broker_type][symbol][timeframe]
         return Path(entry['path'])
 
-    def get_available_timeframes(self, symbol: str) -> List[str]:
+    def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """
         Get list of available timeframes for a symbol.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
 
         Returns:
             List of available timeframes (e.g., ['M1', 'M5', 'M15'])
         """
-        if symbol not in self.index:
+        if broker_type not in self.index:
             return []
 
-        return sorted(self.index[symbol].keys())
+        if symbol not in self.index[broker_type]:
+            return []
+
+        return sorted(self.index[broker_type][symbol].keys())
 
     # =========================================================================
     # INDEX PERSISTENCE
@@ -347,30 +358,56 @@ class BarsIndexManager:
     # UTILITY METHODS
     # =========================================================================
 
-    def list_symbols(self) -> List[str]:
+    def list_symbols(self, broker_type: Optional[str] = None) -> List[str]:
         """
         List all available symbols in bar index.
+
+        Args:
+            broker_type: If provided, list symbols for this broker_type only.
+                        If None, list all symbols across all broker_types.
 
         Returns:
             Sorted list of symbol names
         """
+        if broker_type:
+            if broker_type not in self.index:
+                return []
+            return sorted(self.index[broker_type].keys())
+
+        # All symbols across all broker_types
+        all_symbols = set()
+        for bt in self.index:
+            all_symbols.update(self.index[bt].keys())
+        return sorted(all_symbols)
+
+    def list_broker_types(self) -> List[str]:
+        """
+        List all available broker types.
+
+        Returns:
+            Sorted list of broker_type names
+        """
         return sorted(self.index.keys())
 
-    def get_symbol_stats(self, symbol: str) -> Dict:
+    def get_symbol_stats(self, broker_type: str, symbol: str) -> Dict:
         """
         Get statistics for a symbol.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
 
         Returns:
             Dict with statistics per timeframe
         """
-        if symbol not in self.index:
+        if broker_type not in self.index:
+            return {}
+
+        if symbol not in self.index[broker_type]:
             return {}
 
         stats = {}
-        for timeframe, entry in self.index[symbol].items():
+        for timeframe, entry in self.index[broker_type][symbol].items():
             stats[timeframe] = {
                 'bar_count': entry['bar_count'],
                 'file_size_mb': entry['file_size_mb'],
@@ -381,7 +418,7 @@ class BarsIndexManager:
         return stats
 
     def print_summary(self) -> None:
-        """Print bar index summary"""
+        """Print bar index summary grouped by broker_type"""
         print("\n" + "="*60)
         print("📊 Bar Index Summary")
         print("="*60)
@@ -390,13 +427,16 @@ class BarsIndexManager:
             print("   (empty index)")
             return
 
-        for symbol in sorted(self.index.keys()):
-            print(f"\n{symbol}:")
-            stats = self.get_symbol_stats(symbol)
+        for broker_type in sorted(self.index.keys()):
+            print(f"\n📂 {broker_type}:")
 
-            for timeframe in sorted(stats.keys()):
-                tf_stats = stats[timeframe]
-                print(f"   {timeframe}: {tf_stats['bar_count']:,} bars "
-                      f"({tf_stats['file_size_mb']:.1f} MB)")
+            for symbol in sorted(self.index[broker_type].keys()):
+                print(f"   {symbol}:")
+                stats = self.get_symbol_stats(broker_type, symbol)
+
+                for timeframe in sorted(stats.keys()):
+                    tf_stats = stats[timeframe]
+                    print(f"      {timeframe}: {tf_stats['bar_count']:,} bars "
+                          f"({tf_stats['file_size_mb']:.1f} MB)")
 
         print("="*60 + "\n")

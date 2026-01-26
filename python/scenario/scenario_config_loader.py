@@ -120,11 +120,38 @@ class ScenarioConfigLoader:
                 warn_on_override=warn_on_override
             )
 
+            # ============================================
+            # DATA SOURCE VALIDATION (NEW - REQUIRED)
+            # ============================================
+            # data_broker_type determines which tick/bar index to load from
+            # Examples: "mt5" → data/processed/mt5/ticks/{symbol}/
+            #           "kraken_spot" → data/processed/kraken_spot/ticks/{symbol}/
+            data_broker_type = scenario_data.get('data_broker_type')
+            if not data_broker_type:
+                raise ValueError(
+                    f"Scenario '{scenario_data['name']}' missing required field 'data_broker_type'.\n"
+                    f"\n"
+                    f"This field specifies which data collection to load ticks/bars from.\n"
+                    f"\n"
+                    f"Add to your scenario:\n"
+                    f"  {{\n"
+                    f"    \"name\": \"{scenario_data['name']}\",\n"
+                    f"    \"data_broker_type\": \"mt5\",  <-- ADD THIS\n"
+                    f"    \"symbol\": \"{scenario_data.get('symbol', 'SYMBOL')}\",\n"
+                    f"    ...\n"
+                    f"  }}\n"
+                    f"\n"
+                    f"Available values depend on your imported data:\n"
+                    f"  - \"mt5\" for MT5/MetaTrader data\n"
+                    f"  - \"kraken_spot\" for Kraken crypto data\n"
+                )
+
             scenario = SingleScenario(
                 name=scenario_data['name'],
                 # important for data packages in parallel processing -> sub processes.
                 scenario_index=current_scenario_index,
                 symbol=scenario_data['symbol'],
+                data_broker_type=data_broker_type,
                 start_date=parse_datetime(scenario_data['start_date']),
                 end_date=parse_datetime(scenario_data['end_date']),
                 data_mode=scenario_data.get('data_mode', 'realistic'),

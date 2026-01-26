@@ -116,7 +116,7 @@ def _build_success_scenario_box(
     # Create content lines (9 stats)
     lines = [
         f"{scenario_name}",
-        f"Symbol: {symbol}",
+        f"Symbol: {scenario.data_broker_type}/{symbol}",
         f"Duration: {duration_str}",
         f"Ticks: {ticks_processed:,}",
         f"{tick_timespan_str}",
@@ -198,7 +198,7 @@ def _build_hybrid_scenario_box(
     # Create content lines (9 stats)
     lines = [
         f"{scenario_name}",
-        f"Symbol: {symbol}",
+        f"Symbol: {scenario.data_broker_type}/{symbol}",
         f"Duration: {duration_str}",
         f"Ticks: {ticks:,}",
         f"{tick_timespan_str}",
@@ -243,7 +243,7 @@ def _build_error_scenario_box(
     # Build content lines
     lines = [
         renderer.red(f"❌ {scenario_name}"),
-        f"Symbol: {symbol}",
+        f"Symbol: {scenario.data_broker_type}/{symbol}",
         "",  # Separator
         renderer.red(f"Error: {process_result.error_type or 'Unknown'}"),
     ]

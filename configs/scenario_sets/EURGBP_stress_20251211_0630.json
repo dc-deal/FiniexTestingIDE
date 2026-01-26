@@ -40,6 +40,7 @@
     {
       "name": "EURGBP_stress_01",
       "symbol": "EURGBP",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-26T08:00:00+00:00",
       "end_date": "2025-11-26T14:00:00+00:00",
       "max_ticks": null,
@@ -52,6 +53,7 @@
     {
       "name": "EURGBP_stress_02",
       "symbol": "EURGBP",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-25T11:00:00+00:00",
       "end_date": "2025-11-25T17:00:00+00:00",
       "max_ticks": null,
@@ -64,6 +66,7 @@
     {
       "name": "EURGBP_stress_03",
       "symbol": "EURGBP",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-24T11:00:00+00:00",
       "end_date": "2025-11-24T17:00:00+00:00",
       "max_ticks": null,
@@ -76,6 +79,7 @@
     {
       "name": "EURGBP_stress_04",
       "symbol": "EURGBP",
+      "data_broker_type": "mt5",
       "start_date": "2025-11-25T04:00:00+00:00",
       "end_date": "2025-11-25T10:00:00+00:00",
       "max_ticks": null,
@@ -88,6 +92,7 @@
     {
       "name": "EURGBP_stress_05",
       "symbol": "EURGBP",
+      "data_broker_type": "mt5",
       "start_date": "2025-12-03T11:00:00+00:00",
       "end_date": "2025-12-03T17:00:00+00:00",
       "max_ticks": null,

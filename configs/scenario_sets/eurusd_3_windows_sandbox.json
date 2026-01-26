@@ -49,6 +49,7 @@
     {
       "name": "GBPUSD_window_01",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-09T20:00:00+00:00",
       "end_date": "2025-10-09T23:59:00+00:00",
       "max_ticks": 5000,
@@ -61,6 +62,7 @@
     {
       "name": "GBPUSD_window_02",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-14T14:00:00+00:00",
       "end_date": "2025-10-14T23:00:00+00:00",
       "max_ticks": 5000,
@@ -73,6 +75,7 @@
     {
       "name": "GBPUSD_window_03",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-25T16:00:00+00:00",
       "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 5000,
@@ -85,6 +88,7 @@
     {
       "name": "USDJPY_window_04",
       "symbol": "USDJPY",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
       "end_date": "2025-09-23T23:00:00+00:00",
       "max_ticks": null,
@@ -99,6 +103,7 @@
     {
       "name": "GBPUSD_window_05",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-24T16:00:00+00:00",
       "end_date": "2025-09-24T23:00:00+00:00",
       "max_ticks": null,
@@ -111,6 +116,7 @@
     {
       "name": "GBPUSD_window_06",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-10-09T20:00:00+00:00",
       "end_date": "2025-10-09T23:59:00+00:00",
       "max_ticks": 90000,
@@ -123,6 +129,7 @@
     {
       "name": "GBPUSD_window_07",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-25T14:00:00+00:00",
       "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 20000,
@@ -135,6 +142,7 @@
     {
       "name": "GBPUSD_window_08",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-25T16:00:00+00:00",
       "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 20000,
@@ -147,6 +155,7 @@
     {
       "name": "GBPUSD_window_09",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
       "end_date": "2025-09-23T23:00:00+00:00",
       "max_ticks": null,
@@ -159,6 +168,7 @@
     {
       "name": "GBPUSD_window_10",
       "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
       "start_date": "2025-09-24T16:00:00+00:00",
       "end_date": "2025-09-24T23:00:00+00:00",
       "max_ticks": null,
