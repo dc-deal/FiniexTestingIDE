@@ -355,13 +355,27 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - GBPUSD",
+            "name": "📊 MARKET ANALYSIS REPORT - mt5/GBPUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
+                "mt5",
                 "GBPUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 MARKET ANALYSIS REPORT - kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "analyze",
+                "kraken_spot",
+                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -373,6 +387,7 @@
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
+                "mt5",
                 "USDJPY",
                 "--strategy",
                 "blocks",
@@ -393,6 +408,7 @@
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
+                "mt5",
                 "EURGBP",
                 "--strategy",
                 "stress",

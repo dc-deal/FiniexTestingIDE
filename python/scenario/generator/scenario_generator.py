@@ -67,6 +67,7 @@ class ScenarioGenerator:
 
     def generate(
         self,
+        broker_type: str,
         symbols: List[str],
         strategy: GenerationStrategy,
         count: Optional[int] = None,
@@ -81,6 +82,7 @@ class ScenarioGenerator:
         Generate scenario candidates.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbols: List of symbols to generate for
             strategy: Generation strategy
             count: Number of scenarios
@@ -102,7 +104,7 @@ class ScenarioGenerator:
         symbol = symbols[0]
 
         # Analyze the symbol (for metadata)
-        analysis = self._analyzer.analyze_symbol(symbol)
+        analysis = self._analyzer.analyze_symbol(broker_type, symbol)
 
         # Note: Blocks and Stress generators handle their own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")
@@ -111,7 +113,7 @@ class ScenarioGenerator:
         if strategy == GenerationStrategy.BLOCKS:
             hours = block_hours or self._config.blocks.default_block_hours
             scenarios = self._blocks_gen.generate(
-                symbol, hours, count, sessions_filter
+                broker_type, symbol, hours, count, sessions_filter
             )
             session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
             vLog.info(
@@ -123,7 +125,7 @@ class ScenarioGenerator:
             vLog.info(
                 f"Generating {effective_count} {strategy.value} scenarios")
             scenarios = self._stress_gen.generate(
-                symbol, hours, effective_count, max_ticks
+                broker_type, symbol, hours, effective_count, max_ticks
             )
 
         else:

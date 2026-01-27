@@ -300,6 +300,9 @@ class ScenarioCandidate:
     start_time: datetime
     end_time: datetime
 
+    # Data source identifier
+    broker_type: str  # e.g., 'mt5', 'kraken_spot'
+
     # Selection criteria
     regime: VolatilityRegime
     session: TradingSession
@@ -334,6 +337,7 @@ class ScenarioCandidate:
         return {
             'name': name,
             'symbol': self.symbol,
+            'data_broker_type': self.broker_type,
             'start_date': self.start_time.isoformat(),
             'end_date': self.end_time.isoformat(),
             'max_ticks': effective_max_ticks,  # None → null in JSON

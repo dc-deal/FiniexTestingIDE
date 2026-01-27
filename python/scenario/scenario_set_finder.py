@@ -6,6 +6,7 @@ FIX01: Added time analysis and strategy info extraction
 """
 
 from pathlib import Path
+import traceback
 from typing import List
 from datetime import datetime
 import json
@@ -70,7 +71,7 @@ class ScenarioSetFinder:
 
         # Load via ScenarioConfigLoader (full validation)
         loaded_scenario_set = self._config_loader.load_config(filename)
-        scenarios = loaded_scenario_set.get_all_scenarios()
+        scenarios = loaded_scenario_set.scenarios
 
         # Load raw JSON for full counts
         with open(config_path, 'r') as f:
@@ -91,8 +92,8 @@ class ScenarioSetFinder:
         for scenario in scenarios:
             if scenario.max_ticks is None:
                 # Timespan mode - calculate duration
-                start_dt = datetime.fromisoformat(scenario.start_date)
-                end_dt = datetime.fromisoformat(scenario.end_date)
+                start_dt = scenario.start_date
+                end_dt = scenario.end_date
                 duration_seconds = (end_dt - start_dt).total_seconds()
                 timespan_scenarios.append(duration_seconds)
             else:
@@ -139,7 +140,7 @@ class ScenarioSetFinder:
 
         return ScenarioSetMetadata(
             filename=filename,
-            scenario_set_name=loaded_config.scenario_set_name,
+            scenario_set_name=loaded_scenario_set.scenario_set_name,
             total_count=total_count,
             enabled_count=enabled_count,
             disabled_count=disabled_count,
@@ -172,7 +173,7 @@ class ScenarioSetFinder:
                 results.append(metadata)
             except Exception as e:
                 vLog.warning(
-                    f"⚠️ Skipping invalid config: {file_path.name}"
+                    f"⚠️ Skipping invalid config: {file_path.name}, {traceback.format_exc()}"
                 )
 
         return results
