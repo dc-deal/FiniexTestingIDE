@@ -15,6 +15,7 @@ import pandas as pd
 import pytz
 
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
@@ -44,10 +45,15 @@ class CoverageReport:
             data_dir: Data directory for bar access (optional, for intra-file gaps)
         """
         self.symbol = symbol
-        self.broker_type = broker_type  # NEW
+        self.broker_type = broker_type
         self._data_dir = data_dir
         self.start_time = None
         self.end_time = None
+
+        # NEW: Get market rules for weekend closure detection
+        market_config = MarketConfigManager()
+        market_rules = market_config.get_market_rules_for_broker(broker_type)
+        self._weekend_closure = market_rules.weekend_closure
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -147,7 +153,8 @@ class CoverageReport:
                         gap_start,
                         gap_end,
                         gap_seconds,
-                        thresholds
+                        thresholds,
+                        weekend_closure=self._weekend_closure
                     )
 
                     # Create gap object (no file1/file2 for intra-file gaps)
@@ -174,7 +181,8 @@ class CoverageReport:
                     gap_start,
                     gap_end,
                     gap_seconds,
-                    thresholds
+                    thresholds,
+                    weekend_closure=self._weekend_closure
                 )
 
                 gap = Gap(
