@@ -67,7 +67,7 @@ class BarIndexCLI:
         else:
             print("Index file:  (not found)")
 
-        # NEW: Get broker_types first
+        # Get broker_types first
         broker_types = self.index_manager.list_broker_types()
         print(
             f"Broker Types: {len(broker_types)} ({', '.join(broker_types) if broker_types else 'none'})")
@@ -90,7 +90,7 @@ class BarIndexCLI:
                     self.index_manager.index[broker_type][symbol])
         print(f"Timeframes:  {total_timeframes} (across all symbols)")
 
-        # NEW: Iterate over broker_types → symbols → timeframes
+        # Iterate over broker_types → symbols → timeframes
         for broker_type in sorted(broker_types):
             print("\n" + "─"*80)
             print(f"📁 Broker Type: {broker_type}")
@@ -104,7 +104,7 @@ class BarIndexCLI:
 
             # List each symbol with available timeframes
             for symbol in sorted(symbols):
-                # NEW: Pass broker_type to methods
+                # Pass broker_type to methods
                 timeframes = self.index_manager.get_available_timeframes(
                     broker_type, symbol)
                 stats = self.index_manager.get_symbol_stats(
@@ -120,7 +120,7 @@ class BarIndexCLI:
 
                 # Get first timeframe entry for metadata
                 first_tf = sorted(timeframes)[0]
-                # NEW: Access with broker_type first
+                # Access with broker_type first
                 first_entry = self.index_manager.index[broker_type][symbol][first_tf]
 
                 # Show metadata if available
@@ -149,7 +149,7 @@ class BarIndexCLI:
                     tf_stats = stats[tf]
 
                     # Get full entry for activity data
-                    # NEW: Access with broker_type first
+                    # Access with broker_type first
                     entry = self.index_manager.index[broker_type][symbol][tf]
                     total_activity = provider.get_total_activity_value(
                         entry, market_type)
@@ -263,7 +263,7 @@ def main():
             cli.cmd_report()
 
         elif command == "render":
-            # NEW: render requires BROKER_TYPE as second argument
+            # render requires BROKER_TYPE as second argument
             if len(sys.argv) < 3:
                 print("❌ Usage: render BROKER_TYPE [--clean]")
                 print("   Example: render mt5")

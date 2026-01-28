@@ -42,7 +42,7 @@ class TickRequirement:
     Supports both tick-limited and timespan modes.
     """
     scenario_name: str
-    # NEW: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+    # Broker type identifier (e.g., 'mt5', 'kraken_spot')
     broker_type: str
     symbol: str
     start_time: datetime
@@ -60,7 +60,7 @@ class BarRequirement:
     Extracted from worker configurations.
     """
     scenario_name: str
-    # NEW: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+    # Broker type identifier (e.g., 'mt5', 'kraken_spot')
     broker_type: str
     symbol: str
     timeframe: str

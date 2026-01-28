@@ -13,6 +13,7 @@ Responsibilities:
 from typing import Dict, List, Any
 from dataclasses import dataclass
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
@@ -79,20 +80,15 @@ class BrokerDataPreparator:
         - Populates self._broker_scenario_map
         - Assigns scenario.broker_type for each scenario
         """
-        for scenario in self.scenarios:
-            config_path = scenario.trade_simulator_config.get(
-                "broker_config_path", None)
+        # Initialize MarketConfigManager once for all scenarios
+        market_config = MarketConfigManager()
 
-            if config_path is None:
-                validation_error = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[
-                        f"Missing 'broker_config_path' in trade_simulator_config"],
-                    warnings=[]
-                )
-                scenario.validation_result.append(validation_error)
-                continue  # Skip this scenario, continue with others
+        for scenario in self.scenarios:
+            # Get config_path from MarketConfigManager via data_broker_type
+            # This replaces: scenario.trade_simulator_config.get("broker_config_path")
+            config_path = market_config.get_broker_config_path(
+                scenario.data_broker_type
+            )
 
             # Load broker config (cached: only once per unique config_path)
             if config_path not in self._config_path_cache:
@@ -118,9 +114,9 @@ class BrokerDataPreparator:
             # Track scenario assignment
             self._broker_scenario_map[broker_type].scenarios.append(
                 scenario.name)
-            # track symbols, but do not resolve (performance)
-            # will be resolved later in the reports.
-            # can be resolved with broker_config.get_symbol_specification
+            # Track symbols, but do not resolve (performance)
+            # Will be resolved later in the reports.
+            # Can be resolved with broker_config.get_symbol_specification
             self._broker_scenario_map[broker_type].symbols.add(scenario.symbol)
 
     def _serialize_broker_configs(self) -> Dict[BrokerType, Dict[str, Any]]:

@@ -2,7 +2,6 @@
   "_comment": "Static broker configuration for FiniexTestingIDE - Kraken Spot",
   "_version": "1.0",
   "data_broker_type": "mt5",
-  ,
   "export_info": {
     "timestamp": "2026-01-25T10:22:47.391699+00:00",
     "source": "Kraken Public API",

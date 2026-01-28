@@ -50,7 +50,7 @@ class CoverageReport:
         self.start_time = None
         self.end_time = None
 
-        # NEW: Get market rules for weekend closure detection
+        # Get market rules for weekend closure detection
         market_config = MarketConfigManager()
         market_rules = market_config.get_market_rules_for_broker(broker_type)
         self._weekend_closure = market_rules.weekend_closure

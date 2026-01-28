@@ -51,15 +51,6 @@ class BrokerConfig:
     - Provide unified interface for TradeSimulator
     - Delegate broker-specific operations to adapter
 
-    Usage:
-        config = BrokerConfig.from_json("./configs/brokers/mt5/ic_markets_demo.json")
-
-        # Unified interface
-        leverage = config.get_max_leverage("EURUSD")
-        margin = config.calculate_margin("EURUSD", 0.1)
-
-        # Create orders
-        order = config.create_market_order("EURUSD", OrderDirection.LONG, 0.1)
     """
 
     def __init__(self, broker_type: BrokerType, adapter: IOrderCapabilities):

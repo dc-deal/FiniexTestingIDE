@@ -230,7 +230,7 @@ class BatchSummary:
         batch_parallel = self.app_config.get_default_parallel_scenarios()
         max_parallel = self.app_config.get_default_max_parallel_scenarios()
 
-        # NEW: Format batch status with color
+        # Format batch status with color
         if batch_status == BatchStatus.SUCCESS:
             status_str = self._renderer.green("✅ Success: True")
         elif batch_status == BatchStatus.PARTIAL:

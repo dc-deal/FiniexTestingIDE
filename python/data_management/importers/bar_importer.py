@@ -105,7 +105,7 @@ class BarImporter:
                 vLog.info(f"   No bars directory found - nothing to clean")
 
         # Get all symbols from tick index FOR THIS BROKER_TYPE
-        # NEW: Use broker_type parameter for list_symbols()
+        # Use broker_type parameter for list_symbols()
         symbols = self.tick_index.list_symbols(broker_type)
 
         if not symbols:
@@ -159,7 +159,7 @@ class BarImporter:
         vLog.info(f"  ├─ Loaded {len(ticks_df):,} ticks")
 
         # === 1.5 EXTRACT SOURCE VERSIONS ===
-        # NEW: Access index with broker_type first
+        # Access index with broker_type first
         tick_files = [
             Path(entry['path'])
             for entry in self.tick_index.index[broker_type][symbol]
@@ -213,20 +213,20 @@ class BarImporter:
         Returns:
             DataFrame with all ticks for symbol
         """
-        # NEW: Check broker_type exists in index first
+        # Check broker_type exists in index first
         if broker_type not in self.tick_index.index:
             vLog.warning(
                 f"Broker type '{broker_type}' not found in tick index")
             return pd.DataFrame()
 
-        # NEW: Check symbol exists for this broker_type
+        # Check symbol exists for this broker_type
         if symbol not in self.tick_index.index[broker_type]:
             vLog.warning(
                 f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'"
             )
             return pd.DataFrame()
 
-        # NEW: Access with broker_type first
+        # Access with broker_type first
         tick_files = [
             Path(entry['path'])
             for entry in self.tick_index.index[broker_type][symbol]
@@ -353,7 +353,7 @@ class BarImporter:
             bar_index = BarsIndexManager(self.data_dir)
             bar_index.build_index(force_rebuild=True)
 
-            # NEW: Count symbols across all broker_types
+            # Count symbols across all broker_types
             total_symbols = len(bar_index.list_symbols())
             broker_types = bar_index.list_broker_types()
             vLog.info(

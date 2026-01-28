@@ -139,7 +139,7 @@ class TickIndexManager:
         tick_count = pq_file.metadata.num_rows
         file_size_mb = round(parquet_file.stat().st_size / (1024 * 1024), 2)
 
-        # === NEW: STATISTICS CALCULATION ===
+        # === STATISTICS CALCULATION ===
         # Load DataFrame for statistics (with sampling for large files)
         if tick_count > 50000:
             # Sample 10% for spread statistics (performance optimization)
