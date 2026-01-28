@@ -16,6 +16,7 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
@@ -123,8 +124,11 @@ class BarIndexCLI:
                 # Access with broker_type first
                 first_entry = self.index_manager.index[broker_type][symbol][first_tf]
 
-                # Show metadata if available
-                market_type = first_entry.get('market_type', 'unknown')
+                # Get market_type from MarketConfigManager (Single Source of Truth)
+                market_config = MarketConfigManager()
+                market_type = market_config.get_market_type(broker_type).value
+
+                # Version metadata from index entry
                 source_version_min = first_entry.get(
                     'source_version_min', 'unknown')
                 source_version_max = first_entry.get(

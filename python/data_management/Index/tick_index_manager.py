@@ -203,9 +203,7 @@ class TickIndexManager:
 
             'sessions': {str(k): int(v) for k, v in sessions.items()},
 
-            # CHANGED: broker_type instead of data_source
-            'broker_type': broker_type,
-            'market_type': market_type
+            'broker_type': broker_type
         }
 
     def needs_rebuild(self) -> bool:

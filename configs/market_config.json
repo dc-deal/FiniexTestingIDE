@@ -4,11 +4,13 @@
     "market_rules": {
         "forex": {
             "weekend_closure": true,
-            "has_trading_sessions": true
+            "has_trading_sessions": true,
+            "primary_activity_metric": "tick_count"
         },
         "crypto": {
             "weekend_closure": false,
-            "has_trading_sessions": false
+            "has_trading_sessions": false,
+            "primary_activity_metric": "trade_volume"
         }
     },
     "brokers": [

@@ -27,6 +27,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
@@ -273,10 +274,15 @@ class BarImporter:
         filename = f"{symbol}_{timeframe}_BARS.parquet"
         filepath = bars_dir / filename
 
+        # Get market_type from MarketConfigManager
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(broker_type)
+
         metadata = {
             'symbol': symbol,
             'timeframe': timeframe,
             'broker_type': broker_type,
+            'market_type': market_type.value,  # NEW: Correct market_type from config
             'bar_count': str(len(bars_df)),
             'start_time': bars_df['timestamp'].min().isoformat(),
             'end_time': bars_df['timestamp'].max().isoformat(),

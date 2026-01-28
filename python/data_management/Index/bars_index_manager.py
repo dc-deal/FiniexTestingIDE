@@ -192,18 +192,6 @@ class BarsIndexManager:
         source_version_min = metadata.get('source_version_min', '1.0.0')
         source_version_max = metadata.get('source_version_max', '1.0.0')
 
-        # Market type with fallback for old data
-        if self._version_less_than(source_version_max, '1.1.0'):
-            market_type = 'forex_cfd'
-        else:
-            market_type = metadata.get('market_type', 'unknown')
-
-        # Primary activity metric based on market type
-        if market_type in ['crypto_spot', 'crypto_futures', 'equity']:
-            primary_activity_metric = 'trade_volume'
-        else:
-            primary_activity_metric = 'tick_count'
-
         # Build index entry
         return {
             'file': bar_file.name,
@@ -227,13 +215,14 @@ class BarsIndexManager:
             'real_bar_count': real_bar_count,
             'synthetic_bar_count': synthetic_bar_count,
 
-            # Version and market type metadata
+            # Version metadata
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
-            # legacy compability : data_collector
+            # legacy compatibility: data_collector
             'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
-            'market_type': market_type,
-            'primary_activity_metric': primary_activity_metric,
+
+            # NOTE: market_type and primary_activity_metric removed
+            # Use MarketConfigManager at runtime instead
 
             # Volume fields (null for Forex)
             'total_trade_volume': None,

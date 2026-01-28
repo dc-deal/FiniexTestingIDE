@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -83,7 +84,13 @@ class BarIndexReportGenerator:
         total_tick_count = 0
         all_symbols = set()
 
+        market_config = MarketConfigManager()
+
         for broker_type in self.index_manager.list_broker_types():
+            # Get market_type from MarketConfigManager (Single Source of Truth)
+            market_type = market_config.get_market_type(broker_type).value
+            market_types.add(market_type)
+
             for symbol in self.index_manager.list_symbols(broker_type):
                 all_symbols.add(symbol)
                 stats = self.index_manager.get_symbol_stats(
@@ -96,7 +103,7 @@ class BarIndexReportGenerator:
                     timeframe_counts[tf] = timeframe_counts.get(tf, 0) + 1
 
                 for tf, entry in self.index_manager.index[broker_type][symbol].items():
-                    market_types.add(entry.get('market_type', 'unknown'))
+                    # NOTE: market_type no longer read from entry
                     total_tick_count += entry.get('total_tick_count', 0)
 
         return {
@@ -141,7 +148,10 @@ class BarIndexReportGenerator:
                 first_tf = sorted(timeframes)[0]
                 first_entry = self.index_manager.index[broker_type][symbol][first_tf]
 
-                market_type = first_entry.get('market_type', 'unknown')
+                # Get market_type from MarketConfigManager (Single Source of Truth)
+                market_config = MarketConfigManager()
+                market_type = market_config.get_market_type(broker_type).value
+
                 source_version_min = first_entry.get(
                     'source_version_min', 'unknown')
                 source_version_max = first_entry.get(

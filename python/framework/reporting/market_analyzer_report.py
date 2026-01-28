@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -176,9 +177,14 @@ class MarketAnalyzer:
                 f"No bar data found for {broker_type}/{symbol} {tf}")
 
         # Get index metadata
+         # Get index metadata
         index_entry = self._bar_index.index[broker_type][symbol][tf]
-        market_type = index_entry.get('market_type', 'forex_cfd')
         data_source = index_entry.get('broker_type', broker_type)
+
+        # Get market_type from MarketConfigManager (Single Source of Truth)
+        market_config = MarketConfigManager()
+        market_type_enum = market_config.get_market_type(broker_type)
+        market_type = market_type_enum.value  # Convert to string for SymbolAnalysis
 
         vLog.info(f"Analyzing {broker_type}/{symbol} {tf} ({market_type})")
 

@@ -22,9 +22,11 @@ class MarketRules:
     Args:
         weekend_closure: True if market closes on weekends
         has_trading_sessions: True if market has distinct trading sessions
+        primary_activity_metric: Primary activity metric ('tick_count' or 'trade_volume')
     """
     weekend_closure: bool
     has_trading_sessions: bool
+    primary_activity_metric: str
 
 
 @dataclass

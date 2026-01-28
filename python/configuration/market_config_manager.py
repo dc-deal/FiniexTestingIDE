@@ -41,7 +41,9 @@ class MarketConfigManager:
                 self._market_rules[market_type] = MarketRules(
                     weekend_closure=rules_dict.get("weekend_closure", True),
                     has_trading_sessions=rules_dict.get(
-                        "has_trading_sessions", True)
+                        "has_trading_sessions", True),
+                    primary_activity_metric=rules_dict.get(
+                        "primary_activity_metric", "tick_count")
                 )
             except ValueError:
                 raise ValueError(
@@ -193,3 +195,29 @@ class MarketConfigManager:
         """
         rules = self.get_market_rules_for_broker(broker_type)
         return rules.weekend_closure
+
+    def get_primary_activity_metric(self, market_type: MarketType) -> str:
+        """
+        Get primary activity metric for a market type.
+
+        Args:
+            market_type: MarketType enum value
+
+        Returns:
+            Activity metric string ('tick_count' or 'trade_volume')
+        """
+        rules = self.get_market_rules(market_type)
+        return rules.primary_activity_metric
+
+    def get_primary_activity_metric_for_broker(self, broker_type: str) -> str:
+        """
+        Get primary activity metric for a broker type (convenience method).
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            Activity metric string ('tick_count' or 'trade_volume')
+        """
+        market_type = self.get_market_type(broker_type)
+        return self.get_primary_activity_metric(market_type)
