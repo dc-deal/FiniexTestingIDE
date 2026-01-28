@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
 
@@ -252,14 +253,8 @@ class TickDataImporter:
         # ===========================================
         # 4. APPLY TIME OFFSET
         # ===========================================
-        broker_type = metadata.get("broker_type")
-
-        if broker_type is None:
-            raise ValueError(
-                f"Missing 'broker_type' in metadata. "
-                f"File format must be v1.1.0+ with explicit broker_type field."
-            )
-        broker_type_normalized = self._normalize_broker_type(broker_type)
+        broker_type_normalized = self._validate_broker_type(
+            metadata, json_file.name)
 
         should_apply_offset = (
             self.time_offset != 0 and
@@ -294,12 +289,13 @@ class TickDataImporter:
         start_time = pd.to_datetime(metadata.get(
             "start_time", datetime.now(timezone.utc)))
 
-        # Extract data_format_version
+        # Extract data_format_version (for metadata only)
         data_format_version = metadata.get("data_format_version", "1.0.0")
 
-        # market_type with fallback logic
-        market_type = self._determine_market_type(
-            metadata, data_format_version)
+        # Get market_type from MarketConfigManager (Single Source of Truth)
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(
+            broker_type_normalized).value
 
         # NEW STRUCTURE: broker_type / ticks / symbol
         target_path = self.target_dir / broker_type_normalized / "ticks" / symbol
@@ -382,36 +378,6 @@ class TickDataImporter:
             vLog.error(f"Original Error: {str(e)}")
             vLog.error(f"Error Type: {type(e)}")
             raise
-
-    def _determine_market_type(self, metadata: Dict, data_format_version: str) -> str:
-        """
-        Determines market type based on metadata and version.
-
-        Logic:
-        - Version < 1.1.0: Implicitly forex_cfd (all old MT5 data)
-        - Version >= 1.1.0: Explicitly from metadata['market_type']
-
-        Args:
-            metadata: JSON metadata from source file
-            data_format_version: Data format version
-
-        Returns:
-            market_type string: 'forex_cfd', 'crypto_spot', etc.
-        """
-        # Parse version for comparison
-        try:
-            version_parts = [int(x) for x in data_format_version.split('.')]
-            version_tuple = tuple(
-                version_parts + [0] * (3 - len(version_parts)))
-        except (ValueError, AttributeError):
-            version_tuple = (1, 0, 0)
-
-        # Fallback for old versions
-        if version_tuple < (1, 1, 0):
-            return 'forex_cfd'
-
-        # From 1.1.0+: Explicitly from metadata
-        return metadata.get('market_type', 'unknown')
 
     def _apply_time_offset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -623,3 +589,70 @@ class TickDataImporter:
             vLog.error(f"❌ Bar rendering failed: {e}")
             vLog.error("   You can manually trigger it later with:")
             vLog.error("   python -m bar_importer")
+
+    def _validate_broker_type(self, metadata: dict, json_file_name: str) -> str:
+        """
+        Validate broker_type exists and is mapped in market_config.json.
+
+        Args:
+            metadata: JSON metadata from source file
+            json_file_name: Name of JSON file (for error messages)
+
+        Returns:
+            Normalized broker_type string
+
+        Raises:
+            ValueError: If broker_type missing or not mapped
+        """
+        market_config = MarketConfigManager()
+        available_brokers = market_config.get_all_broker_types()
+
+        # Build available brokers string for error messages
+        broker_list_str = "\n".join(
+            f"     • {bt} → {market_config.get_market_type(bt).value}"
+            for bt in available_brokers
+        )
+
+        # Check 1: broker_type must exist in metadata
+        broker_type = metadata.get("broker_type")
+
+        if broker_type is None:
+            # Check for legacy data_collector field
+            data_collector = metadata.get("data_collector")
+
+            if data_collector:
+                raise ValueError(
+                    f"Missing 'broker_type' in JSON metadata.\n\n"
+                    f"   This appears to be a LEGACY file (data_collector='{data_collector}' found).\n\n"
+                    f"   To enable import, add the following to the JSON metadata section:\n"
+                    f"     \"broker_type\": \"{data_collector}\"\n\n"
+                    f"   Available broker_types in market_config.json:\n"
+                    f"{broker_list_str}"
+                )
+            else:
+                raise ValueError(
+                    f"Missing 'broker_type' in JSON metadata.\n\n"
+                    f"   The 'broker_type' field is required for import.\n\n"
+                    f"   Available broker_types in market_config.json:\n"
+                    f"{broker_list_str}"
+                )
+
+        # Normalize broker_type
+        broker_type_normalized = self._normalize_broker_type(broker_type)
+
+        # Check 2: broker_type must be mapped in market_config.json
+        if broker_type_normalized not in available_brokers:
+            raise ValueError(
+                f"Unknown broker_type '{broker_type_normalized}'.\n\n"
+                f"   Not found in configs/market_config.json.\n\n"
+                f"   Available broker_types:\n"
+                f"{broker_list_str}\n\n"
+                f"   To add a new broker_type, update configs/market_config.json:\n"
+                f"     {{\n"
+                f"       \"broker_type\": \"{broker_type_normalized}\",\n"
+                f"       \"market_type\": \"forex\",  // or \"crypto\"\n"
+                f"       \"broker_config_path\": \"./configs/brokers/{broker_type_normalized}/config.json\"\n"
+                f"     }}"
+            )
+
+        return broker_type_normalized

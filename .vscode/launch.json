@@ -340,7 +340,19 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 List Scenarios",
+            "name": "🔬 Run (BTCUSD_blocks_*)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_blocks_20260128_1952.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📙 List Scenarios",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -381,7 +393,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Generator - Generate Blocks",
+            "name": "📊 Scenario Gen. - 40 Blocks mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -395,6 +407,27 @@
                 "12",
                 "--count",
                 "40",
+                "--sessions",
+                "new_york"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "kraken_spot",
+                "BTCUSD",
+                "--strategy",
+                "blocks",
+                "--block-size",
+                "6",
+                "--count",
+                "6",
                 "--sessions",
                 "new_york"
             ],

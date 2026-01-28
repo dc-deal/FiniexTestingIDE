@@ -32,7 +32,7 @@
         "execution_config": {},
         "trade_simulator_config": {
             "initial_balance": 10000,
-            "currency": "EUR",
+            "currency": "auto",
             "seeds": {
                 "api_latency_seed": 42,
                 "market_execution_seed": 123
