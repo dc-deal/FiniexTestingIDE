@@ -22,7 +22,7 @@
         {
             "broker_type": "kraken_spot",
             "market_type": "crypto",
-            "broker_config_path": "./configs/brokers/kraken/kraken_demo.json"
+            "broker_config_path": "./configs/brokers/kraken/kraken_public.json"
         }
     ]
 }
