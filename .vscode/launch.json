@@ -32,17 +32,6 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Tick Data Report: ALL",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "tick_data_report"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "📊 Tick Data Report: mt5",
             "type": "debugpy",
             "request": "launch",
@@ -148,10 +137,10 @@
             "justMyCode": false
         },
         // ====================================================
-        // 🔍 INDEX MANAGEMENT
+        // 📚 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "🔍 Tick index: Rebuild",
+            "name": "📚 Tick index: Rebuild",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -162,7 +151,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Tick index: Status",
+            "name": "📚 Tick index: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -173,7 +162,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Tick index: Validate All Symbols",
+            "name": "📚 Tick index: Validate All Symbols",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -220,7 +209,7 @@
         // ↔️ GAP ANALYSIS & COVERAGE
         // ====================================================
         {
-            "name": "↔️ CLI - Gap Report: mt5/EURUSD",
+            "name": "↔️ Gap Report: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -233,7 +222,7 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ CLI - Gap Report: mt5/USDJPY",
+            "name": "↔️ Gap Report: mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -246,7 +235,7 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ CLI - Gap Report: kraken_spot/BTCUSD",
+            "name": "↔️ Gap Report: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -259,7 +248,7 @@
             "justMyCode": false
         },
         {
-            "name": "📶 CLI - Coverage: kraken_spot/BTCUSD",
+            "name": "📶 Coverage: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -272,7 +261,7 @@
             "justMyCode": false
         },
         {
-            "name": "💾 CLI - File Selection Demo: mt5/EURUSD (2 days)",
+            "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -367,7 +356,7 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - mt5/GBPUSD",
+            "name": "📊 Market Analysis - mt5/GBPUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -380,7 +369,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 MARKET ANALYSIS REPORT - kraken_spot/BTCUSD",
+            "name": "📊 Market Analysis - kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -393,7 +382,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Gen. - 40 Blocks mt5/USDJPY",
+            "name": "⚡ Scenario Gen. - 40 Blocks mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -414,7 +403,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
+            "name": "⚡ Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -435,7 +424,7 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Generator - Generate Stress",
+            "name": "⚡ Scenario Generator - Generate Stress",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",

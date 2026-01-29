@@ -170,9 +170,6 @@ class AnalysisConfig:
     regime_thresholds: List[int] = field(
         default_factory=lambda: [20, 40, 60, 80]
     )
-    broker_config_paths: List[str] = field(
-        default_factory=list
-    )
 
 
 @dataclass
@@ -250,9 +247,6 @@ class GeneratorConfig:
                 regime_thresholds=analysis_data.get(
                     'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
                 ),
-                broker_config_paths=analysis_data.get(
-                    'broker_config_paths', []
-                )
             ),
             balanced=BalancedStrategyConfig(
                 regime_count=balanced_data.get('regime_count', 5),

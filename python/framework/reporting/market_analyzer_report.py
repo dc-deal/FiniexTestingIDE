@@ -50,15 +50,13 @@ class MarketAnalyzer:
 
     def __init__(
         self,
-        data_dir: str = "./data/processed",
-        config_path: Optional[str] = None
+        data_dir: str = "./data/processed"
     ):
         """
         Initialize market analyzer.
 
         Args:
             data_dir: Path to processed data directory
-            config_path: Path to analysis config JSON (optional)
         """
         self._data_dir = Path(data_dir)
         analysis_config = AnalysisConfigLoader()
@@ -73,39 +71,50 @@ class MarketAnalyzer:
         self._tick_index = TickIndexManager(self._data_dir)
         self._tick_index.build_index()
 
-        # Load broker configs and build symbol specification cache
+        # Symbol specification cache (lazy loaded per broker_type)
         self._market_symbol_specs: Dict[str, SymbolSpecification] = {}
-        self._load_broker_configs()
+        self._loaded_broker_types: set = set()
+
+        # MarketConfigManager for broker paths
+        self._market_config = MarketConfigManager()
 
     def get_config(self) -> GeneratorConfig:
         """Get current configuration."""
         return self._config
 
-    def _load_broker_configs(self) -> None:
+    def _load_broker_config_for(self, broker_type: str) -> None:
         """
-        Load broker configurations and build symbol specification cache.
+        Load broker configuration for specific broker_type only (lazy).
 
-        Loads all broker configs from paths in analysis config.
-        Builds cache mapping symbol -> SymbolSpecification for pip calculation.
+        Uses MarketConfigManager to get broker_config_path.
+        Only loads each broker_type once.
+
+        Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
         """
-        broker_paths = self._config.analysis.broker_config_paths
+        if broker_type in self._loaded_broker_types:
+            return  # Already loaded
 
-        for broker_path in broker_paths:
-            # Create temporary BrokerConfig to get SymbolSpecification
+        try:
+            broker_path = self._market_config.get_broker_config_path(
+                broker_type)
             broker_config = BrokerConfigFactory.build_broker_config(
                 broker_path)
-            try:
-                symbols = broker_config.get_all_aviable_symbols()
-                for symbol in symbols:
-                    spec = broker_config.get_symbol_specification(
-                        symbol)
+
+            symbols = broker_config.get_all_aviable_symbols()
+            for symbol in symbols:
+                try:
+                    spec = broker_config.get_symbol_specification(symbol)
                     self._market_symbol_specs[symbol] = spec
-                    vLog.debug(
-                        f"Loaded {len(symbol)} symbols from {broker_path}")
-            except Exception as e:
-                vLog.warning(
-                    f"Failed to load broker config specs for symbol: {symbol} {broker_path}: {e}")
-                pass
+                except Exception as e:
+                    vLog.debug(f"Could not load spec for {symbol}: {e}")
+
+            self._loaded_broker_types.add(broker_type)
+            vLog.debug(f"Loaded {len(symbols)} symbols from {broker_type}")
+
+        except Exception as e:
+            vLog.warning(
+                f"Failed to load broker config for {broker_type}: {e}")
 
     def _calculate_pips_per_day(
         self,
@@ -169,6 +178,9 @@ class MarketAnalyzer:
             SymbolAnalysis with all metrics and period classifications
         """
         tf = timeframe or self._config.analysis.timeframe
+
+        # Lazy load broker config for this broker_type only
+        self._load_broker_config_for(broker_type)
 
         # Get bar file path from index
         bar_file = self._bar_index.get_bar_file(broker_type, symbol, tf)

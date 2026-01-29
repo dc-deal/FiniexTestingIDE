@@ -16,7 +16,7 @@ from python.framework.types.market_data_types import TickData
 
 from .adapters.base_adapter import IOrderCapabilities
 from .adapters.mt5_adapter import MT5Adapter
-from .adapters.kraken_adapter import KrakenAdapter, KRAKEN_ENABLED
+from .adapters.kraken_adapter import KrakenAdapter
 from ..types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -143,11 +143,6 @@ class BrokerConfig:
             return MT5Adapter(config)
 
         elif broker_type == BrokerType.KRAKEN_SPOT:
-            if not KRAKEN_ENABLED:
-                raise ValueError(
-                    "Kraken adapter is feature-gated (KRAKEN_ENABLED=False). "
-                    "Enable in Post-MVP phase."
-                )
             return KrakenAdapter(config)
 
         else:

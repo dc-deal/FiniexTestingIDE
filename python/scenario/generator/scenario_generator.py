@@ -37,8 +37,7 @@ class ScenarioGenerator:
 
     def __init__(
         self,
-        data_dir: str = "./data/processed",
-        config_path: Optional[str] = None
+        data_dir: str = "./data/processed"
     ):
         """
         Initialize scenario generator.
@@ -48,7 +47,7 @@ class ScenarioGenerator:
             config_path: Path to generator config JSON
         """
         self._data_dir = Path(data_dir)
-        self._analyzer = MarketAnalyzer(str(self._data_dir), config_path)
+        self._analyzer = MarketAnalyzer(str(self._data_dir))
         self._config = self._analyzer.get_config()
 
         # Template paths
