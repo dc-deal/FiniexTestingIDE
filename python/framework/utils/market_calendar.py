@@ -299,7 +299,8 @@ class MarketCalendar:
         start: datetime,
         end: datetime,
         gap_seconds: float,
-        thresholds: Optional[Dict[str, float]] = None
+        thresholds: Optional[Dict[str, float]] = None,
+        weekend_closure: bool = True
     ) -> Tuple[GapCategory, str]:
         """
         Classify a time gap between two timestamps.
@@ -310,16 +311,12 @@ class MarketCalendar:
             start: Gap start timestamp (end of first file)
             end: Gap end timestamp (start of second file)
             gap_seconds: Gap duration in seconds
+            thresholds: Optional gap thresholds dict
+            weekend_closure: True if market closes on weekends (Forex),
+                           False for 24/7 markets (Crypto)
 
         Returns:
             Tuple of (GapCategory, reason_string)
-
-        Categories:
-            - SEAMLESS: < 5 seconds (perfect continuity)
-            - WEEKEND: Fr evening → Mo morning, 40-80 hours OR any gap ≥24h containing Sat/Sun
-            - SHORT: 5s - 30min (connection blip, restart)
-            - MODERATE: 30min - 4h (potential data loss)
-            - LARGE: > 4h (significant data loss)
         """
         # Default thresholds if not provided
         if thresholds is None:
@@ -334,42 +331,36 @@ class MarketCalendar:
         if gap_seconds < 5:
             return GapCategory.SEAMLESS, '✅ Perfect continuity'
 
-        # 2. WEEKEND CHECK
-        # Forex market typically closes Friday ~21:00 UTC, opens Monday ~00:00 UTC
-        # Allow flexible range 40-80 hours to account for timezone variations
-        start_day = start.weekday()
-        end_day = end.weekday()
+        # 2. WEEKEND CHECK (only for markets with weekend closure)
+        if weekend_closure:
+            start_day = start.weekday()
+            end_day = end.weekday()
 
-        # Primary pattern: Friday evening → Monday morning
-        if MarketCalendar.WEEKEND_CLOSURE.matches_primary_pattern(
-            start_day, start.hour, end_day, end.hour, gap_hours
-        ):
-            return GapCategory.WEEKEND, f'✅ Normal weekend gap ({gap_hours:.1f}h)'
+            # Primary pattern: Friday evening → Monday morning
+            if MarketCalendar.WEEKEND_CLOSURE.matches_primary_pattern(
+                start_day, start.hour, end_day, end.hour, gap_hours
+            ):
+                return GapCategory.WEEKEND, f'✅ Normal weekend gap ({gap_hours:.1f}h)'
 
-        # Alternative weekend pattern: Saturday → Monday
-        if MarketCalendar.WEEKEND_CLOSURE.matches_alternative_pattern(
-            start_day, end_day, end.hour, gap_hours
-        ):
-            return GapCategory.WEEKEND, f'✅ Weekend gap (Sat→Mon, {gap_hours:.1f}h)'
+            # Alternative weekend pattern: Saturday → Monday
+            if MarketCalendar.WEEKEND_CLOSURE.matches_alternative_pattern(
+                start_day, end_day, end.hour, gap_hours
+            ):
+                return GapCategory.WEEKEND, f'✅ Weekend gap (Sat→Mon, {gap_hours:.1f}h)'
 
-        # Extended weekend detection: Calendar-based fallback
-        # Handles data outages that span weekends but don't match typical patterns
-        # Example: Wed 15:40 → Mon 01:57 (contains Sat+Sun but doesn't start Friday)
-        if MarketCalendar.gap_contains_weekend(start, end) and gap_hours >= 24:
-            return GapCategory.WEEKEND, f'✅ Weekend gap (extended, {gap_hours:.1f}h)'
+            # Extended weekend detection: Calendar-based fallback
+            if MarketCalendar.gap_contains_weekend(start, end) and gap_hours >= 24:
+                return GapCategory.WEEKEND, f'✅ Weekend gap (extended, {gap_hours:.1f}h)'
 
-        # 2b. HOLIDAY CHECK
-        # Market holidays (Christmas, New Year) - typically 24h closure
-        if gap_hours >= 20 and MarketCalendar.gap_contains_holiday(start, end):
-            return GapCategory.HOLIDAY, f'✅ Holiday gap ({gap_hours:.1f}h)'
+            # 2b. HOLIDAY CHECK
+            if gap_hours >= 20 and MarketCalendar.gap_contains_holiday(start, end):
+                return GapCategory.HOLIDAY, f'✅ Holiday gap ({gap_hours:.1f}h)'
 
         # 3. SHORT GAP
-        # Common causes: Server restart, connection blip, MT5 restart
         if gap_hours < thresholds['short']:
             return GapCategory.SHORT, f'⚠️  Short interruption ({int(gap_seconds/60)} min - restart/connection?)'
 
         # 4. MODERATE GAP
-        # Potential data loss, but could be planned maintenance
         if gap_hours < thresholds['moderate']:
             if MarketCalendar.is_market_open(start):
                 return GapCategory.MODERATE, f'⚠️  Moderate gap during trading hours ({gap_hours:.2f}h)'
@@ -377,5 +368,4 @@ class MarketCalendar:
                 return GapCategory.MODERATE, f'ℹ️  Moderate gap outside trading hours ({gap_hours:.2f}h)'
 
         # 5. LARGE GAP (> 4h)
-        # Significant data loss - should be investigated
         return GapCategory.LARGE, f'🔴 Large gap - check data collection ({gap_hours:.2f}h)'

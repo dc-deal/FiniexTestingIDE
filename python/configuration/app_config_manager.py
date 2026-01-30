@@ -265,3 +265,137 @@ class AppConfigManager:
         """
         validation_config = self.get_data_validation_config()
         return validation_config.get("allowed_gap_categories", ["seamless", "short"])
+
+    # ============================================
+    # Centralized Path Methods (Validated)
+    # ============================================
+
+    def get_data_raw_path(self) -> str:
+        """
+        Get data raw path from config.
+
+        Returns:
+            Path string for raw data directory
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("data_raw")
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_raw' in app_config.json. "
+                "Add to 'paths' section: \"data_raw\": \"data/raw\""
+            )
+        return path
+
+    def get_data_processed_path(self) -> str:
+        """
+        Get data processed path from config.
+
+        Returns:
+            Path string for processed data directory
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("data_processed")
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_processed' in app_config.json. "
+                "Add to 'paths' section: \"data_processed\": \"data/processed\""
+            )
+        return path
+
+    def get_data_finished_path(self) -> str:
+        """
+        Get data finished path from config.
+
+        Returns:
+            Path string for finished data directory
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("data_finished")
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_finished' in app_config.json. "
+                "Add to 'paths' section: \"data_finished\": \"data/finished\""
+            )
+        return path
+
+    def get_scenario_sets_path(self) -> str:
+        """
+        Get scenario sets config path from config.
+
+        Returns:
+            Path string for scenario sets directory
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("scenario_sets")
+        if not path:
+            raise ValueError(
+                "Missing required path 'scenario_sets' in app_config.json. "
+                "Add to 'paths' section: \"scenario_sets\": \"configs/scenario_sets\""
+            )
+        return path
+
+    def get_brokers_path(self) -> str:
+        """
+        Get brokers config path from config.
+
+        Returns:
+            Path string for brokers config directory
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("brokers")
+        if not path:
+            raise ValueError(
+                "Missing required path 'brokers' in app_config.json. "
+                "Add to 'paths' section: \"brokers\": \"configs/brokers\""
+            )
+        return path
+
+    def get_generator_template_path(self) -> str:
+        """
+        Get generator template file path from config.
+
+        Returns:
+            Path string for scenario generator template file
+
+        Raises:
+            ValueError: If path not configured
+        """
+        paths = self.get_paths_config()
+        path = paths.get("generator_template")
+        if not path:
+            raise ValueError(
+                "Missing required path 'generator_template' in app_config.json. "
+                "Add to 'paths' section: \"generator_template\": \"configs/generator/template_scenario_set_header.json\""
+            )
+        return path
+
+    def get_generator_output_path(self) -> str:
+        """
+        Get generator output path from config.
+
+        Falls back to scenario_sets path if not explicitly configured.
+
+        Returns:
+            Path string for generator output directory
+        """
+        paths = self.get_paths_config()
+        path = paths.get("generator_output")
+        if not path:
+            # Fallback to scenario_sets path
+            return self.get_scenario_sets_path()
+        return path

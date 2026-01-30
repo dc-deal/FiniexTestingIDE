@@ -51,6 +51,8 @@ class ExecutiveSummary:
         """
         self._render_execution_results(renderer)
         print()
+        self._render_data_sources(renderer)  # NEW
+        print()
         self._render_time_performance(renderer)
         print()
         self._render_portfolio_performance(renderer)
@@ -117,6 +119,34 @@ class ExecutiveSummary:
 
         print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
               (f" (max {max_workers} workers)" if parallel else ""))
+
+    def _render_data_sources(self, renderer: ConsoleRenderer):
+        """Render data sources summary section."""
+        scenarios = self._batch_summary.single_scenario_list
+
+        # Aggregate by data_broker_type
+        broker_type_stats = {}
+        for scenario in scenarios:
+            bt = scenario.data_broker_type
+            if bt not in broker_type_stats:
+                broker_type_stats[bt] = {
+                    'count': 0,
+                    'symbols': set()
+                }
+            broker_type_stats[bt]['count'] += 1
+            broker_type_stats[bt]['symbols'].add(scenario.symbol)
+
+        # Render section
+        renderer.print_bold("DATA SOURCES")
+        renderer.print_separator(width=68)
+
+        for broker_type, stats in sorted(broker_type_stats.items()):
+            symbols_str = ', '.join(sorted(stats['symbols']))
+            # Truncate if too long
+            if len(symbols_str) > 40:
+                symbols_str = symbols_str[:37] + "..."
+            print(
+                f"{broker_type:16} {stats['count']} scenario(s) ({symbols_str})")
 
     def _render_first_failure(self, renderer: ConsoleRenderer, failed_result, total_failed: int):
         """

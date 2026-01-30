@@ -5,49 +5,79 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📥 Import: Offset +3",
+            "name": "📥 Import: MT5 Offset -3",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "import",
                 "--time-offset",
-                "+3"
+                "-3",
+                "--offset-broker",
+                "mt5"
             ],
-            "console": "integratedTerminal",
-            "justMyCode": false
+            "console": "integratedTerminal"
         },
         {
-            "name": "📥 Bar Import / Render --clean",
+            "name": "📥 Bar Import / Render kraken_spot --clean",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
+                "kraken_spot",
                 "--clean"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📊 Tick Data Report",
+            "name": "📊 Tick Data Report: mt5",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
-                "tick_data_report"
+                "tick_data_report",
+                "mt5"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📊 TEST LOAD: Ticks&Bars",
+            "name": "📊 Tick Data Report: kraken_spot",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "tick_data_report",
+                "kraken_spot"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🛠️ Inspect Ticks&Bars: mt5",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "inspect",
+                "mt5",
                 "EURUSD",
+                "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🛠️ Inspect Ticks&Bars: kraken_spot",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "inspect",
+                "kraken_spot",
+                "BTCUSD",
                 "M30"
             ],
             "console": "integratedTerminal",
@@ -107,10 +137,10 @@
             "justMyCode": false
         },
         // ====================================================
-        // 🔍 INDEX MANAGEMENT
+        // 📚 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "🔍 Tick index: Rebuild",
+            "name": "📚 Tick index: Rebuild",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -121,7 +151,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Tick index: Status",
+            "name": "📚 Tick index: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -132,7 +162,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Tick index: Validate All Symbols",
+            "name": "📚 Tick index: Validate All Symbols",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -143,7 +173,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔹 Bar Index: Rebuild",
+            "name": "📈 Bar Index: Rebuild",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -154,7 +184,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔹 Bar Index: Status",
+            "name": "📈 Bar Index: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -165,7 +195,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔹 Bar Index: Report",
+            "name": "📈 Bar Index: Report",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -176,75 +206,68 @@
             "justMyCode": false
         },
         // ====================================================
-        // 📈 GAP ANALYSIS & COVERAGE
+        // ↔️ GAP ANALYSIS & COVERAGE
         // ====================================================
         {
-            "name": "📈 CLI - Gap Report: EURUSD",
+            "name": "↔️ Gap Report: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "gaps",
+                "mt5",
                 "EURUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📈 CLI - Gap Report: GBPUSD",
+            "name": "↔️ Gap Report: mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "gaps",
-                "GBPUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "📈 CLI - Gap Report: EURGBP",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "gaps",
-                "EURGBP"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "📈 CLI - Gap Report: USDJPY",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "gaps",
+                "mt5",
                 "USDJPY"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📈 CLI - Coverage: EURUSD",
+            "name": "↔️ Gap Report: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
-                "coverage",
-                "EURUSD"
+                "gaps",
+                "kraken_spot",
+                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📈 CLI - File Selection Demo: EURUSD (2 days)",
+            "name": "📶 Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "coverage",
+                "kraken_spot",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "files",
+                "mt5",
                 "EURUSD",
                 "--start",
                 "2025-09-23T00:00:00+00:00",
@@ -306,7 +329,19 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 List Scenarios",
+            "name": "🔬 Run (BTCUSD_blocks_*)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_blocks_20260128_1952.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📙 List Scenarios",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -321,24 +356,39 @@
         // 📊 SCENARIO ANALYSIS & GENERATION
         // ====================================================
         {
-            "name": "📊 MARKET ANALYSIS REPORT - GBPUSD",
+            "name": "📊 Market Analysis - mt5/GBPUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "analyze",
+                "mt5",
                 "GBPUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Generator - Generate Blocks",
+            "name": "📊 Market Analysis - kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "analyze",
+                "kraken_spot",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Scenario Gen. - 40 Blocks mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
+                "mt5",
                 "USDJPY",
                 "--strategy",
                 "blocks",
@@ -353,12 +403,34 @@
             "justMyCode": false
         },
         {
-            "name": "📊 Scenario Generator - Generate Stress",
+            "name": "⚡ Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
+                "kraken_spot",
+                "BTCUSD",
+                "--strategy",
+                "blocks",
+                "--block-size",
+                "6",
+                "--count",
+                "6",
+                "--sessions",
+                "new_york"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Scenario Generator - Generate Stress",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "args": [
+                "generate",
+                "mt5",
                 "EURGBP",
                 "--strategy",
                 "stress",
@@ -372,7 +444,7 @@
         // 🔬 FIELD STUDYS, PoC
         // ====================================================
         {
-            "name": "🔍 Project Structure - Detailed",
+            "name": "📁 Project Structure - Detailed",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/experiments/analyze_project_structure/analyze_project_structure.py",

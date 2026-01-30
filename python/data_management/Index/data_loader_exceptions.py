@@ -3,7 +3,7 @@ FiniexTestingIDE Data Quality Exceptions
 Custom exceptions for data validation and quality issues
 
 Location: python/data_management/index/exceptions.py
-Version: 1.2 (Enhanced with data_collector display)
+Version: 1.3 (Refactored: data_collector → broker_type)
 """
 
 from dataclasses import dataclass
@@ -81,9 +81,8 @@ class DuplicateReport:
         ])
 
         # Compare each metadata field across all files
-        # Added data_collector to comparison fields
         metadata_fields = [
-            "source_file", "symbol", "data_collector", "broker", "collector_version",
+            "source_file", "symbol", "broker_type", "broker", "data_format_version",
             "tick_count", "processed_at"
         ]
 
@@ -95,9 +94,9 @@ class DuplicateReport:
             status = "✅ IDENTICAL" if is_identical else "⚠️  DIFFERENT"
 
             # Special highlighting for data_collector field
-            if field == "data_collector":
+            if field == "broker_type":
                 if not is_identical:
-                    status = "⚠️  CROSS-COLLECTOR DUPLICATE!"
+                    status = "⚠️  CROSS-BROKER DUPLICATE!"
                 lines.append(f"   • {field:20s} {status}")
             else:
                 lines.append(f"   • {field:20s} {status}")
@@ -119,13 +118,15 @@ class DuplicateReport:
 
         # Enhanced severity assessment considering data_collector
         metadata_identical = self._are_metadata_identical()
-        collectors = [meta.get('data_collector', 'unknown')
-                      for meta in self.metadata]
-        cross_collector = len(set(collectors)) > 1
+        broker_types = [meta.get('broker_type') or meta.get(
+            'data_collector', 'unknown') for meta in self.metadata]
 
-        if cross_collector:
-            severity = "🔴 CRITICAL - Cross-Collector Duplication"
-            impact = f"Impact: Same data imported under different collectors: {', '.join(set(collectors))}"
+        cross_broker = len(set(broker_types)) > 1
+
+        if cross_broker:
+            severity = "🔴 CRITICAL - Cross-Broker Duplication"
+            impact = f"Impact: Same data imported under different broker_types: {', '.join(set(broker_types))}"
+
         elif tick_counts_identical and time_ranges_identical and metadata_identical:
             severity = "🔴 CRITICAL - Complete data duplication detected"
             impact = "Impact: Identical files, test results will be severely compromised (2x tick density)"
@@ -147,11 +148,11 @@ class DuplicateReport:
             "💡 Recommended Actions:",
         ])
 
-        if cross_collector:
+        if cross_broker:
             lines.extend([
-                "   1. INVESTIGATE why the same source was imported under different collectors",
+                "   1. INVESTIGATE why the same source was imported under different broker_types",
                 "   2. DELETE one of the duplicate files (choose the wrong collector)",
-                "   3. Check your import workflow to prevent cross-collector duplicates",
+                "   3. Check your import workflow to prevent cross-broker duplicates",
                 "   4. Rebuild index after cleanup",
             ])
         elif metadata_identical:
@@ -187,14 +188,14 @@ class DuplicateReport:
 
     def _are_metadata_identical(self) -> bool:
         """
-        Check if all metadata is identical (except processed_at and data_collector)
+        Check if all metadata is identical (except processed_at and broker_type)
 
         processed_at is excluded because it changes on re-import
-        data_collector is excluded because cross-collector duplicates are still duplicates
+        broker_type is excluded because cross-broker duplicates are still duplicates
         """
         # Exclude data_collector from comparison
         critical_fields = ["source_file", "symbol",
-                           "broker", "collector_version", "tick_count"]
+                           "broker", "data_format_version", "tick_count"]
 
         for field in critical_fields:
             values = [meta.get(field, "N/A") for meta in self.metadata]

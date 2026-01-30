@@ -1,0 +1,28 @@
+{
+    "version": "1.0",
+    "description": "FiniexTestingIDE - Market Configuration",
+    "market_rules": {
+        "forex": {
+            "weekend_closure": true,
+            "has_trading_sessions": true,
+            "primary_activity_metric": "tick_count"
+        },
+        "crypto": {
+            "weekend_closure": false,
+            "has_trading_sessions": false,
+            "primary_activity_metric": "trade_volume"
+        }
+    },
+    "brokers": [
+        {
+            "broker_type": "mt5",
+            "market_type": "forex",
+            "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json"
+        },
+        {
+            "broker_type": "kraken_spot",
+            "market_type": "crypto",
+            "broker_config_path": "./configs/brokers/kraken/kraken_public.json"
+        }
+    ]
+}

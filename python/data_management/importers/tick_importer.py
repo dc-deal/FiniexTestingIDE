@@ -13,7 +13,8 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+import re
+from typing import Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
 
@@ -57,18 +59,20 @@ class TickDataImporter:
         time_offset (int): Manual UTC offset in hours (e.g., -3 for GMT+3)
     """
 
-    VERSION = "1.4"
+    VERSION = "1.5"
 
     def __init__(self, source_dir: str, target_dir: str,
-                 override: bool = False, time_offset: int = 0):
+                 override: bool = False, time_offset: int = 0,
+                 offset_broker: Optional[str] = None):
         """
-        Initializes importer with source and target paths.
+        Initialize importer with source and target paths.
 
         Args:
-            source_dir (str): MQL5 JSON export directory
-            target_dir (str): Parquet target directory
-            override (bool): Overwrite existing files
-            time_offset (int): UTC offset in hours
+            source_dir: MQL5 JSON export directory
+            target_dir: Parquet target directory
+            override: Overwrite existing files
+            time_offset: UTC offset in hours
+            offset_broker: Apply offset only to files with this broker_type
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
@@ -76,6 +80,7 @@ class TickDataImporter:
 
         self.override = override
         self.time_offset = time_offset
+        self.offset_broker = offset_broker
 
         # Batch processing statistics
         self.processed_files = 0
@@ -83,7 +88,25 @@ class TickDataImporter:
         self.errors = []
         self._app_config_loader = AppConfigManager()
 
-    def process_all_mql5_exports(self):
+        # Track processed broker_types for bar rendering
+        self._processed_broker_types: Set[str] = set()
+
+    def _normalize_broker_type(self, broker_type: str) -> str:
+        """
+        Normalize broker_type for filesystem use.
+
+        Args:
+            broker_type: Raw broker_type string
+
+        Returns:
+            Filesystem-safe normalized string
+        """
+        normalized = broker_type.lower().strip()
+        # Replace anything not alphanumeric or underscore
+        normalized = re.sub(r'[^a-z0-9_]', '_', normalized)
+        return normalized
+
+    def process_all_exports(self):
         """
         Finds all TickCollector exports and converts them sequentially.
         Errors do not stop processing of remaining files.
@@ -216,11 +239,6 @@ class TickDataImporter:
         else:
             vLog.info(f"   Broker Time:     Not available (pre v1.0.5 data)")
 
-        # User Offset (always show if set)
-        if self.time_offset != 0:
-            vLog.info(
-                f"   User Offset:     {self.time_offset:+d} hours → ALL TIMES WILL BE UTC!")
-
         # ===========================================
         # 3. CREATE AND OPTIMIZE DATAFRAME
         # ===========================================
@@ -235,21 +253,30 @@ class TickDataImporter:
         # ===========================================
         # 4. APPLY TIME OFFSET
         # ===========================================
+        broker_type_normalized = self._validate_broker_type(
+            metadata)
 
-        df = self._apply_time_offset(df)
+        should_apply_offset = (
+            self.time_offset != 0 and
+            self.offset_broker is not None and
+            broker_type_normalized == self.offset_broker
+        )
 
-        # ===========================================
-        # 5. RECALCULATE SESSIONS (if offset)
-        # ===========================================
-
-        if self.time_offset != 0:
+        if should_apply_offset:
+            df = self._apply_time_offset(df)
             df = self._recalculate_sessions(df)
+            vLog.info(
+                f"   ✅ Time offset {self.time_offset:+d}h applied (broker_type={broker_type_normalized})")
             vLog.info(f"   ✅ Sessions recalculated based on UTC time")
+        elif self.time_offset != 0:
+            vLog.info(
+                f"   ℹ️  No offset applied (broker_type={broker_type_normalized} != {self.offset_broker})")
 
         # ===========================================
         # 6. QUALITY CHECKS
         # ===========================================
 
+        self._processed_broker_types.add(broker_type_normalized)
         df = self._quality_checks(df)
         df = df.sort_values("timestamp").reset_index(drop=True)
 
@@ -258,20 +285,20 @@ class TickDataImporter:
         # CHANGED: New path construction!
         # ===========================================
 
-        data_collector = metadata.get("data_collector", "mt5")
         symbol = metadata.get("symbol", "UNKNOWN")
         start_time = pd.to_datetime(metadata.get(
             "start_time", datetime.now(timezone.utc)))
 
-        # Extract data_format_version
+        # Extract data_format_version (for metadata only)
         data_format_version = metadata.get("data_format_version", "1.0.0")
 
-        # market_type with fallback logic
-        market_type = self._determine_market_type(
-            metadata, data_format_version)
+        # Get market_type from MarketConfigManager (Single Source of Truth)
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(
+            broker_type_normalized).value
 
-        # NEW STRUCTURE: data_collector / ticks / symbol
-        target_path = self.target_dir / data_collector / "ticks" / symbol
+        # NEW STRUCTURE: broker_type / ticks / symbol
+        target_path = self.target_dir / broker_type_normalized / "ticks" / symbol
         target_path.mkdir(parents=True, exist_ok=True)
 
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
@@ -282,15 +309,14 @@ class TickDataImporter:
             "source_file": json_file.name,
             "symbol": symbol,
             "broker": metadata.get("broker", "unknown"),
-            "collector_version": data_format_version,  # Keep legacy name
-            "data_format_version": data_format_version,  # Explicit
-            "data_collector": data_collector,
-            "market_type": market_type,  # Market type
+            "data_format_version": data_format_version,
+            "broker_type": broker_type_normalized,
+            "market_type": market_type,
             "processed_at": datetime.now(timezone.utc).isoformat(),
             "tick_count": str(len(df)),
             "importer_version": self.VERSION,
-            "user_time_offset_hours": str(self.time_offset),
-            "utc_conversion_applied": "true" if self.time_offset != 0 else "false",
+            "user_time_offset_hours": str(self.time_offset if broker_type_normalized == self.offset_broker else 0),
+            "utc_conversion_applied": "true" if (self.time_offset != 0 and broker_type_normalized == self.offset_broker) else "false",
         }
 
         # ===========================================
@@ -300,7 +326,7 @@ class TickDataImporter:
         vLog.debug(f"Checking for existing duplicates...")
         duplicate_report = self._check_for_existing_duplicate(
             json_file.name,
-            data_collector,
+            broker_type_normalized,
             symbol,
             df,
             parquet_path
@@ -329,7 +355,8 @@ class TickDataImporter:
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
             if self._app_config_loader.get_move_processed_files:
-                finished_dir = Path("./data/finished/")
+                finished_dir = Path(
+                    self._app_config_loader.get_data_finished_path())
                 finished_dir.mkdir(exist_ok=True)
                 finished_file = finished_dir / json_file.name
                 json_file.rename(finished_file)
@@ -337,12 +364,13 @@ class TickDataImporter:
 
             self.total_ticks += len(df)
 
-            time_suffix = " (UTC)" if self.time_offset != 0 else ""
+            time_suffix = " (UTC)" if should_apply_offset else ""
             vLog.info(
-                f"✅ {data_collector}/ticks/{symbol}/{parquet_name}: {len(df):,} Ticks{time_suffix}, "
+                f"✅ {broker_type_normalized}/ticks/{symbol}/{parquet_name}: {len(df):,} Ticks{time_suffix}, "
                 f"Compression {compression_ratio:.1f}:1 "
                 f"({json_size/1024/1024:.1f}MB → {parquet_size/1024/1024:.1f}MB)"
             )
+
             vLog.debug(
                 f"   market_type={market_type}, version={data_format_version}")
 
@@ -351,36 +379,6 @@ class TickDataImporter:
             vLog.error(f"Original Error: {str(e)}")
             vLog.error(f"Error Type: {type(e)}")
             raise
-
-    def _determine_market_type(self, metadata: Dict, data_format_version: str) -> str:
-        """
-        Determines market type based on metadata and version.
-
-        Logic:
-        - Version < 1.1.0: Implicitly forex_cfd (all old MT5 data)
-        - Version >= 1.1.0: Explicitly from metadata['market_type']
-
-        Args:
-            metadata: JSON metadata from source file
-            data_format_version: Data format version
-
-        Returns:
-            market_type string: 'forex_cfd', 'crypto_spot', etc.
-        """
-        # Parse version for comparison
-        try:
-            version_parts = [int(x) for x in data_format_version.split('.')]
-            version_tuple = tuple(
-                version_parts + [0] * (3 - len(version_parts)))
-        except (ValueError, AttributeError):
-            version_tuple = (1, 0, 0)
-
-        # Fallback for old versions
-        if version_tuple < (1, 1, 0):
-            return 'forex_cfd'
-
-        # From 1.1.0+: Explicitly from metadata
-        return metadata.get('market_type', 'unknown')
 
     def _apply_time_offset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -429,7 +427,7 @@ class TickDataImporter:
     def _check_for_existing_duplicate(
         self,
         source_json_name: str,
-        data_collector: str,
+        broker_type: str,
         symbol: str,
         new_df: pd.DataFrame,
         target_path: Path
@@ -437,8 +435,15 @@ class TickDataImporter:
         """
         Check if Parquet file already exists with same source.
 
-        With override support: Returns duplicate report, but
-        does NOT automatically delete (caller does that).
+        Args:
+            source_json_name: Name of source JSON file
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+            new_df: DataFrame being imported
+            target_path: Target parquet path
+
+        Returns:
+            DuplicateReport if duplicate found, None otherwise
         """
 
         # OPTION 2: Cross-Collector Search (wie in Doku)
@@ -461,8 +466,9 @@ class TickDataImporter:
                 }
 
                 existing_source = existing_metadata.get('source_file', '')
-                existing_collector = existing_metadata.get(
-                    'data_collector', 'unknown')
+                # legacy compability : data_collector
+                existing_broker = existing_metadata.get(
+                    'broker_type') or existing_metadata.get('data_collector', 'unknown')
 
                 if existing_source == source_json_name:
                     relative_path = existing_file.relative_to(self.target_dir)
@@ -473,8 +479,8 @@ class TickDataImporter:
                         f"⚠️  Found existing Parquet: {collector_path}/{symbol}/{existing_file.name}"
                     )
                     vLog.warning(
-                        f"    Existing: data_collector='{existing_collector}' | "
-                        f"Importing: data_collector='{data_collector}'"
+                        f"    Existing: broker_type='{existing_broker}' | "
+                        f"Importing: broker_type='{broker_type}'"
                     )
 
                     existing_df = pd.read_parquet(existing_file)
@@ -562,24 +568,91 @@ class TickDataImporter:
     def _trigger_bar_rendering(self):
         """
         Trigger automatic bar rendering after tick import.
-
-        Renders bars for all symbols that were just imported.
+        Renders bars for all broker_types that were processed.
         """
         vLog.info("\n" + "=" * 80)
         vLog.info("🔄 AUTO-TRIGGERING BAR RENDERING")
         vLog.info("=" * 80)
 
         try:
-            bar_importer = BarImporter(str(self.target_dir))
-            # DEFAULT: clean_mode=True (because bar append not implemented yet)
-            # This ensures bars are always consistent with tick data
-            bar_importer.render_bars_for_all_symbols(
-                data_collector="mt5",
-                clean_mode=True  # ← Clean slate on every import
-            )
+            bar_importer = BarImporter()
+
+            for broker_type in self._processed_broker_types:
+                vLog.info(f"\n📊 Rendering bars for broker_type: {broker_type}")
+                bar_importer.render_bars_for_all_symbols(
+                    broker_type=broker_type,
+                    clean_mode=True
+                )
+
             vLog.info("✅ Bar rendering completed!")
 
         except Exception as e:
             vLog.error(f"❌ Bar rendering failed: {e}")
             vLog.error("   You can manually trigger it later with:")
             vLog.error("   python -m bar_importer")
+
+    def _validate_broker_type(self, metadata: dict) -> str:
+        """
+        Validate broker_type exists and is mapped in market_config.json.
+
+        Args:
+            metadata: JSON metadata from source file
+
+        Returns:
+            Normalized broker_type string
+
+        Raises:
+            ValueError: If broker_type missing or not mapped
+        """
+        market_config = MarketConfigManager()
+        available_brokers = market_config.get_all_broker_types()
+
+        # Build available brokers string for error messages
+        broker_list_str = "\n".join(
+            f"     • {bt} → {market_config.get_market_type(bt).value}"
+            for bt in available_brokers
+        )
+
+        # Check 1: broker_type must exist in metadata
+        broker_type = metadata.get("broker_type")
+
+        if broker_type is None:
+            # Check for legacy data_collector field
+            data_collector = metadata.get("data_collector")
+
+            if data_collector:
+                raise ValueError(
+                    f"Missing 'broker_type' in JSON metadata.\n\n"
+                    f"   This appears to be a LEGACY file (data_collector='{data_collector}' found).\n\n"
+                    f"   To enable import, add the following to the JSON metadata section:\n"
+                    f"     \"broker_type\": \"{data_collector}\"\n\n"
+                    f"   Available broker_types in market_config.json:\n"
+                    f"{broker_list_str}"
+                )
+            else:
+                raise ValueError(
+                    f"Missing 'broker_type' in JSON metadata.\n\n"
+                    f"   The 'broker_type' field is required for import.\n\n"
+                    f"   Available broker_types in market_config.json:\n"
+                    f"{broker_list_str}"
+                )
+
+        # Normalize broker_type
+        broker_type_normalized = self._normalize_broker_type(broker_type)
+
+        # Check 2: broker_type must be mapped in market_config.json
+        if broker_type_normalized not in available_brokers:
+            raise ValueError(
+                f"Unknown broker_type '{broker_type_normalized}'.\n\n"
+                f"   Not found in configs/market_config.json.\n\n"
+                f"   Available broker_types:\n"
+                f"{broker_list_str}\n\n"
+                f"   To add a new broker_type, update configs/market_config.json:\n"
+                f"     {{\n"
+                f"       \"broker_type\": \"{broker_type_normalized}\",\n"
+                f"       \"market_type\": \"forex\",  // or \"crypto\"\n"
+                f"       \"broker_config_path\": \"./configs/brokers/{broker_type_normalized}/config.json\"\n"
+                f"     }}"
+            )
+
+        return broker_type_normalized

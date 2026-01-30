@@ -53,6 +53,7 @@ class BlocksGenerator:
 
     def generate(
         self,
+        broker_type: str,
         symbol: str,
         block_hours: int,
         count_max: Optional[int],
@@ -68,6 +69,7 @@ class BlocksGenerator:
         blocks run full duration. If false: Blocks constrained to session windows.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
             block_hours: Target hours per block
             count_max: Optional limit on number of blocks
@@ -79,13 +81,14 @@ class BlocksGenerator:
         tick_index = TickIndexManager(self._data_dir)
         tick_index.build_index()
 
-        coverage_report = tick_index.get_coverage_report(symbol)
+        coverage_report = tick_index.get_coverage_report(broker_type, symbol)
 
         # Extract continuous regions with gap information
         continuous_regions = self._extract_continuous_regions(coverage_report)
 
         if not continuous_regions:
-            raise ValueError(f"No continuous data regions found for {symbol}")
+            raise ValueError(
+                f"No continuous data regions found for {broker_type}/{symbol}")
 
         # Convert sessions_filter to TradingSession enums
         allowed_sessions = self._parse_sessions_filter(sessions_filter)
@@ -128,12 +131,12 @@ class BlocksGenerator:
             # Generate blocks based on extend_blocks_beyond_session setting
             if extend_beyond_session and allowed_sessions:
                 scenarios_from_region = self._generate_extended_blocks(
-                    symbol, region, scenario_start, allowed_sessions,
+                    symbol, broker_type, region, scenario_start, allowed_sessions,
                     block_duration, min_block_hours, block_hours, block_counter
                 )
             else:
                 scenarios_from_region = self._generate_constrained_blocks(
-                    symbol, region, scenario_start, allowed_sessions,
+                    symbol, broker_type, region, scenario_start, allowed_sessions,
                     block_duration, min_block_hours, block_hours, block_counter
                 )
 
@@ -158,6 +161,7 @@ class BlocksGenerator:
     def _generate_extended_blocks(
         self,
         symbol: str,
+        broker_type: str,
         region: Dict,
         scenario_start: datetime,
         allowed_sessions: set,
@@ -227,21 +231,25 @@ class BlocksGenerator:
                     f"   Reason: End of continuous data region{gap_info}"
                 )
             else:
-                # Full block
                 block_end = current_start + block_duration
 
-            candidate = ScenarioCandidate(
+            # Get session at start
+            start_hour = current_start.hour
+            session = TradingSession(get_session_from_utc_hour(start_hour))
+
+            scenarios.append(ScenarioCandidate(
                 symbol=symbol,
                 start_time=current_start,
                 end_time=block_end,
-                regime=VolatilityRegime.MEDIUM,
-                session=TradingSession.LONDON,
-                estimated_ticks=0,
+                broker_type=broker_type,
+                regime=VolatilityRegime.MEDIUM,  # Default for blocks
+                session=session,
+                estimated_ticks=0,  # Time-based, no tick limit
                 atr=0.0,
                 tick_density=0.0,
                 real_bar_ratio=1.0
-            )
-            scenarios.append(candidate)
+            ))
+
             current_start = block_end
 
         return scenarios
@@ -249,6 +257,7 @@ class BlocksGenerator:
     def _generate_constrained_blocks(
         self,
         symbol: str,
+        broker_type: str,
         region: Dict,
         scenario_start: datetime,
         allowed_sessions: Optional[set],
@@ -260,13 +269,11 @@ class BlocksGenerator:
         """
         Generate blocks constrained to session windows.
 
-        Original behavior: blocks end at session boundaries.
-
         Args:
             symbol: Trading symbol
             region: Region dict with start/end/following_gap
             scenario_start: Start time after warmup
-            allowed_sessions: Optional set of allowed TradingSession enums
+            allowed_sessions: Set of allowed TradingSession enums (or None for all)
             block_duration: Target block duration
             min_block_hours: Minimum block duration
             block_hours: Target hours per block
@@ -278,132 +285,167 @@ class BlocksGenerator:
         scenarios = []
         region_end = region['end']
 
-        # Extract session windows
-        if allowed_sessions:
-            session_windows = self._extract_session_windows(
-                scenario_start, region_end, allowed_sessions
-            )
-        else:
-            session_windows = [{'start': scenario_start, 'end': region_end}]
+        # If no session filter, generate continuous blocks
+        if not allowed_sessions:
+            current_start = scenario_start
+            local_counter = block_counter
 
-        local_counter = block_counter
-
-        # Generate blocks from session windows
-        for window in session_windows:
-            window_start = window['start']
-            window_end = window['end']
-            window_duration_hours = (
-                window_end - window_start).total_seconds() / 3600
-
-            if window_duration_hours < min_block_hours:
-                vLog.debug(
-                    f"Window too short ({window_duration_hours:.1f}h < {min_block_hours}h), skipping"
-                )
-                continue
-
-            current_start = window_start
-
-            while current_start < window_end:
-                remaining_seconds = (
-                    window_end - current_start).total_seconds()
-                remaining_hours = remaining_seconds / 3600
+            while current_start < region_end:
+                remaining_hours = (
+                    region_end - current_start).total_seconds() / 3600
 
                 if remaining_hours < min_block_hours:
                     local_counter += 1
+                    gap_info = self._get_gap_info(region)
                     vLog.warning(
                         f"⚠️ Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
-                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {window_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
-                        f"   Reason: Below minimum block duration"
+                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {region_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
+                        f"   Reason: Below minimum block duration{gap_info}"
                     )
                     break
 
                 local_counter += 1
 
                 if remaining_hours < block_hours:
-                    # Last block - shorter than target
+                    block_end = region_end
+                    gap_info = self._get_gap_info(region)
                     vLog.warning(
                         f"⚠️ Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
-                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {window_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
-                        f"   Reason: Session filter limits duration (extend_blocks_beyond_session=false)"
+                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {block_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
+                        f"   Reason: End of continuous data region{gap_info}"
                     )
-                    candidate = ScenarioCandidate(
-                        symbol=symbol,
-                        start_time=current_start,
-                        end_time=window_end,
-                        regime=VolatilityRegime.MEDIUM,
-                        session=TradingSession.LONDON,
-                        estimated_ticks=0,
-                        atr=0.0,
-                        tick_density=0.0,
-                        real_bar_ratio=1.0
-                    )
-                    scenarios.append(candidate)
-                    break
+                else:
+                    block_end = current_start + block_duration
 
-                # Full block
-                block_end = current_start + block_duration
-                candidate = ScenarioCandidate(
+                start_hour = current_start.hour
+                session = TradingSession(get_session_from_utc_hour(start_hour))
+
+                scenarios.append(ScenarioCandidate(
                     symbol=symbol,
                     start_time=current_start,
                     end_time=block_end,
+                    broker_type=broker_type,
                     regime=VolatilityRegime.MEDIUM,
-                    session=TradingSession.LONDON,
+                    session=session,
                     estimated_ticks=0,
                     atr=0.0,
                     tick_density=0.0,
                     real_bar_ratio=1.0
-                )
-                scenarios.append(candidate)
+                ))
+
+                current_start = block_end
+
+            return scenarios
+
+        # Session-constrained blocks
+        session_windows = self._extract_session_windows(
+            scenario_start, region_end, allowed_sessions
+        )
+
+        local_counter = block_counter
+
+        for window in session_windows:
+            window_start = window['start']
+            window_end = window['end']
+            current_start = window_start
+
+            while current_start < window_end:
+                remaining_hours = (
+                    window_end - current_start).total_seconds() / 3600
+
+                if remaining_hours < min_block_hours:
+                    break
+
+                local_counter += 1
+
+                if remaining_hours < block_hours:
+                    block_end = window_end
+                else:
+                    block_end = current_start + block_duration
+                    if block_end > window_end:
+                        block_end = window_end
+
+                start_hour = current_start.hour
+                session = TradingSession(get_session_from_utc_hour(start_hour))
+
+                scenarios.append(ScenarioCandidate(
+                    symbol=symbol,
+                    start_time=current_start,
+                    end_time=block_end,
+                    broker_type=broker_type,
+                    regime=VolatilityRegime.MEDIUM,
+                    session=session,
+                    estimated_ticks=0,
+                    atr=0.0,
+                    tick_density=0.0,
+                    real_bar_ratio=1.0
+                ))
+
                 current_start = block_end
 
         return scenarios
 
     # =========================================================================
-    # REGION & SESSION EXTRACTION
+    # COVERAGE AND GAP HANDLING
     # =========================================================================
 
     def _extract_continuous_regions(
         self,
         coverage_report: CoverageReport
-    ) -> List[Dict[str, datetime]]:
+    ) -> List[Dict]:
         """
         Extract continuous data regions from coverage report.
 
-        Regions are split by moderate, large, and weekend gaps.
-        Each region includes information about the following gap.
+        Splits timeline at MODERATE/LARGE/WEEKEND gaps.
+        SMALL gaps are ignored (treated as continuous).
 
         Args:
-            coverage_report: Analyzed coverage report
+            coverage_report: Coverage report with gap analysis
 
         Returns:
-            List of dicts with 'start', 'end', and 'following_gap' keys
+            List of region dicts with 'start', 'end', 'following_gap'
         """
-
-        # Gap categories that interrupt blocks
-        interrupting_categories = {
-            GapCategory.MODERATE,
-            GapCategory.LARGE,
-            GapCategory.WEEKEND,
-            GapCategory.HOLIDAY
-        }
-
         regions = []
+
+        # Filter for interrupting gaps only
+        interrupting_gaps = [
+            g for g in coverage_report.gaps
+            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
+        ]
+
+        if not interrupting_gaps:
+            # No interrupting gaps - single continuous region
+            return [{
+                'start': coverage_report.start_time,
+                'end': coverage_report.end_time,
+                'following_gap': None
+            }]
+
+        # Sort gaps by start time
+        interrupting_gaps = sorted(
+            interrupting_gaps, key=lambda g: g.gap_start)
+
+        # Build regions between gaps
         current_start = coverage_report.start_time
 
-        for gap in coverage_report.gaps:
-            if gap.category in interrupting_categories:
-                # End current region at gap start
-                region_end = gap.gap_start
-
-                if region_end > current_start:
-                    regions.append({
-                        'start': current_start,
-                        'end': region_end,
-                        'following_gap': gap  # Store gap info for warnings
-                    })
-
-                # Start new region after gap
+        for gap in interrupting_gaps:
+            if gap.gap_start <= current_start:
+                # Gap before or at current position
                 current_start = gap.gap_end
+                continue
+
+            # End current region at gap start
+            region_end = gap.gap_start
+
+            if region_end > current_start:
+                regions.append({
+                    'start': current_start,
+                    'end': region_end,
+                    'following_gap': gap  # Store gap info for warnings
+                })
+
+            # Start new region after gap
+            current_start = gap.gap_end
 
         # Add final region (no following gap)
         final_end = coverage_report.end_time
@@ -577,7 +619,6 @@ class BlocksGenerator:
 
         Returns:
             Formatted string with gap type, duration, and icon
-            Example: " - Weekend gap follows (48.1h) 🟢"
         """
         if not region.get('following_gap'):
             return ""

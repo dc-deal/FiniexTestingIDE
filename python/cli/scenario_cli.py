@@ -56,58 +56,47 @@ class ScenarioCLI:
 
     def cmd_analyze(
         self,
-        symbols: List[str],
+        broker_type: str,
+        symbol: str,
         timeframe: Optional[str] = None
     ) -> None:
         """
         Analyze market data and print report with cross-instrument comparison.
 
         Args:
-            symbols: List of symbols to analyze
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+            symbol: Symbol to analyze
             timeframe: Timeframe override
         """
-        if not symbols:
-            print("❌ No symbols specified. Provide symbol names.")
+        # Analyze requested symbol
+        try:
+            analysis = self._analyzer.analyze_symbol(
+                broker_type, symbol, timeframe)
+            print_analysis_report(analysis)
+        except Exception as e:
+            print(f"❌ Failed to analyze {symbol}: {e}")
+            vLog.error(f"Analysis failed for {symbol}: {e}")
             return
 
-        # Analyze requested symbols
-        requested_analyses: List[SymbolAnalysis] = []
-        for symbol in symbols:
-            try:
-                analysis = self._analyzer.analyze_symbol(symbol, timeframe)
-                requested_analyses.append(analysis)
-                print_analysis_report(analysis)
-            except Exception as e:
-                print(f"❌ Failed to analyze {symbol}: {e}")
-                vLog.error(f"Analysis failed for {symbol}: {e}")
-
-        # Load all other symbols for cross-instrument comparison
-        all_symbols = self._analyzer.list_symbols()
-        all_analyses: List[SymbolAnalysis] = []
+        # Load all other symbols for cross-instrument comparison (same broker_type)
+        all_symbols = self._analyzer.list_symbols(broker_type)
+        all_analyses: List[SymbolAnalysis] = [analysis]
 
         for sym in all_symbols:
-            # Check if already analyzed
-            existing = next(
-                (a for a in requested_analyses if a.symbol == sym), None
-            )
-            if existing:
-                all_analyses.append(existing)
-            else:
-                try:
-                    analysis = self._analyzer.analyze_symbol(sym, timeframe)
-                    all_analyses.append(analysis)
-                except Exception as e:
-                    vLog.warning(
-                        f"Could not analyze {sym} for comparison: {e}")
+            if sym == symbol:
+                continue  # Already analyzed
+            try:
+                sym_analysis = self._analyzer.analyze_symbol(
+                    broker_type, sym, timeframe)
+                all_analyses.append(sym_analysis)
+            except Exception as e:
+                vLog.warning(f"Could not analyze {sym} for comparison: {e}")
 
         # Print cross-instrument ranking
-        if all_analyses and requested_analyses:
+        if len(all_analyses) > 1:
             config = self._analyzer.get_config()
             top_count = config.cross_instrument_ranking.top_count
-            # Use first requested symbol as current
-            current_symbol = requested_analyses[0].symbol
-            print_cross_instrument_ranking(
-                all_analyses, current_symbol, top_count)
+            print_cross_instrument_ranking(all_analyses, symbol, top_count)
 
     # =========================================================================
     # GENERATE COMMAND
@@ -115,6 +104,7 @@ class ScenarioCLI:
 
     def cmd_generate(
         self,
+        broker_type: str,
         symbols: List[str],
         strategy: str = "balanced",
         count: Optional[int] = None,
@@ -130,6 +120,7 @@ class ScenarioCLI:
         Generate scenario configurations.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbols: List of symbols
             strategy: Generation strategy (balanced, blocks, stress)
             count: Number of scenarios
@@ -162,9 +153,10 @@ class ScenarioCLI:
         if end:
             end_dt = ensure_utc_aware(datetime.fromisoformat(end))
         try:
-            generator = ScenarioGenerator(str(self._data_dir))
+            generator = ScenarioGenerator()
 
             result = generator.generate(
+                broker_type=broker_type,
                 symbols=symbols,
                 strategy=gen_strategy,
                 count=count,
@@ -284,9 +276,12 @@ def main():
         help='Analyze market data for volatility and activity'
     )
     analyze_parser.add_argument(
-        'symbols',
-        nargs='+',
-        help='Symbols to analyze (e.g., EURUSD GBPUSD)'
+        'broker_type',
+        help='Broker type (e.g., mt5, kraken_spot)'
+    )
+    analyze_parser.add_argument(
+        'symbol',
+        help='Symbol to analyze (e.g., EURUSD, BTCUSD)'
     )
     analyze_parser.add_argument(
         '--timeframe',
@@ -301,6 +296,10 @@ def main():
     generate_parser = subparsers.add_parser(
         'generate',
         help='Generate scenario configurations'
+    )
+    generate_parser.add_argument(
+        'broker_type',
+        help='Broker type (e.g., mt5, kraken_spot)'
     )
     generate_parser.add_argument(
         'symbols',
@@ -377,12 +376,14 @@ def main():
 
     if args.command == 'analyze':
         cli.cmd_analyze(
-            symbols=args.symbols,
+            broker_type=args.broker_type,
+            symbol=args.symbol,
             timeframe=args.timeframe
         )
 
     elif args.command == 'generate':
         cli.cmd_generate(
+            broker_type=args.broker_type,
             symbols=args.symbols,
             strategy=args.strategy,
             count=args.count,

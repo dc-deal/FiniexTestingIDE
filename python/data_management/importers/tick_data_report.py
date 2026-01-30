@@ -11,6 +11,7 @@ import traceback
 import pandas as pd
 from typing import Dict
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
@@ -29,20 +30,26 @@ class TickDataReporter:
         """
         self.index_manager = index_manager
 
-    def get_symbol_info(self, symbol: str) -> Dict:
+    def get_symbol_info(self, broker_type: str, symbol: str) -> Dict:
         """
         Get comprehensive information about a symbol from index.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
 
         Returns:
             Dict with symbol information and statistics
         """
-        if symbol not in self.index_manager.index:
-            return {"error": f"No data found for symbol {symbol}"}
+        # Check broker_type exists
+        if broker_type not in self.index_manager.index:
+            return {"error": f"No data found for broker_type {broker_type}"}
 
-        files = self.index_manager.index[symbol]
+        # Check symbol exists for this broker_type
+        if symbol not in self.index_manager.index[broker_type]:
+            return {"error": f"No data found for symbol {symbol} in {broker_type}"}
+
+        files = self.index_manager.index[broker_type][symbol]
 
         # === AGGREGATE STATISTICS FROM INDEX ===
         total_ticks = sum(f['tick_count'] for f in files)
@@ -92,10 +99,11 @@ class TickDataReporter:
 
         # === MARKET METADATA (from first file) ===
         market_type = files[0].get('market_type', 'forex_cfd')
-        data_source = files[0].get('data_source', 'mt5')
+        data_source = files[0].get('broker_type', broker_type)
 
         return {
             "symbol": symbol,
+            "broker_type": broker_type,
             "files": len(files),
             "total_ticks": total_ticks,
             "date_range": {
@@ -132,7 +140,7 @@ class TickDataReporter:
 
         weekends = info["date_range"]["duration"]["weekends"]
 
-        vLog.info(f"\n📊 {info['symbol']}")
+        vLog.info(f"\n📊 {info.get('broker_type', 'unknown')}/{info['symbol']}")
         vLog.info(
             f"   ├─ Time Range:    {info['date_range']['start_formatted']} to "
             f"{info['date_range']['end_formatted']}"
@@ -175,17 +183,30 @@ class TickDataReporter:
         if info.get("data_source"):
             vLog.info(f"   └─ Data Source:  {info['data_source']}")
 
-    def print_all_symbols(self):
-        """Print summary for all available symbols"""
-        symbols = self.index_manager.list_symbols()
+    def print_all_symbols(self, broker_types: list = None):
+        """
+        Print summary for symbols.
+
+        Args:
+            broker_types: List of broker_types to show. If None, shows all.
+        """
+        if broker_types is None:
+            broker_types = self.index_manager.list_broker_types()
 
         vLog.info("\n" + "=" * 100)
         vLog.info("SYMBOL OVERVIEW WITH TIME RANGES")
         vLog.info("=" * 100)
 
-        for symbol in symbols:
-            info = self.get_symbol_info(symbol)
-            self.print_symbol_info(info)
+        for broker_type in broker_types:
+            vLog.info(f"\n{'─' * 100}")
+            vLog.info(f"📁 Broker Type: {broker_type}")
+            vLog.info("─" * 100)
+
+            symbols = self.index_manager.list_symbols(broker_type)
+
+            for symbol in symbols:
+                info = self.get_symbol_info(broker_type, symbol)
+                self.print_symbol_info(info)
 
         vLog.info("\n" + "=" * 100)
 
@@ -223,27 +244,29 @@ class TickDataReporter:
         vLog.info(df.head(3).to_string())
 
 
-def run_summary_report():
+def run_summary_report(broker_type: str = None):
     """
-    Run comprehensive summary report for all available data.
+    Run comprehensive summary report for available data.
 
-    Main entry point for developers to inspect their data.
+    Args:
+        broker_type: Optional filter. If None, shows all broker_types.
     """
     vLog.info("=== FiniexTestingIDE Data Loader Summary Report ===")
 
     try:
-        # Initialize index manager
-        index_manager = TickIndexManager(Path("./data/processed/"))
+        # Initialize index manager with path from AppConfigManager
+        app_config = AppConfigManager()
+        index_manager = TickIndexManager(
+            Path(app_config.get_data_processed_path()))
         index_manager.build_index()
 
         # Initialize reporter
         reporter = TickDataReporter(index_manager)
 
         # Check if data exists
-        symbols = index_manager.list_symbols()
-        vLog.info(f"Available symbols: {symbols}")
+        all_broker_types = index_manager.list_broker_types()
 
-        if not symbols:
+        if not all_broker_types:
             vLog.error("❌ No data found!")
             vLog.info("\n" + "=" * 100)
             vLog.info("NO DATA FOUND")
@@ -255,8 +278,26 @@ def run_summary_report():
             vLog.info("4. Run this report again")
             return
 
-        # Print all symbols
-        reporter.print_all_symbols()
+        # Filter if broker_type specified
+        if broker_type:
+            if broker_type not in all_broker_types:
+                vLog.error(f"❌ broker_type '{broker_type}' not found!")
+                vLog.info(f"   Available: {', '.join(all_broker_types)}")
+                return
+            broker_types = [broker_type]
+        else:
+            broker_types = all_broker_types
+
+        # Show overview
+        all_symbols = []
+        for bt in broker_types:
+            symbols = index_manager.list_symbols(bt)
+            all_symbols.extend([f"{bt}/{s}" for s in symbols])
+        vLog.info(f"Broker types: {broker_types}")
+        vLog.info(f"Symbols: {all_symbols}")
+
+        # Print symbols (filtered or all)
+        reporter.print_all_symbols(broker_types)
 
         vLog.info("\n✅ Summary report completed successfully!")
 

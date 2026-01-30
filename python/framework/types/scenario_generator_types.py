@@ -170,9 +170,6 @@ class AnalysisConfig:
     regime_thresholds: List[int] = field(
         default_factory=lambda: [20, 40, 60, 80]
     )
-    broker_config_paths: List[str] = field(
-        default_factory=list
-    )
 
 
 @dataclass
@@ -250,9 +247,6 @@ class GeneratorConfig:
                 regime_thresholds=analysis_data.get(
                     'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
                 ),
-                broker_config_paths=analysis_data.get(
-                    'broker_config_paths', []
-                )
             ),
             balanced=BalancedStrategyConfig(
                 regime_count=balanced_data.get('regime_count', 5),
@@ -300,6 +294,9 @@ class ScenarioCandidate:
     start_time: datetime
     end_time: datetime
 
+    # Data source identifier
+    broker_type: str  # e.g., 'mt5', 'kraken_spot'
+
     # Selection criteria
     regime: VolatilityRegime
     session: TradingSession
@@ -334,6 +331,7 @@ class ScenarioCandidate:
         return {
             'name': name,
             'symbol': self.symbol,
+            'data_broker_type': self.broker_type,
             'start_date': self.start_time.isoformat(),
             'end_date': self.end_time.isoformat(),
             'max_ticks': effective_max_ticks,  # None → null in JSON

@@ -12,18 +12,23 @@ Workflow:
 4. Update bar index
 
 Directory Structure:
-- data/parquet/mt5/ticks/EURUSD/*.parquet  → Input
-- data/parquet/mt5/bars/EURUSD/EURUSD_M5_BARS.parquet → Output
+- data/processed/{broker_type}/ticks/EURUSD/*.parquet  → Input
+- data/processed/{broker_type}/bars/EURUSD/EURUSD_M5_BARS.parquet → Output
+
+REFACTORED: broker_type is now required parameter (no default)
+INDEX STRUCTURE: {broker_type: {symbol: [files]}}
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 import time
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
@@ -41,18 +46,17 @@ class BarImporter:
     One file per timeframe per symbol.
     """
 
-    VERSION = "1.0"
+    VERSION = "1.1"  # Updated for broker_type-first index structure
 
-    def __init__(self, data_dir: str = "./data/parquet/"):
+    def __init__(self):
         """
-        Initialize Bar importers
-
-        Args:
-            data_dir: Root data directory (default: ./data/parquet/)
+        Initialize Bar importer with paths from AppConfigManager.
         """
-        self.data_dir = Path(data_dir)
+        app_config = AppConfigManager()
+        self.data_dir = Path(app_config.get_data_processed_path())
         if not self.data_dir.exists():
-            raise FileNotFoundError(f"Data directory not found: {data_dir}")
+            raise FileNotFoundError(
+                f"Data directory not found: {self.data_dir}")
 
         # Initialize tick index for finding tick files
         self.tick_index = TickIndexManager(self.data_dir)
@@ -63,23 +67,22 @@ class BarImporter:
         self.total_bars_rendered = 0
         self.errors = []
 
-    def render_bars_for_all_symbols(self, data_collector: str = "mt5", clean_mode: bool = False):
+    def render_bars_for_all_symbols(self, broker_type: str, clean_mode: bool = False):
         """
-            Render bars for ALL symbols found in tick data.
+        Render bars for ALL symbols found in tick data for a specific broker_type.
 
-            Use this after bulk tick import to pre-render everything.
-
-            Args:
-                data_collector: Data collector name (default: 'mt5')
-                clean_mode: If True, delete all existing bars before rendering (default: False)
-            """
+        Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot') - REQUIRED
+            clean_mode: If True, delete all existing bars before rendering
+        """
         vLog.info("\n" + "=" * 80)
-        vLog.info(f"Bar Pre-Rendering - Batch Mode")
+        vLog.info(
+            f"Bar Pre-Rendering - Batch Mode (broker_type: {broker_type})")
         vLog.info("=" * 80)
 
         # === CLEAN MODE: Delete all bars first ===
         if clean_mode:
-            bars_base_dir = self.data_dir / data_collector / "bars"
+            bars_base_dir = self.data_dir / broker_type / "bars"
 
             if bars_base_dir.exists():
                 vLog.warning(
@@ -102,24 +105,27 @@ class BarImporter:
             else:
                 vLog.info(f"   No bars directory found - nothing to clean")
 
-        # Get all symbols from tick index
-        symbols = self.tick_index.list_symbols()
+        # Get all symbols from tick index FOR THIS BROKER_TYPE
+        # Use broker_type parameter for list_symbols()
+        symbols = self.tick_index.list_symbols(broker_type)
 
         if not symbols:
-            vLog.warning("No symbols found in tick data!")
+            vLog.warning(
+                f"No symbols found in tick data for broker_type '{broker_type}'!")
             return
 
-        vLog.info(f"Found {len(symbols)} symbols to process")
+        vLog.info(f"Found {len(symbols)} symbols to process for {broker_type}")
         vLog.info("=" * 80 + "\n")
 
         # Process each symbol
         for i, symbol in enumerate(symbols, 1):
-            vLog.info(f"\n[{i}/{len(symbols)}] Processing {symbol}...")
+            vLog.info(
+                f"\n[{i}/{len(symbols)}] Processing {broker_type}/{symbol}...")
             try:
-                self.render_bars_for_symbol(symbol, data_collector)
+                self.render_bars_for_symbol(symbol, broker_type)
                 self.processed_symbols += 1
             except Exception as e:
-                error_msg = f"FEHLER bei {symbol}: {str(e)}"
+                error_msg = f"ERROR in {broker_type}/{symbol}: {str(e)}"
                 vLog.error(error_msg)
                 self.errors.append(error_msg)
 
@@ -132,36 +138,33 @@ class BarImporter:
     def render_bars_for_symbol(
         self,
         symbol: str,
-        data_collector: str = "mt5"
+        broker_type: str
     ):
         """
         Render bars for a single symbol.
 
-        Steps:
-        1. Load ALL tick files for symbol
-        2. Render bars for all timeframes
-        3. Write bar parquet files
-        4. Log statistics
-
         Args:
             symbol: Trading symbol (e.g., 'EURUSD')
-            data_collector: Data collector name (default: 'mt5')
+            broker_type: Broker type identifier - REQUIRED
         """
         start_time = time.time()
 
         # === 1. LOAD TICK DATA ===
-        vLog.info(f"  ├─ Loading tick data for {symbol}...")
-        ticks_df = self._load_all_ticks_for_symbol(symbol, data_collector)
+        vLog.info(f"  ├─ Loading tick data for {broker_type}/{symbol}...")
+        ticks_df = self._load_all_ticks_for_symbol(symbol, broker_type)
 
         if ticks_df.empty:
-            vLog.warning(f"  └─ No tick data found for {symbol}")
+            vLog.warning(f"  └─ No tick data found for {broker_type}/{symbol}")
             return
 
         vLog.info(f"  ├─ Loaded {len(ticks_df):,} ticks")
 
         # === 1.5 EXTRACT SOURCE VERSIONS ===
-        tick_files = [Path(entry['path'])
-                      for entry in self.tick_index.index[symbol]]
+        # Access index with broker_type first
+        tick_files = [
+            Path(entry['path'])
+            for entry in self.tick_index.index[broker_type][symbol]
+        ]
         source_version_min, source_version_max = self._extract_source_versions(
             tick_files)
         vLog.debug(
@@ -182,7 +185,7 @@ class BarImporter:
                     symbol,
                     timeframe,
                     bars_df,
-                    data_collector,
+                    broker_type,
                     source_version_min,
                     source_version_max
                 )
@@ -192,33 +195,42 @@ class BarImporter:
         # === 4. LOG STATISTICS ===
         elapsed = time.time() - start_time
         vLog.info(
-            f"  └─ ✅ {symbol}: {bars_written:,} bars across "
+            f"  └─ ✅ {broker_type}/{symbol}: {bars_written:,} bars across "
             f"{len(all_bars)} timeframes in {elapsed:.2f}s"
         )
 
     def _load_all_ticks_for_symbol(
         self,
         symbol: str,
-        data_collector: str
+        broker_type: str
     ) -> pd.DataFrame:
         """
         Load ALL tick files for a symbol.
 
         Args:
             symbol: Trading symbol
-            data_collector: Data collector name
+            broker_type: Broker type identifier
 
         Returns:
             DataFrame with all ticks for symbol
         """
-        # Get all tick files for symbol from index
-        if symbol not in self.tick_index.index:
-            vLog.warning(f"Symbol {symbol} not found in tick index")
+        # Check broker_type exists in index first
+        if broker_type not in self.tick_index.index:
+            vLog.warning(
+                f"Broker type '{broker_type}' not found in tick index")
             return pd.DataFrame()
 
+        # Check symbol exists for this broker_type
+        if symbol not in self.tick_index.index[broker_type]:
+            vLog.warning(
+                f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'"
+            )
+            return pd.DataFrame()
+
+        # Access with broker_type first
         tick_files = [
             Path(entry['path'])
-            for entry in self.tick_index.index[symbol]
+            for entry in self.tick_index.index[broker_type][symbol]
         ]
 
         # Load and concatenate all files
@@ -241,41 +253,41 @@ class BarImporter:
         symbol: str,
         timeframe: str,
         bars_df: pd.DataFrame,
-        data_collector: str,
+        broker_type: str,
         source_version_min: str = '1.0.0',
         source_version_max: str = '1.0.0'
     ):
         """
         Write bar DataFrame to parquet file.
 
-        File structure: data_collector/bars/symbol/SYMBOL_TF_BARS.parquet
-        Example: mt5/bars/EURUSD/EURUSD_M5_BARS.parquet
-
         Args:
             symbol: Trading symbol
             timeframe: Timeframe string
             bars_df: Bar DataFrame
-            data_collector: Data collector name
+            broker_type: Broker type identifier
+            source_version_min: Minimum source data version
+            source_version_max: Maximum source data version
         """
-        # Create directory structure
-        bars_dir = self.data_dir / data_collector / "bars" / symbol
+        bars_dir = self.data_dir / broker_type / "bars" / symbol
         bars_dir.mkdir(parents=True, exist_ok=True)
 
-        # Filename: SYMBOL_TIMEFRAME_BARS.parquet
         filename = f"{symbol}_{timeframe}_BARS.parquet"
         filepath = bars_dir / filename
 
-        # Prepare metadata
+        # Get market_type from MarketConfigManager
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(broker_type)
+
         metadata = {
             'symbol': symbol,
             'timeframe': timeframe,
-            'data_collector': data_collector,
+            'broker_type': broker_type,
+            'market_type': market_type.value,  # NEW: Correct market_type from config
             'bar_count': str(len(bars_df)),
             'start_time': bars_df['timestamp'].min().isoformat(),
             'end_time': bars_df['timestamp'].max().isoformat(),
             'importer_version': self.VERSION,
             'rendered_at': pd.Timestamp.now(tz='UTC').isoformat(),
-            # Source version tracking
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
         }
@@ -344,20 +356,20 @@ class BarImporter:
         """
         vLog.info("\n📄 Updating bar index...")
         try:
-            # Try to import bar index manager
-            # NOTE: File must be at python/data_management/index/parquet_bars_index.py
-
             bar_index = BarsIndexManager(self.data_dir)
             bar_index.build_index(force_rebuild=True)
 
-            symbols = bar_index.list_symbols()
-            vLog.info(f"✅ Bar index updated: {len(symbols)} symbols indexed")
+            # Count symbols across all broker_types
+            total_symbols = len(bar_index.list_symbols())
+            broker_types = bar_index.list_broker_types()
+            vLog.info(
+                f"✅ Bar index updated: {total_symbols} symbols across "
+                f"{len(broker_types)} broker_types ({', '.join(broker_types)})"
+            )
 
         except ImportError as e:
             vLog.error(f"❌ Failed to import BarsIndexManager: {e}")
-            vLog.error("   Make sure parquet_bars_index.py is at:")
-            vLog.error(
-                "   python/data_management/index/parquet_bars_index.py")
+            vLog.error("   Make sure bars_index_manager.py is available")
             vLog.error("   You can manually build the index later.")
         except Exception as e:
             vLog.error(f"❌ Failed to update bar index: {e}")
@@ -366,61 +378,15 @@ class BarImporter:
     def _print_summary(self):
         """Print processing summary"""
         vLog.info("\n" + "=" * 80)
-        vLog.info("BAR RENDERING ZUSAMMENFASSUNG")
+        vLog.info("BAR RENDERING SUMMARY")
         vLog.info("=" * 80)
-        vLog.info(f"✅ Verarbeitete Symbols: {self.processed_symbols}")
-        vLog.info(f"✅ Gerenderte Bars: {self.total_bars_rendered:,}")
-        vLog.info(f"❌ Fehler: {len(self.errors)}")
+        vLog.info(f"✅ Processed Symbols: {self.processed_symbols}")
+        vLog.info(f"✅ Rendered Bars: {self.total_bars_rendered:,}")
+        vLog.info(f"❌ Errors: {len(self.errors)}")
 
         if self.errors:
-            vLog.error("\nFEHLER-LISTE:")
+            vLog.error("\nERROR LIST:")
             for error in self.errors:
                 vLog.error(f"  - {error}")
 
         vLog.info("=" * 80 + "\n")
-
-
-# =============================================================================
-# CLI INTERFACE (Optional - for future use)
-# =============================================================================
-
-def main():
-    """
-    CLI entry point for manual bar rendering.
-
-    Usage:
-        python -m bar_importer                    # Render all symbols
-        python -m bar_importer --symbol EURUSD    # Render specific symbol
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description='Pre-render bars from tick data'
-    )
-    parser.add_argument(
-        '--symbol',
-        type=str,
-        help='Specific symbol to render (default: all)'
-    )
-    parser.add_argument(
-        '--collector',
-        type=str,
-        default='mt5',
-        help='Data collector name (default: mt5)'
-    )
-
-    args = parser.parse_args()
-
-    importer = BarImporter()
-
-    if args.symbol:
-        # Render specific symbol
-        vLog.info(f"Rendering bars for {args.symbol}...")
-        importer.render_bars_for_symbol(args.symbol, args.collector)
-    else:
-        # Render all symbols
-        importer.render_bars_for_all_symbols(args.collector)
-
-
-if __name__ == '__main__':
-    main()

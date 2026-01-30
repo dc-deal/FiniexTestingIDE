@@ -6,6 +6,9 @@ Usage:
     python python/cli/bar_index_cli.py rebuild
     python python/cli/bar_index_cli.py status
     python python/cli/bar_index_cli.py report
+    python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
+
+REFACTORED: Index structure is now {broker_type: {symbol: {timeframe: entry}}}
 """
 
 import sys
@@ -13,11 +16,15 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.activity_volume_provider import get_activity_provider
+from python.data_management.importers.bar_importer import BarImporter
+
 vLog = get_global_logger()
 
 
@@ -26,9 +33,10 @@ class BarIndexCLI:
     Command-line interface for bar index management and reporting.
     """
 
-    def __init__(self, data_dir: str = "./data/processed/"):
-        """Initialize CLI"""
-        self.data_dir = Path(data_dir)
+    def __init__(self):
+        """Initialize CLI with paths from AppConfigManager."""
+        app_config = AppConfigManager()
+        self.data_dir = Path(app_config.get_data_processed_path())
         self.index_manager = BarsIndexManager(self.data_dir)
 
     def cmd_rebuild(self):
@@ -62,78 +70,102 @@ class BarIndexCLI:
         else:
             print("Index file:  (not found)")
 
-        # Symbol overview
-        symbols = self.index_manager.list_symbols()
-        print(f"Symbols:     {len(symbols)}")
+        # Get broker_types first
+        broker_types = self.index_manager.list_broker_types()
+        print(
+            f"Broker Types: {len(broker_types)} ({', '.join(broker_types) if broker_types else 'none'})")
 
-        if not symbols:
+        # Symbol overview (across all broker_types)
+        all_symbols = self.index_manager.list_symbols()
+        print(
+            f"Symbols:     {len(all_symbols)} (total across all broker_types)")
+
+        if not broker_types:
             print("\n⚠️  No bar data found in index")
             print("="*80 + "\n")
             return
 
-        # Count total timeframes across all symbols
-        total_timeframes = sum(
-            len(self.index_manager.index[symbol])
-            for symbol in symbols
-        )
+        # Count total timeframes across all broker_types and symbols
+        total_timeframes = 0
+        for broker_type in broker_types:
+            for symbol in self.index_manager.index[broker_type]:
+                total_timeframes += len(
+                    self.index_manager.index[broker_type][symbol])
         print(f"Timeframes:  {total_timeframes} (across all symbols)")
 
-        print("\n" + "─"*80)
-        print("Symbols and Timeframes:")
-        print("─"*80)
+        # Iterate over broker_types → symbols → timeframes
+        for broker_type in sorted(broker_types):
+            print("\n" + "─"*80)
+            print(f"📁 Broker Type: {broker_type}")
+            print("─"*80)
 
-        # List each symbol with available timeframes
-        for symbol in sorted(symbols):
-            timeframes = self.index_manager.get_available_timeframes(symbol)
-            stats = self.index_manager.get_symbol_stats(symbol)
+            symbols = self.index_manager.list_symbols(broker_type)
 
-            # Calculate total bars for this symbol
-            total_bars = sum(tf_stats['bar_count']
-                             for tf_stats in stats.values())
+            if not symbols:
+                print("   (no symbols)")
+                continue
 
-            print(f"\n{symbol}:")
-            print(f"   Timeframes: {', '.join(timeframes)}")
-            print(f"   Total bars: {total_bars:,}")
+            # List each symbol with available timeframes
+            for symbol in sorted(symbols):
+                # Pass broker_type to methods
+                timeframes = self.index_manager.get_available_timeframes(
+                    broker_type, symbol)
+                stats = self.index_manager.get_symbol_stats(
+                    broker_type, symbol)
 
-            # Get first timeframe entry for metadata
-            first_tf = sorted(timeframes)[0]
-            first_entry = self.index_manager.index[symbol][first_tf]
+                # Calculate total bars for this symbol
+                total_bars = sum(tf_stats['bar_count']
+                                 for tf_stats in stats.values())
 
-            # Show metadata if available
-            market_type = first_entry.get('market_type', 'unknown')
-            source_version_min = first_entry.get(
-                'source_version_min', 'unknown')
-            source_version_max = first_entry.get(
-                'source_version_max', 'unknown')
-            data_source = first_entry.get('data_source', 'unknown')
+                print(f"\n   {symbol}:")
+                print(f"      Timeframes: {', '.join(timeframes)}")
+                print(f"      Total bars: {total_bars:,}")
 
-            # Version display
-            if source_version_min == source_version_max:
-                version_str = source_version_min
-            else:
-                version_str = f"{source_version_min} - {source_version_max}"
+                # Get first timeframe entry for metadata
+                first_tf = sorted(timeframes)[0]
+                # Access with broker_type first
+                first_entry = self.index_manager.index[broker_type][symbol][first_tf]
 
-            print(f"   Source:     {data_source} (v{version_str})")
-            print(f"   Market:     {market_type}")
+                # Get market_type from MarketConfigManager (Single Source of Truth)
+                market_config = MarketConfigManager()
+                market_type = market_config.get_market_type(broker_type).value
 
-            # Activity metrics using provider
-            provider = get_activity_provider()
-            activity_label = provider.get_metric_label(market_type)
+                # Version metadata from index entry
+                source_version_min = first_entry.get(
+                    'source_version_min', 'unknown')
+                source_version_max = first_entry.get(
+                    'source_version_max', 'unknown')
+                # CHANGED: data_source → broker_type
+                data_source = first_entry.get('broker_type', broker_type)
 
-            for tf in sorted(timeframes):
-                tf_stats = stats[tf]
+                # Version display
+                if source_version_min == source_version_max:
+                    version_str = source_version_min
+                else:
+                    version_str = f"{source_version_min} - {source_version_max}"
 
-                # Get full entry for activity data
-                entry = self.index_manager.index[symbol][tf]
-                total_activity = provider.get_total_activity_value(
-                    entry, market_type)
-                avg_activity = provider.get_avg_activity_value(
-                    entry, market_type)
+                print(f"      Source:     {data_source} (v{version_str})")
+                print(f"      Market:     {market_type}")
 
-                print(f"      • {tf}: {tf_stats['bar_count']:,} bars "
-                      f"({tf_stats['file_size_mb']:.1f} MB) "
-                      f"[{activity_label}: {provider.format_activity_value(total_activity, market_type)}, "
-                      f"Ø {provider.format_activity_value(avg_activity, market_type)}/bar]")
+                # Activity metrics using provider
+                provider = get_activity_provider()
+                activity_label = provider.get_metric_label(market_type)
+
+                for tf in sorted(timeframes):
+                    tf_stats = stats[tf]
+
+                    # Get full entry for activity data
+                    # Access with broker_type first
+                    entry = self.index_manager.index[broker_type][symbol][tf]
+                    total_activity = provider.get_total_activity_value(
+                        entry, market_type)
+                    avg_activity = provider.get_avg_activity_value(
+                        entry, market_type)
+
+                    print(f"         • {tf}: {tf_stats['bar_count']:,} bars "
+                          f"({tf_stats['file_size_mb']:.1f} MB) "
+                          f"[{activity_label}: {provider.format_activity_value(total_activity, market_type)}, "
+                          f"Ø {provider.format_activity_value(avg_activity, market_type)}/bar]")
 
         print("\n" + "="*80)
 
@@ -157,12 +189,16 @@ class BarIndexCLI:
         print(f"\n✅ Report saved to: {report_path}")
         print("="*80 + "\n")
 
-    def cmd_render(self, clean: bool = False):
-        """Render bars from tick data"""
-        from python.data_management.importers.bar_importer import BarImporter
+    def cmd_render(self, broker_type: str, clean: bool = False):
+        """
+        Render bars from tick data.
 
+        Args:
+            broker_type: Broker type identifier (REQUIRED)
+            clean: If True, delete existing bars before rendering
+        """
         print("\n" + "="*80)
-        print("🔄 Bar Rendering")
+        print(f"🔄 Bar Rendering (broker_type: {broker_type})")
         print("="*80)
         print(
             f"Clean Mode: {'ENABLED (delete all bars first)' if clean else 'DISABLED (skip symbols without ticks)'}")
@@ -171,7 +207,7 @@ class BarIndexCLI:
         try:
             bar_importer = BarImporter(str(self.data_dir))
             bar_importer.render_bars_for_all_symbols(
-                data_collector="mt5",
+                broker_type=broker_type,
                 clean_mode=clean
             )
 
@@ -192,19 +228,20 @@ class BarIndexCLI:
 📚 Bar Index CLI - Usage
 
 Commands:
-    rebuild             Rebuild bar index from parquet files
-    status              Show bar index status and overview
-    report              Generate detailed report (saved to framework/reports)
-    render [--clean]    Render bars from tick data
-                        --clean: Delete all existing bars before rendering
-    help                Show this help
+    rebuild                         Rebuild bar index from parquet files
+    status                          Show bar index status and overview
+    report                          Generate detailed report (saved to framework/reports)
+    render BROKER_TYPE [--clean]    Render bars from tick data for specific broker_type
+                                    BROKER_TYPE is REQUIRED (e.g., mt5, kraken_spot)
+                                    --clean: Delete all existing bars before rendering
+    help                            Show this help
 
 Examples:
     python python/cli/bar_index_cli.py rebuild
     python python/cli/bar_index_cli.py status
     python python/cli/bar_index_cli.py report
-    python python/cli/bar_index_cli.py render
-    python python/cli/bar_index_cli.py render --clean
+    python python/cli/bar_index_cli.py render mt5
+    python python/cli/bar_index_cli.py render kraken_spot --clean
 
 Reports are saved to: ./framework/reports/bar_index_YYYYMMDD_HHMMSS.json
 
@@ -232,9 +269,17 @@ def main():
             cli.cmd_report()
 
         elif command == "render":
-            # Check for --clean flag
+            # render requires BROKER_TYPE as second argument
+            if len(sys.argv) < 3:
+                print("❌ Usage: render BROKER_TYPE [--clean]")
+                print("   Example: render mt5")
+                print("   Example: render kraken_spot --clean")
+                sys.exit(1)
+
+            broker_type = sys.argv[2]
             clean = "--clean" in sys.argv
-            cli.cmd_render(clean=clean)
+
+            cli.cmd_render(broker_type=broker_type, clean=clean)
 
         elif command == "help":
             cli.cmd_help()

@@ -49,6 +49,7 @@ class StressGenerator:
 
     def generate(
         self,
+        broker_type: str,
         symbol: str,
         block_hours: int,
         count: int,
@@ -67,6 +68,7 @@ class StressGenerator:
            - Verify no overlap with existing scenarios
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
             block_hours: Scenario duration in hours
             count: Number of scenarios to generate
@@ -76,11 +78,11 @@ class StressGenerator:
             List of scenario candidates
         """
         # Get stress periods (HIGH/VERY_HIGH regimes)
-        stress_periods = self._analyzer.get_stress_periods(symbol)
+        stress_periods = self._analyzer.get_stress_periods(broker_type, symbol)
 
         if not stress_periods:
             raise ValueError(
-                f"No HIGH/VERY_HIGH volatility periods found for {symbol}"
+                f"No HIGH/VERY_HIGH volatility periods found for {broker_type}/{symbol}"
             )
 
         vLog.info(
@@ -89,7 +91,7 @@ class StressGenerator:
         )
 
         # Get all periods for gap checking
-        all_periods = self._analyzer.get_periods(symbol)
+        all_periods = self._analyzer.get_periods(broker_type, symbol)
 
         # Build centered scenarios
         scenarios = []
@@ -128,6 +130,7 @@ class StressGenerator:
 
             # Build scenario centered on stress period
             result = self._build_centered_scenario(
+                broker_type,
                 symbol,
                 stress_period,
                 all_periods,
@@ -150,7 +153,7 @@ class StressGenerator:
             used_ranges.append(scenario_range)
 
             vLog.info(
-                f"✓ Stress #{len(scenarios):02d}: "
+                f"✔ Stress #{len(scenarios):02d}: "
                 f"{stress_period.start_time.strftime('%Y-%m-%d %H:%M')} "
                 f"({stress_period.regime.value}, {stress_period.tick_count:,} ticks)"
             )
@@ -187,6 +190,7 @@ class StressGenerator:
 
     def _build_centered_scenario(
         self,
+        broker_type: str,
         symbol: str,
         stress_period: PeriodAnalysis,
         all_periods: List[PeriodAnalysis],
@@ -202,6 +206,7 @@ class StressGenerator:
         Build scenario centered on stress period.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             stress_period: High-volatility period to center on
             all_periods: All periods for gap checking
@@ -281,13 +286,14 @@ class StressGenerator:
             return None
 
         if detailed_log:
-            vLog.info(f"  ✓ VALID: All checks passed")
+            vLog.info(f"  ✔ VALID: All checks passed")
 
         # Create scenario
         scenario = ScenarioCandidate(
             symbol=symbol,
             start_time=scenario_start,
             end_time=scenario_end,
+            broker_type=broker_type,
             regime=stress_period.regime,
             session=stress_period.session,
             estimated_ticks=0,  # Time-based, no tick limit

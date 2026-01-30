@@ -8,7 +8,7 @@ Post-MVP: Full implementation with Kraken API integration
 
 from typing import Dict, Any, List, Optional
 
-from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
 from .base_adapter import IOrderCapabilities
 from python.framework.types.order_types import (
     OrderCapabilities,
@@ -240,6 +240,16 @@ class KrakenAdapter(IOrderCapabilities):
         """
         raise NotImplementedError(
             "Kraken symbol info not implemented (feature gated)."
+        )
+
+    def get_broker_specification(self) -> BrokerSpecification:
+        """
+        Get Kraken broker specs (DUMMY).
+
+        Post-MVP: Return actual Kraken broker specifications.
+        """
+        raise NotImplementedError(
+            "Kraken broker specification not implemented (feature gated)."
         )
 
     # ============================================

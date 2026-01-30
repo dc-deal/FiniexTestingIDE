@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
@@ -35,26 +36,16 @@ class ScenarioGenerator:
     Coordinates market analysis and dispatches to strategy-specific generators.
     """
 
-    def __init__(
-        self,
-        data_dir: str = "./data/processed",
-        config_path: Optional[str] = None
-    ):
-        """
-        Initialize scenario generator.
-
-        Args:
-            data_dir: Path to processed data directory
-            config_path: Path to generator config JSON
-        """
-        self._data_dir = Path(data_dir)
-        self._analyzer = MarketAnalyzer(str(self._data_dir), config_path)
+    def __init__(self):
+        """Initialize scenario generator with paths from AppConfigManager."""
+        app_config = AppConfigManager()
+        self._data_dir = Path(app_config.get_data_processed_path())
+        self._analyzer = MarketAnalyzer(str(self._data_dir))
         self._config = self._analyzer.get_config()
 
-        # Template paths
-        self._template_path = Path(
-            "./configs/generator/template_scenario_set_header.json")
-        self._output_dir = Path("./configs/scenario_sets")
+        # Template and output paths from centralized config
+        self._template_path = Path(app_config.get_generator_template_path())
+        self._output_dir = Path(app_config.get_generator_output_path())
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
@@ -67,6 +58,7 @@ class ScenarioGenerator:
 
     def generate(
         self,
+        broker_type: str,
         symbols: List[str],
         strategy: GenerationStrategy,
         count: Optional[int] = None,
@@ -81,6 +73,7 @@ class ScenarioGenerator:
         Generate scenario candidates.
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbols: List of symbols to generate for
             strategy: Generation strategy
             count: Number of scenarios
@@ -102,7 +95,7 @@ class ScenarioGenerator:
         symbol = symbols[0]
 
         # Analyze the symbol (for metadata)
-        analysis = self._analyzer.analyze_symbol(symbol)
+        analysis = self._analyzer.analyze_symbol(broker_type, symbol)
 
         # Note: Blocks and Stress generators handle their own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")
@@ -111,7 +104,7 @@ class ScenarioGenerator:
         if strategy == GenerationStrategy.BLOCKS:
             hours = block_hours or self._config.blocks.default_block_hours
             scenarios = self._blocks_gen.generate(
-                symbol, hours, count, sessions_filter
+                broker_type, symbol, hours, count, sessions_filter
             )
             session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
             vLog.info(
@@ -123,7 +116,7 @@ class ScenarioGenerator:
             vLog.info(
                 f"Generating {effective_count} {strategy.value} scenarios")
             scenarios = self._stress_gen.generate(
-                symbol, hours, effective_count, max_ticks
+                broker_type, symbol, hours, effective_count, max_ticks
             )
 
         else:
@@ -200,7 +193,7 @@ class ScenarioGenerator:
         if not self._template_path.exists():
             raise FileNotFoundError(
                 f"Scenario template not found: {self._template_path}\n"
-                f"Expected location: ./configs/generator/template_scenario_set_header.json\n"
+                f"Configure 'generator_template' in app_config.json paths section.\n"
                 f"This file is required for generating scenario configs."
             )
 

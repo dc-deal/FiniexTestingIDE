@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -49,15 +50,13 @@ class MarketAnalyzer:
 
     def __init__(
         self,
-        data_dir: str = "./data/processed",
-        config_path: Optional[str] = None
+        data_dir: str = "./data/processed"
     ):
         """
         Initialize market analyzer.
 
         Args:
             data_dir: Path to processed data directory
-            config_path: Path to analysis config JSON (optional)
         """
         self._data_dir = Path(data_dir)
         analysis_config = AnalysisConfigLoader()
@@ -72,39 +71,50 @@ class MarketAnalyzer:
         self._tick_index = TickIndexManager(self._data_dir)
         self._tick_index.build_index()
 
-        # Load broker configs and build symbol specification cache
+        # Symbol specification cache (lazy loaded per broker_type)
         self._market_symbol_specs: Dict[str, SymbolSpecification] = {}
-        self._load_broker_configs()
+        self._loaded_broker_types: set = set()
+
+        # MarketConfigManager for broker paths
+        self._market_config = MarketConfigManager()
 
     def get_config(self) -> GeneratorConfig:
         """Get current configuration."""
         return self._config
 
-    def _load_broker_configs(self) -> None:
+    def _load_broker_config_for(self, broker_type: str) -> None:
         """
-        Load broker configurations and build symbol specification cache.
+        Load broker configuration for specific broker_type only (lazy).
 
-        Loads all broker configs from paths in analysis config.
-        Builds cache mapping symbol -> SymbolSpecification for pip calculation.
+        Uses MarketConfigManager to get broker_config_path.
+        Only loads each broker_type once.
+
+        Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
         """
-        broker_paths = self._config.analysis.broker_config_paths
+        if broker_type in self._loaded_broker_types:
+            return  # Already loaded
 
-        for broker_path in broker_paths:
-            # Create temporary BrokerConfig to get SymbolSpecification
+        try:
+            broker_path = self._market_config.get_broker_config_path(
+                broker_type)
             broker_config = BrokerConfigFactory.build_broker_config(
                 broker_path)
-            try:
-                symbols = broker_config.get_all_aviable_symbols()
-                for symbol in symbols:
-                    spec = broker_config.get_symbol_specification(
-                        symbol)
+
+            symbols = broker_config.get_all_aviable_symbols()
+            for symbol in symbols:
+                try:
+                    spec = broker_config.get_symbol_specification(symbol)
                     self._market_symbol_specs[symbol] = spec
-                    vLog.debug(
-                        f"Loaded {len(symbol)} symbols from {broker_path}")
-            except Exception as e:
-                vLog.warning(
-                    f"Failed to load broker config specs for symbol: {symbol} {broker_path}: {e}")
-                pass
+                except Exception as e:
+                    vLog.debug(f"Could not load spec for {symbol}: {e}")
+
+            self._loaded_broker_types.add(broker_type)
+            vLog.debug(f"Loaded {len(symbols)} symbols from {broker_type}")
+
+        except Exception as e:
+            vLog.warning(
+                f"Failed to load broker config for {broker_type}: {e}")
 
     def _calculate_pips_per_day(
         self,
@@ -150,6 +160,7 @@ class MarketAnalyzer:
 
     def analyze_symbol(
         self,
+        broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None
     ) -> SymbolAnalysis:
@@ -159,6 +170,7 @@ class MarketAnalyzer:
         Automatically filters out periods without real data (weekends, gaps).
 
         Args:
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol (e.g., 'EURUSD')
             timeframe: Timeframe to analyze (default from config)
 
@@ -167,20 +179,29 @@ class MarketAnalyzer:
         """
         tf = timeframe or self._config.analysis.timeframe
 
+        # Lazy load broker config for this broker_type only
+        self._load_broker_config_for(broker_type)
+
         # Get bar file path from index
-        bar_file = self._bar_index.get_bar_file(symbol, tf)
+        bar_file = self._bar_index.get_bar_file(broker_type, symbol, tf)
         if not bar_file:
-            raise ValueError(f"No bar data found for {symbol} {tf}")
+            raise ValueError(
+                f"No bar data found for {broker_type}/{symbol} {tf}")
 
         # Get index metadata
-        index_entry = self._bar_index.index[symbol][tf]
-        market_type = index_entry.get('market_type', 'forex_cfd')
-        data_source = index_entry.get('data_source', 'mt5')
+         # Get index metadata
+        index_entry = self._bar_index.index[broker_type][symbol][tf]
+        data_source = index_entry.get('broker_type', broker_type)
 
-        vLog.info(f"Analyzing {symbol} {tf} ({market_type})")
+        # Get market_type from MarketConfigManager (Single Source of Truth)
+        market_config = MarketConfigManager()
+        market_type_enum = market_config.get_market_type(broker_type)
+        market_type = market_type_enum.value  # Convert to string for SymbolAnalysis
+
+        vLog.info(f"Analyzing {broker_type}/{symbol} {tf} ({market_type})")
 
         # Load and prepare bar data (using refactored helper)
-        df = self._load_and_prepare_bars(symbol, tf)
+        df = self._load_and_prepare_bars(broker_type, symbol, tf)
 
         # Group into analysis periods (filters synthetic-only periods)
         periods = self._analyze_periods(df, symbol)
@@ -250,6 +271,7 @@ class MarketAnalyzer:
 
     def get_periods(
         self,
+        broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None
     ) -> List[PeriodAnalysis]:
@@ -262,25 +284,23 @@ class MarketAnalyzer:
         Public accessor for stress/custom scenario generators.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe (default from config)
 
         Returns:
             List of PeriodAnalysis with regime classification
-
-        Raises:
-            ValueError: If no bar data or no valid periods found
         """
         tf = timeframe or self._config.analysis.timeframe
 
-        vLog.debug(f"Extracting periods for {symbol} {tf}")
+        vLog.debug(f"Extracting periods for {broker_type}/{symbol} {tf}")
 
-        df = self._load_and_prepare_bars(symbol, tf)
+        df = self._load_and_prepare_bars(broker_type, symbol, tf)
         periods = self._analyze_periods(df, symbol)
 
         if not periods:
             raise ValueError(
-                f"No valid trading periods found for {symbol} {tf}. "
+                f"No valid trading periods found for {broker_type}/{symbol} {tf}. "
                 f"All periods may be synthetic-only (weekends/gaps)."
             )
 
@@ -290,6 +310,7 @@ class MarketAnalyzer:
 
     def get_stress_periods(
         self,
+        broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None,
         regimes: Optional[List[VolatilityRegime]] = None
@@ -301,6 +322,7 @@ class MarketAnalyzer:
         and sorts by tick activity.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe (default from config)
             regimes: Regimes to include (default: [HIGH, VERY_HIGH])
@@ -308,7 +330,7 @@ class MarketAnalyzer:
         Returns:
             Filtered periods sorted by tick_count (highest first)
         """
-        all_periods = self.get_periods(symbol, timeframe)
+        all_periods = self.get_periods(broker_type, symbol, timeframe)
 
         if regimes is None:
             regimes = [VolatilityRegime.HIGH, VolatilityRegime.VERY_HIGH]
@@ -333,25 +355,29 @@ class MarketAnalyzer:
     # INTERNAL HELPERS
     # =========================================================================
 
-    def _load_and_prepare_bars(self, symbol: str, timeframe: str) -> pd.DataFrame:
+    def _load_and_prepare_bars(
+        self,
+        broker_type: str,
+        symbol: str,
+        timeframe: str
+    ) -> pd.DataFrame:
         """
         Load and prepare bar data for analysis.
 
         Shared helper for analyze_symbol() and get_periods().
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe string
 
         Returns:
             Prepared dataframe with ATR calculated
-
-        Raises:
-            ValueError: If no bar data found
         """
-        bar_file = self._bar_index.get_bar_file(symbol, timeframe)
+        bar_file = self._bar_index.get_bar_file(broker_type, symbol, timeframe)
         if not bar_file:
-            raise ValueError(f"No bar data found for {symbol} {timeframe}")
+            raise ValueError(
+                f"No bar data found for {broker_type}/{symbol} {timeframe}")
 
         df = pd.read_parquet(bar_file)
         df = self._prepare_dataframe(df)
@@ -652,38 +678,50 @@ class MarketAnalyzer:
     # UTILITY METHODS
     # =========================================================================
 
-    def list_symbols(self) -> List[str]:
+    def list_symbols(self, broker_type: Optional[str] = None) -> List[str]:
         """
         List available symbols in bar index.
+
+        Args:
+            broker_type: If provided, list symbols for this broker_type only
 
         Returns:
             Sorted list of symbol names
         """
-        return self._bar_index.list_symbols()
+        return self._bar_index.list_symbols(broker_type)
 
-    def get_available_timeframes(self, symbol: str) -> List[str]:
+    def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """
         Get available timeframes for a symbol.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
 
         Returns:
             List of timeframe strings
         """
-        return self._bar_index.get_available_timeframes(symbol)
+        return self._bar_index.get_available_timeframes(broker_type, symbol)
 
-    def get_index_entry(self, symbol: str, timeframe: str) -> Optional[Dict]:
+    def get_index_entry(
+        self,
+        broker_type: str,
+        symbol: str,
+        timeframe: str
+    ) -> Optional[Dict]:
         """
         Get bar index entry for symbol/timeframe.
 
         Args:
+            broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe string
 
         Returns:
             Index entry dict or None
         """
-        if symbol in self._bar_index.index:
-            return self._bar_index.index[symbol].get(timeframe)
-        return None
+        if broker_type not in self._bar_index.index:
+            return None
+        if symbol not in self._bar_index.index[broker_type]:
+            return None
+        return self._bar_index.index[broker_type][symbol].get(timeframe)

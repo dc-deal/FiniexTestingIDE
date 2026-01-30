@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_set_name": "mvp_backtesting_loadtest_40_scenarios",
-  "created": "2025-12-11T19:08:09.022420+00:00",
+  "scenario_set_name": "USDJPY_blocks_20260128_1951",
+  "created": "2026-01-28T19:51:43.160090+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -32,7 +32,11 @@
     "execution_config": {},
     "trade_simulator_config": {
       "initial_balance": 10000,
-      "currency": "EUR"
+      "currency": "EUR",
+      "seeds": {
+        "api_latency_seed": 42,
+        "market_execution_seed": 123
+      }
     }
   },
   "scenarios": [

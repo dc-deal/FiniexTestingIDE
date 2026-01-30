@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -75,124 +76,136 @@ class BarIndexReportGenerator:
 
     def _generate_overview(self) -> Dict:
         """Generate overview statistics"""
-        symbols = self.index_manager.list_symbols()
-
         total_bars = 0
         total_size_mb = 0
         total_files = 0
         timeframe_counts = {}
-
-        for symbol in symbols:
-            stats = self.index_manager.get_symbol_stats(symbol)
-
-            for tf, tf_stats in stats.items():
-                total_bars += tf_stats['bar_count']
-                total_size_mb += tf_stats['file_size_mb']
-                total_files += 1
-
-                # Count timeframe occurrences
-                timeframe_counts[tf] = timeframe_counts.get(tf, 0) + 1
-
-        # Collect market types and activity totals
         market_types = set()
         total_tick_count = 0
+        all_symbols = set()
 
-        for symbol in symbols:
-            for tf, entry in self.index_manager.index[symbol].items():
-                market_types.add(entry.get('market_type', 'unknown'))
-                total_tick_count += entry.get('total_tick_count', 0)
+        market_config = MarketConfigManager()
+
+        for broker_type in self.index_manager.list_broker_types():
+            # Get market_type from MarketConfigManager (Single Source of Truth)
+            market_type = market_config.get_market_type(broker_type).value
+            market_types.add(market_type)
+
+            for symbol in self.index_manager.list_symbols(broker_type):
+                all_symbols.add(symbol)
+                stats = self.index_manager.get_symbol_stats(
+                    broker_type, symbol)
+
+                for tf, tf_stats in stats.items():
+                    total_bars += tf_stats['bar_count']
+                    total_size_mb += tf_stats['file_size_mb']
+                    total_files += 1
+                    timeframe_counts[tf] = timeframe_counts.get(tf, 0) + 1
+
+                for tf, entry in self.index_manager.index[broker_type][symbol].items():
+                    # NOTE: market_type no longer read from entry
+                    total_tick_count += entry.get('total_tick_count', 0)
 
         return {
-            "total_symbols": len(symbols),
+            "total_symbols": len(all_symbols),
             "total_timeframes": sum(timeframe_counts.values()),
             "total_bar_files": total_files,
             "total_bars": total_bars,
             "total_size_mb": round(total_size_mb, 2),
             "total_tick_count": total_tick_count,
             "market_types": sorted(list(market_types)),
-            "timeframe_distribution": timeframe_counts
+            "timeframe_distribution": timeframe_counts,
+            "broker_types": self.index_manager.list_broker_types()
         }
 
     def _generate_symbol_details(self) -> Dict:
         """Generate detailed per-symbol information"""
-        symbols = self.index_manager.list_symbols()
         symbol_details = {}
 
-        for symbol in symbols:
-            stats = self.index_manager.get_symbol_stats(symbol)
-            timeframes = self.index_manager.get_available_timeframes(symbol)
+        for broker_type in self.index_manager.list_broker_types():
+            for symbol in self.index_manager.list_symbols(broker_type):
+                # Key includes broker_type to handle same symbol across brokers
+                detail_key = f"{broker_type}/{symbol}"
 
-            # Calculate symbol totals
-            total_bars = sum(tf_stats['bar_count']
-                             for tf_stats in stats.values())
-            total_size = sum(tf_stats['file_size_mb']
-                             for tf_stats in stats.values())
+                stats = self.index_manager.get_symbol_stats(
+                    broker_type, symbol)
+                timeframes = self.index_manager.get_available_timeframes(
+                    broker_type, symbol)
 
-            # Get time ranges (earliest start, latest end)
-            start_times = [tf_stats['start_time']
-                           for tf_stats in stats.values()]
-            end_times = [tf_stats['end_time'] for tf_stats in stats.values()]
+                # Calculate symbol totals
+                total_bars = sum(tf_stats['bar_count']
+                                 for tf_stats in stats.values())
+                total_size = sum(tf_stats['file_size_mb']
+                                 for tf_stats in stats.values())
 
-            # Get metadata from first timeframe entry
-            first_tf = sorted(timeframes)[0]
-            first_entry = self.index_manager.index[symbol][first_tf]
+                # Get time ranges
+                start_times = [tf_stats['start_time']
+                               for tf_stats in stats.values()]
+                end_times = [tf_stats['end_time']
+                             for tf_stats in stats.values()]
 
-            market_type = first_entry.get('market_type', 'unknown')
-            source_version_min = first_entry.get(
-                'source_version_min', 'unknown')
-            source_version_max = first_entry.get(
-                'source_version_max', 'unknown')
-            data_source = first_entry.get('data_source', 'unknown')
+                # Get metadata from first timeframe entry
+                first_tf = sorted(timeframes)[0]
+                first_entry = self.index_manager.index[broker_type][symbol][first_tf]
 
-            # Calculate total tick count for symbol
-            total_tick_count = sum(
-                self.index_manager.index[symbol][tf].get('total_tick_count', 0)
-                for tf in timeframes
-            )
+                # Get market_type from MarketConfigManager (Single Source of Truth)
+                market_config = MarketConfigManager()
+                market_type = market_config.get_market_type(broker_type).value
 
-            symbol_details[symbol] = {
-                "available_timeframes": sorted(timeframes),
-                "timeframe_count": len(timeframes),
-                "total_bars": total_bars,
-                "total_size_mb": round(total_size, 2),
-                "total_tick_count": total_tick_count,
-                "time_range": {
-                    "start": min(start_times) if start_times else None,
-                    "end": max(end_times) if end_times else None
-                },
-                # Metadata
-                "market_type": market_type,
-                "data_source": data_source,
-                "source_version": {
-                    "min": source_version_min,
-                    "max": source_version_max
-                },
-                "timeframes": {}
-            }
+                source_version_min = first_entry.get(
+                    'source_version_min', 'unknown')
+                source_version_max = first_entry.get(
+                    'source_version_max', 'unknown')
+                data_source = first_entry.get('broker_type', broker_type)
 
-            # Add per-timeframe details
-            for tf in sorted(timeframes):
-                tf_stats = stats[tf]
-                entry = self.index_manager.index[symbol][tf]
+                # Calculate total tick count
+                total_tick_count = sum(
+                    self.index_manager.index[broker_type][symbol][tf].get(
+                        'total_tick_count', 0)
+                    for tf in timeframes
+                )
 
-                # Get file path for this timeframe
-                bar_file = self.index_manager.get_bar_file(symbol, tf)
-
-                symbol_details[symbol]["timeframes"][tf] = {
-                    "bar_count": tf_stats['bar_count'],
-                    "file_size_mb": tf_stats['file_size_mb'],
-                    "start_time": tf_stats['start_time'],
-                    "end_time": tf_stats['end_time'],
-                    "file_path": str(bar_file) if bar_file else None,
-                    # Activity statistics
-                    "total_tick_count": entry.get('total_tick_count', 0),
-                    "avg_ticks_per_bar": entry.get('avg_ticks_per_bar', 0),
-                    "min_ticks_per_bar": entry.get('min_ticks_per_bar', 0),
-                    "max_ticks_per_bar": entry.get('max_ticks_per_bar', 0),
-                    # Bar type distribution
-                    "real_bar_count": entry.get('real_bar_count', 0),
-                    "synthetic_bar_count": entry.get('synthetic_bar_count', 0),
+                symbol_details[detail_key] = {
+                    "broker_type": broker_type,
+                    "symbol": symbol,
+                    "available_timeframes": sorted(timeframes),
+                    "timeframe_count": len(timeframes),
+                    "total_bars": total_bars,
+                    "total_size_mb": round(total_size, 2),
+                    "total_tick_count": total_tick_count,
+                    "time_range": {
+                        "start": min(start_times) if start_times else None,
+                        "end": max(end_times) if end_times else None
+                    },
+                    "market_type": market_type,
+                    "data_source": data_source,
+                    "source_version": {
+                        "min": source_version_min,
+                        "max": source_version_max
+                    },
+                    "timeframes": {}
                 }
+
+                # Add per-timeframe details
+                for tf in sorted(timeframes):
+                    tf_stats = stats[tf]
+                    entry = self.index_manager.index[broker_type][symbol][tf]
+                    bar_file = self.index_manager.get_bar_file(
+                        broker_type, symbol, tf)
+
+                    symbol_details[detail_key]["timeframes"][tf] = {
+                        "bar_count": tf_stats['bar_count'],
+                        "file_size_mb": tf_stats['file_size_mb'],
+                        "start_time": tf_stats['start_time'],
+                        "end_time": tf_stats['end_time'],
+                        "file_path": str(bar_file) if bar_file else None,
+                        "total_tick_count": entry.get('total_tick_count', 0),
+                        "avg_ticks_per_bar": entry.get('avg_ticks_per_bar', 0),
+                        "min_ticks_per_bar": entry.get('min_ticks_per_bar', 0),
+                        "max_ticks_per_bar": entry.get('max_ticks_per_bar', 0),
+                        "real_bar_count": entry.get('real_bar_count', 0),
+                        "synthetic_bar_count": entry.get('synthetic_bar_count', 0),
+                    }
 
         return symbol_details
 
@@ -200,36 +213,22 @@ class BarIndexReportGenerator:
         """Generate data collector summary"""
         collectors = {}
 
-        # Scan all indexed files to detect collectors
-        for symbol, timeframes in self.index_manager.index.items():
-            for tf, entry in timeframes.items():
-                file_path = Path(entry['path'])
+        for broker_type in self.index_manager.list_broker_types():
+            if broker_type not in collectors:
+                collectors[broker_type] = {
+                    "symbols": set(),
+                    "total_bars": 0,
+                    "total_size_mb": 0,
+                    "timeframes": set()
+                }
 
-                # Extract collector from path (e.g., mt5/bars/EURUSD/...)
-                parts = file_path.parts
+            for symbol in self.index_manager.list_symbols(broker_type):
+                collectors[broker_type]["symbols"].add(symbol)
 
-                # Find 'bars' directory and get parent (collector name)
-                try:
-                    bars_idx = parts.index('bars')
-                    if bars_idx > 0:
-                        collector = parts[bars_idx - 1]
-                    else:
-                        collector = 'unknown'
-                except ValueError:
-                    collector = 'unknown'
-
-                if collector not in collectors:
-                    collectors[collector] = {
-                        "symbols": set(),
-                        "total_bars": 0,
-                        "total_size_mb": 0,
-                        "timeframes": set()
-                    }
-
-                collectors[collector]["symbols"].add(symbol)
-                collectors[collector]["total_bars"] += entry['bar_count']
-                collectors[collector]["total_size_mb"] += entry['file_size_mb']
-                collectors[collector]["timeframes"].add(tf)
+                for tf, entry in self.index_manager.index[broker_type][symbol].items():
+                    collectors[broker_type]["total_bars"] += entry['bar_count']
+                    collectors[broker_type]["total_size_mb"] += entry['file_size_mb']
+                    collectors[broker_type]["timeframes"].add(tf)
 
         # Convert sets to lists for JSON serialization
         for collector in collectors:

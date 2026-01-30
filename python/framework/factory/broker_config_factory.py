@@ -22,7 +22,7 @@ from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.trading_env.adapters.base_adapter import IOrderCapabilities
 from python.framework.trading_env.adapters.mt5_adapter import MT5Adapter
-from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter, KRAKEN_ENABLED
+from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
 
 

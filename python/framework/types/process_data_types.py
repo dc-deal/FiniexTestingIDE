@@ -42,6 +42,8 @@ class TickRequirement:
     Supports both tick-limited and timespan modes.
     """
     scenario_name: str
+    # Broker type identifier (e.g., 'mt5', 'kraken_spot')
+    broker_type: str
     symbol: str
     start_time: datetime
     end_time: Optional[datetime] = None  # None = tick-limited mode
@@ -58,6 +60,8 @@ class BarRequirement:
     Extracted from worker configurations.
     """
     scenario_name: str
+    # Broker type identifier (e.g., 'mt5', 'kraken_spot')
+    broker_type: str
     symbol: str
     timeframe: str
     warmup_count: int

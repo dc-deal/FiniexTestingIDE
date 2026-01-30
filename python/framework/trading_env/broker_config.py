@@ -16,7 +16,7 @@ from python.framework.types.market_data_types import TickData
 
 from .adapters.base_adapter import IOrderCapabilities
 from .adapters.mt5_adapter import MT5Adapter
-from .adapters.kraken_adapter import KrakenAdapter, KRAKEN_ENABLED
+from .adapters.kraken_adapter import KrakenAdapter
 from ..types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -51,15 +51,6 @@ class BrokerConfig:
     - Provide unified interface for TradeSimulator
     - Delegate broker-specific operations to adapter
 
-    Usage:
-        config = BrokerConfig.from_json("./configs/brokers/mt5/ic_markets_demo.json")
-
-        # Unified interface
-        leverage = config.get_max_leverage("EURUSD")
-        margin = config.calculate_margin("EURUSD", 0.1)
-
-        # Create orders
-        order = config.create_market_order("EURUSD", OrderDirection.LONG, 0.1)
     """
 
     def __init__(self, broker_type: BrokerType, adapter: IOrderCapabilities):
@@ -152,11 +143,6 @@ class BrokerConfig:
             return MT5Adapter(config)
 
         elif broker_type == BrokerType.KRAKEN_SPOT:
-            if not KRAKEN_ENABLED:
-                raise ValueError(
-                    "Kraken adapter is feature-gated (KRAKEN_ENABLED=False). "
-                    "Enable in Post-MVP phase."
-                )
             return KrakenAdapter(config)
 
         else:
