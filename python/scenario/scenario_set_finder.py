@@ -11,6 +11,7 @@ from typing import List
 from datetime import datetime
 import json
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_set_types import ScenarioSetMetadata
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -25,15 +26,13 @@ class ScenarioSetFinder:
     Provides both fast (file listing) and slow (full validation) operations
     """
 
-    def __init__(self, config_path: str = "./configs/scenario_sets/"):
+    def __init__(self):
         """
-        Initialize finder
-
-        Args:
-            config_path: Directory containing scenario set config files
+        Initialize finder with paths from AppConfigManager.
         """
-        self._config_path = Path(config_path)
-        self._config_loader = ScenarioConfigLoader(str(self._config_path))
+        app_config = AppConfigManager()
+        self._config_path = Path(app_config.get_scenario_sets_path())
+        self._config_loader = ScenarioConfigLoader()
 
     def list_available_files(self) -> List[Path]:
         """

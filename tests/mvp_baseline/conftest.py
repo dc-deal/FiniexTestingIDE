@@ -183,19 +183,6 @@ def seeds_config(scenario_config: Dict[str, Any]) -> Dict[str, int]:
 # BAR DATA FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
-def bars_index_manager() -> BarsIndexManager:
-    """
-    Initialize BarsIndexManager for bar file access.
-
-    Returns:
-        Configured BarsIndexManager
-    """
-    data_dir = Path("./data/parquet")
-    manager = BarsIndexManager(data_dir)
-    manager.build_index()
-    return manager
-
 
 @pytest.fixture(scope="session")
 def prerendered_bars(

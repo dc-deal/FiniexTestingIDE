@@ -40,7 +40,6 @@ class CoverageReportManager:
         Initialize coverage report manager.
 
         Args:
-            data_dir: Root data directory (e.g., 'data/parquet')
             logger: Logger instance
         """
         self._logger = logger

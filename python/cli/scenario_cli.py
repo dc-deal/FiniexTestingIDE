@@ -153,7 +153,7 @@ class ScenarioCLI:
         if end:
             end_dt = ensure_utc_aware(datetime.fromisoformat(end))
         try:
-            generator = ScenarioGenerator(str(self._data_dir))
+            generator = ScenarioGenerator()
 
             result = generator.generate(
                 broker_type=broker_type,

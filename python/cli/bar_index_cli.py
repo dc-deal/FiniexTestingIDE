@@ -16,6 +16,7 @@ from pathlib import Path
 from datetime import datetime
 import traceback
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
@@ -32,9 +33,10 @@ class BarIndexCLI:
     Command-line interface for bar index management and reporting.
     """
 
-    def __init__(self, data_dir: str = "./data/processed/"):
-        """Initialize CLI"""
-        self.data_dir = Path(data_dir)
+    def __init__(self):
+        """Initialize CLI with paths from AppConfigManager."""
+        app_config = AppConfigManager()
+        self.data_dir = Path(app_config.get_data_processed_path())
         self.index_manager = BarsIndexManager(self.data_dir)
 
     def cmd_rebuild(self):

@@ -26,12 +26,12 @@ class ScenarioConfigLoader:
     Uses deep copy to prevent config mutation across scenarios
     """
 
-    def __init__(self, config_path: str = "./configs/scenario_sets/"):
+    def __init__(self):
         """
-        Args:
-            config_path: Directory containing scenario config files
+        Initialize loader with paths from AppConfigManager.
         """
-        self.config_path = Path(config_path)
+        app_config = AppConfigManager()
+        self.config_path = Path(app_config.get_scenario_sets_path())
         self.config_path.mkdir(parents=True, exist_ok=True)
 
     def load_config(self, config_file: str) -> LoadedScenarioConfig:

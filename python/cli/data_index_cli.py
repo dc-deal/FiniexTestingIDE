@@ -14,6 +14,7 @@ import traceback
 from typing import Optional
 import pandas as pd
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -29,9 +30,10 @@ class DataIndexCLI:
     Command-line interface for Parquet index management and data import.
     """
 
-    def __init__(self, data_dir: str = "./data/processed/"):
-        """Initialize CLI"""
-        self.data_dir = Path(data_dir)
+    def __init__(self):
+        """Initialize CLI with paths from AppConfigManager."""
+        self._app_config = AppConfigManager()
+        self.data_dir = Path(self._app_config.get_data_processed_path())
         self.index_manager = TickIndexManager(self.data_dir)
         self.bar_index_manager = BarsIndexManager(self.data_dir)
 
@@ -60,11 +62,11 @@ class DataIndexCLI:
         print("="*80 + "\n")
 
         importer = TickDataImporter(
-            source_dir="./data/raw/",
-            target_dir="./data/processed/",
+            source_dir=self._app_config.get_data_raw_path(),
+            target_dir=self._app_config.get_data_processed_path(),
             override=override,
             time_offset=time_offset,
-            offset_broker=offset_broker  # NEW
+            offset_broker=offset_broker
         )
 
         importer.process_all_exports()

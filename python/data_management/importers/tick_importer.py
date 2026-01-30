@@ -254,7 +254,7 @@ class TickDataImporter:
         # 4. APPLY TIME OFFSET
         # ===========================================
         broker_type_normalized = self._validate_broker_type(
-            metadata, json_file.name)
+            metadata)
 
         should_apply_offset = (
             self.time_offset != 0 and
@@ -355,7 +355,8 @@ class TickDataImporter:
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
             if self._app_config_loader.get_move_processed_files:
-                finished_dir = Path("./data/finished/")
+                finished_dir = Path(
+                    self._app_config_loader.get_data_finished_path())
                 finished_dir.mkdir(exist_ok=True)
                 finished_file = finished_dir / json_file.name
                 json_file.rename(finished_file)
@@ -574,7 +575,7 @@ class TickDataImporter:
         vLog.info("=" * 80)
 
         try:
-            bar_importer = BarImporter(str(self.target_dir))
+            bar_importer = BarImporter()
 
             for broker_type in self._processed_broker_types:
                 vLog.info(f"\n📊 Rendering bars for broker_type: {broker_type}")
@@ -590,13 +591,12 @@ class TickDataImporter:
             vLog.error("   You can manually trigger it later with:")
             vLog.error("   python -m bar_importer")
 
-    def _validate_broker_type(self, metadata: dict, json_file_name: str) -> str:
+    def _validate_broker_type(self, metadata: dict) -> str:
         """
         Validate broker_type exists and is mapped in market_config.json.
 
         Args:
             metadata: JSON metadata from source file
-            json_file_name: Name of JSON file (for error messages)
 
         Returns:
             Normalized broker_type string

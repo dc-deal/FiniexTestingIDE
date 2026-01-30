@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
@@ -35,25 +36,16 @@ class ScenarioGenerator:
     Coordinates market analysis and dispatches to strategy-specific generators.
     """
 
-    def __init__(
-        self,
-        data_dir: str = "./data/processed"
-    ):
-        """
-        Initialize scenario generator.
-
-        Args:
-            data_dir: Path to processed data directory
-            config_path: Path to generator config JSON
-        """
-        self._data_dir = Path(data_dir)
+    def __init__(self):
+        """Initialize scenario generator with paths from AppConfigManager."""
+        app_config = AppConfigManager()
+        self._data_dir = Path(app_config.get_data_processed_path())
         self._analyzer = MarketAnalyzer(str(self._data_dir))
         self._config = self._analyzer.get_config()
 
-        # Template paths
-        self._template_path = Path(
-            "./configs/generator/template_scenario_set_header.json")
-        self._output_dir = Path("./configs/scenario_sets")
+        # Template and output paths from centralized config
+        self._template_path = Path(app_config.get_generator_template_path())
+        self._output_dir = Path(app_config.get_generator_output_path())
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
@@ -201,7 +193,7 @@ class ScenarioGenerator:
         if not self._template_path.exists():
             raise FileNotFoundError(
                 f"Scenario template not found: {self._template_path}\n"
-                f"Expected location: ./configs/generator/template_scenario_set_header.json\n"
+                f"Configure 'generator_template' in app_config.json paths section.\n"
                 f"This file is required for generating scenario configs."
             )
 

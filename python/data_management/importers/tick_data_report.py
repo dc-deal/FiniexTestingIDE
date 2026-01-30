@@ -11,6 +11,7 @@ import traceback
 import pandas as pd
 from typing import Dict
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.market_calendar import MarketCalendar
@@ -253,8 +254,10 @@ def run_summary_report(broker_type: str = None):
     vLog.info("=== FiniexTestingIDE Data Loader Summary Report ===")
 
     try:
-        # Initialize index manager
-        index_manager = TickIndexManager(Path("./data/processed/"))
+        # Initialize index manager with path from AppConfigManager
+        app_config = AppConfigManager()
+        index_manager = TickIndexManager(
+            Path(app_config.get_data_processed_path()))
         index_manager.build_index()
 
         # Initialize reporter

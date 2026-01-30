@@ -94,10 +94,12 @@ def _get_default_config() -> Dict[str, Any]:
         "importer": {"move_processed_files": None, "delete_on_error": False},
         "paths": {
             "scenario_sets": "configs/scenario_sets",
+            "brokers": "configs/brokers",
+            "generator_template": "configs/generator/template_scenario_set_header.json",
+            "generator_output": "configs/scenario_sets",
             "data_raw": "data/raw",
             "data_processed": "data/processed",
-            "data_finished": "data/finished",
-            "data_parquet": "data/parquet",
+            "data_finished": "data/finished"
         },
         "monitoring": {
             "enabled": None,

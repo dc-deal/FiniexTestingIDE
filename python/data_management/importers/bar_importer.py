@@ -27,6 +27,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -47,16 +48,15 @@ class BarImporter:
 
     VERSION = "1.1"  # Updated for broker_type-first index structure
 
-    def __init__(self, data_dir: str = "./data/processed/"):
+    def __init__(self):
         """
-        Initialize Bar importer.
-
-        Args:
-            data_dir: Root data directory (default: ./data/processed/)
+        Initialize Bar importer with paths from AppConfigManager.
         """
-        self.data_dir = Path(data_dir)
+        app_config = AppConfigManager()
+        self.data_dir = Path(app_config.get_data_processed_path())
         if not self.data_dir.exists():
-            raise FileNotFoundError(f"Data directory not found: {data_dir}")
+            raise FileNotFoundError(
+                f"Data directory not found: {self.data_dir}")
 
         # Initialize tick index for finding tick files
         self.tick_index = TickIndexManager(self.data_dir)
