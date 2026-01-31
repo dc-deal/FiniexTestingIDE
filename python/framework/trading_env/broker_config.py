@@ -27,18 +27,10 @@ from ..types.order_types import (
     OrderDirection,
 )
 from python.framework.types.broker_types import (
+    BrokerType,
     SymbolSpecification,
     BrokerSpecification
 )
-
-
-class BrokerType(Enum):
-    """Supported broker types"""
-    MT5_FOREX = "mt5_forex"
-    MT5_CFD = "mt5_cfd"
-    MT5_CRYPTO = "mt5_crypto"
-    KRAKEN_SPOT = "kraken_spot"
-    BINANCE_FUTURES = "binance_futures"  # Post-MVP
 
 
 class BrokerConfig:
@@ -157,7 +149,7 @@ class BrokerConfig:
         return self._broker_name
 
     def get_broker_type_str(self) -> str:
-        """Get broker type as string (e.g., 'mt5_forex')"""
+        """Get broker type as string (e.g., 'mt5')"""
         return self.broker_type.value
 
     def get_order_capabilities(self) -> OrderCapabilities:

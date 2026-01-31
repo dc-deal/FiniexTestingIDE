@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List
 
 
-from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.broker_types import BrokerType
 from python.framework.types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown

@@ -18,8 +18,8 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.trading_env.broker_config import BrokerType
 from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.types.broker_types import BrokerType
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_aggregation_types import PortfolioStats

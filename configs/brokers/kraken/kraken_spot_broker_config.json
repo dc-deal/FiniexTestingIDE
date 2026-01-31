@@ -1,7 +1,6 @@
 {
   "_comment": "Static broker configuration for FiniexTestingIDE - Kraken Spot",
   "_version": "1.1",
-  "broker_type": "kraken_spot",
   "export_info": {
     "timestamp": "2026-01-25T12:38:57.351384+00:00",
     "source": "Kraken Public API",

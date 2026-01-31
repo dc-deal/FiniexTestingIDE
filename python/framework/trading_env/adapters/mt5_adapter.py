@@ -19,6 +19,7 @@ from python.framework.types.order_types import (
     OrderDirection,
 )
 from python.framework.types.broker_types import (
+    BrokerType,
     SymbolSpecification,
     BrokerSpecification,
     SwapMode,
@@ -66,9 +67,9 @@ class MT5Adapter(BaseAdapter):
         """Get broker company name"""
         return self._broker_name
 
-    def get_broker_type(self) -> str:
+    def get_broker_type(self) -> BrokerType:
         """Get broker type identifier"""
-        return "mt5_forex"  # MT5 Forex/CFD broker
+        return BrokerType.MT5_FOREX  # MT5 Forex/CFD broker
 
     # ============================================
     # Capability Queries
@@ -406,7 +407,7 @@ class MT5Adapter(BaseAdapter):
             # Broker Identity
             company=broker_info.get('company', 'Unknown Broker'),
             server=broker_info.get('server', 'Unknown Server'),
-            broker_type='mt5_forex',
+            broker_type=self.get_broker_type(),
 
             # Account Type
             trade_mode=broker_info.get('trade_mode', 'demo'),

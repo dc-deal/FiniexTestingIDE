@@ -18,6 +18,7 @@ from python.framework.reporting.coverage_report import (
 )
 
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.broker_types import BrokerType
 vLog = get_global_logger()
 
 
@@ -302,7 +303,7 @@ class TickIndexManager:
     # COVERAGE REPORTS
     # =========================================================================
 
-    def get_coverage_report(self, broker_type: str, symbol: str) -> CoverageReport:
+    def get_coverage_report(self, broker_type: BrokerType, symbol: str) -> CoverageReport:
         """
         Generate coverage report for a symbol.
 
@@ -415,7 +416,7 @@ class TickIndexManager:
 
         print("="*60 + "\n")
 
-    def print_coverage_report(self, broker_type: str, symbol: str) -> None:
+    def print_coverage_report(self, broker_type: BrokerType, symbol: str) -> None:
         """
         Print coverage report for a symbol.
 

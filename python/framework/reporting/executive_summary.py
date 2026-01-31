@@ -12,6 +12,7 @@ Provides comprehensive summary:
 
 import psutil
 from typing import Dict
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -140,13 +141,18 @@ class ExecutiveSummary:
         renderer.print_bold("DATA SOURCES")
         renderer.print_separator(width=68)
 
+        market_config = MarketConfigManager()
+
         for broker_type, stats in sorted(broker_type_stats.items()):
             symbols_str = ', '.join(sorted(stats['symbols']))
             # Truncate if too long
             if len(symbols_str) > 40:
                 symbols_str = symbols_str[:37] + "..."
+
+            market_type = market_config.get_market_type(broker_type).value
             print(
-                f"{broker_type:16} {stats['count']} scenario(s) ({symbols_str})")
+                f"{broker_type} [{market_type}]".ljust(24) +
+                f"{stats['count']} scenario(s) ({symbols_str})")
 
     def _render_first_failure(self, renderer: ConsoleRenderer, failed_result, total_failed: int):
         """

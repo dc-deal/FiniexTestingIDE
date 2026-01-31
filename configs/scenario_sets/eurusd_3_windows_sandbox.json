@@ -72,6 +72,19 @@
       "trade_simulator_config": {}
     },
     {
+      "name": "BTCUSD_blocks_04",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-27T16:00:00+00:00",
+      "end_date": "2026-01-27T22:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": false,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
       "name": "GBPUSD_window_03",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",

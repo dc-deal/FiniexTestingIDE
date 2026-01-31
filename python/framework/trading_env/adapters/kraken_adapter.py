@@ -13,7 +13,7 @@ This allows backtesting without Kraken API access.
 
 from typing import Dict, Any, List, Optional
 
-from python.framework.types.broker_types import BrokerSpecification, MarginMode, SwapMode, SymbolSpecification
+from python.framework.types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
 from python.framework.types.market_data_types import TickData
 from .base_adapter import BaseAdapter
 from python.framework.types.order_types import (
@@ -88,9 +88,9 @@ class KrakenAdapter(BaseAdapter):
         """Get broker company name."""
         return self._broker_name
 
-    def get_broker_type(self) -> str:
+    def get_broker_type(self) -> BrokerType:
         """Get broker type identifier."""
-        return "kraken_spot"
+        return BrokerType.KRAKEN_SPOT
 
     # ============================================
     # Capability Queries
@@ -382,7 +382,7 @@ class KrakenAdapter(BaseAdapter):
             # Broker Identity
             company=broker_info.get('company', 'Kraken'),
             server=broker_info.get('server', 'kraken_spot'),
-            broker_type='kraken_spot',
+            broker_type=self.get_broker_type(),
 
             # Account Type
             trade_mode=broker_info.get('trade_mode', 'demo'),

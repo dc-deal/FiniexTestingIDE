@@ -1,7 +1,6 @@
 {
   "_comment": "Static broker configuration for FiniexTestingIDE - Raw data only",
   "_version": "2.1",
-  "broker_type": "mt5_forex",
   "export_info": {
     "timestamp": "2025.11.10 14:34:17",
     "mt5_version": "Vantage International MT5 5370",

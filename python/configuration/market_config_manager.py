@@ -6,6 +6,7 @@ Provides lookup methods for market types and broker mappings
 from typing import Dict, List
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
+from python.framework.types.broker_types import BrokerType
 from python.framework.types.market_config_types import (
     MarketType,
     MarketRules,
@@ -52,6 +53,7 @@ class MarketConfigManager:
                 )
 
         # Build broker lookup
+
         brokers_config = self._config.get("brokers", [])
         for broker_dict in brokers_config:
             broker_type = broker_dict.get("broker_type")
@@ -77,7 +79,7 @@ class MarketConfigManager:
                 broker_config_path=broker_config_path or ""
             )
 
-    def get_market_type(self, broker_type: str) -> MarketType:
+    def get_market_type(self, broker_type: BrokerType) -> MarketType:
         """
         Get market type for a broker type.
 

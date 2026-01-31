@@ -17,6 +17,7 @@ import pytz
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
 from python.framework.types.market_types import VALIDATION_TIMEZONE
@@ -35,7 +36,7 @@ class CoverageReport:
     - Weekend gap listing with Berlin local time
     """
 
-    def __init__(self, symbol: str, broker_type: str = "mt5", data_dir: Path = None):
+    def __init__(self, symbol: str, broker_type: BrokerType, data_dir: Path):
         """
         Initialize coverage report.
 

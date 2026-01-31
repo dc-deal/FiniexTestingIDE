@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List
 
-from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.broker_types import BrokerType
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 
