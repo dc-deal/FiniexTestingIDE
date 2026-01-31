@@ -16,7 +16,7 @@
     },
     "console_logging": {
         "enabled": true,
-        "log_level": "INFO",
+        "log_level": "DEBUG",
         "warn_on_parameter_override": true,
         "scenario": {
             "enabled": false,

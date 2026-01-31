@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
+from python.framework.types.market_config_types import MarketType
+
 
 # =============================================================================
 # ENUMS
@@ -116,7 +118,7 @@ class SymbolAnalysis:
     """
     symbol: str
     timeframe: str
-    market_type: str
+    market_type: MarketType
     data_source: str
 
     # Time range

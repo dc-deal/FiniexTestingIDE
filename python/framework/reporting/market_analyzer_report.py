@@ -195,10 +195,10 @@ class MarketAnalyzer:
 
         # Get market_type from MarketConfigManager (Single Source of Truth)
         market_config = MarketConfigManager()
-        market_type_enum = market_config.get_market_type(broker_type)
-        market_type = market_type_enum.value  # Convert to string for SymbolAnalysis
+        market_type = market_config.get_market_type(broker_type)
 
-        vLog.info(f"Analyzing {broker_type}/{symbol} {tf} ({market_type})")
+        vLog.info(
+            f"Analyzing {broker_type}/{symbol} {tf} ({market_type.value})")
 
         # Load and prepare bar data (using refactored helper)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)

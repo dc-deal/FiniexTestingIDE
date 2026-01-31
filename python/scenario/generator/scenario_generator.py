@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
+from python.framework.types.market_config_types import MarketType
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
@@ -96,6 +97,15 @@ class ScenarioGenerator:
 
         # Analyze the symbol (for metadata)
         analysis = self._analyzer.analyze_symbol(broker_type, symbol)
+
+        # Warn: session filter on non-forex markets (no real sessions, time-of-day only)
+        if sessions_filter and analysis.market_type != MarketType.FOREX:
+            vLog.warning(
+                f"⚠️ Session filter {sessions_filter} used with "
+                f"{analysis.market_type.value} market. "
+                f"{analysis.market_type.value.capitalize()} has no defined trading sessions — "
+                f"filter acts as time-of-day separation only."
+            )
 
         # Note: Blocks and Stress generators handle their own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")

@@ -261,6 +261,19 @@
             "justMyCode": false
         },
         {
+            "name": "↔️ Gap Report: kraken_spot/ETHUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "gaps",
+                "kraken_spot",
+                "ETHUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
             "type": "debugpy",
             "request": "launch",
@@ -403,14 +416,14 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
+            "name": "⚡ Scenario Gen. - 8 Blocks kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
                 "kraken_spot",
-                "ETHUSD",
+                "BTCUSD",
                 "--strategy",
                 "blocks",
                 "--block-size",

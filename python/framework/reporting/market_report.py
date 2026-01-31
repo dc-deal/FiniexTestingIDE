@@ -32,7 +32,7 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
     print(f"Data Range:     {analysis.start_time.strftime('%Y-%m-%d')} → "
           f"{analysis.end_time.strftime('%Y-%m-%d')} ({analysis.total_days} days)")
     print(f"Timeframe:      {analysis.timeframe}")
-    print(f"Market Type:    {analysis.market_type}")
+    print(f"Market Type:    {analysis.market_type.value}")
     print(f"Data Source:    {analysis.data_source}")
 
     # Divider
