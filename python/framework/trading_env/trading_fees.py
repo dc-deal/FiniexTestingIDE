@@ -3,11 +3,10 @@ FiniexTestingIDE - Trading Fee System
 Polymorphic fee objects for different broker cost models
 
 Architecture:
-- AbstractTradingFee - Base class for all fees
 - SpreadFee - Bid/Ask spread cost (fully implemented)
 - SwapFee - Overnight interest (prepared, calculation deferred)
 - CommissionFee - ECN commission (prepared, calculation deferred)
-- MakerTakerFee - Crypto exchange fees (prepared, calculation deferred)
+- MakerTakerFee - Crypto exchange fees (fully implemented)
 
 Each Position contains List[AbstractTradingFee] that accumulate over time.
 """
@@ -18,66 +17,9 @@ from datetime import datetime, timezone
 from typing import Optional
 from enum import Enum
 
+from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.broker_types import FeeStatus, FeeType
 from python.framework.types.market_data_types import TickData
-
-
-class FeeType(Enum):
-    """Trading fee type classification"""
-    SPREAD = "spread"
-    SWAP = "swap"
-    COMMISSION = "commission"
-    MAKER_TAKER = "maker_taker"
-
-
-class FeeStatus(Enum):
-    """Fee payment status"""
-    PENDING = "pending"      # Fee calculated but not yet applied
-    APPLIED = "applied"      # Fee deducted from balance
-    DEFERRED = "deferred"    # Fee will be applied later (e.g., swap on close)
-
-
-@dataclass
-class AbstractTradingFee(ABC):
-    """
-    Abstract base class for all trading fees.
-
-    All fee types inherit from this and implement calculate_cost().
-    Fees are attached to positions and accumulated over the position lifecycle.
-
-    Polymorphic design allows different brokers to use different fee models
-    without changing the Position or Portfolio code.
-    """
-    fee_type: FeeType
-    status: FeeStatus
-    timestamp: datetime
-
-    # Cost in account currency
-    cost: float = 0.0
-
-    # Optional metadata for fee-specific details
-    metadata: dict = None
-
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
-
-    @abstractmethod
-    def calculate_cost(self, **kwargs) -> float:
-        """
-        Calculate fee cost in account currency.
-
-        Implementation varies by fee type.
-        Returns absolute cost (always positive, even if swap is credit).
-        """
-        pass
-
-    def apply(self):
-        """Mark fee as applied to balance"""
-        self.status = FeeStatus.APPLIED
-
-    def get_display_name(self) -> str:
-        """Get human-readable fee name"""
-        return self.fee_type.value.replace('_', ' ').title()
 
 # ============================================
 # Concrete Fee Types
@@ -353,7 +295,7 @@ class MakerTakerFee(AbstractTradingFee):
     """
     Maker/Taker Fee - Crypto exchange fee model.
 
-    PREPARED - Calculation deferred to Post-MVP.
+    FULLY IMPLEMENTED - Percentage-based fee on order value.
 
     Maker: Adds liquidity (limit orders) - lower fee
     Taker: Removes liquidity (market orders) - higher fee
@@ -361,12 +303,11 @@ class MakerTakerFee(AbstractTradingFee):
     Common in crypto exchanges (Kraken, Binance, Coinbase).
     Fees are percentage-based on order value.
 
-    Future Implementation:
-        - Detect if order is maker or taker
-        - Read maker_fee / taker_fee from broker config
-        - Calculate as percentage of order value
+    Calculation:
+        rate = maker_rate if is_maker else taker_rate
+        cost = order_value * (rate / 100)
 
-    Example (Kraken from dummy config):
+    Example (Kraken):
         maker_fee: 0.16%
         taker_fee: 0.26%
 
@@ -389,18 +330,18 @@ class MakerTakerFee(AbstractTradingFee):
         timestamp: Optional[datetime] = None
     ):
         """
-        Initialize maker/taker fee (calculation deferred).
+            Initialize maker/taker fee.
 
-        Args:
-            is_maker: True if maker order, False if taker
-            maker_rate: Maker fee percentage
-            taker_rate: Taker fee percentage
-            order_value: Order value in account currency
-            timestamp: Fee timestamp
-        """
+            Args:
+                is_maker: True if maker order, False if taker
+                maker_rate: Maker fee percentage
+                taker_rate: Taker fee percentage
+                order_value: Order value in account currency
+                timestamp: Fee timestamp
+            """
         super().__init__(
             fee_type=FeeType.MAKER_TAKER,
-            status=FeeStatus.PENDING,
+            status=FeeStatus.APPLIED,  # Fee applied immediately on fill
             timestamp=timestamp or datetime.now(timezone.utc)
         )
 
@@ -409,60 +350,29 @@ class MakerTakerFee(AbstractTradingFee):
         self.taker_rate = taker_rate
         self.order_value = order_value
 
-        # Defer calculation
-        self.cost = 0.0
+        # Calculate cost immediately
+        self.cost = self.calculate_cost()
 
+        # Store metadata
         self.metadata = {
             'is_maker': is_maker,
             'maker_rate': maker_rate,
             'taker_rate': taker_rate,
-            'implementation_status': 'deferred_post_mvp'
+            'order_value': order_value,
+            'applied_rate': maker_rate if is_maker else taker_rate
         }
 
     def calculate_cost(self, **kwargs) -> float:
         """
-        Calculate maker/taker fee (deferred).
+        Calculate maker/taker fee.
 
-        Post-MVP Implementation:
+        Formula:
             rate = maker_rate if is_maker else taker_rate
             cost = order_value * (rate / 100)
 
         Returns:
-            0.0 (deferred to Post-MVP)
+            Fee cost in account currency
         """
-        # TODO: Implement maker/taker fee calculation Post-MVP
-        return 0.0
-
-
-# ============================================
-# Helper Functions
-# ============================================
-
-def create_spread_fee_from_tick(
-    tick: TickData,
-    lots: float,
-    tick_value: float = 1,
-    digits: int = 5
-) -> SpreadFee:
-    """
-    Factory function to create SpreadFee from live tick data.
-
-    Use this in TradeSimulator when executing market orders.
-
-    Args:
-        bid: Current bid price from tick
-        ask: Current ask price from tick
-        lots: Order size
-        tick_value: From broker symbol config
-        digits: Symbol decimal places
-
-    Returns:
-        SpreadFee instance with calculated cost
-    """
-    return SpreadFee(
-        bid=tick.bid,
-        ask=tick.ask,
-        lots=lots,
-        tick_value=tick_value,
-        digits=digits
-    )
+        rate = self.maker_rate if self.is_maker else self.taker_rate
+        cost = self.order_value * (rate / 100)
+        return abs(cost)

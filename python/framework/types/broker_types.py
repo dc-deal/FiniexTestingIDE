@@ -22,6 +22,7 @@ class SwapMode(Enum):
     INTEREST_CURRENT = "interest_current"  # Current interest rate
     INTEREST_OPEN = "interest_open"        # Interest at position open
     PERCENTAGE = "percentage"      # Percentage of position value
+    NONE = "none"                  # No swap (Crypto spot)
 
 
 class MarginMode(Enum):
@@ -29,6 +30,22 @@ class MarginMode(Enum):
     RETAIL_NETTING = "retail_netting"    # Single position per symbol
     RETAIL_HEDGING = "retail_hedging"    # Multiple positions allowed
     EXCHANGE = "exchange"                # Exchange margin calculation
+    NONE = "none"                        # No margin (Spot trading, leverage=1)
+
+
+class FeeType(Enum):
+    """Trading fee type classification"""
+    SPREAD = "spread"
+    SWAP = "swap"
+    COMMISSION = "commission"
+    MAKER_TAKER = "maker_taker"
+
+
+class FeeStatus(Enum):
+    """Fee payment status"""
+    PENDING = "pending"      # Fee calculated but not yet applied
+    APPLIED = "applied"      # Fee deducted from balance
+    DEFERRED = "deferred"    # Fee will be applied later (e.g., swap on close)
 
 
 @dataclass(frozen=True)
@@ -130,22 +147,27 @@ class BrokerSpecification:
 
 def extract_currencies_from_symbol(symbol: str) -> tuple[str, str, str]:
     """
-    Extract base, quote, and margin currency from symbol name.
+    DEPRECATED: Use base_currency/quote_currency from broker config instead.
 
-    Forex convention: BASEQUOTE (6 characters)
-    - GBPUSD → base=GBP, quote=USD, margin=GBP
-    - EURUSD → base=EUR, quote=USD, margin=EUR
-    - USDJPY → base=USD, quote=JPY, margin=USD
+    This function only works for 6-character Forex symbols (EURUSD, GBPUSD).
+    Does NOT work for crypto symbols with varying lengths (BTCUSD, DASHUSD).
+
+    Kept for backwards compatibility. Will be removed in future version.
 
     Args:
         symbol: Trading symbol (e.g., "GBPUSD")
 
     Returns:
         (base_currency, quote_currency, margin_currency)
-
-    Raises:
-        ValueError: If symbol format invalid
     """
+    import warnings
+    warnings.warn(
+        "extract_currencies_from_symbol() is deprecated. "
+        "Use base_currency/quote_currency from broker config instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+
     if len(symbol) != 6:
         raise ValueError(
             f"Cannot extract currencies from symbol '{symbol}': "

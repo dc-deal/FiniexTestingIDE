@@ -3,7 +3,9 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from python.framework.trading_env.trading_fees import AbstractTradingFee, FeeType
+
+from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.broker_types import FeeType
 from python.framework.types.order_types import OrderDirection
 
 

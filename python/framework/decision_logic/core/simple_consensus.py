@@ -214,7 +214,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         # ============================================
 
         # Check account state (margin available)
-        account = self.trading_api.get_account_info()
+        account = self.trading_api.get_account_info(new_direction)
 
         if account.free_margin < self.min_free_margin:
             self.logger.info(

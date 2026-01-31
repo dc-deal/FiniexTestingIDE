@@ -17,12 +17,12 @@
         {
             "broker_type": "mt5",
             "market_type": "forex",
-            "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json"
+            "broker_config_path": "./configs/brokers/mt5/mt5_broker_config.json"
         },
         {
             "broker_type": "kraken_spot",
             "market_type": "crypto",
-            "broker_config_path": "./configs/brokers/kraken/kraken_public.json"
+            "broker_config_path": "./configs/brokers/kraken/kraken_spot_broker_config.json"
         }
     ]
 }

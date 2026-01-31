@@ -16,9 +16,11 @@ from datetime import datetime, timezone
 import json
 from typing import Optional, List, Dict, Tuple
 
+from python.framework.factory.trading_fee_factory import create_maker_taker_fee, create_spread_fee_from_tick
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.broker_types import SymbolSpecification
+from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
@@ -35,7 +37,6 @@ from ..types.order_types import (
     LimitOrder,
     create_rejection_result
 )
-from .trading_fees import create_spread_fee_from_tick
 
 
 class TradeSimulator:
@@ -262,7 +263,6 @@ class TradeSimulator:
         if pending_order.direction == OrderDirection.SHORT:
             entry_price = bid
 
-        # Calculate spread fee with DYNAMIC tick_value
         # Get static symbol specification
         symbol_spec = self.broker.get_symbol_specification(
             pending_order.symbol)
@@ -271,11 +271,13 @@ class TradeSimulator:
             symbol_spec,
             self._current_tick.mid
         )
-        spread_fee = create_spread_fee_from_tick(
-            tick=self._current_tick,
+
+        # Create entry fee based on broker fee model
+        entry_fee = self._create_entry_fee(
+            symbol_spec=symbol_spec,
             lots=pending_order.lots,
-            tick_value=tick_value,
-            digits=symbol_spec.digits
+            entry_price=entry_price,
+            tick_value=tick_value
         )
         # Log tick_value calculation for transparency
         self.logger.debug(
@@ -287,18 +289,21 @@ class TradeSimulator:
             f"tick_value={tick_value:.5f}"
         )
 
-        # Check margin available
-        margin_required = self.broker.calculate_margin(
-            pending_order.symbol, pending_order.lots, self._current_tick)
-        free_margin = self.portfolio.get_free_margin()
+        # Check margin available (only if leverage trading enabled)
+        leverage = self.broker.get_max_leverage()
+        if leverage > 1:
+            margin_required = self.broker.calculate_margin(
+                pending_order.symbol, pending_order.lots, self._current_tick, pending_order.direction)
+            free_margin = self.portfolio.get_free_margin(
+                pending_order.direction)
 
-        if margin_required > free_margin:
-            self._orders_rejected += 1
-            return create_rejection_result(
-                order_id=pending_order.pending_order_id,
-                reason=RejectionReason.INSUFFICIENT_MARGIN,
-                message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
-            )
+            if margin_required > free_margin:
+                self._orders_rejected += 1
+                return create_rejection_result(
+                    order_id=pending_order.pending_order_id,
+                    reason=RejectionReason.INSUFFICIENT_MARGIN,
+                    message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
+                )
 
         # Open position in portfolio with trade record data
         position = self.portfolio.open_position(
@@ -313,7 +318,7 @@ class TradeSimulator:
             digits=symbol_spec.digits,
             contract_size=symbol_spec.contract_size,
             entry_tick_index=self._tick_counter,
-            entry_fee=spread_fee,
+            entry_fee=entry_fee,
             stop_loss=pending_order.order_kwargs.get('stop_loss'),
             take_profit=pending_order.order_kwargs.get('take_profit'),
             comment=pending_order.order_kwargs.get('comment', ''),
@@ -333,8 +338,8 @@ class TradeSimulator:
                 "symbol": pending_order.symbol,
                 "direction": pending_order.direction,
                 "position_id": position.position_id,
-                "spread_cost": spread_fee.cost,
-                "spread_points": spread_fee.metadata['spread_points'],
+                "fee_cost": entry_fee.cost,
+                "fee_type": entry_fee.fee_type.value,
                 "filled_at_tick": self._tick_counter
             }
         )
@@ -345,7 +350,7 @@ class TradeSimulator:
 
         # Update statistics
         self._orders_executed += 1
-        self._total_spread_cost += spread_fee.cost
+        self._total_spread_cost += entry_fee.cost
         self._order_history.append(result)
 
     def _execute_limit_order(
@@ -562,13 +567,13 @@ class TradeSimulator:
     # Account Queries
     # ============================================
 
-    def get_account_info(self) -> AccountInfo:
+    def get_account_info(self, order_direction: OrderDirection) -> AccountInfo:
         """
         Get current account information.
 
         Returns copy (safe for external use).
         """
-        return self.portfolio.get_account_info()
+        return self.portfolio.get_account_info(order_direction)
 
     def get_open_positions(self) -> List[Position]:
         """
@@ -615,10 +620,6 @@ class TradeSimulator:
     def get_balance(self) -> float:
         """Get account balance"""
         return self.portfolio.balance
-
-    def get_free_margin(self) -> float:
-        """Get free margin"""
-        return self.portfolio.get_free_margin()
 
     # ============================================
     # Dynamic Calculations"
@@ -685,6 +686,52 @@ class TradeSimulator:
                 f"  - Account Currency == Base Currency (e.g., GBPUSD with GBP account)\n"
                 f"For cross-currency, external exchange rates would be required (Post-MVP)."
             )
+
+    def _create_entry_fee(
+        self,
+        symbol_spec: SymbolSpecification,
+        lots: float,
+        entry_price: float,
+        tick_value: float
+    ) -> AbstractTradingFee:
+        """
+        Create entry fee based on broker fee model.
+
+        Determines fee type from broker config and creates appropriate fee object.
+        Spread-based (MT5) vs Maker/Taker (Kraken).
+
+        Args:
+            symbol_spec: Symbol specification
+            lots: Order size
+            entry_price: Entry price
+            tick_value: Calculated tick value
+
+        Returns:
+            AbstractTradingFee (SpreadFee or MakerTakerFee)
+        """
+        fee_model_str = self.broker.adapter.broker_config.get(
+            'fee_structure', {}
+        ).get('model', 'spread')
+
+        fee_model = FeeType(fee_model_str)
+
+        if fee_model == FeeType.MAKER_TAKER:
+            return create_maker_taker_fee(
+                lots=lots,
+                contract_size=symbol_spec.contract_size,
+                entry_price=entry_price,
+                maker_rate=self.broker.adapter.get_maker_fee(),
+                taker_rate=self.broker.adapter.get_taker_fee(),
+                is_maker=False  # Market order = Taker
+            )
+
+        # Default: Spread-based fee (MT5, Forex)
+        return create_spread_fee_from_tick(
+            tick=self._current_tick,
+            lots=lots,
+            tick_value=tick_value,
+            digits=symbol_spec.digits
+        )
 
     # ============================================
     # Order History

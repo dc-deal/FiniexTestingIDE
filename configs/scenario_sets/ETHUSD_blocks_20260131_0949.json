@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_set_name": "BTCUSD_blocks_20260128_1952",
-  "created": "2026-01-28T19:52:36.081736+00:00",
+  "scenario_set_name": "ETHUSD_blocks_20260131_0949",
+  "created": "2026-01-31T09:49:29.247301+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -41,11 +41,11 @@
   },
   "scenarios": [
     {
-      "name": "BTCUSD_blocks_01",
-      "symbol": "BTCUSD",
+      "name": "ETHUSD_blocks_01",
+      "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-20T19:55:00+00:00",
-      "end_date": "2026-01-21T01:55:00+00:00",
+      "end_date": "2026-01-21T03:55:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -54,11 +54,11 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "BTCUSD_blocks_02",
-      "symbol": "BTCUSD",
+      "name": "ETHUSD_blocks_02",
+      "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",
-      "end_date": "2026-01-25T22:00:00+00:00",
+      "end_date": "2026-01-26T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -67,11 +67,11 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "BTCUSD_blocks_03",
-      "symbol": "BTCUSD",
+      "name": "ETHUSD_blocks_03",
+      "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T16:00:00+00:00",
-      "end_date": "2026-01-26T22:00:00+00:00",
+      "end_date": "2026-01-27T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -80,11 +80,37 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "BTCUSD_blocks_04",
-      "symbol": "BTCUSD",
+      "name": "ETHUSD_blocks_04",
+      "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-27T16:00:00+00:00",
-      "end_date": "2026-01-27T22:00:00+00:00",
+      "end_date": "2026-01-28T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "ETHUSD_blocks_05",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-28T16:00:00+00:00",
+      "end_date": "2026-01-29T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "ETHUSD_blocks_06",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-29T16:00:00+00:00",
+      "end_date": "2026-01-30T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,

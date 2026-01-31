@@ -181,7 +181,7 @@ class DecisionTradingAPI:
     # Public API: Account Queries
     # ============================================
 
-    def get_account_info(self) -> AccountInfo:
+    def get_account_info(self, order_direction: OrderDirection) -> AccountInfo:
         """
         Get current account information.
 
@@ -195,7 +195,7 @@ class DecisionTradingAPI:
         Returns:
             AccountInfo dataclass with all account metrics
         """
-        return self._simulator.get_account_info()
+        return self._simulator.get_account_info(order_direction)
 
     def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
         """

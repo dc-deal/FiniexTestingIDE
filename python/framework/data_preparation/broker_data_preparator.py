@@ -146,6 +146,7 @@ class BrokerDataPreparator:
             filtered_dict = {
                 'broker_info': full_dict['broker_info'],
                 'trading_permissions': full_dict['trading_permissions'],
+                'fee_structure': full_dict['fee_structure'],
                 'symbols': {
                     symbol: spec
                     for symbol, spec in full_dict['symbols'].items()
