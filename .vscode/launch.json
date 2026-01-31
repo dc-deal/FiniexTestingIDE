@@ -281,13 +281,25 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Run (eurusd_3 - SANDBOX)",
+            "name": "🔬 Run (eurusd_3_SANDBOX)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
                 "eurusd_3_windows_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Run (BTCUSD_SANDBOX)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_sandbox.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -324,18 +336,6 @@
             "args": [
                 "run",
                 "EURGBP_stress_20251211_0630.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🔬 Run (BTCUSD_blocks_*)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "BTCUSD_blocks_20260128_1952.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -410,13 +410,13 @@
             "args": [
                 "generate",
                 "kraken_spot",
-                "BTCUSD",
+                "ETHUSD",
                 "--strategy",
                 "blocks",
                 "--block-size",
-                "6",
+                "8",
                 "--count",
-                "6",
+                "8",
                 "--sessions",
                 "new_york"
             ],

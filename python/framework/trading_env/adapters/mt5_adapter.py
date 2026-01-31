@@ -9,7 +9,7 @@ Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
 from typing import Dict, Any, List, Optional
 
 from python.framework.types.market_data_types import TickData
-from .base_adapter import IOrderCapabilities
+from .base_adapter import BaseAdapter
 from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -27,7 +27,7 @@ from python.framework.types.broker_types import (
 )
 
 
-class MT5Adapter(IOrderCapabilities):
+class MT5Adapter(BaseAdapter):
     """
     MT5 Broker Adapter - Full implementation.
 
@@ -50,33 +50,17 @@ class MT5Adapter(IOrderCapabilities):
         """
         super().__init__(broker_config)
 
-        # Cache frequently accessed values
-        self._broker_name = self._get_config_value(
-            'broker_info.company', 'Unknown MT5 Broker')
-        self._leverage = self._get_config_value('broker_info.leverage', 100)
-        self._hedging_allowed = self._get_config_value(
-            'broker_info.hedging_allowed', False)
-
     # ============================================
     # Configuration
     # ============================================
 
     def _validate_config(self) -> None:
-        """Validate MT5 broker configuration structure"""
-        required_keys = ['broker_info', 'symbols']
+        """
+        Validate Mt5-specific configuration.
 
-        for key in required_keys:
-            if key not in self.broker_config:
-                raise ValueError(f"Missing required config key: {key}")
-
-        # Validate broker_info structure
-        broker_info = self.broker_config['broker_info']
-        if 'company' not in broker_info:
-            raise ValueError("Missing broker_info.company")
-
-        # Validate at least one symbol exists
-        if not self.broker_config['symbols']:
-            raise ValueError("No symbols configured")
+        Called after _validate_common_config() in base class.
+        """
+        pass
 
     def get_broker_name(self) -> str:
         """Get broker company name"""
@@ -340,8 +324,17 @@ class MT5Adapter(IOrderCapabilities):
 
         raw = self.broker_config['symbols'][symbol]
 
-        # Extract currencies from symbol name
-        base, quote, margin = extract_currencies_from_symbol(symbol)
+        # Read currencies from config (unified: quote_currency for both MT5 and Kraken)
+        base_currency = raw.get('base_currency')
+        quote_currency = raw.get('quote_currency')
+        margin_currency = raw.get('margin_currency', base_currency)
+
+        if not base_currency or not quote_currency:
+            raise ValueError(
+                f"Symbol '{symbol}' missing required currency fields.\n"
+                f"Required: 'base_currency', 'quote_currency'\n"
+                f"Found: base={base_currency}, quote={quote_currency}"
+            )
 
         # Parse swap mode
         swap_mode_str = raw.get('swap_mode', 'points').lower()
@@ -367,9 +360,9 @@ class MT5Adapter(IOrderCapabilities):
             contract_size=raw.get('contract_size', 100000),
 
             # Currency Information
-            base_currency=base,
-            quote_currency=quote,
-            margin_currency=margin,
+            base_currency=base_currency,
+            quote_currency=quote_currency,
+            margin_currency=margin_currency,
 
             # Trading Permissions
             trade_allowed=raw.get('trade_allowed', False),
@@ -438,39 +431,6 @@ class MT5Adapter(IOrderCapabilities):
     # ============================================
     # MT5-Specific Features
     # ============================================
-
-    def get_leverage(self) -> int:
-        """Get account leverage (e.g., 500 for 1:500)"""
-        return self._leverage
-
-    def calculate_margin_required(
-        self,
-        symbol: str,
-        lots: float,
-        tick: TickData
-    ) -> float:
-        """
-        Calculate required margin for order.
-
-        Formula (Forex):
-        Margin = (Lots * Contract_Size * Current_Price) / Leverage
-
-        Args:
-            symbol: Trading symbol
-            lots: Order size
-
-        Returns:
-            Required margin in account currency
-        """
-        symbol_spec = self.get_symbol_specification(symbol)
-
-        contract_size = symbol_spec.contract_size
-        current_price = tick.bid
-
-        # Calculate margin
-        margin = (lots * contract_size * current_price) / self._leverage
-
-        return margin
 
     def get_commission_per_lot(self, symbol: str) -> float:
         """

@@ -57,18 +57,10 @@ class ActivityVolumeProvider:
         try:
             return MarketType(market_type_lower)
         except ValueError:
-            pass
-
-        # Legacy mapping for backwards compatibility
-        legacy_mapping = {
-            'forex_cfd': MarketType.FOREX,
-            'crypto_spot': MarketType.CRYPTO,
-            'crypto_futures': MarketType.CRYPTO,
-            'equity': MarketType.CRYPTO,  # equity uses volume like crypto
-            'unknown': MarketType.FOREX,  # fallback to forex behavior
-        }
-
-        return legacy_mapping.get(market_type_lower, MarketType.FOREX)
+            raise ValueError(
+                f"❌ No MarketType defined for: '{market_type}'\n"
+                f"   Add market_type & config to market_config.json"
+            )
 
     def _is_volume_based(self, market_type: Union[MarketType, str]) -> bool:
         """

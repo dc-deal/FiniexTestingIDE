@@ -8,7 +8,8 @@ Ensures consistent order creation API across different broker types.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
+from python.framework.types.broker_types import BrokerSpecification, FeeType, SymbolSpecification
+from python.framework.types.market_data_types import TickData
 from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -23,7 +24,7 @@ from python.framework.types.order_types import (
 )
 
 
-class IOrderCapabilities(ABC):
+class BaseAdapter(ABC):
     """
     Abstract interface for broker order capabilities.
 
@@ -47,7 +48,112 @@ class IOrderCapabilities(ABC):
             broker_config: Broker-specific config (from JSON or API)
         """
         self.broker_config = broker_config
+        self._validate_common_config()
         self._validate_config()
+
+        self._leverage = self._get_config_value('broker_info.leverage', 1)
+        # Cache frequently accessed values
+        self._broker_name = self._get_config_value(
+            'broker_info.company', 'unknown')
+        self._hedging_allowed = self._get_config_value(
+            'broker_info.hedging_allowed', False)
+
+    # ============================================
+    # Common Configuration Validation
+    # ============================================
+
+    def _validate_common_config(self) -> None:
+        """
+        Validate common configuration fields required by ALL brokers.
+
+        Checks:
+        - broker_info section exists with required fields
+        - symbols section exists with at least one symbol
+        - If leverage > 1: margin fields are mandatory
+
+        Called before adapter-specific _validate_config().
+        """
+        # Check broker_info exists
+        broker_info = self.broker_config.get('broker_info')
+        if not broker_info:
+            raise ValueError(
+                "❌ Missing 'broker_info' section in broker config"
+            )
+
+        # Required broker_info fields (always)
+        required_broker_fields = ['company',
+                                  'server', 'trade_mode', 'leverage', 'company', 'hedging_allowed']
+        for field in required_broker_fields:
+            if field not in broker_info:
+                raise ValueError(
+                    f"❌ Missing required field 'broker_info.{field}' in broker config"
+                )
+
+        # Check symbols section
+        symbols = self.broker_config.get('symbols')
+        if not symbols:
+            raise ValueError(
+                "❌ Missing 'symbols' section in broker config"
+            )
+        if len(symbols) == 0:
+            raise ValueError(
+                "❌ No symbols configured in broker config"
+            )
+
+        # Leverage-dependent validation
+        leverage = broker_info.get('leverage', 1)
+        if leverage > 1:
+            margin_fields = ['margin_mode',
+                             'stopout_level', 'margin_call_level']
+            missing = [f for f in margin_fields if f not in broker_info]
+            if missing:
+                raise ValueError(
+                    f"❌ Broker has leverage={leverage} but missing margin fields: {missing}\n"
+                    f"   When leverage > 1, these fields are mandatory in broker_info"
+                )
+
+        # Validate each symbol has required fields
+        required_symbol_fields = [
+            'volume_min', 'volume_max', 'volume_step',
+            'contract_size', 'tick_size', 'digits', 'trade_allowed',
+            'base_currency', 'quote_currency'
+        ]
+        for symbol_name, symbol_data in symbols.items():
+            missing = [
+                f for f in required_symbol_fields if f not in symbol_data]
+            if missing:
+                raise ValueError(
+                    f"❌ Symbol '{symbol_name}' missing required fields: {missing}"
+                )
+
+            # Validate margin_currency if present (must be base or quote)
+            margin_currency = symbol_data.get('margin_currency')
+            if margin_currency:
+                base = symbol_data['base_currency']
+                quote = symbol_data['quote_currency']
+                if margin_currency not in (base, quote):
+                    raise ValueError(
+                        f"❌ Symbol '{symbol_name}': margin_currency must be "
+                        f"base_currency ('{base}') or quote_currency ('{quote}'), "
+                        f"got '{margin_currency}'"
+                    )
+
+        # Validate fee_structure if present
+        fee_structure = self.broker_config.get('fee_structure')
+        if fee_structure:
+            fee_model_str = fee_structure.get('model')
+            if not fee_model_str:
+                raise ValueError(
+                    "❌ fee_structure present but missing 'model' field"
+                )
+            # Validate model is valid FeeType
+            valid_models = [ft.value for ft in FeeType if ft in (
+                FeeType.SPREAD, FeeType.MAKER_TAKER)]
+            if fee_model_str not in valid_models:
+                raise ValueError(
+                    f"❌ Invalid fee_structure.model: '{fee_model_str}'\n"
+                    f"   Valid values: {valid_models}"
+                )
 
     # ============================================
     # Required: Configuration
@@ -56,9 +162,10 @@ class IOrderCapabilities(ABC):
     @abstractmethod
     def _validate_config(self) -> None:
         """
-        Validate broker configuration.
+        Validate broker-specific configuration.
 
-        Called during __init__. Should raise ValueError if config invalid.
+        Called during __init__ AFTER _validate_common_config().
+        Should raise ValueError if config invalid.
         """
         pass
 
@@ -111,9 +218,6 @@ class IOrderCapabilities(ABC):
 
         Returns:
             MarketOrder object ready for execution
-
-        Raises:
-            ValueError: If parameters invalid
         """
         pass
 
@@ -256,14 +360,6 @@ class IOrderCapabilities(ABC):
 
         Returns:
             SymbolSpecification with all static properties
-
-        Raises:
-            ValueError: If symbol not found
-
-        Example:
-            spec = adapter.get_symbol_specification("GBPUSD")
-            print(f"Min lot: {spec.volume_min}")
-            print(f"Quote currency: {spec.quote_currency}")
         """
         pass
 
@@ -276,11 +372,96 @@ class IOrderCapabilities(ABC):
 
         Returns:
             BrokerSpecification with all static broker properties
+        """
+        pass
 
-        Example:
-            spec = adapter.get_broker_specification()
-            print(f"Leverage: 1:{spec.leverage}")
-            print(f"Margin call: {spec.margin_call_level}%")
+    # ============================================
+    # Required: Margin & Leverage
+    # ============================================
+
+    def get_leverage(self) -> int:
+        """Get account leverage (e.g., 500 for 1:500)"""
+        return self._leverage
+
+    def calculate_margin_required(
+        self,
+        symbol: str,
+        lots: float,
+        tick: TickData,
+        direction: OrderDirection
+    ) -> float:
+        """
+        Calculate required margin for order.
+
+        Formula depends on margin_currency:
+        - If margin_currency == quote: margin = (lots * contract_size) / leverage
+        - If margin_currency == base:  margin = (lots * contract_size * price) / leverage
+
+        For spot (leverage=1): Returns full position value.
+        For margin trading: Returns reduced margin requirement.
+
+        Args:
+            symbol: Trading symbol
+            lots: Order size
+            tick: Current tick data
+
+        Returns:
+            Required margin in account currency (quote currency)
+        """
+        symbol_spec = self.get_symbol_specification(symbol)
+        contract_size = symbol_spec.contract_size
+        leverage = self.get_leverage()
+
+        # Check margin_currency to determine if price conversion needed
+        if symbol_spec.margin_currency == symbol_spec.quote_currency:
+            # Margin already in quote currency, no conversion needed
+            position_value = lots * contract_size
+        else:
+            # Margin in base currency, convert to quote via price
+            price = tick.ask if direction == OrderDirection.LONG else tick.bid
+            position_value = lots * contract_size * price
+
+        # Apply leverage (spot: leverage=1, returns full value)
+        if leverage <= 1:
+            return position_value
+        return position_value / leverage
+
+    # ============================================
+    # Required: Symbol Information
+    # ============================================
+
+    @abstractmethod
+    def get_all_aviable_symbols(self) -> List[str]:
+        """
+        Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
+        """
+        pass
+
+    @abstractmethod
+    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
+        """
+        Get fully typed symbol specification.
+
+        Returns static symbol properties as typed dataclass.
+        Does NOT include dynamic market data (tick_value, bid/ask).
+
+        Args:
+            symbol: Trading symbol (e.g., "GBPUSD")
+
+        Returns:
+            SymbolSpecification with all static properties
+        """
+        pass
+
+    @abstractmethod
+    def get_broker_specification(self) -> BrokerSpecification:
+        """
+        Get fully typed broker specification.
+
+        Returns static broker properties as typed dataclass.
+
+        Returns:
+            BrokerSpecification with all static broker properties
         """
         pass
 
@@ -330,9 +511,6 @@ class IOrderCapabilities(ABC):
     ) -> Any:
         """
         Get nested config value using dot notation.
-
-        Example:
-            _get_config_value('symbols.EURUSD.volume_min', 0.01)
 
         Args:
             key_path: Dot-separated path (e.g., 'broker_info.leverage')

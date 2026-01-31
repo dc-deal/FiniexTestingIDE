@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.broker_types import SymbolSpecification
+from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import CloseType, TradeRecord
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
-from .trading_fees import AbstractTradingFee, FeeType
 from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
@@ -424,7 +424,7 @@ class PortfolioManager:
     # Account Information - for example, for decision
     # ============================================
 
-    def get_account_info(self) -> AccountInfo:
+    def get_account_info(self, order_direction: OrderDirection) -> AccountInfo:
         """
         Get current account information.
 
@@ -454,7 +454,7 @@ class PortfolioManager:
         if self._current_tick is not None:
             for pos in self.open_positions.values():
                 position_margin = self.broker_config.calculate_margin(
-                    pos.symbol, pos.lots, self._current_tick
+                    pos.symbol, pos.lots, self._current_tick, order_direction
                 )
                 margin_used += position_margin
 
@@ -498,24 +498,10 @@ class PortfolioManager:
         )
         return self.balance + unrealized_pnl
 
-    def get_free_margin(self) -> float:
+    def get_free_margin(self, order_direction: OrderDirection) -> float:
         """Get free margin"""
-        account = self.get_account_info()
+        account = self.get_account_info(order_direction)
         return account.free_margin
-
-    def is_margin_call(self) -> bool:
-        """Check if margin call"""
-        account = self.get_account_info()
-        if account.margin_used == 0:
-            return False
-        return account.margin_level < self.margin_call_level
-
-    def is_stop_out(self) -> bool:
-        """Check if stop out"""
-        account = self.get_account_info()
-        if account.margin_used == 0:
-            return False
-        return account.margin_level < self.stop_out_level
 
     # ============================================
     # Cost Tracking ( & TYPED)

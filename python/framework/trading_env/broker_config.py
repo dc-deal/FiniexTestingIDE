@@ -14,7 +14,7 @@ from enum import Enum
 
 from python.framework.types.market_data_types import TickData
 
-from .adapters.base_adapter import IOrderCapabilities
+from .adapters.base_adapter import BaseAdapter
 from .adapters.mt5_adapter import MT5Adapter
 from .adapters.kraken_adapter import KrakenAdapter
 from ..types.order_types import (
@@ -53,7 +53,7 @@ class BrokerConfig:
 
     """
 
-    def __init__(self, broker_type: BrokerType, adapter: IOrderCapabilities):
+    def __init__(self, broker_type: BrokerType, adapter: BaseAdapter):
         """
         Initialize broker config with adapter.
 
@@ -125,7 +125,7 @@ class BrokerConfig:
     def _create_adapter(
         broker_type: BrokerType,
         config: Dict[str, Any]
-    ) -> IOrderCapabilities:
+    ) -> BaseAdapter:
         """
         Create appropriate adapter for broker type.
 
@@ -373,7 +373,8 @@ class BrokerConfig:
         self,
         symbol: str,
         lots: float,
-        tick: TickData
+        tick: TickData,
+        direction: OrderDirection
     ) -> float:
         """
         Calculate required margin for order.
@@ -383,12 +384,13 @@ class BrokerConfig:
         Args:
             symbol: Trading symbol
             lots: Order size
+            tick: Current tick data (extracts mid price)
 
         Returns:
             Required margin in account currency
         """
         if hasattr(self.adapter, 'calculate_margin_required'):
-            return self.adapter.calculate_margin_required(symbol, lots, tick)
+            return self.adapter.calculate_margin_required(symbol, lots, tick, direction)
 
         # Fallback: No margin calculation available
         return 0.0
