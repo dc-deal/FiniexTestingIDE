@@ -205,7 +205,7 @@ class BarIndexCLI:
         print("="*80 + "\n")
 
         try:
-            bar_importer = BarImporter(str(self.data_dir))
+            bar_importer = BarImporter()
             bar_importer.render_bars_for_all_symbols(
                 broker_type=broker_type,
                 clean_mode=clean

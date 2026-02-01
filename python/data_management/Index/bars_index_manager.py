@@ -188,6 +188,15 @@ class BarsIndexManager:
         real_bar_count = int((df['bar_type'] == 'real').sum())
         synthetic_bar_count = int((df['bar_type'] == 'synthetic').sum())
 
+        # Volume statistics (trade volume for crypto, 0.0 for forex CFD)
+        if 'volume' in df.columns:
+            total_trade_volume = float(df['volume'].sum())
+            avg_volume_per_bar = float(
+                df['volume'].mean()) if len(df) > 0 else 0.0
+        else:
+            total_trade_volume = None
+            avg_volume_per_bar = None
+
         # === Version and market type detection ===
         source_version_min = metadata.get('source_version_min', '1.0.0')
         source_version_max = metadata.get('source_version_max', '1.0.0')
@@ -221,12 +230,9 @@ class BarsIndexManager:
             # legacy compatibility: data_collector
             'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
 
-            # NOTE: market_type and primary_activity_metric removed
-            # Use MarketConfigManager at runtime instead
-
-            # Volume fields (null for Forex)
-            'total_trade_volume': None,
-            'avg_volume_per_bar': None,
+            # Volume statistics (real values for crypto, 0.0 for forex CFD)
+            'total_trade_volume': round(total_trade_volume, 6) if total_trade_volume is not None else None,
+            'avg_volume_per_bar': round(avg_volume_per_bar, 6) if avg_volume_per_bar is not None else None,
         }
 
     def needs_rebuild(self) -> bool:

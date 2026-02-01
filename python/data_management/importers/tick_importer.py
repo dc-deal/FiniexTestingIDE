@@ -614,7 +614,11 @@ class TickDataImporter:
         )
 
         # Check 1: broker_type must exist in metadata
-        broker_type = metadata.get("broker_type")
+        broker_type = metadata.get("broker_type", None)
+
+        # fallback to mt5
+        if (broker_type is None):
+            broker_type = metadata.get("data_collector", None)
 
         if broker_type is None:
             # Check for legacy data_collector field
