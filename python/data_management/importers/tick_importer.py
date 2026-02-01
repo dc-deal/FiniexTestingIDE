@@ -165,7 +165,7 @@ class TickDataImporter:
         vLog.info("\n🔄 Rebuilding Parquet index...")
         try:
 
-            index_manager = TickIndexManager(self.target_dir)
+            index_manager = TickIndexManager()
             index_manager.build_index(force_rebuild=True)
 
             symbols = index_manager.list_symbols()
@@ -616,30 +616,20 @@ class TickDataImporter:
         # Check 1: broker_type must exist in metadata
         broker_type = metadata.get("broker_type", None)
 
-        # fallback to mt5
+        # Check for legacy data_collector field
         if (broker_type is None):
             broker_type = metadata.get("data_collector", None)
 
+        # if broker_type could not found at all:
         if broker_type is None:
-            # Check for legacy data_collector field
-            data_collector = metadata.get("data_collector")
-
-            if data_collector:
-                raise ValueError(
-                    f"Missing 'broker_type' in JSON metadata.\n\n"
-                    f"   This appears to be a LEGACY file (data_collector='{data_collector}' found).\n\n"
-                    f"   To enable import, add the following to the JSON metadata section:\n"
-                    f"     \"broker_type\": \"{data_collector}\"\n\n"
-                    f"   Available broker_types in market_config.json:\n"
-                    f"{broker_list_str}"
-                )
-            else:
-                raise ValueError(
-                    f"Missing 'broker_type' in JSON metadata.\n\n"
-                    f"   The 'broker_type' field is required for import.\n\n"
-                    f"   Available broker_types in market_config.json:\n"
-                    f"{broker_list_str}"
-                )
+            raise ValueError(
+                f"Missing 'broker_type' (or LEGACY identifier data_collector) in JSON metadata.\n\n"
+                f"   This appears to be a LEGACY file.\n\n"
+                f"   To enable import, add the following to the JSON metadata section:\n"
+                f"     \"broker_type\": ... "
+                f"   Available broker_types in market_config.json:\n"
+                f"{broker_list_str}"
+            )
 
         # Normalize broker_type
         broker_type_normalized = self._normalize_broker_type(broker_type)

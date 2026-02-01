@@ -40,7 +40,7 @@ class BlocksGenerator:
     - Session filtering with optional extension
     """
 
-    def __init__(self, data_dir: Path, config: GeneratorConfig):
+    def __init__(self, config: GeneratorConfig):
         """
         Initialize blocks generator.
 
@@ -48,7 +48,6 @@ class BlocksGenerator:
             data_dir: Path to processed data directory
             config: Generator configuration
         """
-        self._data_dir = data_dir
         self._config = config
 
     def generate(
@@ -78,7 +77,7 @@ class BlocksGenerator:
         Returns:
             List of scenario candidates with max_ticks=None
         """
-        tick_index = TickIndexManager(self._data_dir)
+        tick_index = TickIndexManager()
         tick_index.build_index()
 
         coverage_report = tick_index.get_coverage_report(broker_type, symbol)

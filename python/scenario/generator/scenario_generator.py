@@ -40,7 +40,6 @@ class ScenarioGenerator:
     def __init__(self):
         """Initialize scenario generator with paths from AppConfigManager."""
         app_config = AppConfigManager()
-        self._data_dir = Path(app_config.get_data_processed_path())
         self._analyzer = MarketAnalyzer(str(self._data_dir))
         self._config = self._analyzer.get_config()
 
@@ -50,7 +49,7 @@ class ScenarioGenerator:
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
-        self._blocks_gen = BlocksGenerator(self._data_dir, self._config)
+        self._blocks_gen = BlocksGenerator(self._config)
         self._stress_gen = StressGenerator(self._config, self._analyzer)
 
     # =========================================================================

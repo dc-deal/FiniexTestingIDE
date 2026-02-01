@@ -36,7 +36,7 @@ class CoverageReport:
     - Weekend gap listing with Berlin local time
     """
 
-    def __init__(self, symbol: str, broker_type: BrokerType, data_dir: Path):
+    def __init__(self, symbol: str, broker_type: BrokerType):
         """
         Initialize coverage report.
 
@@ -47,7 +47,6 @@ class CoverageReport:
         """
         self.symbol = symbol
         self.broker_type = broker_type
-        self._data_dir = data_dir
         self.start_time = None
         self.end_time = None
 
@@ -112,7 +111,7 @@ class CoverageReport:
             'thresholds', {'short': 0.5, 'moderate': 4.0})
 
         # Initialize bar index
-        bar_index = BarsIndexManager(self._data_dir)
+        bar_index = BarsIndexManager()
         bar_index.build_index()
 
         # Get bar file for symbol

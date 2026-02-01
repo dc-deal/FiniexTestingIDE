@@ -178,41 +178,10 @@ def seeds_config(scenario_config: Dict[str, Any]) -> Dict[str, int]:
     """
     return scenario_config['global']['trade_simulator_config']['seeds']
 
-
-# =============================================================================
-# BAR DATA FIXTURES
-# =============================================================================
-
-
-@pytest.fixture(scope="session")
-def prerendered_bars(
-    bars_index_manager: BarsIndexManager,
-    scenario_config: Dict[str, Any]
-) -> Dict[str, pd.DataFrame]:
-    """
-    Load prerendered bars for snapshot comparison.
-
-    Args:
-        bars_index_manager: Bar index manager
-        scenario_config: Scenario config for symbol extraction
-
-    Returns:
-        Dict mapping timeframe to DataFrame of bars
-    """
-    symbol = scenario_config['scenarios'][0]['symbol']
-
-    bars = {}
-    for timeframe in ['M5', 'M30']:
-        bar_file = bars_index_manager.get_bar_file(symbol, timeframe)
-        if bar_file:
-            bars[timeframe] = pd.read_parquet(bar_file)
-
-    return bars
-
-
 # =============================================================================
 # DELAY GENERATOR FIXTURES
 # =============================================================================
+
 
 @pytest.fixture(scope="function")
 def api_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:

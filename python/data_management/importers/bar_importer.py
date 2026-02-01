@@ -11,10 +11,6 @@ Workflow:
 3. Write bar parquet files (one per timeframe)
 4. Update bar index
 
-Directory Structure:
-- data/processed/{broker_type}/ticks/EURUSD/*.parquet  → Input
-- data/processed/{broker_type}/bars/EURUSD/EURUSD_M5_BARS.parquet → Output
-
 REFACTORED: broker_type is now required parameter (no default)
 INDEX STRUCTURE: {broker_type: {symbol: [files]}}
 """
@@ -59,7 +55,7 @@ class BarImporter:
                 f"Data directory not found: {self.data_dir}")
 
         # Initialize tick index for finding tick files
-        self.tick_index = TickIndexManager(self.data_dir)
+        self.tick_index = TickIndexManager()
         self.tick_index.build_index()
 
         # Statistics
@@ -356,7 +352,7 @@ class BarImporter:
         """
         vLog.info("\n📄 Updating bar index...")
         try:
-            bar_index = BarsIndexManager(self.data_dir)
+            bar_index = BarsIndexManager()
             bar_index.build_index(force_rebuild=True)
 
             # Count symbols across all broker_types

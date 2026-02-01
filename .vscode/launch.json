@@ -248,19 +248,6 @@
             "justMyCode": false
         },
         {
-            "name": "📶 Coverage: kraken_spot/BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "coverage",
-                "kraken_spot",
-                "BTCUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "↔️ Gap Report: kraken_spot/ETHUSD",
             "type": "debugpy",
             "request": "launch",
@@ -286,6 +273,19 @@
                 "2025-09-23T00:00:00+00:00",
                 "--end",
                 "2025-09-25T23:59:00+00:00"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📶 Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "coverage",
+                "kraken_spot",
+                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

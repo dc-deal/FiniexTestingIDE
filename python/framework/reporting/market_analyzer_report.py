@@ -58,17 +58,16 @@ class MarketAnalyzer:
         Args:
             data_dir: Path to processed data directory
         """
-        self._data_dir = Path(data_dir)
         analysis_config = AnalysisConfigLoader()
         self._config = analysis_config.get_generator_config()
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
-        self._bar_index = BarsIndexManager(self._data_dir)
+        self._bar_index = BarsIndexManager()
         self._bar_index.build_index()
 
         # Initialize tick index for coverage reports
-        self._tick_index = TickIndexManager(self._data_dir)
+        self._tick_index = TickIndexManager()
         self._tick_index.build_index()
 
         # Symbol specification cache (lazy loaded per broker_type)

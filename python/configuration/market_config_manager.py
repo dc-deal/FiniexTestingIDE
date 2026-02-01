@@ -206,7 +206,7 @@ class MarketConfigManager:
             market_type: MarketType enum value
 
         Returns:
-            Activity metric string ('tick_count' or 'trade_volume')
+            Activity metric string ('tick_count' or 'volume')
         """
         rules = self.get_market_rules(market_type)
         return rules.primary_activity_metric
@@ -219,7 +219,7 @@ class MarketConfigManager:
             broker_type: Broker type identifier
 
         Returns:
-            Activity metric string ('tick_count' or 'trade_volume')
+            Activity metric string ('tick_count' or 'volume')
         """
         market_type = self.get_market_type(broker_type)
         return self.get_primary_activity_metric(market_type)

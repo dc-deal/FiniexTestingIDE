@@ -35,16 +35,12 @@ class BarIndexCLI:
 
     def __init__(self):
         """Initialize CLI with paths from AppConfigManager."""
-        app_config = AppConfigManager()
-        self.data_dir = Path(app_config.get_data_processed_path())
-        self.index_manager = BarsIndexManager(self.data_dir)
+        self.index_manager = BarsIndexManager()
 
     def cmd_rebuild(self):
         """Rebuild bar index from scratch"""
         print("\n" + "="*80)
         print("🔄 Rebuilding Bar Index")
-        print("="*80)
-        print(f"Data directory: {self.data_dir}")
         print("="*80 + "\n")
 
         self.index_manager.build_index(force_rebuild=True)

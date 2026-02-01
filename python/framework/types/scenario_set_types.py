@@ -33,7 +33,6 @@ class SingleScenario:
     # ============================================
     # Determines which tick/bar data collection to load from
     # Examples: "mt5", "kraken_spot"
-    # Maps to: data/processed/{data_broker_type}/ticks/{symbol}/
     # This is SEPARATE from broker_type (trading simulation config)
     data_broker_type: str  # REQUIRED - no default!
 

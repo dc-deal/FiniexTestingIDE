@@ -33,9 +33,8 @@ class DataIndexCLI:
     def __init__(self):
         """Initialize CLI with paths from AppConfigManager."""
         self._app_config = AppConfigManager()
-        self.data_dir = Path(self._app_config.get_data_processed_path())
-        self.index_manager = TickIndexManager(self.data_dir)
-        self.bar_index_manager = BarsIndexManager(self.data_dir)
+        self.index_manager = TickIndexManager()
+        self.bar_index_manager = BarsIndexManager()
 
     def cmd_import(self, override: bool = False, time_offset: int = 0, offset_broker: Optional[str] = None):
         """

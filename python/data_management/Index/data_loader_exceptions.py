@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 from datetime import datetime
 
+from python.configuration.app_config_manager import AppConfigManager
+
 
 @dataclass
 class DuplicateReport:
@@ -61,9 +63,11 @@ class DuplicateReport:
 
         # File details with data_collector paths
         for i, file in enumerate(self.duplicate_files, 1):
+            app_config_manager = AppConfigManager()
+            data_dir = app_config_manager.get_data_processed_path()
             # Extract and display data_collector path
             relative_path = str(file).split(
-                'data/processed/')[-1] if 'data/processed/' in str(file) else file.name
+                data_dir)[-1] if data_dir in str(file) else file.name
 
             lines.extend([
                 # Show full path including data_collector

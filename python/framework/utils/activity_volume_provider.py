@@ -3,7 +3,7 @@ Activity Volume Provider
 ========================
 Unified activity metric abstraction for different market types.
 
-Forex uses tick_count (price changes), Crypto uses trade_volume.
+Forex uses tick_count (price changes), Crypto uses volume.
 This provider abstracts the difference for consistent reporting.
 
 REFACTORED: Uses MarketConfigManager as Single Source of Truth for market rules.
@@ -23,7 +23,7 @@ class ActivityVolumeProvider:
 
     Market Type Mapping (via MarketConfigManager):
     - forex: tick_count (number of price changes)
-    - crypto: trade_volume (traded volume in base currency)
+    - crypto: volume (traded volume in base currency)
 
     Usage:
         provider = ActivityVolumeProvider()
@@ -74,7 +74,7 @@ class ActivityVolumeProvider:
         """
         resolved = self._resolve_market_type(market_type)
         rules = self._market_config.get_market_rules(resolved)
-        return rules.primary_activity_metric == 'trade_volume'
+        return rules.primary_activity_metric == 'volume'
 
     def get_activity_value(
         self,
@@ -85,14 +85,14 @@ class ActivityVolumeProvider:
         Get primary activity value for given market type.
 
         Args:
-            data: Dict containing tick_count and/or trade_volume
+            data: Dict containing tick_count and/or volume
             market_type: MarketType enum or string
 
         Returns:
-            Activity value (tick_count or trade_volume)
+            Activity value (tick_count or volume)
         """
         if self._is_volume_based(market_type):
-            return float(data.get('trade_volume', 0.0) or 0.0)
+            return float(data.get('volume', 0.0) or 0.0)
         else:
             return float(data.get('tick_count', 0) or 0)
 
@@ -159,10 +159,10 @@ class ActivityVolumeProvider:
             market_type: MarketType enum or string
 
         Returns:
-            Field name (e.g., "tick_count", "trade_volume")
+            Field name (e.g., "tick_count", "volume")
         """
         if self._is_volume_based(market_type):
-            return "trade_volume"
+            return "volume"
         else:
             return "tick_count"
 

@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
@@ -32,14 +33,12 @@ class BarsIndexManager:
     - Enables fast bar file selection
     """
 
-    def __init__(self, data_dir: Path,  logger: AbstractLogger = vLog):
+    def __init__(self, logger: AbstractLogger = vLog):
         """
         Initialize bar index manager.
-
-        Args:
-            data_dir: Root data directory (e.g., ./data/processed/)
         """
-        self.data_dir = Path(data_dir)
+        self._app_config = AppConfigManager()
+        self.data_dir = Path(self._app_config.get_data_processed_path())
         self.index_file = self.data_dir / ".parquet_bars_index.json"
         # {symbol: {timeframe: entry}}
         # {broker_type: {symbol: {tf: entry}}}

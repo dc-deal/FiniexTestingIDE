@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow.parquet as pq
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.coverage_report import (
     CoverageReport,
@@ -25,12 +26,12 @@ vLog = get_global_logger()
 class TickIndexManager:
     """
     Manages Parquet file index for fast time-based file selection.
-
     """
 
-    def __init__(self, data_dir: Path, logger: AbstractLogger = vLog):
+    def __init__(self, logger: AbstractLogger = vLog):
         self.logger = logger
-        self.data_dir = Path(data_dir)
+        self._app_config = AppConfigManager()
+        self.data_dir = Path(self._app_config.get_data_processed_path())
         # CHANGED: Index-Dateiname für Ticks
         self.index_file = self.data_dir / ".parquet_tick_index.json"
         # {broker_type: {symbol: [files]}}
@@ -325,7 +326,7 @@ class TickIndexManager:
             return None
 
         report = CoverageReport(
-            symbol, broker_type=broker_type, data_dir=self.data_dir)
+            symbol, broker_type=broker_type)
         report.analyze()
         return report
 
