@@ -40,7 +40,7 @@ class ScenarioGenerator:
     def __init__(self):
         """Initialize scenario generator with paths from AppConfigManager."""
         app_config = AppConfigManager()
-        self._analyzer = MarketAnalyzer(str(self._data_dir))
+        self._analyzer = MarketAnalyzer()
         self._config = self._analyzer.get_config()
 
         # Template and output paths from centralized config

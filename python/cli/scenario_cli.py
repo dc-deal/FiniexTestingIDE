@@ -39,15 +39,14 @@ class ScenarioCLI:
     CLI handler for scenario analysis and generation.
     """
 
-    def __init__(self, data_dir: str = "./data/processed"):
+    def __init__(self):
         """
         Initialize CLI handler.
 
         Args:
             data_dir: Path to processed data directory
         """
-        self._data_dir = Path(data_dir)
-        self._analyzer = MarketAnalyzer(str(self._data_dir))
+        self._analyzer = MarketAnalyzer()
         self._activity_provider = get_activity_provider()
 
     # =========================================================================

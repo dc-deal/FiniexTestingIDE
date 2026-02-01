@@ -291,7 +291,7 @@
             "justMyCode": false
         },
         {
-            "name": "📶 Coverage: kraken_spot/BTCUSD",
+            "name": "📶 File Coverage: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
@@ -361,7 +361,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "EURGBP_stress_20251211_0630.json"
+                "USDJPY_stress_20260201_2000.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -450,18 +450,18 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Generator - Generate Stress",
+            "name": "⚡ Scenario Gen. - 6 Blocks Stress - mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
                 "mt5",
-                "EURGBP",
+                "USDJPY",
                 "--strategy",
                 "stress",
                 "--count",
-                "5"
+                "6"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

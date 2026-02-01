@@ -10,7 +10,7 @@
         "crypto": {
             "weekend_closure": false,
             "has_trading_sessions": false,
-            "primary_activity_metric": "trade_volume"
+            "primary_activity_metric": "volume"
         }
     },
     "brokers": [

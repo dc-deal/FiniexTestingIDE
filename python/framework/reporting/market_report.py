@@ -6,6 +6,7 @@ Single symbol market analysis report generator.
 
 from typing import Dict
 
+from python.framework.types.market_config_types import MarketType
 from python.framework.types.scenario_generator_types import (
     SymbolAnalysis,
     TradingSession,
@@ -115,7 +116,12 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
 
         print(
             f"\n   {session_names[session]} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
-        print(f"      Total {activity_label}:    {summary.total_ticks:,}")
+        print(f"      Total ticks:    {summary.total_ticks:,}")
+
+        # Show volume for crypto markets
+        if analysis.market_type == MarketType.CRYPTO:
+            print(f"      Total volume:   {summary.total_activity:,.2f}")
+        # For forex: total_activity equals total_ticks, no duplication needed
         print(
             f"      Avg density:    {summary.avg_tick_density:,.0f} {activity_label}/hour")
         print(
@@ -139,6 +145,9 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
     print(f"   Total {activity_label}:    {analysis.total_ticks:,}")
     print(f"   Real bar ratio:  {analysis.real_bar_ratio * 100:.1f}%")
 
+    # Show total volume for crypto
+    if analysis.market_type == MarketType.CRYPTO:
+        print(f"   Total volume:    {analysis.total_activity:,.2f}")
     # Recommendations
     print("\n" + "─" * 60)
     print("💡 GENERATION RECOMMENDATIONS")

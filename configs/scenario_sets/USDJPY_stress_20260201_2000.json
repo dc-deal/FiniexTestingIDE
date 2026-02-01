@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_set_name": "EURGBP_stress_20251211_0630",
-  "created": "2025-12-11T06:30:05.407266+00:00",
+  "scenario_set_name": "USDJPY_stress_20260201_2000",
+  "created": "2026-02-01T20:00:10.606285+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -32,16 +32,20 @@
     "execution_config": {},
     "trade_simulator_config": {
       "initial_balance": 10000,
-      "currency": "EUR"
+      "currency": "auto",
+      "seeds": {
+        "api_latency_seed": 42,
+        "market_execution_seed": 123
+      }
     }
   },
   "scenarios": [
     {
-      "name": "EURGBP_stress_01",
-      "symbol": "EURGBP",
+      "name": "USDJPY_stress_01",
+      "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-11-26T08:00:00+00:00",
-      "end_date": "2025-11-26T14:00:00+00:00",
+      "start_date": "2026-01-29T17:00:00+00:00",
+      "end_date": "2026-01-29T23:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -50,50 +54,63 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "EURGBP_stress_02",
-      "symbol": "EURGBP",
+      "name": "USDJPY_stress_02",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-10-10T12:00:00+00:00",
+      "end_date": "2025-10-10T18:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "USDJPY_stress_03",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-28T17:00:00+00:00",
+      "end_date": "2026-01-28T23:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "USDJPY_stress_04",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T15:00:00+00:00",
+      "end_date": "2025-12-10T21:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "USDJPY_stress_05",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-23T13:00:00+00:00",
+      "end_date": "2026-01-23T19:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "USDJPY_stress_06",
+      "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-11-25T11:00:00+00:00",
       "end_date": "2025-11-25T17:00:00+00:00",
-      "max_ticks": null,
-      "data_mode": "realistic",
-      "enabled": true,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURGBP_stress_03",
-      "symbol": "EURGBP",
-      "data_broker_type": "mt5",
-      "start_date": "2025-11-24T11:00:00+00:00",
-      "end_date": "2025-11-24T17:00:00+00:00",
-      "max_ticks": null,
-      "data_mode": "realistic",
-      "enabled": true,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURGBP_stress_04",
-      "symbol": "EURGBP",
-      "data_broker_type": "mt5",
-      "start_date": "2025-11-25T04:00:00+00:00",
-      "end_date": "2025-11-25T10:00:00+00:00",
-      "max_ticks": null,
-      "data_mode": "realistic",
-      "enabled": true,
-      "strategy_config": {},
-      "execution_config": {},
-      "trade_simulator_config": {}
-    },
-    {
-      "name": "EURGBP_stress_05",
-      "symbol": "EURGBP",
-      "data_broker_type": "mt5",
-      "start_date": "2025-12-03T11:00:00+00:00",
-      "end_date": "2025-12-03T17:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
