@@ -36,7 +36,7 @@ class TickIndexManager:
         self.index_file = self.data_dir / ".parquet_tick_index.json"
         # {broker_type: {symbol: [files]}}
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
-        self.logger.info("📚 Parquet Index Manager initialized.")
+        self.logger.info("📚 Parquet Tick Index Manager initialized.")
 
     # =========================================================================
     # INDEX BUILDING - ANGEPASST
@@ -57,17 +57,17 @@ class TickIndexManager:
                 # Skip expensive filesystem scan
                 self.load_index()
                 self.logger.info(
-                    f"📚 Loaded existing index ({len(self.index)} broker types)")
+                    f"📚 Loaded existing tick index ({len(self.index)} broker types)")
                 return
 
             # Expensive path: Check if rebuild needed
             if not self.needs_rebuild():
                 self.load_index()
                 self.logger.info(
-                    f"📚 Loaded existing index ({len(self.index)} broker types)")
+                    f"📚 Loaded existing tick index ({len(self.index)} broker types)")
                 return
 
-        self.logger.info("🔍 Scanning Parquet files for index...")
+        self.logger.info("🔍 Scanning Parquet files for tick index...")
         start_time = time.time()
 
         # CHANGED: Scanne nur Tick-Files
@@ -239,7 +239,7 @@ class TickIndexManager:
 
             if newest_parquet > index_mtime:
                 self.logger.info(
-                    "📋 Index outdated - newer Parquet files found")
+                    "📋 Tick index outdated - newer Parquet files found")
                 return True
 
         return False
@@ -303,7 +303,7 @@ class TickIndexManager:
         with open(self.index_file, 'w') as f:
             json.dump(index_data, f, indent=2)
 
-        self.logger.debug(f"💾 Index saved to {self.index_file}")
+        self.logger.debug(f"💾 Tick index saved to {self.index_file}")
 
     def load_index(self) -> None:
         """Load index from JSON file """
@@ -312,7 +312,7 @@ class TickIndexManager:
                 data = json.load(f)
                 self.index = data['symbols']
         except Exception as e:
-            self.logger.warning(f"Failed to load index: {e}")
+            self.logger.warning(f"Failed to load tick index: {e}")
             self.index = {}
 
     # =========================================================================
@@ -332,12 +332,12 @@ class TickIndexManager:
         """
         if broker_type not in self.index:
             self.logger.warning(
-                f"Broker type '{broker_type}' not found in index")
+                f"Broker type '{broker_type}' not found in tick index")
             return None
 
         if symbol not in self.index[broker_type]:
             self.logger.warning(
-                f"Symbol '{symbol}' not found in index for broker_type '{broker_type}'")
+                f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'")
             return None
 
         report = CoverageReport(
@@ -411,11 +411,11 @@ class TickIndexManager:
     def print_summary(self) -> None:
         """Print index summary grouped by broker_type"""
         print("\n" + "="*60)
-        print("📚 Parquet Index Summary")
+        print("📚 Parquet Tick Index Summary")
         print("="*60)
 
         if not self.index:
-            print("   (empty index)")
+            print("   (empty tick index)")
             return
 
         for broker_type in sorted(self.index.keys()):

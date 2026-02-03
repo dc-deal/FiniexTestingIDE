@@ -127,7 +127,7 @@ class BarsIndexManager:
                 self.index[broker_type][symbol][timeframe] = entry
 
             except Exception as e:
-                self.logger.warning(f"Failed to index {bar_file.name}: {e}")
+                self.logger.warning(f"Failed to index bar file {bar_file.name}: {e}")
 
         # Save index
         self.save_index()
@@ -426,7 +426,7 @@ class BarsIndexManager:
         print("="*60)
 
         if not self.index:
-            print("   (empty index)")
+            print("   (empty bar index)")
             return
 
         for broker_type in sorted(self.index.keys()):
