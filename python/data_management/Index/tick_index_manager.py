@@ -42,15 +42,30 @@ class TickIndexManager:
     # INDEX BUILDING - ANGEPASST
     # =========================================================================
 
-    def build_index(self, force_rebuild: bool = False) -> None:
+    def build_index(self, force_rebuild: bool = False, check_stale: bool = False) -> None:
         """
         Build or load index from Parquet files.
+
+        Args:
+            force_rebuild: Force complete rebuild, ignore existing index
+            check_stale: Check if index is outdated (expensive filesystem scan)
+                        Default False - assumes index is current
         """
-        if not force_rebuild and not self.needs_rebuild():
-            self.load_index()
-            self.logger.info(
-                f"📚 Loaded existing index ({len(self.index)} broker types)")
-            return
+        # Fast path: Load existing index without checking staleness
+        if not force_rebuild and self.index_file.exists():
+            if not check_stale:
+                # Skip expensive filesystem scan
+                self.load_index()
+                self.logger.info(
+                    f"📚 Loaded existing index ({len(self.index)} broker types)")
+                return
+
+            # Expensive path: Check if rebuild needed
+            if not self.needs_rebuild():
+                self.load_index()
+                self.logger.info(
+                    f"📚 Loaded existing index ({len(self.index)} broker types)")
+                return
 
         self.logger.info("🔍 Scanning Parquet files for index...")
         start_time = time.time()
