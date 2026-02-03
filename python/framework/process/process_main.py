@@ -7,7 +7,7 @@ from typing import Optional
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.process.process_live_queue_helper import send_status_update_process
-from python.framework.process.process_startup_prepreation import process_startup_preparation
+from python.framework.process.process_startup_preparation import process_startup_preparation
 from python.framework.types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
 from python.framework.utils.file_utils import file_name_for_scenario, pad_int
