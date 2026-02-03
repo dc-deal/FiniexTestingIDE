@@ -220,14 +220,59 @@
         },
         // ====================================================
         // ↔️ GAP ANALYSIS & COVERAGE
-        // ====================================================
+        // ==================================================== 
         {
-            "name": "↔️ Gap Report: mt5/EURUSD",
+            "name": "↔️ Coverage: Status",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Build Cache",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "build"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Build Cache --force",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "build",
+                "--force"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Validate All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Show mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "show",
                 "mt5",
                 "EURUSD"
             ],
@@ -235,12 +280,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Gap Report: mt5/USDJPY",
+            "name": "↔️ Coverage: Show mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "show",
                 "mt5",
                 "USDJPY"
             ],
@@ -248,12 +293,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Gap Report: kraken_spot/BTCUSD",
+            "name": "↔️ Coverage: Show kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "show",
                 "kraken_spot",
                 "BTCUSD"
             ],
@@ -261,14 +306,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Gap Report: kraken_spot/ETHUSD",
+            "name": "↔️ Coverage: Clear Cache",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
-                "kraken_spot",
-                "ETHUSD"
+                "clear"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
