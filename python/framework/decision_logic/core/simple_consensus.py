@@ -43,6 +43,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 
+from python.framework.types.market_types import TradingContext
 from python.framework.types.order_types import (
     OrderStatus,
     OrderType,
@@ -73,7 +74,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         self,
         name,
         logger: ScenarioLogger,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        trading_context: TradingContext = None
     ):
         """
         Initialize Simple Consensus logic.
@@ -110,7 +112,8 @@ class SimpleConsensus(AbstractDecisionLogic):
     # New abstractmethods
     # ============================================
 
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_required_order_types(cls, config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for this strategy.
 

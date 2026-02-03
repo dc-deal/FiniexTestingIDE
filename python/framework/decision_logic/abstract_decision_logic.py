@@ -23,6 +23,7 @@ from python.framework.decision_logic.decision_logic_performance_tracker import D
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types import TradingContext
 from python.framework.types.order_types import OrderResult, OrderType
 from python.framework.types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerResult
@@ -54,7 +55,8 @@ class AbstractDecisionLogic(ABC):
         self,
         name: str,
         logger: ScenarioLogger,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        trading_context: TradingContext = None
     ):
         """
         Initialize decision logic.
@@ -73,6 +75,7 @@ class AbstractDecisionLogic(ABC):
 
         self.name = name
         self.config = config or {}
+        self._trading_context = trading_context
 
         # API and loggers
         self.trading_api: Optional[DecisionTradingAPI] = None
@@ -83,21 +86,26 @@ class AbstractDecisionLogic(ABC):
     # New abstractmethods
     # ============================================
 
+    @classmethod
     @abstractmethod
-    def get_required_order_types(self) -> List[OrderType]:
+    def get_required_order_types(cls, config: Dict[str, Any]) -> List[OrderType]:
         """
-        Declare which order types this logic will use.
+            Declare required order types WITHOUT creating instance.
 
-        This is called BEFORE scenario starts to validate broker support.
-        Prevents runtime failures from unsupported order types.
+            This allows validation BEFORE Trade Simulator creation.
+            Mirrors Worker.calculate_requirements() pattern.
 
-        Returns:
-            List of OrderType that this logic needs
+            Args:
+                config: Decision logic configuration dict
 
-        Example:
-            def get_required_order_types(self):
-                return [OrderType.MARKET, OrderType.LIMIT]
-        """
+            Returns:
+                List of OrderType this logic will use
+
+            Example:
+                @classmethod
+                def get_required_order_types(cls, config):
+                    return [OrderType.MARKET]
+            """
         pass
 
     def execute_decision(

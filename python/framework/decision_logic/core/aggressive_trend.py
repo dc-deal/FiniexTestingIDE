@@ -49,6 +49,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.market_types import TradingContext
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.order_types import (
     OrderStatus,
@@ -80,7 +81,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         self,
         name: str,
         logger: ScenarioLogger,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        trading_context: TradingContext = None
     ):
         """
         Initialize Aggressive Trend logic.
@@ -115,7 +117,8 @@ class AggressiveTrend(AbstractDecisionLogic):
     # New abstractmethods
     # ============================================
 
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_required_order_types(cls, config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for this strategy.
 

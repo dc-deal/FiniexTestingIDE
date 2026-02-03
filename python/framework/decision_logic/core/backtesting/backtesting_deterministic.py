@@ -46,6 +46,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types import TradingContext
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_stats_types import DecisionLogicStats
@@ -78,7 +79,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self,
         name: str,
         logger: ScenarioLogger,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        trading_context: TradingContext = None
     ):
         """
         Initialize BacktestingDeterministic logic.
@@ -114,7 +116,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
     # Required Abstract Methods
     # ============================================
 
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_required_order_types(cls, config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types.
 

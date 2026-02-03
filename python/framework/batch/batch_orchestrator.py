@@ -124,7 +124,6 @@ from python.framework.types.scenario_set_types import ScenarioSet
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.factory.worker_factory import WorkerFactory
 from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
@@ -172,7 +171,6 @@ class BatchOrchestrator:
         )
 
         # Initialize factories
-        self.worker_factory = WorkerFactory(logger=self._logger)
         self.decision_logic_factory = DecisionLogicFactory(
             logger=self._logger
         )

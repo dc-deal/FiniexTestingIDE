@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dateutil import parser
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -21,6 +22,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.broker_types import BrokerType
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.market_config_types import MarketType
 from python.framework.types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import TradeRecord
@@ -194,6 +196,7 @@ class ProcessScenarioConfig:
 
     # === TRADING SIMULATOR CONFIG ===
     broker_type: BrokerType = None
+    market_type: MarketType = None
     initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
     seeds: Dict[str, Any] = field(default_factory=dict)
@@ -252,6 +255,11 @@ class ProcessScenarioConfig:
         seeds = scenario.trade_simulator_config.get(
             'seeds')
 
+        # Derive market_type from broker_type
+        market_config_manager = MarketConfigManager()
+        market_type = market_config_manager.get_market_type(
+            scenario.broker_type.value)
+
         # Default live stats config if not provided
         if live_stats_config is None:
             live_stats_config = LiveStatsExportConfig(enabled=False)
@@ -272,6 +280,7 @@ class ProcessScenarioConfig:
             run_timestamp=run_timestamp,  # extracted from json, put into type.
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
+            market_type=market_type,
             initial_balance=initial_balance,
             account_currency=account_currency,
             seeds=seeds

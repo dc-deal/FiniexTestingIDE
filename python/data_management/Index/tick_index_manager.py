@@ -49,7 +49,7 @@ class TickIndexManager:
         if not force_rebuild and not self.needs_rebuild():
             self.load_index()
             self.logger.info(
-                f"📚 Loaded existing index ({len(self.index)} symbols)")
+                f"📚 Loaded existing index ({len(self.index)} broker types)")
             return
 
         self.logger.info("🔍 Scanning Parquet files for index...")

@@ -19,6 +19,7 @@ import json
 from typing import Any, Dict, List, Type
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.market_types import TradingContext
 from python.framework.workers.abstract_worker import AbstactWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.workers.core.macd_worker import MACDWorker
@@ -107,7 +108,7 @@ class WorkerFactory:
         instance_name: str,
         worker_type: str,
         worker_config: Dict[str, Any] = None,
-
+        trading_context: TradingContext = None,
     ) -> AbstactWorker:
         """
         Create a worker instance with validation.
@@ -160,6 +161,7 @@ class WorkerFactory:
             name=instance_name,
             logger=self._logger,
             parameters=merged_params,
+            trading_context=trading_context,
         )
 
         self._logger.debug(
@@ -171,7 +173,8 @@ class WorkerFactory:
 
     def create_workers_from_config(
         self,
-        strategy_config: Dict[str, Any]
+        strategy_config: Dict[str, Any],
+        trading_context: TradingContext = None
     ) -> Dict[str, AbstactWorker]:
         """
         Create all workers from strategy configuration.
@@ -205,7 +208,8 @@ class WorkerFactory:
                 worker_instance = self.create_worker(
                     instance_name=instance_name,
                     worker_type=worker_type,
-                    worker_config=worker_config
+                    worker_config=worker_config,
+                    trading_context=trading_context
                 )
 
                 created_workers[instance_name] = worker_instance
