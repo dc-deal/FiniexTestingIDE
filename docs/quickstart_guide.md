@@ -41,8 +41,21 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 class RSIWorker(AbstactWorker):
     """RSI computation from bar close prices"""
     
-    def __init__(self, name: str, parameters: Dict, logger: ScenarioLogger, **kwargs):
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
+    def __init__(
+        self, 
+        name: str, 
+        parameters: Dict, 
+        logger: ScenarioLogger,
+        trading_context: TradingContext = None,
+        **kwargs
+    ):
+        super().__init__(
+            name=name, 
+            parameters=parameters, 
+            logger=logger,
+            trading_context=trading_context, 
+            **kwargs
+        )
         
         # Extract periods from config: {"M5": 14}
         self.periods = parameters.get('periods', {})
@@ -101,6 +114,57 @@ class RSIWorker(AbstactWorker):
 
 ---
 
+### Volume vs Tick Count
+
+⚠️ **Critical difference between market types:**
+
+| Market | `bar.volume` | `bar.tick_count` |
+|--------|--------------|------------------|
+| **Crypto** | ✅ Real trade volume (BTC, ETH, etc.) | ✅ Number of trades |
+| **Forex** | ⚠️ Always 0 (CFD has no real volume) | ✅ Number of price changes |
+
+**For volume-based indicators (OBV, VWAP, etc.):**
+- Crypto: Works correctly
+- Forex: Will be constant (volume = 0)
+
+**Example: Market-aware warning in worker:**
+
+```python
+class OBVWorker(AbstactWorker):
+    def __init__(self, name, parameters, logger, trading_context=None, **kwargs):
+        super().__init__(name, parameters, logger, trading_context=trading_context, **kwargs)
+        
+        # Warn if Forex (volume will be 0)
+        if trading_context and trading_context.market_type == MarketType.FOREX:
+            logger.warning(
+                f"⚠️ OBVWorker '{name}': Volume is always 0 for Forex CFD. "
+                f"OBV will be constant. Consider using tick_count-based indicators."
+            )
+```
+
+
+### TradingContext (Optional)
+
+Workers receive an optional `TradingContext` with market metadata:
+
+```python
+from python.framework.types.market_types import TradingContext
+from python.framework.types.market_config_types import MarketType
+
+@dataclass
+class TradingContext:
+    broker_type: str      # e.g., 'mt5', 'kraken_spot'
+    market_type: MarketType  # FOREX or CRYPTO
+    symbol: str           # e.g., 'EURUSD', 'BTCUSD'
+```
+
+**Use cases:**
+- Conditional logic based on market type
+- Volume-aware indicators (see below)
+- Broker-specific behavior
+
+---
+
 ## Step 2: Understand the Decision Logic
 
 Decision Logic receives all worker results and decides: BUY, SELL, or FLAT.
@@ -125,7 +189,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.rsi_sell = self.get_config_value("rsi_sell_threshold", 65)
         self.lot_size = self.get_config_value("lot_size", 0.1)
     
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]  # Only market orders for MVP
     
     def get_required_worker_instances(self) -> Dict[str, str]:
@@ -371,6 +436,7 @@ Current limitations:
 | `CORE/rsi` | RSI | Relative Strength Index |
 | `CORE/envelope` | Envelope | Bollinger-style bands |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
+| `CORE/obv` | OBV | On-Balance Volume (⚠️ Crypto only) |
 | `CORE/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
 
 ---

@@ -365,7 +365,7 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Run (eurusd_3_SANDBOX)",
+            "name": "🔬 Run eurusd_3_SANDBOX - aggressive_trend",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -377,7 +377,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (BTCUSD_SANDBOX)",
+            "name": "🔬 Run BTCUSD_SANDBOX - simple_consensus",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",

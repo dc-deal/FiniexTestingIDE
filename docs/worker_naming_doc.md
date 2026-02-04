@@ -119,8 +119,25 @@ from python.framework.types.global_types import WorkerContract, WorkerType
 
 class MyIndicatorWorker(AbstractBlackboxWorker):
     
-    def __init__(self, name: str, parameters: Dict = None):
-        super().__init__(name, parameters)
+    def __init__(
+        self, 
+        name: str, 
+        parameters: Dict = None,
+        logger: ScenarioLogger = None,
+        trading_context: TradingContext = None, 
+        **kwargs
+    ):
+        super().__init__(
+            name=name, 
+            parameters=parameters, 
+            logger=logger,
+            trading_context=trading_context,
+            **kwargs
+        )
+        
+        # Access market info if needed
+        self._trading_context = trading_context
+
         params = parameters or {}
         self.my_param = params.get('my_param')
     

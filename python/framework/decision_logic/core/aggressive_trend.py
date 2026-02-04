@@ -118,7 +118,7 @@ class AggressiveTrend(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_required_order_types(cls, config: Dict[str, Any]) -> List[OrderType]:
+    def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for this strategy.
 
