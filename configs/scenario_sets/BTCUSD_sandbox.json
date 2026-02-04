@@ -5,7 +5,7 @@
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
-      "decision_logic_type": "CORE/aggressive_trend",
+      "decision_logic_type": "CORE/simple_consensus",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
         "envelope_main": "CORE/envelope"
@@ -26,7 +26,7 @@
       "decision_logic_config": {
         "rsi_oversold": 30,
         "rsi_overbought": 70,
-        "min_confidence": 0.6
+        "min_confidence": 0.5
       }
     },
     "execution_config": {},
@@ -48,7 +48,7 @@
       "end_date": "2026-01-21T03:55:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -87,7 +87,7 @@
       "end_date": "2026-01-28T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -100,7 +100,7 @@
       "end_date": "2026-01-29T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -113,7 +113,7 @@
       "end_date": "2026-01-30T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -126,7 +126,7 @@
       "end_date": "2026-01-31T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

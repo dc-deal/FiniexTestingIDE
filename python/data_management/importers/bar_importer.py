@@ -31,6 +31,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 
 
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.coverage_report_cache import CoverageReportCache
 vLog = get_global_logger()
 
 
@@ -362,6 +363,10 @@ class BarImporter:
                 f"✅ Bar index updated: {total_symbols} symbols across "
                 f"{len(broker_types)} broker_types ({', '.join(broker_types)})"
             )
+
+            # Coverage Cache rebuilden
+            CoverageReportCache().build_all(force_rebuild=True)
+            vLog.info(f"✅ Coverage cache index updated")
 
         except ImportError as e:
             vLog.error(f"❌ Failed to import BarsIndexManager: {e}")

@@ -1,6 +1,6 @@
 # FiniexTestingIDE - CLI Tools Guide
 
-> **Version:** 1.0 Alpha  
+> **Version:** 1.1  
 > **Zielgruppe:** Entwickler mit Python/VSCode-Erfahrung, die Trading-Strategien backtesten wollen
 
 ## Übersicht
@@ -17,6 +17,17 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### CLI-Struktur
+
+| CLI | Zweck | Befehle |
+|-----|-------|---------|
+| `data_index_cli.py` | Import & Inspektion | import, tick_data_report, inspect |
+| `tick_index_cli.py` | Tick-Index Management | rebuild, status, coverage, files |
+| `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
+| `coverage_report_cli.py` | Gap-Analyse & Cache | build, show, validate, status, clear |
+| `scenario_cli.py` | Szenarien | analyze, generate |
+| `strategy_runner_cli.py` | Backtesting | run, list |
+
 ---
 
 ## A) Data Pipeline - Import
@@ -30,7 +41,7 @@ Tick-Daten werden vom **TickCollector** (MQL5 Expert Advisor) gesammelt und als 
 | | |
 |---|---|
 | **VS Code** | `📥 Import: Offset +3` |
-| **CLI** | `python data_index_cli.py import --time-offset +3` |
+| **CLI** | `python data_index_cli.py import --time-offset +3 --offset-broker mt5` |
 | **Zweck** | JSON Tick-Files zu Parquet konvertieren, Bars rendern |
 
 Der `--time-offset` Parameter korrigiert Broker-Zeitzonen zu UTC. Nach dem Import werden automatisch Bars für alle Timeframes (M1, M5, M15, M30, H1, H4, D1) gerendert.
@@ -80,19 +91,20 @@ Zeigt für jedes Symbol: Zeitraum, Tick-Anzahl, Sessions-Verteilung, Spread-Stat
       Sessions:     new_york: 3,322,449 | sydney_tokyo: 3,240,081 | london: 3,330,993
 ```
 
-### 🔍 Tick Index: Status
+### 📚 Tick Index: Status
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Tick index: Status` |
-| **CLI** | `python data_index_cli.py status` |
+| **VS Code** | `📚 Tick Index: Status` |
+| **CLI** | `python tick_index_cli.py status` |
 | **Zweck** | Schnellübersicht: Anzahl Symbole und Files |
 
 ```
-Index file:  data/processed/.parquet_tick_index.json
-Last update: 2026-01-04 11:16:26
-Symbols:     8
-Total files: 996
+Index file:   data/processed/.parquet_tick_index.parquet
+Last update:  2026-02-03 19:44:18
+Broker Types: kraken_spot, mt5
+Symbols:      16
+Total files:  1462
 ```
 
 ### 🔹 Bar Index: Status
@@ -114,16 +126,16 @@ USDJPY:
       ...
 ```
 
-### 📈 CLI - Coverage: SYMBOL
+### 📚 Tick Coverage: SYMBOL
 
 | | |
 |---|---|
-| **VS Code** | `📈 CLI - Coverage: EURUSD` |
-| **CLI** | `python data_index_cli.py coverage EURUSD` |
+| **VS Code** | `📚 Tick Coverage: mt5/EURUSD` |
+| **CLI** | `python tick_index_cli.py coverage mt5 EURUSD` |
 | **Zweck** | File-Liste für ein Symbol |
 
 ```
-📊 Coverage: EURUSD
+📊 Coverage: mt5/EURUSD
 Files:       113
 Ticks:       5,268,906
 Size:        100.6 MB
@@ -140,29 +152,35 @@ Files:
 
 ## C) Datenqualität
 
-### 🔍 Tick Index: Validate All Symbols
+### 📊 Coverage: Validate All
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Tick index: Validate All Symbols` |
-| **CLI** | `python data_index_cli.py validate` |
+| **VS Code** | `📊 Coverage: Validate All` |
+| **CLI** | `python coverage_report_cli.py validate` |
 | **Zweck** | Schneller Gap-Check über alle Symbole |
 
 ```
 🔍 Validating All Symbols
-⚠️  AUDUSD: 1 moderate, 2 large gaps
-⚠️  EURGBP: 1 moderate, 2 large gaps
-⚠️  GBPUSD: 1 moderate, 2 large gaps
+
+📂 kraken_spot:
+  ✅ ADAUSD: No issues
+  ⚠️  BTCUSD: 0 moderate, 1 large gaps
+  ✅ DASHUSD: No issues
+
+📂 mt5:
+  ⚠️  AUDUSD: 1 moderate, 2 large gaps
+  ⚠️  EURUSD: 1 moderate, 2 large gaps
 ...
-Use 'gaps SYMBOL' for detailed gap analysis
+Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 ```
 
-### 📈 CLI - Gap Report: SYMBOL
+### 📊 Coverage: Show Gap Report
 
 | | |
 |---|---|
-| **VS Code** | `📈 CLI - Gap Report: GBPUSD` |
-| **CLI** | `python data_index_cli.py gaps GBPUSD` |
+| **VS Code** | `↔️ Coverage: mt5/EURUSD` |
+| **CLI** | `python coverage_report_cli.py show mt5 EURUSD` |
 | **Zweck** | Detaillierte Lückenanalyse für ein Symbol |
 
 Klassifiziert Gaps automatisch:
@@ -193,6 +211,41 @@ GAP ANALYSIS:
 💡 RECOMMENDATIONS:
    • Short gaps detected - likely MT5 restarts (usually harmless)
    • 🔴 Large gaps detected - consider re-collecting data
+```
+
+### 📊 Coverage: Build Cache
+
+| | |
+|---|---|
+| **VS Code** | `📊 Coverage: Build Cache` |
+| **CLI** | `python coverage_report_cli.py build` |
+| **Zweck** | Gap-Reports für alle Symbole vorberechnen |
+
+```
+🔧 Building Coverage Report Cache
+Force Rebuild: DISABLED (skip valid caches)
+
+✅ Coverage cache built: 16 generated, 0 skipped, 0 failed (16 total) in 8.23s
+```
+
+### 📊 Coverage: Status
+
+| | |
+|---|---|
+| **VS Code** | `📊 Coverage: Status` |
+| **CLI** | `python coverage_report_cli.py status` |
+| **Zweck** | Cache-Status anzeigen |
+
+```
+📦 Coverage Report Cache Status
+Cache Dir:     data/processed/.coverage_cache
+Cache Files:   16
+Cache Size:    0.02 MB
+------------------------------------------------------------
+Total Symbols: 16
+  ✅ Cached:   16
+  ⚠️  Stale:    0
+  ❌ Missing:  0
 ```
 
 ---
@@ -419,7 +472,7 @@ Scenario Set: eurusd_3_windows_reference.json
 | | |
 |---|---|
 | **VS Code** | `📊 TEST LOAD: Ticks&Bars` |
-| **CLI** | `python data_index_cli.py inspect EURUSD M30` |
+| **CLI** | `python data_index_cli.py inspect mt5 EURUSD M30` |
 | **Zweck** | Parquet-Schema, Metadaten und Sample-Daten anzeigen |
 
 Nützlich um die Rohdatenstruktur zu verstehen:
@@ -451,8 +504,8 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Tick index: Rebuild` / `🔹 Bar Index: Rebuild` |
-| **CLI** | `python data_index_cli.py rebuild` / `python bar_index_cli.py rebuild` |
+| **VS Code** | `📚 Tick Index: Rebuild` / `🔹 Bar Index: Rebuild` |
+| **CLI** | `python tick_index_cli.py rebuild` / `python bar_index_cli.py rebuild` |
 | **Zweck** | Index neu aufbauen bei Inkonsistenzen |
 
 > ⚠️ Normalerweise nicht nötig - der Import aktualisiert Indizes automatisch.
@@ -473,10 +526,12 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 
 | Aufgabe | VS Code Launch | CLI |
 |---------|----------------|-----|
-| **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3` |
+| **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
 | **Daten-Übersicht** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
-| **Gap-Check (alle)** | `🔍 Tick index: Validate All Symbols` | `data_index_cli.py validate` |
-| **Gap-Details** | `📈 CLI - Gap Report: GBPUSD` | `data_index_cli.py gaps GBPUSD` |
+| **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
+| **Gap-Check (alle)** | `📊 Coverage: Validate All` | `coverage_report_cli.py validate` |
+| **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `coverage_report_cli.py show mt5 EURUSD` |
+| **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `coverage_report_cli.py build` |
 | **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `scenario_cli.py analyze USDJPY` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
 | **Szenarien: Stress** | `📊 Scenario Generator - Generate Stress` | `scenario_cli.py generate EURGBP --strategy stress` |
@@ -491,11 +546,27 @@ Nützlich um die Rohdatenstruktur zu verstehen:
          ↓
 2. Import:          📥 Import: Offset +3
          ↓
-3. Qualität prüfen: 🔍 Validate → 📈 Gap Report
+3. Cache aufbauen:  📊 Coverage: Build Cache
          ↓
-4. Markt analysieren: 📊 MARKET ANALYSIS REPORT
+4. Qualität prüfen: 📊 Coverage: Validate → ↔️ Coverage: show
          ↓
-5. Szenarien erstellen: 📊 Generate Blocks/Stress
+5. Markt analysieren: 📊 MARKET ANALYSIS REPORT
          ↓
-6. Backtest:        🔬 Run Scenario
+6. Szenarien erstellen: 📊 Generate Blocks/Stress
+         ↓
+7. Backtest:        🔬 Run Scenario
 ```
+
+---
+
+## Index-Formate
+
+Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
+
+| Index | Datei | Migration |
+|-------|-------|-----------|
+| Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
+| Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
+| Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
+
+Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.

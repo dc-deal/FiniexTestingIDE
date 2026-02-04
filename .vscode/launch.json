@@ -153,10 +153,10 @@
         // 📚 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "📚 Tick index: Rebuild",
+            "name": "📚 Tick Index: Rebuild",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
                 "rebuild"
             ],
@@ -164,10 +164,10 @@
             "justMyCode": false
         },
         {
-            "name": "📚 Tick index: Status",
+            "name": "📚 Tick Index: Status",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
                 "status"
             ],
@@ -175,12 +175,27 @@
             "justMyCode": false
         },
         {
-            "name": "📚 Tick index: Validate All Symbols",
+            "name": "📚 Tick Coverage: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
-                "validate"
+                "coverage",
+                "mt5",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📚 Tick Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "coverage",
+                "kraken_spot",
+                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

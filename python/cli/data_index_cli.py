@@ -1,18 +1,22 @@
 """
 FiniexTestingIDE - Data Index CLI
-Command-line tools for Parquet index management and tick data import
+Command-line tools for tick data import and inspection
 
-Import command with UTC offset support (explicit sign required)
+Usage:
+    python python/cli/data_index_cli.py import [--override] [--time-offset +N/-N --offset-broker TYPE]
+    python python/cli/data_index_cli.py tick_data_report [BROKER_TYPE]
+    python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
-Usage - see below
+REFACTORED: 
+- Tick index commands moved to tick_index_cli.py (rebuild, status, coverage, files)
+- Gap/validate commands moved to coverage_report_cli.py (gaps, validate)
+- This CLI now focuses on: import, reports, inspection
 """
 
 import sys
-from pathlib import Path
-from datetime import datetime
 import traceback
+from pathlib import Path
 from typing import Optional
-import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
@@ -27,7 +31,15 @@ vLog = get_global_logger()
 
 class DataIndexCLI:
     """
-    Command-line interface for Parquet index management and data import.
+    Command-line interface for data import and inspection.
+
+    Focused responsibilities:
+    - Import tick data from JSON to Parquet
+    - Generate tick data summary reports
+    - Inspect tick/bar data structure
+
+    For index management, use tick_index_cli.py
+    For gap analysis, use coverage_report_cli.py
     """
 
     def __init__(self):
@@ -70,43 +82,6 @@ class DataIndexCLI:
 
         importer.process_all_exports()
 
-    def cmd_rebuild(self):
-        """Rebuild index from scratch"""
-        print("\n🔄 Rebuilding Parquet index...")
-        self.index_manager.build_index(force_rebuild=True)
-        self.index_manager.print_summary()
-
-    def cmd_status(self):
-        """Show index status"""
-        self.index_manager.build_index()
-
-        print("\n" + "="*60)
-        print("📋 Index Status")
-        print("="*60)
-
-        if self.index_manager.index_file.exists():
-            mtime = datetime.fromtimestamp(
-                self.index_manager.index_file.stat().st_mtime
-            )
-            print(f"Index file:  {self.index_manager.index_file}")
-            print(f"Last update: {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(
-                f"Broker Types: {', '.join(self.index_manager.list_broker_types())}")
-            print(f"Symbols:      {len(self.index_manager.list_symbols())}")
-        else:
-            print("Index file:  (not found)")
-
-        print(f"Symbols:     {len(self.index_manager.index)}")
-
-        total_files = sum(len(files)
-                          for files in self.index_manager.index.values())
-        print(f"Total files: {total_files}")
-
-        print("="*60 + "\n")
-
-        if self.index_manager.needs_rebuild():
-            print("⚠️  Index is outdated - run 'rebuild' to update\n")
-
     def cmd_tick_data_report(self, broker_type: str = None):
         """
         Generate tick data summary report.
@@ -122,117 +97,6 @@ class DataIndexCLI:
         print("=" * 60)
 
         run_summary_report(broker_type=broker_type)
-
-    def cmd_coverage(self, broker_type: str, symbol: str):
-        """
-        Show coverage statistics for symbol.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Trading symbol
-        """
-        self.index_manager.build_index()
-
-        try:
-            coverage = self.index_manager.get_symbol_coverage(
-                broker_type, symbol)
-
-            print("\n" + "="*60)
-            print(f"📊 Coverage: {broker_type}/{symbol}")
-            print("="*60)
-            print(f"Files:       {coverage['num_files']}")
-            print(f"Ticks:       {coverage['total_ticks']:,}")
-            print(f"Size:        {coverage['total_size_mb']:.1f} MB")
-            print(f"Start:       {coverage['start_time']}")
-            print(f"End:         {coverage['end_time']}")
-            print("\nFiles:")
-            for file in coverage['files']:
-                print(f"   • {file}")
-            print("="*60 + "\n")
-
-        except ValueError as e:
-            print(f"\n❌ Error: {e}\n")
-
-    def cmd_gaps(self, broker_type: str, symbol: str):
-        """
-        Analyze and report gaps for symbol.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Trading symbol
-        """
-        self.index_manager.build_index()
-
-        try:
-            self.index_manager.print_coverage_report(broker_type, symbol)
-        except ValueError as e:
-            print(f"\n❌ Error: {e}\n")
-
-    def cmd_files(self, broker_type: str, symbol: str, start: str = None, end: str = None):
-        """
-        Show files selected for time range.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Trading symbol
-            start: Start date string
-            end: End date string
-        """
-        self.index_manager.build_index()
-
-        if not start or not end:
-            print("\n❌ Error: --start and --end required\n")
-            print("Example: files EURUSD --start '2025-09-23' --end '2025-09-24'")
-            return
-
-        try:
-            start_dt = pd.to_datetime(start)
-            end_dt = pd.to_datetime(end)
-
-            files = self.index_manager.get_relevant_files(
-                broker_type, symbol, start_dt, end_dt)
-
-            print("\n" + "="*60)
-            print(f"🔍 File Selection: {broker_type}/{symbol}")
-            print("="*60)
-            print(f"Time range:  {start} → {end}")
-            print(f"Selected:    {len(files)} files")
-            print("\nFiles:")
-            for file in files:
-                print(f"   • {file.name}")
-            print("="*60 + "\n")
-
-        except Exception as e:
-            print(f"\n❌ Error: {e}\n")
-
-    def cmd_validate(self):
-        """Validate all symbols and show gaps"""
-        self.index_manager.build_index()
-
-        print("\n" + "="*60)
-        print("🔍 Validating All Symbols")
-        print("="*60 + "\n")
-
-        for broker_type in self.index_manager.list_broker_types():
-            print(f"\n📂 {broker_type}:")
-
-            for symbol in self.index_manager.list_symbols(broker_type):
-                try:
-                    report = self.index_manager.get_coverage_report(
-                        broker_type, symbol)
-
-                    if report.has_issues():
-                        print(f"  ⚠️  {symbol}: {report.gap_counts['moderate']} moderate, "
-                              f"{report.gap_counts['large']} large gaps")
-                    else:
-                        print(f"  ✅ {symbol}: No issues")
-
-                except Exception as e:
-                    print(f"  ❌ {symbol}: Error - {e}")
-
-        print("\n" + "="*60)
-        print("Use 'gaps BROKER_TYPE SYMBOL' for detailed gap analysis")
-        print("="*60 + "\n")
 
     def cmd_inspect(self, broker_type: str, symbol: str, timeframe: str = None):
         """
@@ -255,57 +119,51 @@ class DataIndexCLI:
 
         # Inspect ticks
         result = inspector.inspect_ticks(broker_type, symbol)
-        # Print results
         inspector.print_inspection(result)
+
         if timeframe:
             # Inspect bars
             result = inspector.inspect_bars(broker_type, symbol, timeframe)
-            # Print results
             inspector.print_inspection(result)
 
     def cmd_help(self):
-        """Show help"""
+        """Show help."""
         print("""
-            📚 Data Index CLI - Usage
+📥 Data Index CLI - Usage
 
-            Commands:
-                import [--override] [--time-offset +N/-N --offset-broker TYPE]
-                                    Import tick data from JSON to Parquet
-                                    --override: Overwrite existing files
-                                    --time-offset: UTC offset (REQUIRES explicit +/- sign!)
-                                    --offset-broker: Apply offset only to this broker_type
-                                                REQUIRED if --time-offset is set!
+Commands:
+    import [--override] [--time-offset +N/-N --offset-broker TYPE]
+                        Import tick data from JSON to Parquet
+                        --override: Overwrite existing files
+                        --time-offset: UTC offset (REQUIRES explicit +/- sign!)
+                        --offset-broker: Apply offset only to this broker_type
+                                    REQUIRED if --time-offset is set!
 
-                rebuild             Rebuild index from Parquet files
-                status              Show index status and metadata
-                tick_data_report    Data Loader Summary Report & Test Load
-                coverage BROKER_TYPE SYMBOL
-                                    Show coverage statistics for symbol
-                gaps BROKER_TYPE SYMBOL
-                                    Analyze and report gaps for symbol
-                files BROKER_TYPE SYMBOL --start DATE --end DATE
-                                    Show files selected for time range
-                validate            Validate all symbols and show issues
-                inspect BROKER_TYPE SYMBOL [TIMEFRAME]
-                                    Inspect tick or bar data (metadata, schema, sample)
-                help                Show this help
+    tick_data_report [BROKER_TYPE]
+                        Data Loader Summary Report
+                        Optional: filter by broker_type
 
-            Examples:
-                python python/cli/data_index_cli.py import
-                python python/cli/data_index_cli.py import --time-offset -3 --offset-broker mt5
-                python python/cli/data_index_cli.py import --override --time-offset -3 --offset-broker mt5
-                python python/cli/data_index_cli.py rebuild
-                python python/cli/data_index_cli.py status
-                python python/cli/data_index_cli.py coverage mt5 EURUSD
-                python python/cli/data_index_cli.py coverage kraken_spot BTCUSD
-                python python/cli/data_index_cli.py gaps mt5 EURUSD
-                python python/cli/data_index_cli.py files mt5 EURUSD --start "2025-09-23" --end "2025-09-24"
-                python python/cli/data_index_cli.py validate
-                python python/cli/data_index_cli.py inspect mt5 EURUSD
-                python python/cli/data_index_cli.py inspect kraken_spot BTCUSD M5
+    inspect BROKER_TYPE SYMBOL [TIMEFRAME]
+                        Inspect tick or bar data (metadata, schema, sample)
 
-            ⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
-            """)
+    help                Show this help
+
+Examples:
+    python python/cli/data_index_cli.py import
+    python python/cli/data_index_cli.py import --time-offset -3 --offset-broker mt5
+    python python/cli/data_index_cli.py import --override --time-offset -3 --offset-broker mt5
+    python python/cli/data_index_cli.py tick_data_report
+    python python/cli/data_index_cli.py tick_data_report mt5
+    python python/cli/data_index_cli.py inspect mt5 EURUSD
+    python python/cli/data_index_cli.py inspect kraken_spot BTCUSD M5
+
+⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
+
+Related CLIs:
+    tick_index_cli.py      - Tick index management (rebuild, status, coverage, files)
+    coverage_report_cli.py - Gap analysis (build, show, validate, status)
+    bar_index_cli.py       - Bar index management (rebuild, status, report, render)
+""")
 
 
 def parse_time_offset(value: str) -> int:
@@ -341,7 +199,7 @@ def parse_time_offset(value: str) -> int:
 
 
 def main():
-    """Main entry point"""
+    """Main entry point."""
     if len(sys.argv) < 2:
         print("❌ Missing command. Use 'help' for usage.")
         sys.exit(1)
@@ -379,53 +237,9 @@ def main():
             cli.cmd_import(override=override, time_offset=time_offset,
                            offset_broker=offset_broker)
 
-        elif command == "rebuild":
-            cli.cmd_rebuild()
-
-        elif command == "status":
-            cli.cmd_status()
-
         elif command == "tick_data_report":
-            # Optional: filter by broker_type
             broker_type = sys.argv[2] if len(sys.argv) > 2 else None
             cli.cmd_tick_data_report(broker_type=broker_type)
-
-        elif command == "coverage":
-            if len(sys.argv) < 4:
-                print("❌ Usage: coverage BROKER_TYPE SYMBOL")
-                print("   Example: coverage mt5 EURUSD")
-                sys.exit(1)
-            cli.cmd_coverage(sys.argv[2], sys.argv[3])
-
-        elif command == "gaps":
-            if len(sys.argv) < 4:
-                print("❌ Usage: gaps BROKER_TYPE SYMBOL")
-                print("   Example: gaps mt5 EURUSD")
-                sys.exit(1)
-            cli.cmd_gaps(sys.argv[2], sys.argv[3])
-
-        elif command == "files":
-            if len(sys.argv) < 7:
-                print("❌ Usage: files BROKER_TYPE SYMBOL --start DATE --end DATE")
-                print(
-                    "   Example: files mt5 EURUSD --start '2025-09-23' --end '2025-09-24'")
-                sys.exit(1)
-
-            broker_type = sys.argv[2]
-            symbol = sys.argv[3]
-            start = None
-            end = None
-
-            for i, arg in enumerate(sys.argv):
-                if arg == "--start" and i + 1 < len(sys.argv):
-                    start = sys.argv[i + 1]
-                elif arg == "--end" and i + 1 < len(sys.argv):
-                    end = sys.argv[i + 1]
-
-            cli.cmd_files(broker_type, symbol, start, end)
-
-        elif command == "validate":
-            cli.cmd_validate()
 
         elif command == "inspect":
             if len(sys.argv) < 4:
@@ -441,6 +255,40 @@ def main():
 
         elif command == "help":
             cli.cmd_help()
+
+        # === LEGACY REDIRECTS ===
+        elif command == "rebuild":
+            print("⚠️  'rebuild' moved to tick_index_cli.py")
+            print("   Run: python python/cli/tick_index_cli.py rebuild")
+            sys.exit(1)
+
+        elif command == "status":
+            print("⚠️  'status' moved to tick_index_cli.py")
+            print("   Run: python python/cli/tick_index_cli.py status")
+            sys.exit(1)
+
+        elif command == "coverage":
+            print("⚠️  'coverage' moved to tick_index_cli.py")
+            print(
+                "   Run: python python/cli/tick_index_cli.py coverage BROKER_TYPE SYMBOL")
+            sys.exit(1)
+
+        elif command == "files":
+            print("⚠️  'files' moved to tick_index_cli.py")
+            print(
+                "   Run: python python/cli/tick_index_cli.py files BROKER_TYPE SYMBOL --start DATE --end DATE")
+            sys.exit(1)
+
+        elif command == "gaps":
+            print("⚠️  'gaps' moved to coverage_report_cli.py")
+            print(
+                "   Run: python python/cli/coverage_report_cli.py show BROKER_TYPE SYMBOL")
+            sys.exit(1)
+
+        elif command == "validate":
+            print("⚠️  'validate' moved to coverage_report_cli.py")
+            print("   Run: python python/cli/coverage_report_cli.py validate")
+            sys.exit(1)
 
         else:
             print(f"❌ Unknown command: {command}")
