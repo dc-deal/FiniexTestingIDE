@@ -234,7 +234,7 @@ class AbstactWorker(ABC):
             Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
 
         Example:
-            >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 0.02}
+            >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 2.0}
             >>> EnvelopeWorker.calculate_requirements(config)
             {"M5": 20, "M30": 50}
         """

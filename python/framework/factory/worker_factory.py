@@ -26,6 +26,7 @@ from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
 from python.framework.workers.core.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.obv_worker import OBVWorker
 
 
 class WorkerFactory:
@@ -65,6 +66,7 @@ class WorkerFactory:
             self._registry["CORE/envelope"] = EnvelopeWorker
             self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
             self._registry["CORE/macd"] = MACDWorker
+            self._registry["CORE/obv"] = OBVWorker
 
             # Backtesting workers
             self._registry["CORE/backtesting/backtesting_sample_worker"] = BacktestingSampleWorker

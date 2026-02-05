@@ -24,7 +24,7 @@ class EnvelopeWorker(AbstactWorker):
         NEW CONFIG STRUCTURE:
         {
             "periods": {"M5": 20, "M30": 50},  # REQUIRED for INDICATOR
-            "deviation": 0.02                   # Optional
+            "deviation": 2.0                   # Optional
         }
 
         Parameters can be provided via:
@@ -46,7 +46,7 @@ class EnvelopeWorker(AbstactWorker):
 
         # Extract optional algorithm parameters
         self.deviation = params.get(
-            'deviation') or kwargs.get('deviation', 0.02)
+            'deviation') or kwargs.get('deviation', 2.0)
 
     # ============================================
     # STATIC: Classmethods für Factory/UI
@@ -65,7 +65,7 @@ class EnvelopeWorker(AbstactWorker):
     def get_optional_parameters(cls) -> Dict[str, Any]:
         """Envelope optional parameters with defaults"""
         return {
-            'deviation': 0.02,  # Band deviation (2%)
+            'deviation': 2.0,  # Band deviation (2%)
         }
 
     @classmethod

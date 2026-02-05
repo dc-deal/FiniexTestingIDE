@@ -65,7 +65,7 @@
       "base_currency": "SOL",
       "quote_currency": "USD",
       "trade_allowed": true,
-      "volume_min": 0.02,
+      "volume_min": 2.0,
       "volume_max": 10000,
       "volume_step": 1e-8,
       "contract_size": 1,
