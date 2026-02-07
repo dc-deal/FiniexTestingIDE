@@ -29,12 +29,6 @@
         "min_confidence": 0.6
       }
     },
-    "execution_config": {
-      "parallel_workers": false,
-      "worker_parallel_threshold_ms": 1.0,
-      "adaptive_parallelization": true,
-      "log_performance_stats": true
-    },
     "trade_simulator_config": {
       "initial_balance": 100000,
       "account_currency": "auto",

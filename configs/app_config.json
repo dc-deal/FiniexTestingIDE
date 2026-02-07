@@ -11,7 +11,8 @@
             "parallel_workers": false,
             "worker_parallel_threshold_ms": 1.0,
             "adaptive_parallelization": true,
-            "log_performance_stats": true
+            "log_performance_stats": true,
+            "strict_parameter_validation": true
         }
     },
     "console_logging": {

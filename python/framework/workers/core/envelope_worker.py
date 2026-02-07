@@ -9,6 +9,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
     AbstactWorker
@@ -17,7 +18,7 @@ from python.framework.workers.abstract_worker import \
 class EnvelopeWorker(AbstactWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
-    def __init__(self, name, parameters, logger: ScenarioLogger, **kwargs):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Initialize Envelope worker.
 
@@ -27,45 +28,30 @@ class EnvelopeWorker(AbstactWorker):
             "deviation": 2.0                   # Optional
         }
 
-        Parameters can be provided via:
-        - parameters dict (factory-style)
-        - kwargs (legacy constructor-style)
         """
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
+        super().__init__(
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
+        )
 
-        params = parameters or {}
-
-        # Extract 'periods' namespace (REQUIRED for INDICATOR)
-        self.periods = params.get('periods', kwargs.get('periods', {}))
-
-        if not self.periods:
-            raise ValueError(
-                f"EnvelopeWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 20}})"
-            )
-
-        # Extract optional algorithm parameters
-        self.deviation = params.get(
-            'deviation') or kwargs.get('deviation', 2.0)
+        # periods → handled by Abstract (INDICATOR type)
+        self.deviation = self.params.get('deviation')
 
     # ============================================
     # STATIC: Classmethods für Factory/UI
     # ============================================
 
     @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """
-        Envelope requires 'periods' (validated by AbstactWorker).
-
-        Returns empty because validation happens in parent class.
-        """
-        return {}
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """Envelope optional parameters with defaults"""
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """Envelope algorithm parameters with validation ranges."""
         return {
-            'deviation': 2.0,  # Band deviation (2%)
+            'deviation': ParameterDef(
+                param_type=float,
+                default=2.0,
+                min_val=0.5,
+                max_val=5.0,
+                description="Standard deviation multiplier for Bollinger bands"
+            ),
         }
 
     @classmethod

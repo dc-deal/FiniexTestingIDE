@@ -114,6 +114,46 @@ class RSIWorker(AbstactWorker):
 
 ---
 
+### Parameter Schema
+
+Workers declare their configurable parameters with type, range, and defaults via `get_parameter_schema()`.
+This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2.0`).
+
+```python
+from python.framework.types.parameter_types import ParameterDef, REQUIRED
+
+class EnvelopeWorker(AbstactWorker):
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        return {
+            'deviation': ParameterDef(
+                param_type=float,
+                default=2.0,
+                min_val=0.5,
+                max_val=5.0,
+                description="Band deviation percentage"
+            ),
+        }
+```
+
+| Field | Purpose |
+|-------|---------|
+| `param_type` | Python type (`float`, `int`, `bool`, `str`) |
+| `default` | Default value. Use `REQUIRED` when parameter must be provided |
+| `min_val` / `max_val` | Numeric bounds (inclusive) |
+| `choices` | Allowed values for enum parameters (future) |
+| `description` | Functional description |
+
+**Validation behavior** is controlled by `strict_parameter_validation` in `execution_config`:
+- `true` (default): Abort on boundary violations
+- `false`: Warning only (experimental mode)
+
+> **Note:** `periods` is validated separately by `validate_config()` (structural validation).
+> `get_parameter_schema()` covers algorithm parameters only (deviation, thresholds, etc.).
+
+---
+
 ### Volume vs Tick Count
 
 ⚠️ **Critical difference between market types:**
@@ -318,7 +358,7 @@ The JSON config connects everything together.
         },
         "envelope_main": {
           "periods": { "M30": 20 },
-          "deviation": 0.02
+          "deviation": 2.0
         }
       },
       "decision_logic_config": {
@@ -434,10 +474,11 @@ Current limitations:
 | Worker | Type | Description |
 |--------|------|-------------|
 | `CORE/rsi` | RSI | Relative Strength Index |
-| `CORE/envelope` | Envelope | Bollinger-style bands |
+| `CORE/envelope` | Envelope | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
 | `CORE/obv` | OBV | On-Balance Volume (⚠️ Crypto only) |
-| `CORE/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
+| `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
+| `CORE/backtesting/backtesting_sample_worker` | Test-only: Mandatory worker for Decision Logic "backtesting_deterministic" |
 
 ---
 

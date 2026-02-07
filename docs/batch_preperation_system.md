@@ -85,14 +85,22 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 
 ---
 
-### Phase 3: Requirements Collection
-**Purpose:** Aggregate data requirements from all valid scenarios  
+### Phase 3: Requirements Collection & Parameter Validation
+**Purpose:** Aggregate data requirements and validate parameter schemas  
 **Mode:** Serial (main process)  
 **Key Operations:**
-- Create workers temporarily to determine bar requirements
+- Resolve worker classes via factory registry (no instantiation)
+- Validate structural config via `validate_config()` classmethod (periods, timeframes)
+- Validate algorithm parameters via `validate_parameter_schema()` classmethod (min/max/type)
 - Collect tick requirements (symbol, start_time, max_ticks)
-- Collect bar requirements (symbol, timeframe, warmup_count)
+- Collect bar requirements via `calculate_requirements()` classmethod
 - Deduplicate overlapping requirements
+
+**Parameter Validation:**
+- Uses `strict_parameter_validation` from `execution_config` (default: `true`)
+- Strict mode: abort scenario on boundary violation
+- Non-strict mode: log warning, continue execution
+- Type errors always abort (regardless of strict flag)
 
 **Input:** All scenarios (skips invalid internally)  
 **Output:** RequirementsMap for Phase 4
@@ -140,6 +148,8 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 **Purpose:** Execute scenarios with prepared data  
 **Mode:** Parallel (ProcessPoolExecutor) or Sequential  
 **Key Operations:**
+- WorkerFactory / DecisionLogicFactory validate parameter schemas (second check)
+- Apply schema defaults to config (fill missing optional parameters)
 - Create ProcessExecutor for each scenario
 - Run tick loop with trading simulation
 - Collect execution results
@@ -168,7 +178,7 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 
 ## Validation Flow
 
-### Two-Stage Validation Design
+### Three-Stage Validation Design
 
 ```
 Phase 2: Availability Validation (PRE-LOAD)
@@ -178,7 +188,14 @@ Phase 2: Availability Validation (PRE-LOAD)
    ↓
    [Filter invalid scenarios]
    ↓
-Phase 3-4: Requirements & Loading
+Phase 3: Requirements & Parameter Validation (PRE-LOAD)
+├─ Structural: validate_config() (periods, timeframes)
+├─ Algorithm: validate_parameter_schema() (min/max/type)
+└─ Collect bar/tick requirements via classmethods
+   ↓
+   [Abort on type errors or strict boundary violations]
+   ↓
+Phase 4: Data Loading
    (Only for valid scenarios)
    ↓
 Phase 5: Quality Validation (POST-LOAD)
@@ -187,7 +204,7 @@ Phase 5: Quality Validation (POST-LOAD)
    ↓
    [Filter scenarios with quality issues]
    ↓
-Phase 6: Execution
+Phase 6: Execution (with second parameter validation)
    (Only final valid scenarios)
 ```
 

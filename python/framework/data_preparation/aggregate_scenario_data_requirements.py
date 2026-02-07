@@ -103,6 +103,18 @@ class AggregateScenarioDataRequirements:
             # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)
             worker_class.validate_config(worker_config)
 
+            # Validate algorithm parameters against schema (min/max/type)
+            strict = True
+            if scenario.execution_config:
+                strict = scenario.execution_config.get(
+                    "strict_parameter_validation", True
+                )
+            warnings = worker_class.validate_parameter_schema(
+                worker_config, strict=strict
+            )
+            for w in warnings:
+                self._logger.warning(f"⚠️ {w}")
+
             # Calculate requirements via CLASSMETHOD (no instance!)
             requirements = worker_class.calculate_requirements(worker_config)
 

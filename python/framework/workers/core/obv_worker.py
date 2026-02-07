@@ -32,73 +32,27 @@ class OBVWorker(AbstactWorker):
 
     OBV is a cumulative momentum indicator that uses volume flow
     to predict changes in price direction.
-
-    Configuration:
-    {
-        "periods": {"M5": 20},  # REQUIRED - warmup bars needed
-    }
-
-    Output:
-        WorkerResult.value = current OBV value (float)
-        WorkerResult.metadata includes trend direction and volume stats
     """
 
-    def __init__(
-        self,
-        name: str,
-        parameters: Dict,
-        logger: ScenarioLogger,
-        trading_context: TradingContext = None,
-        **kwargs
-    ):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Initialize OBV worker.
-
-        Args:
-            name: Worker instance name
-            parameters: Config dict with 'periods'
-            logger: ScenarioLogger instance
-            trading_context: Trading environment context (optional)
-            **kwargs: Legacy constructor support
         """
         super().__init__(
-            name=name,
-            parameters=parameters,
-            logger=logger,
-            trading_context=trading_context,
-            **kwargs
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
         )
 
-        params = parameters or {}
-
-        # Extract 'periods' (REQUIRED for INDICATOR)
-        self.periods = params.get('periods', kwargs.get('periods', {}))
-
-        if not self.periods:
-            raise ValueError(
-                f"OBVWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 20}})"
-            )
-
-        # Warn if Forex market (volume will be 0)
+        # Warn if Forex market (volume will be 0 for CFDs)
         if trading_context and trading_context.market_type == MarketType.FOREX:
             logger.warning(
-                f"⚠️ OBVWorker '{name}': Volume is always 0 for Forex CFD. "
-                f"OBV will be constant. Consider using tick_count-based indicators."
+                f"OBV worker '{name}' used with FOREX market. "
+                f"Tick volume in Forex CFDs is typically 0 - "
+                f"OBV will produce meaningless results."
             )
-
-        # Store market type for metadata
-        self._market_type = trading_context.market_type if trading_context else None
-
-    @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """OBV requires 'periods' (validated by AbstactWorker)."""
-        return {}
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """OBV has no optional parameters."""
-        return {}
+        self._market_type = (
+            trading_context.market_type if trading_context else None
+        )
 
     @classmethod
     def get_worker_type(cls) -> WorkerType:

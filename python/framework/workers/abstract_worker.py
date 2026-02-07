@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
+from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
@@ -33,7 +35,7 @@ class AbstactWorker(ABC):
         self,
         name: str,
         logger: ScenarioLogger,
-        parameters: Dict[str, Any] = None,
+        parameters=None,
         trading_context: TradingContext = None
     ):
         """
@@ -41,8 +43,9 @@ class AbstactWorker(ABC):
 
         Args:
             name: Worker name/identifier
-            parameters: Worker-specific parameters
+            parameters: ValidatedParameters or dict (auto-wrapped)
             logger: ScenarioLogger instance (REQUIRED)
+            trading_context: TradingContext (optional)
 
         Raises:
             ValueError: If logger is None
@@ -51,14 +54,32 @@ class AbstactWorker(ABC):
             raise ValueError(f"Worker '{name}' requires a logger instance")
 
         self.name = name
-        self.parameters = parameters or {}
         self.state = WorkerState.IDLE
         self._last_result = None
         self._trading_context = trading_context
 
         # Loggers
-        self.logger = logger  # ScenarioLogger
+        self.logger = logger
         self.performance_logger: WorkerPerformanceTracker = None
+
+        # --- Parameter access (NEW) ---
+        # Auto-wrap dict → ValidatedParameters for test convenience
+        # Factory already provides ValidatedParameters; direct dict
+        # construction (tests, legacy) gets wrapped transparently.
+        if isinstance(parameters, ValidatedParameters):
+            self.params = parameters
+        else:
+            self.params = ValidatedParameters(parameters or {})
+
+        # Raw dict access preserved for WorkerOrchestrator._extract_worker_type()
+        # which reads: worker.parameters['worker_type']
+        self.parameters = self.params.as_dict()
+
+        # --- Infrastructure: auto-extract 'periods' for INDICATOR workers ---
+        # This eliminates the #1 boilerplate pattern across all INDICATOR workers
+        # and prevents the OBV bug (missing self.periods) from ever recurring.
+        if self.__class__.get_worker_type() == WorkerType.INDICATOR:
+            self.periods = self.params.get('periods')
 
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:
@@ -167,17 +188,43 @@ class AbstactWorker(ABC):
         pass
 
     @classmethod
-    def get_default_parameters(cls) -> Dict[str, Any]:
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
         """
-        Get default parameter values.
+        Declare parameter schema for validation and UX.
 
-        Used by factory for validation and defaults.
-        Override in subclass to provide defaults.
+        Override in subclass to define algorithm parameters
+        with types, ranges, and defaults.
+        Does NOT include 'periods' (handled by validate_config).
 
         Returns:
-            Dict of default parameter values
+            Dict[param_name, ParameterDef]
         """
         return {}
+
+    @classmethod
+    def validate_parameter_schema(
+        cls,
+        config: Dict[str, Any],
+        strict: bool = True
+    ) -> List[str]:
+        """
+        Validate config against parameter schema (no instance needed).
+
+        Called in Phase 0 (static) and Phase 6 (factory).
+
+        Args:
+            config: Worker configuration dict
+            strict: True = raise on boundary violations, False = warn only
+
+        Returns:
+            List of warning messages
+        """
+        schema = cls.get_parameter_schema()
+        if not schema:
+            return []
+        return validate_parameters(
+            config, schema, strict, context_name=cls.__name__
+        )
 
     @classmethod
     def validate_config(cls, config: Dict[str, Any]) -> None:

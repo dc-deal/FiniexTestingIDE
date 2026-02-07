@@ -149,6 +149,19 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧩 Pytest: Worker Tests (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 📚 INDEX MANAGEMENT
         // ====================================================

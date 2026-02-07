@@ -32,6 +32,8 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.validators.parameter_validator import apply_defaults
 
 
 class DecisionLogicFactory:
@@ -48,14 +50,20 @@ class DecisionLogicFactory:
     4. Validation and error handling
     """
 
-    def __init__(self, logger: AbstractLogger):
+    def __init__(
+        self,
+        logger: AbstractLogger,
+        strict_parameter_validation: bool = True
+    ):
         """
         Initialize decision logic factory with empty registry.
 
-        The registry is populated lazily when decision logics are requested.
-        This avoids import overhead for unused strategies.
+        Args:
+            logger: Logger instance
+            strict_parameter_validation: True = raise on boundary violations, False = warn only
         """
         self.logger = logger
+        self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstractDecisionLogic]] = {}
         self._load_core_logics()
 
@@ -149,15 +157,29 @@ class DecisionLogicFactory:
         # Step 1: Resolve logic class
         logic_class = self._resolve_logic_class(logic_type)
 
-        # Step 2: Extract simple name for instance
+        # Step 2: Validate parameters against schema
+        warnings = logic_class.validate_parameter_schema(
+            logic_config, strict=self._strict_validation
+        )
+        for warning in warnings:
+            self.logger.warning(f"⚠️ {warning}")
+
+        # Step 3: Apply schema defaults to config
+        logic_config = apply_defaults(
+            logic_config, logic_class.get_parameter_schema()
+        )
+
+        # Step 4: Extract simple name for instance
         logic_name = self._extract_logic_name(logic_type)
 
-        # Step 3: Instantiate logic with config only
-        # No trading_env parameter
+        # Step 4.5: Wrap validated+defaulted config into ValidatedParameters
+        validated_config = ValidatedParameters(logic_config)
+
+        # Step 5: Instantiate logic with validated parameters
         logic_instance = logic_class(
             name=logic_name,
             logger=logger,
-            config=logic_config,
+            config=validated_config,
             trading_context=trading_context
         )
 

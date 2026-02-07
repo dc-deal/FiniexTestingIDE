@@ -25,8 +25,10 @@ from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_data_types import TickData
 from python.framework.types.market_types import TradingContext
 from python.framework.types.order_types import OrderResult, OrderType
+from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
 from python.framework.types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerResult
+from python.framework.validators.parameter_validator import validate_parameters
 
 
 class AbstractDecisionLogic(ABC):
@@ -55,7 +57,7 @@ class AbstractDecisionLogic(ABC):
         self,
         name: str,
         logger: ScenarioLogger,
-        config: Dict[str, Any],
+        config=None,
         trading_context: TradingContext = None
     ):
         """
@@ -64,7 +66,8 @@ class AbstractDecisionLogic(ABC):
         Args:
             name: Decision logic name
             logger: ScenarioLogger instance (REQUIRED)
-            config: Logic-specific configuration
+            config: ValidatedParameters or dict (auto-wrapped)
+            trading_context: TradingContext (optional)
 
         Raises:
             ValueError: If logger is None
@@ -74,7 +77,6 @@ class AbstractDecisionLogic(ABC):
                 f"DecisionLogic '{name}' requires a logger instance")
 
         self.name = name
-        self.config = config or {}
         self._trading_context = trading_context
 
         # API and loggers
@@ -82,8 +84,18 @@ class AbstractDecisionLogic(ABC):
         self.logger = logger
         self.performance_logger: DecisionLogicPerformanceTracker = None
 
+        # --- Parameter access (NEW) ---
+        if isinstance(config, ValidatedParameters):
+            self.params = config
+        else:
+            self.params = ValidatedParameters(config or {})
+
+        # Raw dict access preserved for WorkerOrchestrator._extract_decision_logic_type()
+        # which reads: decision_logic.config['decision_logic_type']
+        self.config = self.params.as_dict()
+
     # ============================================
-    # New abstractmethods
+    # abstractmethods
     # ============================================
 
     @classmethod
@@ -107,6 +119,48 @@ class AbstractDecisionLogic(ABC):
                     return [OrderType.MARKET]
             """
         pass
+
+    # ============================================
+    # Parameter Schema (NEW)
+    # ============================================
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """
+        Declare parameter schema for validation and UX.
+
+        Override in subclass to define decision logic parameters
+        with types, ranges, and defaults.
+
+        Returns:
+            Dict[param_name, ParameterDef]
+        """
+        return {}
+
+    @classmethod
+    def validate_parameter_schema(
+        cls,
+        config: Dict[str, Any],
+        strict: bool = True
+    ) -> List[str]:
+        """
+        Validate config against parameter schema (no instance needed).
+
+        Called in Phase 0 (static) and Phase 6 (factory).
+
+        Args:
+            config: Decision logic configuration dict
+            strict: True = raise on boundary violations, False = warn only
+
+        Returns:
+            List of warning messages
+        """
+        schema = cls.get_parameter_schema()
+        if not schema:
+            return []
+        return validate_parameters(
+            config, schema, strict, context_name=cls.__name__
+        )
 
     def execute_decision(
         self,
@@ -247,21 +301,6 @@ class AbstractDecisionLogic(ABC):
             return DecisionLogicStats()
 
         return self.performance_logger.get_stats()
-
-    def get_config_value(self, key: str, default: Any = None) -> Any:
-        """
-        Get configuration value with default fallback.
-
-        Helper method for accessing logic-specific config.
-
-        Args:
-            key: Config key
-            default: Default value if key not found
-
-        Returns:
-            Config value or default
-        """
-        return self.config.get(key, default)
 
     def set_performance_logger(self, performance_logger: DecisionLogicPerformanceTracker) -> None:
         """

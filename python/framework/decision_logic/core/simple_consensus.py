@@ -53,6 +53,7 @@ from python.framework.types.order_types import (
     OrderDirection,
     OrderResult
 )
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
 
 
@@ -82,7 +83,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self,
         name,
         logger: ScenarioLogger,
-        config: Dict[str, Any],
+        config,
         trading_context: TradingContext = None
     ):
         """
@@ -93,31 +94,26 @@ class SimpleConsensus(AbstractDecisionLogic):
             config: Configuration dict with thresholds
             trading_context: Trading environment context (optional)
         """
-        super().__init__(name, logger, config)
-
+        super().__init__(name, logger, config, trading_context=trading_context)
         # Store trading context
         self._trading_context = trading_context
 
-        # Configuration with defaults
-        self.rsi_oversold = self.get_config_value("rsi_oversold", 30)
-        self.rsi_overbought = self.get_config_value("rsi_overbought", 70)
-        self.envelope_lower = self.get_config_value(
-            "envelope_lower_threshold", 0.3)
-        self.envelope_upper = self.get_config_value(
-            "envelope_upper_threshold", 0.7)
-        self.min_confidence = self.get_config_value("min_confidence", 0.5)
+        # All values guaranteed present by schema defaults + Factory validation
+        self.rsi_oversold = self.params.get('rsi_oversold')
+        self.rsi_overbought = self.params.get('rsi_overbought')
+        self.envelope_lower = self.params.get('envelope_lower_threshold')
+        self.envelope_upper = self.params.get('envelope_upper_threshold')
+        self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
-        self.min_free_margin = self.get_config_value("min_free_margin", 1000)
-        self.lot_size = self.get_config_value("lot_size", 0.1)
+        self.min_free_margin = self.params.get('min_free_margin')
+        self.lot_size = self.params.get('lot_size')
 
-        # OBV configuration (NEW)
-        self.obv_filter_enabled = self.get_config_value(
-            "obv_filter_enabled", True)
-        self.obv_block_opposite_trend = self.get_config_value(
-            "obv_block_opposite_trend", True)
-        self.obv_confidence_boost = self.get_config_value(
-            "obv_confidence_boost", 0.1)
+        # OBV configuration
+        self.obv_filter_enabled = self.params.get('obv_filter_enabled')
+        self.obv_block_opposite_trend = self.params.get(
+            'obv_block_opposite_trend')
+        self.obv_confidence_boost = self.params.get('obv_confidence_boost')
 
         self.logger.debug(
             f"SimpleConsensus initialized: "
@@ -130,6 +126,52 @@ class SimpleConsensus(AbstractDecisionLogic):
     # ============================================
     # abstractmethods
     # ============================================
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """SimpleConsensus decision logic parameters with validation ranges."""
+        return {
+            'rsi_oversold': ParameterDef(
+                param_type=float, default=30, min_val=1, max_val=49,
+                description="RSI oversold threshold (buy signal)"
+            ),
+            'rsi_overbought': ParameterDef(
+                param_type=float, default=70, min_val=51, max_val=99,
+                description="RSI overbought threshold (sell signal)"
+            ),
+            'envelope_lower_threshold': ParameterDef(
+                param_type=float, default=0.3, min_val=0.0, max_val=1.0,
+                description="Envelope position threshold for buy signal"
+            ),
+            'envelope_upper_threshold': ParameterDef(
+                param_type=float, default=0.7, min_val=0.0, max_val=1.0,
+                description="Envelope position threshold for sell signal"
+            ),
+            'min_confidence': ParameterDef(
+                param_type=float, default=0.5, min_val=0.0, max_val=1.0,
+                description="Minimum confidence to generate trading signal"
+            ),
+            'min_free_margin': ParameterDef(
+                param_type=float, default=1000, min_val=0,
+                description="Minimum free margin required before opening trade"
+            ),
+            'lot_size': ParameterDef(
+                param_type=float, default=0.1, min_val=0.01, max_val=100.0,
+                description="Fixed lot size for market orders"
+            ),
+            'obv_filter_enabled': ParameterDef(
+                param_type=bool, default=True,
+                description="Enable OBV volume confirmation filter"
+            ),
+            'obv_block_opposite_trend': ParameterDef(
+                param_type=bool, default=True,
+                description="Block trades when OBV trend opposes signal direction"
+            ),
+            'obv_confidence_boost': ParameterDef(
+                param_type=float, default=0.1, min_val=0.0, max_val=1.0,
+                description="Confidence bonus when OBV confirms trade direction"
+            ),
+        }
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

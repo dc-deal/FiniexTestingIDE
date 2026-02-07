@@ -50,6 +50,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.order_types import (
     OrderStatus,
@@ -79,9 +80,9 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     def __init__(
         self,
-        name: str,
+        name,
         logger: ScenarioLogger,
-        config: Dict[str, Any],
+        config,
         trading_context: TradingContext = None
     ):
         """
@@ -93,18 +94,17 @@ class AggressiveTrend(AbstractDecisionLogic):
             name: Logic identifier
             config: Configuration dict with thresholds
         """
-        super().__init__(name, logger, config)
+        super().__init__(name, logger, config, trading_context=trading_context)
 
-        # Configuration with aggressive defaults
-        self.rsi_buy = self.get_config_value("rsi_buy_threshold", 35)
-        self.rsi_sell = self.get_config_value("rsi_sell_threshold", 65)
-        self.envelope_extremes = self.get_config_value(
-            "envelope_extremes", 0.25)
-        self.min_confidence = self.get_config_value("min_confidence", 0.4)
+        # All values guaranteed present by schema defaults + Factory validation
+        self.rsi_buy = self.params.get('rsi_buy_threshold')
+        self.rsi_sell = self.params.get('rsi_sell_threshold')
+        self.envelope_extremes = self.params.get('envelope_extremes')
+        self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
-        self.min_free_margin = self.get_config_value("min_free_margin", 1000)
-        self.lot_size = self.get_config_value("lot_size", 0.1)
+        self.min_free_margin = self.params.get('min_free_margin')
+        self.lot_size = self.params.get('lot_size')
 
         self.logger.debug(
             f"AggressiveTrend initialized: "
@@ -114,8 +114,38 @@ class AggressiveTrend(AbstractDecisionLogic):
         )
 
     # ============================================
-    # New abstractmethods
+    # abstractmethods
     # ============================================
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """AggressiveTrend decision logic parameters with validation ranges."""
+        return {
+            'rsi_buy_threshold': ParameterDef(
+                param_type=float, default=35, min_val=1, max_val=49,
+                description="RSI threshold for buy signal (aggressive, higher than consensus)"
+            ),
+            'rsi_sell_threshold': ParameterDef(
+                param_type=float, default=65, min_val=51, max_val=99,
+                description="RSI threshold for sell signal (aggressive, lower than consensus)"
+            ),
+            'envelope_extremes': ParameterDef(
+                param_type=float, default=0.25, min_val=0.01, max_val=0.5,
+                description="Envelope distance from center to trigger signal"
+            ),
+            'min_confidence': ParameterDef(
+                param_type=float, default=0.4, min_val=0.0, max_val=1.0,
+                description="Minimum confidence to generate trading signal"
+            ),
+            'min_free_margin': ParameterDef(
+                param_type=float, default=1000, min_val=0,
+                description="Minimum free margin required before opening trade"
+            ),
+            'lot_size': ParameterDef(
+                param_type=float, default=0.1, min_val=0.01, max_val=100.0,
+                description="Fixed lot size for market orders"
+            ),
+        }
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

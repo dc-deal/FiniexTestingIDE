@@ -79,6 +79,9 @@ class SingleScenario:
                 # Performance Tuning
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
                 "log_performance_stats": True,  # Log timing statistics
+                # Parameter Validation
+                # True = abort on boundary violations, False = warn only
+                "strict_parameter_validation": True,
             }
 
     def to_config_string_for_display(self) -> str:

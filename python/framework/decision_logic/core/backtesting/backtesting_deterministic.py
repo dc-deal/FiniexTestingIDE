@@ -47,6 +47,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_data_types import TickData
 from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_stats_types import DecisionLogicStats
@@ -77,9 +78,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def __init__(
         self,
-        name: str,
+        name,
         logger: ScenarioLogger,
-        config: Dict[str, Any],
+        config,
         trading_context: TradingContext = None
     ):
         """
@@ -90,11 +91,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             logger: ScenarioLogger instance
             config: Configuration dict with trade_sequence
         """
-        super().__init__(name, logger, config)
+        super().__init__(name, logger, config, trading_context=trading_context)
 
         # Trade sequence configuration
-        self.trade_sequence = self.get_config_value('trade_sequence', [])
-        self.default_lot_size = self.get_config_value('lot_size', 0.1)
+        self.trade_sequence = self.params.get('trade_sequence')
+        self.default_lot_size = self.params.get('lot_size')
 
         # Internal state
         self.tick_count = 0
@@ -115,6 +116,24 @@ class BacktestingDeterministic(AbstractDecisionLogic):
     # ============================================
     # Required Abstract Methods
     # ============================================
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """Backtesting deterministic decision logic parameters."""
+        return {
+            'trade_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of trade specs: tick_number, direction, hold_ticks, lot_size"
+            ),
+            'lot_size': ParameterDef(
+                param_type=float,
+                default=0.1,
+                min_val=0.01,
+                max_val=100.0,
+                description="Default lot size for trades without explicit lot_size"
+            ),
+        }
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
