@@ -1,8 +1,5 @@
 # Quickstart Guide: Create Your Trading Bot
 
-> **Version:** 1.0 Alpha  
-> **Time:** ~30 minutes to first backtest
-
 This guide shows you how to create a custom trading bot with FiniexTestingIDE.
 
 ---
@@ -47,18 +44,14 @@ class RSIWorker(AbstactWorker):
         parameters: Dict, 
         logger: ScenarioLogger,
         trading_context: TradingContext = None,
-        **kwargs
     ):
         super().__init__(
             name=name, 
             parameters=parameters, 
             logger=logger,
             trading_context=trading_context, 
-            **kwargs
         )
-        
-        # Extract periods from config: {"M5": 14}
-        self.periods = parameters.get('periods', {})
+        # periods auto-extracted by AbstractWorker for INDICATOR type
     
     @classmethod
     def get_worker_type(cls) -> WorkerType:
@@ -171,15 +164,11 @@ class EnvelopeWorker(AbstactWorker):
 
 ```python
 class OBVWorker(AbstactWorker):
-    def __init__(self, name, parameters, logger, trading_context=None, **kwargs):
-        super().__init__(name, parameters, logger, trading_context=trading_context, **kwargs)
+    def __init__(self, name, parameters, logger, trading_context=None):
+        super().__init__(name, parameters, logger, trading_context=trading_context)
         
         # Warn if Forex (volume will be 0)
         if trading_context and trading_context.market_type == MarketType.FOREX:
-            logger.warning(
-                f"⚠️ OBVWorker '{name}': Volume is always 0 for Forex CFD. "
-                f"OBV will be constant. Consider using tick_count-based indicators."
-            )
 ```
 
 
@@ -221,13 +210,14 @@ class AggressiveTrend(AbstractDecisionLogic):
     SELL when RSI > 65 OR price above envelope
     """
     
-    def __init__(self, name: str, logger: ScenarioLogger, config: Dict[str, Any]):
-        super().__init__(name, logger, config)
+    def __init__(self, name: str, logger: ScenarioLogger, config: Dict[str, Any],
+                 trading_context: TradingContext = None):
+        super().__init__(name, logger, config, trading_context=trading_context)
         
-        # Config values with defaults
-        self.rsi_buy = self.get_config_value("rsi_buy_threshold", 35)
-        self.rsi_sell = self.get_config_value("rsi_sell_threshold", 65)
-        self.lot_size = self.get_config_value("lot_size", 0.1)
+        # Config values (defaults defined in get_parameter_schema())
+        self.rsi_buy = self.params.get("rsi_buy_threshold")
+        self.rsi_sell = self.params.get("rsi_sell_threshold")
+        self.lot_size = self.params.get("lot_size")
     
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
@@ -476,7 +466,7 @@ Current limitations:
 | `CORE/rsi` | RSI | Relative Strength Index |
 | `CORE/envelope` | Envelope | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
-| `CORE/obv` | OBV | On-Balance Volume (⚠️ Crypto only) |
+| `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
 | `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
 | `CORE/backtesting/backtesting_sample_worker` | Test-only: Mandatory worker for Decision Logic "backtesting_deterministic" |
 

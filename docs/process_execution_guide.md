@@ -88,7 +88,7 @@ else:
 ### Startup Preparation Steps
 
 **Function:** `process_startup_preparation(config, shared_data, logger)`  
-**Located:** `python/framework/process/process_startup_prepreation.py`
+**Located:** `python/framework/process/process_startup_preparation.py`
 
 **Process:**
 

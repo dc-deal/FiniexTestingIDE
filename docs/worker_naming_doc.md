@@ -125,21 +125,17 @@ class MyIndicatorWorker(AbstractBlackboxWorker):
         parameters: Dict = None,
         logger: ScenarioLogger = None,
         trading_context: TradingContext = None, 
-        **kwargs
     ):
         super().__init__(
             name=name, 
             parameters=parameters, 
             logger=logger,
             trading_context=trading_context,
-            **kwargs
         )
         
-        # Access market info if needed
-        self._trading_context = trading_context
-
-        params = parameters or {}
-        self.my_param = params.get('my_param')
+        # trading_context available via self._trading_context (set by Abstract)
+        # Access validated parameters via self.params
+        self.my_param = self.params.get('my_param')
     
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, ParameterDef]:

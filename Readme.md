@@ -4,9 +4,22 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.0 Alpha  
-> **Status:** MVP Complete - Core backtesting validated  
+> **Version:** 1.1  
+> **Status:** Feature Release - Multi-Market Support  
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
+
+---
+
+## What's New in 1.1
+
+- **Multi-Market Support** — Crypto (Kraken Spot) alongside Forex (MT5), unified broker adapter architecture
+- **TradingContext** — Market-type awareness for workers and decision logics
+- **OBV Worker** — On-Balance Volume indicator (`CORE/obv`), market-type aware
+- **Parameter Validation** — Schema-based validation with `ParameterDef`, strict/non-strict modes
+- **Volume Integration** — Real trade volume for crypto, tick_count for forex CFD
+- **Parquet Indexes** — Tick index, bar index, and coverage cache migrated from JSON to Parquet
+- **Coverage Report Caching** — Pre-computed gap analysis with cache invalidation
+- **211 New Tests** — 202 worker/parameter validation + 9 data integration tests
 
 ---
 
@@ -14,12 +27,13 @@
 
 FiniexTestingIDE is a high-performance backtesting framework for forex and crypto trading strategies. It processes real tick data, simulates realistic broker execution, and provides comprehensive performance analysis.
 
-**1.0 Alpha delivers:**
+**Core capabilities:**
 - ✅ Tick-by-tick backtesting with real market data
 - ✅ Realistic trade simulation (spreads, latency, margin)
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
-- ✅ Validated accuracy (44 baseline tests, 13 benchmark tests)
+- ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
+- ✅ Validated accuracy (268 tests across 4 test suites)
 
 ---
 
@@ -30,18 +44,21 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Parquet Storage** - Compressed, indexed tick data with quality metrics
 - **Multi-Timeframe Bars** - Auto-rendered M1, M5, M15, M30, H1, H4, D1
 - **Gap Detection** - Weekend, holiday, and data quality analysis
+- **Coverage Caching** - Pre-computed gap reports with automatic invalidation
 
 ### Backtesting Engine
 - **Parallel Execution** - ProcessPoolExecutor for multi-scenario runs
 - **7-Phase Orchestration** - Validation → Loading → Execution → Reporting
-- **Worker System** - Modular indicator computation (RSI, Envelope, MACD, ...)
+- **Worker System** - Modular indicator computation (RSI, Envelope, MACD, OBV, ...)
 - **Decision Logic** - Pluggable trading strategies with clear separation
+- **Parameter Validation** - Schema-based validation with strict/non-strict modes
 
 ### Trade Simulation
 - **Realistic Execution** - API latency + market execution delays (seeded)
 - **Spread Calculation** - Live bid/ask spread from tick data
 - **Margin Management** - Position sizing with margin checks
 - **Order Lifecycle** - PENDING → EXECUTED status tracking
+- **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken)
 
 ### Analysis Tools
 - **Market Analysis** - ATR volatility, session activity, cross-instrument ranking
@@ -133,15 +150,15 @@ live trading or commercial redistribution.
 │         ↓                                                       │
 │  Parquet Files + Bar Rendering (M1→D1)                          │
 │         ↓                                                       │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  BACKTESTING ENGINE                                     │    │
-│  ├─────────────────────────────────────────────────────────┤    │
-│  │  Workers (RSI, Envelope, ...)  →  Indicator Values      │    │
-│  │         ↓                                               │    │
-│  │  Decision Logic (AggressiveTrend, ...)  →  BUY/SELL     │    │
-│  │         ↓                                               │    │
-│  │  Trade Simulator  →  Order Execution + P&L              │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  BACKTESTING ENGINE                                       │  │
+│  ├───────────────────────────────────────────────────────────┤  │
+│  │  Workers (RSI, Envelope, ...)  →  Indicator Values        │  │
+│  │         ↓                                                 │  │
+│  │  Decision Logic (AggressiveTrend, ...)  →  BUY/SELL       │  │
+│  │         ↓                                                 │  │
+│  │  Trade Simulator  →  Order Execution + P&L                │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │         ↓                                                       │
 │  Results (Trade History, Performance Metrics, Profiling)        │
 │                                                                 │
@@ -166,7 +183,20 @@ Validates performance characteristics:
 - System-bound tolerances (±10-15%)
 - Certificate-based CI validation
 
-→ See [Baseline Tests](docs/tests_baseline_docs.md) and [Benchmark Tests](docs/tests_benchmark_docs.md)
+### Worker Tests (202 tests)
+Validates parameter validation and indicator computation:
+- Schema integrity across all workers and decision logics
+- Parameter validation (types, bounds, strict/non-strict)
+- Default application and factory integration
+- RSI, Envelope, MACD, OBV computation correctness
+
+### Data Integration Tests (9 tests)
+Validates data pipeline integrity:
+- Volume consistency (crypto > 0, forex = 0)
+- Tick count validation across all markets
+- Index-to-bar-data consistency
+
+→ See [Baseline Tests](docs/tests_baseline_docs.md), [Benchmark Tests](docs/tests_benchmark_docs.md), [Worker Tests](docs/tests_worker_docs.md), and [Data Integration Tests](docs/tests_data_integration_docs.md)
 
 ---
 
@@ -179,12 +209,18 @@ Validates performance characteristics:
 | [TickCollector README](docs/TickCollector_README.md) | MQL5 data collection setup |
 | [Worker Naming](docs/worker_naming_doc.md) | Worker system and naming conventions |
 | [Config Cascade](docs/config_cascade_readme.md) | 3-level configuration system |
+| [Broker Config](docs/broker_config_guide.md) | Multi-broker setup (MT5, Kraken) |
+| [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |
+| [Process Execution](docs/process_execution_guide.md) | Subprocess architecture |
+| [Duplicate Detection](docs/duplicate_detection_usage.md) | Data integrity protection |
 | [Baseline Tests](docs/tests_baseline_docs.md) | 44 validation tests |
 | [Benchmark Tests](docs/tests_benchmark_docs.md) | 13 performance tests |
+| [Worker Tests](docs/tests_worker_docs.md) | 202 parameter & computation tests |
+| [Data Integration Tests](docs/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---
 
-## Current Limitations (Alpha)
+## Current Limitations
 
 - **Market Orders Only** - Limit/Stop orders planned for post-MVP
 - **No Partial Fills** - Full position close only, partial fills planned for post-MVP
@@ -233,8 +269,3 @@ MIT License - see [LICENSE](LICENSE)
 
 **Trademarks:** Finiex™ is property of Frank Krätzig - see [TRADEMARK.md](TRADEMARK.md)
 
----
-
-*Building the foundation for parameter-centric trading strategy development.*
-
-**1.0 Alpha** - MVP Complete ✅
