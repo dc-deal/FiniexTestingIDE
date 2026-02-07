@@ -5,7 +5,7 @@
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
 > **Version:** 1.1  
-> **Status:** Feature Release - Multi-Market Support  
+> **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
