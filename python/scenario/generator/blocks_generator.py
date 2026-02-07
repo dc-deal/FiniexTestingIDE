@@ -40,7 +40,7 @@ class BlocksGenerator:
     - Session filtering with optional extension
     """
 
-    def __init__(self, data_dir: Path, config: GeneratorConfig):
+    def __init__(self, config: GeneratorConfig):
         """
         Initialize blocks generator.
 
@@ -48,7 +48,6 @@ class BlocksGenerator:
             data_dir: Path to processed data directory
             config: Generator configuration
         """
-        self._data_dir = data_dir
         self._config = config
 
     def generate(
@@ -78,7 +77,7 @@ class BlocksGenerator:
         Returns:
             List of scenario candidates with max_ticks=None
         """
-        tick_index = TickIndexManager(self._data_dir)
+        tick_index = TickIndexManager()
         tick_index.build_index()
 
         coverage_report = tick_index.get_coverage_report(broker_type, symbol)
@@ -143,10 +142,25 @@ class BlocksGenerator:
             scenarios.extend(scenarios_from_region)
             block_counter += len(scenarios_from_region)
 
+        # Debug: log each generated block
+        for i, s in enumerate(scenarios, 1):
+            vLog.debug(
+                f"Block #{i:02d}: {s.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{s.end_time.strftime('%Y-%m-%d %H:%M')} "
+                f"({(s.end_time - s.start_time).total_seconds()/3600:.1f}h) [{s.session.value}]"
+            )
+
         # Apply count_max limit if specified
         if count_max and len(scenarios) > count_max:
+            total_generated = len(scenarios)
             scenarios = scenarios[:count_max]
-            vLog.info(f"Limited to {count_max} blocks (from {len(scenarios)})")
+            vLog.info(
+                f"Limited to {count_max} blocks (from {total_generated})")
+        elif count_max and len(scenarios) < count_max:
+            vLog.warning(
+                f"⚠️ Requested {count_max} blocks, generated {len(scenarios)}. "
+                f"Insufficient data coverage for session filter / block size."
+            )
 
         # Log final error if data ends with short block
         if scenarios:

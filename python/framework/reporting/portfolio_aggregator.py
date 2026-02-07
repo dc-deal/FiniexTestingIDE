@@ -173,6 +173,9 @@ class PortfolioAggregator:
         else:
             first_broker = scenarios[0].tick_loop_results.portfolio_stats.broker_name
             broker_name = f"{first_broker} (+{len(unique_brokers)-1} more)"
+            first_broker_type = scenarios[0].tick_loop_results.portfolio_stats.broker_type
+            broker_type = f"{first_broker_type} (+{len(unique_broker_type)-1} more)"
+
         currency = scenarios[0].tick_loop_results.portfolio_stats.currency
 
         return AggregatedPortfolioStats(

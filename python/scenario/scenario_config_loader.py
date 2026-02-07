@@ -124,8 +124,6 @@ class ScenarioConfigLoader:
             # DATA SOURCE VALIDATION (NEW - REQUIRED)
             # ============================================
             # data_broker_type determines which tick/bar index to load from
-            # Examples: "mt5" → data/processed/mt5/ticks/{symbol}/
-            #           "kraken_spot" → data/processed/kraken_spot/ticks/{symbol}/
             data_broker_type = scenario_data.get('data_broker_type')
             if not data_broker_type:
                 raise ValueError(

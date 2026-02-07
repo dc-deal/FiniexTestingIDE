@@ -1,6 +1,10 @@
 """
-FiniexTestingIDE - Simple Consensus Decision Logic ()
-Reference implementation of RSI + Envelope consensus strategy
+FiniexTestingIDE - Simple Consensus Decision Logic (OBV Enhanced)
+Reference implementation of RSI + Envelope + OBV consensus strategy
+
+ENHANCED: OBV as confirmation filter
+- Blocks trades where volume trend opposes price signal
+- Boosts confidence when volume confirms direction
 
 :
 - Implements get_required_order_types() → [OrderType.MARKET]
@@ -8,16 +12,14 @@ Reference implementation of RSI + Envelope consensus strategy
 - Uses DecisionTradingAPI instead of TradeSimulator directly
 - ONE POSITION ONLY: Closes existing position before opening new one
 
-This is the default decision logic provided by the framework.
-It demonstrates the separation between worker coordination and
-decision-making strategy AND trade execution.
-
 Strategy Rules:
 - BUY when RSI oversold (≤30) AND price near lower envelope (≤30%)
+        AND OBV trend is NOT bearish (volume confirmation)
 - SELL when RSI overbought (≥70) AND price near upper envelope (≥70%)
+        AND OBV trend is NOT bullish (volume confirmation)
 - FLAT otherwise (no clear signal)
 
-Trading Rules (NEW):
+Trading Rules:
 - Market orders only (MVP)
 - Check free margin before trading (min 1000 EUR)
 - Fixed lot size 0.1 (TODO: Position sizing logic)
@@ -29,9 +31,10 @@ Position Management:
 - Same direction signal → Skip (already have position)
 - Opposite direction signal → Close old, open new (reversal)
 
-This logic requires two workers:
+This logic requires three workers:
 - RSI: Relative Strength Index indicator
 - Envelope: Price envelope/bollinger bands
+- OBV: On-Balance Volume (volume confirmation)
 """
 
 import traceback
@@ -41,6 +44,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types import TradingContext
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 
 from python.framework.types.order_types import (
@@ -49,15 +53,16 @@ from python.framework.types.order_types import (
     OrderDirection,
     OrderResult
 )
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
 
 
 class SimpleConsensus(AbstractDecisionLogic):
     """
-    Simple consensus strategy using RSI and Envelope indicators.
+    Simple consensus strategy using RSI, Envelope, and OBV indicators.
 
     This is a conservative strategy that requires confirmation from
-    both indicators before generating buy/sell signals.
+    multiple indicators before generating buy/sell signals.
 
     Configuration options:
     - rsi_oversold: RSI threshold for oversold (default: 30)
@@ -67,50 +72,109 @@ class SimpleConsensus(AbstractDecisionLogic):
     - min_confidence: Minimum confidence to generate signal (default: 0.5)
     - min_free_margin: Minimum free margin required for trades (default: 1000)
     - lot_size: Fixed lot size for orders (default: 0.1)
+
+    OBV Configuration (NEW):
+    - obv_filter_enabled: Enable/disable OBV filter (default: True)
+    - obv_block_opposite_trend: Block trades against OBV trend (default: True)
+    - obv_confidence_boost: Confidence bonus when OBV confirms (default: 0.1)
     """
 
     def __init__(
         self,
         name,
         logger: ScenarioLogger,
-        config: Dict[str, Any]
+        config,
+        trading_context: TradingContext = None
     ):
         """
         Initialize Simple Consensus logic.
 
-        No longer accepts trading_env parameter.
-
         Args:
             name: Logic identifier
             config: Configuration dict with thresholds
+            trading_context: Trading environment context (optional)
         """
-        super().__init__(name, logger, config)
+        super().__init__(name, logger, config, trading_context=trading_context)
+        # Store trading context
+        self._trading_context = trading_context
 
-        # Configuration with defaults
-        self.rsi_oversold = self.get_config_value("rsi_oversold", 30)
-        self.rsi_overbought = self.get_config_value("rsi_overbought", 70)
-        self.envelope_lower = self.get_config_value(
-            "envelope_lower_threshold", 0.3)
-        self.envelope_upper = self.get_config_value(
-            "envelope_upper_threshold", 0.7)
-        self.min_confidence = self.get_config_value("min_confidence", 0.5)
+        # All values guaranteed present by schema defaults + Factory validation
+        self.rsi_oversold = self.params.get('rsi_oversold')
+        self.rsi_overbought = self.params.get('rsi_overbought')
+        self.envelope_lower = self.params.get('envelope_lower_threshold')
+        self.envelope_upper = self.params.get('envelope_upper_threshold')
+        self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
-        self.min_free_margin = self.get_config_value("min_free_margin", 1000)
-        self.lot_size = self.get_config_value("lot_size", 0.1)
+        self.min_free_margin = self.params.get('min_free_margin')
+        self.lot_size = self.params.get('lot_size')
+
+        # OBV configuration
+        self.obv_filter_enabled = self.params.get('obv_filter_enabled')
+        self.obv_block_opposite_trend = self.params.get(
+            'obv_block_opposite_trend')
+        self.obv_confidence_boost = self.params.get('obv_confidence_boost')
 
         self.logger.debug(
             f"SimpleConsensus initialized: "
             f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
             f"Envelope({self.envelope_lower}/{self.envelope_upper}), "
+            f"OBV(enabled={self.obv_filter_enabled}, boost={self.obv_confidence_boost}), "
             f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
         )
 
     # ============================================
-    # New abstractmethods
+    # abstractmethods
     # ============================================
 
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """SimpleConsensus decision logic parameters with validation ranges."""
+        return {
+            'rsi_oversold': ParameterDef(
+                param_type=float, default=30, min_val=1, max_val=49,
+                description="RSI oversold threshold (buy signal)"
+            ),
+            'rsi_overbought': ParameterDef(
+                param_type=float, default=70, min_val=51, max_val=99,
+                description="RSI overbought threshold (sell signal)"
+            ),
+            'envelope_lower_threshold': ParameterDef(
+                param_type=float, default=0.3, min_val=0.0, max_val=1.0,
+                description="Envelope position threshold for buy signal"
+            ),
+            'envelope_upper_threshold': ParameterDef(
+                param_type=float, default=0.7, min_val=0.0, max_val=1.0,
+                description="Envelope position threshold for sell signal"
+            ),
+            'min_confidence': ParameterDef(
+                param_type=float, default=0.5, min_val=0.0, max_val=1.0,
+                description="Minimum confidence to generate trading signal"
+            ),
+            'min_free_margin': ParameterDef(
+                param_type=float, default=1000, min_val=0,
+                description="Minimum free margin required before opening trade"
+            ),
+            'lot_size': ParameterDef(
+                param_type=float, default=0.1, min_val=0.01, max_val=100.0,
+                description="Fixed lot size for market orders"
+            ),
+            'obv_filter_enabled': ParameterDef(
+                param_type=bool, default=True,
+                description="Enable OBV volume confirmation filter"
+            ),
+            'obv_block_opposite_trend': ParameterDef(
+                param_type=bool, default=True,
+                description="Block trades when OBV trend opposes signal direction"
+            ),
+            'obv_confidence_boost': ParameterDef(
+                param_type=float, default=0.1, min_val=0.0, max_val=1.0,
+                description="Confidence bonus when OBV confirms trade direction"
+            ),
+        }
+
+    @classmethod
+    def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for this strategy.
 
@@ -172,7 +236,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             if len(open_positions) > 0:
                 position = open_positions[0]
                 self.logger.info(
-                    f"📍 FLAT signal - closing {position.direction} position "
+                    f"🔄 FLAT signal - closing {position.direction} position "
                     f"(ID: {position.position_id})"
                 )
                 return self.trading_api.close_position(position.position_id)
@@ -192,7 +256,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             # Same direction? Skip (we already have what the strategy wants)
             if current_position.direction == new_direction:
                 # self.logger.debug(
-                #     f"⏭️  Already holding {new_direction} position "
+                #     f"⭕  Already holding {new_direction} position "
                 #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
                 # )
                 return None
@@ -258,18 +322,20 @@ class SimpleConsensus(AbstractDecisionLogic):
 
     def get_required_worker_instances(self) -> Dict[str, str]:
         """
-        Define required worker instances for AggressiveTrend strategy.
+        Define required worker instances for SimpleConsensus strategy.
 
         Requires:
-        - rsi_fast: Fast RSI indicator for trend detection
+        - rsi_fast: Fast RSI indicator for overbought/oversold detection
         - envelope_main: Envelope for price position analysis
+        - obv_volume: On-Balance Volume for volume confirmation (NEW)
 
         Returns:
             Dict[instance_name, worker_type]
         """
         return {
             "rsi_fast": "CORE/rsi",
-            "envelope_main": "CORE/envelope"
+            "envelope_main": "CORE/envelope",
+            "obv_volume": "CORE/obv"
         }
 
     def compute(
@@ -278,14 +344,14 @@ class SimpleConsensus(AbstractDecisionLogic):
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
-        Generate trading decision based on consensus between RSI and Envelope.
+        Generate trading decision based on consensus between RSI, Envelope, and OBV.
 
-        This is a conservative strategy - BOTH indicators must agree before
-        generating a buy/sell signal.
+        This is a conservative strategy - RSI and Envelope must agree,
+        and OBV must not oppose the signal direction.
 
         Args:
             tick: Current tick data
-            worker_results: Results from rsi and envelope workers
+            worker_results: Results from rsi, envelope, and obv workers
 
         Returns:
             Decision object with action, confidence, and reason
@@ -293,12 +359,13 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Extract worker results
         rsi_result = worker_results.get("rsi_fast")
         envelope_result = worker_results.get("envelope_main")
+        obv_result = worker_results.get("obv_volume")
 
         if not rsi_result or not envelope_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 confidence=0.0,
-                reason="Missing worker results",
+                reason="Missing worker results (RSI/Envelope)",
                 price=tick.mid,
                 timestamp=tick.timestamp.isoformat(),
             )
@@ -310,19 +377,60 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Envelope provides position (0.0 = lower band, 1.0 = upper band)
         envelope_position = envelope_data.get("position", 0.5)
 
+        # Extract OBV trend (NEW)
+        obv_trend = "neutral"
+        obv_has_volume = False
+        if obv_result and obv_result.metadata:
+            obv_trend = obv_result.metadata.get("trend", "neutral")
+            obv_has_volume = obv_result.metadata.get("has_volume", False)
+
+        self.logger.verbose(
+            f"📊 Indicators: RSI={rsi_value:.1f}, Envelope={envelope_position:.2f}, "
+            f"OBV trend={obv_trend}, has_volume={obv_has_volume}"
+        )
+
         # Check for BUY signal (consensus required)
         if (
             rsi_value <= self.rsi_oversold
             and envelope_position <= self.envelope_lower
         ):
+            # OBV Filter: Block if trend is bearish (volume going against us)
+            obv_blocks = (
+                self.obv_filter_enabled
+                and self.obv_block_opposite_trend
+                and obv_trend == "bearish"
+            )
+
+            if obv_blocks:
+                self.logger.verbose(
+                    f"🚫 BUY blocked by OBV: trend={obv_trend} (bearish opposes buy)"
+                )
+                return Decision(
+                    action=DecisionLogicAction.FLAT,
+                    confidence=0.3,
+                    reason=f"BUY signal blocked by OBV (trend={obv_trend})",
+                    price=tick.mid,
+                    timestamp=tick.timestamp.isoformat(),
+                )
+
             confidence = self._calculate_buy_confidence(
                 rsi_value, envelope_position)
+
+            # OBV Confidence Boost: Add bonus if volume confirms direction
+            obv_boost = 0.0
+            if self.obv_filter_enabled and obv_trend == "bullish":
+                obv_boost = self.obv_confidence_boost
+                confidence = min(1.0, confidence + obv_boost)
+
+            self.logger.verbose(
+                f"✅ BUY signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})"
+            )
 
             if confidence >= self.min_confidence:
                 return Decision(
                     action=DecisionLogicAction.BUY,
                     confidence=confidence,
-                    reason=f"RSI={rsi_value:.1f} (oversold) + Envelope={envelope_position:.2f} (lower)",
+                    reason=f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
                     price=tick.mid,
                     timestamp=tick.timestamp.isoformat(),
                 )
@@ -332,14 +440,43 @@ class SimpleConsensus(AbstractDecisionLogic):
             rsi_value >= self.rsi_overbought
             and envelope_position >= self.envelope_upper
         ):
+            # OBV Filter: Block if trend is bullish (volume going against us)
+            obv_blocks = (
+                self.obv_filter_enabled
+                and self.obv_block_opposite_trend
+                and obv_trend == "bullish"
+            )
+
+            if obv_blocks:
+                self.logger.verbose(
+                    f"🚫 SELL blocked by OBV: trend={obv_trend} (bullish opposes sell)"
+                )
+                return Decision(
+                    action=DecisionLogicAction.FLAT,
+                    confidence=0.3,
+                    reason=f"SELL signal blocked by OBV (trend={obv_trend})",
+                    price=tick.mid,
+                    timestamp=tick.timestamp.isoformat(),
+                )
+
             confidence = self._calculate_sell_confidence(
                 rsi_value, envelope_position)
+
+            # OBV Confidence Boost: Add bonus if volume confirms direction
+            obv_boost = 0.0
+            if self.obv_filter_enabled and obv_trend == "bearish":
+                obv_boost = self.obv_confidence_boost
+                confidence = min(1.0, confidence + obv_boost)
+
+            self.logger.verbose(
+                f"✅ SELL signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})"
+            )
 
             if confidence >= self.min_confidence:
                 return Decision(
                     action=DecisionLogicAction.SELL,
                     confidence=confidence,
-                    reason=f"RSI={rsi_value:.1f} (overbought) + Envelope={envelope_position:.2f} (upper)",
+                    reason=f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
                     price=tick.mid,
                     timestamp=tick.timestamp.isoformat(),
                 )

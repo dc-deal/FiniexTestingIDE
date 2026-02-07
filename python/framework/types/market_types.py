@@ -8,6 +8,8 @@ weekend closure windows, and trading hour configurations.
 from dataclasses import dataclass
 from typing import Tuple
 
+from python.framework.types.market_config_types import MarketType
+
 
 # Validation timezone for UTC offset verification
 VALIDATION_TIMEZONE = 'Europe/Berlin'
@@ -104,3 +106,24 @@ class WeekendClosureWindow:
         duration_match = self.alt_min_duration_hours <= gap_hours <= self.alt_max_duration_hours
 
         return is_saturday and is_monday_morning and duration_match
+
+
+@dataclass
+class TradingContext:
+    """
+    Static metadata about the trading environment.
+
+    Passed to Workers and Decision Logic at creation time.
+    Contains all broker/market information they need to know.
+
+    Philosophy: "Tell, don't ask" - give them the context upfront,
+    instead of letting them query services.
+
+    Attributes:
+        broker_type: Broker identifier (e.g., 'mt5', 'kraken_spot')
+        market_type: Market classification (FOREX, CRYPTO, STOCKS, etc.)
+        symbol: Trading symbol for this scenario
+    """
+    broker_type: str  # BrokerType as string for serialization
+    market_type: MarketType
+    symbol: str

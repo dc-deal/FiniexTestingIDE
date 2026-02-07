@@ -12,51 +12,14 @@ from python.framework.workers.abstract_worker import \
 class RSIWorker(AbstactWorker):
     """RSI computation worker - Bar-based computation"""
 
-    def __init__(self, name: str, parameters: Dict, logger: ScenarioLogger, **kwargs):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Initialize RSI worker.
-
-        NEW CONFIG STRUCTURE:
-        {
-            "periods": {"M5": 14, "M30": 14},  # REQUIRED for INDICATOR
-        }
-
-        Parameters can be provided via:
-        - parameters dict (factory-style)
-        - kwargs (legacy constructor-style)
         """
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
-
-        params = parameters or {}
-
-        # Extract 'periods' namespace (REQUIRED for INDICATOR)
-        self.periods = params.get('periods', kwargs.get('periods', {}))
-
-        if not self.periods:
-            raise ValueError(
-                f"RSIWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 14}})"
-            )
-
-    @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """
-        RSI requires 'periods' (validated by AbstactWorker).
-
-        Returns empty because validation happens in parent class.
-        """
-        return {}
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """RSI currently has no optional parameters"""
-        return {}
-        # Post-MVP could have:
-        # return {
-        #     'smoothing': 'exponential',
-        #     'overbought': 70,
-        #     'oversold': 30
-        # }
+        super().__init__(
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
+        )
 
     @classmethod
     def get_worker_type(cls) -> WorkerType:

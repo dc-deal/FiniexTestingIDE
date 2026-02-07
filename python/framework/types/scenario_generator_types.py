@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
+from python.framework.types.market_config_types import MarketType
+
 
 # =============================================================================
 # ENUMS
@@ -75,6 +77,9 @@ class PeriodAnalysis:
     tick_count: int
     tick_density: float  # ticks per hour
 
+    # Unified activity metric (tick_count for forex, volume for crypto)
+    activity: float
+
     # Bar statistics
     bar_count: int
     real_bar_count: int
@@ -105,6 +110,9 @@ class SessionSummary:
     min_tick_density: float
     max_tick_density: float
 
+    # Unified activity metric (sum of activity for all periods)
+    total_activity: float
+
     # Regime distribution
     regime_distribution: Dict[VolatilityRegime, int]
 
@@ -116,7 +124,7 @@ class SymbolAnalysis:
     """
     symbol: str
     timeframe: str
-    market_type: str
+    market_type: MarketType
     data_source: str
 
     # Time range
@@ -137,6 +145,9 @@ class SymbolAnalysis:
 
     # Cross-instrument comparison (ATR as percentage of price)
     atr_percent: float
+
+    # Unified activity metric (tick_count for forex, volume for crypto)
+    total_activity: float
 
     # Average pips per day (None if symbol spec not available)
     avg_pips_per_day: Optional[float]

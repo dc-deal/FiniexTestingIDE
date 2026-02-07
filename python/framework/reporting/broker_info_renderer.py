@@ -5,6 +5,7 @@ Formats static broker configuration data for logs and reports
 
 from typing import Dict, Optional, List
 from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
+from python.framework.types.market_config_types import MarketType
 
 
 class BrokerInfoRenderer:
@@ -79,7 +80,8 @@ class BrokerInfoRenderer:
     def render_summary_table(
         broker_spec: BrokerSpecification = None,
         scenarios: List[str] = None,
-        indent: str = "   "
+        indent: str = "   ",
+        market_type=MarketType,
     ) -> str:
         """
         Render broker info as table for batch summaries.
@@ -96,6 +98,7 @@ class BrokerInfoRenderer:
             return f"{indent}No broker data available"
 
         lines = [
+            f"{indent}Market:  {market_type.value}",
             f"{indent}Company: {broker_spec.company}",
             f"{indent}Server: {broker_spec.server} | Mode: {broker_spec.trade_mode.upper()}",
             f"{indent}Leverage: 1:{broker_spec.leverage} | Margin: {broker_spec.margin_mode.value}",

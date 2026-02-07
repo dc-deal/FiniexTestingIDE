@@ -4,6 +4,7 @@ Displays broker configuration in batch summary reports
 """
 
 from typing import Dict, List, Set
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -62,12 +63,22 @@ class BrokerSummary:
             renderer.red("⚠️  No broker configuration available")
             return
 
+        market_config = MarketConfigManager()
+        i = 0
         for broker_key, broker_spec in self._broker_spec.items():
+            market_type = market_config.get_market_type(broker_key.value)
+            # Separator between broker blocks
+            if i > 0:
+                print(
+                    "   ───────────────────────────────────────────────────────────────────────────")
+                print("")
+
             # Render broker details
             broker_info = BrokerInfoRenderer.render_summary_table(
                 broker_spec=broker_spec,
                 scenarios=self._broker_scenario_list[broker_key],
-                indent="   "
+                indent="   ",
+                market_type=market_type,
             )
             print(broker_info)
 
@@ -81,3 +92,4 @@ class BrokerSummary:
                 indent="   "
             )
             print(symbols_table)
+            i += 1

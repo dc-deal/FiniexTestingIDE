@@ -33,7 +33,6 @@ class SingleScenario:
     # ============================================
     # Determines which tick/bar data collection to load from
     # Examples: "mt5", "kraken_spot"
-    # Maps to: data/processed/{data_broker_type}/ticks/{symbol}/
     # This is SEPARATE from broker_type (trading simulation config)
     data_broker_type: str  # REQUIRED - no default!
 
@@ -80,6 +79,9 @@ class SingleScenario:
                 # Performance Tuning
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
                 "log_performance_stats": True,  # Log timing statistics
+                # Parameter Validation
+                # True = abort on boundary violations, False = warn only
+                "strict_parameter_validation": True,
             }
 
     def to_config_string_for_display(self) -> str:

@@ -89,7 +89,7 @@ Now that the DecisionLogic has declared its requirements, the configuration file
     },
     "envelope_main": {
       "period": 20,
-      "deviation": 0.02
+      "deviation": 2.0
     }
   }
 }
@@ -119,23 +119,38 @@ from python.framework.types.global_types import WorkerContract, WorkerType
 
 class MyIndicatorWorker(AbstractBlackboxWorker):
     
-    def __init__(self, name: str, parameters: Dict = None):
-        super().__init__(name, parameters)
-        params = parameters or {}
-        self.my_param = params.get('my_param')
-    
-    def get_contract(self) -> WorkerContract:
-        return WorkerContract(
-            worker_type=WorkerType.COMPUTE,
-            required_parameters={
-                'my_param': int,  # Must be provided
-            },
-            optional_parameters={
-                # Defaults here
-            },
-            # ... other contract fields
+    def __init__(
+        self, 
+        name: str, 
+        parameters: Dict = None,
+        logger: ScenarioLogger = None,
+        trading_context: TradingContext = None, 
+    ):
+        super().__init__(
+            name=name, 
+            parameters=parameters, 
+            logger=logger,
+            trading_context=trading_context,
         )
+        
+        # trading_context available via self._trading_context (set by Abstract)
+        # Access validated parameters via self.params
+        self.my_param = self.params.get('my_param')
     
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """Declare parameters with type safety and validation ranges."""
+        from python.framework.types.parameter_types import ParameterDef, REQUIRED
+        return {
+            'my_param': ParameterDef(
+                param_type=int,
+                default=REQUIRED,
+                min_val=1,
+                max_val=200,
+                description="My custom parameter"
+            ),
+        }
+
     def should_recompute(self, tick, bar_updated):
         return bar_updated
     
@@ -149,7 +164,7 @@ class MyIndicatorWorker(AbstractBlackboxWorker):
 - Class name convention: `MyIndicatorWorker` for `my_indicator` (camelCase class name, snake_case type name)
 - The worker becomes available immediately - no manual registration needed
 
-The contract system is key here: by declaring `required_parameters` and `optional_parameters`, you tell the factory what configuration your worker needs. The factory validates this before instantiation, so you never receive a worker instance with missing required parameters.
+The parameter schema system is key here: by declaring `get_parameter_schema()` with `ParameterDef` entries, you tell the factory what configuration your worker needs — including types, ranges, and defaults. The factory validates this statically in Phase 3 and again at instantiation in Phase 6, so configuration errors are caught before any data is loaded or any tick is processed.
 
 Once your worker is created, you can use it in any DecisionLogic by referencing it as `USER/my_indicator` in the `get_required_worker_instances()` method.
 
@@ -200,12 +215,26 @@ This happens when you reference a worker type that doesn't exist. Either you hav
 ### ❌ Missing Required Parameters
 ```json
 {
-  "worker_instances": {"rsi": "CORE/rsi"},
+  "worker_instances": {"macd_main": "CORE/macd"},
   "workers": {
-    "rsi": {}  // ❌ Missing "period" and "timeframe"
+    "macd_main": {}
   }
 }
 ```
-**Fix**: Check worker's `required_parameters` in contract and provide them.
+**Fix**: Check worker's `get_parameter_schema()` for `REQUIRED` parameters and provide them.
 
-Each worker declares which parameters are required in its `get_contract()` method. If you don't provide all required parameters, the factory will reject the configuration. This validation happens before the worker is instantiated, so you get immediate feedback. Check the worker's source code or contract to see exactly which parameters are required and their expected types.
+Each worker declares its parameters via `get_parameter_schema()`. Parameters with `default=REQUIRED` must be provided in config. The factory validates this in Phase 3 (static) and Phase 6 (instantiation). Example: MACDWorker requires `fast_period`, `slow_period`, and `signal_period`.
+
+
+### ❌ Parameter Out of Range
+```json
+{
+  "workers": {
+    "envelope_main": {
+      "periods": { "M5": 20 },
+      "deviation": 2.0
+    }
+  }
+}
+```
+**Fix**: `deviation=2.0` is below minimum `0.5`. Likely meant `2.0`. Check `get_parameter_schema()` for valid ranges. With `strict_parameter_validation: true` (default), this aborts. Set to `false` in `execution_config` for warning-only mode.

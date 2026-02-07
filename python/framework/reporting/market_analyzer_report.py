@@ -20,6 +20,7 @@ from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.types.market_config_types import MarketType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
@@ -58,17 +59,16 @@ class MarketAnalyzer:
         Args:
             data_dir: Path to processed data directory
         """
-        self._data_dir = Path(data_dir)
         analysis_config = AnalysisConfigLoader()
         self._config = analysis_config.get_generator_config()
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
-        self._bar_index = BarsIndexManager(self._data_dir)
+        self._bar_index = BarsIndexManager()
         self._bar_index.build_index()
 
         # Initialize tick index for coverage reports
-        self._tick_index = TickIndexManager(self._data_dir)
+        self._tick_index = TickIndexManager()
         self._tick_index.build_index()
 
         # Symbol specification cache (lazy loaded per broker_type)
@@ -195,16 +195,16 @@ class MarketAnalyzer:
 
         # Get market_type from MarketConfigManager (Single Source of Truth)
         market_config = MarketConfigManager()
-        market_type_enum = market_config.get_market_type(broker_type)
-        market_type = market_type_enum.value  # Convert to string for SymbolAnalysis
+        market_type = market_config.get_market_type(broker_type)
 
-        vLog.info(f"Analyzing {broker_type}/{symbol} {tf} ({market_type})")
+        vLog.info(
+            f"Analyzing {broker_type}/{symbol} {tf} ({market_type.value})")
 
         # Load and prepare bar data (using refactored helper)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
 
         # Group into analysis periods (filters synthetic-only periods)
-        periods = self._analyze_periods(df, symbol)
+        periods = self._analyze_periods(df, market_type)
 
         if not periods:
             raise ValueError(f"No valid trading periods found for {symbol}")
@@ -236,6 +236,13 @@ class MarketAnalyzer:
         avg_absolute_atr = df['atr'].mean() if 'atr' in df.columns else 0.0
         timeframe_minutes = TimeframeConfig.get_minutes(tf)
         bars_per_day = (24 * 60) / timeframe_minutes
+
+        # Calculate total activity using ActivityVolumeProvider
+        activity_column = self._activity_provider.get_metric_name(
+            market_type)
+        total_activity = float(df[activity_column].sum()
+                               ) if activity_column in df.columns else 0.0
+
         atr_percent = (avg_absolute_atr * math.sqrt(bars_per_day) /
                        last_close) * 100 if last_close > 0 else 0.0
 
@@ -259,6 +266,7 @@ class MarketAnalyzer:
             atr_avg=(atr_min + atr_max) / 2,
             atr_std=np.std(atr_values) if atr_values else 0.0,
             atr_percent=atr_percent,
+            total_activity=total_activity,
             avg_pips_per_day=avg_pips_per_day,
             regime_distribution=regime_dist,
             regime_percentages={
@@ -296,7 +304,10 @@ class MarketAnalyzer:
         vLog.debug(f"Extracting periods for {broker_type}/{symbol} {tf}")
 
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
-        periods = self._analyze_periods(df, symbol)
+        # Get market_type from MarketConfigManager (Single Source of Truth)
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(broker_type)
+        periods = self._analyze_periods(df, market_type)
 
         if not periods:
             raise ValueError(
@@ -459,7 +470,7 @@ class MarketAnalyzer:
     def _analyze_periods(
         self,
         df: pd.DataFrame,
-        symbol: str
+        market_type: MarketType
     ) -> List[PeriodAnalysis]:
         """
         Analyze data grouped by time periods.
@@ -469,11 +480,14 @@ class MarketAnalyzer:
         Args:
             df: Prepared bar dataframe
             symbol: Trading symbol
+            market_type: MarketType enum for activity calculation 
 
         Returns:
             List of PeriodAnalysis objects (only valid trading periods)
         """
         granularity = self._config.analysis.regime_granularity_hours
+
+        activity_column = self._activity_provider.get_metric_name(market_type)
 
         # Group by period (e.g., hourly)
         df['period'] = df['timestamp'].dt.floor(f'{granularity}h')
@@ -491,6 +505,8 @@ class MarketAnalyzer:
             # Filter: skip periods without real data
             real_bars = len(group[group['bar_type'] == 'real'])
             tick_count = int(group['tick_count'].sum())
+            activity = float(group[activity_column].sum(
+            )) if activity_column in group.columns else 0.0
 
             if real_bars == 0 or tick_count == 0:
                 # Skip synthetic-only periods (weekends, gaps)
@@ -502,6 +518,7 @@ class MarketAnalyzer:
                 'group': group,
                 'avg_atr': avg_atr,
                 'tick_count': tick_count,
+                'activity': activity,
                 'real_bars': real_bars
             })
 
@@ -518,6 +535,7 @@ class MarketAnalyzer:
             group = period_data['group']
             avg_atr = period_data['avg_atr']
             tick_count = period_data['tick_count']
+            activity = period_data['activity']
             real_bars = period_data['real_bars']
 
             period_end = period_start + timedelta(hours=granularity)
@@ -557,6 +575,7 @@ class MarketAnalyzer:
                 regime=regime,
                 tick_count=tick_count,
                 tick_density=tick_density,
+                activity=activity,
                 bar_count=bar_count,
                 real_bar_count=real_bars,
                 synthetic_bar_count=synthetic_bars,
@@ -666,6 +685,7 @@ class MarketAnalyzer:
                 min_atr=min(atrs),
                 max_atr=max(atrs),
                 total_ticks=sum(p.tick_count for p in session_periods),
+                total_activity=sum(p.activity for p in session_periods),
                 avg_tick_density=np.mean(densities),
                 min_tick_density=min(densities),
                 max_tick_density=max(densities),

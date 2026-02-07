@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.market_analyzer_report import MarketAnalyzer
+from python.framework.types.market_config_types import MarketType
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
@@ -39,8 +40,7 @@ class ScenarioGenerator:
     def __init__(self):
         """Initialize scenario generator with paths from AppConfigManager."""
         app_config = AppConfigManager()
-        self._data_dir = Path(app_config.get_data_processed_path())
-        self._analyzer = MarketAnalyzer(str(self._data_dir))
+        self._analyzer = MarketAnalyzer()
         self._config = self._analyzer.get_config()
 
         # Template and output paths from centralized config
@@ -49,7 +49,7 @@ class ScenarioGenerator:
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
-        self._blocks_gen = BlocksGenerator(self._data_dir, self._config)
+        self._blocks_gen = BlocksGenerator(self._config)
         self._stress_gen = StressGenerator(self._config, self._analyzer)
 
     # =========================================================================
@@ -96,6 +96,15 @@ class ScenarioGenerator:
 
         # Analyze the symbol (for metadata)
         analysis = self._analyzer.analyze_symbol(broker_type, symbol)
+
+        # Warn: session filter on non-forex markets (no real sessions, time-of-day only)
+        if sessions_filter and analysis.market_type != MarketType.FOREX:
+            vLog.warning(
+                f"⚠️ Session filter {sessions_filter} used with "
+                f"{analysis.market_type.value} market. "
+                f"{analysis.market_type.value.capitalize()} has no defined trading sessions — "
+                f"filter acts as time-of-day separation only."
+            )
 
         # Note: Blocks and Stress generators handle their own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")

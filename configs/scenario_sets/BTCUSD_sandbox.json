@@ -1,14 +1,15 @@
 {
   "version": "1.0",
-  "scenario_set_name": "BTCUSD_blocks_20260128_1952",
-  "created": "2026-01-28T19:52:36.081736+00:00",
+  "scenario_set_name": "BTCUSD_SANDBOX",
+  "created": "2026-01-31T20:56:47.628716+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
-      "decision_logic_type": "CORE/aggressive_trend",
+      "decision_logic_type": "CORE/simple_consensus",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "envelope_main": "CORE/envelope",
+        "obv_volume": "CORE/obv"
       },
       "workers": {
         "rsi_fast": {
@@ -20,13 +21,25 @@
           "periods": {
             "M30": 20
           },
-          "deviation": 0.02
+          "deviation": 2
+        },
+        "obv_volume": {
+          "periods": {
+            "M5": 20
+          }
         }
       },
       "decision_logic_config": {
         "rsi_oversold": 30,
         "rsi_overbought": 70,
-        "min_confidence": 0.6
+        "envelope_lower_threshold": 0.3,
+        "envelope_upper_threshold": 0.7,
+        "min_confidence": 0.5,
+        "lot_size": 0.1,
+        "min_free_margin": 1000,
+        "obv_filter_enabled": true,
+        "obv_block_opposite_trend": true,
+        "obv_confidence_boost": 0.1
       }
     },
     "execution_config": {},
@@ -45,23 +58,23 @@
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-20T19:55:00+00:00",
-      "end_date": "2026-01-21T01:55:00+00:00",
+      "end_date": "2026-01-21T03:55:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
     },
     {
-      "name": "BTCUSD_blocks_02",
+      "name": "BTCUSD_blocks_02_TEST",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",
-      "end_date": "2026-01-25T22:00:00+00:00",
+      "end_date": "2026-01-26T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -71,10 +84,10 @@
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T16:00:00+00:00",
-      "end_date": "2026-01-26T22:00:00+00:00",
-      "max_ticks": true,
+      "end_date": "2026-01-27T00:00:00+00:00",
+      "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -84,10 +97,49 @@
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-27T16:00:00+00:00",
-      "end_date": "2026-01-27T22:00:00+00:00",
+      "end_date": "2026-01-28T00:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "BTCUSD_blocks_05",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-28T16:00:00+00:00",
+      "end_date": "2026-01-29T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": false,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "BTCUSD_blocks_06",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-29T16:00:00+00:00",
+      "end_date": "2026-01-30T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": false,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "BTCUSD_blocks_07",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-30T16:00:00+00:00",
+      "end_date": "2026-01-31T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

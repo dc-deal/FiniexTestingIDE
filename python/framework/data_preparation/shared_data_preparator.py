@@ -50,27 +50,21 @@ class SharedDataPreparator:
     - Prevents pandas datetime comparison errors
     """
 
-    def __init__(self, logger: ScenarioLogger, data_dir: str = "data/processed"):
+    def __init__(self, logger: ScenarioLogger):
         """
         Initialize data preparator with index managers.
-
-        Args:
-            data_dir: Root data directory containing parquet files and indices
         """
-        self.data_dir = Path(data_dir)
         self._logger = logger
 
         # Use existing index managers
         self._logger.debug("📚 Initializing index managers...")
 
         # Tick index manager
-        self.tick_index_manager = TickIndexManager(
-            self.data_dir, self._logger)
+        self.tick_index_manager = TickIndexManager(self._logger)
         self.tick_index_manager.build_index()  # Auto-loads or rebuilds
 
         # Bar index manager
-        self.bar_index_manager = BarsIndexManager(
-            self.data_dir, self._logger)
+        self.bar_index_manager = BarsIndexManager(self._logger)
         self.bar_index_manager.build_index()  # Auto-loads or rebuilds
 
         self._logger.info(

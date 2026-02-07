@@ -7,6 +7,8 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
@@ -41,21 +43,52 @@ def process_startup_preparation(
 
     scenario_logger.info(f"🚀 Starting scenario: {config.name}")
 
-    # === CREATE WORKERS ===
+    # === PHASE 1: Get Decision Logic Requirements (NO INSTANCE) ===
+    decision_logic_factory = DecisionLogicFactory(logger=scenario_logger)
+    decision_logic_class = decision_logic_factory._resolve_logic_class(
+        config.decision_logic_type
+    )
+    required_order_types = decision_logic_class.get_required_order_types(
+        config.decision_logic_config
+    )
+    scenario_logger.debug(
+        f"📋 Decision logic requires: {[t.value for t in required_order_types]}"
+    )
+
+    # === PHASE 2: Create Trade Simulator (with requirements) ===
+    trade_simulator = prepare_trade_simulator_for_scenario(
+        config=config,
+        logger=scenario_logger,
+        required_order_types=required_order_types,
+        shared_data=shared_data
+    )
+
+    # === PHASE 3: Create Trading Context ===
+    trading_context = TradingContext(
+        broker_type=config.broker_type,
+        market_type=config.market_type,
+        symbol=config.symbol
+    )
+    scenario_logger.debug(
+        f"🌍 Trading context for decision & worker: {trading_context.market_type.value} market"
+    )
+
+    # === PHASE 4: Create Workers (with context) ===
     worker_factory = WorkerFactory(logger=scenario_logger)
     workers_dict = worker_factory.create_workers_from_config(
-        strategy_config=config.strategy_config
+        strategy_config=config.strategy_config,
+        trading_context=trading_context
     )
     workers = list(workers_dict.values())
 
     scenario_logger.debug(f"✅ Created {len(workers)} workers")
 
-    # === CREATE DECISION LOGIC ===
-    decision_logic_factory = DecisionLogicFactory(logger=scenario_logger)
+    # === PHASE 5: Create Decision Logic (with context) ===
     decision_logic = decision_logic_factory.create_logic(
         logic_type=config.decision_logic_type,
         logic_config=config.decision_logic_config,
-        logger=scenario_logger
+        logger=scenario_logger,
+        trading_context=trading_context
     )
 
     scenario_logger.debug(
@@ -74,15 +107,14 @@ def process_startup_preparation(
     scenario_logger.debug(
         f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
     )
-    # === CREATE TRADE SIMULATOR ===
-    # 1. Create isolated TradeSimulator for THIS scenario
-    # + set Trading capabilities on decision logic.
-    trade_simulator = prepare_trade_simulator_for_scenario(
-        config=config,
-        logger=scenario_logger,
-        decision_logic=decision_logic,
-        shared_data=shared_data
+
+    # === PHASE 6: Inject DecisionTradingAPI (validated against required_order_types) ===
+    trading_api = DecisionTradingAPI(
+        trade_simulator=trade_simulator,
+        required_order_types=required_order_types
     )
+    decision_logic.set_trading_api(trading_api)
+    scenario_logger.debug("✅ DecisionTradingAPI injected into Decision Logic")
 
     scenario_logger.debug(
         f"✅ Created trade simulator: "

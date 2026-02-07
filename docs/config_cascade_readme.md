@@ -96,7 +96,7 @@ This system enables:
         },
         "envelope_main": {
           "period": 20,
-          "deviation": 0.02,
+          "deviation": 2.0,
           "timeframe": "M5"
         }
       },
@@ -249,7 +249,7 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
   },
   "envelope_main": {
     "period": 20,
-    "deviation": 0.02
+    "deviation": 2.0
   }
 }
 ```
@@ -272,7 +272,7 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
   },
   "envelope_main": {
     "period": 20,       // ← FROM GLOBAL (unchanged)
-    "deviation": 0.02   // ← FROM GLOBAL (unchanged)
+    "deviation": 2.0     // ← FROM GLOBAL (unchanged)
   }
 }
 ```
@@ -531,7 +531,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
         },
         "envelope_main": {
           "period": 20,
-          "deviation": 0.02
+          "deviation": 2.0 
         }
       }
     }
@@ -604,7 +604,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
         },
         "envelope_main": {
           "period": 20,
-          "deviation": 0.02
+          "deviation": 2.0 
         }
       }
     }
@@ -833,8 +833,8 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 "worker_instances": {
   "rsi_fast": "CORE/rsi",      // Period 5, M1
   "rsi_slow": "CORE/rsi",      // Period 21, M5
-  "envelope_tight": "CORE/envelope",  // deviation 0.01
-  "envelope_wide": "CORE/envelope"    // deviation 0.05
+  "envelope_tight": "CORE/envelope",  // deviation 1.0
+  "envelope_wide": "CORE/envelope"    // deviation 3.5
 }
 
 // ❌ BAD - Generic names

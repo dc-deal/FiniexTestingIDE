@@ -53,7 +53,7 @@
             "tick_number": 13000,
             "direction": "LONG",
             "hold_ticks": 4000,
-            "lot_size": 0.02
+            "lot_size": 2.0
           }
         ],
         "lot_size": 0.1

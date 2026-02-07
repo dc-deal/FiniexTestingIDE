@@ -88,7 +88,7 @@ else:
 ### Startup Preparation Steps
 
 **Function:** `process_startup_preparation(config, shared_data, logger)`  
-**Located:** `python/framework/process/process_startup_prepreation.py`
+**Located:** `python/framework/process/process_startup_preparation.py`
 
 **Process:**
 
@@ -634,7 +634,7 @@ for result in results:
   "max_ticks": 20000,
   "workers": {
     "rsi_fast": {"period": 14, "timeframe": "M5"},
-    "envelope_main": {"period": 20, "deviation": 0.02, "timeframe": "M30"}
+    "envelope_main": {"period": 20, "deviation": 2.0, "timeframe": "M30"}
   }
 }
 ```

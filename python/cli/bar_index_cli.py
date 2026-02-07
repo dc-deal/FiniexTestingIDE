@@ -22,6 +22,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReportGenerator
 
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.coverage_report_cache import CoverageReportCache
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.data_management.importers.bar_importer import BarImporter
 
@@ -35,20 +36,20 @@ class BarIndexCLI:
 
     def __init__(self):
         """Initialize CLI with paths from AppConfigManager."""
-        app_config = AppConfigManager()
-        self.data_dir = Path(app_config.get_data_processed_path())
-        self.index_manager = BarsIndexManager(self.data_dir)
+        self.index_manager = BarsIndexManager()
 
     def cmd_rebuild(self):
         """Rebuild bar index from scratch"""
         print("\n" + "="*80)
         print("🔄 Rebuilding Bar Index")
-        print("="*80)
-        print(f"Data directory: {self.data_dir}")
         print("="*80 + "\n")
 
         self.index_manager.build_index(force_rebuild=True)
         self.index_manager.print_summary()
+
+        # Coverage Cache rebuilden
+        print("\n🔄 Rebuilding coverage cache index...")
+        CoverageReportCache().build_all(force_rebuild=True)
 
         print("\n✅ Bar index rebuild complete\n")
 
@@ -205,7 +206,7 @@ class BarIndexCLI:
         print("="*80 + "\n")
 
         try:
-            bar_importer = BarImporter(str(self.data_dir))
+            bar_importer = BarImporter()
             bar_importer.render_bars_for_all_symbols(
                 broker_type=broker_type,
                 clean_mode=clean
@@ -214,6 +215,10 @@ class BarIndexCLI:
             # Rebuild index after rendering
             print("\n🔄 Rebuilding bar index...")
             self.index_manager.build_index(force_rebuild=True)
+
+            # Coverage Cache rebuilden
+            print("\n🔄 Rebuilding coverage cache index...")
+            CoverageReportCache().build_all(force_rebuild=True)
 
             print("\n✅ Bar rendering completed!")
             print("="*80 + "\n")
@@ -231,9 +236,6 @@ Commands:
     rebuild                         Rebuild bar index from parquet files
     status                          Show bar index status and overview
     report                          Generate detailed report (saved to framework/reports)
-    render BROKER_TYPE [--clean]    Render bars from tick data for specific broker_type
-                                    BROKER_TYPE is REQUIRED (e.g., mt5, kraken_spot)
-                                    --clean: Delete all existing bars before rendering
     help                            Show this help
 
 Examples:

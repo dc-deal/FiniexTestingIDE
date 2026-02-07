@@ -3,8 +3,6 @@ FiniexTestingIDE - Decision Logic Factory ()
 Config-driven decision logic instantiation with namespace support
 
 :
-- create_logic() no longer accepts trading_env parameter
-- create_logic_from_strategy_config() no longer accepts trading_env
 - DecisionTradingAPI is injected later via set_trading_api()
 
 The DecisionLogic Factory mirrors the Worker Factory pattern.
@@ -33,6 +31,9 @@ from python.framework.decision_logic.core.backtesting.backtesting_deterministic 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.validators.parameter_validator import apply_defaults
 
 
 class DecisionLogicFactory:
@@ -49,14 +50,20 @@ class DecisionLogicFactory:
     4. Validation and error handling
     """
 
-    def __init__(self, logger: AbstractLogger):
+    def __init__(
+        self,
+        logger: AbstractLogger,
+        strict_parameter_validation: bool = True
+    ):
         """
         Initialize decision logic factory with empty registry.
 
-        The registry is populated lazily when decision logics are requested.
-        This avoids import overhead for unused strategies.
+        Args:
+            logger: Logger instance
+            strict_parameter_validation: True = raise on boundary violations, False = warn only
         """
         self.logger = logger
+        self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstractDecisionLogic]] = {}
         self._load_core_logics()
 
@@ -121,7 +128,8 @@ class DecisionLogicFactory:
         self,
         logic_type: str,
         logger: ScenarioLogger,
-        logic_config: Dict[str, Any] = None
+        logic_config: Dict[str, Any] = None,
+        trading_context: TradingContext = None
     ) -> AbstractDecisionLogic:
         """
         Create a decision logic instance from configuration.
@@ -149,15 +157,30 @@ class DecisionLogicFactory:
         # Step 1: Resolve logic class
         logic_class = self._resolve_logic_class(logic_type)
 
-        # Step 2: Extract simple name for instance
+        # Step 2: Validate parameters against schema
+        warnings = logic_class.validate_parameter_schema(
+            logic_config, strict=self._strict_validation
+        )
+        for warning in warnings:
+            self.logger.warning(f"⚠️ {warning}")
+
+        # Step 3: Apply schema defaults to config
+        logic_config = apply_defaults(
+            logic_config, logic_class.get_parameter_schema()
+        )
+
+        # Step 4: Extract simple name for instance
         logic_name = self._extract_logic_name(logic_type)
 
-        # Step 3: Instantiate logic with config only
-        # No trading_env parameter
+        # Step 4.5: Wrap validated+defaulted config into ValidatedParameters
+        validated_config = ValidatedParameters(logic_config)
+
+        # Step 5: Instantiate logic with validated parameters
         logic_instance = logic_class(
             name=logic_name,
             logger=logger,
-            config=logic_config
+            config=validated_config,
+            trading_context=trading_context
         )
 
         logger.debug(
@@ -165,57 +188,6 @@ class DecisionLogicFactory:
         )
 
         return logic_instance
-
-    def create_logic_from_strategy_config(
-        self,
-        logger: ScenarioLogger,
-        strategy_config: Dict[str, Any]
-    ) -> AbstractDecisionLogic:
-        """
-        Create decision logic from complete strategy configuration.
-
-        No longer accepts trading_env parameter.
-        DecisionTradingAPI is injected later via set_trading_api().
-
-        This is the batch creation method used by orchestrator.
-        It extracts the decision logic type and config from strategy_config.
-
-        Expected config structure:
-        {
-            "decision_logic_type": "CORE/simple_consensus",
-            "decision_logic_config": {
-                "rsi_oversold": 30,
-                "min_confidence": 0.6
-            }
-        }
-
-        Args:
-            strategy_config: Strategy configuration dict
-
-        Returns:
-            Instantiated decision logic
-
-        Raises:
-            ValueError: If decision_logic_type not specified or invalid
-        """
-        # Extract decision logic type
-        logic_type = strategy_config.get("decision_logic_type")
-
-        if not logic_type:
-            raise ValueError(
-                "No decision_logic_type specified in strategy_config. "
-                "Example: 'decision_logic_type': 'CORE/simple_consensus'"
-            )
-
-        # Extract decision logic config (optional)
-        logic_config = strategy_config.get("decision_logic_config", {})
-
-        # Create decision logic
-        return self.create_logic(
-            logic_type=logic_type,
-            logger=logger,
-            logic_config=logic_config
-        )
 
     def _resolve_logic_class(self, logic_type: str) -> Type[AbstractDecisionLogic]:
         """

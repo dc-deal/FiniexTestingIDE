@@ -9,6 +9,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.parameter_types import REQUIRED, ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstactWorker
 
@@ -23,55 +24,27 @@ class MACDWorker(AbstactWorker):
     - Histogram: MACD - Signal
     """
 
-    def __init__(self, name: str, parameters: Dict, logger: ScenarioLogger, **kwargs):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Initialize MACD worker.
-
-        NEW CONFIG STRUCTURE:
-        {
-            "periods": {"M5": 35},     # REQUIRED - warmup bars (auto-calculated)
-            "fast_period": 12,         # Required - fast EMA period
-            "slow_period": 26,         # Required - slow EMA period
-            "signal_period": 9         # Required - signal line period
-        }
-
-        Warmup calculation: max(fast, slow) + signal
-        Example: max(12, 26) + 9 = 35 bars needed
-
-        Parameters can be provided via:
-        - parameters dict (factory-style)
-        - kwargs (legacy constructor-style)
         """
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
+        super().__init__(
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
+        )
 
         params = parameters or {}
 
-        # Extract 'periods' namespace (REQUIRED for INDICATOR)
-        self.periods = params.get('periods', kwargs.get('periods', {}))
+        # Algorithm parameters (all REQUIRED in schema → guaranteed present)
+        self.fast_period = self.params.get('fast_period')
+        self.slow_period = self.params.get('slow_period')
+        self.signal_period = self.params.get('signal_period')
 
-        if not self.periods:
-            raise ValueError(
-                f"MACDWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 35}})"
-            )
-
-        # Extract MACD-specific parameters (required)
-        self.fast_period = params.get('fast_period', kwargs.get('fast_period'))
-        self.slow_period = params.get('slow_period', kwargs.get('slow_period'))
-        self.signal_period = params.get(
-            'signal_period', kwargs.get('signal_period'))
-
-        # Validate MACD parameters
-        if not all([self.fast_period, self.slow_period, self.signal_period]):
-            raise ValueError(
-                f"MACDWorker '{name}' requires fast_period, slow_period, "
-                f"and signal_period"
-            )
-
+        # Cross-field validation (business logic, stays in Worker)
         if self.fast_period >= self.slow_period:
             raise ValueError(
-                f"MACDWorker '{name}': fast_period ({self.fast_period}) must be "
-                f"< slow_period ({self.slow_period})"
+                f"MACDWorker '{self.name}': fast_period ({self.fast_period}) "
+                f"must be < slow_period ({self.slow_period})"
             )
 
     # ============================================
@@ -79,23 +52,31 @@ class MACDWorker(AbstactWorker):
     # ============================================
 
     @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """
-        MACD requires 'periods' (validated by AbstactWorker).
-        Also requires MACD-specific parameters.
-
-        Returns empty for 'periods' because validation happens in parent class.
-        """
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """MACD algorithm parameters - all three periods required."""
         return {
-            'fast_period': int,   # Fast EMA period (e.g., 12)
-            'slow_period': int,   # Slow EMA period (e.g., 26)
-            'signal_period': int,  # Signal line period (e.g., 9)
+            'fast_period': ParameterDef(
+                param_type=int,
+                default=REQUIRED,
+                min_val=1,
+                max_val=200,
+                description="Fast EMA period (e.g. 12)"
+            ),
+            'slow_period': ParameterDef(
+                param_type=int,
+                default=REQUIRED,
+                min_val=2,
+                max_val=500,
+                description="Slow EMA period (e.g. 26), must be > fast_period"
+            ),
+            'signal_period': ParameterDef(
+                param_type=int,
+                default=REQUIRED,
+                min_val=1,
+                max_val=200,
+                description="Signal line EMA period (e.g. 9)"
+            ),
         }
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """MACD has no optional parameters currently"""
-        return {}
 
     @classmethod
     def get_worker_type(cls) -> WorkerType:

@@ -19,7 +19,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "📥 Bar Import / Render kraken_spot --clean",
+            "name": "📥 Bar Render kraken_spot --clean",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
@@ -124,6 +124,19 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Data Integration (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/data_integration/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: MVP Benchmark (All)",
             "type": "debugpy",
             "request": "launch",
@@ -136,14 +149,27 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧩 Pytest: Worker Tests (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 📚 INDEX MANAGEMENT
         // ====================================================
         {
-            "name": "📚 Tick index: Rebuild",
+            "name": "📚 Tick Index: Rebuild",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
                 "rebuild"
             ],
@@ -151,10 +177,10 @@
             "justMyCode": false
         },
         {
-            "name": "📚 Tick index: Status",
+            "name": "📚 Tick Index: Status",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
                 "status"
             ],
@@ -162,12 +188,27 @@
             "justMyCode": false
         },
         {
-            "name": "📚 Tick index: Validate All Symbols",
+            "name": "📚 Tick Coverage: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
-                "validate"
+                "coverage",
+                "mt5",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📚 Tick Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "coverage",
+                "kraken_spot",
+                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -207,14 +248,59 @@
         },
         // ====================================================
         // ↔️ GAP ANALYSIS & COVERAGE
-        // ====================================================
+        // ==================================================== 
         {
-            "name": "↔️ Gap Report: mt5/EURUSD",
+            "name": "↔️ Coverage: Status",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Build Cache",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "build"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Build Cache --force",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "build",
+                "--force"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Validate All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "↔️ Coverage: Show mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "args": [
+                "show",
                 "mt5",
                 "EURUSD"
             ],
@@ -222,12 +308,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Gap Report: mt5/USDJPY",
+            "name": "↔️ Coverage: Show mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "show",
                 "mt5",
                 "USDJPY"
             ],
@@ -235,12 +321,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Gap Report: kraken_spot/BTCUSD",
+            "name": "↔️ Coverage: Show kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "gaps",
+                "show",
                 "kraken_spot",
                 "BTCUSD"
             ],
@@ -248,14 +334,12 @@
             "justMyCode": false
         },
         {
-            "name": "📶 Coverage: kraken_spot/BTCUSD",
+            "name": "↔️ Coverage: Clear Cache",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
             "args": [
-                "coverage",
-                "kraken_spot",
-                "BTCUSD"
+                "clear"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -277,11 +361,24 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "📶 File Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "coverage",
+                "kraken_spot",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Run (eurusd_3_SANDBOX)",
+            "name": "🔬 Run eurusd_3_SANDBOX - aggressive_trend",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -293,7 +390,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (BTCUSD_SANDBOX)",
+            "name": "🔬 Run BTCUSD_SANDBOX - simple_consensus",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -335,7 +432,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "EURGBP_stress_20251211_0630.json"
+                "USDJPY_stress_20260201_2000.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -403,14 +500,14 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Gen. - 6 Blocks kraken_spot/BTCUSD",
+            "name": "⚡ Scenario Gen. - 8 Blocks kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
                 "kraken_spot",
-                "ETHUSD",
+                "BTCUSD",
                 "--strategy",
                 "blocks",
                 "--block-size",
@@ -424,18 +521,18 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Generator - Generate Stress",
+            "name": "⚡ Scenario Gen. - 6 Blocks Stress - mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
             "args": [
                 "generate",
                 "mt5",
-                "EURGBP",
+                "USDJPY",
                 "--strategy",
                 "stress",
                 "--count",
-                "5"
+                "6"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

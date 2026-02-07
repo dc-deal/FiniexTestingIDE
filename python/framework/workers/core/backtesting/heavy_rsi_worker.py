@@ -10,6 +10,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
     AbstactWorker
@@ -21,52 +22,28 @@ class HeavyRSIWorker(AbstactWorker):
     Simulates complex calculations (e.g., ML models, FFT, etc.)
     """
 
-    def __init__(self, name, parameters: Dict, logger: ScenarioLogger, **kwargs):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Heavy RSI Worker with artificial CPU load.
-
-        NEW CONFIG STRUCTURE:
-        {
-            "periods": {"M5": 14},          # REQUIRED for INDICATOR
-            "artificial_load_ms": 5.0       # Optional
-        }
-
-        Args:
-            name: Worker name
-            parameters: Factory-style parameters dict
-            **kwargs: Legacy constructor support
         """
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
+        super().__init__(
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
+        )
 
-        params = parameters or {}
-
-        # Extract 'periods' namespace (REQUIRED for INDICATOR)
-        self.periods = params.get('periods', kwargs.get('periods', {}))
-
-        if not self.periods:
-            raise ValueError(
-                f"HeavyRSIWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 14}})"
-            )
-
-        # Extract optional parameters
-        self.artificial_load_ms = params.get(
-            'artificial_load_ms') or kwargs.get('artificial_load_ms', 5.0)
+        self.artificial_load_ms = self.params.get('artificial_load_ms')
 
     @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """
-        Heavy RSI requires 'periods' (validated by AbstactWorker).
-
-        Returns empty because validation happens in parent class.
-        """
-        return {}
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """Heavy RSI has artificial_load_ms as optional parameter"""
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """Heavy RSI algorithm parameters with artificial load config."""
         return {
-            'artificial_load_ms': 5.0,
+            'artificial_load_ms': ParameterDef(
+                param_type=float,
+                default=5.0,
+                min_val=0.0,
+                max_val=1000.0,
+                description="Artificial CPU load in milliseconds for parallel testing"
+            ),
         }
 
     @classmethod

@@ -36,6 +36,7 @@ from typing import Any, Dict, List
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstactWorker
 
@@ -60,41 +61,19 @@ class BacktestingSampleWorker(AbstactWorker):
             - check_at_tick: At which tick to capture
     """
 
-    def __init__(
-        self,
-        name: str,
-        parameters: Dict,
-        logger: ScenarioLogger,
-        **kwargs
-    ):
+    def __init__(self, name, parameters, logger, trading_context=None):
         """
         Initialize BacktestingSampleWorker.
-
-        Args:
-            name: Worker instance name
-            parameters: Configuration dict with 'periods' and 'bar_snapshot_checks'
-            logger: ScenarioLogger instance
-            **kwargs: Legacy constructor support
         """
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
+        super().__init__(
+            name=name, parameters=parameters,
+            logger=logger, trading_context=trading_context
+        )
 
         params = parameters or {}
 
-        # Extract 'periods' - defines warmup requirements per timeframe
-        # Same structure as RSI worker for consistency
-        self.periods = params.get('periods', kwargs.get('periods', {}))
-
-        if not self.periods:
-            raise ValueError(
-                f"BacktestingSampleWorker '{name}' requires 'periods' in config "
-                f"(e.g. {{'M5': 14, 'M30': 20}})"
-            )
-
         # Extract snapshot check configurations
-        self.snapshot_checks = params.get(
-            'bar_snapshot_checks',
-            kwargs.get('bar_snapshot_checks', [])
-        )
+        self.snapshot_checks = self.params.get('bar_snapshot_checks')
 
         # Internal state
         self.warmup_validated = False
@@ -113,19 +92,14 @@ class BacktestingSampleWorker(AbstactWorker):
     # ============================================
 
     @classmethod
-    def get_required_parameters(cls) -> Dict[str, type]:
-        """
-        No additional required parameters.
-
-        'periods' validation happens in parent class for INDICATOR type.
-        """
-        return {}
-
-    @classmethod
-    def get_optional_parameters(cls) -> Dict[str, Any]:
-        """Optional parameters with defaults."""
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        """Backtesting sample worker parameters."""
         return {
-            'bar_snapshot_checks': [],  # No snapshots by default
+            'bar_snapshot_checks': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of bar snapshot capture configs (timeframe, bar_index, check_at_tick)"
+            ),
         }
 
     @classmethod

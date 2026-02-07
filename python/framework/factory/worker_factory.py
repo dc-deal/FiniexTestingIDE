@@ -19,12 +19,16 @@ import json
 from typing import Any, Dict, List, Type
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.market_types import TradingContext
+from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstactWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.obv_worker import OBVWorker
 
 
 class WorkerFactory:
@@ -36,14 +40,20 @@ class WorkerFactory:
     the complete lifecycle of worker creation.
     """
 
-    def __init__(self, logger: ScenarioLogger):
+    def __init__(
+        self,
+        logger: ScenarioLogger,
+        strict_parameter_validation: bool = True
+    ):
         """
         Initialize worker factory with empty registry.
 
-        The registry is populated on-demand when workers are requested.
-        This lazy-loading approach avoids import overhead for unused workers.
+        Args:
+            logger: ScenarioLogger instance
+            strict_parameter_validation: True = raise on boundary violations, False = warn only
         """
         self._logger = logger
+        self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstactWorker]] = {}
         self._load_core_workers()
 
@@ -64,6 +74,7 @@ class WorkerFactory:
             self._registry["CORE/envelope"] = EnvelopeWorker
             self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
             self._registry["CORE/macd"] = MACDWorker
+            self._registry["CORE/obv"] = OBVWorker
 
             # Backtesting workers
             self._registry["CORE/backtesting/backtesting_sample_worker"] = BacktestingSampleWorker
@@ -107,7 +118,7 @@ class WorkerFactory:
         instance_name: str,
         worker_type: str,
         worker_config: Dict[str, Any] = None,
-
+        trading_context: TradingContext = None,
     ) -> AbstactWorker:
         """
         Create a worker instance with validation.
@@ -138,28 +149,27 @@ class WorkerFactory:
         # Step 1.5: Validate type-specific config (is also checked in batch before run)
         worker_class.validate_config(worker_config)
 
-        # Step 2: Get parameter requirements via CLASSMETHODS
-        required_params = worker_class.get_required_parameters()
-        optional_params = worker_class.get_optional_parameters()
+        # Step 2: Validate parameters against schema
+        warnings = worker_class.validate_parameter_schema(
+            worker_config, strict=self._strict_validation
+        )
+        for warning in warnings:
+            self._logger.warning(f"⚠️ {warning}")
 
-        # Step 3: Validate required parameters
-        self._validate_required_parameters(
-            worker_type,
-            required_params,
-            worker_config
+        # Step 3: Apply schema defaults to config
+        merged_params = apply_defaults(
+            worker_config, worker_class.get_parameter_schema()
         )
 
-        # Step 4: Merge user config with optional defaults
-        merged_params = self._merge_parameters(
-            optional_params,
-            worker_config
-        )
+        # Step 4: Wrap validated+defaulted config into ValidatedParameters
+        validated_params = ValidatedParameters(merged_params)
 
-        # Step 5: Instantiate worker ONCE with merged parameters
+        # Step 5: Instantiate worker ONCE with validated parameters
         worker_instance = worker_class(
             name=instance_name,
             logger=self._logger,
-            parameters=merged_params,
+            parameters=validated_params,
+            trading_context=trading_context,
         )
 
         self._logger.debug(
@@ -171,7 +181,8 @@ class WorkerFactory:
 
     def create_workers_from_config(
         self,
-        strategy_config: Dict[str, Any]
+        strategy_config: Dict[str, Any],
+        trading_context: TradingContext = None
     ) -> Dict[str, AbstactWorker]:
         """
         Create all workers from strategy configuration.
@@ -205,7 +216,8 @@ class WorkerFactory:
                 worker_instance = self.create_worker(
                     instance_name=instance_name,
                     worker_type=worker_type,
-                    worker_config=worker_config
+                    worker_config=worker_config,
+                    trading_context=trading_context
                 )
 
                 created_workers[instance_name] = worker_instance
@@ -319,94 +331,3 @@ class WorkerFactory:
             raise ValueError(
                 f"Failed to load custom worker {worker_type}: {e}"
             )
-
-    def _validate_required_parameters(
-        self,
-        worker_type: str,
-        required_params: Dict[str, type],
-        provided_params: Dict[str, Any]
-    ):
-        """
-        Validate that all required parameters are provided.
-
-        This is a critical validation step that prevents runtime errors
-        from missing parameters.
-
-        Args:
-            worker_type: Worker type (for error messages)
-            required_params: Dict of required parameter names and types
-            provided_params: User-provided parameters
-
-        Raises:
-            ValueError: If any required parameter is missing or wrong type
-        """
-        missing = []
-        wrong_type = []
-
-        for param_name, param_type in required_params.items():
-            # Check if parameter exists
-            if param_name not in provided_params:
-                missing.append(param_name)
-                continue
-
-            # Check parameter type (optional but helpful)
-            provided_value = provided_params[param_name]
-            if not isinstance(provided_value, param_type):
-                wrong_type.append(
-                    f"{param_name} (expected {param_type.__name__}, "
-                    f"got {type(provided_value).__name__})"
-                )
-
-        # Raise errors if validation failed
-        if missing:
-            raise ValueError(
-                f"Worker '{worker_type}' missing required parameters: "
-                f"{', '.join(missing)}, "
-                f"required: "
-                f"{json.dumps(required_params, indent=4, default=str)}"
-                f"found: "
-                f"{json.dumps(provided_params, indent=4, default=str)}"
-            )
-
-        if wrong_type:
-            raise ValueError(
-                f"Worker '{worker_type}' has wrong parameter types: "
-                f"{', '.join(wrong_type)}"
-            )
-
-    def _merge_parameters(
-        self,
-        optional_defaults: Dict[str, Any],
-        provided_params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Merge user-provided parameters with optional defaults.
-
-        User parameters override defaults. This allows workers to have
-        sensible defaults while still being fully configurable.
-
-        Args:
-            optional_defaults: Default values for optional parameters
-            provided_params: User-provided parameters
-
-        Returns:
-            Merged parameter dict (defaults + overrides)
-        """
-        # Start with defaults
-        merged = optional_defaults.copy()
-
-        # Override with user params
-        merged.update(provided_params)
-
-        return merged
-
-    def get_registered_workers(self) -> List[str]:
-        """
-        Get list of all registered worker types.
-
-        Useful for debugging and documentation.
-
-        Returns:
-            List of worker type strings
-        """
-        return list(self._registry.keys())

@@ -48,6 +48,15 @@ class FeeStatus(Enum):
     DEFERRED = "deferred"    # Fee will be applied later (e.g., swap on close)
 
 
+class BrokerType(Enum):
+    """Supported broker types"""
+    MT5_FOREX = "mt5"
+    MT5_CFD = "mt5_cfd"
+    MT5_CRYPTO = "mt5_crypto"
+    KRAKEN_SPOT = "kraken_spot"
+    BINANCE_FUTURES = "binance_futures"  # Post-MVP
+
+
 @dataclass(frozen=True)
 class SymbolSpecification:
     """
@@ -122,7 +131,8 @@ class BrokerSpecification:
     # Broker Identity
     company: str             # Broker name (e.g., "IC Markets")
     server: str              # Server name (e.g., "ICMarkets-Demo")
-    broker_type: str         # Broker type identifier (e.g., "mt5_forex")
+    # Broker type identifier
+    broker_type: BrokerType
 
     # Account Type
     trade_mode: str          # "demo" or "real"

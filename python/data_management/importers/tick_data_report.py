@@ -255,9 +255,7 @@ def run_summary_report(broker_type: str = None):
 
     try:
         # Initialize index manager with path from AppConfigManager
-        app_config = AppConfigManager()
-        index_manager = TickIndexManager(
-            Path(app_config.get_data_processed_path()))
+        index_manager = TickIndexManager()
         index_manager.build_index()
 
         # Initialize reporter

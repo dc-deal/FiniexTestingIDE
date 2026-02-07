@@ -1,8 +1,5 @@
 # Quickstart Guide: Create Your Trading Bot
 
-> **Version:** 1.0 Alpha  
-> **Time:** ~30 minutes to first backtest
-
 This guide shows you how to create a custom trading bot with FiniexTestingIDE.
 
 ---
@@ -41,11 +38,20 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 class RSIWorker(AbstactWorker):
     """RSI computation from bar close prices"""
     
-    def __init__(self, name: str, parameters: Dict, logger: ScenarioLogger, **kwargs):
-        super().__init__(name=name, parameters=parameters, logger=logger, **kwargs)
-        
-        # Extract periods from config: {"M5": 14}
-        self.periods = parameters.get('periods', {})
+    def __init__(
+        self, 
+        name: str, 
+        parameters: Dict, 
+        logger: ScenarioLogger,
+        trading_context: TradingContext = None,
+    ):
+        super().__init__(
+            name=name, 
+            parameters=parameters, 
+            logger=logger,
+            trading_context=trading_context, 
+        )
+        # periods auto-extracted by AbstractWorker for INDICATOR type
     
     @classmethod
     def get_worker_type(cls) -> WorkerType:
@@ -101,6 +107,93 @@ class RSIWorker(AbstactWorker):
 
 ---
 
+### Parameter Schema
+
+Workers declare their configurable parameters with type, range, and defaults via `get_parameter_schema()`.
+This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2.0`).
+
+```python
+from python.framework.types.parameter_types import ParameterDef, REQUIRED
+
+class EnvelopeWorker(AbstactWorker):
+
+    @classmethod
+    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+        return {
+            'deviation': ParameterDef(
+                param_type=float,
+                default=2.0,
+                min_val=0.5,
+                max_val=5.0,
+                description="Band deviation percentage"
+            ),
+        }
+```
+
+| Field | Purpose |
+|-------|---------|
+| `param_type` | Python type (`float`, `int`, `bool`, `str`) |
+| `default` | Default value. Use `REQUIRED` when parameter must be provided |
+| `min_val` / `max_val` | Numeric bounds (inclusive) |
+| `choices` | Allowed values for enum parameters (future) |
+| `description` | Functional description |
+
+**Validation behavior** is controlled by `strict_parameter_validation` in `execution_config`:
+- `true` (default): Abort on boundary violations
+- `false`: Warning only (experimental mode)
+
+> **Note:** `periods` is validated separately by `validate_config()` (structural validation).
+> `get_parameter_schema()` covers algorithm parameters only (deviation, thresholds, etc.).
+
+---
+
+### Volume vs Tick Count
+
+⚠️ **Critical difference between market types:**
+
+| Market | `bar.volume` | `bar.tick_count` |
+|--------|--------------|------------------|
+| **Crypto** | ✅ Real trade volume (BTC, ETH, etc.) | ✅ Number of trades |
+| **Forex** | ⚠️ Always 0 (CFD has no real volume) | ✅ Number of price changes |
+
+**For volume-based indicators (OBV, VWAP, etc.):**
+- Crypto: Works correctly
+- Forex: Will be constant (volume = 0)
+
+**Example: Market-aware warning in worker:**
+
+```python
+class OBVWorker(AbstactWorker):
+    def __init__(self, name, parameters, logger, trading_context=None):
+        super().__init__(name, parameters, logger, trading_context=trading_context)
+        
+        # Warn if Forex (volume will be 0)
+        if trading_context and trading_context.market_type == MarketType.FOREX:
+```
+
+
+### TradingContext (Optional)
+
+Workers receive an optional `TradingContext` with market metadata:
+
+```python
+from python.framework.types.market_types import TradingContext
+from python.framework.types.market_config_types import MarketType
+
+@dataclass
+class TradingContext:
+    broker_type: str      # e.g., 'mt5', 'kraken_spot'
+    market_type: MarketType  # FOREX or CRYPTO
+    symbol: str           # e.g., 'EURUSD', 'BTCUSD'
+```
+
+**Use cases:**
+- Conditional logic based on market type
+- Volume-aware indicators (see below)
+- Broker-specific behavior
+
+---
+
 ## Step 2: Understand the Decision Logic
 
 Decision Logic receives all worker results and decides: BUY, SELL, or FLAT.
@@ -117,15 +210,17 @@ class AggressiveTrend(AbstractDecisionLogic):
     SELL when RSI > 65 OR price above envelope
     """
     
-    def __init__(self, name: str, logger: ScenarioLogger, config: Dict[str, Any]):
-        super().__init__(name, logger, config)
+    def __init__(self, name: str, logger: ScenarioLogger, config: Dict[str, Any],
+                 trading_context: TradingContext = None):
+        super().__init__(name, logger, config, trading_context=trading_context)
         
-        # Config values with defaults
-        self.rsi_buy = self.get_config_value("rsi_buy_threshold", 35)
-        self.rsi_sell = self.get_config_value("rsi_sell_threshold", 65)
-        self.lot_size = self.get_config_value("lot_size", 0.1)
+        # Config values (defaults defined in get_parameter_schema())
+        self.rsi_buy = self.params.get("rsi_buy_threshold")
+        self.rsi_sell = self.params.get("rsi_sell_threshold")
+        self.lot_size = self.params.get("lot_size")
     
-    def get_required_order_types(self) -> List[OrderType]:
+    @classmethod
+    def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]  # Only market orders for MVP
     
     def get_required_worker_instances(self) -> Dict[str, str]:
@@ -253,7 +348,7 @@ The JSON config connects everything together.
         },
         "envelope_main": {
           "periods": { "M30": 20 },
-          "deviation": 0.02
+          "deviation": 2.0
         }
       },
       "decision_logic_config": {
@@ -369,9 +464,11 @@ Current limitations:
 | Worker | Type | Description |
 |--------|------|-------------|
 | `CORE/rsi` | RSI | Relative Strength Index |
-| `CORE/envelope` | Envelope | Bollinger-style bands |
+| `CORE/envelope` | Envelope | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
-| `CORE/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
+| `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
+| `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
+| `CORE/backtesting/backtesting_sample_worker` | Test-only: Mandatory worker for Decision Logic "backtesting_deterministic" |
 
 ---
 

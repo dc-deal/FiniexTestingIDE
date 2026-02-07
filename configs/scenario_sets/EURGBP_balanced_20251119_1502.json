@@ -20,7 +20,7 @@
           "periods": {
             "M5": 20
           },
-          "deviation": 0.02
+          "deviation": 2.0
         }
       },
       "decision_logic_config": {

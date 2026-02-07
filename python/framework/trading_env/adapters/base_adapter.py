@@ -8,7 +8,7 @@ Ensures consistent order creation API across different broker types.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from python.framework.types.broker_types import BrokerSpecification, FeeType, SymbolSpecification
+from python.framework.types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_data_types import TickData
 from python.framework.types.order_types import (
     OrderCapabilities,
@@ -175,8 +175,8 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_broker_type(self) -> str:
-        """Get broker type identifier (e.g., 'mt5_forex', 'kraken_spot')"""
+    def get_broker_type(self) -> BrokerType:
+        """Get broker type identifier (e.g., 'mt5', 'kraken_spot')"""
         pass
 
     # ============================================
@@ -425,45 +425,6 @@ class BaseAdapter(ABC):
         if leverage <= 1:
             return position_value
         return position_value / leverage
-
-    # ============================================
-    # Required: Symbol Information
-    # ============================================
-
-    @abstractmethod
-    def get_all_aviable_symbols(self) -> List[str]:
-        """
-        Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
-        """
-        pass
-
-    @abstractmethod
-    def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
-        """
-        Get fully typed symbol specification.
-
-        Returns static symbol properties as typed dataclass.
-        Does NOT include dynamic market data (tick_value, bid/ask).
-
-        Args:
-            symbol: Trading symbol (e.g., "GBPUSD")
-
-        Returns:
-            SymbolSpecification with all static properties
-        """
-        pass
-
-    @abstractmethod
-    def get_broker_specification(self) -> BrokerSpecification:
-        """
-        Get fully typed broker specification.
-
-        Returns static broker properties as typed dataclass.
-
-        Returns:
-            BrokerSpecification with all static broker properties
-        """
-        pass
 
     # ============================================
     # Helper: Common Validation Logic
