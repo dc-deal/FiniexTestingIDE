@@ -82,6 +82,50 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 
 ---
 
+## Configuration
+
+FiniexTestingIDE uses a **two-tier configuration system** for flexible customization:
+
+```
+configs/              # Default configurations (version controlled)
+├── app_config.json        # Application settings
+├── market_config.json     # Market & broker mappings
+├── brokers/              # Broker-specific configs
+└── scenario_sets/        # Trading scenario definitions
+
+user_configs/         # Your personal overrides (gitignored)
+├── app_config.json        # Optional: override app settings
+├── market_config.json     # Optional: override market config
+└── analysis_config.json   # Optional: override generator settings
+```
+
+### How It Works
+
+**Default configs** (`configs/`) are tracked in git and provide sensible defaults for all users.
+
+**User overrides** (`user_configs/`) allow you to customize settings without modifying tracked files:
+- ✅ Gitignored - your local settings stay private
+- ✅ Deep merge - override only what you need
+- ✅ Optional - works without any user configs
+
+### Example Override
+
+Want to enable DEBUG logging locally? Create `user_configs/app_config.json`:
+
+```json
+{
+  "console_logging": {
+    "log_level": "DEBUG"
+  }
+}
+```
+
+The system automatically merges this with the base config - all other settings remain unchanged.
+
+→ For multi-level scenario configuration, see [Config Cascade Guide](docs/config_cascade_readme.md).
+
+---
+
 ## Sample Data
 
 A sample dataset is available for testing and learning:

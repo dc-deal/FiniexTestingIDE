@@ -165,10 +165,10 @@ temp/
 tmp/
 .temp/
 
-# Configuration files with sensitive data
-config/local_*
-secrets.json
-api_keys.txt
+# User-specific configuration overrides
+# These files override defaults in configs/ but are not tracked in git
+user_configs/*
+!user_configs/.gitkeep
 
 # Large model files
 *.model

@@ -1,11 +1,18 @@
 import json
+from pathlib import Path
 from threading import Lock
+import traceback
 from typing import Any, Dict, Optional, Tuple
 
 
 class ConfigFileLoader:
+    """
+    Simple loader for program main configuration: app_config.json
+    """
+
     _config: Optional[Dict[str, Any]] = None
     _config_path: Optional[str] = "configs/app_config.json"
+    _user_config_path: Optional[str] = "user_configs/app_config.json"
     _lock = Lock()
 
     @staticmethod
@@ -42,78 +49,92 @@ class ConfigFileLoader:
 
     @staticmethod
     def _load() -> Dict[str, Any]:
-        """Internal load logic — uses your existing load_config."""
+        """
+        Load configuration with user override support.
+
+        Loads base config from configs/app_config.json and optionally
+        merges user overrides from user_configs/app_config.json.
+
+        Returns:
+            Merged configuration dictionary
+        """
         if ConfigFileLoader._config_path is None:
             raise RuntimeError(
                 "ConfigFileLoader not initialized. Call initialize(path).")
 
+        # Load base configuration
         try:
             with open(ConfigFileLoader._config_path, "r") as f:
-                config = json.load(f)
+                base_config = json.load(f)
             print(f"📋 Loaded config: {ConfigFileLoader._config_path}")
-            return config
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"❌ Config file not found: {ConfigFileLoader._config_path}\n"
+                f"   Please ensure configs/app_config.json exists."
+            )
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"❌ Invalid JSON in config file: {ConfigFileLoader._config_path}\n"
+                f"   Error: {e}"
+            )
         except Exception as e:
-            print(f"❌ Failed to load config ({e}), using defaults.")
-            return _get_default_config()
+            raise RuntimeError(
+                f"❌ Failed to load config: {ConfigFileLoader._config_path}\n"
+                f"   Error: {e}"
+            )
 
+        # Try to load user override configuration
+        user_config_path = ConfigFileLoader._user_config_path
+        if user_config_path and Path(user_config_path).exists():
+            try:
+                with open(user_config_path, "r") as f:
+                    user_override = json.load(f)
 
-# ---- Your existing default config ----
-def _get_default_config() -> Dict[str, Any]:
-    return {
-        "version": "1.0",
-        "description": "FiniexTestingIDE - Application Configuration",
-        "development": {"dev_mode": False},
-        "execution": {
-            "default_parallel_scenarios": None,
-            "default_max_parallel_scenarios": 20,
-            "default_parallel_workers": None,
-            "default_worker_parallel_threshold_ms": 1.0,
-        },
-        "console_logging": {
-            "enabled": None,
-            "log_level": "INFO",
-            "warn_on_parameter_override": None,
-            "scenario": {
-                "enabled": None,
-                "log_level": None,
-                "write_system_info": None,
-            },
-        },
-        "file_logging": {
-            "enabled": None,
-            "log_level": "INFO",
-            "log_path": "logs/",
-            "append_mode": None,
-            "scenario": {
-                "enabled": None,
-                "log_level": "DEBUG",
-                "log_root_path": "logs/scenario_sets",
-                "file_name_prefix": "scenario"
-            },
-        },
-        "importer": {"move_processed_files": None, "delete_on_error": False},
-        "paths": {
-            "scenario_sets": "configs/scenario_sets",
-            "brokers": "configs/brokers",
-            "generator_template": "configs/generator/template_scenario_set_header.json",
-            "generator_output": "configs/scenario_sets",
-            "data_raw": "data/raw",
-            "data_processed": "data/processed",
-            "data_finished": "data/finished"
-        },
-        "monitoring": {
-            "enabled": None,
-            "tui_refresh_rate_ms": 300,
-            "detailed_live_stats": None,
-            "detailed_live_stats_threshold": 3,
-            "detailed_live_stats_exports": {
-                "export_portfolio_stats": False,
-                "export_performance_stats": False,
-                "export_current_bars": False,
-            },
-        },
-        "data_validation": {
-            "warmup_quality_mode": "standard",
-            "allowed_gap_categories": ["seamless", "short"]
-        }
-    }
+                # Merge user overrides into base config
+                merged_config = ConfigFileLoader._deep_merge(
+                    base_config, user_override)
+                print(f"✅ Merged user_configs/app_config.json")
+                return merged_config
+
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"Invalid JSON in user config: {user_config_path}\n"
+                    f"Error: {e}\n"
+                    f"Please fix the JSON syntax or remove the file."
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to load user config: {user_config_path}\n"
+                    f"Error: {e}"
+                )
+
+        # No user config - return base config
+        return base_config
+
+    @staticmethod
+    def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Deep merge override dict into base dict.
+
+        Args:
+            base: Base configuration dictionary
+            override: Override configuration dictionary
+
+        Returns:
+            Merged configuration dictionary
+        """
+        result = base.copy()
+
+        for key, value in override.items():
+            if (
+                key in result and
+                isinstance(result[key], dict) and
+                isinstance(value, dict)
+            ):
+                # Recursive merge for nested dicts
+                result[key] = ConfigFileLoader._deep_merge(result[key], value)
+            else:
+                # Direct override for non-dict values
+                result[key] = value
+
+        return result
