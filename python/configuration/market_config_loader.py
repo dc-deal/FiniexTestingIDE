@@ -14,10 +14,12 @@ class MarketConfigFileLoader:
     Singleton loader for market_config.json.
 
     Thread-safe, loads config only once and caches it.
+    Supports user overrides from user_configs/market_config.json.
     """
 
     _config: Optional[Dict[str, Any]] = None
     _config_path: str = "configs/market_config.json"
+    _user_config_path: str = "user_configs/market_config.json"  # ← ADDED
     _lock = Lock()
 
     @staticmethod
@@ -62,13 +64,17 @@ class MarketConfigFileLoader:
     @staticmethod
     def _load() -> Dict[str, Any]:
         """
-        Internal load logic.
+        Load market configuration with user override support.
+
+        Loads base config from configs/market_config.json and optionally
+        merges user overrides from user_configs/market_config.json.
 
         Returns:
-            Loaded config dict
+            Merged configuration dictionary
         """
         config_path = Path(MarketConfigFileLoader._config_path)
 
+        # Load base configuration
         if not config_path.exists():
             raise FileNotFoundError(
                 f"❌ Market config not found: {config_path}\n"
@@ -76,7 +82,63 @@ class MarketConfigFileLoader:
             )
 
         with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
+            base_config = json.load(f)
 
         print(f"📋 Loaded market config: {config_path}")
-        return config
+
+        # Try to load user override configuration
+        user_config_path = Path(MarketConfigFileLoader._user_config_path)
+        if user_config_path.exists():
+            try:
+                with open(user_config_path, "r", encoding="utf-8") as f:
+                    user_override = json.load(f)
+
+                # Merge user overrides into base config
+                merged_config = MarketConfigFileLoader._deep_merge(
+                    base_config, user_override)
+                print(f"✅ Merged user_configs/market_config.json")
+                return merged_config
+
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"Invalid JSON in user market config: {user_config_path}\n"
+                    f"Error: {e}\n"
+                    f"Please fix the JSON syntax or remove the file."
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to load user market config: {user_config_path}\n"
+                    f"Error: {e}"
+                )
+
+        # No user config - return base config
+        return base_config
+
+    @staticmethod
+    def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Deep merge override dict into base dict.
+
+        Args:
+            base: Base configuration dictionary
+            override: Override configuration dictionary
+
+        Returns:
+            Merged configuration dictionary
+        """
+        result = base.copy()
+
+        for key, value in override.items():
+            if (
+                key in result and
+                isinstance(result[key], dict) and
+                isinstance(value, dict)
+            ):
+                # Recursive merge for nested dicts
+                result[key] = MarketConfigFileLoader._deep_merge(
+                    result[key], value)
+            else:
+                # Direct override for non-dict values
+                result[key] = value
+
+        return result

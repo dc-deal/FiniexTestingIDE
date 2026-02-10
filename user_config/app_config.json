@@ -1,0 +1,8 @@
+{
+    "console_logging": {
+        "scenario": {
+            "enabled": false,
+            "log_level": "DEBUG"
+        }
+    }
+}

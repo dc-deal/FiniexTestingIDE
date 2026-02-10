@@ -17,6 +17,16 @@
 
 ---
 
+> **Note:** This document describes the **scenario-level configuration cascade** (app â†' global â†' scenario).
+> 
+> For **application-level configuration overrides** (app_config.json, market_config.json), see the `user_configs/` folder system described in the main [README](../Readme.md#configuration).
+> 
+> These are two separate systems:
+> - **user_configs/** - Override base application settings (gitignored, personal)
+> - **Cascade system** - Scenario configuration inheritance (tracked in git, shared)
+
+---
+
 ## 🎯 Overview
 
 FiniexTestingIDE uses a **three-level configuration hierarchy** to manage parameters:
