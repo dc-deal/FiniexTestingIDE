@@ -275,35 +275,9 @@ Validates data pipeline integrity:
 
 ---
 
-## Vision & Roadmap
+## Roadmap
 
-### Post-MVP (Next)
-- Extended order types (Limit, Stop, FOK, IOC)
-- Partial fills support
-- USER namespace for custom workers
-- Additional standard indicators
-- **Live Trading Integration** - Core adaptation for FiniexAutoTrader connection
-
-### Worker Types (Planned)
-| Type | Purpose | Status |
-|------|---------|--------|
-| **COMPUTE** | Synchronous indicator calculations (RSI, SMA, MACD) | ✅ MVP |
-| **API** | HTTP requests with caching (external data sources) | Planned |
-| **EVENT** | Live connections (WebSocket, AI alerts, news feeds) | Planned |
-
-### Phase 4: UX Layer
-- Web frontend with real-time progress
-- Interactive charts and parameter panels
-- Visual scenario builder
-
-### Phase 5: Intelligence Layer
-- Parameter optimization
-- Market regime detection
-- AI-enhanced suggestions
-
-### Phase 6: Enterprise
-- Cloud-native SaaS platform
-- Multi-tenancy and billing
+For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 
 ---
 
@@ -312,4 +286,3 @@ Validates data pipeline integrity:
 MIT License - see [LICENSE](LICENSE)
 
 **Trademarks:** Finiex™ is property of Frank Krätzig - see [TRADEMARK.md](TRADEMARK.md)
-
