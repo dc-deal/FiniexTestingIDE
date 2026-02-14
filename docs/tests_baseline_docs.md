@@ -4,7 +4,7 @@
 
 The MVP baseline test suite validates the core functionality of the FiniexTestingIDE backtesting framework. All tests run against a single scenario execution using a deterministic decision logic that triggers a predefined trade sequence.
 
-**Test Configuration:** `mvp_backtesting_validation_test.json`
+**Test Configuration:** `backtesting/mvp_backtesting_validation_test.json`
 - Symbol: USDJPY
 - Account Currency: JPY (auto-detected)
 - 3 trades: 2 LONG, 1 SHORT
@@ -13,28 +13,62 @@ The MVP baseline test suite validates the core functionality of the FiniexTestin
 
 **Total Tests:** 44
 
+**Location:** `tests/mvp_baseline/`
+
+---
+
+## Test Structure
+
+### Shared Fixture Architecture
+
+Fixture logic is shared across test suites via `tests/shared/fixture_helpers.py`. Each suite's `conftest.py` is a thin wrapper that specifies its config path and creates pytest fixtures from the shared helpers.
+
+```
+tests/
+├── __init__.py
+├── shared/
+│   ├── __init__.py
+│   └── fixture_helpers.py      ← Plain functions (no pytest decorators)
+├── mvp_baseline/
+│   ├── __init__.py
+│   ├── conftest.py             ← MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
+│   ├── test_bar_snapshots.py
+│   ├── test_latency_determinism.py
+│   ├── test_pnl_calculation.py
+│   ├── test_tick_count.py
+│   ├── test_trade_execution.py
+│   └── test_warmup_validation.py
+└── multi_position/             ← Separate suite, same fixture pattern
+    ├── conftest.py             ← MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
+    └── ...
+```
+
+**Why this pattern?**
+- Adding a new test suite = one `conftest.py` with a different config path
+- Test files are reusable across suites (fixture names are identical)
+- Shared helpers are plain functions — easy to test and debug independently
+
 ---
 
 ## Fixtures (conftest.py)
+
+The MVP baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpers.py`. Each fixture calls the corresponding helper function with the MVP config path.
 
 ### Execution Fixtures
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `scenario_config` | session | Raw JSON config loaded from test configuration file |
-| `batch_execution_summary` | session | Complete batch execution result from running the scenario |
+| `batch_execution_summary` | session | Runs MVP scenario once per session via `run_scenario()` |
 | `process_result` | session | First scenario's ProcessResult from the batch |
 | `tick_loop_results` | session | ProcessTickLoopResult containing all execution data |
+| `scenario_config` | session | Raw JSON config loaded via `load_scenario_config()` |
 
 ### Statistics Fixtures
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, and cost breakdown |
-| `execution_stats` | session | ExecutionStats with order counts and execution rates |
-| `decision_statistics` | session | DecisionLogicStats with signal counts (buy/sell/flat) |
-| `worker_statistics` | session | List of WorkerPerformanceStats per worker |
-| `coordination_statistics` | session | WorkerCoordinatorPerformanceStats from orchestrator |
+| `backtesting_metadata` | session | BacktestingMetadata with snapshots, warmup errors, expected trades |
 
 ### Trade Data Fixtures
 
@@ -43,20 +77,13 @@ The MVP baseline test suite validates the core functionality of the FiniexTestin
 | `trade_history` | session | List of TradeRecord with full audit trail for each trade |
 | `trade_sequence` | session | Expected trade sequence from decision logic config |
 
-### Validation Fixtures
-
-| Fixture | Scope | Description |
-|---------|-------|-------------|
-| `backtesting_metadata` | session | Metadata from BacktestingDeterministic including snapshots and errors |
-| `bar_snapshots` | session | Dictionary of bar snapshots captured during execution |
-| `warmup_errors` | session | List of warmup validation errors (should be empty) |
-
 ### Delay Generator Fixtures
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `delay_generators` | session | Deterministic delay generators initialized with test seeds |
 | `seeds_config` | session | Seed configuration from trade_simulator_config |
+| `api_delay_generator` | function | Fresh API delay generator per test (seed from config) |
+| `exec_delay_generator` | function | Fresh execution delay generator per test (seed from config) |
 
 ---
 
@@ -174,6 +201,23 @@ Validates that warmup data was correctly loaded before tick processing.
 | `test_no_warmup_errors` | No warmup validation errors occurred |
 | `test_warmup_errors_list_exists` | Warmup errors list is accessible (even if empty) |
 | `test_has_warmup_errors_method` | BacktestingMetadata provides has_warmup_errors() method |
+
+---
+
+## Running the Tests
+
+```bash
+# MVP baseline suite only
+pytest tests/mvp_baseline/ -v
+
+# All test suites (baseline + multi-position)
+pytest tests/ -v
+
+# Specific test file
+pytest tests/mvp_baseline/test_pnl_calculation.py -v
+```
+
+**VS Code:** Use launch configuration `🧪 Pytest (mvp_baseline)`.
 
 ---
 

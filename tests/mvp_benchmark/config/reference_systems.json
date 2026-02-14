@@ -11,7 +11,7 @@
             },
             "baseline": {
                 "created": "2026-01-07T07:12:34Z",
-                "scenario": "mvp_backtesting_loadtest_40_scenarios",
+                "scenario": "backtesting/mvp_backtesting_loadtest_40_scenarios",
                 "metrics": {
                     "ticks_per_second": 49133,
                     "tickrun_time_s": 24.9,

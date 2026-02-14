@@ -1,7 +1,7 @@
 {
     "version": "1.0",
     "description": "MVP Benchmark Test Configuration",
-    "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+    "scenario": "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
     "tolerances": {
         "ticks_per_second": {
             "percent": 30.0,

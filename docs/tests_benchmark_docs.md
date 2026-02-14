@@ -121,7 +121,7 @@ Global benchmark settings including tolerances and validity.
 
 ```json
 {
-  "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+  "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
   "tolerances": {
     "ticks_per_second": { "percent": 10.0 },
     "tickrun_time_s": { "percent": 10.0 },
@@ -156,7 +156,7 @@ Registered systems with hardware specs and baseline metrics.
       },
       "baseline": {
         "created": "2026-01-07T07:12:34Z",
-        "scenario": "mvp_backtesting_loadtest_40_scenarios",
+        "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
         "metrics": {
           "ticks_per_second": 49133,
           "tickrun_time_s": 30.5,
@@ -177,7 +177,7 @@ The benchmark scenario `mvp_backtesting_loadtest_40_scenarios.json` defines 40 U
 ```json
 {
   "version": "1.0",
-  "scenario_set_name": "mvp_backtesting_loadtest_40_scenarios",
+  "scenario_set_name":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -224,7 +224,7 @@ Use the launch configuration "🧪 Run (BENCHMARK Scenario)" but run it **withou
     "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
     "args": [
         "run",
-        "mvp_backtesting_loadtest_40_scenarios.json"
+         "backtesting/mvp_backtesting_loadtest_40_scenarios.json"
     ],
     "console": "integratedTerminal",
     "justMyCode": false
@@ -287,7 +287,7 @@ Extract the relevant values and add a new entry:
       },
       "baseline": {
         "created": "2026-01-08T00:00:00Z",
-        "scenario": "mvp_backtesting_loadtest_40_scenarios",
+        "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
         "metrics": {
           "ticks_per_second": 72527,
           "tickrun_time_s": 20.6,
@@ -334,7 +334,7 @@ Reports are saved as JSON with full audit trail in `tests/mvp_benchmark/reports/
     "ram_total_gb": 30.3,
     "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
   },
-  "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+  "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
   "debug_mode_detected": false,
   "overall_status": "PASSED",
   "metrics": [

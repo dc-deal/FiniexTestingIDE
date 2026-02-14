@@ -93,7 +93,19 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "mvp_backtesting_validation_test.json"
+                "backtesting/mvp_backtesting_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Run (MULTI_POSITION Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/multi_position_test.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -148,6 +160,20 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Multi Position (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/multi_position/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
         },
         {
             "name": "🧩 Pytest: Worker Tests (All)",
