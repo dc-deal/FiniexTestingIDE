@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - MVP Baseline Test Fixtures
-Suite-specific fixtures for mvp_backtesting_validation_test.json
+FiniexTestingIDE - Multi-Position Test Fixtures (#114)
+Suite-specific fixtures for backtesting/multi_position_test.json
 
 All extraction logic lives in tests/shared/fixture_helpers.py.
 This conftest only wires the config path and creates pytest fixtures.
@@ -31,17 +31,17 @@ from tests.shared.fixture_helpers import (
 # =============================================================================
 # CONFIG: Which scenario set does this suite run?
 # =============================================================================
-MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
+MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
 
 
 # =============================================================================
-# SCENARIO EXECUTION (Session Scope — runs once per test session)
+# SCENARIO EXECUTION (Session Scope)
 # =============================================================================
 
 @pytest.fixture(scope="session")
 def batch_execution_summary() -> BatchExecutionSummary:
-    """Execute MVP backtesting scenario once per session."""
-    return run_scenario(MVP_CONFIG)
+    """Execute multi-position backtesting scenario once per session."""
+    return run_scenario(MULTI_POSITION_CONFIG)
 
 
 @pytest.fixture(scope="session")
@@ -75,13 +75,13 @@ def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]
 
 
 # =============================================================================
-# CONFIG FIXTURES (raw JSON access for assertions)
+# CONFIG FIXTURES
 # =============================================================================
 
 @pytest.fixture(scope="session")
 def scenario_config() -> Dict[str, Any]:
-    """Load raw MVP scenario config."""
-    return load_scenario_config(MVP_CONFIG)
+    """Load raw multi-position scenario config."""
+    return load_scenario_config(MULTI_POSITION_CONFIG)
 
 
 @pytest.fixture(scope="session")
@@ -97,7 +97,7 @@ def seeds_config(scenario_config: Dict[str, Any]) -> Dict[str, int]:
 
 
 # =============================================================================
-# DELAY GENERATOR FIXTURES (Function Scope — fresh per test)
+# DELAY GENERATOR FIXTURES (Function Scope)
 # =============================================================================
 
 @pytest.fixture(scope="function")

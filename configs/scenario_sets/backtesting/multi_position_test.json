@@ -1,0 +1,84 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "multi_position_test",
+    "created": "2026-02-14T00:00:00.000000",
+    "description": "Multi-Position Validation Testing (#114) - Overlapping positions, hedging, selective close, margin recovery",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/backtesting/backtesting_multi_position",
+            "worker_instances": {
+                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            },
+            "workers": {
+                "backtesting_worker": {
+                    "periods": {
+                        "M5": 14,
+                        "M30": 20
+                    },
+                    "bar_snapshot_checks": []
+                }
+            },
+            "decision_logic_config": {
+                "trade_sequence": [
+                    {
+                        "tick_number": 100,
+                        "direction": "LONG",
+                        "hold_ticks": 8000,
+                        "lot_size": 0.01,
+                        "_comment": "Trade #0: Base LONG, overlaps with #1 and #2"
+                    },
+                    {
+                        "tick_number": 2000,
+                        "direction": "LONG",
+                        "hold_ticks": 5500,
+                        "lot_size": 0.02,
+                        "_comment": "Trade #1: Stacking - same direction while #0 open"
+                    },
+                    {
+                        "tick_number": 3000,
+                        "direction": "SHORT",
+                        "hold_ticks": 4000,
+                        "lot_size": 0.01,
+                        "_comment": "Trade #2: Hedging - opposite direction while #0 and #1 open"
+                    },
+                    {
+                        "tick_number": 12000,
+                        "direction": "LONG",
+                        "hold_ticks": 3000,
+                        "lot_size": 0.01,
+                        "_comment": "Trade #3: Recovery - all previous closed, fresh open"
+                    }
+                ],
+                "lot_size": 0.1
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false,
+            "log_performance_stats": true
+        },
+        "trade_simulator_config": {
+            "initial_balance": 100000,
+            "account_currency": "auto",
+            "seeds": {
+                "api_latency_seed": 12345,
+                "market_execution_seed": 67890
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "USDJPY_multi_position_test",
+            "symbol": "USDJPY",
+            "data_broker_type": "mt5",
+            "start_date": "2025-09-25T16:00:00+00:00",
+            "end_date": "2025-09-26T02:00:00+00:00",
+            "max_ticks": 20500,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

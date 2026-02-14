@@ -9,7 +9,7 @@
     "ram_total_gb": 30.3,
     "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
   },
-  "scenario": "mvp_backtesting_loadtest_40_scenarios.json",
+  "scenario": "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
   "debug_mode_detected": false,
   "overall_status": "PASSED",
   "metrics": [

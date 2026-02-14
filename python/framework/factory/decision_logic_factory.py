@@ -28,6 +28,7 @@ import importlib
 from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
+from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -89,6 +90,7 @@ class DecisionLogicFactory:
 
             # Backtesting decision logics
             self._registry["CORE/backtesting/backtesting_deterministic"] = BacktestingDeterministic
+            self._registry["CORE/backtesting/backtesting_multi_position"] = BacktestingMultiPosition
 
             self.logger.debug(
                 f"Core decision logics registered: {list(self._registry.keys())}"
