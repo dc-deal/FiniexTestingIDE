@@ -1,0 +1,115 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "margin_validation_test",
+    "created": "2026-02-14T00:00:00.000000",
+    "description": "Margin Validation & Stress Testing - Margin exhaustion, recovery, lot validation, edge cases",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
+            "worker_instances": {
+                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            },
+            "workers": {
+                "backtesting_worker": {
+                    "periods": {
+                        "M5": 14,
+                        "M30": 20
+                    },
+                    "bar_snapshot_checks": []
+                }
+            },
+            "decision_logic_config": {
+                "trade_sequence": [
+                    {
+                        "tick_number": 100,
+                        "direction": "LONG",
+                        "lot_size": 1.0,
+                        "hold_ticks": 8000,
+                        "_comment": "Trade #0: First LONG 1.0 lot — consumes ~28,800 JPY margin"
+                    },
+                    {
+                        "tick_number": 200,
+                        "direction": "LONG",
+                        "lot_size": 1.0,
+                        "hold_ticks": 7000,
+                        "_comment": "Trade #1: Second LONG 1.0 lot — total margin ~57,600 JPY, free ~22,400"
+                    },
+                    {
+                        "tick_number": 400,
+                        "direction": "LONG",
+                        "lot_size": 1.0,
+                        "expect_rejection": true,
+                        "_comment": "Trade #2: Third LONG — REJECTED, margin exhausted (needs ~28,800 > ~22,400 free)"
+                    }
+                ],
+                "close_events": [
+                    {
+                        "tick_number": 5000,
+                        "sequence_index": 1,
+                        "_comment": "Close Trade #1 to recover margin — free margin restored to ~50,000+"
+                    }
+                ],
+                "retry_events": [
+                    {
+                        "tick_number": 5200,
+                        "direction": "LONG",
+                        "lot_size": 1.0,
+                        "hold_ticks": 2000,
+                        "_comment": "Retry after recovery — should SUCCEED now"
+                    }
+                ],
+                "edge_case_orders": [
+                    {
+                        "tick_number": 600,
+                        "type": "invalid_lot_below_min",
+                        "direction": "LONG",
+                        "lot_size": 0.001,
+                        "_comment": "Below volume_min (0.01) → INVALID_LOT_SIZE rejection"
+                    },
+                    {
+                        "tick_number": 700,
+                        "type": "invalid_lot_above_max",
+                        "direction": "LONG",
+                        "lot_size": 200.0,
+                        "_comment": "Above volume_max (100) → INVALID_LOT_SIZE rejection"
+                    },
+                    {
+                        "tick_number": 800,
+                        "type": "close_nonexistent",
+                        "position_id": "FAKE_POS_999",
+                        "_comment": "Close non-existent position → BROKER_ERROR rejection"
+                    }
+                ],
+                "lot_size": 1.0
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false,
+            "log_performance_stats": true
+        },
+        "trade_simulator_config": {
+            "initial_balance": 80000,
+            "account_currency": "auto",
+            "seeds": {
+                "api_latency_seed": 42424,
+                "market_execution_seed": 98765
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "USDJPY_margin_validation_test",
+            "symbol": "USDJPY",
+            "data_broker_type": "mt5",
+            "start_date": "2025-09-25T16:00:00+00:00",
+            "end_date": "2025-09-26T02:00:00+00:00",
+            "max_ticks": 10000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

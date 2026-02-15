@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Tick Count Tests
-Validates tick processing counts
+FiniexTestingIDE - Tick Count Tests (Margin Validation Suite)
+Validates tick processing counts.
 
 Tests:
 - Total ticks processed matches config
