@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - P&L Calculation Tests
-Validates profit/loss calculations via internal consistency checks.
+FiniexTestingIDE - P&L Calculation Tests (Margin Validation Suite)
+Validates profit/loss calculations for successfully executed trades.
 
 Tests:
 - Trade record mathematical consistency

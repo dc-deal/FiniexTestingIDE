@@ -240,7 +240,7 @@ Validates data pipeline integrity:
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests_baseline_docs.md), [Benchmark Tests](docs/tests_benchmark_docs.md), [Worker Tests](docs/tests_worker_docs.md), and [Data Integration Tests](docs/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -257,10 +257,10 @@ Validates data pipeline integrity:
 | [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |
 | [Process Execution](docs/process_execution_guide.md) | Subprocess architecture |
 | [Duplicate Detection](docs/duplicate_detection_usage.md) | Data integrity protection |
-| [Baseline Tests](docs/tests_baseline_docs.md) | 44 validation tests |
-| [Benchmark Tests](docs/tests_benchmark_docs.md) | 13 performance tests |
-| [Worker Tests](docs/tests_worker_docs.md) | 202 parameter & computation tests |
-| [Data Integration Tests](docs/tests_data_integration_docs.md) | 9 volume integrity tests |
+| [Baseline Tests](docs/tests/tests_baseline_docs.md) | 44 validation tests |
+| [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
+| [Worker Tests](docs/tests/tests_worker_docs.md) | 202 parameter & computation tests |
+| [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---
 

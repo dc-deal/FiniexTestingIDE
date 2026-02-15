@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Warmup Validation Tests
-Validates warmup bar loading and counting
+FiniexTestingIDE - Warmup Validation Tests (Margin Validation Suite)
+Validates warmup bar loading and counting.
 
 Tests:
 - Warmup errors should be empty
