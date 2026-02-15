@@ -41,7 +41,6 @@ class AggregateScenarioDataRequirements:
         """Initialize empty requirements collector."""
         self._logger = logger
         self.requirements = RequirementsMap()
-        self.worker_factory = WorkerFactory(logger)
         self._scenario_count = 0
 
     def add_scenario(
@@ -96,19 +95,22 @@ class AggregateScenarioDataRequirements:
             # Get config for this worker instance
             worker_config = workers_config.get(instance_name, {})
 
+            strict = True
+            if scenario.execution_config:
+                strict = scenario.execution_config.get(
+                    "strict_parameter_validation", True
+                )
+            worker_factory = WorkerFactory(
+                logger=self._logger, strict_parameter_validation=strict)
+
             # Resolve worker class (from registry)
-            worker_class = self.worker_factory._resolve_worker_class(
+            worker_class = worker_factory._resolve_worker_class(
                 worker_type)
 
             # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)
             worker_class.validate_config(worker_config)
 
             # Validate algorithm parameters against schema (min/max/type)
-            strict = True
-            if scenario.execution_config:
-                strict = scenario.execution_config.get(
-                    "strict_parameter_validation", True
-                )
             warnings = worker_class.validate_parameter_schema(
                 worker_config, strict=strict
             )

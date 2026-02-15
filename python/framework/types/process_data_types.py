@@ -185,6 +185,7 @@ class ProcessScenarioConfig:
     # === EXECUTION SETTINGS ===
     parallel_workers: bool = False
     parallel_threshold: float = 1.0
+    strict_parameter_validation: bool = True
 
     # === LOGGER METADATA ===
     # For ScenarioLogger initialization
@@ -247,6 +248,9 @@ class ProcessScenarioConfig:
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0
         )
+        strict_parameter_validation = exec_config.get(
+            "strict_parameter_validation", True
+        )
 
         # accountt currency is set in scenario_validator after detecting the correct value (see "auto"-mode)
         account_currency = scenario.account_currency
@@ -276,6 +280,7 @@ class ProcessScenarioConfig:
             decision_logic_config=decision_logic_config,
             parallel_workers=parallel_workers,
             parallel_threshold=parallel_threshold,
+            strict_parameter_validation=strict_parameter_validation,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
             live_stats_config=live_stats_config,

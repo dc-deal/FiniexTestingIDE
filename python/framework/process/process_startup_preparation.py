@@ -74,7 +74,8 @@ def process_startup_preparation(
     )
 
     # === PHASE 4: Create Workers (with context) ===
-    worker_factory = WorkerFactory(logger=scenario_logger)
+    worker_factory = WorkerFactory(
+        logger=scenario_logger, strict_parameter_validation=config.strict_parameter_validation)
     workers_dict = worker_factory.create_workers_from_config(
         strategy_config=config.strategy_config,
         trading_context=trading_context

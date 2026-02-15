@@ -20,7 +20,7 @@
           "periods": {
             "M30": 20
           },
-          "deviation": 2.0
+          "deviation": 0.02
         }
       },
       "decision_logic_config": {
@@ -36,6 +36,9 @@
         "api_latency_seed": 42,
         "market_execution_seed": 123
       }
+    },
+    "execution_config": {
+      "strict_parameter_validation": false
     }
   },
   "scenarios": [
