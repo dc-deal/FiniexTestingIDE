@@ -1,27 +1,23 @@
 # ============================================
-# python/framework/trading_env/reproducible_order_latency_simulator.py
+# python/framework/trading_env/order_latency_simulator.py
 # ============================================
 """
-FiniexTestingIDE - Reproducible Order Latency Simulator
-Deterministic order delay simulation with seeded randomness
+FiniexTestingIDE - Simulation Latency Manager
+Deterministic order delay simulation with seeded randomness.
 
-MVP Design:
-- Tick-based delays (Post-MVP: MS-based)
+Extends AbstractPendingOrderManager with tick-based latency modeling:
 - Seeded random delays for reproducibility
-- PENDING → EXECUTED lifecycle
-- Always FILL (no rejections except margin)
+- PENDING → EXECUTED lifecycle based on tick count
 - Support for OPEN and CLOSE orders with same delay system
 
-Post-MVP Extensions:
-- MS-based delays with tick timestamp mapping
-- Partial fills with OrderBook integration
-- FOK/IOC order types
-- Market impact simulation
-
 Architecture:
-The OrderLatencySimulator sits between DecisionTradingAPI and 
-Portfolio, simulating realistic broker execution delays while maintaining 
-deterministic behavior through seeds for testing reproducibility.
+    AbstractPendingOrderManager  (storage, query, has_pending, is_pending_close)
+        │
+        └── OrderLatencySimulator  (this class)
+            - SeededDelayGenerator for deterministic delays
+            - submit_open_order() → store with calculated fill_at_tick
+            - submit_close_order() → store with calculated fill_at_tick
+            - process_tick() → return orders whose delay has elapsed
 
 Design Philosophy:
 Real brokers have two delay stages:
@@ -30,6 +26,11 @@ Real brokers have two delay stages:
 
 We simulate both with seeded random generators to create realistic yet
 reproducible order execution patterns.
+
+Post-MVP Extensions:
+- MS-based delays with tick timestamp mapping
+- Seeded error injection (rejections, timeouts) for stress testing
+- Partial fills with OrderBook integration
 """
 
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ import random
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.order_types import OrderDirection
 
@@ -80,22 +82,22 @@ class SeededDelayGenerator:
 
 
 # ============================================
-# Reproducible Order Latency Simulator
+# Simulation Latency Manager
 # ============================================
 
-class OrderLatencySimulator:
+class OrderLatencySimulator(AbstractPendingOrderManager):
     """
-    Manages order lifecycle with deterministic delays.
+    Manages order lifecycle with deterministic tick-based delays.
 
-    Simulates realistic broker behavior:
-    1. Order submitted → PENDING status
-    2. API latency delay (order reaches broker)
-    3. Market execution delay (broker matches order)
-    4. Order filled → EXECUTED status
+    Extends AbstractPendingOrderManager with simulation-specific logic:
+    - Seeded delay generators for API latency + market execution
+    - Tick-based fill detection (process_tick)
 
-    All delays are seeded for reproducibility across runs.
-    This allows testing strategies with consistent execution
-    conditions while maintaining realistic timing behavior.
+    Inherited from AbstractPendingOrderManager:
+    - Pending order storage (_pending_orders dict)
+    - Query methods (get_pending_orders, get_pending_count)
+    - Convenience checks (has_pending_orders, is_pending_close)
+    - Cleanup (clear_pending)
     """
 
     def __init__(
@@ -116,7 +118,10 @@ class OrderLatencySimulator:
             - api_latency_seed: 42
             - market_execution_seed: 123
         """
-        self.logger = logger
+        super().__init__(logger)
+
+        # Fill counter for stress test hooks
+        self._fill_counter = 0
 
         # Extract seeds with defaults
         DEFAULT_API_LATENCY_SEED = 42
@@ -155,11 +160,9 @@ class OrderLatencySimulator:
             max_delay=5
         )
 
-        # Pending orders waiting to be filled
-        self._pending_orders: Dict[str, PendingOrder] = {}
-
-        # Order counter for unique IDs
-        self._order_counter = 0
+    # ============================================
+    # Simulation-Specific: Submit with Delay
+    # ============================================
 
     def submit_open_order(
         self,
@@ -177,22 +180,23 @@ class OrderLatencySimulator:
         combined API + execution delay.
 
         Args:
+            order_id: Unique order identifier
             symbol: Trading symbol
-            direction: "long" or "short"
+            direction: LONG or SHORT
             lots: Position size
             current_tick: Current tick number
             **kwargs: Additional order parameters (SL, TP, comment)
 
         Returns:
-            order_id: Unique identifier for this order
+            order_id: Same as input (for chaining)
         """
         # Generate delays
         api_delay = self.api_delay_gen.next()
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
 
-        # Store pending order
-        self._pending_orders[order_id] = PendingOrder(
+        # Store pending order (inherited storage)
+        self.store_order(PendingOrder(
             pending_order_id=order_id,
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
@@ -200,11 +204,10 @@ class OrderLatencySimulator:
             symbol=symbol,
             direction=direction,
             lots=lots,
-            entry_price=0,     # ← Store for converter
-            # ← Store for converter
+            entry_price=0,
             entry_time=datetime.now(timezone.utc),
             order_kwargs=kwargs
-        )
+        ))
 
         # Log order reception
         self.logger.info(
@@ -236,21 +239,21 @@ class OrderLatencySimulator:
             close_lots: Lots to close (None = close all)
 
         Returns:
-            order_id: Unique identifier for this close order
+            position_id: Same as input (for chaining)
         """
         # Generate delays (same system as open orders)
         api_delay = self.api_delay_gen.next()
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
 
-        # Store pending close order
-        self._pending_orders[position_id] = PendingOrder(
+        # Store pending close order (inherited storage)
+        self.store_order(PendingOrder(
             pending_order_id=position_id,
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
             order_action=PendingOrderAction.CLOSE,
             close_lots=close_lots
-        )
+        ))
 
         # Log close order reception
         self.logger.info(
@@ -264,6 +267,10 @@ class OrderLatencySimulator:
         )
 
         return position_id
+
+    # ============================================
+    # Simulation-Specific: Tick-Based Fill Detection
+    # ============================================
 
     def process_tick(self, tick_number: int) -> List[PendingOrder]:
         """
@@ -296,58 +303,6 @@ class OrderLatencySimulator:
 
         # Remove filled orders from pending
         for order_id in to_remove:
-            del self._pending_orders[order_id]
+            self.remove_order(order_id)
 
         return to_fill
-
-    def get_pending_count(self) -> int:
-        """
-        Get number of pending orders.
-
-        Useful for debugging and statistics.
-        """
-        return len(self._pending_orders)
-
-    def get_pending_orders(
-        self,
-        filter_pending_action: Optional[PendingOrderAction] = None
-    ) -> List[PendingOrder]:
-        """
-        Get pending orders, optionally filtered by action type.
-
-        Args:
-            filter_pending_action: Optional filter (OPEN or CLOSE)
-                                  None returns all pending orders
-
-        Returns:
-            List of PendingOrder objects matching the filter
-
-        Example:
-            # Get only pending CLOSE orders
-            closes = simulator.get_pending_orders(PendingOrderAction.CLOSE)
-
-            # Get all pending orders
-            all_pending = simulator.get_pending_orders()
-        """
-        if filter_pending_action is None:
-            return list(self._pending_orders.values())
-
-        return [
-            pending for pending in self._pending_orders.values()
-            if pending.order_action == filter_pending_action
-        ]
-
-    def clear_pending(self) -> None:
-        """
-        Clear all pending orders.
-
-        Used when scenario ends to prevent orders from
-        previous scenarios leaking into next scenario.
-        """
-        if self._pending_orders:
-            count = len(self._pending_orders)
-            self.logger.warning(
-                f"⚠️ Clearing {count} pending order(s) at scenario end"
-            )
-
-        self._pending_orders.clear()

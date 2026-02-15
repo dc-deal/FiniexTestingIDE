@@ -405,7 +405,10 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             closed = False
 
             for pos in positions:
-                if pos.position_id == order_id and not pos.pending:
+                if pos.position_id == order_id:
+                    if self.trading_api.is_pending_close(pos.position_id):
+                        # Close already in flight — skip
+                        break
                     self.trading_api.close_position(pos.position_id)
 
                     self._close_events.append({
@@ -425,7 +428,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             if not closed:
                 self.logger.warning(
                     f"⚠️ Could not close {order_id} at tick {self.tick_count} "
-                    f"(trade #{seq_idx} - position not found or pending)"
+                    f"(trade #{seq_idx} - position not found or pending close)"
                 )
 
             # Remove from active trades regardless

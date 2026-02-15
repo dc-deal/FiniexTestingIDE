@@ -297,7 +297,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         # Get lot size from decision metadata or default
         lot_size = decision.metadata.get('lot_size', self.default_lot_size)
 
-        # Close any open positions
+        # Check for pending orders
+        if self.trading_api.has_pending_orders():
+            return None
+
+        # Get confirmed open positions
         open_positions = self.trading_api.get_open_positions()
 
         # ============================================
@@ -339,9 +343,6 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         # ============================================
         elif decision.action == DecisionLogicAction.FLAT:
             for current_position in open_positions:
-                if (current_position.pending):
-                    # waiting for full close (or open)!
-                    return None
                 self.trading_api.close_position(current_position.position_id)
 
             # FLAT doesn't return an OrderResult

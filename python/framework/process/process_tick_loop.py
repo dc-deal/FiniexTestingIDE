@@ -98,11 +98,10 @@ def execute_tick_loop(
             current_tick = tick
             current_index = tick_idx
 
-            # === 1. Trade Simulator ===
-            # FIRST update prices. Then process orders which may be opend/filled/etc
+            # === 1. Trade Executor ===
+            # Unified tick lifecycle: update prices + process pending orders
             t1 = time.perf_counter()
-            trade_simulator.update_prices(tick)
-            trade_simulator.process_pending_orders()
+            trade_simulator.on_tick(tick)
             t2 = time.perf_counter()
             profile_times['trade_simulator'] += (t2 - t1) * 1000
             profile_counts['trade_simulator'] += 1
@@ -193,6 +192,7 @@ def execute_tick_loop(
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()
+        order_history = trade_simulator.get_order_history()
 
         _print_tick_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
@@ -206,6 +206,7 @@ def execute_tick_loop(
             execution_stats=execution_stats,
             cost_breakdown=cost_breakdown,
             trade_history=trade_history,
+            order_history=order_history,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
                 profile_counts=profile_counts

@@ -1,0 +1,546 @@
+# Execution Layer Architecture: Simulation & Live Trading
+
+## Overview
+
+This document describes the architecture of the trade execution layer — the system that sits between trading strategy (DecisionLogic) and the market. It explains the design principles, the Simulation/Live hybrid approach, and the reasoning behind each architectural decision.
+
+The core insight: **Backtesting and live trading share the same portfolio logic.** The only difference is *how* orders reach the market and *how* fills are confirmed. Everything else — portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
+
+---
+
+## The Problem: Two Execution Modes, One Strategy
+
+A trading strategy should not know (or care) whether it's running in a backtest or live. The decision "buy 0.1 lots EURUSD" is the same regardless of execution mode. But the *execution* is fundamentally different:
+
+| Aspect | Simulation | Live |
+|--------|-----------|------|
+| Order submission | Internal queue | Broker API call |
+| Fill confirmation | Deterministic delay (ticks) | Broker response (async) |
+| Price source | Historical tick data | WebSocket feed |
+| Latency | Simulated (seeded) | Real network latency |
+| Failure modes | Seeded errors (stress testing) | Real network/broker errors |
+
+The naive approach — two completely separate systems — leads to code duplication, behavior divergence, and the constant risk that "it worked in backtest but not live."
+
+---
+
+## The Hybrid Architecture
+
+The solution is a **shared-core architecture** where common logic lives in base classes, and mode-specific behavior is isolated in subclasses.
+
+### Full Layer Diagram
+
+```
+┌─────────────────────────────────────────────────┐
+│                DecisionLogic                     │
+│  (SimpleConsensus, AggressiveTrend, etc.)        │
+│  Knows NOTHING about execution internals.        │
+└──────────────────┬──────────────────────────────┘
+                   │  calls
+┌──────────────────▼──────────────────────────────┐
+│             DecisionTradingAPI                    │
+│  Public API surface. Validates order types.       │
+│  Routes to executor. Hides execution mode.        │
+└──────────────────┬──────────────────────────────┘
+                   │  delegates to
+┌──────────────────▼──────────────────────────────┐
+│          AbstractTradeExecutor                    │
+│  SHARED: Fill processing, portfolio,              │
+│  fee calculations, statistics, price state        │
+│                                                   │
+│  ABSTRACT: Order submission, pending order         │
+│  processing, fill detection                       │
+├──────────────────┬──────────────────────────────┤
+│                  │                               │
+│  TradeSimulator  │    LiveTradeExecutor           │
+│  (Simulation)    │    (Horizon 2: Live)           │
+│                  │                               │
+│  has-a:          │    has-a:                      │
+│  OrderLatency    │    LiveOrderTracker            │
+│  Simulator       │    (Horizon 2)                │
+└──────────────────┴──────────────────────────────┘
+
+            Both "has-a" inherit from:
+
+┌─────────────────────────────────────────────────┐
+│       AbstractPendingOrderManager                │
+│  SHARED: Storage, query, has_pending,            │
+│  is_pending_close, clear                         │
+├──────────────────┬──────────────────────────────┤
+│                  │                               │
+│  OrderLatency    │    LiveOrderTracker            │
+│  Simulator       │    (Horizon 2)                │
+│                  │                               │
+│  - SeededDelay   │    - Broker ref tracking       │
+│    Generator     │    - mark_filled/rejected      │
+│  - process_tick  │    - check_timeouts            │
+│  - tick-based    │    - time-based                │
+│    fill detect   │      fill detect              │
+└──────────────────┴──────────────────────────────┘
+```
+
+### The Key Principle: "What Happens" vs "How It Gets There"
+
+The abstract base class answers **what happens when an order is filled**: portfolio gets a new position, fees are calculated, margin is checked, statistics are updated. This is the same whether the fill came from a latency simulator or a real broker.
+
+The subclasses answer **how the order gets to the market and how we learn it was filled**: TradeSimulator uses a deterministic queue with seeded delays. LiveTradeExecutor will call a broker API and poll for confirmations.
+
+---
+
+## Two Paths That Converge
+
+This is the central architectural principle: **Simulation and Live follow the same path, with different triggers.**
+
+### Simulation Path
+
+```
+1. DecisionLogic calls send_order()
+2. TradeSimulator.open_order()
+   → Creates PendingOrder with fill_at_tick
+   → Stores in OrderLatencySimulator (inherited storage)
+3. Each tick: on_tick() → _process_pending_orders()
+   → OrderLatencySimulator.process_tick() checks tick counter
+   → Returns orders whose delay has elapsed
+4. For each filled order:
+   → _fill_open_order(pending_order)        ← SHARED (AbstractTradeExecutor)
+   → Portfolio updated, fees calculated     ← SHARED
+```
+
+### Live Path
+
+```
+1. DecisionLogic calls send_order()
+2. LiveTradeExecutor.open_order()
+   → Creates PendingOrder with submitted_at, broker_ref
+   → Stores in LiveOrderTracker (inherited storage)
+   → Sends order to broker via adapter (async)
+3. Each tick: on_tick() → _process_pending_orders()
+   → LiveOrderTracker polls broker for fill status
+   → Returns orders that broker has confirmed
+4. For each filled order:
+   → _fill_open_order(pending_order, fill_price=broker_price)  ← SHARED
+   → Portfolio updated, fees calculated                         ← SHARED
+```
+
+Steps 1, 3 (structure), and 4 are **identical**. Only the trigger differs: tick counter vs broker response.
+
+### Error Handling: Same Code, Both Modes
+
+Error handling is **not a live-only feature**. It belongs in AbstractTradeExecutor because both modes need it. The simulator needs it for stress testing, live needs it for reality. Same code, same paths.
+
+**Two error sources, one handling path:**
+
+1. **Structural rejections** (AbstractTradeExecutor): Margin check fails during `_fill_open_order()` → rejection stored in `_order_history`, counters updated. This code runs in both modes — identical for simulation and live.
+
+2. **Stress test rejections** (TradeSimulator): `_stress_test_should_reject()` intercepts orders before they reach fill processing → simulates broker-level errors (BROKER_ERROR). Controlled by module constants `STRESS_TEST_REJECTION_ENABLED` and `STRESS_TEST_REJECT_EVERY_N`.
+
+**Simulator with Stress Testing (implemented):**
+```
+1. open_order() → PendingOrder in OrderLatencySimulator
+2. Latency delay elapses → order ready for fill
+3. _stress_test_should_reject() → "Every 3rd order → BROKER_ERROR"
+4. Rejection stored in _order_history, counter incremented
+5. DecisionLogic never sees the rejection directly — but sees
+   no position created, uses has_pending_orders() to detect stalled state
+```
+
+**Simulator with Margin Rejection (implemented):**
+```
+1. open_order() → PendingOrder in OrderLatencySimulator
+2. Latency delay elapses → _fill_open_order() called
+3. Margin check: required > free margin → INSUFFICIENT_MARGIN
+4. Rejection stored in _order_history, order never reaches portfolio
+```
+
+**Live (Horizon 2):**
+```
+1. open_order() → PendingOrder in LiveOrderTracker + broker call
+2. Broker doesn't respond / rejects
+3. _process_pending_orders() detects timeout / rejection
+4. Same handling logic as simulation stress test
+```
+
+The advantage: You can test your error-handling logic in the simulator before going live. "Reject every 3rd trade" validates your algorithm handles:
+- Rejections correctly (no duplicate order submissions)
+- Timeouts cleanly (no ghost positions in the pending cache)
+- Recovery to a consistent state after failures
+- Correct margin calculations despite failed orders
+
+### Reporting Integration
+
+Rejection data flows through the full reporting pipeline:
+
+1. **Subprocess bridge**: `order_history` collected from `trade_simulator.get_order_history()`, serialized in `ProcessTickLoopResult`
+2. **Trade History Summary**: Per-scenario rejection table (order ID, reason, message) + aggregated rejection breakdown by reason
+3. **Executive Summary**: Order execution stats with rejected count and execution rate
+4. **Portfolio Grid Boxes**: Conditional display — shows rejection count when rejections exist
+
+---
+
+## Core Units
+
+### AbstractTradeExecutor
+The foundation. Contains all concrete fill processing and shared infrastructure.
+
+**Concrete methods (shared by all modes):**
+- `on_tick(tick)` — Unified tick lifecycle: price update + pending order processing
+- `_fill_open_order(pending_order, fill_price=None) → None` — Side-effect based: portfolio open, fee calculation, margin check, statistics. Results/rejections stored in `_order_history`. `fill_price` override for live (broker's actual price); `None` for simulation (use current tick bid/ask)
+- `_fill_close_order(pending_order, fill_price=None)` — Portfolio close, P&L realization, statistics. Same price override pattern.
+- `get_order_history()` — All OrderResults (fills + rejections) for audit trail
+- `get_open_positions()` — Returns confirmed portfolio positions only
+- `get_account_info()` — Balance, equity, margin, free margin
+- All broker queries, symbol specs, statistics collection
+
+**Abstract methods (mode-specific):**
+- `_process_pending_orders()` — How pending orders are resolved
+- `open_order()` — How orders are submitted
+- `close_position()` — How close requests are sent
+- `has_pending_orders()` — Whether any orders are in flight
+- `is_pending_close(position_id)` — Whether a specific position is being closed
+- `close_all_remaining_orders()` — End-of-run cleanup
+
+### AbstractPendingOrderManager
+Shared storage and query layer for pending orders. Both execution modes need to track in-flight orders — this base provides the common infrastructure.
+
+**Concrete methods:**
+- `store_order(pending_order)` — Add to tracking cache
+- `remove_order(order_id)` — Remove from cache (returns the order)
+- `get_pending_orders(filter_action=None)` — Query with optional action filter
+- `get_pending_count()` — Count pending orders
+- `has_pending_orders()` — Any orders in flight?
+- `is_pending_close(position_id)` — Specific position being closed?
+- `clear_pending()` — Cleanup at scenario end
+
+### OrderLatencySimulator (extends AbstractPendingOrderManager)
+Simulation-specific pending order manager. Adds tick-based latency modeling with seeded randomness.
+
+**Simulation-specific methods:**
+- `submit_open_order()` — Creates PendingOrder with calculated `fill_at_tick`, stores via inherited `store_order()`
+- `submit_close_order()` — Same pattern for close orders
+- `process_tick(tick_number)` — Returns orders whose `fill_at_tick` has been reached, removes them via inherited `remove_order()`
+
+Uses `SeededDelayGenerator` for deterministic API latency + market execution delays.
+
+### LiveOrderTracker (Horizon 2, extends AbstractPendingOrderManager)
+Live-specific pending order manager. Will add broker reference tracking and timeout detection.
+
+**Planned methods:**
+- `submit_order()` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`
+- `mark_filled(order_id, broker_response)` — Broker confirmed fill
+- `mark_rejected(order_id, reason)` — Broker rejected order
+- `check_timeouts()` — Returns orders that have exceeded timeout threshold
+
+### TradeSimulator (extends AbstractTradeExecutor)
+Simulated execution. Delegates pending order management to OrderLatencySimulator.
+
+**Key characteristic:** Orders enter a queue with a seeded delay. After N ticks, they "fill" — and the base class `_fill_open_order()` / `_fill_close_order()` handles the rest. The simulator adds nothing to the fill logic itself.
+
+**Stress testing:** `_stress_test_should_reject()` intercepts orders between latency completion and fill processing. Controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Rejections are stored in `_order_history` with `BROKER_ERROR` reason — same data path as real broker rejections.
+
+`has_pending_orders()` and `is_pending_close()` delegate directly to `self.latency_simulator` (which inherits these from AbstractPendingOrderManager).
+
+### LiveTradeExecutor (Horizon 2, extends AbstractTradeExecutor)
+Skeleton for live trading. Will delegate pending order management to LiveOrderTracker.
+
+**Key characteristic:** Will route orders through a broker adapter and poll for fill confirmations. When a fill arrives, it calls the *same* `_fill_open_order(pending_order, fill_price=broker_price)` / `_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio logic, zero duplication.
+
+### DecisionTradingAPI
+The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
+
+- Order-type validation at startup (fail early, not at tick 50,000)
+- Clean method signatures (`send_order`, `get_open_positions`, `close_position`)
+- Pending order awareness (`has_pending_orders`, `is_pending_close`)
+- Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
+
+### PortfolioManager
+The single source of truth for position state. Manages:
+
+- Open positions with full fee tracking
+- Balance, equity, margin calculations
+- Position open/close with P&L realization
+- Trade history for post-run analysis
+
+Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have.
+
+### PendingOrder (shared dataclass)
+Generic pending order representation used by both modes. Mode-specific fields are Optional:
+
+- **Common fields:** `pending_order_id`, `order_action`, `symbol`, `direction`, `lots`, `order_kwargs`
+- **Simulation fields:** `placed_at_tick`, `fill_at_tick` (tick-based delay tracking)
+- **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` (time-based broker tracking)
+
+Each mode sets the fields it needs. The other mode's fields remain None.
+
+---
+
+## Unified Tick Lifecycle
+
+The tick loop (process_tick_loop) calls exactly one method on the executor:
+
+```
+trade_executor.on_tick(tick)
+```
+
+This single call handles:
+1. **Price update** — store current bid/ask, mark portfolio dirty
+2. **Pending order processing** — mode-specific (abstract method)
+
+The tick loop does not know (and should not know) whether it's driving a simulator or a live executor. It doesn't call internal methods, doesn't inspect queues, doesn't check pending orders. One call, one responsibility.
+
+### Why This Matters
+
+In the previous design, the tick loop called two separate methods: `update_prices(tick)` and `process_pending_orders()`. This leaked implementation details — the loop "knew" that orders and prices were separate concerns inside the executor. When moving to live trading, this coupling would have required changes in the tick loop itself.
+
+With `on_tick()`, the tick loop is a pure driver. The executor decides how to partition its work internally.
+
+---
+
+## Pending Order Awareness: Two Patterns
+
+When an order is submitted, it doesn't execute instantly. There's a delay (simulated or real). During this delay, the strategy needs to know that something is "in flight" — otherwise it might submit duplicate orders.
+
+The previous approach mixed pending orders into `get_open_positions()` as "pseudo-positions" (Position objects with `pending=True`). This was problematic:
+
+- **Behavior divergence**: Simulation returned pseudo-positions, live trading wouldn't
+- **Broken contracts**: `get_open_positions()` returned objects that weren't actually positions
+- **Strategy coupling**: Every strategy had to filter `if not position.pending` — mixing execution awareness into decision logic
+
+### The Clean Separation
+
+The new design separates concerns completely:
+
+**`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
+
+**`has_pending_orders()`** — Global check: "Is anything in flight?" Used by single-position strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
+```
+if self.trading_api.has_pending_orders():
+    return None  # Wait for pending orders to resolve
+```
+
+**`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (BacktestingMultiPosition, BacktestingMarginStress) to avoid duplicate close submissions:
+```
+if self.trading_api.is_pending_close(pos.position_id):
+    continue  # Close already in flight
+```
+
+Both methods delegate through DecisionTradingAPI → AbstractTradeExecutor → the respective PendingOrderManager. The logic lives in AbstractPendingOrderManager (shared), queried by the executor, exposed through the API.
+
+---
+
+## Fill Processing: The Shared Core
+
+The fill methods (`_fill_open_order`, `_fill_close_order`) are the heart of the hybrid architecture. They contain the most complex and critical logic:
+
+### Open Fill (`_fill_open_order(pending_order, fill_price=None) → None`)
+**Side-effect based** — results are stored in `_order_history`, not returned.
+
+1. Determine entry price: `fill_price` if provided (live: broker's price), else bid/ask from tick (simulation)
+2. Look up symbol specification (contract size, digits, tick value)
+3. Calculate dynamic tick value (account currency conversion)
+4. Create entry fee (spread-based or maker/taker, depending on broker)
+5. Check margin availability → **reject if insufficient** (appends rejection to `_order_history`, returns)
+6. Open position in PortfolioManager
+7. Append `OrderResult` to `_order_history`
+8. Update execution statistics (`_orders_executed`, `_total_spread_cost`)
+
+The method is void because both success and failure are side effects: results go into `_order_history`, rejections increment `_orders_rejected`. Callers (like `_process_pending_orders()`) don't need to inspect the result — the portfolio and history are updated internally.
+
+### Close Fill (`_fill_close_order(pending_order, fill_price=None)`)
+1. Look up position in portfolio
+2. Determine close price: `fill_price` if provided (live), else bid/ask from tick (simulation)
+3. Calculate exit tick value
+4. Close position in PortfolioManager (realizes P&L)
+5. Append `OrderResult` to `_order_history`
+
+The `fill_price` parameter enables the sim→live transition: simulation determines price locally (current tick bid/ask), live receives the actual price from the broker. The rest of the logic is identical.
+
+### Order History (`_order_history`)
+All order outcomes — successful fills AND rejections — are recorded in `_order_history` (List[OrderResult]). This is the **single audit trail** for everything that happened to orders after they left the pending queue.
+
+- **Successful open**: OrderResult with status=EXECUTED, position details
+- **Margin rejection**: OrderResult with status=REJECTED, reason=INSUFFICIENT_MARGIN
+- **Stress test rejection**: OrderResult with status=REJECTED, reason=BROKER_ERROR
+- **Successful close**: OrderResult with status=EXECUTED, close details
+
+Exposed via `get_order_history()` and transferred across the subprocess boundary in `ProcessTickLoopResult.order_history`.
+
+**Distinction from `trade_history`**: `trade_history` (from PortfolioManager) contains completed round-trip trades with P&L. `order_history` contains all order attempts. A rejection appears in `order_history` but never in `trade_history` (no position was created). A successful trade appears in both, but only `trade_history` has P&L (calculated at close).
+
+---
+
+## Fill Price: Simulation vs Live
+
+A subtle but critical difference between simulation and live is **who determines the fill price**.
+
+**Simulation:** The system determines the price. When a pending order's delay elapses, `_fill_open_order()` reads the current tick's bid/ask and applies it. The "broker" (simulator) fills at whatever the market shows at fill time.
+
+**Live:** The broker determines the price. The broker returns the actual execution price, which may differ from the last tick we received (slippage, requotes, market gaps). The `fill_price` parameter carries this broker-determined price into the shared fill logic.
+
+```
+# Simulation (no fill_price → use current tick):
+self._fill_open_order(pending_order)
+
+# Live (broker's actual price):
+self._fill_open_order(pending_order, fill_price=broker_response.execution_price)
+```
+
+This separation ensures the portfolio always reflects the real execution price, regardless of mode.
+
+---
+
+## Event-Driven Hybrid Model
+
+The overall architecture follows an **Event-Driven Hybrid** pattern, commonly used in professional trading systems:
+
+```
+EventSource (swappable)
+    │
+    │  ticks
+    ▼
+Strategy (identical in both modes)
+    │
+    │  orders
+    ▼
+ExecutionHandler (swappable)
+    │                  │
+    │  pending         │  fill trigger
+    ▼                  ▼
+PendingOrderManager    Fill Processing
+(swappable)            (shared)
+    │
+    │  confirmed fills
+    ▼
+Portfolio (shared)
+```
+
+**EventSource:**
+- Simulation: TickDataProvider reads historical CSV/binary tick data
+- Live: WebSocket connection to broker delivers real-time ticks
+
+**Strategy:**
+- DecisionLogic + Workers — completely unchanged between modes
+- Receives ticks, produces trading decisions
+- Interacts with execution only through DecisionTradingAPI
+
+**ExecutionHandler:**
+- Simulation: TradeSimulator with OrderLatencySimulator
+- Live: LiveTradeExecutor with LiveOrderTracker
+
+**PendingOrderManager:**
+- Simulation: OrderLatencySimulator (tick-based fill detection)
+- Live: LiveOrderTracker (broker-response fill detection)
+- Both inherit from AbstractPendingOrderManager (shared storage/query)
+
+**Fill Processing:**
+- AbstractTradeExecutor._fill_open_order() / _fill_close_order()
+- Shared by all modes — no duplication
+
+**Portfolio:**
+- PortfolioManager — shared, single source of truth
+- In simulation: IS the truth (no external state to reconcile)
+- In live: Shadow state that tracks expected broker state (reconciliation needed)
+
+---
+
+## Open Issues
+
+### kwargs Cleanup on send_order Chain
+**Problem:** `open_order()` accepts `**kwargs` for optional parameters (stop_loss, take_profit, comment). No schema validation, no typo protection. A misspelled `stoploss=1.1` silently passes through.
+- Affects: AbstractTradeExecutor, TradeSimulator, LiveTradeExecutor, DecisionTradingAPI, OrderLatencySimulator, PendingOrder
+- See: `ISSUE_kwargs_cleanup_send_order.md`
+
+### Tick-Based → Millisecond-Based Latency
+**Problem:** OrderLatencySimulator models delays as tick counts. Real broker latency is time-based. Tick-counting is meaningless in live trading where ticks arrive at irregular intervals.
+- Affects: OrderLatencySimulator, SeededDelayGenerator, PendingOrder
+- See: `ISSUE_tick_to_ms_latency_migration.md`
+
+### Error Handling in Execution Chain (Partially Resolved)
+**Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in `_order_history` instead of returned. Margin rejections and stress test rejections follow the same pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
+**Remaining:** `_fill_close_order()` still returns None silently on position-not-found. `close_position()` result not checked by DecisionLogic. Broader error propagation pattern (timeouts, broker errors in live) still needs design.
+- Affects: AbstractTradeExecutor (close path), DecisionTradingAPI, DecisionLogic
+- See: `ISSUE_error_handling_execution_chain.md`
+
+### Stress Test Configuration
+**Problem:** Stress test rejection in TradeSimulator is controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Needs to be config-file driven for per-scenario control.
+- Affects: TradeSimulator, scenario configuration
+- See: `ISSUE_stress_test_config.md`
+
+### Baseline Tests: order_history Coverage
+**Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history` contents. Tests correctly detect stress test rejections (test_no_rejected_orders, test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for order_history data.
+- Affects: Baseline test suite, test fixtures
+- See: `ISSUE_baseline_tests_order_history.md`
+
+### Reconciliation Layer for Live Trading
+**Problem:** Local portfolio (shadow state) can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes operational.
+- Affects: LiveTradeExecutor, PortfolioManager
+- See: `ISSUE_reconciliation_layer_live_trading.md`
+
+---
+
+## Design Decisions Log
+
+### Why Abstract Class, Not Hooks?
+
+We considered a hooks pattern: TradeSimulator stays monolithic, with hook functions (`on_before_fill`, `on_after_submit`) that live mode overrides. This was rejected because:
+
+1. **Too many variation points**: 5+ methods with completely different implementations (submit, close, process_pending, has_pending, is_pending_close). Hooks work for 1-2 customization points, not for swapping half the class.
+2. **Unclear ownership**: With hooks, it's ambiguous whether the base or the hook "owns" the fill. With abstract, the inheritance hierarchy is explicit.
+3. **Testing**: Abstract classes can be tested via concrete subclasses. Hook-based systems require mocking the hooks, which tests the framework more than the logic.
+
+### Why Pseudo-Positions Were Eliminated
+
+The previous design added pending orders to `get_open_positions()` as Position objects with `pending=True`. This created a **behavior contract that couldn't survive the sim→live transition**:
+
+- In simulation, TradeSimulator could construct pseudo-positions because it controlled the latency queue
+- In live trading, there's no local pseudo-position — the broker hasn't confirmed anything yet
+- Strategies written against the simulation API would break in live (different position list contents)
+
+The replacement (`has_pending_orders` + `is_pending_close`) provides the same information without contaminating the position list.
+
+### Why Fill Logic Lives in the Base Class
+
+The initial refactoring extracted TradeSimulator into an abstract, but left fill logic in the subclass. This meant LiveTradeExecutor was hollow — `close_position()` raised NotImplementedError, but live trading *needs* the portfolio update logic.
+
+Moving fills to the base was the realization that **fill processing is not simulation-specific**. It's the shared business logic that both modes need. The subclass only decides *when* to call it (after latency delay vs after broker confirmation).
+
+### Why Fill Price Is a Parameter, Not Internal
+
+Originally, `_fill_open_order()` determined the entry price internally from the current tick (ask for LONG, bid for SHORT). This works for simulation but not for live:
+
+- In simulation, the system IS the market — current tick bid/ask is the "broker's" fill price
+- In live, the broker returns the actual execution price, which may differ (slippage)
+
+Making `fill_price` an optional parameter keeps backward compatibility (simulation passes nothing, gets tick-based price) while enabling live trading (passes broker's actual price). The portfolio always records the real execution price.
+
+### Why PendingOrderManager Was Extracted
+
+OrderLatencySimulator originally handled both storage/query AND delay simulation. This coupling meant LiveTradeExecutor would need its own separate storage — duplicating the dict, query methods, has_pending logic, etc.
+
+Extracting AbstractPendingOrderManager provides:
+- **Shared storage** — both modes use the same dict-based tracking
+- **Shared queries** — `has_pending_orders()`, `is_pending_close()` are identical
+- **DRY** — no duplicate implementations between simulation and live
+- **Testable** — storage/query logic tested once, covers both modes
+
+The split: AbstractPendingOrderManager owns the "what" (storage, query). Subclasses own the "when" (tick-based fill detection vs broker-response detection).
+
+---
+
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| **Fill** | An order being executed and becoming a position |
+| **Fill Price** | The actual execution price — from tick (sim) or broker (live) |
+| **Pending Order** | An order submitted but not yet filled (PendingOrder dataclass, shared) |
+| **PendingOrderManager** | Abstract storage/query layer for pending orders (AbstractPendingOrderManager) |
+| **OrderLatencySimulator** | Simulation-specific pending order manager with seeded tick delays |
+| **LiveOrderTracker** | Live-specific pending order manager with broker tracking (Horizon 2) |
+| **Shadow State** | Local portfolio tracking what we believe the broker state to be |
+| **Reconciliation** | Comparing shadow state with actual broker state and resolving differences |
+| **Pseudo-Position** | (Removed) A fake position representing a pending order — now replaced by explicit API |
+| **Tick Loop** | The main processing loop that feeds ticks to all components |
+| **DecisionLogic** | Trading strategy that produces buy/sell/flat decisions |
+| **Worker** | Indicator calculator that feeds data to DecisionLogic |
+| **Order History** | Complete audit trail of all order outcomes (fills + rejections) from `_order_history` |
+| **Error Seeds** | Seeded fault injection in simulation for stress testing error-handling paths |

@@ -44,7 +44,6 @@ class Position:
 
     # Status
     status: PositionStatus = PositionStatus.OPEN
-    pending: bool = False  # a converted pending order
 
     # Metadata
     comment: str = ""

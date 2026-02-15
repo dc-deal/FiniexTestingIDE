@@ -111,7 +111,7 @@ def process_startup_preparation(
 
     # === PHASE 6: Inject DecisionTradingAPI (validated against required_order_types) ===
     trading_api = DecisionTradingAPI(
-        trade_simulator=trade_simulator,
+        executor=trade_simulator,
         required_order_types=required_order_types
     )
     decision_logic.set_trading_api(trading_api)

@@ -321,6 +321,13 @@ class ExecutiveSummary:
 
         pnl_str = renderer.pnl(pnl, currency)
         print(f"Total P&L:          {pnl_str} ({pnl_pct:+.2f}%)")
+        # Order execution stats
+        exec_stats = agg_portfolio.execution_stats
+        orders_sent = exec_stats.orders_sent if exec_stats else 0
+        orders_executed = exec_stats.orders_executed if exec_stats else 0
+        orders_rejected = exec_stats.orders_rejected if exec_stats else 0
+        exec_rate = (orders_executed / orders_sent * 100) if orders_sent > 0 else 0
+
         print("")
         print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
         print(f"Win Rate:           {win_rate * 100:.1f}%")
@@ -329,6 +336,15 @@ class ExecutiveSummary:
         print(
             f"Avg Loss:           {format_currency_simple(avg_loss, currency)}")
         print(f"Profit Factor:      {profit_factor:.2f}")
+
+        if orders_rejected > 0:
+            print(
+                f"Orders:             {orders_executed}/{orders_sent} executed | "
+                f"{renderer.yellow(f'{orders_rejected} rejected')} ({exec_rate:.1f}%)")
+        else:
+            print(
+                f"Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)")
+
         print("")
         print(
             f"Max Drawdown:       {format_currency_simple(abs(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")

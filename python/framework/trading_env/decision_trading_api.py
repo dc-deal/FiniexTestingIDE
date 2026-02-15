@@ -2,8 +2,8 @@
 FiniexTestingIDE - Decision Trading API
 Public interface for Decision Logic to interact with trading environment
 
-This is the ONLY way Decision Logics should interact with the TradeSimulator.
-Framework code (BatchOrchestrator, Reporting) retains full TradeSimulator access.
+This is the ONLY way Decision Logics should interact with the trade executor.
+Framework code (BatchOrchestrator, Reporting) retains full executor access.
 
 MVP Design:
 - Market + Limit orders only
@@ -20,20 +20,20 @@ ARCHITECTURE NOTE:
 - get_open_positions() returns ACTIVE positions (excluding those being closed)
 - Latency simulation (pending orders) is hidden from Decision Logic
 - This maintains clean separation: Decision Logic sees "logical state",
-  TradeSimulator handles "execution details"
+  the executor handles "execution details"
 
 FUTURE NOTES:
-- Tick→MS Migration: Currently delays are tick-based. Post-MVP will use millisecond-based 
+- Tick→MS Migration: Currently delays are tick-based. Post-MVP will use millisecond-based
   timing with tick timestamp mapping for more realistic execution simulation.
-- FiniexAutoTrader Integration: This API serves as the interface layer for both simulated 
-  and live trading. When integrating FiniexAutoTrader, Decision Logics remain unchanged. 
-  Replace TradeSimulator with LiveTradeExecutor that implements same interface but routes 
-  to real broker. Example: DecisionTradingAPI(LiveTradeExecutor(broker_connection), required_types)
+- FiniexAutoTrader Integration: This API serves as the interface layer for both simulated
+  and live trading. When integrating FiniexAutoTrader, Decision Logics remain unchanged.
+  The executor is swapped via config: executor_mode = "simulation" | "live_dry_run"
+  Example: DecisionTradingAPI(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
 from typing import List, Optional
 
-from .trade_simulator import TradeSimulator
+from .abstract_trade_executor import AbstractTradeExecutor
 from ..types.order_types import (
     OrderType,
     OrderDirection,
@@ -47,33 +47,33 @@ class DecisionTradingAPI:
     """
     Public API for Decision Logic trading operations.
 
-    This class acts as a gatekeeper between Decision Logic and TradeSimulator,
+    This class acts as a gatekeeper between Decision Logic and the trade executor,
     providing only safe, validated operations.
 
     Key Features:
     - Order-type validation at creation time (BEFORE scenario runs)
     - Clean public API (only what Decision Logics need)
-    - Framework retains full TradeSimulator access
-    - Interface compatible with future FiniexAutoTrader integration
+    - Framework retains full executor access
+    - Executor-agnostic: works with TradeSimulator and LiveTradeExecutor
     """
 
     def __init__(
         self,
-        trade_simulator: TradeSimulator,
+        executor: AbstractTradeExecutor,
         required_order_types: List[OrderType]
     ):
         """
         Initialize Decision Trading API with order-type validation.
 
         Args:
-            trade_simulator: TradeSimulator instance for this scenario
+            executor: AbstractTradeExecutor instance (TradeSimulator or LiveTradeExecutor)
             required_order_types: Order types that Decision Logic will use
 
         Raises:
             ValueError: If any required order type is not supported by broker
         """
-        self._simulator = trade_simulator
-        self._capabilities = trade_simulator.broker.get_order_capabilities()
+        self._executor = executor
+        self._capabilities = executor.broker.get_order_capabilities()
 
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
@@ -113,7 +113,7 @@ class DecisionTradingAPI:
         if unsupported:
             supported_types = self._get_supported_order_types()
             raise ValueError(
-                f"❌ Broker '{self._simulator.broker.adapter.get_broker_name()}' "
+                f"❌ Broker '{self._executor.broker.adapter.get_broker_name()}' "
                 f"does not support required order types!\n"
                 f"Required: {[t.value for t in required_types]}\n"
                 f"Unsupported: {[t.value for t in unsupported]}\n"
@@ -169,7 +169,7 @@ class DecisionTradingAPI:
                 take_profit=1.1050
             )
         """
-        return self._simulator.open_order_with_latency(
+        return self._executor.open_order(
             symbol=symbol,
             order_type=order_type,
             direction=direction,
@@ -195,7 +195,7 @@ class DecisionTradingAPI:
         Returns:
             AccountInfo dataclass with all account metrics
         """
-        return self._simulator.get_account_info(order_direction)
+        return self._executor.get_account_info(order_direction)
 
     def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
         """
@@ -222,7 +222,7 @@ class DecisionTradingAPI:
                 if pos.unrealized_pnl < -100:
                     self.close_position(pos.position_id)
         """
-        all_positions = self._simulator.get_open_positions()
+        all_positions = self._executor.get_open_positions()
 
         if symbol:
             return [p for p in all_positions if p.symbol == symbol]
@@ -239,7 +239,47 @@ class DecisionTradingAPI:
         Returns:
             Position object or None if not found
         """
-        return self._simulator.get_position(position_id)
+        return self._executor.get_position(position_id)
+
+    # ============================================
+    # Public API: Pending Order Awareness
+    # ============================================
+
+    def has_pending_orders(self) -> bool:
+        """
+        Are there any orders in flight (submitted but not yet filled)?
+
+        Used by single-position strategies to avoid double-ordering
+        during execution delays.
+
+        Returns:
+            True if any orders are pending (open or close)
+
+        Example:
+            if self.trading_api.has_pending_orders():
+                return  # Wait for pending orders to resolve
+        """
+        return self._executor.has_pending_orders()
+
+    def is_pending_close(self, position_id: str) -> bool:
+        """
+        Is this specific position currently being closed?
+
+        Used by multi-position strategies to avoid duplicate close
+        submissions for the same position.
+
+        Args:
+            position_id: Position to check
+
+        Returns:
+            True if a close order is in flight for this position
+
+        Example:
+            for pos in positions:
+                if not self.trading_api.is_pending_close(pos.position_id):
+                    self.trading_api.close_position(pos.position_id)
+        """
+        return self._executor.is_pending_close(position_id)
 
     def close_position(
         self,
@@ -256,7 +296,7 @@ class DecisionTradingAPI:
         Returns:
             OrderResult with close execution details
         """
-        return self._simulator.close_position_with_latency(position_id, lots)
+        return self._executor.close_position(position_id, lots)
     # ============================================
     # Public API: Broker Capabilities
     # ============================================
@@ -285,7 +325,7 @@ class DecisionTradingAPI:
 
     def get_broker_name(self) -> str:
         """Get name of connected broker"""
-        return self._simulator.broker.adapter.get_broker_name()
+        return self._executor.broker.adapter.get_broker_name()
 
     def get_leverage(self, symbol: Optional[str] = None) -> float:
         """
@@ -298,8 +338,8 @@ class DecisionTradingAPI:
             Leverage multiplier (e.g., 100.0 for 1:100)
         """
         if symbol:
-            return self._simulator.broker.get_symbol_leverage(symbol)
-        return self._simulator.broker.get_max_leverage()
+            return self._executor.broker.get_symbol_leverage(symbol)
+        return self._executor.broker.get_max_leverage()
 
     # ============================================
     # Post-MVP Features (Feature-Gated)
