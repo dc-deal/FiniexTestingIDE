@@ -1,21 +1,23 @@
 from typing import List
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
 from python.framework.trading_env.trade_simulator import TradeSimulator
 from python.framework.types.order_types import OrderType
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
 
 
-def prepare_trade_simulator_for_scenario(
+def prepare_trade_executor_for_scenario(
     logger: ScenarioLogger,
     config: ProcessScenarioConfig,
     required_order_types: List[OrderType],
     shared_data: ProcessDataPackage
-) -> TradeSimulator:
+) -> AbstractTradeExecutor:
     """
-    Create isolated TradeSimulator for a scenario.
+    Create isolated trade executor for a scenario.
+
+    Currently only supports "simulation" mode (TradeSimulator).
+    Horizon 2 will add "live" mode (LiveTradeExecutor).
 
     Args:
         logger: ScenarioLogger instance
@@ -24,36 +26,55 @@ def prepare_trade_simulator_for_scenario(
         shared_data: Shared data package
 
     Returns:
-        TradeSimulator instance ready for use
+        AbstractTradeExecutor instance
     """
     # Create broker config
     # Re-hydrate broker config from shared data (no file I/O!)
-    # BrokerConfig was loaded once in main process and serialized
     broker_config = BrokerConfigFactory.from_serialized_dict(
         broker_type=config.broker_type,
         config_dict=shared_data.broker_configs.get(
             config.broker_type, None)
     )
 
-    # Log currency configuration before TradeSimulator creation
+    # Determine executor mode from config
+    executor_mode = ExecutorMode(config.executor_mode)
+
+    # Log configuration
     logger.info(
-        f"💱 Trade Simulator Configuration:\n"
+        f"💱 Trade Executor Configuration:\n"
+        f"   Mode: {executor_mode.value}\n"
         f"   Symbol: {config.symbol}\n"
         f"   Account Currency: {config.account_currency}\n"
         f"   Initial Balance: {config.initial_balance}"
     )
 
-    # Create NEW TradeSimulator for this scenario
-    # Pass account_currency (supports "auto") and symbol for auto-detection
-    trade_simulator = TradeSimulator(
-        broker_config=broker_config,
-        initial_balance=config.initial_balance,
-        account_currency=config.account_currency,
-        logger=logger,
-        seeds=config.seeds
+    if executor_mode == ExecutorMode.SIMULATION:
+        return TradeSimulator(
+            broker_config=broker_config,
+            initial_balance=config.initial_balance,
+            account_currency=config.account_currency,
+            logger=logger,
+            seeds=config.seeds
+        )
+
+    raise ValueError(
+        f"Unknown executor_mode: '{config.executor_mode}'. "
+        f"Supported: 'simulation'. "
+        f"Live trading will be available in Horizon 2."
     )
 
-    # Order type validation now happens in process_startup_preparation
-    # via DecisionTradingAPI.__init__() with required_order_types
 
-    return trade_simulator
+# Backwards compatibility alias
+def prepare_trade_simulator_for_scenario(
+    logger: ScenarioLogger,
+    config: ProcessScenarioConfig,
+    required_order_types: List[OrderType],
+    shared_data: ProcessDataPackage
+) -> AbstractTradeExecutor:
+    """Backwards-compatible alias for prepare_trade_executor_for_scenario."""
+    return prepare_trade_executor_for_scenario(
+        logger=logger,
+        config=config,
+        required_order_types=required_order_types,
+        shared_data=shared_data
+    )

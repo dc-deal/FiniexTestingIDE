@@ -12,6 +12,7 @@ from typing import List
 
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.order_types import OrderResult
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessResult
 
@@ -77,7 +78,16 @@ class TradeHistorySummary:
         renderer.print_bold("📊 AGGREGATED TRADE STATISTICS")
         renderer.section_separator()
 
-        self._render_aggregated_stats(all_trades, renderer)
+        # Collect all rejections
+        all_rejections: List[OrderResult] = []
+        for scenario in self._process_results:
+            if not scenario.tick_loop_results:
+                continue
+            order_history = scenario.tick_loop_results.order_history
+            if order_history:
+                all_rejections.extend(o for o in order_history if o.is_rejected)
+
+        self._render_aggregated_stats(all_trades, all_rejections, renderer)
         print()
 
     def _render_scenario_trades(
@@ -122,6 +132,39 @@ class TradeHistorySummary:
 
         # Table footer
         self._print_table_footer(sorted_trades, renderer)
+
+        # Rejected orders (if any)
+        self._render_scenario_rejections(scenario, renderer)
+
+    def _render_scenario_rejections(
+        self,
+        scenario: ProcessResult,
+        renderer: ConsoleRenderer
+    ) -> None:
+        """Render rejected orders for a scenario (from order_history)."""
+        order_history = scenario.tick_loop_results.order_history
+        if not order_history:
+            return
+
+        rejections = [o for o in order_history if o.is_rejected]
+        if not rejections:
+            return
+
+        print()
+        print(renderer.yellow(
+            f"   Rejected Orders: {len(rejections)}"
+        ))
+
+        # Rejection header
+        header = f"   {'#':>3} | {'Order ID':<20} | {'Reason':<25} | {'Message'}"
+        print(renderer.gray(header))
+        print(renderer.gray("   " + "-" * 100))
+
+        for idx, rej in enumerate(rejections, 1):
+            reason_str = rej.rejection_reason.value if rej.rejection_reason else "unknown"
+            msg = rej.rejection_message or ""
+            row = f"   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {msg}"
+            print(renderer.yellow(row))
 
     def _print_table_header(self, renderer: ConsoleRenderer) -> None:
         """Print trade table header."""
@@ -203,6 +246,7 @@ class TradeHistorySummary:
     def _render_aggregated_stats(
         self,
         trades: List[TradeRecord],
+        rejections: List[OrderResult],
         renderer: ConsoleRenderer
     ) -> None:
         """
@@ -210,6 +254,7 @@ class TradeHistorySummary:
 
         Args:
             trades: All trades across scenarios
+            rejections: All rejected orders across scenarios
             renderer: ConsoleRenderer instance
         """
         if not trades:
@@ -263,6 +308,27 @@ class TradeHistorySummary:
         print(f"\n   {renderer.bold('⏱️  DURATION (ticks):')}")
         print(
             f"      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}")
+
+        # Rejection breakdown (if any)
+        if rejections:
+            self._render_aggregated_rejections(rejections, renderer)
+
+    def _render_aggregated_rejections(
+        self,
+        rejections: List[OrderResult],
+        renderer: ConsoleRenderer
+    ) -> None:
+        """Render aggregated rejection breakdown by reason."""
+        # Group by reason
+        reason_counts = {}
+        for rej in rejections:
+            reason = rej.rejection_reason.value if rej.rejection_reason else "unknown"
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        print(f"\n   {renderer.bold('Rejected Orders:')}")
+        print(f"      Total Rejections: {len(rejections)}")
+        for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
+            print(renderer.yellow(f"      {reason}: {count}"))
 
     def _format_pnl(
         self,

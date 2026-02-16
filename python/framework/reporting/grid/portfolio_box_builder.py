@@ -122,6 +122,7 @@ def _build_success_portfolio_box(
     spread_cost = cost_breakdown.total_spread_cost
     orders_sent = execution_stats.orders_sent
     orders_executed = execution_stats.orders_executed
+    orders_rejected = execution_stats.orders_rejected
 
     # Currency
     currency = portfolio_stats.currency
@@ -161,6 +162,12 @@ def _build_success_portfolio_box(
     broker_display = broker_name[:30] if len(broker_name) > 30 else broker_name
     data_source = scenario.data_broker_type
 
+    # Format order execution line
+    if orders_rejected > 0:
+        orders_line = f"Orders: {orders_executed}/{orders_sent} | {renderer.yellow(f'Rej: {orders_rejected}')}"
+    else:
+        orders_line = f"Orders Ex/Sent: {orders_executed}/{orders_sent}"
+
     # Create content lines (13 stats)
     lines = [
         f"{scenario_name}",
@@ -174,7 +181,7 @@ def _build_success_portfolio_box(
         f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)",
         f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
         f"Spread: {format_currency_simple(spread_cost, currency)}",
-        f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
+        orders_line,
         f"Long/Short: {long_trades}/{short_trades}",
     ]
 

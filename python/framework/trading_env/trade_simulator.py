@@ -2,51 +2,62 @@
 # python/framework/trading_env/trade_simulator.py
 # ============================================
 """
-FiniexTestingIDE - Trade Simulator ()
+FiniexTestingIDE - Trade Simulator
 Simulates broker trading environment with realistic execution
 
- CHANGES:
+Inherits from AbstractTradeExecutor - provides simulated order execution
+with deterministic latency modeling via OrderLatencySimulator.
+
+Key Simulation Features:
+- Order latency: Seeded delays between order submission and fill
+- Pending order lifecycle: PENDING → EXECUTED with realistic timing
+- Fill processing: Inherited from AbstractTradeExecutor (shared with live)
+
+CHANGES:
 - Direct attributes for execution stats (_orders_sent, _orders_executed, etc.)
 - Always-copy public API (using replace())
 - Cleaner, more maintainable code structure
 - FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
 - CURRENCY: account_currency with auto-detection from symbol
+- REFACTOR: Inherits from AbstractTradeExecutor for live trading foundation
+- REFACTOR: Fill logic (_fill_open_order, _fill_close_order) moved to base class
+- REFACTOR: Pseudo-positions eliminated — Decision Logic uses has_pending_orders()
 """
 from datetime import datetime, timezone
-import json
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict
 
-from python.framework.factory.trading_fee_factory import create_maker_taker_fee, create_spread_fee_from_tick
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
-from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
-from python.framework.types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.market_data_types import TickData
-from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
-from python.framework.utils.trade_simulator_utils import pending_order_to_position
+from python.framework.types.latency_simulator_types import PendingOrderAction
 from .broker_config import BrokerConfig
-from .portfolio_manager import PortfolioManager, Position
 from ..types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
     OrderResult,
     RejectionReason,
-    MarketOrder,
-    LimitOrder,
     create_rejection_result
 )
 
 
-class TradeSimulator:
+# ============================================
+# Stress Test Configuration (Workaround — will be config-driven later)
+# ============================================
+STRESS_TEST_REJECTION_ENABLED = False
+STRESS_TEST_REJECT_EVERY_N = 3
+
+
+class TradeSimulator(AbstractTradeExecutor):
     """
-    Trade Simulator - Orchestrates order execution and portfolio.
+    Trade Simulator - Simulated order execution with latency modeling.
 
-    Uses OrderExecutionEngine for realistic delays (Issue #003).
-    Orders go through PENDING → EXECUTED lifecycle.
+    Extends AbstractTradeExecutor with:
+    - OrderLatencySimulator for deterministic execution delays
+    - Pending order lifecycle management (submit → latency delay → fill)
 
-    Uses direct attributes for execution statistics.
+    Fill processing (_fill_open_order, _fill_close_order) is inherited
+    from the base class — identical logic for simulation and live trading.
 
     CURRENCY HANDLING:
     - Supports "auto" detection: account_currency = symbol quote currency
@@ -71,24 +82,13 @@ class TradeSimulator:
             logger: Logger instance
             seeds: Seeds for order execution delays (from config)
         """
-        self.broker = broker_config
-        self.logger = logger
-        # account currency (has to be checked!)
-        self.account_currency = account_currency
-
-        # Create portfolio manager with broker specifications
-        broker_spec = self.broker.get_broker_specification()
-        self.portfolio = PortfolioManager(
-            logger=logger,
+        # Initialize common infrastructure (portfolio, broker, counters, fill logic)
+        super().__init__(
+            broker_config=broker_config,
             initial_balance=initial_balance,
             account_currency=account_currency,
-            broker_config=broker_config,
-            leverage=broker_spec.leverage,
-            margin_call_level=broker_spec.margin_call_level,
-            stop_out_level=broker_spec.stopout_level
+            logger=logger
         )
-        # Current market prices
-        self._current_prices: Dict[str, Tuple[float, float]] = {}
 
         # Order latency simulator with deterministic delays
         seeds = seeds or {}
@@ -96,68 +96,64 @@ class TradeSimulator:
             seeds, logger
         )
 
-        # Internal state
-        self._order_counter = 0
-
-        # Order history (all orders)
-        self._order_history: List[OrderResult] = []
-        self._current_tick: Optional[TickData] = None
-        self._tick_counter = 0
-
-        # Execution statistics as direct attributes
-        self._orders_sent = 0
-        self._orders_executed = 0
-        self._orders_rejected = 0
-        self._total_commission = 0.0
-        self._total_spread_cost = 0.0
-
     # ============================================
-    # Price Updates
-    # Running every Tick
+    # Pending Order Processing (simulation-specific)
     # ============================================
-    def update_prices(self, tick: TickData) -> None:
-        """
-        Update prices and process pending orders.
-        """
-        self._current_tick = tick
-        self._tick_counter += 1
 
-        self._current_prices[tick.symbol] = (tick.bid, tick.ask)
-        self.portfolio.mark_dirty(tick)
+    def _process_pending_orders(self) -> None:
+        """
+        Process orders that have completed their latency delay.
 
-    def process_pending_orders(self) -> None:
-        """process orders"""
+        Drains the latency queue and calls inherited fill methods
+        from AbstractTradeExecutor for portfolio updates.
+        """
         filled_orders = self.latency_simulator.process_tick(self._tick_counter)
 
         for pending_order in filled_orders:
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:
-                    self._check_and_open_order_in_portfolio(pending_order)
+                    if self._stress_test_should_reject(pending_order):
+                        continue
+                    self._fill_open_order(pending_order)
                 case PendingOrderAction.CLOSE:
-                    self._close_and_fill_order_in_portfolio(pending_order)
-                # Post-MVP:
-                # case PendingOrderAction.MODIFY:
-                #     self._modify_order(pending_order)
-                # case PendingOrderAction.PARTIAL_CLOSE:
-                #     self._partial_close(pending_order)
-
-    def get_current_price(self, symbol: str) -> tuple[float, float]:
-        """
-        Get current bid/ask price for symbol.
-
-        Returns:
-            (bid, ask) tuple
-        """
-        if not self._current_tick or self._current_tick.symbol != symbol:
-            raise ValueError(f"No current price data for {symbol}")
-
-        return self._current_tick.bid, self._current_tick.ask
+                    self._fill_close_order(pending_order)
 
     # ============================================
-    # Orders - Incomming
+    # Stress Test: Seeded Rejection (toggle via module constants)
     # ============================================
-    # First stage: order incommoning and submit to delay engine
-    def open_order_with_latency(
+
+    def _stress_test_should_reject(self, pending_order) -> bool:
+        """
+        Check if this order should be rejected by the stress test.
+
+        Controlled by STRESS_TEST_REJECTION_ENABLED and STRESS_TEST_REJECT_EVERY_N
+        module-level constants. Returns True if order was rejected (and handled).
+        """
+        if not STRESS_TEST_REJECTION_ENABLED:
+            return False
+
+        self.latency_simulator._fill_counter += 1
+        if self.latency_simulator._fill_counter % STRESS_TEST_REJECT_EVERY_N != 0:
+            return False
+
+        rejection = create_rejection_result(
+            order_id=pending_order.pending_order_id,
+            reason=RejectionReason.BROKER_ERROR,
+            message=f"[STRESS TEST] Seeded rejection for order #{self.latency_simulator._fill_counter}"
+        )
+        self._orders_rejected += 1
+        self._order_history.append(rejection)
+        self.logger.warning(
+            f"[STRESS TEST] Order {pending_order.pending_order_id} rejected "
+            f"(every {STRESS_TEST_REJECT_EVERY_N}. order rule)"
+        )
+        return True
+
+    # ============================================
+    # Order Submission (simulation-specific)
+    # ============================================
+
+    def open_order(
         self,
         symbol: str,
         order_type: OrderType,
@@ -168,8 +164,8 @@ class TradeSimulator:
         """
         Send order to broker simulation.
 
-        Automatically attaches SpreadFee from live tick data.
-        Uses direct attributes for stats.
+        Validates order parameters, then submits to latency simulator.
+        Order will be filled after deterministic delay via _process_pending_orders().
         """
         self._orders_sent += 1
 
@@ -177,7 +173,7 @@ class TradeSimulator:
         self._order_counter += 1
         order_id = self.portfolio.get_next_position_id(symbol)
 
-        # Some checks which don't have to be made "at the broker" (after the delay)
+        # Pre-delay validation (doesn't need to wait for latency)
 
         # Validate order
         is_valid, error = self.broker.validate_order(symbol, lots)
@@ -204,7 +200,7 @@ class TradeSimulator:
 
         # Execute based on order type
         if order_type == OrderType.MARKET:
-            # Submit to execution engine
+            # Submit to latency simulator (fill happens later)
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
                 symbol=symbol,
@@ -238,184 +234,11 @@ class TradeSimulator:
 
         return result
 
-    def _check_and_open_order_in_portfolio(self, pending_order: PendingOrder) -> None:
-        """
-        Fill pending_order OPEN order (after delay).
-
-        Called by update_prices when order ready.
-        Creates position in portfolio.
-
-        Args:
-            pending_order: PendingOrder with order_action=PendingOrderAction.OPEN
-        """
-        self.logger.info(
-            f"📋 Open Portfolio Position from Pending Order: {pending_order.pending_order_id} - at tick: {self._tick_counter}")
-        self.logger.verbose(
-            f"PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}")
-        self.logger.verbose(
-            f"CURRENT_TICK_AT_ORDER_OPEN: {json.dumps(self._current_tick.to_dict(), indent=2)}")
-        # Get current price
-        bid, ask = self.get_current_price(pending_order.symbol)
-
-       # Determine entry price
-        if pending_order.direction == OrderDirection.LONG:
-            entry_price = ask
-        if pending_order.direction == OrderDirection.SHORT:
-            entry_price = bid
-
-        # Get static symbol specification
-        symbol_spec = self.broker.get_symbol_specification(
-            pending_order.symbol)
-        # Calculate tick_value dynamically
-        tick_value = self._calculate_tick_value(
-            symbol_spec,
-            self._current_tick.mid
-        )
-
-        # Create entry fee based on broker fee model
-        entry_fee = self._create_entry_fee(
-            symbol_spec=symbol_spec,
-            lots=pending_order.lots,
-            entry_price=entry_price,
-            tick_value=tick_value
-        )
-        # Log tick_value calculation for transparency
-        self.logger.debug(
-            f"💱 tick_value calculation: "
-            f"Account={self.account_currency}, "
-            f"Symbol={symbol_spec.symbol} "
-            f"(Base={symbol_spec.base_currency}, Quote={symbol_spec.quote_currency}), "
-            f"Price={self._current_tick.mid:.5f}, "
-            f"tick_value={tick_value:.5f}"
-        )
-
-        # Check margin available (only if leverage trading enabled)
-        leverage = self.broker.get_max_leverage()
-        if leverage > 1:
-            margin_required = self.broker.calculate_margin(
-                pending_order.symbol, pending_order.lots, self._current_tick, pending_order.direction)
-            free_margin = self.portfolio.get_free_margin(
-                pending_order.direction)
-
-            if margin_required > free_margin:
-                self._orders_rejected += 1
-                return create_rejection_result(
-                    order_id=pending_order.pending_order_id,
-                    reason=RejectionReason.INSUFFICIENT_MARGIN,
-                    message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
-                )
-
-        # Open position in portfolio with trade record data
-        position = self.portfolio.open_position(
-            order_id=pending_order.pending_order_id,
-            symbol=pending_order.symbol,
-            direction=pending_order.direction,
-            lots=pending_order.lots,
-            entry_price=entry_price,
-            entry_tick_value=tick_value,
-            entry_bid=bid,
-            entry_ask=ask,
-            digits=symbol_spec.digits,
-            contract_size=symbol_spec.contract_size,
-            entry_tick_index=self._tick_counter,
-            entry_fee=entry_fee,
-            stop_loss=pending_order.order_kwargs.get('stop_loss'),
-            take_profit=pending_order.order_kwargs.get('take_profit'),
-            comment=pending_order.order_kwargs.get('comment', ''),
-            magic_number=pending_order.order_kwargs.get('magic_number', 0)
-        )
-
-        # Create order result for history
-        result = OrderResult(
-            order_id=pending_order.pending_order_id,
-            status=OrderStatus.EXECUTED,
-            executed_price=entry_price,
-            executed_lots=pending_order.lots,
-            execution_time=datetime.now(timezone.utc),
-            commission=0.0,
-            broker_order_id=position.position_id,
-            metadata={
-                "symbol": pending_order.symbol,
-                "direction": pending_order.direction,
-                "position_id": position.position_id,
-                "fee_cost": entry_fee.cost,
-                "fee_type": entry_fee.fee_type.value,
-                "filled_at_tick": self._tick_counter
-            }
-        )
-
-        self.logger.debug(f"Open Portfolio Position finished")
-        self.logger.verbose(
-            f"OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}")
-
-        # Update statistics
-        self._orders_executed += 1
-        self._total_spread_cost += entry_fee.cost
-        self._order_history.append(result)
-
-    def _execute_limit_order(
-        self,
-        order_id: str,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        **kwargs
-    ) -> OrderResult:
-        """
-        Execute limit order.
-
-        MVP: Not implemented yet.
-        """
-        self._orders_rejected += 1
-        return create_rejection_result(
-            order_id=order_id,
-            reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
-            message="Limit orders not implemented in MVP"
-        )
-
     # ============================================
-    # Position Management
+    # Close Commands (simulation-specific)
     # ============================================
 
-    def modify_position(
-        self,
-        position_id: str,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None
-    ) -> bool:
-        """
-        Modify position SL/TP.
-
-        NEW METHOD for dynamic position management.
-
-        Args:
-            position_id: Position to modify
-            new_stop_loss: New SL (None = no change)
-            new_take_profit: New TP (None = no change)
-
-        Returns:
-            True if modified successfully
-
-        Example:
-            # Trailing stop
-            position = trading_env.get_position("pos_1")
-            if tick.bid > position.entry_price + 0.0050:
-                trading_env.modify_position(
-                    position_id="pos_1",
-                    new_stop_loss=position.entry_price + 0.0020
-                )
-        """
-        return self.portfolio.modify_position(
-            position_id=position_id,
-            new_stop_loss=new_stop_loss,
-            new_take_profit=new_take_profit
-        )
-
-    # ============================================
-    # Close Commands
-    # ============================================
-
-    def close_position_with_latency(
+    def close_position(
         self,
         position_id: str,
         lots: Optional[float] = None
@@ -462,359 +285,43 @@ class TradeSimulator:
             }
         )
 
-    def _close_and_fill_order_in_portfolio(self, pending_order: PendingOrder) -> None:
-        """
-        Fill pending_order CLOSE order (after delay).
+    # ============================================
+    # Pending Order Awareness
+    # ============================================
 
-        Called by update_prices when close order ready.
-        Closes position in portfolio.
+    def has_pending_orders(self) -> bool:
+        """Check if any orders are in the latency queue."""
+        return self.latency_simulator.has_pending_orders()
 
-        Args:
-            pending_order: PendingOrder with order_action=PendingOrderAction.CLOSE
-        """
-        self.logger.info(
-            f"📋 Close and Fill Order {pending_order.pending_order_id}, at tick: {self._tick_counter}")
-        self.logger.verbose(
-            f"PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}")
-        self.logger.verbose(
-            f"CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}")
+    def is_pending_close(self, position_id: str) -> bool:
+        """Check if a specific position has a pending close order."""
+        return self.latency_simulator.is_pending_close(position_id)
 
-        # Get position
-        position = self.portfolio.get_position(pending_order.pending_order_id)
-        if not position:
-            self.logger.warning(
-                f"⚠️ Close order {pending_order.pending_order_id} failed: "
-                f"Position {pending_order.pending_order_id} not found"
-            )
-            return
-
-        # Get current price
-        bid, ask = self.get_current_price(position.symbol)
-
-        # Determine close price based on position direction
-        if position.direction == OrderDirection.LONG:
-            close_price = bid  # Sell at bid
-        else:
-            close_price = ask  # Buy back at ask
-
-        # Calculate exit tick_value for trade record
-        symbol_spec = self.broker.get_symbol_specification(position.symbol)
-        exit_tick_value = self._calculate_tick_value(
-            symbol_spec,
-            (bid + ask) / 2.0
-        )
-
-        # Close position with exit tick_value
-        realized_pnl = self.portfolio.close_position_portfolio(
-            position_id=pending_order.pending_order_id,
-            exit_price=close_price,
-            exit_tick_value=exit_tick_value,
-            exit_tick_index=self._tick_counter,
-            exit_fee=None  # MVP: No exit commission
-        )
-
-        # Log close execution
-        self.logger.debug(
-            f"💰 Position closed: {pending_order.pending_order_id} "
-            f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
-        )
-
-        # Create order result for history
-        result = OrderResult(
-            order_id=pending_order.pending_order_id,
-            status=OrderStatus.EXECUTED,
-            executed_price=close_price,
-            executed_lots=pending_order.close_lots if pending_order.close_lots else position.lots,
-            execution_time=datetime.now(timezone.utc),
-            commission=0.0,
-            metadata={
-                "realized_pnl": realized_pnl,
-                "position_id": pending_order.pending_order_id
-            }
-        )
-
-        self.logger.debug(f"Close and Fill Order finished")
-        self.logger.verbose(
-            f"CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}")
-
-        self._order_history.append(result)
+    # ============================================
+    # Cleanup
+    # ============================================
 
     def close_all_remaining_orders(self):
-        """ 
-            BEFORE collecting statistics - cleanup pending_order orders
         """
-        # get portfolio open positions
+        BEFORE collecting statistics - cleanup pending orders.
+
+        Force-closes all open positions through the latency chain,
+        then immediately fills all pending close orders.
+        """
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
                 f"⚠️ {len(open_positions)} positions remain open - auto-closing"
             )
-            # Make shure all open positions get a close in the latency chain.
+            # Submit close for all open positions
             for pos in open_positions:
-                self.close_position_with_latency(position_id=pos.position_id)
+                self.close_position(position_id=pos.position_id)
 
-            # execute all pending positions which are CLOSE
+            # Force-fill all pending close orders immediately
             open_pending = self.latency_simulator.get_pending_orders()
             for pending in open_pending:
                 if pending.order_action == PendingOrderAction.CLOSE:
-                    self._close_and_fill_order_in_portfolio(pending)
+                    self._fill_close_order(pending)
 
-        # clear all remaining orders ...
-        # (for example recently opened orders - which did not make their way into the portfolio)
+        # Clear remaining orders (e.g. recently opened orders not yet in portfolio)
         self.latency_simulator.clear_pending()
-
-    # ============================================
-    # Account Queries
-    # ============================================
-
-    def get_account_info(self, order_direction: OrderDirection) -> AccountInfo:
-        """
-        Get current account information.
-
-        Returns copy (safe for external use).
-        """
-        return self.portfolio.get_account_info(order_direction)
-
-    def get_open_positions(self) -> List[Position]:
-        """
-        Get all ACTIVE positions (real + pending OPENs, excluding pending CLOSEs).
-
-        Decision Logic sees unified view:
-        - Real positions from Portfolio
-        - Pending OPEN orders as pseudo-positions (pending=True)
-        - Excludes positions with pending CLOSE orders
-
-        This hides latency simulation details from Decision Logic.
-
-        Returns:
-            List of Position objects (mix of real and pseudo-positions)
-        """
-        # Get real positions from portfolio
-        active_positions = self.portfolio.get_open_positions()
-
-        # Get pending OPEN orders as pseudo-positions
-        pending_opens = self.latency_simulator.get_pending_orders(
-            PendingOrderAction.OPEN
-        )
-        pseudo_positions = [
-            pending_order_to_position(po) for po in pending_opens
-        ]
-
-        # Filter out positions with pending CLOSE orders
-        pending_closes = self.latency_simulator.get_pending_orders(
-            PendingOrderAction.CLOSE
-        )
-        # If Order is about to be closed, mark active_positions for algortihm.
-        for p in active_positions:
-            for c in pending_closes:
-                if (p.position_id == c.pending_order_id):
-                    p.pending = True
-
-        # Combine: active real positions + pending opens
-        return active_positions + pseudo_positions
-
-    def get_position(self, position_id: str) -> Optional[Position]:
-        """Get specific position by ID"""
-        return self.portfolio.get_position(position_id)
-
-    def get_balance(self) -> float:
-        """Get account balance"""
-        return self.portfolio.balance
-
-    # ============================================
-    # Dynamic Calculations"
-    # ============================================
-    def _calculate_tick_value(
-        self,
-        symbol_spec: SymbolSpecification,
-        current_price: float
-    ) -> float:
-        """
-        Calculate tick_value dynamically based on account currency and current price.
-
-        tick_value represents the value of 1 point movement at 1 standard lot
-        in the account currency.
-
-        Calculation Logic:
-        - If Account Currency == Quote Currency: tick_value = 1.0 (no conversion)
-        - If Account Currency == Base Currency: tick_value = 1.0 / current_price
-        - Cross Currency: Not supported in MVP (raises NotImplementedError)
-
-        Args:
-            symbol_spec: Static symbol specification
-            current_price: Current market price (mid/bid/ask)
-
-        Returns:
-            tick_value for P&L calculations
-
-        Raises:
-            NotImplementedError: If cross-currency conversion needed
-
-        Example:
-            GBPUSD with Account=USD:
-            → tick_value = 1.0 (Quote matches Account)
-
-            GBPUSD with Account=GBP:
-            → tick_value = 1.0 / 1.33000 = 0.7519
-
-            GBPUSD with Account=JPY:
-            → NotImplementedError (needs USDJPY rate)
-        """
-        # Quote Currency matches Account Currency
-        # Example: GBPUSD with Account=USD
-        if self.account_currency == symbol_spec.quote_currency:
-            return 1.0  # No conversion needed
-
-        # Base Currency matches Account Currency
-        # Example: GBPUSD with Account=GBP
-        elif self.account_currency == symbol_spec.base_currency:
-            if current_price <= 0:
-                raise ValueError(
-                    f"Invalid price for tick_value calculation: {current_price}"
-                )
-            return 1.0 / current_price
-
-        # Cross Currency - Not supported in MVP
-        else:
-            raise NotImplementedError(
-                f"Cross-currency conversion not supported (MVP restriction): "
-                f"Account Currency: '{self.account_currency}', "
-                f"Symbol: {symbol_spec.symbol} "
-                f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})\n"
-                f"Supported configurations:\n"
-                f"  - Account Currency == Quote Currency (e.g., GBPUSD with USD account)\n"
-                f"  - Account Currency == Base Currency (e.g., GBPUSD with GBP account)\n"
-                f"For cross-currency, external exchange rates would be required (Post-MVP)."
-            )
-
-    def _create_entry_fee(
-        self,
-        symbol_spec: SymbolSpecification,
-        lots: float,
-        entry_price: float,
-        tick_value: float
-    ) -> AbstractTradingFee:
-        """
-        Create entry fee based on broker fee model.
-
-        Determines fee type from broker config and creates appropriate fee object.
-        Spread-based (MT5) vs Maker/Taker (Kraken).
-
-        Args:
-            symbol_spec: Symbol specification
-            lots: Order size
-            entry_price: Entry price
-            tick_value: Calculated tick value
-
-        Returns:
-            AbstractTradingFee (SpreadFee or MakerTakerFee)
-        """
-        fee_model_str = self.broker.adapter.broker_config.get(
-            'fee_structure', {}
-        ).get('model', 'spread')
-
-        fee_model = FeeType(fee_model_str)
-
-        if fee_model == FeeType.MAKER_TAKER:
-            return create_maker_taker_fee(
-                lots=lots,
-                contract_size=symbol_spec.contract_size,
-                entry_price=entry_price,
-                maker_rate=self.broker.adapter.get_maker_fee(),
-                taker_rate=self.broker.adapter.get_taker_fee(),
-                is_maker=False  # Market order = Taker
-            )
-
-        # Default: Spread-based fee (MT5, Forex)
-        return create_spread_fee_from_tick(
-            tick=self._current_tick,
-            lots=lots,
-            tick_value=tick_value,
-            digits=symbol_spec.digits
-        )
-
-    # ============================================
-    # Order History
-    # ============================================
-
-    def get_order_history(self) -> List[OrderResult]:
-        """
-        Get complete order history.
-
-        NEW METHOD for performance analysis and debugging.
-
-        Returns:
-            List of all OrderResults (executed and rejected)
-
-        Example:
-            history = trading_env.get_order_history()
-
-            executed = [o for o in history if o.is_success]
-            rejected = [o for o in history if o.is_rejected]
-
-            vLog.info(f"Total orders: {len(history)}")
-            vLog.info(f"Executed: {len(executed)}")
-            vLog.info(f"Rejected: {len(rejected)}")
-        """
-        return self._order_history.copy()
-
-    def get_trade_history(self) -> List:
-        """
-        Get all completed trades with full audit trail.
-
-        Returns:
-            List of TradeRecord objects for P&L verification
-        """
-        return self.portfolio.get_trade_history()
-
-    # ============================================
-    # Broker Information
-    # ============================================
-
-    def get_broker_name(self) -> str:
-        """Get broker name"""
-        return self.broker.get_broker_name()
-
-    def get_broker_capabilities(self):
-        """Get broker order capabilities"""
-        return self.broker.get_order_capabilities()
-
-    def get_symbol_spec(self, symbol: str) -> SymbolSpecification:
-        """Get symbol specifications"""
-        return self.broker.get_symbol_specification(symbol)
-
-    # ============================================
-    # Statistics ( & TYPED)
-    # ============================================
-
-    def get_execution_stats(self) -> ExecutionStats:
-        """
-        Get order execution statistics.
-
-        Creates new ExecutionStats from direct attributes.
-        Always returns new object (safe for external use).
-        """
-        return ExecutionStats(
-            orders_sent=self._orders_sent,
-            orders_executed=self._orders_executed,
-            orders_rejected=self._orders_rejected,
-            total_commission=self._total_commission,
-            total_spread_cost=self._total_spread_cost
-        )
-
-    def reset(self) -> None:
-        """Reset simulator to initial state"""
-        self.portfolio.reset()
-        self._current_prices.clear()
-        self._order_counter = 0
-        self._order_history.clear()  # EXTENDED
-
-        # Reset direct attributes
-        self._orders_sent = 0
-        self._orders_executed = 0
-        self._orders_rejected = 0
-        self._total_commission = 0.0
-        self._total_spread_cost = 0.0
-
-    def get_tick_counter(self) -> int:
-        return self._tick_counter

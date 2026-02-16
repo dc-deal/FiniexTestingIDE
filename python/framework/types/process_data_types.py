@@ -19,7 +19,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.broker_types import BrokerType
 from python.framework.types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.market_config_types import MarketType
@@ -28,6 +28,7 @@ from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.market_data_types import TickData
+from python.framework.types.order_types import OrderResult
 from python.framework.types.trading_env_stats_types import CostBreakdown, ExecutionStats
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -185,6 +186,7 @@ class ProcessScenarioConfig:
     # === EXECUTION SETTINGS ===
     parallel_workers: bool = False
     parallel_threshold: float = 1.0
+    strict_parameter_validation: bool = True
 
     # === LOGGER METADATA ===
     # For ScenarioLogger initialization
@@ -200,6 +202,7 @@ class ProcessScenarioConfig:
     initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
     seeds: Dict[str, Any] = field(default_factory=dict)
+    executor_mode: str = 'simulation'  # "simulation" | "live_dry_run"
 
     @staticmethod
     def from_scenario(
@@ -247,6 +250,9 @@ class ProcessScenarioConfig:
         parallel_threshold = exec_config.get(
             "worker_parallel_threshold_ms", 1.0
         )
+        strict_parameter_validation = exec_config.get(
+            "strict_parameter_validation", True
+        )
 
         # accountt currency is set in scenario_validator after detecting the correct value (see "auto"-mode)
         account_currency = scenario.account_currency
@@ -254,6 +260,8 @@ class ProcessScenarioConfig:
             'initial_balance')
         seeds = scenario.trade_simulator_config.get(
             'seeds')
+        executor_mode = scenario.trade_simulator_config.get(
+            'executor_mode', 'simulation')
 
         # Derive market_type from broker_type
         market_config_manager = MarketConfigManager()
@@ -276,6 +284,7 @@ class ProcessScenarioConfig:
             decision_logic_config=decision_logic_config,
             parallel_workers=parallel_workers,
             parallel_threshold=parallel_threshold,
+            strict_parameter_validation=strict_parameter_validation,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
             live_stats_config=live_stats_config,
@@ -283,7 +292,8 @@ class ProcessScenarioConfig:
             market_type=market_type,
             initial_balance=initial_balance,
             account_currency=account_currency,
-            seeds=seeds
+            seeds=seeds,
+            executor_mode=executor_mode
         )
 
 
@@ -294,7 +304,7 @@ class ProcessPreparedDataObjects:
         All those must be created in minimum time
     """
     worker_coordinator: WorkerOrchestrator = None
-    trade_simulator: TradeSimulator = None
+    trade_simulator: AbstractTradeExecutor = None
     bar_rendering_controller: BarRenderingController = None
     decision_logic: AbstractDecisionLogic = None
     scenario_logger: ScenarioLogger = None
@@ -348,6 +358,9 @@ class ProcessTickLoopResult:
 
     # Trade-by-trade history for P&L verification
     trade_history: List[TradeRecord] = None
+
+    # Order history (all orders including rejections)
+    order_history: List[OrderResult] = None
 
     # Profiling data
     profiling_data: ProcessProfileData = None

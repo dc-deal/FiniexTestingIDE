@@ -194,43 +194,27 @@ class AggressiveTrend(AbstractDecisionLogic):
             return None
 
         # ============================================
-        # Get BOTH positions AND pending orders
+        # Check for pending orders (avoid double-ordering)
+        # ============================================
+        if self.trading_api.has_pending_orders():
+            # Orders in flight — wait for them to resolve
+            return None
+
+        # ============================================
+        # Get confirmed open positions
         # ============================================
         open_positions = self.trading_api.get_open_positions()
-
-        # Note: get_open_positions() already filters out positions being closed.
-        # Latency simulation is handled internally by TradeSimulator.
 
         new_direction = OrderDirection.LONG if decision.action == DecisionLogicAction.BUY else OrderDirection.SHORT
 
         # ============================================
-        # STEP 1: Handle FLAT signal (exit strategy)
-        # ============================================
-        if decision.action == DecisionLogicAction.FLAT:
-            if len(open_positions) > 0:
-                position = open_positions[0]
-                self.logger.info(
-                    f"📍 FLAT signal - closing {position.direction} position "
-                    f"(ID: {position.position_id})"
-                )
-                return self.trading_api.close_position(position.position_id)
-            # No position to close, nothing to do
-            return None
-
-        # ============================================
-        # STEP 2: Check if we already have a position
+        # STEP 1: Check if we already have a position
         # ============================================
         if len(open_positions) > 0:
             current_position = open_positions[0]
-            if (current_position.pending):
-                # waiting for full close (or open)!
-                return
+
             # Same direction? Skip (we already have what the strategy wants)
             if current_position.direction == new_direction:
-                # self.logger.debug(
-                #     f"⏭️  Already holding {new_direction} position "
-                #     f"(ID: {current_position.position_id}) - skipping duplicate signal"
-                # )
                 return None
 
             # Opposite direction? Close old position (signal reversal)

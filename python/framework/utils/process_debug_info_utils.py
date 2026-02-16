@@ -2,7 +2,7 @@ from typing import Any, Dict, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
-from python.framework.trading_env.trade_simulator import TradeSimulator
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
@@ -83,7 +83,7 @@ def debug_warmup_bars_check(warmup_bars: Dict[str, Tuple[Any, ...]],
             logger.debug(f"  ❌ EMPTY BAR HISTORY!")
 
 
-def log_trade_simulator_config(logger: ScenarioLogger, config: ProcessScenarioConfig, trade_simulator: TradeSimulator):
+def log_trade_simulator_config(logger: ScenarioLogger, config: ProcessScenarioConfig, trade_simulator: AbstractTradeExecutor):
     # Log broker configuration for transparency
     broker_spec = trade_simulator.broker.get_broker_specification()
     symbol_spec = trade_simulator.broker.get_symbol_specification(

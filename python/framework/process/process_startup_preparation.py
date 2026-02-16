@@ -74,7 +74,8 @@ def process_startup_preparation(
     )
 
     # === PHASE 4: Create Workers (with context) ===
-    worker_factory = WorkerFactory(logger=scenario_logger)
+    worker_factory = WorkerFactory(
+        logger=scenario_logger, strict_parameter_validation=config.strict_parameter_validation)
     workers_dict = worker_factory.create_workers_from_config(
         strategy_config=config.strategy_config,
         trading_context=trading_context
@@ -110,7 +111,7 @@ def process_startup_preparation(
 
     # === PHASE 6: Inject DecisionTradingAPI (validated against required_order_types) ===
     trading_api = DecisionTradingAPI(
-        trade_simulator=trade_simulator,
+        executor=trade_simulator,
         required_order_types=required_order_types
     )
     decision_logic.set_trading_api(trading_api)
