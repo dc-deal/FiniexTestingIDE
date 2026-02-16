@@ -10,8 +10,10 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from python.framework.types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_data_types import TickData
+from python.framework.types.live_execution_types import BrokerResponse
 from python.framework.types.order_types import (
     OrderCapabilities,
+    OrderType,
     MarketOrder,
     LimitOrder,
     StopOrder,
@@ -307,6 +309,79 @@ class BaseAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.get_broker_name()} does not support iceberg orders"
+        )
+
+    # ============================================
+    # Optional: Live Order Execution (Tier 3)
+    # ============================================
+
+    def is_live_capable(self) -> bool:
+        """
+        Whether this adapter supports live order execution.
+
+        Returns:
+            False by default. Override to return True in live-capable adapters.
+        """
+        return False
+
+    def execute_order(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        lots: float,
+        order_type: OrderType,
+        **kwargs
+    ) -> BrokerResponse:
+        """
+        Send order to broker for execution.
+
+        OPTIONAL — Only live-capable adapters implement this.
+        Default raises NotImplementedError.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSD")
+            direction: LONG or SHORT
+            lots: Order size
+            order_type: Order type (MARKET for MVP)
+            **kwargs: Additional order parameters
+
+        Returns:
+            BrokerResponse with broker_ref and initial status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not support live order execution"
+        )
+
+    def check_order_status(self, broker_ref: str) -> BrokerResponse:
+        """
+        Poll broker for current order status.
+
+        OPTIONAL — Only live-capable adapters implement this.
+
+        Args:
+            broker_ref: Broker's order reference ID
+
+        Returns:
+            BrokerResponse with current status (pending/filled/rejected)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not support live order status checks"
+        )
+
+    def cancel_order(self, broker_ref: str) -> BrokerResponse:
+        """
+        Cancel a pending order at broker.
+
+        OPTIONAL — Only live-capable adapters implement this.
+
+        Args:
+            broker_ref: Broker's order reference ID
+
+        Returns:
+            BrokerResponse with cancellation status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not support live order cancellation"
         )
 
     # ============================================

@@ -53,11 +53,11 @@ The solution is a **shared-core architecture** where common logic lives in base 
 ├──────────────────┬──────────────────────────────┤
 │                  │                               │
 │  TradeSimulator  │    LiveTradeExecutor           │
-│  (Simulation)    │    (Horizon 2: Live)           │
+│  (Simulation)    │    (Live)                      │
 │                  │                               │
 │  has-a:          │    has-a:                      │
 │  OrderLatency    │    LiveOrderTracker            │
-│  Simulator       │    (Horizon 2)                │
+│  Simulator       │                               │
 └──────────────────┴──────────────────────────────┘
 
             Both "has-a" inherit from:
@@ -69,7 +69,7 @@ The solution is a **shared-core architecture** where common logic lives in base 
 ├──────────────────┬──────────────────────────────┤
 │                  │                               │
 │  OrderLatency    │    LiveOrderTracker            │
-│  Simulator       │    (Horizon 2)                │
+│  Simulator       │                               │
 │                  │                               │
 │  - SeededDelay   │    - Broker ref tracking       │
 │    Generator     │    - mark_filled/rejected      │
@@ -83,7 +83,7 @@ The solution is a **shared-core architecture** where common logic lives in base 
 
 The abstract base class answers **what happens when an order is filled**: portfolio gets a new position, fees are calculated, margin is checked, statistics are updated. This is the same whether the fill came from a latency simulator or a real broker.
 
-The subclasses answer **how the order gets to the market and how we learn it was filled**: TradeSimulator uses a deterministic queue with seeded delays. LiveTradeExecutor will call a broker API and poll for confirmations.
+The subclasses answer **how the order gets to the market and how we learn it was filled**: TradeSimulator uses a deterministic queue with seeded delays. LiveTradeExecutor calls a broker adapter and polls for confirmations.
 
 ---
 
@@ -152,11 +152,11 @@ Error handling is **not a live-only feature**. It belongs in AbstractTradeExecut
 4. Rejection stored in _order_history, order never reaches portfolio
 ```
 
-**Live (Horizon 2):**
+**Live (implemented):**
 ```
-1. open_order() → PendingOrder in LiveOrderTracker + broker call
+1. open_order() → adapter.execute_order() → PendingOrder in LiveOrderTracker
 2. Broker doesn't respond / rejects
-3. _process_pending_orders() detects timeout / rejection
+3. _process_pending_orders() polls adapter → detects timeout / rejection
 4. Same handling logic as simulation stress test
 ```
 
@@ -221,14 +221,19 @@ Simulation-specific pending order manager. Adds tick-based latency modeling with
 
 Uses `SeededDelayGenerator` for deterministic API latency + market execution delays.
 
-### LiveOrderTracker (Horizon 2, extends AbstractPendingOrderManager)
-Live-specific pending order manager. Will add broker reference tracking and timeout detection.
+### LiveOrderTracker (extends AbstractPendingOrderManager)
+Live-specific pending order manager. Adds broker reference tracking, timeout detection, and fill/rejection marking from broker responses.
 
-**Planned methods:**
-- `submit_order()` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`
-- `mark_filled(order_id, broker_response)` — Broker confirmed fill
-- `mark_rejected(order_id, reason)` — Broker rejected order
-- `check_timeouts()` — Returns orders that have exceeded timeout threshold
+**Internal state:** `_broker_ref_index: Dict[str, str]` maps broker_ref → order_id for O(1) lookup when broker responds.
+
+**Live-specific methods:**
+- `submit_order(order_id, symbol, direction, lots, broker_ref, **kwargs)` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`. Indexes by broker_ref.
+- `submit_close_order(position_id, broker_ref, close_lots)` — Same pattern for close orders
+- `mark_filled(broker_ref, fill_price, filled_lots)` — Removes from pending, returns PendingOrder for fill processing
+- `mark_rejected(broker_ref, reason)` — Removes from pending, returns PendingOrder for rejection recording
+- `check_timeouts()` — Returns orders past `timeout_at` (does not remove — caller decides)
+- `get_by_broker_ref(broker_ref)` — O(1) lookup via broker reference index
+- `clear_pending()` — Override: clears both pending orders and broker_ref index
 
 ### TradeSimulator (extends AbstractTradeExecutor)
 Simulated execution. Delegates pending order management to OrderLatencySimulator.
@@ -239,10 +244,44 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 `has_pending_orders()` and `is_pending_close()` delegate directly to `self.latency_simulator` (which inherits these from AbstractPendingOrderManager).
 
-### LiveTradeExecutor (Horizon 2, extends AbstractTradeExecutor)
-Skeleton for live trading. Will delegate pending order management to LiveOrderTracker.
+### LiveTradeExecutor (extends AbstractTradeExecutor)
+Live execution via broker adapter API. Delegates pending order management to LiveOrderTracker.
 
-**Key characteristic:** Will route orders through a broker adapter and poll for fill confirmations. When a fill arrives, it calls the *same* `_fill_open_order(pending_order, fill_price=broker_price)` / `_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio logic, zero duplication.
+**Key characteristic:** Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, and calls the *same* `_fill_open_order(pending_order, fill_price=broker_price)` / `_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio logic, zero duplication.
+
+**Constructor validation:** Requires `adapter.is_live_capable() == True`. Takes optional `TimeoutConfig` (default: 30s timeout).
+
+**Order flow:**
+1. `open_order()` — Validates, calls `adapter.execute_order()`, handles immediate fill/rejection/pending
+2. `_process_pending_orders()` — Polls broker for each pending order, handles fills/rejections/timeouts
+3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`
+4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
+
+**Feature gating:** Only MARKET orders supported (same as simulation MVP).
+
+**Testable via MockBrokerAdapter** — no real broker needed for pipeline verification.
+
+### BaseAdapter (Tiered Interface)
+Abstract interface for all broker adapters. Methods are organized in tiers:
+
+**Tier 1 — Required (all brokers):** `create_market_order()`, `create_limit_order()`, `validate_order()`, `get_symbol_specification()`, `get_broker_specification()`
+
+**Tier 2 — Optional (extended orders):** `create_stop_order()`, `create_stop_limit_order()`, `create_iceberg_order()` — default `NotImplementedError`
+
+**Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `is_live_capable()` — default `NotImplementedError` / `False`
+
+Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
+
+### MockBrokerAdapter (extends BaseAdapter, for testing)
+Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three tiers with configurable behavior. Uses real Kraken BTCUSD symbol specification.
+
+**Execution modes (MockExecutionMode):**
+- `INSTANT_FILL` — `execute_order()` returns FILLED immediately
+- `DELAYED_FILL` — Returns PENDING, `check_order_status()` returns FILLED on next call
+- `REJECT_ALL` — Returns REJECTED
+- `TIMEOUT` — Returns PENDING, `check_order_status()` stays PENDING forever
+
+Used by `MockOrderExecution` utility (`python/framework/testing/mock_order_execution.py`) to create pre-configured LiveTradeExecutor instances for testing.
 
 ### DecisionTradingAPI
 The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
@@ -475,6 +514,11 @@ Portfolio (shared)
 - Affects: LiveTradeExecutor, PortfolioManager
 - See: `ISSUE_reconciliation_layer_live_trading.md`
 
+### Live Autotrader Pipeline
+**Next step:** Build FiniexAutoTrader (live runner) that connects tick source → workers → decision logic → LiveTradeExecutor. The execution layer (LiveTradeExecutor, LiveOrderTracker, MockBrokerAdapter) is complete and tested (47 tests). Missing: live runner, Kraken tick source, KrakenAdapter Tier 3.
+- Replaces: GitHub Issue #133
+- See: `ISSUE_live_autotrader_pipeline.md`
+
 ---
 
 ## Design Decisions Log
@@ -524,6 +568,15 @@ Extracting AbstractPendingOrderManager provides:
 
 The split: AbstractPendingOrderManager owns the "what" (storage, query). Subclasses own the "when" (tick-based fill detection vs broker-response detection).
 
+### Why BaseAdapter Was Extended, Not Split
+
+We considered a separate `OrderExecutionAdapter` interface for live execution methods. This was rejected because:
+
+1. **Existing pattern works**: BaseAdapter already has optional methods with `NotImplementedError` defaults (Tier 2: `create_stop_order`, `create_iceberg_order`). Same pattern for Tier 3 execution methods.
+2. **No interface pollution**: Backtesting code never calls `execute_order()` — TradeSimulator uses its own latency queue. The methods exist but are never invoked.
+3. **One inheritance chain**: `MockBrokerAdapter extends BaseAdapter` — one class provides data, validation, AND execution. No diamond inheritance, no adapter composition.
+4. **File organization solves complexity**: As adapters grow, execution logic moves to utility files (`kraken_order_execution.py`) while the adapter class remains the entry point.
+
 ---
 
 ## Glossary
@@ -543,4 +596,7 @@ The split: AbstractPendingOrderManager owns the "what" (storage, query). Subclas
 | **DecisionLogic** | Trading strategy that produces buy/sell/flat decisions |
 | **Worker** | Indicator calculator that feeds data to DecisionLogic |
 | **Order History** | Complete audit trail of all order outcomes (fills + rejections) from `_order_history` |
+| **BrokerResponse** | Standardized response from broker adapter (fill, rejection, status) |
+| **TimeoutConfig** | Configurable thresholds for order timeout detection |
+| **MockBrokerAdapter** | Test adapter with configurable execution modes (instant_fill, reject_all, etc.) |
 | **Error Seeds** | Seeded fault injection in simulation for stress testing error-handling paths |

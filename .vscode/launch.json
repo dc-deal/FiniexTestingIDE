@@ -135,16 +135,6 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: All (except Benchmark) → Log",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/test_runner_cli.py",
-            "args": [],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}"
-        },
-        {
             "name": "🧩 Pytest: MVP Baseline (All)",
             "type": "debugpy",
             "request": "launch",
@@ -218,6 +208,19 @@
             "module": "pytest",
             "args": [
                 "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Live Trading Executor (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_executor/",
                 "-v",
                 "--tb=short"
             ],
