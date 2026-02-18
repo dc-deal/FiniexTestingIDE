@@ -215,6 +215,19 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Trader Pending Stats (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/pending_stats/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: Live Trading Executor (All)",
             "type": "debugpy",
             "request": "launch",

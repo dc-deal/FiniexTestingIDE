@@ -35,7 +35,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live_order_tracker import LiveOrderTracker
-from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
 from python.framework.types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -49,6 +49,7 @@ from python.framework.types.order_types import (
     RejectionReason,
     create_rejection_result,
 )
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -149,7 +150,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if not pending.broker_ref:
                 continue
 
-            response = self.broker.adapter.check_order_status(pending.broker_ref)
+            response = self.broker.adapter.check_order_status(
+                pending.broker_ref)
             self._handle_broker_response(pending, response)
 
         # Check for timeouts (orders that broker never responded to)
@@ -159,7 +161,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def _handle_broker_response(
         self,
-        pending: 'PendingOrder',
+        pending: PendingOrder,
         response: BrokerResponse,
     ) -> None:
         """
@@ -213,7 +215,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # PENDING / PARTIALLY_FILLED: no action, keep polling
 
-    def _handle_timeout(self, pending: 'PendingOrder') -> None:
+    def _handle_timeout(self, pending: PendingOrder) -> None:
         """
         Handle a timed-out order. Remove from tracker, record rejection.
 
@@ -488,7 +490,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             broker_order_id=response.broker_ref,
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
-            metadata={"awaiting_fill": True, "broker_ref": response.broker_ref},
+            metadata={"awaiting_fill": True,
+                      "broker_ref": response.broker_ref},
         )
 
     # ============================================
@@ -503,7 +506,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """Check if a specific position has a pending close order."""
         return self._order_tracker.is_pending_close(position_id)
 
-    def get_pending_stats(self) -> 'PendingOrderStats':
+    def get_pending_stats(self) -> PendingOrderStats:
         """
         Get aggregated pending order statistics from live order tracker.
 
@@ -517,7 +520,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # ============================================
 
     @staticmethod
-    def _calculate_pending_latency_ms(pending: 'PendingOrder') -> Optional[float]:
+    def _calculate_pending_latency_ms(pending: PendingOrder) -> Optional[float]:
         """
         Calculate pending duration in milliseconds from submitted_at to now.
 

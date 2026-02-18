@@ -262,13 +262,20 @@ Validates live execution pipeline with MockBrokerAdapter:
 - LiveTradeExecutor integration (all 4 mock modes)
 - Multi-order scenarios (open+close, close_all, stats consistency)
 
+### Pending Stats Tests (12 tests)
+Validates pending order statistics and force-closed detection:
+- Latency stats population (avg/min/max)
+- Outcome counting consistency (filled + rejected + timed_out + force_closed = total)
+- Synthetic close path (no false force-closed from end-of-scenario cleanup)
+- Force-closed anomaly detection with reason field
+
 ### Data Integration Tests (9 tests)
 Validates data pipeline integrity:
 - Volume consistency (crypto > 0, forex = 0)
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -293,6 +300,7 @@ Validates data pipeline integrity:
 | [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md) | ~35 margin & lot validation tests |
 | [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
 | [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
+| [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---

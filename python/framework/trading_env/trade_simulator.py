@@ -30,6 +30,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from .broker_config import BrokerConfig
 from ..types.order_types import (
     OrderType,
@@ -318,7 +319,7 @@ class TradeSimulator(AbstractTradeExecutor):
         """Check if a specific position has a pending close order."""
         return self.latency_simulator.is_pending_close(position_id)
 
-    def get_pending_stats(self) -> 'PendingOrderStats':
+    def get_pending_stats(self) -> PendingOrderStats:
         """
         Get aggregated pending order statistics from latency simulator.
 
