@@ -87,7 +87,7 @@
       "end_date": "2026-01-27T00:00:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -98,9 +98,9 @@
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-27T16:00:00+00:00",
       "end_date": "2026-01-28T00:00:00+00:00",
-      "max_ticks": null,
+      "max_ticks": 1000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

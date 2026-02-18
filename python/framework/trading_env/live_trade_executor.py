@@ -266,7 +266,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         order_type: OrderType,
         direction: OrderDirection,
         lots: float,
-        **kwargs
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        comment: str = "",
+        magic_number: int = 0,
     ) -> OrderResult:
         """
         Send order to broker for execution.
@@ -279,7 +282,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_type: Order type (only MARKET supported)
             direction: LONG or SHORT
             lots: Position size
-            **kwargs: Additional parameters (stop_loss, take_profit, comment)
+            stop_loss: Optional stop loss price level
+            take_profit: Optional take profit price level
+            comment: Order comment
+            magic_number: Strategy identifier
 
         Returns:
             OrderResult with PENDING or REJECTED status
@@ -311,14 +317,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._order_history.append(result)
             return result
 
-        # Send to broker via adapter
+        # Build order kwargs for adapter and tracker
+        order_kwargs = {}
+        if stop_loss is not None:
+            order_kwargs["stop_loss"] = stop_loss
+        if take_profit is not None:
+            order_kwargs["take_profit"] = take_profit
+        if comment:
+            order_kwargs["comment"] = comment
+        if magic_number:
+            order_kwargs["magic_number"] = magic_number
+
+        # Send to broker via adapter (adapter keeps **kwargs — broker boundary)
         try:
             response = self.broker.adapter.execute_order(
                 symbol=symbol,
                 direction=direction,
                 lots=lots,
                 order_type=order_type,
-                **kwargs,
+                **order_kwargs,
             )
         except Exception as e:
             self._orders_rejected += 1
@@ -350,7 +367,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 direction=direction,
                 lots=lots,
                 broker_ref=response.broker_ref,
-                **kwargs,
+                order_kwargs=order_kwargs,
             )
             filled = self._order_tracker.mark_filled(
                 broker_ref=response.broker_ref,
@@ -379,7 +396,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             direction=direction,
             lots=lots,
             broker_ref=response.broker_ref,
-            **kwargs,
+            order_kwargs=order_kwargs,
         )
 
         result = OrderResult(

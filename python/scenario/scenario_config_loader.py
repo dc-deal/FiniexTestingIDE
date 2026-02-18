@@ -151,7 +151,7 @@ class ScenarioConfigLoader:
                 symbol=scenario_data['symbol'],
                 data_broker_type=data_broker_type,
                 start_date=parse_datetime(scenario_data['start_date']),
-                end_date=parse_datetime(scenario_data['end_date']),
+                end_date=parse_datetime(scenario_data['end_date']) if scenario_data.get('end_date') else None,
                 data_mode=scenario_data.get('data_mode', 'realistic'),
                 max_ticks=scenario_data.get('max_ticks'),
                 strategy_config=scenario_strategy,

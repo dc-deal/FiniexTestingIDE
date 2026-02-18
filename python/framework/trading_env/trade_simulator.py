@@ -181,7 +181,10 @@ class TradeSimulator(AbstractTradeExecutor):
         order_type: OrderType,
         direction: OrderDirection,
         lots: float,
-        **kwargs
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        comment: str = "",
+        magic_number: int = 0,
     ) -> OrderResult:
         """
         Send order to broker simulation.
@@ -229,7 +232,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 direction=direction,
                 lots=lots,
                 current_tick=self._tick_counter,
-                **kwargs
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                comment=comment,
+                magic_number=magic_number,
             )
             # Return PENDING status
             result = OrderResult(

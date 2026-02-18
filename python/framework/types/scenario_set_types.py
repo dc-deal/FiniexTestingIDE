@@ -37,7 +37,7 @@ class SingleScenario:
     data_broker_type: str  # REQUIRED - no default!
 
     start_date: datetime
-    end_date: datetime
+    end_date: Optional[datetime] = None
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled

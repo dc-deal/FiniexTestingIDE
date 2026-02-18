@@ -179,10 +179,23 @@ class AbstractTradeExecutor(ABC):
         order_type: OrderType,
         direction: OrderDirection,
         lots: float,
-        **kwargs
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        comment: str = "",
+        magic_number: int = 0,
     ) -> OrderResult:
         """
         Submit an order for execution.
+
+        Args:
+            symbol: Trading symbol
+            order_type: MARKET or LIMIT
+            direction: LONG or SHORT
+            lots: Position size
+            stop_loss: Optional stop loss price level
+            take_profit: Optional take profit price level
+            comment: Order comment
+            magic_number: Strategy identifier
 
         TradeSimulator: Submits to latency queue → returns PENDING
         LiveTradeExecutor: Sends to broker API → returns PENDING/EXECUTED
