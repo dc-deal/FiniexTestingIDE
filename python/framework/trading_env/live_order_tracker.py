@@ -77,7 +77,7 @@ class LiveOrderTracker(AbstractPendingOrderManager):
         direction: OrderDirection,
         lots: float,
         broker_ref: str,
-        **kwargs
+        order_kwargs: Optional[Dict] = None,
     ) -> str:
         """
         Track a submitted OPEN order with broker reference.
@@ -91,7 +91,7 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             direction: LONG or SHORT
             lots: Position size
             broker_ref: Broker's order reference ID
-            **kwargs: Additional order parameters (SL, TP, comment)
+            order_kwargs: Optional order parameters (stop_loss, take_profit, comment, magic_number)
 
         Returns:
             order_id for chaining
@@ -111,7 +111,7 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             direction=direction,
             lots=lots,
             entry_time=now,
-            order_kwargs=kwargs if kwargs else {},
+            order_kwargs=order_kwargs or {},
         )
 
         # Store in inherited storage
@@ -301,7 +301,11 @@ class LiveOrderTracker(AbstractPendingOrderManager):
     # Cleanup (override to also clear index)
     # ============================================
 
-    def clear_pending(self) -> None:
+    def clear_pending(
+        self,
+        current_tick: Optional[int] = None,
+        reason: str = "scenario_end"
+    ) -> None:
         """Clear all pending orders and broker ref index."""
-        super().clear_pending()
+        super().clear_pending(current_tick=current_tick, reason=reason)
         self._broker_ref_index.clear()

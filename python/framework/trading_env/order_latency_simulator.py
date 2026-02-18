@@ -171,7 +171,10 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         direction: OrderDirection,
         lots: float,
         current_tick: int,
-        **kwargs
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        comment: str = "",
+        magic_number: int = 0,
     ) -> str:
         """
         Submit OPEN order for execution with delay.
@@ -185,7 +188,10 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             direction: LONG or SHORT
             lots: Position size
             current_tick: Current tick number
-            **kwargs: Additional order parameters (SL, TP, comment)
+            stop_loss: Optional stop loss price level
+            take_profit: Optional take profit price level
+            comment: Order comment
+            magic_number: Strategy identifier
 
         Returns:
             order_id: Same as input (for chaining)
@@ -194,6 +200,17 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         api_delay = self.api_delay_gen.next()
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
+
+        # Build order_kwargs dict from explicit params
+        order_kwargs = {}
+        if stop_loss is not None:
+            order_kwargs["stop_loss"] = stop_loss
+        if take_profit is not None:
+            order_kwargs["take_profit"] = take_profit
+        if comment:
+            order_kwargs["comment"] = comment
+        if magic_number:
+            order_kwargs["magic_number"] = magic_number
 
         # Store pending order (inherited storage)
         self.store_order(PendingOrder(
@@ -206,7 +223,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             lots=lots,
             entry_price=0,
             entry_time=datetime.now(timezone.utc),
-            order_kwargs=kwargs
+            order_kwargs=order_kwargs
         ))
 
         # Log order reception

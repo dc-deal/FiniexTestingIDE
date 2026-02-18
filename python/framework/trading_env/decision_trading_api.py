@@ -140,7 +140,10 @@ class DecisionTradingAPI:
         order_type: OrderType,
         direction: OrderDirection,
         lots: float,
-        **kwargs
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        comment: str = "",
+        magic_number: int = 0,
     ) -> OrderResult:
         """
         Send order to trading environment.
@@ -154,7 +157,10 @@ class DecisionTradingAPI:
             order_type: OrderType.MARKET or OrderType.LIMIT (MVP)
             direction: OrderDirection.LONG or OrderDirection.SHORT
             lots: Position size
-            **kwargs: Optional params (stop_loss, take_profit, price for limit)
+            stop_loss: Optional stop loss price level
+            take_profit: Optional take profit price level
+            comment: Order comment (e.g., strategy name)
+            magic_number: Identifier for grouping orders by strategy
 
         Returns:
             OrderResult with execution details
@@ -174,7 +180,10 @@ class DecisionTradingAPI:
             order_type=order_type,
             direction=direction,
             lots=lots,
-            **kwargs
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            comment=comment,
+            magic_number=magic_number,
         )
 
     # ============================================

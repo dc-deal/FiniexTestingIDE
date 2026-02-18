@@ -288,7 +288,7 @@ Live-specific pending order manager. Adds broker reference tracking, timeout det
 **Internal state:** `_broker_ref_index: Dict[str, str]` maps broker_ref → order_id for O(1) lookup when broker responds.
 
 **Live-specific methods:**
-- `submit_order(order_id, symbol, direction, lots, broker_ref, **kwargs)` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`. Indexes by broker_ref.
+- `submit_order(order_id, symbol, direction, lots, broker_ref, order_kwargs=None)` — Creates PendingOrder with `submitted_at`, `broker_ref`, `timeout_at`. Indexes by broker_ref.
 - `submit_close_order(position_id, broker_ref, close_lots)` — Same pattern for close orders
 - `mark_filled(broker_ref, fill_price, filled_lots)` — Removes from pending, returns PendingOrder for fill processing
 - `mark_rejected(broker_ref, reason)` — Removes from pending, returns PendingOrder for rejection recording
@@ -365,7 +365,7 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 ### PendingOrder (shared dataclass)
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
 
-- **Common fields:** `pending_order_id`, `order_action`, `symbol`, `direction`, `lots`, `order_kwargs`
+- **Common fields:** `pending_order_id`, `order_action`, `symbol`, `direction`, `lots`, `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
 - **Simulation fields:** `placed_at_tick`, `fill_at_tick` (tick-based delay tracking)
 - **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` (time-based broker tracking)
 
@@ -543,11 +543,6 @@ Portfolio (shared)
 ---
 
 ## Open Issues
-
-### kwargs Cleanup on send_order Chain
-**Problem:** `open_order()` accepts `**kwargs` for optional parameters (stop_loss, take_profit, comment). No schema validation, no typo protection. A misspelled `stoploss=1.1` silently passes through.
-- Affects: AbstractTradeExecutor, TradeSimulator, LiveTradeExecutor, DecisionTradingAPI, OrderLatencySimulator, PendingOrder
-- See: `ISSUE_kwargs_cleanup_send_order.md`
 
 ### Tick-Based → Millisecond-Based Latency
 **Problem:** OrderLatencySimulator models delays as tick counts. Real broker latency is time-based. Tick-counting is meaningless in live trading where ticks arrive at irregular intervals.
