@@ -294,7 +294,13 @@ class BatchOrchestrator:
             logger=self._logger
         )
 
-        # 2. Validate account_currency compatibility with symbols
+        # 2. Validate scenario boundaries (end_date or max_ticks required)
+        ScenarioValidator.validate_scenario_boundaries(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger
+        )
+
+        # 3. Validate account_currency compatibility with symbols
         ScenarioValidator.validate_account_currencies(
             scenarios=self._scenario_set.get_valid_scenarios(),
             logger=self._logger

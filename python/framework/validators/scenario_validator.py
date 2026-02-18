@@ -165,6 +165,45 @@ class ScenarioValidator:
             scenario.configured_account_currency = configured_account_currency
 
     @staticmethod
+    def validate_scenario_boundaries(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger
+    ) -> None:
+        """
+        Validate each scenario has at least end_date or max_ticks.
+
+        Without either boundary the tick loader has no stop condition.
+        Both can be set (end_date limits data range, max_ticks limits processing).
+
+        Side Effects:
+        - Sets validation_result on invalid scenarios
+        - Does NOT raise — marks scenarios as invalid instead
+
+        Args:
+            scenarios: List of scenarios to validate
+            logger: Logger for error messages
+        """
+        for scenario in scenarios:
+            has_end_date = scenario.end_date is not None
+            has_max_ticks = scenario.max_ticks is not None and scenario.max_ticks > 0
+
+            if not has_end_date and not has_max_ticks:
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[
+                        f"Scenario '{scenario.name}' has neither end_date nor max_ticks. "
+                        f"At least one is required to define the scenario boundary."
+                    ],
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                logger.error(
+                    f"❌ {scenario.name}: No end_date and no max_ticks — "
+                    f"at least one boundary is required"
+                )
+
+    @staticmethod
     def validate_scenario_names(
         scenarios: List[SingleScenario],
         logger: AbstractLogger
