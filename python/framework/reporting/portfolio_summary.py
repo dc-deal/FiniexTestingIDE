@@ -10,6 +10,7 @@ from typing import Dict
 from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_stats_types import ExecutionStats, CostBreakdown
 from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
 from python.framework.utils.math_utils import force_negative, force_positive
@@ -108,6 +109,7 @@ class PortfolioSummary:
             aggregated.portfolio_stats,
             aggregated.execution_stats,
             aggregated.cost_breakdown,
+            aggregated.pending_stats,
             renderer
         )
 
@@ -116,6 +118,7 @@ class PortfolioSummary:
         portfolio_stats: AggregatedPortfolioStats,
         execution_stats: ExecutionStats,
         cost_breakdown: CostBreakdown,
+        pending_stats: PendingOrderStats,
         renderer: ConsoleRenderer
     ):
         """Render detailed aggregated portfolio stats."""
@@ -136,7 +139,7 @@ class PortfolioSummary:
         total_loss = portfolio_stats.total_loss
         total_pnl = total_profit - total_loss
 
-        print(f"\n{renderer.bold('   📈 TRADING SUMMARY:')}")
+        print(f"\n{renderer.bold('   TRADING SUMMARY:')}")
         print(f"      Total Trades: {total_trades} (L/S: {long_trades}/{short_trades}) |  "
               f"Win/Loss: {winning_trades}W/{losing_trades}L  |  "
               f"Win Rate: {win_rate:.1%}")
@@ -163,7 +166,7 @@ class PortfolioSummary:
         orders_executed = execution_stats.orders_executed
         orders_rejected = execution_stats.orders_rejected
 
-        print(f"\n{renderer.bold('   📋 ORDER EXECUTION:')}")
+        print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
         print(f"      Orders Sent: {orders_sent}  |  "
               f"Executed: {orders_executed}  |  "
               f"Rejected: {orders_rejected}")
@@ -171,6 +174,9 @@ class PortfolioSummary:
         if orders_sent > 0:
             exec_rate = orders_executed / orders_sent
             print(f"      Execution Rate: {exec_rate:.1%}")
+
+        # Pending order statistics (green)
+        self._render_pending_stats(renderer, pending_stats)
 
         # Cost breakdown
         spread_cost = cost_breakdown.total_spread_cost
@@ -197,6 +203,51 @@ class PortfolioSummary:
               f"({max_dd_pct:.1f}%) - Scenario: {max_drawdown_scenario}")
         print(f"      Max Equity: {renderer.pnl(force_positive(max_equity), currency)} "
               f"- Scenario: {max_equity_scenario}")
+
+    @staticmethod
+    def _render_pending_stats(
+        renderer: ConsoleRenderer,
+        pending_stats: PendingOrderStats
+    ) -> None:
+        """
+        Render pending order statistics in ORDER EXECUTION section.
+
+        Args:
+            renderer: Console renderer for formatting
+            pending_stats: Aggregated pending order statistics
+        """
+        if not pending_stats or pending_stats.total_resolved == 0:
+            return
+
+        # Pending resolved breakdown
+        filled = pending_stats.total_filled
+        rejected = pending_stats.total_rejected
+        force_closed = pending_stats.total_force_closed
+        timed_out = pending_stats.total_timed_out
+
+        resolved_line = f"      Pending Resolved: {renderer.green(f'{filled} filled')}"
+        if rejected > 0:
+            resolved_line += f" | {rejected} rejected"
+        if timed_out > 0:
+            resolved_line += f" | {renderer.yellow(f'{timed_out} timed out')}"
+        if force_closed > 0:
+            resolved_line += f" | {renderer.yellow(f'{force_closed} force-closed')}"
+        print(resolved_line)
+
+        # Latency stats (tick-based or ms-based)
+        if pending_stats.min_latency_ticks is not None:
+            avg = pending_stats.avg_latency_ticks
+            min_val = pending_stats.min_latency_ticks
+            max_val = pending_stats.max_latency_ticks
+            print(renderer.green(
+                f"      Avg Latency: {avg:.1f} ticks (min: {min_val} | max: {max_val})"))
+
+        elif pending_stats.min_latency_ms is not None:
+            avg = pending_stats.avg_latency_ms
+            min_val = pending_stats.min_latency_ms
+            max_val = pending_stats.max_latency_ms
+            print(renderer.green(
+                f"      Avg Latency: {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"))
 
     def _has_any_time_divergence(
         self,

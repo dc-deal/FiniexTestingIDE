@@ -29,7 +29,7 @@ from typing import Optional, List, Dict
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.latency_simulator_types import PendingOrderAction
+from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
 from .broker_config import BrokerConfig
 from ..types.order_types import (
     OrderType,
@@ -71,6 +71,8 @@ class TradeSimulator(AbstractTradeExecutor):
         account_currency: str,
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
+        order_history_max: int = 10000,
+        trade_history_max: int = 5000,
     ):
         """
         Initialize trade simulator.
@@ -81,13 +83,17 @@ class TradeSimulator(AbstractTradeExecutor):
             account_currency: Account currency (or "auto" for symbol-based detection)
             logger: Logger instance
             seeds: Seeds for order execution delays (from config)
+            order_history_max: Max order history entries (0=unlimited)
+            trade_history_max: Max trade history entries (0=unlimited)
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
             broker_config=broker_config,
             initial_balance=initial_balance,
             account_currency=account_currency,
-            logger=logger
+            logger=logger,
+            order_history_max=order_history_max,
+            trade_history_max=trade_history_max
         )
 
         # Order latency simulator with deterministic delays
@@ -106,17 +112,32 @@ class TradeSimulator(AbstractTradeExecutor):
 
         Drains the latency queue and calls inherited fill methods
         from AbstractTradeExecutor for portfolio updates.
+        Records pending order outcomes for latency statistics.
         """
         filled_orders = self.latency_simulator.process_tick(self._tick_counter)
 
         for pending_order in filled_orders:
+            # Latency = fill_at_tick - placed_at_tick (planned delay)
+            latency_ticks = None
+            if pending_order.fill_at_tick is not None and pending_order.placed_at_tick is not None:
+                latency_ticks = pending_order.fill_at_tick - pending_order.placed_at_tick
+
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:
                     if self._stress_test_should_reject(pending_order):
+                        self.latency_simulator.record_outcome(
+                            pending_order, PendingOrderOutcome.REJECTED,
+                            latency_ticks=latency_ticks)
                         continue
                     self._fill_open_order(pending_order)
+                    self.latency_simulator.record_outcome(
+                        pending_order, PendingOrderOutcome.FILLED,
+                        latency_ticks=latency_ticks)
                 case PendingOrderAction.CLOSE:
                     self._fill_close_order(pending_order)
+                    self.latency_simulator.record_outcome(
+                        pending_order, PendingOrderOutcome.FILLED,
+                        latency_ticks=latency_ticks)
 
     # ============================================
     # Stress Test: Seeded Rejection (toggle via module constants)
@@ -297,31 +318,47 @@ class TradeSimulator(AbstractTradeExecutor):
         """Check if a specific position has a pending close order."""
         return self.latency_simulator.is_pending_close(position_id)
 
+    def get_pending_stats(self) -> 'PendingOrderStats':
+        """
+        Get aggregated pending order statistics from latency simulator.
+
+        Returns:
+            PendingOrderStats with tick-based latency metrics
+        """
+        return self.latency_simulator.get_pending_stats()
+
     # ============================================
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self):
+    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
         """
-        BEFORE collecting statistics - cleanup pending orders.
+        BEFORE collecting statistics — cleanup at scenario end.
 
-        Force-closes all open positions through the latency chain,
-        then immediately fills all pending close orders.
+        Two-phase cleanup:
+        1. Direct-fill open positions using synthetic PendingOrders.
+           These bypass the latency pipeline entirely — no pending created,
+           no FORCE_CLOSED in statistics. This is an internal cleanup,
+           not an algo-initiated action.
+        2. clear_pending() catches genuine stuck-in-pipeline orders
+           (e.g. algo submitted an order right before scenario ended,
+           still waiting for latency delay). These ARE real anomalies
+           and correctly recorded as FORCE_CLOSED with reason="scenario_end".
+
+        Args:
+            current_tick: Current tick number for latency calculation
         """
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
-                f"⚠️ {len(open_positions)} positions remain open - auto-closing"
+                f"{len(open_positions)} positions remain open — direct-closing (no pending)"
             )
-            # Submit close for all open positions
+            # Direct fill via synthetic PendingOrder — bypasses latency pipeline
             for pos in open_positions:
-                self.close_position(position_id=pos.position_id)
+                synthetic = self.latency_simulator.create_synthetic_close_order(
+                    pos.position_id)
+                self._fill_close_order(synthetic)
 
-            # Force-fill all pending close orders immediately
-            open_pending = self.latency_simulator.get_pending_orders()
-            for pending in open_pending:
-                if pending.order_action == PendingOrderAction.CLOSE:
-                    self._fill_close_order(pending)
-
-        # Clear remaining orders (e.g. recently opened orders not yet in portfolio)
-        self.latency_simulator.clear_pending()
+        # Catch genuine stuck-in-pipeline orders (real anomalies)
+        self.latency_simulator.clear_pending(
+            current_tick=current_tick, reason="scenario_end")

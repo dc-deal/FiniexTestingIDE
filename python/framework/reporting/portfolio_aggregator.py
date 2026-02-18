@@ -12,6 +12,7 @@ Responsibilities:
 from typing import Dict, List
 from datetime import datetime
 
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.trading_env_stats_types import (
     ExecutionStats,
@@ -91,6 +92,7 @@ class PortfolioAggregator:
         aggregated_portfolio_stats = self._aggregate_portfolio_stats(scenarios)
         execution_stats = self._aggregate_order_execution_stats(scenarios)
         cost_breakdown = self._aggregate_cost_breakdown(scenarios)
+        pending_stats = self._aggregate_pending_stats(scenarios)
 
         time_span_days, has_divergence = self._validate_time_divergence(
             scenarios)
@@ -102,6 +104,7 @@ class PortfolioAggregator:
             portfolio_stats=aggregated_portfolio_stats,
             execution_stats=execution_stats,
             cost_breakdown=cost_breakdown,
+            pending_stats=pending_stats,
             time_span_days=time_span_days,
             has_time_divergence_warning=has_divergence
         )
@@ -267,6 +270,64 @@ class PortfolioAggregator:
             total_fees=total_spread_cost + total_commission + total_swap,
             currency=scenarios[0].tick_loop_results.cost_breakdown.currency
         )
+
+    def _aggregate_pending_stats(
+        self,
+        scenarios: List[ProcessResult]
+    ) -> PendingOrderStats:
+        """
+        Aggregate pending order statistics from scenarios.
+
+        Combines latency metrics across scenarios using weighted averages.
+
+        Args:
+            scenarios: Scenarios to aggregate
+
+        Returns:
+            Aggregated pending order stats
+        """
+        aggregated = PendingOrderStats()
+
+        for scenario in scenarios:
+            pending = scenario.tick_loop_results.pending_stats
+            if not pending or pending.total_resolved == 0:
+                continue
+
+            aggregated.total_resolved += pending.total_resolved
+            aggregated.total_filled += pending.total_filled
+            aggregated.total_rejected += pending.total_rejected
+            aggregated.total_timed_out += pending.total_timed_out
+            aggregated.total_force_closed += pending.total_force_closed
+
+            # Aggregate tick-based latency
+            if pending.min_latency_ticks is not None:
+                aggregated._latency_ticks_sum += pending._latency_ticks_sum
+                aggregated._latency_count += pending._latency_count
+
+                if aggregated.min_latency_ticks is None or pending.min_latency_ticks < aggregated.min_latency_ticks:
+                    aggregated.min_latency_ticks = pending.min_latency_ticks
+                if aggregated.max_latency_ticks is None or pending.max_latency_ticks > aggregated.max_latency_ticks:
+                    aggregated.max_latency_ticks = pending.max_latency_ticks
+
+            # Aggregate ms-based latency
+            if pending.min_latency_ms is not None:
+                aggregated._latency_ms_sum += pending._latency_ms_sum
+                aggregated._latency_count += pending._latency_count
+
+                if aggregated.min_latency_ms is None or pending.min_latency_ms < aggregated.min_latency_ms:
+                    aggregated.min_latency_ms = pending.min_latency_ms
+                if aggregated.max_latency_ms is None or pending.max_latency_ms > aggregated.max_latency_ms:
+                    aggregated.max_latency_ms = pending.max_latency_ms
+
+            # Collect anomaly records from all scenarios
+            aggregated.anomaly_orders.extend(pending.anomaly_orders)
+
+        # Calculate weighted averages
+        if aggregated._latency_count > 0:
+            aggregated.avg_latency_ticks = aggregated._latency_ticks_sum / aggregated._latency_count
+            aggregated.avg_latency_ms = aggregated._latency_ms_sum / aggregated._latency_count
+
+        return aggregated
 
     def _validate_time_divergence(
         self,

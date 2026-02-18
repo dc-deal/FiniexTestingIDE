@@ -35,7 +35,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live_order_tracker import LiveOrderTracker
-from python.framework.types.latency_simulator_types import PendingOrderAction
+from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
 from python.framework.types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -80,6 +80,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         account_currency: str,
         logger: AbstractLogger,
         timeout_config: Optional[TimeoutConfig] = None,
+        order_history_max: int = 10000,
+        trade_history_max: int = 5000,
     ):
         """
         Initialize live trade executor.
@@ -90,12 +92,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             account_currency: Account currency
             logger: Logger instance
             timeout_config: Timeout thresholds for order monitoring
+            order_history_max: Max order history entries (0=unlimited)
+            trade_history_max: Max trade history entries (0=unlimited)
         """
         super().__init__(
             broker_config=broker_config,
             initial_balance=initial_balance,
             account_currency=account_currency,
             logger=logger,
+            order_history_max=order_history_max,
+            trade_history_max=trade_history_max,
         )
 
         # Validate adapter supports live execution
@@ -172,6 +178,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if filled is None:
                 return
 
+            # Record pending outcome (latency = time from submission to fill)
+            latency_ms = self._calculate_pending_latency_ms(filled)
+            self._order_tracker.record_outcome(
+                filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
+
             # Call inherited fill processing
             if filled.order_action == PendingOrderAction.OPEN:
                 self._fill_open_order(filled, fill_price=response.fill_price)
@@ -185,6 +196,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
             if rejected is None:
                 return
+
+            # Record pending outcome
+            latency_ms = self._calculate_pending_latency_ms(rejected)
+            self._order_tracker.record_outcome(
+                rejected, PendingOrderOutcome.REJECTED, latency_ms=latency_ms)
 
             # Record rejection in order history
             self._orders_rejected += 1
@@ -212,6 +228,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 self.logger.warning(
                     f"Failed to cancel timed-out order {pending.pending_order_id}: {e}"
                 )
+
+        # Record pending outcome as TIMED_OUT
+        latency_ms = self._calculate_pending_latency_ms(pending)
+        self._order_tracker.record_outcome(
+            pending, PendingOrderOutcome.TIMED_OUT, latency_ms=latency_ms)
 
         # Remove from tracker
         self._order_tracker.mark_rejected(
@@ -482,28 +503,66 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """Check if a specific position has a pending close order."""
         return self._order_tracker.is_pending_close(position_id)
 
+    def get_pending_stats(self) -> 'PendingOrderStats':
+        """
+        Get aggregated pending order statistics from live order tracker.
+
+        Returns:
+            PendingOrderStats with ms-based latency metrics
+        """
+        return self._order_tracker.get_pending_stats()
+
+    # ============================================
+    # Helpers
+    # ============================================
+
+    @staticmethod
+    def _calculate_pending_latency_ms(pending: 'PendingOrder') -> Optional[float]:
+        """
+        Calculate pending duration in milliseconds from submitted_at to now.
+
+        Args:
+            pending: Pending order with submitted_at timestamp
+
+        Returns:
+            Latency in ms, or None if submitted_at not set
+        """
+        if pending.submitted_at is None:
+            return None
+        elapsed = datetime.now(timezone.utc) - pending.submitted_at
+        return elapsed.total_seconds() * 1000
+
     # ============================================
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self) -> None:
+    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
         """
-        Close all open positions via broker at end of run.
+        Close all open positions at end of run.
 
-        Sends close orders for all open positions, then attempts
-        to process remaining pending orders.
+        Two-phase cleanup (same pattern as TradeSimulator):
+        1. Direct-fill open positions using synthetic PendingOrders.
+           These bypass the pending order pipeline entirely — no pending
+           created, no FORCE_CLOSED in statistics. This is an internal
+           cleanup, not an algo-initiated action.
+        2. clear_pending() catches genuine stuck-in-pipeline orders
+           (e.g. broker hasn't confirmed a fill yet when session ends).
+           These ARE real anomalies and correctly recorded as
+           FORCE_CLOSED with reason="scenario_end".
+
+        Args:
+            current_tick: Not used in live mode (latency is time-based)
         """
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
-                f"{len(open_positions)} positions remain open — auto-closing via broker"
+                f"{len(open_positions)} positions remain open — direct-closing (no pending)"
             )
+            # Direct fill via synthetic PendingOrder — bypasses pending pipeline
             for pos in open_positions:
-                self.close_position(position_id=pos.position_id)
+                synthetic = self._order_tracker.create_synthetic_close_order(
+                    pos.position_id)
+                self._fill_close_order(synthetic)
 
-        # Process any immediate fills from close orders
-        if self._order_tracker.has_pending_orders():
-            self._process_pending_orders()
-
-        # Clear remaining
-        self._order_tracker.clear_pending()
+        # Catch genuine stuck-in-pipeline orders (real anomalies)
+        self._order_tracker.clear_pending(reason="scenario_end")

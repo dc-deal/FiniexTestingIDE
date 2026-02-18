@@ -62,6 +62,11 @@
             "export_current_bars": false
         }
     },
+    "history": {
+        "bar_max_history": 1000,
+        "order_history_max": 10000,
+        "trade_history_max": 5000
+    },
     "data_validation": {
         "warmup_quality_mode": "standard",
         "allowed_gap_categories": [

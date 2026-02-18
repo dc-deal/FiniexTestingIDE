@@ -54,7 +54,9 @@ def prepare_trade_executor_for_scenario(
             initial_balance=config.initial_balance,
             account_currency=config.account_currency,
             logger=logger,
-            seeds=config.seeds
+            seeds=config.seeds,
+            order_history_max=config.order_history_max,
+            trade_history_max=config.trade_history_max
         )
 
     raise ValueError(

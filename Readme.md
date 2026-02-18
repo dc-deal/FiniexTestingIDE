@@ -20,6 +20,8 @@
 - **Multi-Position Tests** — Concurrent position management, close events, hedging validation
 - **Live Executor Tests** — 47 tests covering LiveOrderTracker, LiveTradeExecutor, and MockBrokerAdapter pipeline
 - **141 New Tests** — 47 live executor + 35 margin validation + 65 multi-position (some reused from baseline)
+- **Pending Order Statistics** — Latency tracking (avg/min/max), outcome counting (filled/rejected/timed_out/force_closed), anomaly detection with individual records for hung orders
+- **History Retention Config** — Configurable limits for order_history, trade_history, and bar_history via `app_config.json` with one-time warnings and `deque(maxlen)` auto-trimming
 
 ### Previous: 1.1
 

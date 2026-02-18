@@ -175,6 +175,63 @@ Rejection data flows through the full reporting pipeline:
 3. **Executive Summary**: Order execution stats with rejected count and execution rate
 4. **Portfolio Grid Boxes**: Conditional display — shows rejection count when rejections exist
 
+### Pending Order Statistics
+
+Every pending order that leaves the queue (filled, rejected, timed out, or force-closed) is recorded via `AbstractPendingOrderManager.record_outcome()`. Statistics are aggregated at the manager level — no individual records are stored for normal outcomes.
+
+**Data flow:**
+
+1. **Executor calls `record_outcome()`** after each pending order resolves — TradeSimulator for tick-based fills, LiveTradeExecutor for broker responses
+2. **`PendingOrderStats`** aggregates running min/max/avg latency using internal counters (`_latency_ticks_sum`, `_latency_count`). No individual fill records stored.
+3. **Anomaly detection**: Only `FORCE_CLOSED` and `TIMED_OUT` outcomes produce individual `PendingOrderRecord` entries (stored in `anomaly_orders` list)
+4. **Subprocess bridge**: `pending_stats` collected from `trade_simulator.get_pending_stats()`, serialized as separate field in `ProcessTickLoopResult`
+5. **Aggregation**: `PortfolioAggregator._aggregate_pending_stats()` combines stats across scenarios using weighted averages
+
+**Outcome types** (`PendingOrderOutcome` enum in `latency_simulator_types.py`):
+
+| Outcome | Source | Individual Record | Latency Unit |
+|---------|--------|-------------------|--------------|
+| `FILLED` | Normal fill after delay | No (aggregated only) | ticks (sim) / ms (live) |
+| `REJECTED` | Stress test or broker rejection | No (aggregated only) | ticks (sim) / ms (live) |
+| `TIMED_OUT` | Broker timeout (live only) | Yes (`anomaly_orders`) | ms |
+| `FORCE_CLOSED` | `clear_pending()` for genuine stuck-in-pipeline orders at scenario end | Yes (`anomaly_orders`, with `reason`) | ticks (sim) / ms (live) |
+
+**Display locations:**
+
+- **Portfolio Grid Boxes**: Green latency line `"Latency: avg 4.7t (3-8)"`, yellow `"X forced"` / `"X timeout"` if anomalies
+- **Aggregated Portfolio (ORDER EXECUTION)**: Resolved breakdown with filled/rejected/timed_out/force-closed counts + latency stats
+- **Executive Summary**: Green latency line per scenario, yellow `"X force-closed"` / `"X timed out"` breakdown
+
+**End-of-scenario cleanup** (`close_all_remaining_orders`):
+
+Open positions are closed via synthetic PendingOrders that bypass the latency pipeline entirely — no pending created, no statistics impact. This is an internal cleanup, not an algo action. After direct-filling, `clear_pending()` catches any genuine stuck-in-pipeline orders (e.g. algo submitted an order right before scenario ended). Only these real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`, `"manual_abort"`).
+
+### History Retention Limits
+
+In-memory history collections use configurable limits to prevent unbounded growth during long-running scenarios. Configured via `app_config.json` → `"history"` section:
+
+```json
+{
+    "history": {
+        "bar_max_history": 1000,
+        "order_history_max": 10000,
+        "trade_history_max": 5000
+    }
+}
+```
+
+| Collection | Location | Default | Implementation |
+|-----------|----------|---------|----------------|
+| Bar history | `BarRenderer.completed_bars` | 1000 per symbol/timeframe | `deque(maxlen)` — auto-trims oldest |
+| Order history | `AbstractTradeExecutor._order_history` | 10000 | `deque(maxlen)` — one-time warning when limit reached |
+| Trade history | `PortfolioManager._trade_history` | 5000 | `deque(maxlen)` — one-time warning when limit reached |
+
+**Config flow**: `app_config.json` → `AppConfigManager` → `ProcessScenarioConfig` (pickle-safe) → subprocess factories → constructors.
+
+A value of `0` means unlimited (no maxlen). When a limit is reached, a one-time warning is logged: `"⚠️ Order history limit reached (10000). Oldest entries will be discarded. Full history available in scenario log."` The full history remains in the scenario log file for post-analysis.
+
+**Design rationale**: For typical backtesting blocks (6-24h), these limits are never hit. Even aggressive scalping strategies produce ~200 order entries per 24h block. The limits protect against edge cases in very long live sessions or extreme multi-position strategies.
+
 ---
 
 ## Core Units
@@ -197,7 +254,8 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `close_position()` — How close requests are sent
 - `has_pending_orders()` — Whether any orders are in flight
 - `is_pending_close(position_id)` — Whether a specific position is being closed
-- `close_all_remaining_orders()` — End-of-run cleanup
+- `close_all_remaining_orders(current_tick)` — End-of-run cleanup: direct-fills open positions via synthetic orders (no pending), then `clear_pending()` for stuck pipeline orders
+- `get_pending_stats()` — Aggregated pending order statistics (latency, outcomes)
 
 ### AbstractPendingOrderManager
 Shared storage and query layer for pending orders. Both execution modes need to track in-flight orders — this base provides the common infrastructure.
@@ -209,7 +267,10 @@ Shared storage and query layer for pending orders. Both execution modes need to 
 - `get_pending_count()` — Count pending orders
 - `has_pending_orders()` — Any orders in flight?
 - `is_pending_close(position_id)` — Specific position being closed?
-- `clear_pending()` — Cleanup at scenario end
+- `create_synthetic_close_order(position_id)` — Factory for direct-fill close orders that bypass the pipeline (used by `close_all_remaining_orders`)
+- `clear_pending(current_tick, reason)` — Cleanup at scenario end, records remaining as FORCE_CLOSED with reason
+- `record_outcome(pending_order, outcome, latency_ticks, latency_ms, reason)` — Record resolved pending order for statistics
+- `get_pending_stats()` — Return aggregated `PendingOrderStats`
 
 ### OrderLatencySimulator (extends AbstractPendingOrderManager)
 Simulation-specific pending order manager. Adds tick-based latency modeling with seeded randomness.
@@ -600,3 +661,7 @@ We considered a separate `OrderExecutionAdapter` interface for live execution me
 | **TimeoutConfig** | Configurable thresholds for order timeout detection |
 | **MockBrokerAdapter** | Test adapter with configurable execution modes (instant_fill, reject_all, etc.) |
 | **Error Seeds** | Seeded fault injection in simulation for stress testing error-handling paths |
+| **PendingOrderOutcome** | Enum: FILLED, REJECTED, TIMED_OUT, FORCE_CLOSED — how a pending order left the queue |
+| **PendingOrderStats** | Aggregated latency metrics and outcome counters for all resolved pending orders |
+| **PendingOrderRecord** | Individual record for anomalous outcomes (FORCE_CLOSED, TIMED_OUT) only |
+| **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

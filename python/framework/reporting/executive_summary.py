@@ -14,6 +14,7 @@ import psutil
 from typing import Dict
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
@@ -326,7 +327,8 @@ class ExecutiveSummary:
         orders_sent = exec_stats.orders_sent if exec_stats else 0
         orders_executed = exec_stats.orders_executed if exec_stats else 0
         orders_rejected = exec_stats.orders_rejected if exec_stats else 0
-        exec_rate = (orders_executed / orders_sent * 100) if orders_sent > 0 else 0
+        exec_rate = (orders_executed / orders_sent *
+                     100) if orders_sent > 0 else 0
 
         print("")
         print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
@@ -345,6 +347,14 @@ class ExecutiveSummary:
             print(
                 f"Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)")
 
+        # Pending order latency (green)
+        pending_stats = agg_portfolio.pending_stats
+        if pending_stats and pending_stats.total_resolved > 0:
+            latency_line = self._format_pending_latency(
+                renderer, pending_stats)
+            if latency_line:
+                print(latency_line)
+
         print("")
         print(
             f"Max Drawdown:       {format_currency_simple(abs(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
@@ -358,6 +368,55 @@ class ExecutiveSummary:
             f"Commission:         {format_currency_simple(portfolio_stats.total_commission, currency)}")
         print(
             f"Swap:               {format_currency_simple(portfolio_stats.total_swap, currency)}")
+
+    @staticmethod
+    def _format_pending_latency(renderer: ConsoleRenderer, pending_stats) -> str:
+        """
+        Format pending latency line for executive summary.
+
+        Args:
+            renderer: Console renderer for color formatting
+            pending_stats: PendingOrderStats with latency metrics
+
+        Returns:
+            Formatted latency line (green) or empty string
+        """
+        # Tick-based latency (simulation)
+        if pending_stats.min_latency_ticks is not None:
+            avg = pending_stats.avg_latency_ticks
+            min_val = pending_stats.min_latency_ticks
+            max_val = pending_stats.max_latency_ticks
+            line = f"Avg Latency:        {avg:.1f} ticks (min: {min_val} | max: {max_val})"
+            line += ExecutiveSummary._format_anomaly_suffix_full(
+                renderer, pending_stats)
+            return renderer.green(line)
+
+        # Time-based latency (live)
+        if pending_stats.min_latency_ms is not None:
+            avg = pending_stats.avg_latency_ms
+            min_val = pending_stats.min_latency_ms
+            max_val = pending_stats.max_latency_ms
+            line = f"Avg Latency:        {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"
+            line += ExecutiveSummary._format_anomaly_suffix_full(
+                renderer, pending_stats)
+            return renderer.green(line)
+
+        return ""
+
+    @staticmethod
+    def _format_anomaly_suffix_full(
+        renderer: ConsoleRenderer,
+        pending_stats: PendingOrderStats
+    ) -> str:
+        """Format full anomaly suffix for executive summary (e.g. '| 1 force-closed | 2 timed out')."""
+        parts = []
+        if pending_stats.total_force_closed > 0:
+            parts.append(f"{pending_stats.total_force_closed} force-closed")
+        if pending_stats.total_timed_out > 0:
+            parts.append(f"{pending_stats.total_timed_out} timed out")
+        if not parts:
+            return ""
+        return f" | {renderer.yellow(' | '.join(parts))}"
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""

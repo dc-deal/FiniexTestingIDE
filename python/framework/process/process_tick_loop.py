@@ -164,7 +164,7 @@ def execute_tick_loop(
             f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
 
         # === CLOSE OPEN TRADES ===
-        trade_simulator.close_all_remaining_orders()
+        trade_simulator.close_all_remaining_orders(current_tick=tick_idx + 1)
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
             live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
@@ -193,6 +193,7 @@ def execute_tick_loop(
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()
         order_history = trade_simulator.get_order_history()
+        pending_stats = trade_simulator.get_pending_stats()
 
         _print_tick_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
@@ -207,6 +208,7 @@ def execute_tick_loop(
             cost_breakdown=cost_breakdown,
             trade_history=trade_history,
             order_history=order_history,
+            pending_stats=pending_stats,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
                 profile_counts=profile_counts
