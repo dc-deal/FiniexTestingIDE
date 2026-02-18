@@ -29,14 +29,15 @@ class BarRenderingController:
     - Worker registration and requirements
     """
 
-    def __init__(self, logger: ScenarioLogger):
+    def __init__(self, logger: ScenarioLogger, max_history: int = 1000):
         """
         Initialize bar rendering controller.
 
         Args:
             logger: ScenarioLogger for this scenario
+            max_history: Max bars to retain per symbol/timeframe
         """
-        self.bar_renderer = BarRenderer(logger)
+        self.bar_renderer = BarRenderer(logger, max_history=max_history)
         self._workers = []
         self._required_timeframes = set()
         self._warmup_data = {}  # Stores warmup bars for get_all_bar_history()

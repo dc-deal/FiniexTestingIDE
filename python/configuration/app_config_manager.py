@@ -237,6 +237,34 @@ class AppConfigManager:
         importer_config = self.get_importer_config()
         return importer_config.get("delete_on_error", False)
 
+    # ============================================
+    # History Config
+    # ============================================
+
+    def get_history_config(self) -> Dict[str, Any]:
+        """
+        Get history retention configuration.
+
+        Returns:
+            History config dict with keys:
+            - bar_max_history: Max bars per symbol/timeframe (default: 1000)
+            - order_history_max: Max order records (default: 10000, 0=unlimited)
+            - trade_history_max: Max trade records (default: 5000, 0=unlimited)
+        """
+        return self._config.get("history", {})
+
+    def get_bar_max_history(self) -> int:
+        """Get max bars to retain per symbol/timeframe."""
+        return self.get_history_config().get("bar_max_history", 1000)
+
+    def get_order_history_max(self) -> int:
+        """Get max order history entries (0=unlimited)."""
+        return self.get_history_config().get("order_history_max", 10000)
+
+    def get_trade_history_max(self) -> int:
+        """Get max trade history entries (0=unlimited)."""
+        return self.get_history_config().get("trade_history_max", 5000)
+
     def get_data_validation_config(self) -> Dict[str, Any]:
         """
         Get data validation configuration.

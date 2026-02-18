@@ -36,6 +36,25 @@ class PendingOrderAction(Enum):
         return self.value
 
 
+class PendingOrderOutcome(Enum):
+    """
+    How a pending order's lifecycle ended.
+
+    FILLED: Normal fill after latency delay (simulation) or broker confirmation (live)
+    REJECTED: Rejected after pending phase (stress test, broker rejection)
+    TIMED_OUT: Broker did not respond within timeout threshold (live only)
+    FORCE_CLOSED: Forcefully resolved at scenario end (orders still in queue)
+    """
+    FILLED = "filled"
+    REJECTED = "rejected"
+    TIMED_OUT = "timed_out"
+    FORCE_CLOSED = "force_closed"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
+
+
 @dataclass
 class PendingOrder:
     """

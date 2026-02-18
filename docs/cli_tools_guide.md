@@ -1,8 +1,3 @@
-# FiniexTestingIDE - CLI Tools Guide
-
-> **Version:** 1.1  
-> **Zielgruppe:** Entwickler mit Python/VSCode-Erfahrung, die Trading-Strategien backtesten wollen
-
 ## Übersicht
 
 FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow vom Daten-Import bis zum Backtesting. Alle Tools sind über VS Code Launch-Konfigurationen oder direkt per Terminal ausführbar.

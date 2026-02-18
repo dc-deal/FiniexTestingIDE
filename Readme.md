@@ -4,22 +4,30 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.1  
+> **Version:** 1.1.1
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.1
+## What's New in 1.1.1
 
-- **Multi-Market Support** — Crypto (Kraken Spot) alongside Forex (MT5), unified broker adapter architecture
-- **TradingContext** — Market-type awareness for workers and decision logics
-- **OBV Worker** — On-Balance Volume indicator (`CORE/obv`), market-type aware
-- **Parameter Validation** — Schema-based validation with `ParameterDef`, strict/non-strict modes
-- **Volume Integration** — Real trade volume for crypto, tick_count for forex CFD
-- **Parquet Indexes** — Tick index, bar index, and coverage cache migrated from JSON to Parquet
-- **Coverage Report Caching** — Pre-computed gap analysis with cache invalidation
-- **211 New Tests** — 202 worker/parameter validation + 9 data integration tests
+- **Live Trade Executor** — Full LiveTradeExecutor implementation with broker adapter communication
+- **LiveOrderTracker** — Time-based pending order management with broker reference tracking and timeout detection
+- **MockBrokerAdapter** — 4-mode test adapter (instant_fill, delayed_fill, reject_all, timeout) with real Kraken BTCUSD spec
+- **BaseAdapter Tier 3** — Optional live execution methods (execute_order, check_order_status, cancel_order)
+- **Margin Validation Tests** — Margin checks, lot validation, retry logic, edge case coverage
+- **Multi-Position Tests** — Concurrent position management, close events, hedging validation
+- **Live Executor Tests** — 47 tests covering LiveOrderTracker, LiveTradeExecutor, and MockBrokerAdapter pipeline
+- **141 New Tests** — 47 live executor + 35 margin validation + 65 multi-position (some reused from baseline)
+- **Pending Order Statistics** — Latency tracking (avg/min/max), outcome counting (filled/rejected/timed_out/force_closed), anomaly detection with individual records for hung orders
+- **History Retention Config** — Configurable limits for order_history, trade_history, and bar_history via `app_config.json` with one-time warnings and `deque(maxlen)` auto-trimming
+
+### Previous: 1.1
+
+- Multi-Market Support (Kraken Spot + MT5), TradingContext, OBV Worker
+- Parameter Validation (ParameterDef, strict/non-strict), Volume Integration
+- Parquet Indexes, Coverage Report Caching, 211 new tests
 
 ---
 
@@ -33,7 +41,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (268 tests across 4 test suites)
+- ✅ Validated accuracy (362 tests across 7 test suites)
 
 ---
 
@@ -53,12 +61,14 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Decision Logic** - Pluggable trading strategies with clear separation
 - **Parameter Validation** - Schema-based validation with strict/non-strict modes
 
-### Trade Simulation
+### Trade Simulation & Live Execution
 - **Realistic Execution** - API latency + market execution delays (seeded)
+- **Live Trade Executor** - Broker adapter communication with pending order tracking
 - **Spread Calculation** - Live bid/ask spread from tick data
 - **Margin Management** - Position sizing with margin checks
 - **Order Lifecycle** - PENDING → EXECUTED status tracking
 - **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken)
+- **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Analysis Tools
 - **Market Analysis** - ATR volatility, session activity, cross-instrument ranking
@@ -234,13 +244,38 @@ Validates parameter validation and indicator computation:
 - Default application and factory integration
 - RSI, Envelope, MACD, OBV computation correctness
 
+### Margin Validation Tests (~35 tests)
+Validates margin checks and order validation:
+- Margin requirements, lot size validation
+- Retry logic, edge case orders
+- Rejection handling and error propagation
+
+### Multi-Position Tests (65 tests)
+Validates concurrent position management:
+- Multiple simultaneous positions, close events
+- Hedging validation, position tracking
+- Reused baseline assertions for consistency
+
+### Live Executor Tests (47 tests)
+Validates live execution pipeline with MockBrokerAdapter:
+- LiveOrderTracker (submit, fill, reject, timeout, cleanup)
+- LiveTradeExecutor integration (all 4 mock modes)
+- Multi-order scenarios (open+close, close_all, stats consistency)
+
+### Pending Stats Tests (12 tests)
+Validates pending order statistics and force-closed detection:
+- Latency stats population (avg/min/max)
+- Outcome counting consistency (filled + rejected + timed_out + force_closed = total)
+- Synthetic close path (no false force-closed from end-of-scenario cleanup)
+- Force-closed anomaly detection with reason field
+
 ### Data Integration Tests (9 tests)
 Validates data pipeline integrity:
 - Volume consistency (crypto > 0, forex = 0)
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -257,9 +292,15 @@ Validates data pipeline integrity:
 | [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |
 | [Process Execution](docs/process_execution_guide.md) | Subprocess architecture |
 | [Duplicate Detection](docs/duplicate_detection_usage.md) | Data integrity protection |
+| [Execution Layer Architecture](docs/architecture_execution_layer.md) | Sim/Live hybrid execution design |
+| [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
 | [Baseline Tests](docs/tests/tests_baseline_docs.md) | 44 validation tests |
 | [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
 | [Worker Tests](docs/tests/tests_worker_docs.md) | 202 parameter & computation tests |
+| [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md) | ~35 margin & lot validation tests |
+| [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
+| [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
+| [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---
@@ -271,7 +312,7 @@ Validates data pipeline integrity:
 - **CORE Namespace Only** - Custom workers must be added to framework folders
 - **No Frontend** - CLI and VS Code launch configs only
 
-> **Note on Multiple Positions:** The system supports multiple simultaneous positions, but this is **untested**. All included bots and tests use single-position strategies (one trade at a time, long or short). Use multiple positions at your own risk.
+> **Note on Multiple Positions:** The system supports multiple simultaneous positions, validated by the multi-position test suite (65 tests). However, all included bots use single-position strategies. Multi-position strategies require careful margin management.
 
 ---
 

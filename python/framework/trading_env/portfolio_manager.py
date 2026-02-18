@@ -10,6 +10,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 - CURRENCY: Changed 'currency' to 'account_currency' for clarity
 """
 
+from collections import deque
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -48,6 +49,7 @@ class PortfolioManager:
         leverage: int,
         margin_call_level: float,
         stop_out_level: float,
+        trade_history_max: int = 5000,
     ):
         """
         Initialize portfolio manager.
@@ -59,6 +61,7 @@ class PortfolioManager:
             leverage: Account leverage
             margin_call_level: Margin call threshold percentage
             stop_out_level: Stop out threshold percentage
+            trade_history_max: Max trade records to retain (0=unlimited)
         """
         self._logger = logger
         self.initial_balance = initial_balance
@@ -76,7 +79,11 @@ class PortfolioManager:
         # Positions
         self._positions_dirty = False  # Performance: Lazy evaluation state
         self.open_positions: Dict[str, Position] = {}
-        self._trade_history: List[TradeRecord] = []
+        self._trade_history_max = trade_history_max
+        self._trade_history: deque[TradeRecord] = deque(
+            maxlen=trade_history_max if trade_history_max > 0 else None
+        )
+        self._trade_history_limit_warned = False
 
         # Position counter
         self._position_counter = 0
@@ -222,6 +229,14 @@ class PortfolioManager:
 
         # Create TradeRecord from closed position
         trade_record = self._create_trade_record(position, CloseType.FULL)
+        if (self._trade_history_max > 0
+                and not self._trade_history_limit_warned
+                and len(self._trade_history) >= self._trade_history_max):
+            self._trade_history_limit_warned = True
+            self._logger.warning(
+                f"⚠️ Trade history limit reached ({self._trade_history_max}). "
+                f"Oldest entries will be discarded. Full history available in scenario log."
+            )
         self._trade_history.append(trade_record)
         self._log_trade_record(trade_record)
         del self.open_positions[position_id]
@@ -410,7 +425,7 @@ class PortfolioManager:
         Returns:
             List of TradeRecord objects with full audit trail
         """
-        return self._trade_history.copy()
+        return list(self._trade_history)
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""

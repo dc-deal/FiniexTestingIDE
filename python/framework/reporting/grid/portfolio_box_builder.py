@@ -11,7 +11,8 @@ Handles:
 All box types maintain identical line count for grid alignment.
 """
 
-from typing import List
+from typing import List, Optional
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -168,7 +169,11 @@ def _build_success_portfolio_box(
     else:
         orders_line = f"Orders Ex/Sent: {orders_executed}/{orders_sent}"
 
-    # Create content lines (13 stats)
+    # Format pending latency line (green)
+    pending_stats = process_result.tick_loop_results.pending_stats
+    pending_line = _format_pending_latency_line(renderer, pending_stats)
+
+    # Create content lines (14 stats)
     lines = [
         f"{scenario_name}",
         f"Broker: {broker_display}",
@@ -182,12 +187,13 @@ def _build_success_portfolio_box(
         f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
         f"Spread: {format_currency_simple(spread_cost, currency)}",
         orders_line,
+        pending_line,
         f"Long/Short: {long_trades}/{short_trades}",
     ]
 
     # Add status line or empty line
     if show_status_line:
-        lines.append(renderer.green("✅ Status: Success"))
+        lines.append(renderer.green("Status: Success"))
     else:
         lines.append("")
 
@@ -362,8 +368,72 @@ def _build_error_portfolio_box(
 
     # Add status line or empty line
     if show_status_line:
-        lines.append(renderer.red("❌ Status: Failed"))
+        lines.append(renderer.red("Status: Failed"))
     else:
         lines.append("")
 
     return render_box(lines, renderer, box_width)
+
+
+# ============================================
+# Pending Latency Formatting (shared helper)
+# ============================================
+
+def _format_pending_latency_line(
+    renderer: ConsoleRenderer,
+    pending_stats: Optional[PendingOrderStats]
+) -> str:
+    """
+    Format pending order latency as a green summary line for box display.
+
+    Adapts unit based on available data (ticks for simulation, ms for live).
+
+    Args:
+        renderer: Console renderer for color formatting
+        pending_stats: Pending order statistics (may be None)
+
+    Returns:
+        Formatted latency line (green) or empty string if no data
+    """
+    if not pending_stats or pending_stats.total_resolved == 0:
+        return ""
+
+    # Tick-based latency (simulation)
+    if pending_stats.min_latency_ticks is not None:
+        avg = pending_stats.avg_latency_ticks
+        min_val = pending_stats.min_latency_ticks
+        max_val = pending_stats.max_latency_ticks
+        latency_str = f"Latency: avg {avg:.1f}t ({min_val}-{max_val})"
+
+        # Append anomaly breakdown if any
+        latency_str += _format_anomaly_suffix_compact(renderer, pending_stats)
+
+        return renderer.green(latency_str)
+
+    # Time-based latency (live)
+    if pending_stats.min_latency_ms is not None:
+        avg = pending_stats.avg_latency_ms
+        min_val = pending_stats.min_latency_ms
+        max_val = pending_stats.max_latency_ms
+        latency_str = f"Latency: avg {avg:.0f}ms ({min_val:.0f}-{max_val:.0f})"
+
+        latency_str += _format_anomaly_suffix_compact(renderer, pending_stats)
+
+        return renderer.green(latency_str)
+
+    return ""
+
+
+def _format_anomaly_suffix_compact(
+    renderer: ConsoleRenderer,
+    pending_stats: PendingOrderStats
+) -> str:
+    """Format compact anomaly suffix for box display (e.g. '| 1 forced')."""
+    parts = []
+    if pending_stats.total_force_closed > 0:
+        parts.append(f"{pending_stats.total_force_closed} forced")
+    if pending_stats.total_timed_out > 0:
+        parts.append(f"{pending_stats.total_timed_out} timeout")
+    if not parts:
+        return ""
+    return f" | {renderer.yellow(' | '.join(parts))}"

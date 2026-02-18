@@ -32,6 +32,7 @@ Fill Processing:
 - Subclasses call them when an order is confirmed (by latency sim or broker)
 """
 from abc import ABC, abstractmethod
+from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
 import json
@@ -57,6 +58,7 @@ from python.framework.types.order_types import (
     RejectionReason,
     create_rejection_result,
 )
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
 
 
@@ -88,6 +90,8 @@ class AbstractTradeExecutor(ABC):
         initial_balance: float,
         account_currency: str,
         logger: AbstractLogger,
+        order_history_max: int = 10000,
+        trade_history_max: int = 5000,
     ):
         self.broker = broker_config
         self.logger = logger
@@ -102,7 +106,8 @@ class AbstractTradeExecutor(ABC):
             broker_config=broker_config,
             leverage=broker_spec.leverage,
             margin_call_level=broker_spec.margin_call_level,
-            stop_out_level=broker_spec.stopout_level
+            stop_out_level=broker_spec.stopout_level,
+            trade_history_max=trade_history_max
         )
 
         # Current market prices
@@ -110,9 +115,13 @@ class AbstractTradeExecutor(ABC):
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
-        # Order tracking
+        # Order tracking with configurable limit
         self._order_counter = 0
-        self._order_history: List[OrderResult] = []
+        self._order_history_max = order_history_max
+        self._order_history: deque[OrderResult] = deque(
+            maxlen=order_history_max if order_history_max > 0 else None
+        )
+        self._order_history_limit_warned = False
 
         # Execution statistics
         self._orders_sent = 0
@@ -120,6 +129,17 @@ class AbstractTradeExecutor(ABC):
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
+
+    def _check_order_history_limit(self) -> None:
+        """Emit one-time warning when order history reaches capacity."""
+        if (self._order_history_max > 0
+                and not self._order_history_limit_warned
+                and len(self._order_history) >= self._order_history_max):
+            self._order_history_limit_warned = True
+            self.logger.warning(
+                f"⚠️ Order history limit reached ({self._order_history_max}). "
+                f"Oldest entries will be discarded. Full history available in scenario log."
+            )
 
     # ============================================
     # Tick Lifecycle (called by process_tick_loop)
@@ -264,6 +284,7 @@ class AbstractTradeExecutor(ABC):
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
                     message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
                 )
+                self._check_order_history_limit()
                 self._order_history.append(rejection)
                 self.logger.warning(
                     f"Order {pending_order.pending_order_id} rejected: "
@@ -317,6 +338,7 @@ class AbstractTradeExecutor(ABC):
         # Update statistics
         self._orders_executed += 1
         self._total_spread_cost += entry_fee.cost
+        self._check_order_history_limit()
         self._order_history.append(result)
 
     def _fill_close_order(
@@ -403,6 +425,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f"CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}")
 
+        self._check_order_history_limit()
         self._order_history.append(result)
 
     # ============================================
@@ -488,12 +511,54 @@ class AbstractTradeExecutor(ABC):
     # ============================================
 
     @abstractmethod
-    def close_all_remaining_orders(self) -> None:
+    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
         """
         Close all remaining open positions at end of run.
 
         TradeSimulator: Force-flushes latency queue, closes all
         LiveTradeExecutor: Sends close orders to broker for all open positions
+
+        Args:
+            current_tick: Current tick number for pending latency calculation
+        """
+        pass
+
+    def check_clean_shutdown(self) -> bool:
+        """
+        Post-cleanup safety check — call after close_all_remaining_orders().
+
+        Logs errors for any orphaned positions or pending orders that
+        survived cleanup. Does NOT raise — reports are still generated.
+
+        Returns:
+            True if shutdown was clean, False if orphaned state detected.
+        """
+        clean = True
+
+        open_positions = self.get_open_positions()
+        if open_positions:
+            clean = False
+            for pos in open_positions:
+                self.logger.error(
+                    f"Orphaned position after cleanup: {pos.position_id} "
+                    f"{pos.direction.value} {pos.lots} lots {pos.symbol}"
+                )
+
+        if self.has_pending_orders():
+            clean = False
+            self.logger.error(
+                "Orphaned pending orders after cleanup — orders still in pipeline"
+            )
+
+        return clean
+
+    @abstractmethod
+    def get_pending_stats(self) -> PendingOrderStats:
+        """
+        Get aggregated pending order statistics (latency, outcomes).
+
+        Returns:
+            PendingOrderStats with latency metrics and anomaly records
         """
         pass
 
@@ -509,7 +574,7 @@ class AbstractTradeExecutor(ABC):
 
     def get_order_history(self) -> List[OrderResult]:
         """Get complete order history."""
-        return self._order_history.copy()
+        return list(self._order_history)
 
     def get_trade_history(self) -> List:
         """Get all completed trades with full audit trail."""

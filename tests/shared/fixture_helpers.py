@@ -25,6 +25,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 
 
 # =============================================================================
@@ -101,6 +102,14 @@ def extract_trade_history(
     """Extract trade history for P&L verification."""
     assert tick_loop_results.trade_history is not None, "No trade history"
     return tick_loop_results.trade_history
+
+
+def extract_pending_stats(
+    tick_loop_results: ProcessTickLoopResult
+) -> PendingOrderStats:
+    """Extract pending order statistics."""
+    assert tick_loop_results.pending_stats is not None, "No pending stats"
+    return tick_loop_results.pending_stats
 
 
 # =============================================================================

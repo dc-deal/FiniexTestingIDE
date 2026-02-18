@@ -9,6 +9,7 @@ from typing import List
 
 
 from python.framework.types.broker_types import BrokerType
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown
@@ -100,5 +101,6 @@ class AggregatedPortfolio:
     portfolio_stats: PortfolioStats
     execution_stats: ExecutionStats
     cost_breakdown: CostBreakdown
+    pending_stats: PendingOrderStats
     time_span_days: int
     has_time_divergence_warning: bool

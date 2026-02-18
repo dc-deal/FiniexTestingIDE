@@ -29,6 +29,7 @@ from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.market_data_types import TickData
 from python.framework.types.order_types import OrderResult
+from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_stats_types import CostBreakdown, ExecutionStats
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -204,6 +205,11 @@ class ProcessScenarioConfig:
     seeds: Dict[str, Any] = field(default_factory=dict)
     executor_mode: str = 'simulation'  # "simulation" | "live_dry_run"
 
+    # === HISTORY LIMITS ===
+    bar_max_history: int = 1000
+    order_history_max: int = 10000
+    trade_history_max: int = 5000
+
     @staticmethod
     def from_scenario(
         scenario: SingleScenario,
@@ -293,7 +299,10 @@ class ProcessScenarioConfig:
             initial_balance=initial_balance,
             account_currency=account_currency,
             seeds=seeds,
-            executor_mode=executor_mode
+            executor_mode=executor_mode,
+            bar_max_history=app_config_loader.get_bar_max_history(),
+            order_history_max=app_config_loader.get_order_history_max(),
+            trade_history_max=app_config_loader.get_trade_history_max()
         )
 
 
@@ -361,6 +370,9 @@ class ProcessTickLoopResult:
 
     # Order history (all orders including rejections)
     order_history: List[OrderResult] = None
+
+    # Pending order statistics (latency, outcomes, anomalies)
+    pending_stats: PendingOrderStats = None
 
     # Profiling data
     profiling_data: ProcessProfileData = None

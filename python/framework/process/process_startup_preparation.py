@@ -126,7 +126,8 @@ def process_startup_preparation(
 
     # === CREATE BAR RENDERING CONTROLLER ===
     bar_rendering_controller = BarRenderingController(
-        logger=scenario_logger)
+        logger=scenario_logger,
+        max_history=config.bar_max_history)
     bar_rendering_controller.register_workers(workers)
 
     # === MATCH AND VALIDATE WARMUP BARS ===
