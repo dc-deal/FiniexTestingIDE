@@ -523,6 +523,35 @@ class AbstractTradeExecutor(ABC):
         """
         pass
 
+    def check_clean_shutdown(self) -> bool:
+        """
+        Post-cleanup safety check — call after close_all_remaining_orders().
+
+        Logs errors for any orphaned positions or pending orders that
+        survived cleanup. Does NOT raise — reports are still generated.
+
+        Returns:
+            True if shutdown was clean, False if orphaned state detected.
+        """
+        clean = True
+
+        open_positions = self.get_open_positions()
+        if open_positions:
+            clean = False
+            for pos in open_positions:
+                self.logger.error(
+                    f"Orphaned position after cleanup: {pos.position_id} "
+                    f"{pos.direction.value} {pos.lots} lots {pos.symbol}"
+                )
+
+        if self.has_pending_orders():
+            clean = False
+            self.logger.error(
+                "Orphaned pending orders after cleanup — orders still in pipeline"
+            )
+
+        return clean
+
     @abstractmethod
     def get_pending_stats(self) -> PendingOrderStats:
         """

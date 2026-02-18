@@ -165,6 +165,7 @@ def execute_tick_loop(
 
         # === CLOSE OPEN TRADES ===
         trade_simulator.close_all_remaining_orders(current_tick=tick_idx + 1)
+        trade_simulator.check_clean_shutdown()
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
             live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
