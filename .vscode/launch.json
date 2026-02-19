@@ -540,13 +540,13 @@
             "justMyCode": false
         },
         // ====================================================
-        // 📊 SCENARIO ANALYSIS & GENERATION
+        // 🔍 DISCOVERIES
         // ====================================================
         {
             "name": "📊 Market Analysis - mt5/GBPUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
                 "analyze",
                 "mt5",
@@ -559,7 +559,7 @@
             "name": "📊 Market Analysis - kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
                 "analyze",
                 "kraken_spot",
@@ -568,6 +568,35 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🔍 Extreme Moves - mt5/USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "extreme-moves",
+                "mt5",
+                "USDJPY"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Extreme Moves - mt5/GBPUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "extreme-moves",
+                "mt5",
+                "GBPUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
+        // ⚡ SCENARIO GENERATION
+        // ====================================================
         {
             "name": "⚡ Scenario Gen. - 40 Blocks mt5/USDJPY",
             "type": "debugpy",

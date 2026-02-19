@@ -1,10 +1,9 @@
 """
 Scenario CLI
 ============
-Command-line interface for market analysis and scenario generation.
+Command-line interface for scenario generation.
 
 Commands:
-- analyze: Analyze market data and show volatility/activity report
 - generate: Generate scenario configs based on analysis
 
 Location: python/cli/scenario_cli.py
@@ -16,19 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.reporting.market_analyzer_report import MarketAnalyzer
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.scenario_generator import ScenarioGenerator
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
-    SymbolAnalysis,
-    TradingSession,
-    VolatilityRegime,
 )
-from python.framework.reporting.market_report import print_analysis_report
-from python.framework.reporting.comparison_report import print_cross_instrument_ranking
-from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
@@ -36,7 +28,7 @@ vLog = get_global_logger()
 
 class ScenarioCLI:
     """
-    CLI handler for scenario analysis and generation.
+    CLI handler for scenario generation.
     """
 
     def __init__(self):
@@ -46,56 +38,7 @@ class ScenarioCLI:
         Args:
             data_dir: Path to processed data directory
         """
-        self._analyzer = MarketAnalyzer()
-        self._activity_provider = get_activity_provider()
-
-    # =========================================================================
-    # ANALYZE COMMAND
-    # =========================================================================
-
-    def cmd_analyze(
-        self,
-        broker_type: str,
-        symbol: str,
-        timeframe: Optional[str] = None
-    ) -> None:
-        """
-        Analyze market data and print report with cross-instrument comparison.
-
-        Args:
-            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
-            symbol: Symbol to analyze
-            timeframe: Timeframe override
-        """
-        # Analyze requested symbol
-        try:
-            analysis = self._analyzer.analyze_symbol(
-                broker_type, symbol, timeframe)
-            print_analysis_report(analysis)
-        except Exception as e:
-            print(f"❌ Failed to analyze {symbol}: {e}")
-            vLog.error(f"Analysis failed for {symbol}: {e}")
-            return
-
-        # Load all other symbols for cross-instrument comparison (same broker_type)
-        all_symbols = self._analyzer.list_symbols(broker_type)
-        all_analyses: List[SymbolAnalysis] = [analysis]
-
-        for sym in all_symbols:
-            if sym == symbol:
-                continue  # Already analyzed
-            try:
-                sym_analysis = self._analyzer.analyze_symbol(
-                    broker_type, sym, timeframe)
-                all_analyses.append(sym_analysis)
-            except Exception as e:
-                vLog.warning(f"Could not analyze {sym} for comparison: {e}")
-
-        # Print cross-instrument ranking
-        if len(all_analyses) > 1:
-            config = self._analyzer.get_config()
-            top_count = config.cross_instrument_ranking.top_count
-            print_cross_instrument_ranking(all_analyses, symbol, top_count)
+        pass
 
     # =========================================================================
     # GENERATE COMMAND
@@ -222,7 +165,6 @@ class ScenarioCLI:
         print(f"Strategy:   {result.strategy.value}")
 
         if result.strategy == GenerationStrategy.BLOCKS:
-            # Time-based summary for blocks
             if result.scenarios:
                 first_start = min(s.start_time for s in result.scenarios)
                 last_end = max(s.end_time for s in result.scenarios)
@@ -237,7 +179,6 @@ class ScenarioCLI:
                 print(
                     f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
         else:
-            # Tick-based summary for balanced/stress
             print(f"Total ticks: {result.total_estimated_ticks:,}")
             print(f"Avg/scenario: {result.avg_ticks_per_scenario:,.0f}")
 
@@ -261,33 +202,11 @@ class ScenarioCLI:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Scenario analysis and generation CLI",
+        description="Scenario generation CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # ANALYZE command
-    # ─────────────────────────────────────────────────────────────────────────
-    analyze_parser = subparsers.add_parser(
-        'analyze',
-        help='Analyze market data for volatility and activity'
-    )
-    analyze_parser.add_argument(
-        'broker_type',
-        help='Broker type (e.g., mt5, kraken_spot)'
-    )
-    analyze_parser.add_argument(
-        'symbol',
-        help='Symbol to analyze (e.g., EURUSD, BTCUSD)'
-    )
-    analyze_parser.add_argument(
-        '--timeframe',
-        type=str,
-        default=None,
-        help='Timeframe to analyze (default: M5)'
-    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # GENERATE command
@@ -373,14 +292,7 @@ def main():
 
     cli = ScenarioCLI()
 
-    if args.command == 'analyze':
-        cli.cmd_analyze(
-            broker_type=args.broker_type,
-            symbol=args.symbol,
-            timeframe=args.timeframe
-        )
-
-    elif args.command == 'generate':
+    if args.command == 'generate':
         cli.cmd_generate(
             broker_type=args.broker_type,
             symbols=args.symbols,

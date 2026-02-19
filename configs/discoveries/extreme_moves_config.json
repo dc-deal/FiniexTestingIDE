@@ -1,0 +1,11 @@
+{
+    "extreme_moves": {
+        "timeframe": "M5",
+        "atr_period": 14,
+        "window_sizes": [200, 500, 1000, 2000],
+        "min_atr_multiple": 3.0,
+        "max_adverse_atr_multiple": 1.5,
+        "top_n": 10,
+        "min_real_bar_ratio": 0.5
+    }
+}

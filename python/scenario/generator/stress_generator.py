@@ -16,7 +16,7 @@ Location: python/scenario/generator/stress_generator.py
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.reporting.market_analyzer_report import MarketAnalyzer
+from python.framework.discoveries.market_analyzer import MarketAnalyzer
 from python.framework.types.scenario_generator_types import (
     GeneratorConfig,
     PeriodAnalysis,
