@@ -106,7 +106,7 @@ configs/              # Default configurations (version controlled)
 user_configs/         # Your personal overrides (gitignored)
 ├── app_config.json        # Optional: override app settings
 ├── market_config.json     # Optional: override market config
-└── analysis_config.json   # Optional: override generator settings
+└── analysis_config.json   # Optional: override analysis/discovery settings
 ```
 
 ### How It Works

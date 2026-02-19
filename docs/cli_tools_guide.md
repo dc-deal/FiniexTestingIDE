@@ -20,7 +20,8 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 | `tick_index_cli.py` | Tick-Index Management | rebuild, status, coverage, files |
 | `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
 | `coverage_report_cli.py` | Gap-Analyse & Cache | build, show, validate, status, clear |
-| `scenario_cli.py` | Szenarien | analyze, generate |
+| `discoveries_cli.py` | Marktanalyse & Discoveries | analyze, extreme-moves |
+| `scenario_cli.py` | Szenarien | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
 ---
@@ -245,14 +246,14 @@ Total Symbols: 16
 
 ---
 
-## D) Marktanalyse
+## D) Marktanalyse & Discoveries
 
 ### 📊 MARKET ANALYSIS REPORT
 
 | | |
 |---|---|
 | **VS Code** | `📊 MARKET ANALYSIS REPORT - USDJPY` |
-| **CLI** | `python scenario_cli.py analyze USDJPY` |
+| **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
 | **Zweck** | ATR-Volatilität, Session-Aktivität, Cross-Instrument Ranking |
 
 Analysiert Marktdaten für strategische Szenario-Planung:
@@ -299,6 +300,40 @@ Timeframe:      M5
    1. USDJPY     76.5   ██████████ ← Highest
    2. GBPUSD     42.7   ██████░░░░
 ```
+
+### 🔍 EXTREME MOVES
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Extreme Moves - mt5/USDJPY` |
+| **CLI** | `python discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Zweck** | Extreme directional price movements (LONG/SHORT) finden |
+
+Scannt Bar-Daten mit ATR-basierter Normalisierung über konfigurierbare Fenstergrößen. Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
+
+```
+======================================================================
+EXTREME MOVE DISCOVERY: USDJPY
+======================================================================
+Data Source:    mt5
+Timeframe:      M5
+Bars Scanned:   30,853
+Avg ATR:        0.054
+Pip Size:       0.01
+
+----------------------------------------------------------------------
+LONG Extreme Moves (top 10)
+----------------------------------------------------------------------
+  #  ATR Mult      Pips   Adverse    Bars                 Start                   End
+  1      5.23     282.3      45.1     500   2025-10-04 03:45     2025-10-05 19:25
+  2      4.87     263.1      38.2    1000   2025-11-12 08:00     2025-11-15 22:15
+  ...
+```
+
+**Parameter:**
+- `--top` - Anzahl der Top-Ergebnisse pro Richtung (default: 10)
+- `--force` - Cache ignorieren und neu scannen
+- `--timeframe` - Timeframe Override (default: M5)
 
 ---
 
@@ -527,7 +562,8 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Gap-Check (alle)** | `📊 Coverage: Validate All` | `coverage_report_cli.py validate` |
 | **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `coverage_report_cli.py show mt5 EURUSD` |
 | **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `coverage_report_cli.py build` |
-| **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `scenario_cli.py analyze USDJPY` |
+| **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `discoveries_cli.py analyze mt5 USDJPY` |
+| **Extreme Moves** | `🔍 Extreme Moves - mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
 | **Szenarien: Stress** | `📊 Scenario Generator - Generate Stress` | `scenario_cli.py generate EURGBP --strategy stress` |
 | **Backtest starten** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
@@ -547,6 +583,8 @@ Nützlich um die Rohdatenstruktur zu verstehen:
          ↓
 5. Markt analysieren: 📊 MARKET ANALYSIS REPORT
          ↓
+5b. Extreme Moves:   🔍 Extreme Moves
+         ↓
 6. Szenarien erstellen: 📊 Generate Blocks/Stress
          ↓
 7. Backtest:        🔬 Run Scenario
@@ -563,5 +601,6 @@ Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
 | Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
 | Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
 | Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
+| Discovery Cache | `.discovery_cache/*.parquet` | Extreme Moves Cache |
 
 Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.
