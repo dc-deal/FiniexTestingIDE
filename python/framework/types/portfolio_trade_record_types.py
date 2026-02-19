@@ -19,6 +19,14 @@ class CloseType(Enum):
     PARTIAL = "partial"
 
 
+class CloseReason(Enum):
+    """Reason why a position was closed."""
+    MANUAL = ""              # Algo/manual close (no specific trigger)
+    SL_TRIGGERED = "sl_triggered"
+    TP_TRIGGERED = "tp_triggered"
+    SCENARIO_END = "scenario_end"
+
+
 @dataclass
 class TradeRecord:
     """
@@ -74,6 +82,9 @@ class TradeRecord:
     take_profit: Optional[float] = None
     comment: str = ""
     magic_number: int = 0
+
+    # === Close Reason ===
+    close_reason: CloseReason = CloseReason.MANUAL
 
     # === Account Context ===
     account_currency: str = ""

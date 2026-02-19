@@ -13,7 +13,7 @@ from typing import List
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.order_types import OrderResult
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.process_data_types import ProcessResult
 
 
@@ -171,11 +171,12 @@ class TradeHistorySummary:
         header = (
             f"   {'#':>3} | {'Dir':^5} | {'Lots':>5} | "
             f"{'Entry Price':>12} | {'Exit Price':>12} | "
+            f"{'SL':>12} | {'TP':>12} | "
             f"{'Entry Tick':>10} | {'Exit Tick':>10} | {'Duration':>8} | "
-            f"{'Gross P&L':>10} | {'Fees':>8} | {'Net P&L':>10}"
+            f"{'Gross P&L':>10} | {'Fees':>8} | {'Net P&L':>10} | {'Close Reason':>14}"
         )
         print(renderer.gray(header))
-        print(renderer.gray("   " + "-" * 130))
+        print(renderer.gray("   " + "-" * 170))
 
     def _print_trade_row(
         self,
@@ -197,6 +198,10 @@ class TradeHistorySummary:
         else:
             dir_str = renderer.red("SHORT")
 
+        # SL/TP formatting
+        sl_str = f"{trade.stop_loss:>12.5f}" if trade.stop_loss is not None else f"{'—':>12}"
+        tp_str = f"{trade.take_profit:>12.5f}" if trade.take_profit is not None else f"{'—':>12}"
+
         # Duration
         duration = trade.exit_tick_index - trade.entry_tick_index
 
@@ -204,12 +209,16 @@ class TradeHistorySummary:
         gross_str = self._format_value(trade.gross_pnl, renderer)
         net_str = self._format_value(trade.net_pnl, renderer)
 
+        # Close reason
+        reason_str = trade.close_reason.value if trade.close_reason != CloseReason.MANUAL else ""
+
         # Build row
         row = (
             f"   {idx:>3} | {dir_str} | {trade.lots:>5.2f} | "
             f"{trade.entry_price:>12.5f} | {trade.exit_price:>12.5f} | "
+            f"{sl_str} | {tp_str} | "
             f"{trade.entry_tick_index:>10} | {trade.exit_tick_index:>10} | {duration:>8} | "
-            f"{gross_str:>10} | {trade.total_fees:>8.2f} | {net_str:>10}"
+            f"{gross_str:>10} | {trade.total_fees:>8.2f} | {net_str:>10} | {reason_str:>14}"
         )
         print(row)
 
@@ -225,7 +234,7 @@ class TradeHistorySummary:
             trades: List of trades
             renderer: ConsoleRenderer instance
         """
-        print(renderer.gray("   " + "-" * 130))
+        print(renderer.gray("   " + "-" * 170))
 
         total_gross = sum(t.gross_pnl for t in trades)
         total_fees = sum(t.total_fees for t in trades)
@@ -238,8 +247,9 @@ class TradeHistorySummary:
         total_row = (
             f"   {'':>3} | {'TOTAL':^5} | {'':>5} | "
             f"{'':>12} | {'':>12} | "
+            f"{'':>12} | {'':>12} | "
             f"{'':>10} | {'':>10} | {'':>8} | "
-            f"{gross_str:>10} | {total_fees:>8.2f} | {net_str:>10} {currency}"
+            f"{gross_str:>10} | {total_fees:>8.2f} | {net_str:>10} {currency} |"
         )
         print(renderer.bold(total_row))
 
@@ -286,11 +296,21 @@ class TradeHistorySummary:
 
         currency = trades[0].account_currency if trades else "USD"
 
+        # Close reason counts
+        sl_closes = sum(1 for t in trades if t.close_reason == CloseReason.SL_TRIGGERED)
+        tp_closes = sum(1 for t in trades if t.close_reason == CloseReason.TP_TRIGGERED)
+        scenario_closes = sum(1 for t in trades if t.close_reason == CloseReason.SCENARIO_END)
+        manual_closes = total_trades - sl_closes - tp_closes - scenario_closes
+
         print(f"\n   {renderer.bold('📈 TRADE BREAKDOWN:')}")
         print(
             f"      Total Trades: {total_trades} (Long: {long_trades} | Short: {short_trades})")
         print(
             f"      Winners: {len(winning_trades)} | Losers: {len(losing_trades)}")
+        print(
+            f"      Close Reasons: SL={sl_closes} | TP={tp_closes} | Manual={manual_closes}"
+            + (f" | Scenario End={scenario_closes}" if scenario_closes else "")
+        )
 
         print(f"\n   {renderer.bold('💰 P&L BREAKDOWN:')}")
         gross_str = self._format_value(total_gross, renderer)

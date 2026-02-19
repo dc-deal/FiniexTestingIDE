@@ -13,19 +13,29 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 from collections import deque
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import CloseType, TradeRecord
+from python.framework.types.portfolio_trade_record_types import CloseType, CloseReason, TradeRecord
 from python.framework.types.portfolio_types import Position, PositionStatus
 
 from ..types.order_types import OrderDirection
 from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
+
+
+class _UnsetType:
+    """Sentinel to distinguish 'not provided' from 'set to None' (remove SL/TP)."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET = _UnsetType()
 
 
 class PortfolioManager:
@@ -186,12 +196,22 @@ class PortfolioManager:
         exit_price: float,
         exit_tick_value: float,
         exit_tick_index: int,
-        exit_fee: Optional[AbstractTradingFee] = None
+        exit_fee: Optional[AbstractTradingFee] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> float:
         """
         Close position and realize P&L.
 
-        Accepts exit_fee (commission or final swap).
+        Args:
+            position_id: Position to close
+            exit_price: Price at which position is closed
+            exit_tick_value: Tick value at exit for P&L conversion
+            exit_tick_index: Tick counter at close time
+            exit_fee: Optional exit fee (commission or final swap)
+            close_reason: Why the position was closed
+
+        Returns:
+            Realized P&L amount
         """
         if position_id not in self.open_positions:
             raise ValueError(f"Position {position_id} not found")
@@ -228,7 +248,7 @@ class PortfolioManager:
         position.exit_tick_index = exit_tick_index
 
         # Create TradeRecord from closed position
-        trade_record = self._create_trade_record(position, CloseType.FULL)
+        trade_record = self._create_trade_record(position, CloseType.FULL, close_reason)
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
                 and len(self._trade_history) >= self._trade_history_max):
@@ -249,7 +269,8 @@ class PortfolioManager:
     def _create_trade_record(
         self,
         position: Position,
-        close_type: CloseType
+        close_type: CloseType,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> TradeRecord:
         """
         Convert closed Position to TradeRecord.
@@ -257,6 +278,7 @@ class PortfolioManager:
         Args:
             position: Closed position with all data
             close_type: FULL or PARTIAL close
+            close_reason: Why the position was closed
 
         Returns:
             TradeRecord with all fields for P&L verification
@@ -287,6 +309,7 @@ class PortfolioManager:
             net_pnl=position.unrealized_pnl,
             stop_loss=position.stop_loss,
             take_profit=position.take_profit,
+            close_reason=close_reason,
             comment=position.comment,
             magic_number=position.magic_number,
             account_currency=self.account_currency
@@ -299,32 +322,102 @@ class PortfolioManager:
     def modify_position(
         self,
         position_id: str,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> bool:
         """
-        Modify position SL/TP.
+        Modify position SL/TP with validation.
 
-        NEW METHOD for dynamic position management.
+        Uses UNSET sentinel to distinguish "don't change" from "set to None" (remove SL/TP).
+        Validates levels against current prices before applying.
 
         Args:
             position_id: Position to modify
-            new_stop_loss: New stop loss (None = no change)
-            new_take_profit: New take profit (None = no change)
+            new_stop_loss: New SL level (UNSET=no change, None=remove, float=set)
+            new_take_profit: New TP level (UNSET=no change, None=remove, float=set)
 
         Returns:
-            True if modified successfully
+            True if modified successfully, False if position not found or validation failed
         """
         if position_id not in self.open_positions:
             return False
 
         position = self.open_positions[position_id]
 
-        if new_stop_loss is not None:
-            position.stop_loss = new_stop_loss
+        # Determine effective levels after modification (for cross-validation)
+        effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
 
-        if new_take_profit is not None:
+        # Validate against current prices
+        if position.symbol not in self._current_prices:
+            self._logger.warning(
+                f"No current price for {position.symbol} — cannot validate SL/TP")
+            return False
+
+        bid, ask = self._current_prices[position.symbol]
+
+        if not self._validate_sl_tp_levels(position.direction, bid, ask, effective_sl, effective_tp):
+            return False
+
+        # Apply changes
+        if not isinstance(new_stop_loss, _UnsetType):
+            position.stop_loss = new_stop_loss
+        if not isinstance(new_take_profit, _UnsetType):
             position.take_profit = new_take_profit
+
+        return True
+
+    def _validate_sl_tp_levels(
+        self,
+        direction: OrderDirection,
+        bid: float,
+        ask: float,
+        stop_loss: Optional[float],
+        take_profit: Optional[float]
+    ) -> bool:
+        """
+        Validate SL/TP levels against current prices and each other.
+
+        Args:
+            direction: Position direction (LONG/SHORT)
+            bid: Current bid price
+            ask: Current ask price
+            stop_loss: Stop loss level to validate (None = no SL)
+            take_profit: Take profit level to validate (None = no TP)
+
+        Returns:
+            True if levels are valid
+        """
+        if stop_loss is not None:
+            if direction == OrderDirection.LONG and stop_loss >= bid:
+                self._logger.warning(
+                    f"Invalid SL for LONG: sl={stop_loss} >= bid={bid}")
+                return False
+            if direction == OrderDirection.SHORT and stop_loss <= ask:
+                self._logger.warning(
+                    f"Invalid SL for SHORT: sl={stop_loss} <= ask={ask}")
+                return False
+
+        if take_profit is not None:
+            if direction == OrderDirection.LONG and take_profit <= bid:
+                self._logger.warning(
+                    f"Invalid TP for LONG: tp={take_profit} <= bid={bid}")
+                return False
+            if direction == OrderDirection.SHORT and take_profit >= ask:
+                self._logger.warning(
+                    f"Invalid TP for SHORT: tp={take_profit} >= ask={ask}")
+                return False
+
+        # SL and TP must not cross each other
+        if stop_loss is not None and take_profit is not None:
+            if direction == OrderDirection.LONG and stop_loss >= take_profit:
+                self._logger.warning(
+                    f"SL/TP cross for LONG: sl={stop_loss} >= tp={take_profit}")
+                return False
+            if direction == OrderDirection.SHORT and stop_loss <= take_profit:
+                self._logger.warning(
+                    f"SL/TP cross for SHORT: sl={stop_loss} <= tp={take_profit}")
+                return False
 
         return True
 

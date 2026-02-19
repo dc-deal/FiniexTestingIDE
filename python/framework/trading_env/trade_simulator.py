@@ -30,6 +30,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.portfolio_trade_record_types import CloseReason
 from python.framework.types.pending_order_stats_types import PendingOrderStats
 from .broker_config import BrokerConfig
 from ..types.order_types import (
@@ -364,7 +365,7 @@ class TradeSimulator(AbstractTradeExecutor):
             for pos in open_positions:
                 synthetic = self.latency_simulator.create_synthetic_close_order(
                     pos.position_id)
-                self._fill_close_order(synthetic)
+                self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(

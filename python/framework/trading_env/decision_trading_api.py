@@ -12,7 +12,6 @@ MVP Design:
 - Order-type validation BEFORE scenario start
 
 Post-MVP:
-- Position modification (SL/TP changes)
 - Order history access
 - EventBus integration
 
@@ -31,9 +30,10 @@ FUTURE NOTES:
   Example: DecisionTradingAPI(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
+from .portfolio_manager import UNSET, _UnsetType
 from ..types.order_types import (
     OrderType,
     OrderDirection,
@@ -351,32 +351,30 @@ class DecisionTradingAPI:
         return self._executor.broker.get_max_leverage()
 
     # ============================================
-    # Post-MVP Features (Feature-Gated)
+    # Position Modification
     # ============================================
 
     def modify_position(
         self,
         position_id: str,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None
+        stop_loss: Union[float, None, _UnsetType] = UNSET,
+        take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> bool:
         """
-        Modify position stop loss and take profit.
-
-        Post-MVP: Will allow dynamic SL/TP management.
-        MVP: Not implemented.
+        Modify position stop loss and/or take profit levels.
 
         Args:
             position_id: Position to modify
-            stop_loss: New SL level (None = no change)
-            take_profit: New TP level (None = no change)
+            stop_loss: New SL price, None to remove, UNSET to keep current
+            take_profit: New TP price, None to remove, UNSET to keep current
 
         Returns:
-            True if modification successful
+            True if modification applied successfully
         """
-        raise NotImplementedError(
-            "Position modification is Post-MVP feature. "
-            "Use send_order() with stop_loss/take_profit for MVP."
+        return self._executor.modify_position(
+            position_id=position_id,
+            new_stop_loss=stop_loss,
+            new_take_profit=take_profit
         )
 
     def get_order_history(self, symbol: Optional[str] = None) -> List[OrderResult]:

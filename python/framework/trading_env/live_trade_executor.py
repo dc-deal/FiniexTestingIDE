@@ -32,10 +32,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live_order_tracker import LiveOrderTracker
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
+from python.framework.types.portfolio_trade_record_types import CloseReason
 from python.framework.types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -119,6 +120,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             logger=logger,
             timeout_config=self._timeout_config,
         )
+
+        # Live mode: broker handles SL/TP server-side
+        self._executor_mode = ExecutorMode.LIVE
 
         self.logger.info(
             f"LiveTradeExecutor initialized with broker: "
@@ -582,7 +586,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             for pos in open_positions:
                 synthetic = self._order_tracker.create_synthetic_close_order(
                     pos.position_id)
-                self._fill_close_order(synthetic)
+                self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self._order_tracker.clear_pending(reason="scenario_end")

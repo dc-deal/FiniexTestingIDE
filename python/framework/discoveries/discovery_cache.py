@@ -185,6 +185,7 @@ class DiscoveryCache:
                     move_pips=float(row['move_pips']),
                     move_atr_multiple=float(row['move_atr_multiple']),
                     max_adverse_pips=float(row['max_adverse_pips']),
+                    window_atr=float(row.get('window_atr', 0.0)),
                     tick_count=int(row['tick_count']),
                 )
                 if move.direction == MoveDirection.LONG:
@@ -231,6 +232,7 @@ class DiscoveryCache:
                     'move_pips': move.move_pips,
                     'move_atr_multiple': move.move_atr_multiple,
                     'max_adverse_pips': move.max_adverse_pips,
+                    'window_atr': move.window_atr,
                     'tick_count': move.tick_count,
                 })
 
@@ -241,7 +243,7 @@ class DiscoveryCache:
                     'direction', 'start_time', 'end_time', 'bar_count',
                     'entry_price', 'extreme_price', 'exit_price',
                     'move_pips', 'move_atr_multiple', 'max_adverse_pips',
-                    'tick_count',
+                    'window_atr', 'tick_count',
                 ])
 
             source_mtime = self._get_source_bar_mtime(broker_type, symbol) or 0.0

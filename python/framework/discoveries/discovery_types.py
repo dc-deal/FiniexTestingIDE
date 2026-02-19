@@ -48,6 +48,7 @@ class ExtremeMove:
     move_pips: float         # directional move in pips (entry → extreme)
     move_atr_multiple: float # move size as multiple of avg ATR
     max_adverse_pips: float  # max retracement against the move direction
+    window_atr: float        # average ATR over this window (raw price units)
 
     # Tick activity
     tick_count: int

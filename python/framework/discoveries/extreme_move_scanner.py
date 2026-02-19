@@ -241,6 +241,7 @@ class ExtremeMoveScanner:
                             move_pips=round(long_move / pip_size, 1),
                             move_atr_multiple=round(long_move_atr, 2),
                             max_adverse_pips=round(long_adverse / pip_size, 1),
+                            window_atr=round(window_atr, spec.digits),
                             tick_count=window_ticks,
                         ))
 
@@ -266,6 +267,7 @@ class ExtremeMoveScanner:
                             move_pips=round(short_move / pip_size, 1),
                             move_atr_multiple=round(short_move_atr, 2),
                             max_adverse_pips=round(short_adverse / pip_size, 1),
+                            window_atr=round(window_atr, spec.digits),
                             tick_count=window_ticks,
                         ))
 
@@ -360,26 +362,38 @@ class ExtremeMoveScanner:
             result: ExtremeMoveResult (from scan or cache)
             top_n: Number of top results per direction
         """
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 130)
         print(f"EXTREME MOVE DISCOVERY: {result.symbol}")
-        print("=" * 70)
+        print("=" * 130)
         print(f"Data Source:    {result.broker_type}")
         print(f"Timeframe:      {result.timeframe}")
         print(f"Bars Scanned:   {result.scanned_bars:,}")
         print(f"Avg ATR:        {result.avg_atr}")
         print(f"Pip Size:       {result.pip_size}")
 
+        pip = result.pip_size
+
+        header = (
+            f"{'#':>3}  {'ATR Mult':>8}  {'Pips':>8}  {'Adverse':>8}  "
+            f"{'Entry':>10}  {'Extreme':>10}  {'Adverse@':>10}  {'Exit':>10}  "
+            f"{'W-ATR':>7}  {'Bars':>6}  {'Ticks':>8}  {'Start':>20}  {'End':>20}"
+        )
+
         # LONG moves
-        print("\n" + "-" * 70)
+        print("\n" + "-" * 150)
         print(f"LONG Extreme Moves (top {top_n})")
-        print("-" * 70)
+        print("-" * 150)
         if result.longs:
-            print(f"{'#':>3}  {'ATR Mult':>8}  {'Pips':>8}  {'Adverse':>8}  {'Bars':>6}  {'Start':>20}  {'End':>20}")
+            print(header)
             for i, move in enumerate(result.longs[:top_n], 1):
+                adverse_price = move.entry_price - move.max_adverse_pips * pip
                 print(
                     f"{i:>3}  {move.move_atr_multiple:>8.2f}  "
                     f"{move.move_pips:>8.1f}  {move.max_adverse_pips:>8.1f}  "
-                    f"{move.bar_count:>6}  "
+                    f"{move.entry_price:>10.3f}  {move.extreme_price:>10.3f}  "
+                    f"{adverse_price:>10.3f}  {move.exit_price:>10.3f}  "
+                    f"{move.window_atr:>7.3f}  "
+                    f"{move.bar_count:>6}  {move.tick_count:>8}  "
                     f"{move.start_time.strftime('%Y-%m-%d %H:%M'):>20}  "
                     f"{move.end_time.strftime('%Y-%m-%d %H:%M'):>20}"
                 )
@@ -387,20 +401,24 @@ class ExtremeMoveScanner:
             print("   No extreme LONG moves found")
 
         # SHORT moves
-        print("\n" + "-" * 70)
+        print("\n" + "-" * 150)
         print(f"SHORT Extreme Moves (top {top_n})")
-        print("-" * 70)
+        print("-" * 150)
         if result.shorts:
-            print(f"{'#':>3}  {'ATR Mult':>8}  {'Pips':>8}  {'Adverse':>8}  {'Bars':>6}  {'Start':>20}  {'End':>20}")
+            print(header)
             for i, move in enumerate(result.shorts[:top_n], 1):
+                adverse_price = move.entry_price + move.max_adverse_pips * pip
                 print(
                     f"{i:>3}  {move.move_atr_multiple:>8.2f}  "
                     f"{move.move_pips:>8.1f}  {move.max_adverse_pips:>8.1f}  "
-                    f"{move.bar_count:>6}  "
+                    f"{move.entry_price:>10.3f}  {move.extreme_price:>10.3f}  "
+                    f"{adverse_price:>10.3f}  {move.exit_price:>10.3f}  "
+                    f"{move.window_atr:>7.3f}  "
+                    f"{move.bar_count:>6}  {move.tick_count:>8}  "
                     f"{move.start_time.strftime('%Y-%m-%d %H:%M'):>20}  "
                     f"{move.end_time.strftime('%Y-%m-%d %H:%M'):>20}"
                 )
         else:
             print("   No extreme SHORT moves found")
 
-        print("=" * 70 + "\n")
+        print("=" * 150 + "\n")
