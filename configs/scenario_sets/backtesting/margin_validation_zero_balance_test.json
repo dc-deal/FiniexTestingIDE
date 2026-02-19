@@ -1,0 +1,73 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "margin_validation_zero_balance_test",
+    "created": "2026-02-19T00:00:00.000000",
+    "description": "Zero Balance Validation - All orders rejected due to insufficient margin with zero starting balance",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
+            "worker_instances": {
+                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            },
+            "workers": {
+                "backtesting_worker": {
+                    "periods": {
+                        "M5": 14,
+                        "M30": 20
+                    },
+                    "bar_snapshot_checks": []
+                }
+            },
+            "decision_logic_config": {
+                "trade_sequence": [
+                    {
+                        "tick_number": 100,
+                        "direction": "LONG",
+                        "lot_size": 1.0,
+                        "expect_rejection": true,
+                        "_comment": "LONG 1.0 lot with zero balance → INSUFFICIENT_MARGIN"
+                    },
+                    {
+                        "tick_number": 200,
+                        "direction": "SHORT",
+                        "lot_size": 0.01,
+                        "expect_rejection": true,
+                        "_comment": "SHORT minimum lot with zero balance → INSUFFICIENT_MARGIN"
+                    }
+                ],
+                "close_events": [],
+                "retry_events": [],
+                "edge_case_orders": [],
+                "lot_size": 1.0
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false,
+            "log_performance_stats": true
+        },
+        "trade_simulator_config": {
+            "initial_balance": 0,
+            "account_currency": "auto",
+            "seeds": {
+                "api_latency_seed": 42424,
+                "market_execution_seed": 98765
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "USDJPY_zero_balance_test",
+            "symbol": "USDJPY",
+            "data_broker_type": "mt5",
+            "start_date": "2025-09-25T16:00:00+00:00",
+            "end_date": "2025-09-26T02:00:00+00:00",
+            "max_ticks": 1000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

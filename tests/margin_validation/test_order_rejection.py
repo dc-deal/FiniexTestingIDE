@@ -70,6 +70,25 @@ class TestLotSizeValidation:
                 f"should not exist (invalid lot)"
             )
 
+    def test_lot_step_misalignment_rejected(
+        self,
+        execution_stats: ExecutionStats,
+        edge_case_orders: list
+    ):
+        """Lot not aligned with volume_step should be rejected."""
+        step_edge_cases = [
+            e for e in edge_case_orders
+            if e['type'] == 'invalid_lot_step'
+        ]
+        assert len(step_edge_cases) > 0, (
+            "Config must include at least one invalid_lot_step edge case"
+        )
+        # Step misalignment rejections are included in orders_rejected
+        assert execution_stats.orders_rejected >= len(step_edge_cases), (
+            f"Expected at least {len(step_edge_cases)} rejections from lot step "
+            f"misalignment, orders_rejected={execution_stats.orders_rejected}"
+        )
+
 
 class TestPositionCloseErrors:
     """Validates that closing non-existent positions doesn't crash."""

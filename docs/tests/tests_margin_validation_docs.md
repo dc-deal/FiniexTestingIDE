@@ -4,16 +4,20 @@
 
 The margin validation test suite validates margin exhaustion, recovery, order rejection, and edge case handling. It uses a dedicated decision logic (`BacktestingMarginStress`) that intentionally exhausts margin, triggers rejections, recovers margin via explicit closes, and retries previously failed orders.
 
-**Test Configuration:** `backtesting/margin_validation_test.json`
+**Test Configurations:**
+
+| Config | Balance | Max Ticks | Purpose |
+|--------|---------|-----------|---------|
+| `backtesting/margin_validation_test.json` | 80,000 JPY | 10,000 | Margin exhaustion, recovery, lot validation |
+| `backtesting/margin_validation_zero_balance_test.json` | 0 JPY | 1,000 | Zero balance — all orders rejected |
+
+**Common Settings:**
 - Symbol: USDJPY
 - Broker: MT5 (Vantage), Leverage 500
 - Account Currency: JPY (auto-detected)
-- Initial Balance: 80,000 JPY
-- Lot Size: 1.0 (margin per lot ≈ 28,800 JPY at USDJPY ~144)
 - Seeds: api_latency=42424, market_execution=98765
-- Max Ticks: 10,000
 
-**Total Tests:** ~35
+**Total Tests:** ~42
 
 **Location:** `tests/margin_validation/`
 
@@ -28,6 +32,7 @@ Tick  100: Open LONG #0 (1.0 lot)  → SUCCESS   margin_used ≈ 28,800 JPY
 Tick  200: Open LONG #1 (1.0 lot)  → SUCCESS   margin_used ≈ 57,600 JPY, free ≈ 22,400
 Tick  400: Open LONG #2 (1.0 lot)  → REJECTED  needs 28,800 > 22,400 free
 Tick  600: Open LONG 0.001 lots    → REJECTED  below volume_min (0.01)
+Tick  650: Open LONG 0.015 lots    → REJECTED  not aligned with volume_step (0.01)
 Tick  700: Open LONG 200.0 lots    → REJECTED  above volume_max (100)
 Tick  800: Close "FAKE_POS_999"    → ERROR     position not found (no crash)
 Tick 5000: Close Trade #1          → SUCCESS   margin freed, free ≈ 50,000+
@@ -37,9 +42,9 @@ Tick 8100: Close Trade #0 (hold_ticks expires)
 ```
 
 **Expected execution statistics:**
-- orders_sent: 6 (3 trade_sequence + 1 retry + 2 lot edge cases)
+- orders_sent: 7 (3 trade_sequence + 1 retry + 3 lot edge cases)
 - orders_executed: 3 (trade #0, #1, retry)
-- orders_rejected: 3 (trade #2 margin, lot_below_min, lot_above_max)
+- orders_rejected: 4 (trade #2 margin, lot_below_min, lot_step, lot_above_max)
 
 ---
 
@@ -62,6 +67,7 @@ tests/
 │   ├── conftest.py               ← MARGIN_VALIDATION_CONFIG = "backtesting/margin_validation_test.json"
 │   ├── test_margin_validation.py ← Exhaustion, recovery, execution stats
 │   ├── test_order_rejection.py   ← Lot validation, close errors, rejection tracking
+│   ├── test_zero_balance.py      ← Zero balance scenario (own fixtures, separate config)
 │   ├── test_pnl_calculation.py   ← Shared import
 │   └── test_tick_count.py        ← Shared import
 ```
@@ -153,7 +159,7 @@ Tests margin exhaustion, recovery after closing a position, and execution statis
 
 ---
 
-### test_order_rejection.py (8 Tests)
+### test_order_rejection.py (9 Tests)
 
 Tests lot size validation, position close errors, and rejection tracking.
 
@@ -164,6 +170,7 @@ Tests lot size validation, position close errors, and rejection tracking.
 | `test_lot_validation_rejections_counted` | Lot validation rejections included in orders_rejected |
 | `test_invalid_lots_not_in_trade_history` | Trades with invalid lot sizes absent from trade history |
 | `test_invalid_lots_not_in_expected_trades` | Expected trades don't contain rejected lot validation orders |
+| `test_lot_step_misalignment_rejected` | Lot not aligned with volume_step (e.g., 0.015 with step 0.01) rejected |
 
 #### TestPositionCloseErrors
 
@@ -179,6 +186,35 @@ Tests lot size validation, position close errors, and rejection tracking.
 | `test_orders_sent_includes_rejected` | orders_sent > orders_executed when rejections occur |
 | `test_rejected_orders_not_in_trade_history` | Rejected orders absent from trade history |
 | `test_all_rejections_accounted_for` | Total rejections match expected count |
+
+---
+
+### test_zero_balance.py (6 Tests)
+
+Tests that all orders are rejected when starting with zero balance. Uses a separate scenario config (`margin_validation_zero_balance_test.json`) with `initial_balance=0`. Module-scoped fixtures are defined within the test file itself (not in conftest.py).
+
+#### TestZeroBalanceRejection
+
+| Test | Description |
+|------|-------------|
+| `test_scenario_completes` | Scenario processes all 1,000 ticks despite all rejections |
+| `test_all_orders_rejected` | Every order attempt rejected (2 trade_sequence entries) |
+| `test_no_orders_executed` | Zero executed orders |
+| `test_no_trades_in_history` | Trade history empty |
+| `test_submitted_but_none_in_trade_history` | Orders submitted (PENDING) but all rejected at fill — none in trade_history |
+| `test_orders_sent_equals_rejected` | orders_sent == orders_rejected (all fail) |
+
+**Zero Balance Scenario:**
+
+```
+Tick  100: Open LONG  1.0  lot → REJECTED  insufficient margin (balance=0)
+Tick  200: Open SHORT 0.01 lot → REJECTED  insufficient margin (balance=0)
+```
+
+**Expected execution statistics:**
+- orders_sent: 2
+- orders_executed: 0
+- orders_rejected: 2
 
 ---
 
@@ -232,19 +268,24 @@ Imported from `tests/shared/shared_tick_count.py`.
 ## Running the Tests
 
 ```bash
-# Margin validation suite only
+# Margin validation suite only (all configs)
 pytest tests/margin_validation/ -v
 
 # Specific test file
 pytest tests/margin_validation/test_margin_validation.py -v
 
-# Run scenario without tests (for debugging)
+# Zero balance tests only
+pytest tests/margin_validation/test_zero_balance.py -v
+
+# Run scenarios without tests (for debugging)
 python python/cli/strategy_runner_cli.py run backtesting/margin_validation_test.json
+python python/cli/strategy_runner_cli.py run backtesting/margin_validation_zero_balance_test.json
 ```
 
 **VS Code:** Use launch configurations:
-- `🧩 Pytest: Margin Validation (All)` — run all margin tests
-- `🧪 Run (MARGIN_VALIDATION Scenario)` — run scenario only
+- `🧩 Pytest: Margin Validation (All)` — run all margin tests (including zero balance)
+- `🧪 Run (MARGIN_VALIDATION Scenario)` — run main scenario only
+- `🧪 Run (ZERO_BALANCE Scenario)` — run zero balance scenario only
 
 ---
 
@@ -277,7 +318,7 @@ margin_required = (lots × contract_size × price) / leverage
 - **Hedging margin** — out of scope (covered by multi_position suite)
 - **Multi-symbol margin** — architecturally impossible (one symbol per scenario)
 - **Stop-out level** — not implemented in current framework
-- **Zero balance scenarios** — requires separate config (tracked in ISSUE_order_rejection_edge_cases.md)
+- **Zero balance scenarios** — ✅ covered by `test_zero_balance.py` (separate config)
 
 ### Key Data Flow
 
