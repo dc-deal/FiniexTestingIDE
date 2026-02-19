@@ -174,3 +174,6 @@ user_configs/*
 *.model
 *.pkl
 *.h5
+
+# Claude Code
+CLAUDE.md
