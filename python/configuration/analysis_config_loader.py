@@ -15,12 +15,12 @@ class AnalysisConfigLoader:
     """
     Simple loader for analysis configuration.
 
-    Loads configs/generator/analysis_config.json without caching.
+    Loads configs/discoveries/analysis_config.json without caching.
     Supports user overrides from user_configs/analysis_config.json.
     """
 
     def __init__(self,
-                 config_path: str = "configs/generator/analysis_config.json",
+                 config_path: str = "configs/discoveries/analysis_config.json",
                  user_config_path: str = "user_configs/analysis_config.json"):
         """ 
         Initialize analysis config loader.
@@ -50,7 +50,7 @@ class AnalysisConfigLoader:
         """
         Load analysis configuration with user override support.
 
-        Loads base config from configs/generator/analysis_config.json and
+        Loads base config from configs/discoveries/analysis_config.json and
         optionally merges user overrides from user_configs/analysis_config.json.
 
         Returns:

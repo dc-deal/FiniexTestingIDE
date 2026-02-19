@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.reporting.market_analyzer_report import MarketAnalyzer
+from python.framework.discoveries.market_analyzer import MarketAnalyzer
 from python.framework.types.market_config_types import MarketType
 from python.framework.types.scenario_generator_types import (
     GenerationResult,
