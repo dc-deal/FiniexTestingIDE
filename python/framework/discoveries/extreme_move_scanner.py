@@ -176,7 +176,6 @@ class ExtremeMoveScanner:
         max_adverse_atr = self._config.get('max_adverse_atr_multiple', 1.5)
         min_real_bar_ratio = self._config.get('min_real_bar_ratio', 0.5)
         window_sizes = self._config.get('window_sizes', [200, 500, 1000, 2000])
-        top_n = self._config.get('top_n', 10)
 
         all_longs: List[ExtremeMove] = []
         all_shorts: List[ExtremeMove] = []
@@ -275,7 +274,7 @@ class ExtremeMoveScanner:
         all_longs = self._deduplicate_moves(all_longs)
         all_shorts = self._deduplicate_moves(all_shorts)
 
-        # Sort by ATR multiple (strongest first) and take top N
+        # Sort by ATR multiple (strongest first)
         all_longs.sort(key=lambda m: m.move_atr_multiple, reverse=True)
         all_shorts.sort(key=lambda m: m.move_atr_multiple, reverse=True)
 
@@ -288,8 +287,8 @@ class ExtremeMoveScanner:
             broker_type=broker_type,
             symbol=symbol,
             timeframe=tf,
-            longs=all_longs[:top_n],
-            shorts=all_shorts[:top_n],
+            longs=all_longs,
+            shorts=all_shorts,
             scanned_bars=total_bars,
             avg_atr=round(avg_atr, spec.digits),
             pip_size=pip_size,

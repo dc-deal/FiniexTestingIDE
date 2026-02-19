@@ -1,0 +1,182 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "sltp_validation_test",
+  "created": "2026-02-19T00:00:00.000000",
+  "description": "SL/TP Trigger & Modify Validation — Tests stop loss, take profit triggers, close reasons, and position modifications",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/backtesting/backtesting_deterministic",
+      "worker_instances": {
+        "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+      },
+      "workers": {
+        "backtesting_worker": {
+          "periods": {
+            "M5": 14
+          },
+          "bar_snapshot_checks": []
+        }
+      },
+      "decision_logic_config": {
+        "trade_sequence": [],
+        "lot_size": 0.01
+      }
+    },
+    "execution_config": {
+      "parallel_workers": false,
+      "log_performance_stats": true
+    },
+    "trade_simulator_config": {
+      "initial_balance": 100000,
+      "account_currency": "auto",
+      "seeds": {
+        "api_latency_seed": 12345,
+        "market_execution_seed": 67890
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "long_tp_trigger",
+      "description": "LONG position with take profit — TP should trigger during uptrend (LONG extreme move #9: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": 100000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 156.000,
+              "take_profit": 157.300
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "long_sl_trigger",
+      "description": "LONG position against downtrend — SL should trigger (SHORT extreme move #8: -175.0 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": 100000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 156.000,
+              "take_profit": 157.500
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "short_tp_trigger",
+      "description": "SHORT position with take profit — TP should trigger during downtrend (SHORT extreme move #8: -175.0 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": 100000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "SHORT",
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 157.500,
+              "take_profit": 156.000
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "short_sl_trigger",
+      "description": "SHORT position against uptrend — SL should trigger (LONG extreme move #7: +102.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-30T11:30:00+00:00",
+      "end_date": "2026-01-01T05:05:00+00:00",
+      "max_ticks": 100000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "SHORT",
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 156.300,
+              "take_profit": 155.000
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "modify_tp_trigger",
+      "description": "LONG position with modify — initial TP unreachable, modified TP triggers (LONG extreme move #9)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": 100000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 156.000,
+              "take_profit": 160.000
+            }
+          ],
+          "modify_sequence": [
+            {
+              "tick_number": 500,
+              "take_profit": 157.300
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    }
+  ]
+}

@@ -26,6 +26,7 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_stats_types import ExecutionStats
 
 
 # =============================================================================
@@ -110,6 +111,14 @@ def extract_pending_stats(
     """Extract pending order statistics."""
     assert tick_loop_results.pending_stats is not None, "No pending stats"
     return tick_loop_results.pending_stats
+
+
+def extract_execution_stats(
+    tick_loop_results: ProcessTickLoopResult
+) -> ExecutionStats:
+    """Extract execution statistics (order counts, SL/TP triggers)."""
+    assert tick_loop_results.execution_stats is not None, "No execution stats"
+    return tick_loop_results.execution_stats
 
 
 # =============================================================================
