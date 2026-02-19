@@ -123,6 +123,18 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run (ZERO_BALANCE Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/margin_validation_zero_balance_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 Run (BENCHMARK Scenario)",
             "type": "debugpy",
             "request": "launch",

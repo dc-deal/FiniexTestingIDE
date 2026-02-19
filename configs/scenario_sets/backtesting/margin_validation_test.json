@@ -68,6 +68,13 @@
                         "_comment": "Below volume_min (0.01) → INVALID_LOT_SIZE rejection"
                     },
                     {
+                        "tick_number": 650,
+                        "type": "invalid_lot_step",
+                        "direction": "LONG",
+                        "lot_size": 0.015,
+                        "_comment": "Not aligned with volume_step (0.01) → INVALID_LOT_SIZE rejection"
+                    },
+                    {
                         "tick_number": 700,
                         "type": "invalid_lot_above_max",
                         "direction": "LONG",
