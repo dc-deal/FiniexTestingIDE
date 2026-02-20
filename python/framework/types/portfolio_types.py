@@ -124,6 +124,44 @@ class Position:
         """Calculate margin used by this position"""
         return (self.lots * contract_size * self.entry_price) / leverage
 
+    # ============================================
+    # SL/TP Trigger Detection
+    # ============================================
+
+    def is_sl_triggered(self, bid: float, ask: float) -> bool:
+        """
+        Check if stop loss is triggered at current prices.
+
+        Args:
+            bid: Current bid price
+            ask: Current ask price
+
+        Returns:
+            True if SL level is breached
+        """
+        if self.stop_loss is None:
+            return False
+        if self.direction == OrderDirection.LONG:
+            return bid <= self.stop_loss  # LONG closes at bid
+        return ask >= self.stop_loss  # SHORT closes at ask
+
+    def is_tp_triggered(self, bid: float, ask: float) -> bool:
+        """
+        Check if take profit is triggered at current prices.
+
+        Args:
+            bid: Current bid price
+            ask: Current ask price
+
+        Returns:
+            True if TP level is breached
+        """
+        if self.take_profit is None:
+            return False
+        if self.direction == OrderDirection.LONG:
+            return bid >= self.take_profit  # LONG closes at bid
+        return ask <= self.take_profit  # SHORT closes at ask
+
     @property
     def is_open(self) -> bool:
         """Check if position is still open"""

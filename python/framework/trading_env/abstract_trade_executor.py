@@ -36,7 +36,7 @@ from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
 import json
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Union
 
 from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
@@ -45,9 +45,10 @@ from python.framework.factory.trading_fee_factory import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.portfolio_manager import PortfolioManager, Position
+from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
 from python.framework.types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.latency_simulator_types import PendingOrder
+from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.portfolio_trade_record_types import CloseReason
 from python.framework.types.market_data_types import TickData
 from python.framework.types.order_types import (
     OrderType,
@@ -65,8 +66,7 @@ from python.framework.types.trading_env_stats_types import AccountInfo, Executio
 class ExecutorMode(Enum):
     """Execution mode for trade executors."""
     SIMULATION = "simulation"
-    # Horizon 2:
-    # LIVE = "live"
+    LIVE = "live"
 
 
 class AbstractTradeExecutor(ABC):
@@ -129,6 +129,10 @@ class AbstractTradeExecutor(ABC):
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
+        self._sl_tp_triggered = 0
+
+        # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
+        self._executor_mode = ExecutorMode.SIMULATION
 
     def _check_order_history_limit(self) -> None:
         """Emit one-time warning when order history reaches capacity."""
@@ -157,6 +161,7 @@ class AbstractTradeExecutor(ABC):
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         self._process_pending_orders()
+        self._check_sl_tp_triggers(tick)
 
     @abstractmethod
     def _process_pending_orders(self) -> None:
@@ -167,6 +172,66 @@ class AbstractTradeExecutor(ABC):
         LiveTradeExecutor: Polls broker for fills, calls _fill_open/close_order()
         """
         pass
+
+    # ============================================
+    # SL/TP Trigger Detection (per-tick, simulation only)
+    # ============================================
+
+    def _check_sl_tp_triggers(self, tick: TickData) -> None:
+        """
+        Check all open positions for SL/TP trigger conditions.
+
+        Only active in SIMULATION mode — in LIVE mode, the broker handles
+        SL/TP execution server-side. Engine-triggered closes would cause
+        double-close risk.
+
+        Triggered positions are closed immediately via synthetic PendingOrder
+        (bypasses latency pipeline). Fill price = SL/TP level (deterministic).
+
+        Args:
+            tick: Current tick data with bid/ask prices
+        """
+        if self._executor_mode != ExecutorMode.SIMULATION:
+            return
+
+        open_positions = self.get_open_positions()
+        for position in open_positions:
+            if position.symbol != tick.symbol:
+                continue
+
+            if position.is_sl_triggered(tick.bid, tick.ask):
+                self.logger.info(
+                    f"🛑 SL triggered: {position.position_id} "
+                    f"{position.direction.value} @ SL={position.stop_loss:.5f} "
+                    f"(bid={tick.bid:.5f}, ask={tick.ask:.5f})"
+                )
+                synthetic = PendingOrder(
+                    pending_order_id=position.position_id,
+                    order_action=PendingOrderAction.CLOSE
+                )
+                self._fill_close_order(
+                    synthetic,
+                    fill_price=position.stop_loss,
+                    close_reason=CloseReason.SL_TRIGGERED
+                )
+                self._sl_tp_triggered += 1
+
+            elif position.is_tp_triggered(tick.bid, tick.ask):
+                self.logger.info(
+                    f"🎯 TP triggered: {position.position_id} "
+                    f"{position.direction.value} @ TP={position.take_profit:.5f} "
+                    f"(bid={tick.bid:.5f}, ask={tick.ask:.5f})"
+                )
+                synthetic = PendingOrder(
+                    pending_order_id=position.position_id,
+                    order_action=PendingOrderAction.CLOSE
+                )
+                self._fill_close_order(
+                    synthetic,
+                    fill_price=position.take_profit,
+                    close_reason=CloseReason.TP_TRIGGERED
+                )
+                self._sl_tp_triggered += 1
 
     # ============================================
     # Order Submission (DecisionTradingAPI routes here)
@@ -357,7 +422,8 @@ class AbstractTradeExecutor(ABC):
     def _fill_close_order(
         self,
         pending_order: PendingOrder,
-        fill_price: Optional[float] = None
+        fill_price: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> None:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
@@ -365,6 +431,7 @@ class AbstractTradeExecutor(ABC):
         Called by subclasses when their execution mechanism confirms a close:
         - TradeSimulator: after latency delay completes (fill_price=None → use tick)
         - LiveTradeExecutor: after broker confirms close (fill_price=broker's price)
+        - _check_sl_tp_triggers: synthetic close with fill_price=SL/TP level
 
         This is the SHARED fill logic — identical for simulation and live.
 
@@ -372,6 +439,7 @@ class AbstractTradeExecutor(ABC):
             pending_order: PendingOrder with close details
             fill_price: Broker-provided close price. If None, determined from
                         current tick (bid for LONG close, ask for SHORT close).
+            close_reason: Why the position was closed
         """
         self.logger.info(
             f"📋 Fill close order {pending_order.pending_order_id}, "
@@ -412,7 +480,8 @@ class AbstractTradeExecutor(ABC):
             exit_price=close_price,
             exit_tick_value=exit_tick_value,
             exit_tick_index=self._tick_counter,
-            exit_fee=None  # MVP: No exit commission
+            exit_fee=None,  # MVP: No exit commission
+            close_reason=close_reason
         )
 
         self.logger.debug(
@@ -448,10 +517,20 @@ class AbstractTradeExecutor(ABC):
     def modify_position(
         self,
         position_id: str,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> bool:
-        """Modify position SL/TP. Delegates to portfolio."""
+        """
+        Modify position SL/TP levels. Delegates to portfolio.
+
+        Args:
+            position_id: Position to modify
+            new_stop_loss: New SL price, None to remove, UNSET to keep current
+            new_take_profit: New TP price, None to remove, UNSET to keep current
+
+        Returns:
+            True if modification applied successfully
+        """
         return self.portfolio.modify_position(
             position_id=position_id,
             new_stop_loss=new_stop_loss,
@@ -582,7 +661,8 @@ class AbstractTradeExecutor(ABC):
             orders_executed=self._orders_executed,
             orders_rejected=self._orders_rejected,
             total_commission=self._total_commission,
-            total_spread_cost=self._total_spread_cost
+            total_spread_cost=self._total_spread_cost,
+            sl_tp_triggered=self._sl_tp_triggered
         )
 
     def get_order_history(self) -> List[OrderResult]:
@@ -628,6 +708,7 @@ class AbstractTradeExecutor(ABC):
         self._orders_rejected = 0
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
+        self._sl_tp_triggered = 0
 
     # ============================================
     # Shared Calculations (used by subclasses)

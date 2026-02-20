@@ -64,6 +64,7 @@ class ExecutionStats:
     orders_rejected: int
     total_commission: float
     total_spread_cost: float
+    sl_tp_triggered: int = 0
 
 
 @dataclass

@@ -104,7 +104,8 @@ class DiscoveriesCLI:
             force_rebuild: Force rescan ignoring cache
         """
         cache = DiscoveryCache()
-        result = cache.get_extreme_moves(broker_type, symbol, force_rebuild=force_rebuild)
+        result = cache.get_extreme_moves(
+            broker_type, symbol, force_rebuild=force_rebuild)
 
         if not result:
             print(f"No data available for {broker_type}/{symbol}")

@@ -21,7 +21,9 @@ Configuration Example:
             "tick_number": 10,
             "direction": "LONG",
             "hold_ticks": 300,
-            "lot_size": 0.01
+            "lot_size": 0.01,
+            "stop_loss": 1.2500,
+            "take_profit": 1.2800
         },
         {
             "tick_number": 500,
@@ -30,7 +32,14 @@ Configuration Example:
             "lot_size": 0.01
         }
     ],
-    "lot_size": 0.1  # Default lot size
+    "modify_sequence": [
+        {
+            "tick_number": 100,
+            "stop_loss": 1.2550,
+            "take_profit": 1.2750
+        }
+    ],
+    "lot_size": 0.1
 }
 
 Data Flow:
@@ -73,6 +82,12 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             - direction: "LONG" or "SHORT"
             - hold_ticks: How many ticks to hold before closing
             - lot_size: Position size (optional, uses default)
+            - stop_loss: SL price level (optional)
+            - take_profit: TP price level (optional)
+        modify_sequence: List of SL/TP modification specs (optional)
+            - tick_number: When to apply modification
+            - stop_loss: New SL price (optional, omit = no change)
+            - take_profit: New TP price (optional, omit = no change)
         lot_size: Default lot size for trades (default: 0.1)
     """
 
@@ -96,10 +111,12 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         # Trade sequence configuration
         self.trade_sequence = self.params.get('trade_sequence')
         self.default_lot_size = self.params.get('lot_size')
+        self.modify_sequence = self.params.get('modify_sequence')
 
         # Internal state
         self.tick_count = 0
         self.active_trade: Optional[Dict[str, Any]] = None
+        self._started_trade_indices: set = set()
 
         # Backtesting tracking
         self.warmup_errors: List[str] = []
@@ -132,6 +149,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 min_val=0.01,
                 max_val=100.0,
                 description="Default lot size for trades without explicit lot_size"
+            ),
+            'modify_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of SL/TP modification specs: tick_number, stop_loss, take_profit"
             ),
         }
 
@@ -211,6 +233,14 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         for idx, spec in enumerate(self.trade_sequence):
             if (self.tick_count >= spec['tick_number']
                     and self.tick_count <= spec['tick_number']+spec['hold_ticks']):
+
+                # Skip trades already submitted where position is gone (SL/TP closed it)
+                if idx in self._started_trade_indices:
+                    if (self.trading_api
+                            and not self.trading_api.has_pending_orders()
+                            and len(self.trading_api.get_open_positions()) == 0):
+                        continue
+
                 # Time to open new trade
                 lot_size = spec.get('lot_size', self.default_lot_size)
                 hold_ticks = spec.get('hold_ticks', 100)
@@ -225,6 +255,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
                 # log once
                 if self.tick_count == spec['tick_number']:
+                    self._started_trade_indices.add(idx)
+
                     # Record active trade
                     self.active_trade = {
                         'signal_tick': self.tick_count,
@@ -254,7 +286,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     metadata={
                         'lot_size': lot_size,
                         'signal_tick': self.tick_count,
-                        'hold_ticks': hold_ticks
+                        'hold_ticks': hold_ticks,
+                        'stop_loss': spec.get('stop_loss'),
+                        'take_profit': spec.get('take_profit'),
                     }
                 )
 
@@ -294,8 +328,13 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 "No trading_api available - skipping execution")
             return None
 
-        # Get lot size from decision metadata or default
+        # Process any pending SL/TP modifications
+        self._process_modify_sequence()
+
+        # Get lot size and SL/TP from decision metadata or defaults
         lot_size = decision.metadata.get('lot_size', self.default_lot_size)
+        stop_loss = decision.metadata.get('stop_loss')
+        take_profit = decision.metadata.get('take_profit')
 
         # Check for pending orders
         if self.trading_api.has_pending_orders():
@@ -315,6 +354,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     order_type=OrderType.MARKET,
                     direction=OrderDirection.LONG,
                     lots=lot_size,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     comment=f"Backtest LONG at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
@@ -332,6 +373,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     order_type=OrderType.MARKET,
                     direction=OrderDirection.SHORT,
                     lots=lot_size,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     comment=f"Backtest SHORT at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
@@ -349,6 +392,40 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             return None
 
         return None
+
+    def _process_modify_sequence(self) -> None:
+        """
+        Execute pending SL/TP modifications from modify_sequence config.
+
+        Modifies the first open position at the configured tick_number.
+        Only keys present in the spec are modified (omitted = no change).
+        """
+        if not self.modify_sequence:
+            return
+
+        for spec in self.modify_sequence:
+            if self.tick_count == spec['tick_number']:
+                open_positions = self.trading_api.get_open_positions()
+                if not open_positions:
+                    self.logger.warning(
+                        f"Modify at tick {self.tick_count}: no open positions")
+                    return
+
+                position = open_positions[0]
+                kwargs: Dict[str, Any] = {}
+                if 'stop_loss' in spec:
+                    kwargs['stop_loss'] = spec['stop_loss']
+                if 'take_profit' in spec:
+                    kwargs['take_profit'] = spec['take_profit']
+
+                success = self.trading_api.modify_position(
+                    position_id=position.position_id,
+                    **kwargs
+                )
+                self.logger.info(
+                    f"🔧 Position modify at tick {self.tick_count}: "
+                    f"{'success' if success else 'FAILED'} — {kwargs}"
+                )
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:
         """

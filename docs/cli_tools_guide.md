@@ -20,7 +20,8 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 | `tick_index_cli.py` | Tick-Index Management | rebuild, status, coverage, files |
 | `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
 | `coverage_report_cli.py` | Gap-Analyse & Cache | build, show, validate, status, clear |
-| `scenario_cli.py` | Szenarien | analyze, generate |
+| `discoveries_cli.py` | Marktanalyse & Discoveries | analyze, extreme-moves |
+| `scenario_cli.py` | Szenarien | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
 ---
@@ -245,14 +246,14 @@ Total Symbols: 16
 
 ---
 
-## D) Marktanalyse
+## D) Marktanalyse & Discoveries
 
 ### 📊 MARKET ANALYSIS REPORT
 
 | | |
 |---|---|
 | **VS Code** | `📊 MARKET ANALYSIS REPORT - USDJPY` |
-| **CLI** | `python scenario_cli.py analyze USDJPY` |
+| **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
 | **Zweck** | ATR-Volatilität, Session-Aktivität, Cross-Instrument Ranking |
 
 Analysiert Marktdaten für strategische Szenario-Planung:
@@ -299,6 +300,49 @@ Timeframe:      M5
    1. USDJPY     76.5   ██████████ ← Highest
    2. GBPUSD     42.7   ██████░░░░
 ```
+
+### 🔍 EXTREME MOVES
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Extreme Moves - mt5/USDJPY` |
+| **CLI** | `python discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Zweck** | Extreme directional price movements (LONG/SHORT) finden |
+
+Scannt Bar-Daten mit ATR-basierter Normalisierung über konfigurierbare Fenstergrößen. Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
+
+```
+==================================================================================================================================
+EXTREME MOVE DISCOVERY: USDJPY
+==================================================================================================================================
+Data Source:    mt5
+Timeframe:      M5
+Bars Scanned:   38,989
+Avg ATR:        0.038
+Pip Size:       0.01
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+LONG Extreme Moves (top 10)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+  #  ATR Mult      Pips   Adverse       Entry     Extreme    Adverse@        Exit    W-ATR    Bars     Ticks                 Start                   End
+  1    117.04     580.7       0.0     147.471     153.277     147.471     151.231    0.050    2000    680633      2025-10-05 02:35      2025-10-12 01:10
+  2     83.22     303.1       2.3     154.865     157.896     154.842     156.846    0.036    2000    599766      2025-11-17 12:15      2025-11-24 10:50
+  ...
+```
+
+**Spalten:**
+- `ATR Mult` — Bewegung als Vielfaches des durchschnittlichen ATR im Fenster
+- `Pips` — Richtungsbewegung Entry → Extreme in Pips
+- `Adverse` — Maximaler Rücklauf gegen die Bewegungsrichtung (in Pips)
+- `Entry/Extreme/Adverse@/Exit` — Preisniveaus (Entry, Extrempunkt, schlimmster Rücklauf, Exit)
+- `W-ATR` — Durchschnittlicher ATR über das Fenster (Rohpreiseinheiten)
+- `Bars` — Fensterbreite in Bars
+- `Ticks` — Anzahl Ticks im Zeitfenster
+
+**Parameter:**
+- `--top` — Anzahl der Top-Ergebnisse pro Richtung in der Anzeige (default: 10, alle werden gecacht)
+- `--force` — Cache ignorieren und neu scannen
+- `--timeframe` — Timeframe Override (default: M5)
 
 ---
 
@@ -527,7 +571,8 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Gap-Check (alle)** | `📊 Coverage: Validate All` | `coverage_report_cli.py validate` |
 | **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `coverage_report_cli.py show mt5 EURUSD` |
 | **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `coverage_report_cli.py build` |
-| **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `scenario_cli.py analyze USDJPY` |
+| **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `discoveries_cli.py analyze mt5 USDJPY` |
+| **Extreme Moves** | `🔍 Extreme Moves - mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
 | **Szenarien: Stress** | `📊 Scenario Generator - Generate Stress` | `scenario_cli.py generate EURGBP --strategy stress` |
 | **Backtest starten** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
@@ -547,6 +592,8 @@ Nützlich um die Rohdatenstruktur zu verstehen:
          ↓
 5. Markt analysieren: 📊 MARKET ANALYSIS REPORT
          ↓
+5b. Extreme Moves:   🔍 Extreme Moves
+         ↓
 6. Szenarien erstellen: 📊 Generate Blocks/Stress
          ↓
 7. Backtest:        🔬 Run Scenario
@@ -563,5 +610,6 @@ Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
 | Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
 | Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
 | Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
+| Discovery Cache | `.discovery_cache/*.parquet` | Extreme Moves Cache |
 
 Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.

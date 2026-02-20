@@ -41,7 +41,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (362 tests across 7 test suites)
+- ✅ Validated accuracy (394 tests across 9 test suites)
 
 ---
 
@@ -106,7 +106,7 @@ configs/              # Default configurations (version controlled)
 user_configs/         # Your personal overrides (gitignored)
 ├── app_config.json        # Optional: override app settings
 ├── market_config.json     # Optional: override market config
-└── analysis_config.json   # Optional: override generator settings
+└── analysis_config.json   # Optional: override analysis/discovery settings
 ```
 
 ### How It Works
@@ -269,13 +269,20 @@ Validates pending order statistics and force-closed detection:
 - Synthetic close path (no false force-closed from end-of-scenario cleanup)
 - Force-closed anomaly detection with reason field
 
+### SL/TP Validation Tests (32 tests)
+Validates stop loss and take profit trigger detection:
+- SL/TP trigger for LONG and SHORT positions (close reason, exit price, P&L)
+- Deterministic fill at SL/TP level (bypasses latency pipeline)
+- Position modification (modify_sequence — updated TP triggers instead of original)
+- Discovery-driven test data (real extreme move windows from Extreme Move Scanner)
+
 ### Data Integration Tests (9 tests)
 Validates data pipeline integrity:
 - Volume consistency (crypto > 0, forex = 0)
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [SL/TP Validation Tests](docs/tests/tests_sltp_validation_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -301,6 +308,7 @@ Validates data pipeline integrity:
 | [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
 | [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
 | [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
+| [SL/TP Validation Tests](docs/tests/tests_sltp_validation_docs.md) | 32 SL/TP trigger & modification tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---

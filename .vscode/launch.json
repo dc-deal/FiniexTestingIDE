@@ -135,6 +135,18 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run (SL/TP Validation)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sltp_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 Run (BENCHMARK Scenario)",
             "type": "debugpy",
             "request": "launch",
@@ -233,6 +245,19 @@
             "module": "pytest",
             "args": [
                 "tests/pending_stats/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: SL/TP Validation (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/sltp_validation/",
                 "-v",
                 "--tb=short"
             ],
@@ -576,20 +601,24 @@
             "args": [
                 "extreme-moves",
                 "mt5",
-                "USDJPY"
+                "USDJPY",
+                "--top",
+                "100"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🔍 Extreme Moves - mt5/GBPUSD",
+            "name": "🔍 Extreme Moves - kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
                 "extreme-moves",
-                "mt5",
-                "GBPUSD"
+                "kraken_spot",
+                "BTCUSD",
+                "--top",
+                "100"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
