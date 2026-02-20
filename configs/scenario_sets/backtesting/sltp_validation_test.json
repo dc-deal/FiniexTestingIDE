@@ -44,7 +44,7 @@
       "data_broker_type": "mt5",
       "start_date": "2026-01-08T22:35:00+00:00",
       "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": 100000,
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -71,7 +71,7 @@
       "data_broker_type": "mt5",
       "start_date": "2025-12-10T12:20:00+00:00",
       "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": 100000,
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -98,7 +98,7 @@
       "data_broker_type": "mt5",
       "start_date": "2025-12-10T12:20:00+00:00",
       "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": 100000,
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -125,7 +125,7 @@
       "data_broker_type": "mt5",
       "start_date": "2025-12-30T11:30:00+00:00",
       "end_date": "2026-01-01T05:05:00+00:00",
-      "max_ticks": 100000,
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -152,7 +152,7 @@
       "data_broker_type": "mt5",
       "start_date": "2026-01-08T22:35:00+00:00",
       "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": 100000,
+      "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {

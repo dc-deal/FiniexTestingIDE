@@ -609,14 +609,14 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Extreme Moves - mt5/GBPUSD",
+            "name": "🔍 Extreme Moves - kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
                 "extreme-moves",
-                "mt5",
-                "GBPUSD",
+                "kraken_spot",
+                "BTCUSD",
                 "--top",
                 "100"
             ],

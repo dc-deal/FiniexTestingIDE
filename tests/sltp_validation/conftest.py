@@ -13,7 +13,6 @@ Config design:
 - 5 scenarios using USDJPY extreme move time windows
 - Each scenario opens 1 trade at tick 10 with SL/TP levels
 - hold_ticks=999999 ensures SL/TP triggers before hold expiry
-- max_ticks=100000 covers enough price movement
 - Seeds: api_latency=12345, market_execution=67890
 """
 

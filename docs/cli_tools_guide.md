@@ -312,28 +312,37 @@ Timeframe:      M5
 Scannt Bar-Daten mit ATR-basierter Normalisierung über konfigurierbare Fenstergrößen. Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
 
 ```
-======================================================================
+==================================================================================================================================
 EXTREME MOVE DISCOVERY: USDJPY
-======================================================================
+==================================================================================================================================
 Data Source:    mt5
 Timeframe:      M5
-Bars Scanned:   30,853
-Avg ATR:        0.054
+Bars Scanned:   38,989
+Avg ATR:        0.038
 Pip Size:       0.01
 
-----------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------
 LONG Extreme Moves (top 10)
-----------------------------------------------------------------------
-  #  ATR Mult      Pips   Adverse    Bars                 Start                   End
-  1      5.23     282.3      45.1     500   2025-10-04 03:45     2025-10-05 19:25
-  2      4.87     263.1      38.2    1000   2025-11-12 08:00     2025-11-15 22:15
+------------------------------------------------------------------------------------------------------------------------------------------------------
+  #  ATR Mult      Pips   Adverse       Entry     Extreme    Adverse@        Exit    W-ATR    Bars     Ticks                 Start                   End
+  1    117.04     580.7       0.0     147.471     153.277     147.471     151.231    0.050    2000    680633      2025-10-05 02:35      2025-10-12 01:10
+  2     83.22     303.1       2.3     154.865     157.896     154.842     156.846    0.036    2000    599766      2025-11-17 12:15      2025-11-24 10:50
   ...
 ```
 
+**Spalten:**
+- `ATR Mult` — Bewegung als Vielfaches des durchschnittlichen ATR im Fenster
+- `Pips` — Richtungsbewegung Entry → Extreme in Pips
+- `Adverse` — Maximaler Rücklauf gegen die Bewegungsrichtung (in Pips)
+- `Entry/Extreme/Adverse@/Exit` — Preisniveaus (Entry, Extrempunkt, schlimmster Rücklauf, Exit)
+- `W-ATR` — Durchschnittlicher ATR über das Fenster (Rohpreiseinheiten)
+- `Bars` — Fensterbreite in Bars
+- `Ticks` — Anzahl Ticks im Zeitfenster
+
 **Parameter:**
-- `--top` - Anzahl der Top-Ergebnisse pro Richtung (default: 10)
-- `--force` - Cache ignorieren und neu scannen
-- `--timeframe` - Timeframe Override (default: M5)
+- `--top` — Anzahl der Top-Ergebnisse pro Richtung in der Anzeige (default: 10, alle werden gecacht)
+- `--force` — Cache ignorieren und neu scannen
+- `--timeframe` — Timeframe Override (default: M5)
 
 ---
 
