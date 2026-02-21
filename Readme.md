@@ -301,6 +301,8 @@ Validates data pipeline integrity:
 | [Process Execution](docs/process_execution_guide.md) | Subprocess architecture |
 | [Duplicate Detection](docs/duplicate_detection_usage.md) | Data integrity protection |
 | [Execution Layer Architecture](docs/architecture_execution_layer.md) | Sim/Live hybrid execution design |
+| [Simulation vs Live Flow](docs/simulation_vs_live_flow.md) | Tick flow comparison, event-driven model |
+| [Live Execution Architecture](docs/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
 | [Baseline Tests](docs/tests/tests_baseline_docs.md) | 44 validation tests |
 | [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
