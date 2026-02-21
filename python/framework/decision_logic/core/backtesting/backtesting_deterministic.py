@@ -418,13 +418,13 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if 'take_profit' in spec:
                     kwargs['take_profit'] = spec['take_profit']
 
-                success = self.trading_api.modify_position(
+                result = self.trading_api.modify_position(
                     position_id=position.position_id,
                     **kwargs
                 )
                 self.logger.info(
                     f"🔧 Position modify at tick {self.tick_count}: "
-                    f"{'success' if success else 'FAILED'} — {kwargs}"
+                    f"{'success' if result.success else 'FAILED'} — {kwargs}"
                 )
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:

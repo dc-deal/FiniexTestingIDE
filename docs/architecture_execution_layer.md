@@ -318,7 +318,7 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`
 4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
 
-**Feature gating:** Only MARKET orders supported (same as simulation MVP).
+**Feature gating:** MARKET and LIMIT orders supported. Extended order types (STOP, STOP_LIMIT) are rejected.
 
 **Testable via MockBrokerAdapter** — no real broker needed for pipeline verification.
 
@@ -365,7 +365,7 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 ### PendingOrder (shared dataclass)
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
 
-- **Common fields:** `pending_order_id`, `order_action`, `symbol`, `direction`, `lots`, `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
+- **Common fields:** `pending_order_id`, `order_action`, `order_type` (MARKET/LIMIT), `symbol`, `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
 - **Simulation fields:** `placed_at_tick`, `fill_at_tick` (tick-based delay tracking)
 - **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` (time-based broker tracking)
 
@@ -485,6 +485,59 @@ self._fill_open_order(pending_order, fill_price=broker_response.execution_price)
 ```
 
 This separation ensures the portfolio always reflects the real execution price, regardless of mode.
+
+---
+
+## Limit Order Lifecycle (Two-Phase)
+
+Limit orders follow a **two-phase lifecycle** in simulation. The order is first accepted by the "broker" (latency simulation), then monitored for price trigger.
+
+### Phase 1: Broker Acceptance (Latency)
+
+```
+1. DecisionLogic calls send_order(order_type=LIMIT, price=1.1000)
+2. DecisionTradingAPI builds OpenOrderRequest, passes to executor
+3. TradeSimulator.open_order(request)
+   → Validates price > 0
+   → Submits to OrderLatencySimulator with order_type=LIMIT, entry_price=limit_price
+   → Returns PENDING
+4. OrderLatencySimulator simulates broker acceptance delay (same as market orders)
+5. After latency: PendingOrder exits queue with order_type=LIMIT
+```
+
+### Phase 2: Price Trigger Monitoring
+
+```
+6. _process_pending_orders() checks order_type:
+   a) If MARKET → fill immediately at current tick (unchanged behavior)
+   b) If LIMIT → check if price already reached:
+      - YES → fill immediately as LIMIT_IMMEDIATE (price moved past limit during latency)
+      - NO → move to _active_limit_orders list
+7. Each tick: iterate _active_limit_orders:
+   - LONG limit: ask <= limit_price → fill at limit_price (FillType.LIMIT)
+   - SHORT limit: bid >= limit_price → fill at limit_price (FillType.LIMIT)
+   - Unfilled orders stay in list
+```
+
+### Fill Types
+
+| FillType | Meaning |
+|----------|---------|
+| `MARKET` | Standard market order fill at current tick price |
+| `LIMIT` | Limit order filled when price reached trigger level |
+| `LIMIT_IMMEDIATE` | Limit order filled immediately after latency (price already past limit) |
+
+### Entry Types and Fees
+
+Each fill carries an `EntryType` (MARKET or LIMIT) that flows through to `TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
+
+### Live Mode
+
+In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()` passes the limit price to the broker adapter via `order_kwargs["price"]`. Fill detection happens through the standard broker polling path — no separate `_active_limit_orders` needed.
+
+### Cleanup
+
+At scenario end, `close_all_remaining_orders()` discards unfilled limit orders from `_active_limit_orders` with a warning log. These are orders whose price trigger was never reached.
 
 ---
 
@@ -659,4 +712,8 @@ We considered a separate `OrderExecutionAdapter` interface for live execution me
 | **PendingOrderOutcome** | Enum: FILLED, REJECTED, TIMED_OUT, FORCE_CLOSED — how a pending order left the queue |
 | **PendingOrderStats** | Aggregated latency metrics and outcome counters for all resolved pending orders |
 | **PendingOrderRecord** | Individual record for anomalous outcomes (FORCE_CLOSED, TIMED_OUT) only |
+| **OpenOrderRequest** | Internal pipeline dataclass bundling all order parameters (symbol, order_type, direction, lots, price, stop_loss, take_profit, comment, magic_number) |
+| **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
+| **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
+| **Active Limit Order** | A limit order that passed latency simulation but hasn't triggered yet — sits in `_active_limit_orders` waiting for price |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

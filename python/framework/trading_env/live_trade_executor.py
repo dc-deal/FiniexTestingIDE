@@ -25,14 +25,15 @@ Architecture:
 Fill processing is INHERITED from AbstractTradeExecutor — no duplication needed.
 The base class handles: portfolio updates, fee calculations, statistics, PnL.
 
-Feature gating: Only MARKET orders supported (same as simulation MVP).
+Feature gating: MARKET + LIMIT orders supported. Limit order modification is broker-side (future).
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
+from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live_order_tracker import LiveOrderTracker
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
@@ -48,6 +49,9 @@ from python.framework.types.order_types import (
     OrderStatus,
     OrderResult,
     RejectionReason,
+    ModificationRejectionReason,
+    ModificationResult,
+    OpenOrderRequest,
     create_rejection_result,
 )
 from python.framework.types.pending_order_stats_types import PendingOrderStats
@@ -264,53 +268,36 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # Order Submission (live-specific)
     # ============================================
 
-    def open_order(
-        self,
-        symbol: str,
-        order_type: OrderType,
-        direction: OrderDirection,
-        lots: float,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None,
-        comment: str = "",
-        magic_number: int = 0,
-    ) -> OrderResult:
+    def open_order(self, request: OpenOrderRequest) -> OrderResult:
         """
         Send order to broker for execution.
 
         Validates parameters, sends to broker via adapter, tracks in
-        LiveOrderTracker. Only MARKET orders supported (feature gating).
+        LiveOrderTracker. MARKET and LIMIT orders supported.
 
         Args:
-            symbol: Trading symbol (e.g., "BTCUSD")
-            order_type: Order type (only MARKET supported)
-            direction: LONG or SHORT
-            lots: Position size
-            stop_loss: Optional stop loss price level
-            take_profit: Optional take profit price level
-            comment: Order comment
-            magic_number: Strategy identifier
+            request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult with PENDING or REJECTED status
+            OrderResult with PENDING, EXECUTED, or REJECTED status
         """
         self._orders_sent += 1
         self._order_counter += 1
-        order_id = self.portfolio.get_next_position_id(symbol)
+        order_id = self.portfolio.get_next_position_id(request.symbol)
 
-        # Feature gate: only market orders
-        if order_type != OrderType.MARKET:
+        # Feature gate: only MARKET and LIMIT orders
+        if request.order_type not in (OrderType.MARKET, OrderType.LIMIT):
             self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
-                message=f"Order type {order_type.value} not supported in live MVP",
+                message=f"Order type {request.order_type.value} not supported in live",
             )
             self._order_history.append(result)
             return result
 
         # Validate order parameters
-        is_valid, error = self.broker.validate_order(symbol, lots)
+        is_valid, error = self.broker.validate_order(request.symbol, request.lots)
         if not is_valid:
             self._orders_rejected += 1
             result = create_rejection_result(
@@ -323,22 +310,24 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Build order kwargs for adapter and tracker
         order_kwargs = {}
-        if stop_loss is not None:
-            order_kwargs["stop_loss"] = stop_loss
-        if take_profit is not None:
-            order_kwargs["take_profit"] = take_profit
-        if comment:
-            order_kwargs["comment"] = comment
-        if magic_number:
-            order_kwargs["magic_number"] = magic_number
+        if request.stop_loss is not None:
+            order_kwargs["stop_loss"] = request.stop_loss
+        if request.take_profit is not None:
+            order_kwargs["take_profit"] = request.take_profit
+        if request.comment:
+            order_kwargs["comment"] = request.comment
+        if request.magic_number:
+            order_kwargs["magic_number"] = request.magic_number
+        if request.order_type == OrderType.LIMIT and request.price is not None:
+            order_kwargs["price"] = request.price
 
         # Send to broker via adapter (adapter keeps **kwargs — broker boundary)
         try:
             response = self.broker.adapter.execute_order(
-                symbol=symbol,
-                direction=direction,
-                lots=lots,
-                order_type=order_type,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
+                order_type=request.order_type,
                 **order_kwargs,
             )
         except Exception as e:
@@ -367,9 +356,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # Track briefly then mark filled immediately
             self._order_tracker.submit_order(
                 order_id=order_id,
-                symbol=symbol,
-                direction=direction,
-                lots=lots,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
                 broker_ref=response.broker_ref,
                 order_kwargs=order_kwargs,
             )
@@ -385,10 +374,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.EXECUTED,
                 executed_price=response.fill_price,
-                executed_lots=response.filled_lots or lots,
+                executed_lots=response.filled_lots or request.lots,
                 execution_time=datetime.now(timezone.utc),
                 broker_order_id=response.broker_ref,
-                metadata={"symbol": symbol, "direction": direction.value},
+                metadata={"symbol": request.symbol, "direction": request.direction.value},
             )
             self._order_history.append(result)
             return result
@@ -396,9 +385,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Order is pending — track and poll later
         self._order_tracker.submit_order(
             order_id=order_id,
-            symbol=symbol,
-            direction=direction,
-            lots=lots,
+            symbol=request.symbol,
+            direction=request.direction,
+            lots=request.lots,
             broker_ref=response.broker_ref,
             order_kwargs=order_kwargs,
         )
@@ -408,9 +397,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             status=OrderStatus.PENDING,
             broker_order_id=response.broker_ref,
             metadata={
-                "symbol": symbol,
-                "direction": direction.value,
-                "lots": lots,
+                "symbol": request.symbol,
+                "direction": request.direction.value,
+                "lots": request.lots,
                 "broker_ref": response.broker_ref,
             },
         )
@@ -514,6 +503,39 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             metadata={"awaiting_fill": True,
                       "broker_ref": response.broker_ref},
         )
+
+    # ============================================
+    # Limit Order Modification
+    # ============================================
+
+    def modify_limit_order(
+        self,
+        order_id: str,
+        new_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending limit order (local tracking only).
+
+        Live executor does not manage limit orders locally — broker handles them.
+        Broker-side modify API is out of scope (future work).
+
+        Args:
+            order_id: Pending limit order ID
+            new_price: New limit price (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult (always NOT_FOUND — no local limit order queue)
+        """
+        # Live executor has no _active_limit_orders queue —
+        # broker manages limit orders server-side.
+        # Broker modify API will be added in a future iteration.
+        return ModificationResult(
+            success=False,
+            rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
 
     # ============================================
     # Pending Order Awareness

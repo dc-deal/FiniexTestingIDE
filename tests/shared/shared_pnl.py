@@ -9,6 +9,7 @@ Import these classes into suite-specific test_pnl_calculation.py files.
 import pytest
 from typing import List
 
+from python.framework.types.order_types import OrderDirection
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 
@@ -84,7 +85,7 @@ class TestPnLCalculation:
         """Gross P&L should follow standard formula."""
         for i, trade in enumerate(trade_history):
             # Calculate expected gross P&L
-            if trade.direction == "LONG":
+            if trade.direction == OrderDirection.LONG:
                 price_diff = trade.exit_price - trade.entry_price
             else:
                 price_diff = trade.entry_price - trade.exit_price
@@ -141,9 +142,9 @@ class TestPnLCalculation:
         portfolio_stats: PortfolioStats
     ):
         """Long/short trade counts should match."""
-        expected_long = sum(1 for t in trade_history if t.direction == "LONG")
+        expected_long = sum(1 for t in trade_history if t.direction == OrderDirection.LONG)
         expected_short = sum(
-            1 for t in trade_history if t.direction == "SHORT")
+            1 for t in trade_history if t.direction == OrderDirection.SHORT)
 
         assert expected_long == portfolio_stats.total_long_trades, (
             f"Expected {expected_long} long, got {portfolio_stats.total_long_trades}"
@@ -178,7 +179,7 @@ class TestTradeRecordCompleteness:
         for i, trade in enumerate(trade_history):
             assert trade.position_id, f"Trade {i+1}: missing position_id"
             assert trade.symbol, f"Trade {i+1}: missing symbol"
-            assert trade.direction in ("LONG", "SHORT"), (
+            assert isinstance(trade.direction, OrderDirection), (
                 f"Trade {i+1}: invalid direction {trade.direction}"
             )
             assert trade.digits > 0, f"Trade {i+1}: invalid digits {trade.digits}"

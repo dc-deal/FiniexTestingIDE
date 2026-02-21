@@ -60,7 +60,7 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 ```python
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.testing.mock_adapter import MockExecutionMode
-from python.framework.types.order_types import OrderType, OrderDirection
+from python.framework.types.order_types import OpenOrderRequest, OrderType, OrderDirection
 
 mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL, initial_balance=10000.0)
 executor = mock.create_executor()
@@ -69,8 +69,11 @@ executor = mock.create_executor()
 mock.feed_tick(executor, symbol="BTCUSD", bid=49999.0, ask=50001.0)
 
 # Place an order
-result = executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001,
-                             expected_price=50001.0)
+request = OpenOrderRequest(
+    symbol="BTCUSD", order_type=OrderType.MARKET,
+    direction=OrderDirection.LONG, lots=0.001
+)
+result = executor.open_order(request)
 # result.status == OrderStatus.EXECUTED
 # result.executed_price == 50001.0
 
@@ -93,8 +96,11 @@ mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
 executor = mock.create_executor()
 
 mock.feed_tick(executor, symbol="BTCUSD", bid=49999.0, ask=50001.0)
-result = executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001,
-                             expected_price=50001.0)
+request = OpenOrderRequest(
+    symbol="BTCUSD", order_type=OrderType.MARKET,
+    direction=OrderDirection.LONG, lots=0.001
+)
+result = executor.open_order(request)
 # result.status == OrderStatus.PENDING
 # executor.has_pending_orders() == True
 
@@ -111,7 +117,11 @@ mock = MockOrderExecution(mode=MockExecutionMode.REJECT_ALL)
 executor = mock.create_executor()
 
 mock.feed_tick(executor, symbol="BTCUSD", bid=49999.0, ask=50001.0)
-result = executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
+request = OpenOrderRequest(
+    symbol="BTCUSD", order_type=OrderType.MARKET,
+    direction=OrderDirection.LONG, lots=0.001
+)
+result = executor.open_order(request)
 # result.status == OrderStatus.REJECTED
 # result.rejection_reason == RejectionReason.BROKER_ERROR
 

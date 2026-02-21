@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from python.framework.types.order_types import OrderDirection
+
 
 class CloseType(Enum):
     """Type of position close for trade record."""
@@ -25,6 +27,12 @@ class CloseReason(Enum):
     SL_TRIGGERED = "sl_triggered"
     TP_TRIGGERED = "tp_triggered"
     SCENARIO_END = "scenario_end"
+
+
+class EntryType(Enum):
+    """How a position was opened — market or limit order."""
+    MARKET = "market"
+    LIMIT = "limit"
 
 
 @dataclass
@@ -43,7 +51,7 @@ class TradeRecord:
     # === Identity ===
     position_id: str
     symbol: str
-    direction: str  # "LONG" / "SHORT" (string for serialization)
+    direction: OrderDirection
     lots: float
     close_type: CloseType
 
@@ -85,6 +93,9 @@ class TradeRecord:
 
     # === Close Reason ===
     close_reason: CloseReason = CloseReason.MANUAL
+
+    # === Entry Type ===
+    entry_type: EntryType = EntryType.MARKET
 
     # === Account Context ===
     account_currency: str = ""

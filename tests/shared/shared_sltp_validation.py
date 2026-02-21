@@ -15,6 +15,7 @@ Import these classes into suite-specific test_sltp_validation.py files.
 
 from typing import List
 
+from python.framework.types.order_types import OrderDirection
 from python.framework.types.portfolio_trade_record_types import TradeRecord, CloseReason
 from python.framework.types.trading_env_stats_types import ExecutionStats
 
@@ -42,7 +43,7 @@ class TestLongTpTrigger:
     def test_direction_is_long(self, long_tp_trade_history: List[TradeRecord]):
         """Trade direction should be LONG."""
         trade = long_tp_trade_history[0]
-        assert trade.direction == "LONG", (
+        assert trade.direction == OrderDirection.LONG, (
             f"Expected LONG, got {trade.direction}"
         )
 
@@ -97,7 +98,7 @@ class TestLongSlTrigger:
     def test_direction_is_long(self, long_sl_trade_history: List[TradeRecord]):
         """Trade direction should be LONG."""
         trade = long_sl_trade_history[0]
-        assert trade.direction == "LONG", (
+        assert trade.direction == OrderDirection.LONG, (
             f"Expected LONG, got {trade.direction}"
         )
 
@@ -152,7 +153,7 @@ class TestShortTpTrigger:
     def test_direction_is_short(self, short_tp_trade_history: List[TradeRecord]):
         """Trade direction should be SHORT."""
         trade = short_tp_trade_history[0]
-        assert trade.direction == "SHORT", (
+        assert trade.direction == OrderDirection.SHORT, (
             f"Expected SHORT, got {trade.direction}"
         )
 
@@ -200,7 +201,7 @@ class TestShortSlTrigger:
     def test_direction_is_short(self, short_sl_trade_history: List[TradeRecord]):
         """Trade direction should be SHORT."""
         trade = short_sl_trade_history[0]
-        assert trade.direction == "SHORT", (
+        assert trade.direction == OrderDirection.SHORT, (
             f"Expected SHORT, got {trade.direction}"
         )
 

@@ -57,8 +57,13 @@ from python.framework.types.order_types import (
     OrderResult,
     OrderCapabilities,
     RejectionReason,
+    FillType,
+    ModificationRejectionReason,
+    ModificationResult,
+    OpenOrderRequest,
     create_rejection_result,
 )
+from python.framework.types.portfolio_trade_record_types import EntryType
 from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
 
@@ -238,32 +243,15 @@ class AbstractTradeExecutor(ABC):
     # ============================================
 
     @abstractmethod
-    def open_order(
-        self,
-        symbol: str,
-        order_type: OrderType,
-        direction: OrderDirection,
-        lots: float,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None,
-        comment: str = "",
-        magic_number: int = 0,
-    ) -> OrderResult:
+    def open_order(self, request: OpenOrderRequest) -> OrderResult:
         """
         Submit an order for execution.
 
         Args:
-            symbol: Trading symbol
-            order_type: MARKET or LIMIT
-            direction: LONG or SHORT
-            lots: Position size
-            stop_loss: Optional stop loss price level
-            take_profit: Optional take profit price level
-            comment: Order comment
-            magic_number: Strategy identifier
+            request: OpenOrderRequest with all order parameters
 
-        TradeSimulator: Submits to latency queue → returns PENDING
-        LiveTradeExecutor: Sends to broker API → returns PENDING/EXECUTED
+        Returns:
+            OrderResult — TradeSimulator: PENDING, LiveTradeExecutor: PENDING/EXECUTED
         """
         pass
 
@@ -288,7 +276,9 @@ class AbstractTradeExecutor(ABC):
     def _fill_open_order(
         self,
         pending_order: PendingOrder,
-        fill_price: Optional[float] = None
+        fill_price: Optional[float] = None,
+        entry_type: EntryType = EntryType.MARKET,
+        fill_type: FillType = FillType.MARKET
     ) -> None:
         """
         Process a confirmed OPEN order — update portfolio, fees, stats.
@@ -304,6 +294,8 @@ class AbstractTradeExecutor(ABC):
             pending_order: PendingOrder with order details
             fill_price: Broker-provided fill price. If None, determined from
                         current tick (ask for LONG, bid for SHORT).
+            entry_type: How the position was opened (MARKET or LIMIT)
+            fill_type: How the order was filled (MARKET, LIMIT, LIMIT_IMMEDIATE)
         """
         self.logger.info(
             f"📋 Fill open order: {pending_order.pending_order_id} "
@@ -331,11 +323,13 @@ class AbstractTradeExecutor(ABC):
         tick_value = self._calculate_tick_value(symbol_spec, self._current_tick.mid)
 
         # Create entry fee based on broker fee model
+        is_maker = (entry_type == EntryType.LIMIT)
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
             lots=pending_order.lots,
             entry_price=entry_price,
-            tick_value=tick_value
+            tick_value=tick_value,
+            is_maker=is_maker
         )
 
         self.logger.debug(
@@ -387,7 +381,8 @@ class AbstractTradeExecutor(ABC):
             stop_loss=pending_order.order_kwargs.get('stop_loss'),
             take_profit=pending_order.order_kwargs.get('take_profit'),
             comment=pending_order.order_kwargs.get('comment', ''),
-            magic_number=pending_order.order_kwargs.get('magic_number', 0)
+            magic_number=pending_order.order_kwargs.get('magic_number', 0),
+            entry_type=entry_type
         )
 
         # Create order result for history
@@ -405,6 +400,7 @@ class AbstractTradeExecutor(ABC):
                 "position_id": position.position_id,
                 "fee_cost": entry_fee.cost,
                 "fee_type": entry_fee.fee_type.value,
+                "fill_type": fill_type.value,
                 "filled_at_tick": self._tick_counter
             }
         )
@@ -519,7 +515,7 @@ class AbstractTradeExecutor(ABC):
         position_id: str,
         new_stop_loss: Union[float, None, _UnsetType] = UNSET,
         new_take_profit: Union[float, None, _UnsetType] = UNSET
-    ) -> bool:
+    ) -> ModificationResult:
         """
         Modify position SL/TP levels. Delegates to portfolio.
 
@@ -529,13 +525,37 @@ class AbstractTradeExecutor(ABC):
             new_take_profit: New TP price, None to remove, UNSET to keep current
 
         Returns:
-            True if modification applied successfully
+            ModificationResult with success status and rejection reason
         """
         return self.portfolio.modify_position(
             position_id=position_id,
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit
         )
+
+    @abstractmethod
+    def modify_limit_order(
+        self,
+        order_id: str,
+        new_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending limit order's price, SL, and/or TP.
+
+        Only applies to active limit orders (post-latency, waiting for price trigger).
+        Uses UNSET sentinel to distinguish "don't change" from explicit values.
+
+        Args:
+            order_id: Pending limit order ID
+            new_price: New limit price (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
 
     # ============================================
     # Queries (concrete - same for all executors)
@@ -757,13 +777,21 @@ class AbstractTradeExecutor(ABC):
         symbol_spec: SymbolSpecification,
         lots: float,
         entry_price: float,
-        tick_value: float
+        tick_value: float,
+        is_maker: bool = False
     ) -> AbstractTradingFee:
         """
         Create entry fee based on broker fee model.
 
         Determines fee type from broker config and creates appropriate fee object.
         Spread-based (MT5) vs Maker/Taker (Kraken).
+
+        Args:
+            symbol_spec: Symbol specification with contract details
+            lots: Position size
+            entry_price: Fill price
+            tick_value: Current tick value for spread calculation
+            is_maker: True for limit orders (maker fee), False for market (taker fee)
         """
         fee_model_str = self.broker.adapter.broker_config.get(
             'fee_structure', {}
@@ -778,7 +806,7 @@ class AbstractTradeExecutor(ABC):
                 entry_price=entry_price,
                 maker_rate=self.broker.adapter.get_maker_fee(),
                 taker_rate=self.broker.adapter.get_taker_fee(),
-                is_maker=False  # Market order = Taker
+                is_maker=is_maker
             )
 
         # Default: Spread-based fee (MT5, Forex)

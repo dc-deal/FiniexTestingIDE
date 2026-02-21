@@ -19,10 +19,10 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import CloseType, CloseReason, TradeRecord
+from python.framework.types.portfolio_trade_record_types import CloseType, CloseReason, EntryType, TradeRecord
 from python.framework.types.portfolio_types import Position, PositionStatus
 
-from ..types.order_types import OrderDirection
+from ..types.order_types import ModificationRejectionReason, ModificationResult, OrderDirection
 from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_data_types import TickData
@@ -142,7 +142,8 @@ class PortfolioManager:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = "",
-        magic_number: int = 0
+        magic_number: int = 0,
+        entry_type: EntryType = EntryType.MARKET
     ) -> Position:
         """
         Open new position.
@@ -162,6 +163,7 @@ class PortfolioManager:
             entry_time=datetime.now(timezone.utc),
             stop_loss=stop_loss,
             take_profit=take_profit,
+            entry_type=entry_type,
             comment=comment,
             magic_number=magic_number,
             # Trade record fields
@@ -286,7 +288,7 @@ class PortfolioManager:
         return TradeRecord(
             position_id=position.position_id,
             symbol=position.symbol,
-            direction=position.direction.value.upper(),
+            direction=position.direction,
             lots=position.lots,
             close_type=close_type,
             entry_price=position.entry_price,
@@ -310,6 +312,7 @@ class PortfolioManager:
             stop_loss=position.stop_loss,
             take_profit=position.take_profit,
             close_reason=close_reason,
+            entry_type=position.entry_type,
             comment=position.comment,
             magic_number=position.magic_number,
             account_currency=self.account_currency
@@ -324,7 +327,7 @@ class PortfolioManager:
         position_id: str,
         new_stop_loss: Union[float, None, _UnsetType] = UNSET,
         new_take_profit: Union[float, None, _UnsetType] = UNSET
-    ) -> bool:
+    ) -> ModificationResult:
         """
         Modify position SL/TP with validation.
 
@@ -337,10 +340,12 @@ class PortfolioManager:
             new_take_profit: New TP level (UNSET=no change, None=remove, float=set)
 
         Returns:
-            True if modified successfully, False if position not found or validation failed
+            ModificationResult with success status and rejection reason
         """
         if position_id not in self.open_positions:
-            return False
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.POSITION_NOT_FOUND)
 
         position = self.open_positions[position_id]
 
@@ -352,12 +357,15 @@ class PortfolioManager:
         if position.symbol not in self._current_prices:
             self._logger.warning(
                 f"No current price for {position.symbol} — cannot validate SL/TP")
-            return False
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.NO_CURRENT_PRICE)
 
         bid, ask = self._current_prices[position.symbol]
 
-        if not self._validate_sl_tp_levels(position.direction, bid, ask, effective_sl, effective_tp):
-            return False
+        rejection = self._validate_sl_tp_levels(position.direction, bid, ask, effective_sl, effective_tp)
+        if rejection is not None:
+            return ModificationResult(success=False, rejection_reason=rejection)
 
         # Apply changes
         if not isinstance(new_stop_loss, _UnsetType):
@@ -365,7 +373,7 @@ class PortfolioManager:
         if not isinstance(new_take_profit, _UnsetType):
             position.take_profit = new_take_profit
 
-        return True
+        return ModificationResult(success=True)
 
     def _validate_sl_tp_levels(
         self,
@@ -374,7 +382,7 @@ class PortfolioManager:
         ask: float,
         stop_loss: Optional[float],
         take_profit: Optional[float]
-    ) -> bool:
+    ) -> Optional[ModificationRejectionReason]:
         """
         Validate SL/TP levels against current prices and each other.
 
@@ -386,40 +394,40 @@ class PortfolioManager:
             take_profit: Take profit level to validate (None = no TP)
 
         Returns:
-            True if levels are valid
+            None if valid, ModificationRejectionReason if invalid
         """
         if stop_loss is not None:
             if direction == OrderDirection.LONG and stop_loss >= bid:
                 self._logger.warning(
                     f"Invalid SL for LONG: sl={stop_loss} >= bid={bid}")
-                return False
+                return ModificationRejectionReason.INVALID_SL_LEVEL
             if direction == OrderDirection.SHORT and stop_loss <= ask:
                 self._logger.warning(
                     f"Invalid SL for SHORT: sl={stop_loss} <= ask={ask}")
-                return False
+                return ModificationRejectionReason.INVALID_SL_LEVEL
 
         if take_profit is not None:
             if direction == OrderDirection.LONG and take_profit <= bid:
                 self._logger.warning(
                     f"Invalid TP for LONG: tp={take_profit} <= bid={bid}")
-                return False
+                return ModificationRejectionReason.INVALID_TP_LEVEL
             if direction == OrderDirection.SHORT and take_profit >= ask:
                 self._logger.warning(
                     f"Invalid TP for SHORT: tp={take_profit} >= ask={ask}")
-                return False
+                return ModificationRejectionReason.INVALID_TP_LEVEL
 
         # SL and TP must not cross each other
         if stop_loss is not None and take_profit is not None:
             if direction == OrderDirection.LONG and stop_loss >= take_profit:
                 self._logger.warning(
                     f"SL/TP cross for LONG: sl={stop_loss} >= tp={take_profit}")
-                return False
+                return ModificationRejectionReason.SL_TP_CROSS
             if direction == OrderDirection.SHORT and stop_loss <= take_profit:
                 self._logger.warning(
                     f"SL/TP cross for SHORT: sl={stop_loss} <= tp={take_profit}")
-                return False
+                return ModificationRejectionReason.SL_TP_CROSS
 
-        return True
+        return None
 
     def mark_dirty(self, tick: TickData):
         """

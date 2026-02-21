@@ -13,7 +13,8 @@ from typing import List
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.order_types import OrderResult
-from python.framework.types.portfolio_trade_record_types import CloseReason, TradeRecord
+from python.framework.types.order_types import OrderDirection
+from python.framework.types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
 from python.framework.types.process_data_types import ProcessResult
 
 
@@ -169,7 +170,7 @@ class TradeHistorySummary:
     def _print_table_header(self, renderer: ConsoleRenderer) -> None:
         """Print trade table header."""
         header = (
-            f"   {'#':>3} | {'Dir':^5} | {'Lots':>5} | "
+            f"   {'#':>3} | {'Dir':^5} | {'E':^1} | {'Lots':>5} | "
             f"{'Entry Price':>12} | {'Exit Price':>12} | "
             f"{'SL':>12} | {'TP':>12} | "
             f"{'Entry Tick':>10} | {'Exit Tick':>10} | {'Duration':>8} | "
@@ -193,10 +194,13 @@ class TradeHistorySummary:
             renderer: ConsoleRenderer instance
         """
         # Direction with color
-        if trade.direction == "LONG":
+        if trade.direction == OrderDirection.LONG:
             dir_str = renderer.green("LONG ")
         else:
             dir_str = renderer.red("SHORT")
+
+        # Entry type (M=Market, L=Limit)
+        entry_type_str = "L" if trade.entry_type == EntryType.LIMIT else "M"
 
         # SL/TP formatting
         sl_str = f"{trade.stop_loss:>12.5f}" if trade.stop_loss is not None else f"{'—':>12}"
@@ -214,7 +218,7 @@ class TradeHistorySummary:
 
         # Build row
         row = (
-            f"   {idx:>3} | {dir_str} | {trade.lots:>5.2f} | "
+            f"   {idx:>3} | {dir_str} | {entry_type_str} | {trade.lots:>5.2f} | "
             f"{trade.entry_price:>12.5f} | {trade.exit_price:>12.5f} | "
             f"{sl_str} | {tp_str} | "
             f"{trade.entry_tick_index:>10} | {trade.exit_tick_index:>10} | {duration:>8} | "
@@ -245,7 +249,7 @@ class TradeHistorySummary:
         net_str = self._format_value(total_net, renderer)
 
         total_row = (
-            f"   {'':>3} | {'TOTAL':^5} | {'':>5} | "
+            f"   {'':>3} | {'TOTAL':^5} | {' ':1} | {'':>5} | "
             f"{'':>12} | {'':>12} | "
             f"{'':>12} | {'':>12} | "
             f"{'':>10} | {'':>10} | {'':>8} | "
@@ -272,7 +276,7 @@ class TradeHistorySummary:
 
         # Basic counts
         total_trades = len(trades)
-        long_trades = sum(1 for t in trades if t.direction == "LONG")
+        long_trades = sum(1 for t in trades if t.direction == OrderDirection.LONG)
         short_trades = total_trades - long_trades
 
         # P&L stats

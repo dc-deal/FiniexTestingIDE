@@ -16,7 +16,7 @@ Usage:
     mock.feed_tick(executor, symbol="BTCUSD", bid=49999.0, ask=50001.0)
 
     # Place an order
-    result = executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
+    result = executor.open_order(OpenOrderRequest(symbol="BTCUSD", ...))
 
     # Feed another tick to trigger _process_pending_orders()
     mock.feed_tick(executor, symbol="BTCUSD", bid=50100.0, ask=50102.0)

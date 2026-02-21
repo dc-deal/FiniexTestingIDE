@@ -66,8 +66,9 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Live Trade Executor** - Broker adapter communication with pending order tracking
 - **Spread Calculation** - Live bid/ask spread from tick data
 - **Margin Management** - Position sizing with margin checks
-- **Order Lifecycle** - PENDING → EXECUTED status tracking
-- **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken)
+- **Order Lifecycle** - PENDING → EXECUTED status tracking (Market + Limit orders)
+- **Limit Orders** - Two-phase lifecycle: latency simulation → price trigger monitoring
+- **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken, maker fee for limit fills)
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Analysis Tools
@@ -315,7 +316,7 @@ Validates data pipeline integrity:
 
 ## Current Limitations
 
-- **Market Orders Only** - Limit/Stop orders planned for post-MVP
+- **No Stop/Stop-Limit Orders** - Only Market and Limit orders supported
 - **No Partial Fills** - Full position close only, partial fills planned for post-MVP
 - **CORE Namespace Only** - Custom workers must be added to framework folders
 - **No Frontend** - CLI and VS Code launch configs only
