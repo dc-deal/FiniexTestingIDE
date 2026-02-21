@@ -144,7 +144,6 @@ class KrakenAdapter(BaseAdapter):
             take_profit=kwargs.get('take_profit'),
             max_slippage=kwargs.get('max_slippage'),
             comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
         )
 
     def create_limit_order(
@@ -176,7 +175,6 @@ class KrakenAdapter(BaseAdapter):
             take_profit=kwargs.get('take_profit'),
             expiration=kwargs.get('expiration'),
             comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
         )
 
     def create_stop_limit_order(
@@ -211,7 +209,6 @@ class KrakenAdapter(BaseAdapter):
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
             comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
         )
 
     def create_iceberg_order(
@@ -246,7 +243,6 @@ class KrakenAdapter(BaseAdapter):
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
             comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
         )
 
     # ============================================

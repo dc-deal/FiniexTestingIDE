@@ -142,7 +142,6 @@ class PortfolioManager:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = "",
-        magic_number: int = 0,
         entry_type: EntryType = EntryType.MARKET
     ) -> Position:
         """
@@ -165,7 +164,6 @@ class PortfolioManager:
             take_profit=take_profit,
             entry_type=entry_type,
             comment=comment,
-            magic_number=magic_number,
             # Trade record fields
             entry_tick_value=entry_tick_value,
             entry_bid=entry_bid,
@@ -250,7 +248,8 @@ class PortfolioManager:
         position.exit_tick_index = exit_tick_index
 
         # Create TradeRecord from closed position
-        trade_record = self._create_trade_record(position, CloseType.FULL, close_reason)
+        trade_record = self._create_trade_record(
+            position, CloseType.FULL, close_reason)
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
                 and len(self._trade_history) >= self._trade_history_max):
@@ -314,7 +313,6 @@ class PortfolioManager:
             close_reason=close_reason,
             entry_type=position.entry_type,
             comment=position.comment,
-            magic_number=position.magic_number,
             account_currency=self.account_currency
         )
 
@@ -350,8 +348,10 @@ class PortfolioManager:
         position = self.open_positions[position_id]
 
         # Determine effective levels after modification (for cross-validation)
-        effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
-        effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
+        effective_sl = position.stop_loss if isinstance(
+            new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = position.take_profit if isinstance(
+            new_take_profit, _UnsetType) else new_take_profit
 
         # Validate against current prices
         if position.symbol not in self._current_prices:
@@ -363,7 +363,8 @@ class PortfolioManager:
 
         bid, ask = self._current_prices[position.symbol]
 
-        rejection = self._validate_sl_tp_levels(position.direction, bid, ask, effective_sl, effective_tp)
+        rejection = self._validate_sl_tp_levels(
+            position.direction, bid, ask, effective_sl, effective_tp)
         if rejection is not None:
             return ModificationResult(success=False, rejection_reason=rejection)
 

@@ -91,13 +91,14 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             direction: LONG or SHORT
             lots: Position size
             broker_ref: Broker's order reference ID
-            order_kwargs: Optional order parameters (stop_loss, take_profit, comment, magic_number)
+            order_kwargs: Optional order parameters (stop_loss, take_profit, comment)
 
         Returns:
             order_id for chaining
         """
         now = datetime.now(timezone.utc)
-        timeout_at = now + timedelta(seconds=self._timeout_config.order_timeout_seconds)
+        timeout_at = now + \
+            timedelta(seconds=self._timeout_config.order_timeout_seconds)
 
         pending = PendingOrder(
             pending_order_id=order_id,
@@ -145,7 +146,8 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             position_id for chaining
         """
         now = datetime.now(timezone.utc)
-        timeout_at = now + timedelta(seconds=self._timeout_config.order_timeout_seconds)
+        timeout_at = now + \
+            timedelta(seconds=self._timeout_config.order_timeout_seconds)
 
         pending = PendingOrder(
             pending_order_id=position_id,

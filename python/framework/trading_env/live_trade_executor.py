@@ -297,7 +297,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return result
 
         # Validate order parameters
-        is_valid, error = self.broker.validate_order(request.symbol, request.lots)
+        is_valid, error = self.broker.validate_order(
+            request.symbol, request.lots)
         if not is_valid:
             self._orders_rejected += 1
             result = create_rejection_result(
@@ -316,8 +317,6 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_kwargs["take_profit"] = request.take_profit
         if request.comment:
             order_kwargs["comment"] = request.comment
-        if request.magic_number:
-            order_kwargs["magic_number"] = request.magic_number
         if request.order_type == OrderType.LIMIT and request.price is not None:
             order_kwargs["price"] = request.price
 
@@ -377,7 +376,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 executed_lots=response.filled_lots or request.lots,
                 execution_time=datetime.now(timezone.utc),
                 broker_order_id=response.broker_ref,
-                metadata={"symbol": request.symbol, "direction": request.direction.value},
+                metadata={"symbol": request.symbol,
+                          "direction": request.direction.value},
             )
             self._order_history.append(result)
             return result
@@ -608,7 +608,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             for pos in open_positions:
                 synthetic = self._order_tracker.create_synthetic_close_order(
                     pos.position_id)
-                self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
+                self._fill_close_order(
+                    synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self._order_tracker.clear_pending(reason="scenario_end")
