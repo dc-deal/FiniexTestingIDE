@@ -89,7 +89,6 @@ class TradeRecord:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ""
-    magic_number: int = 0
 
     # === Close Reason ===
     close_reason: CloseReason = CloseReason.MANUAL

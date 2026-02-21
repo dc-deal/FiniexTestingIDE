@@ -113,7 +113,7 @@ class MT5Adapter(BaseAdapter):
             symbol: Trading symbol (e.g., "EURUSD")
             direction: BUY or SELL
             lots: Order size (e.g., 0.1 = 10,000 units for Forex)
-            **kwargs: stop_loss, take_profit, max_slippage, comment, magic_number
+            **kwargs: stop_loss, take_profit, max_slippage, comment
 
         Returns:
             MarketOrder ready for execution
@@ -134,8 +134,7 @@ class MT5Adapter(BaseAdapter):
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
             max_slippage=kwargs.get('max_slippage'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
+            comment=kwargs.get('comment', '')
         )
 
     def create_limit_order(
@@ -154,7 +153,7 @@ class MT5Adapter(BaseAdapter):
             direction: BUY or SELL
             lots: Order size
             price: Limit entry price
-            **kwargs: stop_loss, take_profit, expiration, comment, magic_number
+            **kwargs: stop_loss, take_profit, expiration, comment
 
         Returns:
             LimitOrder ready for execution
@@ -176,8 +175,7 @@ class MT5Adapter(BaseAdapter):
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
             expiration=kwargs.get('expiration'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
+            comment=kwargs.get('comment', '')
         )
 
     # ============================================
@@ -213,8 +211,7 @@ class MT5Adapter(BaseAdapter):
             stop_price=stop_price,
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
+            comment=kwargs.get('comment', '')
         )
 
     def create_stop_limit_order(
@@ -250,8 +247,7 @@ class MT5Adapter(BaseAdapter):
             limit_price=limit_price,
             stop_loss=kwargs.get('stop_loss'),
             take_profit=kwargs.get('take_profit'),
-            comment=kwargs.get('comment', ''),
-            magic_number=kwargs.get('magic_number', 0)
+            comment=kwargs.get('comment', '')
         )
 
     # ============================================

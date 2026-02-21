@@ -197,8 +197,6 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             order_kwargs["take_profit"] = request.take_profit
         if request.comment:
             order_kwargs["comment"] = request.comment
-        if request.magic_number:
-            order_kwargs["magic_number"] = request.magic_number
 
         # entry_price: limit price for LIMIT orders, 0 for MARKET
         entry_price = (request.price

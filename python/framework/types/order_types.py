@@ -59,7 +59,8 @@ class FillType(Enum):
     """How an order was filled — tracked in OrderResult.metadata."""
     MARKET = "market"             # Standard market fill at current price
     LIMIT = "limit"               # Limit order filled when price reached level
-    LIMIT_IMMEDIATE = "limit_immediate"  # Limit filled immediately (price already past limit after latency)
+    # Limit filled immediately (price already past limit after latency)
+    LIMIT_IMMEDIATE = "limit_immediate"
 
 
 class RejectionReason(Enum):
@@ -131,7 +132,6 @@ class BaseOrder:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ""
-    magic_number: int = 0
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -319,7 +319,6 @@ class OpenOrderRequest:
         stop_loss: Optional stop loss price level
         take_profit: Optional take profit price level
         comment: Order comment
-        magic_number: Strategy identifier
 
     Returns:
         N/A (data container)
@@ -332,7 +331,6 @@ class OpenOrderRequest:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ""
-    magic_number: int = 0
 
 
 # ============================================

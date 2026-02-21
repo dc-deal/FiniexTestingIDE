@@ -317,10 +317,12 @@ class AbstractTradeExecutor(ABC):
             entry_price = bid
 
         # Get static symbol specification
-        symbol_spec = self.broker.get_symbol_specification(pending_order.symbol)
+        symbol_spec = self.broker.get_symbol_specification(
+            pending_order.symbol)
 
         # Calculate tick_value dynamically
-        tick_value = self._calculate_tick_value(symbol_spec, self._current_tick.mid)
+        tick_value = self._calculate_tick_value(
+            symbol_spec, self._current_tick.mid)
 
         # Create entry fee based on broker fee model
         is_maker = (entry_type == EntryType.LIMIT)
@@ -347,7 +349,8 @@ class AbstractTradeExecutor(ABC):
             margin_required = self.broker.calculate_margin(
                 pending_order.symbol, pending_order.lots,
                 self._current_tick, pending_order.direction)
-            free_margin = self.portfolio.get_free_margin(pending_order.direction)
+            free_margin = self.portfolio.get_free_margin(
+                pending_order.direction)
 
             if margin_required > free_margin:
                 self._orders_rejected += 1
@@ -381,7 +384,6 @@ class AbstractTradeExecutor(ABC):
             stop_loss=pending_order.order_kwargs.get('stop_loss'),
             take_profit=pending_order.order_kwargs.get('take_profit'),
             comment=pending_order.order_kwargs.get('comment', ''),
-            magic_number=pending_order.order_kwargs.get('magic_number', 0),
             entry_type=entry_type
         )
 

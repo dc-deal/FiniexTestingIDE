@@ -51,7 +51,6 @@ class Position:
 
     # Metadata
     comment: str = ""
-    magic_number: int = 0
     close_time: Optional[datetime] = None
     close_price: Optional[float] = None
 
