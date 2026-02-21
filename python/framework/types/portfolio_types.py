@@ -7,6 +7,7 @@ from typing import List, Optional
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.broker_types import FeeType
 from python.framework.types.order_types import OrderDirection
+from python.framework.types.portfolio_trade_record_types import EntryType
 
 
 class PositionStatus(Enum):
@@ -34,6 +35,9 @@ class Position:
     # Optional SL/TP
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+
+    # Entry type (market or limit)
+    entry_type: EntryType = EntryType.MARKET
 
     # Fee objects (polymorphic)
     fees: List[AbstractTradingFee] = field(default_factory=list)

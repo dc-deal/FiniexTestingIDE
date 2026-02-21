@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "scenario_set_name": "sltp_validation_test",
+  "scenario_set_name": "sltp_limit_validation_test",
   "created": "2026-02-19T00:00:00.000000",
-  "description": "SL/TP Trigger & Modify Validation — Tests stop loss, take profit triggers, close reasons, and position modifications",
+  "description": "SL/TP Trigger, Limit Order Fill & Modify Validation — Tests stop loss, take profit triggers, limit order fills, maker fees, and order modifications",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -171,6 +171,122 @@
             {
               "tick_number": 500,
               "take_profit": 157.300
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "long_limit_fill",
+      "description": "LONG limit buy fills when price drops to limit level (SHORT extreme move #9: -175 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "LIMIT",
+              "price": 156.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "short_limit_fill",
+      "description": "SHORT limit sell fills when price rises to limit level (LONG extreme move #11: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "SHORT",
+              "order_type": "LIMIT",
+              "price": 157.300,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "limit_fill_then_sl",
+      "description": "LONG limit fills at dip, then SL triggers as price drops further (SHORT extreme: -175 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "LIMIT",
+              "price": 156.500,
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "stop_loss": 155.800,
+              "take_profit": 157.000
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "modify_limit_price_fill",
+      "description": "Limit order placed deep, price modified closer before fill (SHORT extreme: -175 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "LIMIT",
+              "price": 155.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ],
+          "modify_limit_sequence": [
+            {
+              "tick_number": 500,
+              "price": 156.200
             }
           ]
         }

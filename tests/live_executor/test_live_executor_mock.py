@@ -18,6 +18,7 @@ from python.framework.types.order_types import (
     OrderDirection,
     OrderStatus,
     RejectionReason,
+    OpenOrderRequest,
 )
 
 
@@ -28,9 +29,9 @@ class TestInstantFill:
         """open_order() returns EXECUTED status for instant fill."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        result = executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.EXECUTED
         assert result.executed_price is not None
@@ -40,9 +41,9 @@ class TestInstantFill:
         """Instant fill creates an open position in portfolio."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         positions = executor_instant.get_open_positions()
         assert len(positions) == 1
@@ -53,9 +54,9 @@ class TestInstantFill:
         """Executed order appears in order history."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         history = executor_instant.get_order_history()
         assert len(history) >= 1
@@ -65,9 +66,9 @@ class TestInstantFill:
         """Instant fill leaves no pending orders."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert not executor_instant.has_pending_orders()
 
@@ -79,9 +80,9 @@ class TestInstantFillClose:
         """close_position() returns EXECUTED for instant fill."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         positions = executor_instant.get_open_positions()
         position_id = positions[0].position_id
@@ -96,9 +97,9 @@ class TestInstantFillClose:
         """Closed position no longer appears in open positions."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         positions = executor_instant.get_open_positions()
         position_id = positions[0].position_id
@@ -116,9 +117,9 @@ class TestDelayedFill:
         """open_order() returns PENDING in delayed fill mode."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        result = executor_delayed.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        result = executor_delayed.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.PENDING
         assert result.broker_order_id is not None
@@ -127,9 +128,9 @@ class TestDelayedFill:
         """Delayed order is tracked as pending."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        executor_delayed.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_delayed.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert executor_delayed.has_pending_orders()
 
@@ -137,9 +138,9 @@ class TestDelayedFill:
         """Pending order fills when next tick triggers _process_pending_orders()."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        executor_delayed.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_delayed.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         # Next tick triggers on_tick() → _process_pending_orders() → broker poll → fill
         mock_delayed.feed_tick(executor_delayed, bid=50050.0, ask=50052.0)
@@ -156,9 +157,9 @@ class TestRejection:
         """open_order() returns REJECTED status."""
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
-        result = executor_reject.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        result = executor_reject.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.REJECTED
 
@@ -166,9 +167,9 @@ class TestRejection:
         """Rejected order recorded in order history."""
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
-        executor_reject.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_reject.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         history = executor_reject.get_order_history()
         rejected = [h for h in history if h.status == OrderStatus.REJECTED]
@@ -178,34 +179,34 @@ class TestRejection:
         """Rejected order does not create any position."""
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
-        executor_reject.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_reject.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert len(executor_reject.get_open_positions()) == 0
 
 
 class TestFeatureGating:
-    """Feature gating: only MARKET orders allowed in MVP."""
+    """Feature gating: only MARKET and LIMIT orders allowed."""
 
-    def test_limit_order_rejected(self, mock_instant, executor_instant):
-        """LIMIT order type is rejected with ORDER_TYPE_NOT_SUPPORTED."""
+    def test_stop_order_rejected(self, mock_instant, executor_instant):
+        """STOP order type is rejected with ORDER_TYPE_NOT_SUPPORTED."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        result = executor_instant.open_order(
-            "BTCUSD", OrderType.LIMIT, OrderDirection.LONG, 0.001
-        )
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.REJECTED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
 
-    def test_stop_order_rejected(self, mock_instant, executor_instant):
-        """STOP order type is rejected."""
+    def test_stop_limit_order_rejected(self, mock_instant, executor_instant):
+        """STOP_LIMIT order type is rejected."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        result = executor_instant.open_order(
-            "BTCUSD", OrderType.STOP, OrderDirection.LONG, 0.001
-        )
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.STOP_LIMIT, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.REJECTED
 
@@ -217,9 +218,9 @@ class TestValidation:
         """Order for unknown symbol is rejected."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        result = executor_instant.open_order(
-            "INVALID_SYMBOL", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol="INVALID_SYMBOL", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         assert result.status == OrderStatus.REJECTED
 
@@ -237,9 +238,9 @@ class TestExecutionStats:
         """Execution stats reflect completed order."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
-        executor_instant.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_instant.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         stats = executor_instant.get_execution_stats()
         assert stats.orders_sent == 1
@@ -249,9 +250,9 @@ class TestExecutionStats:
         """Execution stats count rejections."""
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
-        executor_reject.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor_reject.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         stats = executor_reject.get_execution_stats()
         assert stats.orders_sent == 1

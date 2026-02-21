@@ -28,6 +28,8 @@ Configuration Example:
         {
             "tick_number": 500,
             "direction": "SHORT",
+            "order_type": "LIMIT",
+            "price": 1.2900,
             "hold_ticks": 200,
             "lot_size": 0.01
         }
@@ -37,6 +39,12 @@ Configuration Example:
             "tick_number": 100,
             "stop_loss": 1.2550,
             "take_profit": 1.2750
+        }
+    ],
+    "modify_limit_sequence": [
+        {
+            "tick_number": 200,
+            "price": 1.2850
         }
     ],
     "lot_size": 0.1
@@ -82,10 +90,17 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             - direction: "LONG" or "SHORT"
             - hold_ticks: How many ticks to hold before closing
             - lot_size: Position size (optional, uses default)
+            - order_type: "MARKET" or "LIMIT" (optional, default: "MARKET")
+            - price: Limit price (required when order_type="LIMIT")
             - stop_loss: SL price level (optional)
             - take_profit: TP price level (optional)
         modify_sequence: List of SL/TP modification specs (optional)
             - tick_number: When to apply modification
+            - stop_loss: New SL price (optional, omit = no change)
+            - take_profit: New TP price (optional, omit = no change)
+        modify_limit_sequence: List of pending limit order modification specs (optional)
+            - tick_number: When to apply modification
+            - price: New limit price (optional, omit = no change)
             - stop_loss: New SL price (optional, omit = no change)
             - take_profit: New TP price (optional, omit = no change)
         lot_size: Default lot size for trades (default: 0.1)
@@ -112,11 +127,13 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self.trade_sequence = self.params.get('trade_sequence')
         self.default_lot_size = self.params.get('lot_size')
         self.modify_sequence = self.params.get('modify_sequence')
+        self.modify_limit_sequence = self.params.get('modify_limit_sequence')
 
         # Internal state
         self.tick_count = 0
         self.active_trade: Optional[Dict[str, Any]] = None
         self._started_trade_indices: set = set()
+        self._pending_limit_order_id: Optional[str] = None
 
         # Backtesting tracking
         self.warmup_errors: List[str] = []
@@ -155,19 +172,32 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 default=[],
                 description="List of SL/TP modification specs: tick_number, stop_loss, take_profit"
             ),
+            'modify_limit_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of pending limit order modification specs: tick_number, price, stop_loss, take_profit"
+            ),
         }
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
-        Declare required order types.
+        Declare required order types based on trade_sequence config.
 
-        BacktestingDeterministic uses only Market orders.
+        Scans trade_sequence for order_type fields. MARKET is always
+        included (close orders use MARKET internally).
+
+        Args:
+            decision_logic_config: Decision logic configuration dict
 
         Returns:
-            List containing OrderType.MARKET
+            List of unique OrderType values needed by this config
         """
-        return [OrderType.MARKET]
+        order_types = {OrderType.MARKET}
+        for spec in decision_logic_config.get('trade_sequence', []):
+            ot_str = spec.get('order_type', 'MARKET')
+            order_types.add(OrderType[ot_str])
+        return list(order_types)
 
     def get_required_worker_instances(self) -> Dict[str, str]:
         """
@@ -287,6 +317,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                         'lot_size': lot_size,
                         'signal_tick': self.tick_count,
                         'hold_ticks': hold_ticks,
+                        'order_type': spec.get('order_type', 'MARKET'),
+                        'limit_price': spec.get('price'),
                         'stop_loss': spec.get('stop_loss'),
                         'take_profit': spec.get('take_profit'),
                     }
@@ -328,13 +360,16 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 "No trading_api available - skipping execution")
             return None
 
-        # Process any pending SL/TP modifications
+        # Process any pending modifications (positions + limit orders)
         self._process_modify_sequence()
+        self._process_modify_limit_sequence()
 
-        # Get lot size and SL/TP from decision metadata or defaults
+        # Get parameters from decision metadata or defaults
         lot_size = decision.metadata.get('lot_size', self.default_lot_size)
         stop_loss = decision.metadata.get('stop_loss')
         take_profit = decision.metadata.get('take_profit')
+        order_type = OrderType[decision.metadata.get('order_type', 'MARKET')]
+        limit_price = decision.metadata.get('limit_price')
 
         # Check for pending orders
         if self.trading_api.has_pending_orders():
@@ -351,15 +386,19 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 # Open long position
                 order_response = self.trading_api.send_order(
                     symbol=tick.symbol,
-                    order_type=OrderType.MARKET,
+                    order_type=order_type,
                     direction=OrderDirection.LONG,
                     lots=lot_size,
+                    price=limit_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     comment=f"Backtest LONG at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
+                # Track limit order ID for modify_limit_sequence
+                if order_type == OrderType.LIMIT and order_response.order_id:
+                    self._pending_limit_order_id = order_response.order_id
                 return order_response
 
         # ============================================
@@ -370,15 +409,19 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 # Open short position
                 order_response = self.trading_api.send_order(
                     symbol=tick.symbol,
-                    order_type=OrderType.MARKET,
+                    order_type=order_type,
                     direction=OrderDirection.SHORT,
                     lots=lot_size,
+                    price=limit_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     comment=f"Backtest SHORT at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
+                # Track limit order ID for modify_limit_sequence
+                if order_type == OrderType.LIMIT and order_response.order_id:
+                    self._pending_limit_order_id = order_response.order_id
                 return order_response
 
         # ============================================
@@ -418,13 +461,48 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if 'take_profit' in spec:
                     kwargs['take_profit'] = spec['take_profit']
 
-                success = self.trading_api.modify_position(
+                result = self.trading_api.modify_position(
                     position_id=position.position_id,
                     **kwargs
                 )
                 self.logger.info(
                     f"🔧 Position modify at tick {self.tick_count}: "
-                    f"{'success' if success else 'FAILED'} — {kwargs}"
+                    f"{'success' if result.success else 'FAILED'} — {kwargs}"
+                )
+
+    def _process_modify_limit_sequence(self) -> None:
+        """
+        Execute pending limit order modifications from modify_limit_sequence config.
+
+        Modifies the tracked pending limit order at the configured tick_number.
+        Only keys present in the spec are passed (omitted = no change).
+        """
+        if not self.modify_limit_sequence:
+            return
+
+        for spec in self.modify_limit_sequence:
+            if self.tick_count == spec['tick_number']:
+                if not self._pending_limit_order_id:
+                    self.logger.warning(
+                        f"Modify limit at tick {self.tick_count}: "
+                        f"no pending limit order tracked")
+                    return
+
+                kwargs: Dict[str, Any] = {}
+                if 'price' in spec:
+                    kwargs['price'] = spec['price']
+                if 'stop_loss' in spec:
+                    kwargs['stop_loss'] = spec['stop_loss']
+                if 'take_profit' in spec:
+                    kwargs['take_profit'] = spec['take_profit']
+
+                result = self.trading_api.modify_limit_order(
+                    order_id=self._pending_limit_order_id,
+                    **kwargs
+                )
+                self.logger.info(
+                    f"🔧 Limit order modify at tick {self.tick_count}: "
+                    f"{'success' if result.success else 'FAILED'} — {kwargs}"
                 )
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:

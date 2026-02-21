@@ -55,6 +55,13 @@ class OrderStatus(Enum):
     EXPIRED = "expired"          # Time-based expiration
 
 
+class FillType(Enum):
+    """How an order was filled — tracked in OrderResult.metadata."""
+    MARKET = "market"             # Standard market fill at current price
+    LIMIT = "limit"               # Limit order filled when price reached level
+    LIMIT_IMMEDIATE = "limit_immediate"  # Limit filled immediately (price already past limit after latency)
+
+
 class RejectionReason(Enum):
     """Reasons why orders get rejected"""
     INSUFFICIENT_MARGIN = "insufficient_margin"
@@ -289,3 +296,73 @@ def create_rejection_result(
         rejection_reason=reason,
         rejection_message=message
     )
+
+
+# ============================================
+# Open Order Request (internal pipeline object)
+# ============================================
+
+@dataclass
+class OpenOrderRequest:
+    """
+    Bundled order parameters passed through the execution pipeline.
+
+    Built by DecisionTradingAPI.send_order(), consumed by TradeSimulator/LiveTradeExecutor.
+    Replaces individual parameter passing for clarity and extensibility.
+
+    Args:
+        symbol: Trading symbol
+        order_type: MARKET or LIMIT
+        direction: LONG or SHORT
+        lots: Position size
+        price: Limit price (None for market orders)
+        stop_loss: Optional stop loss price level
+        take_profit: Optional take profit price level
+        comment: Order comment
+        magic_number: Strategy identifier
+
+    Returns:
+        N/A (data container)
+    """
+    symbol: str
+    order_type: OrderType
+    direction: OrderDirection
+    lots: float
+    price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    comment: str = ""
+    magic_number: int = 0
+
+
+# ============================================
+# Modification Result Types
+# ============================================
+
+class ModificationRejectionReason(Enum):
+    """
+    Reason why a position or limit order modification was rejected.
+
+    Used by modify_position() and modify_limit_order() to provide
+    structured rejection feedback.
+    """
+    POSITION_NOT_FOUND = "position_not_found"
+    LIMIT_ORDER_NOT_FOUND = "limit_order_not_found"
+    INVALID_SL_LEVEL = "invalid_sl_level"
+    INVALID_TP_LEVEL = "invalid_tp_level"
+    SL_TP_CROSS = "sl_tp_cross"
+    INVALID_PRICE = "invalid_price"
+    NO_CURRENT_PRICE = "no_current_price"
+
+
+@dataclass
+class ModificationResult:
+    """
+    Result of a position or limit order modification attempt.
+
+    Args:
+        success: True if modification was applied
+        rejection_reason: Reason for rejection (None if successful)
+    """
+    success: bool
+    rejection_reason: Optional[ModificationRejectionReason] = None

@@ -15,6 +15,7 @@ from python.framework.types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
+    OpenOrderRequest,
 )
 
 
@@ -28,8 +29,8 @@ class TestMultipleOrdersTracked:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.SHORT, 0.001)
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
 
         positions = executor.get_open_positions()
         assert len(positions) == 2
@@ -41,8 +42,8 @@ class TestMultipleOrdersTracked:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.SHORT, 0.001)
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
 
         assert executor.has_pending_orders()
 
@@ -60,9 +61,9 @@ class TestMultipleOrdersTracked:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.SHORT, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.002)
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.002))
 
         history = executor.get_order_history()
         assert len(history) >= 3
@@ -79,9 +80,9 @@ class TestOpenCloseCycle:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         # Open
-        open_result = executor.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        open_result = executor.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
         assert open_result.status == OrderStatus.EXECUTED
 
         positions = executor.get_open_positions()
@@ -102,9 +103,9 @@ class TestOpenCloseCycle:
         executor = mock.create_executor()
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
-        executor.open_order(
-            "BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001
-        )
+        executor.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+        ))
 
         positions = executor.get_open_positions()
         position_id = positions[0].position_id
@@ -126,8 +127,8 @@ class TestCloseAllRemaining:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.SHORT, 0.002)
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.002))
 
         assert len(executor.get_open_positions()) == 2
 
@@ -158,10 +159,10 @@ class TestStatsConsistency:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        # 2 successful + 1 rejected (LIMIT)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.LONG, 0.001)
-        executor.open_order("BTCUSD", OrderType.MARKET, OrderDirection.SHORT, 0.001)
-        executor.open_order("BTCUSD", OrderType.LIMIT, OrderDirection.LONG, 0.001)
+        # 2 successful + 1 rejected (STOP)
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+        executor.open_order(OpenOrderRequest(symbol="BTCUSD", order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001))
 
         stats = executor.get_execution_stats()
         assert stats.orders_sent == stats.orders_executed + stats.orders_rejected

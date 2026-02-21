@@ -135,13 +135,13 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (SL/TP Validation)",
+            "name": "🧪 Run (SL/TP & Limit Validation)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "backtesting/sltp_validation_test.json"
+                "backtesting/sltp_limit_validation_test.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -252,12 +252,12 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: SL/TP Validation (All)",
+            "name": "🧩 Pytest: SL/TP & Limit Validation (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/sltp_validation/",
+                "tests/sltp_limit_validation/",
                 "-v",
                 "--tb=short"
             ],

@@ -39,6 +39,8 @@ from ..types.order_types import (
     OrderDirection,
     OrderResult,
     OrderCapabilities,
+    ModificationResult,
+    OpenOrderRequest,
 )
 from .portfolio_manager import AccountInfo, Position
 
@@ -140,6 +142,7 @@ class DecisionTradingAPI:
         order_type: OrderType,
         direction: OrderDirection,
         lots: float,
+        price: Optional[float] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = "",
@@ -157,6 +160,7 @@ class DecisionTradingAPI:
             order_type: OrderType.MARKET or OrderType.LIMIT (MVP)
             direction: OrderDirection.LONG or OrderDirection.SHORT
             lots: Position size
+            price: Limit price (required for LIMIT orders, ignored for MARKET)
             stop_loss: Optional stop loss price level
             take_profit: Optional take profit price level
             comment: Order comment (e.g., strategy name)
@@ -175,16 +179,18 @@ class DecisionTradingAPI:
                 take_profit=1.1050
             )
         """
-        return self._executor.open_order(
+        request = OpenOrderRequest(
             symbol=symbol,
             order_type=order_type,
             direction=direction,
             lots=lots,
+            price=price,
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,
             magic_number=magic_number,
         )
+        return self._executor.open_order(request)
 
     # ============================================
     # Public API: Account Queries
@@ -359,7 +365,7 @@ class DecisionTradingAPI:
         position_id: str,
         stop_loss: Union[float, None, _UnsetType] = UNSET,
         take_profit: Union[float, None, _UnsetType] = UNSET
-    ) -> bool:
+    ) -> ModificationResult:
         """
         Modify position stop loss and/or take profit levels.
 
@@ -369,10 +375,38 @@ class DecisionTradingAPI:
             take_profit: New TP price, None to remove, UNSET to keep current
 
         Returns:
-            True if modification applied successfully
+            ModificationResult with success status and rejection reason
         """
         return self._executor.modify_position(
             position_id=position_id,
+            new_stop_loss=stop_loss,
+            new_take_profit=take_profit
+        )
+
+    def modify_limit_order(
+        self,
+        order_id: str,
+        price: Union[float, _UnsetType] = UNSET,
+        stop_loss: Union[float, None, _UnsetType] = UNSET,
+        take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending limit order's price, SL, and/or TP.
+
+        Only applies to active limit orders (post-latency, waiting for price trigger).
+
+        Args:
+            order_id: Pending limit order ID
+            price: New limit price (UNSET=keep current)
+            stop_loss: New SL price, None to remove, UNSET to keep current
+            take_profit: New TP price, None to remove, UNSET to keep current
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
+        return self._executor.modify_limit_order(
+            order_id=order_id,
+            new_price=price,
             new_stop_loss=stop_loss,
             new_take_profit=take_profit
         )

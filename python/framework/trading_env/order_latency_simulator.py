@@ -40,7 +40,7 @@ from typing import Dict, List, Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.order_types import OrderDirection
+from python.framework.types.order_types import OpenOrderRequest, OrderDirection, OrderType
 
 
 # ============================================
@@ -167,14 +167,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
     def submit_open_order(
         self,
         order_id: str,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
+        request: OpenOrderRequest,
         current_tick: int,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None,
-        comment: str = "",
-        magic_number: int = 0,
     ) -> str:
         """
         Submit OPEN order for execution with delay.
@@ -184,14 +178,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         Args:
             order_id: Unique order identifier
-            symbol: Trading symbol
-            direction: LONG or SHORT
-            lots: Position size
+            request: OpenOrderRequest with all order parameters
             current_tick: Current tick number
-            stop_loss: Optional stop loss price level
-            take_profit: Optional take profit price level
-            comment: Order comment
-            magic_number: Strategy identifier
 
         Returns:
             order_id: Same as input (for chaining)
@@ -201,16 +189,21 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
 
-        # Build order_kwargs dict from explicit params
+        # Build order_kwargs dict from request
         order_kwargs = {}
-        if stop_loss is not None:
-            order_kwargs["stop_loss"] = stop_loss
-        if take_profit is not None:
-            order_kwargs["take_profit"] = take_profit
-        if comment:
-            order_kwargs["comment"] = comment
-        if magic_number:
-            order_kwargs["magic_number"] = magic_number
+        if request.stop_loss is not None:
+            order_kwargs["stop_loss"] = request.stop_loss
+        if request.take_profit is not None:
+            order_kwargs["take_profit"] = request.take_profit
+        if request.comment:
+            order_kwargs["comment"] = request.comment
+        if request.magic_number:
+            order_kwargs["magic_number"] = request.magic_number
+
+        # entry_price: limit price for LIMIT orders, 0 for MARKET
+        entry_price = (request.price
+                       if (request.order_type == OrderType.LIMIT and request.price is not None)
+                       else 0)
 
         # Store pending order (inherited storage)
         self.store_order(PendingOrder(
@@ -218,17 +211,18 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             placed_at_tick=current_tick,
             fill_at_tick=current_tick + total_delay,
             order_action=PendingOrderAction.OPEN,
-            symbol=symbol,
-            direction=direction,
-            lots=lots,
-            entry_price=0,
+            order_type=request.order_type,
+            symbol=request.symbol,
+            direction=request.direction,
+            lots=request.lots,
+            entry_price=entry_price,
             entry_time=datetime.now(timezone.utc),
             order_kwargs=order_kwargs
         ))
 
         # Log order reception
         self.logger.info(
-            f"📨 Order received: {order_id} ({direction.value} {lots} lots) "
+            f"📨 Order received: {order_id} ({request.direction.value} {request.lots} lots) "
             f"- latency: {total_delay} ticks"
         )
 

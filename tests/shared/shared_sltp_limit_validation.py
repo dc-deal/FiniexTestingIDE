@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Shared SL/TP Validation Tests
-Reusable test classes for SL/TP trigger detection and position modification.
+FiniexTestingIDE - Shared SL/TP & Limit Order Validation Tests
+Reusable test classes for SL/TP trigger detection, limit order fills, and modifications.
 
 Validates:
 - TP trigger: close_reason=TP_TRIGGERED, exit_price=take_profit
@@ -8,14 +8,18 @@ Validates:
 - TradeRecord carries correct SL/TP levels
 - Execution stats track sl_tp_triggered count
 - Modify: modified TP triggers instead of original
+- Limit fill: entry_type=LIMIT, entry_price=limit_price, maker fee
+- Limit + SL/TP combo: limit fills, then SL triggers
+- Modify limit: limit price changed before fill
 
-Used by: sltp_validation test suite
-Import these classes into suite-specific test_sltp_validation.py files.
+Used by: sltp_limit_validation test suite
+Import these classes into suite-specific test_sltp_limit_validation.py files.
 """
 
 from typing import List
 
-from python.framework.types.portfolio_trade_record_types import TradeRecord, CloseReason
+from python.framework.types.order_types import OrderDirection
+from python.framework.types.portfolio_trade_record_types import EntryType, TradeRecord, CloseReason
 from python.framework.types.trading_env_stats_types import ExecutionStats
 
 
@@ -42,7 +46,7 @@ class TestLongTpTrigger:
     def test_direction_is_long(self, long_tp_trade_history: List[TradeRecord]):
         """Trade direction should be LONG."""
         trade = long_tp_trade_history[0]
-        assert trade.direction == "LONG", (
+        assert trade.direction == OrderDirection.LONG, (
             f"Expected LONG, got {trade.direction}"
         )
 
@@ -97,7 +101,7 @@ class TestLongSlTrigger:
     def test_direction_is_long(self, long_sl_trade_history: List[TradeRecord]):
         """Trade direction should be LONG."""
         trade = long_sl_trade_history[0]
-        assert trade.direction == "LONG", (
+        assert trade.direction == OrderDirection.LONG, (
             f"Expected LONG, got {trade.direction}"
         )
 
@@ -152,7 +156,7 @@ class TestShortTpTrigger:
     def test_direction_is_short(self, short_tp_trade_history: List[TradeRecord]):
         """Trade direction should be SHORT."""
         trade = short_tp_trade_history[0]
-        assert trade.direction == "SHORT", (
+        assert trade.direction == OrderDirection.SHORT, (
             f"Expected SHORT, got {trade.direction}"
         )
 
@@ -200,7 +204,7 @@ class TestShortSlTrigger:
     def test_direction_is_short(self, short_sl_trade_history: List[TradeRecord]):
         """Trade direction should be SHORT."""
         trade = short_sl_trade_history[0]
-        assert trade.direction == "SHORT", (
+        assert trade.direction == OrderDirection.SHORT, (
             f"Expected SHORT, got {trade.direction}"
         )
 
@@ -271,4 +275,179 @@ class TestModifyTpTrigger:
         """Execution stats should show 1 SL/TP trigger."""
         assert modify_tp_execution_stats.sl_tp_triggered == 1, (
             f"Expected 1 trigger, got {modify_tp_execution_stats.sl_tp_triggered}"
+        )
+
+
+# =============================================================================
+# LONG LIMIT FILL
+# =============================================================================
+
+class TestLongLimitFill:
+    """Tests for LONG limit buy that fills when price drops to limit level."""
+
+    def test_trade_count(self, long_limit_fill_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(long_limit_fill_trade_history) == 1, (
+            f"Expected 1 trade, got {len(long_limit_fill_trade_history)}"
+        )
+
+    def test_entry_type_is_limit(self, long_limit_fill_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=LIMIT."""
+        trade = long_limit_fill_trade_history[0]
+        assert trade.entry_type == EntryType.LIMIT, (
+            f"Expected LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_equals_limit(self, long_limit_fill_trade_history: List[TradeRecord]):
+        """Entry price should equal the configured limit price."""
+        trade = long_limit_fill_trade_history[0]
+        assert trade.entry_price == 156.000, (
+            f"Expected entry_price=156.000, got {trade.entry_price}"
+        )
+
+    def test_direction_is_long(self, long_limit_fill_trade_history: List[TradeRecord]):
+        """Trade direction should be LONG."""
+        trade = long_limit_fill_trade_history[0]
+        assert trade.direction == OrderDirection.LONG, (
+            f"Expected LONG, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, long_limit_fill_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = long_limit_fill_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# SHORT LIMIT FILL
+# =============================================================================
+
+class TestShortLimitFill:
+    """Tests for SHORT limit sell that fills when price rises to limit level."""
+
+    def test_trade_count(self, short_limit_fill_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(short_limit_fill_trade_history) == 1, (
+            f"Expected 1 trade, got {len(short_limit_fill_trade_history)}"
+        )
+
+    def test_entry_type_is_limit(self, short_limit_fill_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=LIMIT."""
+        trade = short_limit_fill_trade_history[0]
+        assert trade.entry_type == EntryType.LIMIT, (
+            f"Expected LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_equals_limit(self, short_limit_fill_trade_history: List[TradeRecord]):
+        """Entry price should equal the configured limit price."""
+        trade = short_limit_fill_trade_history[0]
+        assert trade.entry_price == 157.300, (
+            f"Expected entry_price=157.300, got {trade.entry_price}"
+        )
+
+    def test_direction_is_short(self, short_limit_fill_trade_history: List[TradeRecord]):
+        """Trade direction should be SHORT."""
+        trade = short_limit_fill_trade_history[0]
+        assert trade.direction == OrderDirection.SHORT, (
+            f"Expected SHORT, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, short_limit_fill_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = short_limit_fill_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# LIMIT FILL THEN SL TRIGGER
+# =============================================================================
+
+class TestLimitFillThenSl:
+    """Tests for limit order fill followed by SL trigger."""
+
+    def test_trade_count(self, limit_sl_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(limit_sl_trade_history) == 1, (
+            f"Expected 1 trade, got {len(limit_sl_trade_history)}"
+        )
+
+    def test_entry_type_is_limit(self, limit_sl_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=LIMIT."""
+        trade = limit_sl_trade_history[0]
+        assert trade.entry_type == EntryType.LIMIT, (
+            f"Expected LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_equals_limit(self, limit_sl_trade_history: List[TradeRecord]):
+        """Entry price should equal the configured limit price."""
+        trade = limit_sl_trade_history[0]
+        assert trade.entry_price == 156.500, (
+            f"Expected entry_price=156.500, got {trade.entry_price}"
+        )
+
+    def test_close_reason_is_sl(self, limit_sl_trade_history: List[TradeRecord]):
+        """Trade should be closed by SL trigger."""
+        trade = limit_sl_trade_history[0]
+        assert trade.close_reason == CloseReason.SL_TRIGGERED, (
+            f"Expected SL_TRIGGERED, got {trade.close_reason}"
+        )
+
+    def test_exit_price_equals_sl(self, limit_sl_trade_history: List[TradeRecord]):
+        """Exit price should equal stop loss level."""
+        trade = limit_sl_trade_history[0]
+        assert trade.exit_price == 155.800, (
+            f"Expected exit_price=155.800, got {trade.exit_price}"
+        )
+
+    def test_negative_pnl(self, limit_sl_trade_history: List[TradeRecord]):
+        """LONG closed at SL below entry should have negative gross P&L."""
+        trade = limit_sl_trade_history[0]
+        assert trade.gross_pnl < 0, (
+            f"Expected negative P&L for SL close, got {trade.gross_pnl}"
+        )
+
+    def test_sl_tp_triggered_count(self, limit_sl_execution_stats: ExecutionStats):
+        """Execution stats should show 1 SL/TP trigger."""
+        assert limit_sl_execution_stats.sl_tp_triggered == 1, (
+            f"Expected 1 trigger, got {limit_sl_execution_stats.sl_tp_triggered}"
+        )
+
+
+# =============================================================================
+# MODIFY LIMIT PRICE FILL
+# =============================================================================
+
+class TestModifyLimitPriceFill:
+    """Tests for limit order with price modified before fill."""
+
+    def test_trade_count(self, modify_limit_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(modify_limit_trade_history) == 1, (
+            f"Expected 1 trade, got {len(modify_limit_trade_history)}"
+        )
+
+    def test_entry_type_is_limit(self, modify_limit_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=LIMIT."""
+        trade = modify_limit_trade_history[0]
+        assert trade.entry_type == EntryType.LIMIT, (
+            f"Expected LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_is_modified(self, modify_limit_trade_history: List[TradeRecord]):
+        """Entry price should equal the modified limit price, not original."""
+        trade = modify_limit_trade_history[0]
+        # Original was 155.000, modified to 156.200
+        assert trade.entry_price == 156.200, (
+            f"Expected modified entry_price=156.200, got {trade.entry_price}"
+        )
+
+    def test_direction_is_long(self, modify_limit_trade_history: List[TradeRecord]):
+        """Trade direction should be LONG."""
+        trade = modify_limit_trade_history[0]
+        assert trade.direction == OrderDirection.LONG, (
+            f"Expected LONG, got {trade.direction}"
         )

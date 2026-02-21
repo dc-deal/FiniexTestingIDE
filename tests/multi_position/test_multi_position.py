@@ -18,6 +18,7 @@ import pytest
 from typing import Dict, Any, List
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.order_types import OrderDirection
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
@@ -197,7 +198,7 @@ class TestSelectiveClose:
             signal_tick = spec['tick_number']
             matching = [
                 t for t in trade_history
-                if t.direction == spec['direction']
+                if t.direction == OrderDirection(spec['direction'].lower())
                 and abs(t.lots - spec['lot_size']) < 0.001
                 and abs(t.entry_tick_index - signal_tick) < 10
             ]
@@ -227,8 +228,8 @@ class TestHedging:
     def test_has_both_directions(self, trade_history: List[TradeRecord]):
         """Trade history should contain both LONG and SHORT trades."""
         directions = set(t.direction for t in trade_history)
-        assert "LONG" in directions, "Missing LONG trades"
-        assert "SHORT" in directions, "Missing SHORT trades"
+        assert OrderDirection.LONG in directions, "Missing LONG trades"
+        assert OrderDirection.SHORT in directions, "Missing SHORT trades"
 
     def test_opposite_directions_overlap(
         self, trade_history: List[TradeRecord]
@@ -237,8 +238,8 @@ class TestHedging:
         LONG and SHORT positions must have overlapping time windows.
         Trade #0 (LONG) and Trade #2 (SHORT) overlap at ticks ~3006-7006.
         """
-        longs = [t for t in trade_history if t.direction == "LONG"]
-        shorts = [t for t in trade_history if t.direction == "SHORT"]
+        longs = [t for t in trade_history if t.direction == OrderDirection.LONG]
+        shorts = [t for t in trade_history if t.direction == OrderDirection.SHORT]
 
         # Check if any LONG overlaps with any SHORT
         has_overlap = False
@@ -272,8 +273,8 @@ class TestHedging:
         hedging_tick = 5000
         open_trades = _trades_open_at_tick(trade_history, hedging_tick)
 
-        long_count = sum(1 for t in open_trades if t.direction == "LONG")
-        short_count = sum(1 for t in open_trades if t.direction == "SHORT")
+        long_count = sum(1 for t in open_trades if t.direction == OrderDirection.LONG)
+        short_count = sum(1 for t in open_trades if t.direction == OrderDirection.SHORT)
 
         assert long_count == 2, (
             f"Expected 2 LONGs at tick {hedging_tick}, got {long_count}"
