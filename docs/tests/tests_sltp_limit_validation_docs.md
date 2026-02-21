@@ -1,19 +1,19 @@
-# SL/TP Validation Tests Documentation
+# SL/TP & Limit Order Validation Tests Documentation
 
 ## Overview
 
-The SL/TP validation test suite verifies stop loss and take profit trigger detection, close reason propagation, and position modification. Each scenario uses real USDJPY extreme move time windows from the Discovery system to guarantee SL/TP triggers within the data range.
+The SL/TP & limit order validation test suite verifies stop loss/take profit trigger detection, limit order fills, maker fees, close reason propagation, and order modifications. Each scenario uses real USDJPY extreme move time windows from the Discovery system to guarantee triggers/fills within the data range.
 
-**Test Configuration:** `backtesting/sltp_validation_test.json`
+**Test Configuration:** `backtesting/sltp_limit_validation_test.json`
 - Symbol: USDJPY (mt5)
 - Account Currency: JPY (auto-detected)
-- 5 scenarios, each opening 1 trade at tick 10 with configured SL/TP levels
+- 9 scenarios: 5 SL/TP + 4 limit order, each opening 1 trade at tick 10
 - Seeds: api_latency=12345, market_execution=67890
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`
 
-**Total Tests:** 32
+**Total Tests:** 32+ (SL/TP) + ~22 (limit order) = ~54
 
-**Location:** `tests/sltp_validation/`
+**Location:** `tests/sltp_limit_validation/`
 
 ---
 
@@ -22,11 +22,11 @@ The SL/TP validation test suite verifies stop loss and take profit trigger detec
 ```
 tests/
 ├── shared/
-│   ├── fixture_helpers.py           ← extract_execution_stats() added here
-│   └── shared_sltp_validation.py    ← Reusable test classes (5 classes, 32 tests)
-├── sltp_validation/
-│   ├── conftest.py                  ← SLTP_VALIDATION_CONFIG = "backtesting/sltp_validation_test.json"
-│   └── test_sltp_validation.py      ← Imports shared test classes
+│   ├── fixture_helpers.py                ← extract_execution_stats() added here
+│   └── shared_sltp_limit_validation.py   ← Reusable test classes (9 classes, ~54 tests)
+├── sltp_limit_validation/
+│   ├── conftest.py                       ← SLTP_LIMIT_VALIDATION_CONFIG = "backtesting/sltp_limit_validation_test.json"
+│   └── test_sltp_limit_validation.py     ← Imports shared test classes
 ```
 
 ---
@@ -176,8 +176,8 @@ SL/TP closes bypass the latency pipeline entirely. The fill price equals the con
 
 ```bash
 # Run only SL/TP validation tests
-pytest tests/sltp_validation/ -v
+pytest tests/sltp_limit_validation/ -v
 
 # Run with output (shows scenario execution)
-pytest tests/sltp_validation/ -v -s
+pytest tests/sltp_limit_validation/ -v -s
 ```
