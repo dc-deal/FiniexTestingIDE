@@ -278,11 +278,13 @@ At scenario end, `close_all_remaining_orders()` handles all three worlds:
 
 1. **Open positions:** Closed via synthetic `PendingOrder` objects that bypass the latency pipeline entirely (no pending stats impact). This is internal cleanup, not an algo action.
 
-2. **Active limit orders** (`_active_limit_orders`): Discarded with warning log. These are unfilled orders whose price trigger was never reached.
+2. **Active limit orders** (`_active_limit_orders`): **Preserved** (not cleared). A warning is logged. `get_pending_stats()` is called after cleanup and snapshots them into `PendingOrderStats.active_limit_orders` — capturing the bot's unfilled plan at scenario end.
 
-3. **Active stop orders** (`_active_stop_orders`): Discarded with warning log. These are untriggered stop orders.
+3. **Active stop orders** (`_active_stop_orders`): **Preserved** (not cleared). A warning is logged. Snapshotted into `PendingOrderStats.active_stop_orders` — capturing untriggered breakout orders.
 
 4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce individual `PendingOrderRecord` entries in `anomaly_orders`.
+
+**Note:** `check_clean_shutdown()` validates only the latency queue (via `_has_pipeline_orders()` override in `TradeSimulator`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 
 ---
 

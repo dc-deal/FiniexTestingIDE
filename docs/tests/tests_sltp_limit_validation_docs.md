@@ -7,11 +7,11 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 **Test Configuration:** `backtesting/sltp_limit_validation_test.json`
 - Symbol: USDJPY (mt5)
 - Account Currency: JPY (auto-detected)
-- 16 scenarios: 5 SL/TP + 4 limit order + 7 stop order, each opening 1 trade at tick 10
+- 17 scenarios: 5 SL/TP + 4 limit order + 7 stop order + 1 cancel limit, each opening 1 trade at tick 10
 - Seeds: api_latency=12345, market_execution=67890
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`
 
-**Total Tests:** ~54 (SL/TP + limit) + ~27 (stop orders) = ~81
+**Total Tests:** ~54 (SL/TP + limit) + ~27 (stop orders) + 1 (cancel limit) = ~82
 
 **Location:** `tests/sltp_limit_validation/`
 
@@ -23,7 +23,7 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 tests/
 ├── shared/
 │   ├── fixture_helpers.py                ← extract_execution_stats() added here
-│   └── shared_sltp_limit_validation.py   ← Reusable test classes (16 classes, ~81 tests)
+│   └── shared_sltp_limit_validation.py   ← Reusable test classes (17 classes, ~82 tests)
 ├── sltp_limit_validation/
 │   ├── conftest.py                       ← SLTP_LIMIT_VALIDATION_CONFIG = "backtesting/sltp_limit_validation_test.json"
 │   └── test_sltp_limit_validation.py     ← Imports shared test classes
@@ -35,7 +35,7 @@ tests/
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `batch_execution_summary` | session | Runs all 16 scenarios once per session |
+| `batch_execution_summary` | session | Runs all 17 scenarios once per session |
 | `long_tp_tick_loop` | session | Tick loop for LONG TP scenario |
 | `long_tp_trade_history` | session | TradeRecord list for LONG TP |
 | `long_tp_execution_stats` | session | ExecutionStats for LONG TP |
@@ -84,6 +84,9 @@ tests/
 | `cancel_stop_tick_loop` | session | Tick loop for cancel stop scenario |
 | `cancel_stop_trade_history` | session | TradeRecord list for cancel stop |
 | `cancel_stop_execution_stats` | session | ExecutionStats for cancel stop |
+| `cancel_limit_tick_loop` | session | Tick loop for cancel limit scenario |
+| `cancel_limit_trade_history` | session | TradeRecord list for cancel limit |
+| `cancel_limit_execution_stats` | session | ExecutionStats for cancel limit |
 
 ---
 
@@ -223,6 +226,13 @@ STOP LONG cancelled at tick 100 before it can trigger. No position opened.
 |------|-----------|
 | `test_no_trades` | 0 trades (cancel prevented fill) |
 
+### TestCancelLimitNoFill (1 test)
+LONG LIMIT at utopian price (150.000) cancelled at tick 100 before fill. No position opened.
+
+| Test | Validates |
+|------|-----------|
+| `test_no_trades` | 0 trades (cancel prevented fill) |
+
 ---
 
 ## Scenario Design
@@ -251,6 +261,7 @@ Scenarios use real extreme move windows from the Discovery system (`discoveries_
 | `stop_long_then_tp` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | STOP at 156.800, TP=157.300 |
 | `modify_stop_trigger` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | STOP 158.000→157.000 at tick 500 |
 | `cancel_stop_no_fill` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | Cancelled at tick 100, 0 trades |
+| `cancel_limit_no_fill` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | LIMIT at 150.000, cancelled at tick 100, 0 trades |
 
 ### SL/TP Trigger Mechanics
 
@@ -303,6 +314,18 @@ The `modify_stop_trigger` scenario places an unreachable stop (158.000) then mod
 ```
 
 The `cancel_stop_no_fill` scenario verifies that cancellation prevents any fill — 0 trades expected.
+
+### Cancel Limit Sequence
+
+`cancel_limit_sequence` calls `cancel_limit_order()` at a configured tick, clearing the tracked order ID:
+
+```json
+"cancel_limit_sequence": [
+    { "tick_number": 100 }
+]
+```
+
+The `cancel_limit_no_fill` scenario places a LONG LIMIT at an unreachable price (150.000) then cancels it at tick 100 — 0 trades expected.
 
 ---
 

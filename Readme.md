@@ -4,13 +4,22 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.1.1
+> **Version:** 1.1.2
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.1.1
+## What's New in 1.1.2
+
+- **STOP / STOP_LIMIT Orders** — Breakout entry orders: STOP fills at market price (taker fee), STOP_LIMIT triggers at stop price then fills at limit price (maker fee)
+- **Active Order Preservation** — Unfilled limit/stop orders preserved at scenario end, captured in `PendingOrderStats` for post-run inspection
+- **Active Order Reporting** — Active order counts displayed in terminal output (executive summary, per-scenario box, portfolio summary)
+- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingAPI.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
+- **`cancel_limit_sequence` Config** — BacktestingDeterministic parameter to cancel a limit order at a configured tick (analogous to `cancel_stop_sequence`)
+- **SL/TP & Limit Validation Tests** — Expanded from 8 to 17 scenarios (~82 tests): STOP/STOP_LIMIT triggers, STOP then TP, modify stop, cancel stop/limit
+
+### Previous: 1.1.1
 
 - **Live Trade Executor** — Full LiveTradeExecutor implementation with broker adapter communication
 - **LiveOrderTracker** — Time-based pending order management with broker reference tracking and timeout detection
@@ -41,7 +50,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (394 tests across 9 test suites)
+- ✅ Validated accuracy (~520 tests across 9 test suites)
 
 ---
 
@@ -271,11 +280,14 @@ Validates pending order statistics and force-closed detection:
 - Synthetic close path (no false force-closed from end-of-scenario cleanup)
 - Force-closed anomaly detection with reason field
 
-### SL/TP Validation Tests (32 tests)
-Validates stop loss and take profit trigger detection:
+### SL/TP Validation Tests (~82 tests)
+Validates stop loss, take profit, limit, stop, and stop-limit order behavior:
 - SL/TP trigger for LONG and SHORT positions (close reason, exit price, P&L)
 - Deterministic fill at SL/TP level (bypasses latency pipeline)
-- Position modification (modify_sequence — updated TP triggers instead of original)
+- Limit order fills (LONG/SHORT), limit then SL, modify limit price
+- STOP / STOP_LIMIT orders (market fill vs. limit conversion), STOP then TP
+- Order modification: modify_sequence (TP), modify_limit_sequence, modify_stop_sequence
+- Order cancellation: cancel_stop_sequence, cancel_limit_sequence
 - Discovery-driven test data (real extreme move windows from Extreme Move Scanner)
 
 ### Data Integration Tests (9 tests)
@@ -313,7 +325,7 @@ Validates data pipeline integrity:
 | [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
 | [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
 | [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
-| [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | 32+ SL/TP trigger, limit order & modification tests |
+| [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | ~82 SL/TP, limit, stop, and stop-limit validation tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---
