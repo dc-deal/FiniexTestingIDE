@@ -357,13 +357,14 @@ class OpenOrderRequest:
 
 class ModificationRejectionReason(Enum):
     """
-    Reason why a position or limit order modification was rejected.
+    Reason why a position, limit order, or stop order modification was rejected.
 
-    Used by modify_position() and modify_limit_order() to provide
-    structured rejection feedback.
+    Used by modify_position(), modify_limit_order(), and modify_stop_order()
+    to provide structured rejection feedback.
     """
     POSITION_NOT_FOUND = "position_not_found"
     LIMIT_ORDER_NOT_FOUND = "limit_order_not_found"
+    STOP_ORDER_NOT_FOUND = "stop_order_not_found"
     INVALID_SL_LEVEL = "invalid_sl_level"
     INVALID_TP_LEVEL = "invalid_tp_level"
     SL_TP_CROSS = "sl_tp_cross"

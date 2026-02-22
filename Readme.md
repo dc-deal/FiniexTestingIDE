@@ -66,8 +66,9 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Live Trade Executor** - Broker adapter communication with pending order tracking
 - **Spread Calculation** - Live bid/ask spread from tick data
 - **Margin Management** - Position sizing with margin checks
-- **Order Lifecycle** - PENDING → EXECUTED status tracking (Market + Limit orders)
+- **Order Lifecycle** - PENDING → EXECUTED status tracking (Market, Limit, Stop, Stop-Limit)
 - **Limit Orders** - Two-phase lifecycle: latency simulation → price trigger monitoring
+- **Stop Orders** - Breakout entry with market fill (STOP) or limit conversion (STOP_LIMIT)
 - **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken, maker fee for limit fills)
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
@@ -303,6 +304,7 @@ Validates data pipeline integrity:
 | [Execution Layer Architecture](docs/architecture_execution_layer.md) | Sim/Live hybrid execution design |
 | [Simulation vs Live Flow](docs/simulation_vs_live_flow.md) | Tick flow comparison, event-driven model |
 | [Live Execution Architecture](docs/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
+| [Pending Order Architecture](docs/pending_order_architecture.md) | 3-world lifecycle (latency, limit, stop), modify rationale |
 | [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
 | [Baseline Tests](docs/tests/tests_baseline_docs.md) | 44 validation tests |
 | [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
@@ -318,7 +320,7 @@ Validates data pipeline integrity:
 
 ## Current Limitations
 
-- **No Stop/Stop-Limit Orders** - Only Market and Limit orders supported
+- **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
 - **No Partial Fills** - Full position close only, partial fills planned for post-MVP
 - **CORE Namespace Only** - Custom workers must be added to framework folders
 - **No Frontend** - CLI and VS Code launch configs only

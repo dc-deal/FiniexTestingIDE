@@ -559,6 +559,52 @@ class AbstractTradeExecutor(ABC):
             ModificationResult with success status and rejection reason
         """
 
+    @abstractmethod
+    def modify_stop_order(
+        self,
+        order_id: str,
+        new_stop_price: Union[float, _UnsetType] = UNSET,
+        new_limit_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+
+        Only applies to active stop orders (post-latency, waiting for trigger price).
+
+        Args:
+            order_id: Pending stop order ID
+            new_stop_price: New trigger price (UNSET=keep current)
+            new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
+
+    @abstractmethod
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Cancel an active stop order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+
+    @abstractmethod
+    def get_active_order_counts(self) -> Dict[str, int]:
+        """
+        Get counts of active orders by world (latency, limit, stop).
+
+        Returns:
+            Dict with keys "latency_queue", "active_limits", "active_stops"
+        """
+
     # ============================================
     # Queries (concrete - same for all executors)
     # ============================================

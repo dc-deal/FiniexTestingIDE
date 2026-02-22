@@ -18,6 +18,34 @@ from datetime import datetime
 from typing import List, Optional
 
 from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.order_types import OrderDirection, OrderType
+
+
+@dataclass
+class ActiveOrderSnapshot:
+    """
+    Snapshot of a single active order (limit or stop) for stats reporting.
+
+    Populated at stats collection time from _active_limit_orders / _active_stop_orders.
+    Contains the order_id that Decision Logic received from send_order() — same ID
+    used for modify_limit_order(), modify_stop_order(), cancel_limit_order(), cancel_stop_order().
+
+    Args:
+        order_id: Order identifier (same as OrderResult.order_id from send_order())
+        order_type: LIMIT, STOP, or STOP_LIMIT
+        symbol: Trading symbol
+        direction: LONG or SHORT
+        lots: Position size
+        entry_price: Limit price (LIMIT) or stop trigger price (STOP/STOP_LIMIT)
+        limit_price: Limit fill price (only for STOP_LIMIT, None otherwise)
+    """
+    order_id: str
+    order_type: OrderType
+    symbol: str
+    direction: OrderDirection
+    lots: float
+    entry_price: float
+    limit_price: Optional[float] = None
 
 
 @dataclass
@@ -91,6 +119,11 @@ class PendingOrderStats:
 
     # Individual records for anomalous outcomes only
     anomaly_orders: List[PendingOrderRecord] = field(default_factory=list)
+
+    # Active order snapshots (populated by TradeSimulator.get_pending_stats())
+    active_limit_orders: List[ActiveOrderSnapshot] = field(default_factory=list)
+    active_stop_orders: List[ActiveOrderSnapshot] = field(default_factory=list)
+    latency_queue_count: int = 0
 
     # Internal: running sum for average calculation (not serialized)
     _latency_ticks_sum: int = field(default=0, repr=False)

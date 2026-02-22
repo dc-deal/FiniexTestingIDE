@@ -30,7 +30,7 @@ FUTURE NOTES:
   Example: DecisionTradingAPI(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .portfolio_manager import UNSET, _UnsetType
@@ -400,6 +400,58 @@ class DecisionTradingAPI:
             new_stop_loss=stop_loss,
             new_take_profit=take_profit
         )
+
+    def modify_stop_order(
+        self,
+        order_id: str,
+        stop_price: Union[float, _UnsetType] = UNSET,
+        price: Union[float, _UnsetType] = UNSET,
+        stop_loss: Union[float, None, _UnsetType] = UNSET,
+        take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+
+        Only applies to active stop orders (post-latency, waiting for trigger price).
+
+        Args:
+            order_id: Pending stop order ID
+            stop_price: New trigger price (UNSET=keep current)
+            price: New limit price for STOP_LIMIT (UNSET=keep current)
+            stop_loss: New SL price, None to remove, UNSET to keep current
+            take_profit: New TP price, None to remove, UNSET to keep current
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
+        return self._executor.modify_stop_order(
+            order_id=order_id,
+            new_stop_price=stop_price,
+            new_limit_price=price,
+            new_stop_loss=stop_loss,
+            new_take_profit=take_profit
+        )
+
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Cancel an active stop order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+        return self._executor.cancel_stop_order(order_id)
+
+    def get_active_order_counts(self) -> Dict[str, int]:
+        """
+        Get counts of active orders by world (latency, limit, stop).
+
+        Returns:
+            Dict with keys "latency_queue", "active_limits", "active_stops"
+        """
+        return self._executor.get_active_order_counts()
 
     def get_order_history(self, symbol: Optional[str] = None) -> List[OrderResult]:
         """
