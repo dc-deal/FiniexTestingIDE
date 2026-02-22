@@ -505,6 +505,18 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
+            "name": "🔬 Run cautious_macd_SANDBOX",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "cautious_macd_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run eurusd_3_SANDBOX - aggressive_trend",
             "type": "debugpy",
             "request": "launch",
@@ -671,7 +683,7 @@
                 "--strategy",
                 "blocks",
                 "--block-size",
-                "8",
+                "16",
                 "--count",
                 "8",
                 "--sessions",

@@ -451,11 +451,14 @@ Current limitations:
 
 | Rule | Description |
 |------|-------------|
-| **Market Orders** | Only market orders (no limit/stop yet) |
+| **Order Types** | MARKET, STOP, STOP_LIMIT supported. LIMIT pending. |
 | **Full Close** | Close entire position (no partial fills yet) |
 | **Margin Check** | Orders rejected if insufficient margin |
+| **Pending Mgmt** | `cancel_stop_order`, `modify_position` (SL/TP) available |
 
 > **Multiple Positions:** The system supports multiple simultaneous positions, but this is **untested**. All included bots use single-position logic. Use at your own risk.
+
+> **Broker compatibility:** STOP orders are not supported by all brokers (e.g. Kraken requires STOP_LIMIT). Use `get_required_order_types()` to declare order needs; the framework validates this at startup. Set `use_stop_limit: true` in `decision_logic_config` for Kraken scenarios.
 
 ---
 
@@ -476,8 +479,9 @@ Current limitations:
 
 | Logic | Description |
 |-------|-------------|
-| `CORE/aggressive_trend` | OR-logic: RSI or Envelope triggers trade |
-| `CORE/simple_consensus` | AND-logic: Both indicators must agree |
+| `CORE/aggressive_trend` | OR-logic: RSI or Envelope triggers trade (MARKET orders) |
+| `CORE/simple_consensus` | AND-logic: Both indicators must agree (MARKET orders) |
+| `CORE/cautious_macd` | MACD crossover + RSI filter, STOP/STOP_LIMIT entry, SL/TP, break-even |
 | `CORE/backtesting/backtesting_deterministic` | Test-only: Trades at fixed ticks |
 
 ---
