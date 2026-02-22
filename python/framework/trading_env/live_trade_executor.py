@@ -29,7 +29,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 """
 
 from datetime import datetime, timezone
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -536,6 +536,58 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         return ModificationResult(
             success=False,
             rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
+
+    def modify_stop_order(
+        self,
+        order_id: str,
+        new_stop_price: Union[float, _UnsetType] = UNSET,
+        new_limit_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending stop order (not supported in live).
+
+        Live executor does not manage stop orders locally — broker handles them.
+
+        Args:
+            order_id: Pending stop order ID
+            new_stop_price: New trigger price (UNSET=keep current)
+            new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult (always NOT_FOUND — no local stop order queue)
+        """
+        return ModificationResult(
+            success=False,
+            rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
+
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Cancel an active stop order (not supported in live).
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            False (no local stop order queue)
+        """
+        return False
+
+    def get_active_order_counts(self) -> Dict[str, int]:
+        """
+        Get counts of active orders by world.
+
+        Returns:
+            Dict with pending count from broker tracker
+        """
+        return {
+            "latency_queue": self._order_tracker.get_pending_count(),
+            "active_limits": 0,
+            "active_stops": 0,
+        }
 
     # ============================================
     # Pending Order Awareness

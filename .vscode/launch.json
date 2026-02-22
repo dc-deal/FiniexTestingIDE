@@ -147,6 +147,18 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run (Limit/Stop Mock Test)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/limit_stop_order_mock_scenario_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 Run (BENCHMARK Scenario)",
             "type": "debugpy",
             "request": "launch",

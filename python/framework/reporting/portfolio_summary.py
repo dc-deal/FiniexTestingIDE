@@ -249,6 +249,16 @@ class PortfolioSummary:
             print(renderer.green(
                 f"      Avg Latency: {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"))
 
+        # Active orders at scenario end (bot's pending plan)
+        active_parts = []
+        if pending_stats.active_limit_orders:
+            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+        if pending_stats.active_stop_orders:
+            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+        if active_parts:
+            print(renderer.cyan(
+                f"      Active Orders: {' | '.join(active_parts)}"))
+
     def _has_any_time_divergence(
         self,
         aggregated_portfolios: Dict[str, AggregatedPortfolio]

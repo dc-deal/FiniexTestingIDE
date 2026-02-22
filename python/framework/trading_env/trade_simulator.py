@@ -31,7 +31,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
 from python.framework.types.portfolio_trade_record_types import CloseReason, EntryType
-from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
 from .broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from ..types.order_types import (
@@ -112,23 +112,34 @@ class TradeSimulator(AbstractTradeExecutor):
         # Active limit orders waiting for price trigger (post-latency)
         self._active_limit_orders: List[PendingOrder] = []
 
+        # Active stop orders waiting for trigger price (post-latency)
+        self._active_stop_orders: List[PendingOrder] = []
+
     # ============================================
     # Pending Order Processing (simulation-specific)
     # ============================================
 
     def _process_pending_orders(self) -> None:
         """
-        Two-phase pending order processing.
+        Three-phase pending order processing.
 
         Phase 1: Drain latency queue (broker accepted orders after delay).
           - MARKET OPEN → fill immediately at current tick price
           - LIMIT OPEN → check if price already reached → fill LIMIT_IMMEDIATE,
             else move to _active_limit_orders for price monitoring
+          - STOP OPEN → check if stop already triggered → fill at market,
+            else move to _active_stop_orders for trigger monitoring
+          - STOP_LIMIT OPEN → check if stop already triggered → convert to limit,
+            else move to _active_stop_orders for trigger monitoring
           - CLOSE → fill immediately
 
         Phase 2: Check active limit orders for price trigger.
           - LONG limit: ask <= limit_price → fill at limit_price
           - SHORT limit: bid >= limit_price → fill at limit_price
+
+        Phase 3: Check active stop orders for trigger price.
+          - STOP: trigger reached → fill at current market price
+          - STOP_LIMIT: trigger reached → convert to limit order (→ Phase 2)
         """
         # === Phase 1: Latency queue drain ===
         filled_orders = self.latency_simulator.process_tick(self._tick_counter)
@@ -167,6 +178,39 @@ class TradeSimulator(AbstractTradeExecutor):
                             self.logger.info(
                                 f"📋 Limit order {pending_order.pending_order_id} "
                                 f"activated — waiting for price {pending_order.entry_price:.5f}")
+
+                    # Stop orders: check immediate trigger or queue for monitoring
+                    elif pending_order.order_type == OrderType.STOP:
+                        if self._is_stop_price_reached(pending_order):
+                            # Stop already triggered during latency → fill at market
+                            self._fill_open_order(
+                                pending_order,
+                                entry_type=EntryType.STOP,
+                                fill_type=FillType.STOP
+                            )
+                            self.logger.info(
+                                f"⚡ Stop order {pending_order.pending_order_id} "
+                                f"triggered immediately at market price "
+                                f"(stop {pending_order.entry_price:.5f} already reached)")
+                        else:
+                            self._active_stop_orders.append(pending_order)
+                            self.logger.info(
+                                f"📋 Stop order {pending_order.pending_order_id} "
+                                f"activated — waiting for trigger {pending_order.entry_price:.5f}")
+
+                    # Stop-Limit orders: check immediate trigger or queue
+                    elif pending_order.order_type == OrderType.STOP_LIMIT:
+                        if self._is_stop_price_reached(pending_order):
+                            # Stop triggered → convert to limit order
+                            self._convert_stop_limit_to_limit(pending_order)
+                        else:
+                            self._active_stop_orders.append(pending_order)
+                            limit_price = pending_order.order_kwargs.get("limit_price", 0)
+                            self.logger.info(
+                                f"📋 Stop-Limit order {pending_order.pending_order_id} "
+                                f"activated — waiting for trigger {pending_order.entry_price:.5f} "
+                                f"(limit at {limit_price:.5f})")
+
                     else:
                         # Market order → fill at current tick price
                         self._fill_open_order(pending_order)
@@ -189,19 +233,51 @@ class TradeSimulator(AbstractTradeExecutor):
                     continue
 
                 if self._is_limit_price_reached(pending):
+                    # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
+                    is_from_stop = pending.order_kwargs.get("_from_stop_limit", False)
+                    entry_type = EntryType.STOP_LIMIT if is_from_stop else EntryType.LIMIT
+                    fill_type = FillType.STOP_LIMIT if is_from_stop else FillType.LIMIT
                     self._fill_open_order(
                         pending,
                         fill_price=pending.entry_price,
-                        entry_type=EntryType.LIMIT,
-                        fill_type=FillType.LIMIT
+                        entry_type=entry_type,
+                        fill_type=fill_type
                     )
                     self.logger.info(
-                        f"🎯 Limit order {pending.pending_order_id} triggered "
+                        f"🎯 {'Stop-Limit' if is_from_stop else 'Limit'} order "
+                        f"{pending.pending_order_id} triggered "
                         f"at {pending.entry_price:.5f} "
                         f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
                 else:
                     remaining.append(pending)
             self._active_limit_orders = remaining
+
+        # === Phase 3: Active stop order trigger monitoring ===
+        if self._active_stop_orders and self._current_tick:
+            remaining_stops: List[PendingOrder] = []
+            for pending in self._active_stop_orders:
+                if pending.symbol != self._current_tick.symbol:
+                    remaining_stops.append(pending)
+                    continue
+
+                if self._is_stop_price_reached(pending):
+                    if pending.order_type == OrderType.STOP:
+                        # STOP triggered → fill at current market price
+                        self._fill_open_order(
+                            pending,
+                            entry_type=EntryType.STOP,
+                            fill_type=FillType.STOP
+                        )
+                        self.logger.info(
+                            f"🛑 Stop order {pending.pending_order_id} triggered "
+                            f"at market price "
+                            f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
+                    elif pending.order_type == OrderType.STOP_LIMIT:
+                        # STOP_LIMIT triggered → convert to limit order
+                        self._convert_stop_limit_to_limit(pending)
+                else:
+                    remaining_stops.append(pending)
+            self._active_stop_orders = remaining_stops
 
     # ============================================
     # Stress Test: Seeded Rejection (toggle via module constants)
@@ -331,13 +407,81 @@ class TradeSimulator(AbstractTradeExecutor):
                     "submitted_at_tick": self._tick_counter
                 }
             )
+        elif request.order_type == OrderType.STOP:
+            # Validate stop price
+            if request.stop_price is None or request.stop_price <= 0:
+                self._orders_rejected += 1
+                result = create_rejection_result(
+                    order_id=order_id,
+                    reason=RejectionReason.INVALID_PRICE,
+                    message=f"Stop order requires positive stop_price, got: {request.stop_price}"
+                )
+                self._order_history.append(result)
+                return result
+
+            # Submit to latency simulator (stop_price as entry_price for trigger check)
+            self.latency_simulator.submit_open_order(
+                order_id=order_id,
+                request=request,
+                current_tick=self._tick_counter,
+            )
+            result = OrderResult(
+                order_id=order_id,
+                status=OrderStatus.PENDING,
+                metadata={
+                    "symbol": request.symbol,
+                    "direction": request.direction,
+                    "lots": request.lots,
+                    "stop_price": request.stop_price,
+                    "submitted_at_tick": self._tick_counter
+                }
+            )
+        elif request.order_type == OrderType.STOP_LIMIT:
+            # Validate both prices
+            if request.stop_price is None or request.stop_price <= 0:
+                self._orders_rejected += 1
+                result = create_rejection_result(
+                    order_id=order_id,
+                    reason=RejectionReason.INVALID_PRICE,
+                    message=f"Stop-Limit order requires positive stop_price, got: {request.stop_price}"
+                )
+                self._order_history.append(result)
+                return result
+            if request.price is None or request.price <= 0:
+                self._orders_rejected += 1
+                result = create_rejection_result(
+                    order_id=order_id,
+                    reason=RejectionReason.INVALID_PRICE,
+                    message=f"Stop-Limit order requires positive limit price, got: {request.price}"
+                )
+                self._order_history.append(result)
+                return result
+
+            # Submit to latency simulator (stop_price as entry_price, limit_price in kwargs)
+            self.latency_simulator.submit_open_order(
+                order_id=order_id,
+                request=request,
+                current_tick=self._tick_counter,
+            )
+            result = OrderResult(
+                order_id=order_id,
+                status=OrderStatus.PENDING,
+                metadata={
+                    "symbol": request.symbol,
+                    "direction": request.direction,
+                    "lots": request.lots,
+                    "stop_price": request.stop_price,
+                    "limit_price": request.price,
+                    "submitted_at_tick": self._tick_counter
+                }
+            )
         else:
-            # Extended orders — not supported
+            # Unsupported order types (TRAILING_STOP, ICEBERG, etc.)
             self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
-                message=f"Order type {request.order_type} not supported"
+                message=f"Order type {request.order_type} not supported in simulation"
             )
 
         # Store in order history
@@ -419,6 +563,64 @@ class TradeSimulator(AbstractTradeExecutor):
         else:
             # Sell limit: fill when bid >= limit price
             return self._current_tick.bid >= pending.entry_price
+
+    def _is_stop_price_reached(self, pending: PendingOrder) -> bool:
+        """
+        Check if current tick price has reached the stop trigger price.
+
+        Inverse of limit: stop triggers on breakout (price moves through stop level).
+
+        Args:
+            pending: Stop order with entry_price = stop trigger price
+
+        Returns:
+            True if stop price is reached (order should trigger)
+        """
+        if not self._current_tick or pending.symbol != self._current_tick.symbol:
+            return False
+
+        if pending.direction == OrderDirection.LONG:
+            # Buy stop: triggers when ask >= stop_price (breakout up)
+            return self._current_tick.ask >= pending.entry_price
+        else:
+            # Sell stop: triggers when bid <= stop_price (breakout down)
+            return self._current_tick.bid <= pending.entry_price
+
+    def _convert_stop_limit_to_limit(self, pending: PendingOrder) -> None:
+        """
+        Convert a triggered STOP_LIMIT order to a LIMIT order.
+
+        Stop price was reached — now place the limit order at the stored limit_price.
+        If limit price is already reached, fill immediately. Otherwise queue to
+        _active_limit_orders for Phase 2 monitoring.
+
+        Args:
+            pending: STOP_LIMIT PendingOrder with order_kwargs["limit_price"]
+        """
+        limit_price = pending.order_kwargs.get("limit_price", 0)
+
+        # Mutate pending: becomes a LIMIT order at limit_price
+        pending.entry_price = limit_price
+        pending.order_type = OrderType.LIMIT
+        pending.order_kwargs["_from_stop_limit"] = True
+
+        if self._is_limit_price_reached(pending):
+            # Limit price already reached → fill immediately
+            self._fill_open_order(
+                pending,
+                fill_price=limit_price,
+                entry_type=EntryType.STOP_LIMIT,
+                fill_type=FillType.STOP_LIMIT
+            )
+            self.logger.info(
+                f"⚡ Stop-Limit order {pending.pending_order_id} "
+                f"stop triggered + limit filled immediately at {limit_price:.5f}")
+        else:
+            # Queue for Phase 2 limit monitoring
+            self._active_limit_orders.append(pending)
+            self.logger.info(
+                f"🔄 Stop-Limit order {pending.pending_order_id} "
+                f"stop triggered — now limit order at {limit_price:.5f}")
 
     def get_active_limit_order_count(self) -> int:
         """Get number of active limit orders waiting for price trigger."""
@@ -575,26 +777,205 @@ class TradeSimulator(AbstractTradeExecutor):
         return None
 
     # ============================================
+    # Stop Order Helpers
+    # ============================================
+
+    def get_active_stop_order_count(self) -> int:
+        """Get number of active stop orders waiting for trigger price."""
+        return len(self._active_stop_orders)
+
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Cancel an active stop order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+        for i, pending in enumerate(self._active_stop_orders):
+            if pending.pending_order_id == order_id:
+                self._active_stop_orders.pop(i)
+                self.logger.info(f"❌ Stop order {order_id} cancelled")
+                return True
+        return False
+
+    def modify_stop_order(
+        self,
+        order_id: str,
+        new_stop_price: Union[float, _UnsetType] = UNSET,
+        new_limit_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+
+        Searches _active_stop_orders (post-latency, waiting for trigger price).
+        For STOP orders: SL/TP validated against stop_price (best fill approximation).
+        For STOP_LIMIT orders: SL/TP validated against limit_price (actual fill price).
+
+        Args:
+            order_id: Pending stop order ID
+            new_stop_price: New trigger price (UNSET=keep current)
+            new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
+        # Find pending stop order
+        pending = None
+        for p in self._active_stop_orders:
+            if p.pending_order_id == order_id:
+                pending = p
+                break
+
+        if pending is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
+
+        is_stop_limit = (pending.order_type == OrderType.STOP_LIMIT)
+
+        # Validate new stop_price
+        if not isinstance(new_stop_price, _UnsetType):
+            if new_stop_price <= 0:
+                return ModificationResult(
+                    success=False,
+                    rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+
+        # Validate new limit_price (only for STOP_LIMIT)
+        if not isinstance(new_limit_price, _UnsetType):
+            if not is_stop_limit:
+                return ModificationResult(
+                    success=False,
+                    rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+            if new_limit_price <= 0:
+                return ModificationResult(
+                    success=False,
+                    rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+
+        # Determine effective values (merge UNSET with current)
+        effective_stop = pending.entry_price if isinstance(new_stop_price, _UnsetType) else new_stop_price
+
+        current_limit = pending.order_kwargs.get('limit_price') if pending.order_kwargs else None
+        effective_limit = current_limit if isinstance(new_limit_price, _UnsetType) else new_limit_price
+
+        current_sl = pending.order_kwargs.get('stop_loss') if pending.order_kwargs else None
+        current_tp = pending.order_kwargs.get('take_profit') if pending.order_kwargs else None
+        effective_sl = current_sl if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = current_tp if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Validate SL/TP against reference price
+        # STOP: validate against stop_price (market fill approximation)
+        # STOP_LIMIT: validate against limit_price (actual fill price)
+        reference_price = effective_limit if is_stop_limit else effective_stop
+        rejection = self._validate_limit_order_sl_tp(
+            pending.direction, reference_price, effective_sl, effective_tp)
+        if rejection is not None:
+            return ModificationResult(success=False, rejection_reason=rejection)
+
+        # Apply changes
+        if not isinstance(new_stop_price, _UnsetType):
+            pending.entry_price = new_stop_price
+        if not isinstance(new_limit_price, _UnsetType) and is_stop_limit:
+            if pending.order_kwargs is None:
+                pending.order_kwargs = {}
+            pending.order_kwargs['limit_price'] = new_limit_price
+        if not isinstance(new_stop_loss, _UnsetType):
+            if pending.order_kwargs is None:
+                pending.order_kwargs = {}
+            if new_stop_loss is None:
+                pending.order_kwargs.pop('stop_loss', None)
+            else:
+                pending.order_kwargs['stop_loss'] = new_stop_loss
+        if not isinstance(new_take_profit, _UnsetType):
+            if pending.order_kwargs is None:
+                pending.order_kwargs = {}
+            if new_take_profit is None:
+                pending.order_kwargs.pop('take_profit', None)
+            else:
+                pending.order_kwargs['take_profit'] = new_take_profit
+
+        self.logger.info(
+            f"✏️ Stop order {order_id} modified — "
+            f"stop={effective_stop:.5f}, "
+            f"{'limit=' + f'{effective_limit:.5f}, ' if is_stop_limit else ''}"
+            f"sl={effective_sl}, tp={effective_tp}")
+
+        return ModificationResult(success=True)
+
+    # ============================================
     # Pending Order Awareness
     # ============================================
 
     def has_pending_orders(self) -> bool:
-        """Check if any orders are in the latency queue or active limit orders."""
+        """Check if any orders are in the latency queue, active limit or stop orders."""
         return (self.latency_simulator.has_pending_orders()
-                or len(self._active_limit_orders) > 0)
+                or len(self._active_limit_orders) > 0
+                or len(self._active_stop_orders) > 0)
+
+    def _has_pipeline_orders(self) -> bool:
+        """Check latency queue only — active limit/stop are intentionally preserved."""
+        return self.latency_simulator.has_pending_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
         return self.latency_simulator.is_pending_close(position_id)
 
-    def get_pending_stats(self) -> PendingOrderStats:
+    def get_active_order_counts(self) -> Dict[str, int]:
         """
-        Get aggregated pending order statistics from latency simulator.
+        Get counts of active orders by world (latency, limit, stop).
 
         Returns:
-            PendingOrderStats with tick-based latency metrics
+            Dict with keys "latency_queue", "active_limits", "active_stops"
         """
-        return self.latency_simulator.get_pending_stats()
+        return {
+            "latency_queue": self.latency_simulator.get_pending_count(),
+            "active_limits": len(self._active_limit_orders),
+            "active_stops": len(self._active_stop_orders),
+        }
+
+    def get_pending_stats(self) -> PendingOrderStats:
+        """
+        Get aggregated pending order statistics with active order snapshots.
+
+        Combines latency simulator stats (resolved orders) with snapshots
+        of currently active limit and stop orders (order IDs, prices, etc.).
+
+        Returns:
+            PendingOrderStats with latency metrics + active order snapshots
+        """
+        stats = self.latency_simulator.get_pending_stats()
+        stats.latency_queue_count = self.latency_simulator.get_pending_count()
+        stats.active_limit_orders = [
+            ActiveOrderSnapshot(
+                order_id=p.pending_order_id,
+                order_type=p.order_type,
+                symbol=p.symbol,
+                direction=p.direction,
+                lots=p.lots,
+                entry_price=p.entry_price,
+                limit_price=p.order_kwargs.get("limit_price") if p.order_kwargs else None,
+            )
+            for p in self._active_limit_orders
+        ]
+        stats.active_stop_orders = [
+            ActiveOrderSnapshot(
+                order_id=p.pending_order_id,
+                order_type=p.order_type,
+                symbol=p.symbol,
+                direction=p.direction,
+                lots=p.lots,
+                entry_price=p.entry_price,
+                limit_price=p.order_kwargs.get("limit_price") if p.order_kwargs else None,
+            )
+            for p in self._active_stop_orders
+        ]
+        return stats
 
     # ============================================
     # Cleanup
@@ -628,13 +1009,20 @@ class TradeSimulator(AbstractTradeExecutor):
                     pos.position_id)
                 self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
 
-        # Clear active limit orders (unfilled limits at scenario end)
+        # Active limit/stop orders are NOT cleared here — they are preserved
+        # so get_pending_stats() can snapshot them as ActiveOrderSnapshot.
+        # This shows the bot's pending "plan" at scenario end in reporting.
         if self._active_limit_orders:
-            self.logger.warning(
-                f"{len(self._active_limit_orders)} unfilled limit orders "
-                f"at scenario end — discarding"
+            self.logger.info(
+                f"📋 {len(self._active_limit_orders)} unfilled limit orders "
+                f"at scenario end — preserved for reporting"
             )
-            self._active_limit_orders.clear()
+
+        if self._active_stop_orders:
+            self.logger.info(
+                f"📋 {len(self._active_stop_orders)} untriggered stop orders "
+                f"at scenario end — preserved for reporting"
+            )
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(

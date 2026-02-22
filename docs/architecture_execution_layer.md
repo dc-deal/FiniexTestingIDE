@@ -8,6 +8,7 @@ The core insight: **Backtesting and live trading share the same portfolio logic.
 
 > **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
 > **Live execution details (LiveTradeExecutor, broker polling, LiveOrderTracker):** see [live_execution_architecture.md](live_execution_architecture.md)
+> **Pending order lifecycle (3 worlds: latency, limit, stop):** see [pending_order_architecture.md](pending_order_architecture.md)
 
 ---
 
@@ -613,4 +614,6 @@ We considered a separate `OrderExecutionAdapter` interface for live execution me
 | **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
 | **Active Limit Order** | A limit order that passed latency simulation but hasn't triggered yet — sits in `_active_limit_orders` waiting for price |
+| **Active Stop Order** | A stop/stop-limit order that passed latency simulation but hasn't triggered yet — sits in `_active_stop_orders` waiting for trigger price |
+| **ActiveOrderSnapshot** | Dataclass exposing order_id, type, symbol, direction, lots, prices for active limit/stop orders in stats |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

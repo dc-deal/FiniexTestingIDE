@@ -408,15 +408,25 @@ class ExecutiveSummary:
         renderer: ConsoleRenderer,
         pending_stats: PendingOrderStats
     ) -> str:
-        """Format full anomaly suffix for executive summary (e.g. '| 1 force-closed | 2 timed out')."""
-        parts = []
+        """Format full anomaly + active order suffix for executive summary."""
+        result = ""
+        # Anomalies (yellow)
+        anomaly_parts = []
         if pending_stats.total_force_closed > 0:
-            parts.append(f"{pending_stats.total_force_closed} force-closed")
+            anomaly_parts.append(f"{pending_stats.total_force_closed} force-closed")
         if pending_stats.total_timed_out > 0:
-            parts.append(f"{pending_stats.total_timed_out} timed out")
-        if not parts:
-            return ""
-        return f" | {renderer.yellow(' | '.join(parts))}"
+            anomaly_parts.append(f"{pending_stats.total_timed_out} timed out")
+        if anomaly_parts:
+            result += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
+        # Active orders at scenario end (cyan)
+        active_parts = []
+        if pending_stats.active_limit_orders:
+            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+        if pending_stats.active_stop_orders:
+            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+        if active_parts:
+            result += f" | {renderer.cyan(' | '.join(active_parts))}"
+        return result
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""

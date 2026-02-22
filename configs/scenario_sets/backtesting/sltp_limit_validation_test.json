@@ -293,6 +293,241 @@
       },
       "execution_config": {},
       "trade_simulator_config": {}
+    },
+    {
+      "name": "stop_long_trigger",
+      "description": "STOP LONG — stop triggers when uptrend pushes price above stop_price (LONG extreme move #9: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "STOP",
+              "stop_price": 157.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "stop_short_trigger",
+      "description": "STOP SHORT — stop triggers when downtrend pushes price below stop_price (SHORT extreme move #8: -175.0 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "SHORT",
+              "order_type": "STOP",
+              "stop_price": 156.200,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "stop_limit_long_trigger",
+      "description": "STOP_LIMIT LONG — stop triggers at 157.000, fills at limit 157.200 (LONG extreme move #9: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "STOP_LIMIT",
+              "stop_price": 157.000,
+              "price": 157.200,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "stop_limit_short_trigger",
+      "description": "STOP_LIMIT SHORT — stop triggers at 156.200, fills at limit 156.000 (SHORT extreme move #8: -175.0 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-10T12:20:00+00:00",
+      "end_date": "2025-12-12T05:55:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "SHORT",
+              "order_type": "STOP_LIMIT",
+              "stop_price": 156.200,
+              "price": 156.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "stop_long_then_tp",
+      "description": "STOP LONG triggers, then TP closes position — validates STOP+TP combo (LONG extreme: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "STOP",
+              "stop_price": 156.800,
+              "hold_ticks": 999999,
+              "lot_size": 0.01,
+              "take_profit": 157.300
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "modify_stop_trigger",
+      "description": "STOP LONG with unreachable stop, modified closer — triggers after modification (LONG extreme: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "STOP",
+              "stop_price": 158.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ],
+          "modify_stop_sequence": [
+            {
+              "tick_number": 500,
+              "stop_price": 157.000
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "cancel_stop_no_fill",
+      "description": "STOP LONG cancelled before trigger — validates 0 trades after cancellation (LONG extreme: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "STOP",
+              "stop_price": 157.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ],
+          "cancel_stop_sequence": [
+            {
+              "tick_number": 100
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "cancel_limit_no_fill",
+      "description": "LONG LIMIT at utopian price cancelled before fill — validates 0 trades after cancellation (LONG extreme: +128.1 pips)",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T22:35:00+00:00",
+      "end_date": "2026-01-09T15:10:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "trade_sequence": [
+            {
+              "tick_number": 10,
+              "direction": "LONG",
+              "order_type": "LIMIT",
+              "price": 150.000,
+              "hold_ticks": 999999,
+              "lot_size": 0.01
+            }
+          ],
+          "cancel_limit_sequence": [
+            {
+              "tick_number": 100
+            }
+          ]
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {}
     }
   ]
 }

@@ -21,10 +21,17 @@ from python.framework.utils.process_serialization_utils import serialize_value
 
 class OrderType(Enum):
     """
-    Order type classification.
+    Order type classification — used in OpenOrderRequest.order_type.
 
-    Common (Tier 1): MARKET, LIMIT
-    Extended (Tier 2): STOP, STOP_LIMIT, TRAILING_STOP, ICEBERG
+    Common (Tier 1 — all brokers):
+        MARKET: Execute immediately at current market price
+        LIMIT: Execute at specified price or better
+
+    Extended (Tier 2 — broker-specific):
+        STOP: Wait for trigger price, then execute as MARKET
+        STOP_LIMIT: Wait for trigger price, then place LIMIT order
+        TRAILING_STOP: Dynamic stop that follows price movement
+        ICEBERG: Large order split into smaller visible chunks
     """
     MARKET = "market"
     LIMIT = "limit"
@@ -56,11 +63,24 @@ class OrderStatus(Enum):
 
 
 class FillType(Enum):
-    """How an order was filled — tracked in OrderResult.metadata."""
-    MARKET = "market"             # Standard market fill at current price
-    LIMIT = "limit"               # Limit order filled when price reached level
-    # Limit filled immediately (price already past limit after latency)
+    """
+    How an order was filled — stored in OrderResult.metadata['fill_type'].
+
+    Determines fill semantics:
+        MARKET: Standard market fill at current tick price (taker fee)
+        LIMIT: Limit order filled when price reached trigger level (maker fee)
+        LIMIT_IMMEDIATE: Limit filled immediately after latency — price already past limit (maker fee)
+        STOP: Stop trigger reached → filled at current market price (taker fee)
+        STOP_LIMIT: Stop trigger reached → filled at limit price (maker fee)
+
+    Note: No STOP_IMMEDIATE — if stop price is already exceeded after latency,
+    the order fills immediately at current market price (same as STOP).
+    """
+    MARKET = "market"
+    LIMIT = "limit"
     LIMIT_IMMEDIATE = "limit_immediate"
+    STOP = "stop"
+    STOP_LIMIT = "stop_limit"
 
 
 class RejectionReason(Enum):
@@ -308,26 +328,24 @@ class OpenOrderRequest:
     Bundled order parameters passed through the execution pipeline.
 
     Built by DecisionTradingAPI.send_order(), consumed by TradeSimulator/LiveTradeExecutor.
-    Replaces individual parameter passing for clarity and extensibility.
 
     Args:
         symbol: Trading symbol
-        order_type: MARKET or LIMIT
+        order_type: MARKET, LIMIT, STOP, or STOP_LIMIT
         direction: LONG or SHORT
         lots: Position size
-        price: Limit price (None for market orders)
-        stop_loss: Optional stop loss price level
-        take_profit: Optional take profit price level
+        price: Limit price (required for LIMIT and STOP_LIMIT, None for MARKET/STOP)
+        stop_price: Stop trigger price (required for STOP and STOP_LIMIT, None for MARKET/LIMIT)
+        stop_loss: Optional stop loss price level on resulting position
+        take_profit: Optional take profit price level on resulting position
         comment: Order comment
-
-    Returns:
-        N/A (data container)
     """
     symbol: str
     order_type: OrderType
     direction: OrderDirection
     lots: float
     price: Optional[float] = None
+    stop_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ""
@@ -339,13 +357,14 @@ class OpenOrderRequest:
 
 class ModificationRejectionReason(Enum):
     """
-    Reason why a position or limit order modification was rejected.
+    Reason why a position, limit order, or stop order modification was rejected.
 
-    Used by modify_position() and modify_limit_order() to provide
-    structured rejection feedback.
+    Used by modify_position(), modify_limit_order(), and modify_stop_order()
+    to provide structured rejection feedback.
     """
     POSITION_NOT_FOUND = "position_not_found"
     LIMIT_ORDER_NOT_FOUND = "limit_order_not_found"
+    STOP_ORDER_NOT_FOUND = "stop_order_not_found"
     INVALID_SL_LEVEL = "invalid_sl_level"
     INVALID_TP_LEVEL = "invalid_tp_level"
     SL_TP_CROSS = "sl_tp_cross"

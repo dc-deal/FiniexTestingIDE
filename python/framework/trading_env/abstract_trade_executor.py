@@ -325,7 +325,7 @@ class AbstractTradeExecutor(ABC):
             symbol_spec, self._current_tick.mid)
 
         # Create entry fee based on broker fee model
-        is_maker = (entry_type == EntryType.LIMIT)
+        is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
             lots=pending_order.lots,
@@ -559,6 +559,52 @@ class AbstractTradeExecutor(ABC):
             ModificationResult with success status and rejection reason
         """
 
+    @abstractmethod
+    def modify_stop_order(
+        self,
+        order_id: str,
+        new_stop_price: Union[float, _UnsetType] = UNSET,
+        new_limit_price: Union[float, _UnsetType] = UNSET,
+        new_stop_loss: Union[float, None, _UnsetType] = UNSET,
+        new_take_profit: Union[float, None, _UnsetType] = UNSET
+    ) -> ModificationResult:
+        """
+        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+
+        Only applies to active stop orders (post-latency, waiting for trigger price).
+
+        Args:
+            order_id: Pending stop order ID
+            new_stop_price: New trigger price (UNSET=keep current)
+            new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
+            new_stop_loss: New SL level (UNSET=no change, None=remove)
+            new_take_profit: New TP level (UNSET=no change, None=remove)
+
+        Returns:
+            ModificationResult with success status and rejection reason
+        """
+
+    @abstractmethod
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Cancel an active stop order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+
+    @abstractmethod
+    def get_active_order_counts(self) -> Dict[str, int]:
+        """
+        Get counts of active orders by world (latency, limit, stop).
+
+        Returns:
+            Dict with keys "latency_queue", "active_limits", "active_stops"
+        """
+
     # ============================================
     # Queries (concrete - same for all executors)
     # ============================================
@@ -637,6 +683,15 @@ class AbstractTradeExecutor(ABC):
         """
         pass
 
+    def _has_pipeline_orders(self) -> bool:
+        """
+        Check for orders stuck in the latency pipeline after cleanup.
+
+        Override in simulators to scope to the latency queue only,
+        excluding active limit/stop orders which are intentionally preserved.
+        """
+        return self.has_pending_orders()
+
     def check_clean_shutdown(self) -> bool:
         """
         Post-cleanup safety check — call after close_all_remaining_orders().
@@ -658,7 +713,7 @@ class AbstractTradeExecutor(ABC):
                     f"{pos.direction.value} {pos.lots} lots {pos.symbol}"
                 )
 
-        if self.has_pending_orders():
+        if self._has_pipeline_orders():
             clean = False
             self.logger.error(
                 "Orphaned pending orders after cleanup — orders still in pipeline"
