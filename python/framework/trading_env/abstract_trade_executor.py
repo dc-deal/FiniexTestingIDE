@@ -683,6 +683,15 @@ class AbstractTradeExecutor(ABC):
         """
         pass
 
+    def _has_pipeline_orders(self) -> bool:
+        """
+        Check for orders stuck in the latency pipeline after cleanup.
+
+        Override in simulators to scope to the latency queue only,
+        excluding active limit/stop orders which are intentionally preserved.
+        """
+        return self.has_pending_orders()
+
     def check_clean_shutdown(self) -> bool:
         """
         Post-cleanup safety check — call after close_all_remaining_orders().
@@ -704,7 +713,7 @@ class AbstractTradeExecutor(ABC):
                     f"{pos.direction.value} {pos.lots} lots {pos.symbol}"
                 )
 
-        if self.has_pending_orders():
+        if self._has_pipeline_orders():
             clean = False
             self.logger.error(
                 "Orphaned pending orders after cleanup — orders still in pipeline"

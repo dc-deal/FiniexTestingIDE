@@ -11,6 +11,11 @@ Validates:
 - Limit fill: entry_type=LIMIT, entry_price=limit_price, maker fee
 - Limit + SL/TP combo: limit fills, then SL triggers
 - Modify limit: limit price changed before fill
+- Stop order: entry_type=STOP, entry at market price >= stop_price
+- Stop-limit order: entry_type=STOP_LIMIT, entry at limit_price
+- Stop + TP combo: stop triggers, then TP closes position
+- Modify stop: unreachable stop modified closer, triggers after modify
+- Cancel stop: cancelled before trigger, 0 trades
 
 Used by: sltp_limit_validation test suite
 Import these classes into suite-specific test_sltp_limit_validation.py files.
@@ -450,4 +455,277 @@ class TestModifyLimitPriceFill:
         trade = modify_limit_trade_history[0]
         assert trade.direction == OrderDirection.LONG, (
             f"Expected LONG, got {trade.direction}"
+        )
+
+
+# =============================================================================
+# STOP LONG TRIGGER
+# =============================================================================
+
+class TestStopLongTrigger:
+    """Tests for STOP LONG — stop triggers when price rises above stop_price."""
+
+    def test_trade_count(self, stop_long_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(stop_long_trade_history) == 1, (
+            f"Expected 1 trade, got {len(stop_long_trade_history)}"
+        )
+
+    def test_entry_type_is_stop(self, stop_long_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP."""
+        trade = stop_long_trade_history[0]
+        assert trade.entry_type == EntryType.STOP, (
+            f"Expected STOP, got {trade.entry_type}"
+        )
+
+    def test_entry_price_at_or_above_stop(self, stop_long_trade_history: List[TradeRecord]):
+        """Entry price should be at or above stop_price (market fill after trigger)."""
+        trade = stop_long_trade_history[0]
+        assert trade.entry_price >= 157.000, (
+            f"Expected entry_price >= 157.000, got {trade.entry_price}"
+        )
+
+    def test_direction_is_long(self, stop_long_trade_history: List[TradeRecord]):
+        """Trade direction should be LONG."""
+        trade = stop_long_trade_history[0]
+        assert trade.direction == OrderDirection.LONG, (
+            f"Expected LONG, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, stop_long_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = stop_long_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# STOP SHORT TRIGGER
+# =============================================================================
+
+class TestStopShortTrigger:
+    """Tests for STOP SHORT — stop triggers when price drops below stop_price."""
+
+    def test_trade_count(self, stop_short_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(stop_short_trade_history) == 1, (
+            f"Expected 1 trade, got {len(stop_short_trade_history)}"
+        )
+
+    def test_entry_type_is_stop(self, stop_short_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP."""
+        trade = stop_short_trade_history[0]
+        assert trade.entry_type == EntryType.STOP, (
+            f"Expected STOP, got {trade.entry_type}"
+        )
+
+    def test_entry_price_at_or_below_stop(self, stop_short_trade_history: List[TradeRecord]):
+        """Entry price should be at or below stop_price (market fill after trigger)."""
+        trade = stop_short_trade_history[0]
+        assert trade.entry_price <= 156.200, (
+            f"Expected entry_price <= 156.200, got {trade.entry_price}"
+        )
+
+    def test_direction_is_short(self, stop_short_trade_history: List[TradeRecord]):
+        """Trade direction should be SHORT."""
+        trade = stop_short_trade_history[0]
+        assert trade.direction == OrderDirection.SHORT, (
+            f"Expected SHORT, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, stop_short_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = stop_short_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# STOP_LIMIT LONG TRIGGER
+# =============================================================================
+
+class TestStopLimitLongTrigger:
+    """Tests for STOP_LIMIT LONG — stop triggers, then fills at limit_price."""
+
+    def test_trade_count(self, stop_limit_long_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(stop_limit_long_trade_history) == 1, (
+            f"Expected 1 trade, got {len(stop_limit_long_trade_history)}"
+        )
+
+    def test_entry_type_is_stop_limit(self, stop_limit_long_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP_LIMIT."""
+        trade = stop_limit_long_trade_history[0]
+        assert trade.entry_type == EntryType.STOP_LIMIT, (
+            f"Expected STOP_LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_equals_limit(self, stop_limit_long_trade_history: List[TradeRecord]):
+        """Entry price should equal the configured limit price."""
+        trade = stop_limit_long_trade_history[0]
+        assert trade.entry_price == 157.200, (
+            f"Expected entry_price=157.200, got {trade.entry_price}"
+        )
+
+    def test_direction_is_long(self, stop_limit_long_trade_history: List[TradeRecord]):
+        """Trade direction should be LONG."""
+        trade = stop_limit_long_trade_history[0]
+        assert trade.direction == OrderDirection.LONG, (
+            f"Expected LONG, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, stop_limit_long_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = stop_limit_long_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# STOP_LIMIT SHORT TRIGGER
+# =============================================================================
+
+class TestStopLimitShortTrigger:
+    """Tests for STOP_LIMIT SHORT — stop triggers, then fills at limit_price."""
+
+    def test_trade_count(self, stop_limit_short_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(stop_limit_short_trade_history) == 1, (
+            f"Expected 1 trade, got {len(stop_limit_short_trade_history)}"
+        )
+
+    def test_entry_type_is_stop_limit(self, stop_limit_short_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP_LIMIT."""
+        trade = stop_limit_short_trade_history[0]
+        assert trade.entry_type == EntryType.STOP_LIMIT, (
+            f"Expected STOP_LIMIT, got {trade.entry_type}"
+        )
+
+    def test_entry_price_equals_limit(self, stop_limit_short_trade_history: List[TradeRecord]):
+        """Entry price should equal the configured limit price."""
+        trade = stop_limit_short_trade_history[0]
+        assert trade.entry_price == 156.000, (
+            f"Expected entry_price=156.000, got {trade.entry_price}"
+        )
+
+    def test_direction_is_short(self, stop_limit_short_trade_history: List[TradeRecord]):
+        """Trade direction should be SHORT."""
+        trade = stop_limit_short_trade_history[0]
+        assert trade.direction == OrderDirection.SHORT, (
+            f"Expected SHORT, got {trade.direction}"
+        )
+
+    def test_close_reason_scenario_end(self, stop_limit_short_trade_history: List[TradeRecord]):
+        """Trade should be closed at scenario end (no SL/TP configured)."""
+        trade = stop_limit_short_trade_history[0]
+        assert trade.close_reason == CloseReason.SCENARIO_END, (
+            f"Expected SCENARIO_END, got {trade.close_reason}"
+        )
+
+
+# =============================================================================
+# STOP LONG THEN TP
+# =============================================================================
+
+class TestStopLongThenTp:
+    """Tests for STOP LONG that triggers, then TP closes the position."""
+
+    def test_trade_count(self, stop_tp_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist."""
+        assert len(stop_tp_trade_history) == 1, (
+            f"Expected 1 trade, got {len(stop_tp_trade_history)}"
+        )
+
+    def test_entry_type_is_stop(self, stop_tp_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP."""
+        trade = stop_tp_trade_history[0]
+        assert trade.entry_type == EntryType.STOP, (
+            f"Expected STOP, got {trade.entry_type}"
+        )
+
+    def test_close_reason_is_tp(self, stop_tp_trade_history: List[TradeRecord]):
+        """Trade should be closed by TP trigger."""
+        trade = stop_tp_trade_history[0]
+        assert trade.close_reason == CloseReason.TP_TRIGGERED, (
+            f"Expected TP_TRIGGERED, got {trade.close_reason}"
+        )
+
+    def test_exit_price_equals_tp(self, stop_tp_trade_history: List[TradeRecord]):
+        """Exit price should equal take profit level."""
+        trade = stop_tp_trade_history[0]
+        assert trade.exit_price == 157.300, (
+            f"Expected exit_price=157.300, got {trade.exit_price}"
+        )
+
+    def test_sl_tp_triggered_count(self, stop_tp_execution_stats: ExecutionStats):
+        """Execution stats should show 1 SL/TP trigger."""
+        assert stop_tp_execution_stats.sl_tp_triggered == 1, (
+            f"Expected 1 trigger, got {stop_tp_execution_stats.sl_tp_triggered}"
+        )
+
+
+# =============================================================================
+# MODIFY STOP TRIGGER
+# =============================================================================
+
+class TestModifyStopTrigger:
+    """Tests for stop order with stop_price modified before trigger."""
+
+    def test_trade_count(self, modify_stop_trade_history: List[TradeRecord]):
+        """Exactly one trade should exist (triggers after modification)."""
+        assert len(modify_stop_trade_history) == 1, (
+            f"Expected 1 trade, got {len(modify_stop_trade_history)}"
+        )
+
+    def test_entry_type_is_stop(self, modify_stop_trade_history: List[TradeRecord]):
+        """Trade should have entry_type=STOP."""
+        trade = modify_stop_trade_history[0]
+        assert trade.entry_type == EntryType.STOP, (
+            f"Expected STOP, got {trade.entry_type}"
+        )
+
+    def test_entry_price_at_or_above_modified_stop(self, modify_stop_trade_history: List[TradeRecord]):
+        """Entry price should be at or above the modified stop_price."""
+        trade = modify_stop_trade_history[0]
+        # Original was 158.000 (unreachable), modified to 157.000
+        assert trade.entry_price >= 157.000, (
+            f"Expected entry_price >= 157.000, got {trade.entry_price}"
+        )
+
+    def test_direction_is_long(self, modify_stop_trade_history: List[TradeRecord]):
+        """Trade direction should be LONG."""
+        trade = modify_stop_trade_history[0]
+        assert trade.direction == OrderDirection.LONG, (
+            f"Expected LONG, got {trade.direction}"
+        )
+
+
+# =============================================================================
+# CANCEL STOP NO FILL
+# =============================================================================
+
+class TestCancelStopNoFill:
+    """Tests for stop order cancelled before trigger — expects 0 trades."""
+
+    def test_no_trades(self, cancel_stop_trade_history: List[TradeRecord]):
+        """No trades should exist after stop order cancellation."""
+        assert len(cancel_stop_trade_history) == 0, (
+            f"Expected 0 trades, got {len(cancel_stop_trade_history)}"
+        )
+
+
+# =============================================================================
+# CANCEL LIMIT NO FILL
+# =============================================================================
+
+class TestCancelLimitNoFill:
+    """Tests for limit order cancelled before fill — expects 0 trades."""
+
+    def test_no_trades(self, cancel_limit_trade_history: List[TradeRecord]):
+        """No trades should exist after limit order cancellation."""
+        assert len(cancel_limit_trade_history) == 0, (
+            f"Expected 0 trades, got {len(cancel_limit_trade_history)}"
         )

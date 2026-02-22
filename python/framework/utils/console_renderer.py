@@ -49,6 +49,10 @@ class ConsoleRenderer:
         """Color text green."""
         return f"{ColorCodes.GREEN}{text}{ColorCodes.RESET}"
 
+    def cyan(self, text: str) -> str:
+        """Color text cyan."""
+        return f"{ColorCodes.CYAN}{text}{ColorCodes.RESET}"
+
     def gray(self, text: str) -> str:
         """Color text gray."""
         return f"{ColorCodes.GRAY}{text}{ColorCodes.RESET}"

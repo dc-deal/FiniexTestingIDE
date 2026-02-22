@@ -432,6 +432,18 @@ class DecisionTradingAPI:
             new_take_profit=take_profit
         )
 
+    def cancel_limit_order(self, order_id: str) -> bool:
+        """
+        Cancel an active limit order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+        return self._executor.cancel_limit_order(order_id)
+
     def cancel_stop_order(self, order_id: str) -> bool:
         """
         Cancel an active stop order by order ID.

@@ -21,6 +21,7 @@ class ColorCodes:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
     PURPLE = '\033[95m'  # für VERBOSE
+    CYAN = '\033[96m'
     GRAY = '\033[90m'
     BOLD = '\033[1m'
     RESET = '\033[0m'

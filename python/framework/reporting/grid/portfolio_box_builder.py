@@ -83,11 +83,19 @@ def _build_success_portfolio_box(
 
     # Check for no trades process_result
     if portfolio_stats.total_trades == 0:
+        pending_stats = process_result.tick_loop_results.pending_stats
+        active_parts = []
+        if pending_stats and pending_stats.active_limit_orders:
+            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+        if pending_stats and pending_stats.active_stop_orders:
+            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+        active_line = renderer.cyan(f"Active: {' | '.join(active_parts)}") if active_parts else ""
+
         lines = [
             f"💰 {scenario_name}",
             "No trades executed",
             f"Orders: {execution_stats.orders_sent} sent",
-            "",
+            active_line,
             "",
             "",
             "",
@@ -229,11 +237,19 @@ def _build_hybrid_portfolio_box(
 
     # Check for no trades process_result
     if portfolio_stats.total_trades == 0:
+        pending_stats = process_result.tick_loop_results.pending_stats
+        active_parts = []
+        if pending_stats and pending_stats.active_limit_orders:
+            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+        if pending_stats and pending_stats.active_stop_orders:
+            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+        active_line = renderer.cyan(f"Active: {' | '.join(active_parts)}") if active_parts else ""
+
         lines = [
             f"💰 {scenario_name}",
             "No trades executed",
             f"Orders: {execution_stats.orders_sent} sent",
-            "",
+            active_line,
             "",
             "",
             "",
@@ -434,6 +450,28 @@ def _format_anomaly_suffix_compact(
         parts.append(f"{pending_stats.total_force_closed} forced")
     if pending_stats.total_timed_out > 0:
         parts.append(f"{pending_stats.total_timed_out} timeout")
+    # Active orders at scenario end (bot's pending plan)
+    if pending_stats.active_limit_orders:
+        parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+    if pending_stats.active_stop_orders:
+        parts.append(f"{len(pending_stats.active_stop_orders)} stops")
     if not parts:
         return ""
-    return f" | {renderer.yellow(' | '.join(parts))}"
+    # Anomalies in yellow, active orders in cyan
+    anomaly_parts = []
+    if pending_stats.total_force_closed > 0:
+        anomaly_parts.append(f"{pending_stats.total_force_closed} forced")
+    if pending_stats.total_timed_out > 0:
+        anomaly_parts.append(f"{pending_stats.total_timed_out} timeout")
+    active_parts = []
+    if pending_stats.active_limit_orders:
+        active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+    if pending_stats.active_stop_orders:
+        active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+
+    result = ""
+    if anomaly_parts:
+        result += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
+    if active_parts:
+        result += f" | {renderer.cyan(' | '.join(active_parts))}"
+    return result

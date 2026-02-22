@@ -64,6 +64,17 @@ Configuration Example:
             "price": 1.2850
         }
     ],
+    "modify_stop_sequence": [
+        {
+            "tick_number": 300,
+            "stop_price": 1.2950
+        }
+    ],
+    "cancel_stop_sequence": [
+        {
+            "tick_number": 400
+        }
+    ],
     "lot_size": 0.1
 }
 
@@ -120,6 +131,16 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             - price: New limit price (optional, omit = no change)
             - stop_loss: New SL price (optional, omit = no change)
             - take_profit: New TP price (optional, omit = no change)
+        modify_stop_sequence: List of pending stop order modification specs (optional)
+            - tick_number: When to apply modification
+            - stop_price: New stop price (optional, omit = no change)
+            - price: New limit price for STOP_LIMIT (optional, omit = no change)
+            - stop_loss: New SL price (optional, omit = no change)
+            - take_profit: New TP price (optional, omit = no change)
+        cancel_limit_sequence: List of limit order cancellation specs (optional)
+            - tick_number: When to cancel the tracked limit order
+        cancel_stop_sequence: List of stop order cancellation specs (optional)
+            - tick_number: When to cancel the tracked stop order
         lot_size: Default lot size for trades (default: 0.1)
     """
 
@@ -145,12 +166,16 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self.default_lot_size = self.params.get('lot_size')
         self.modify_sequence = self.params.get('modify_sequence')
         self.modify_limit_sequence = self.params.get('modify_limit_sequence')
+        self.modify_stop_sequence = self.params.get('modify_stop_sequence')
+        self.cancel_limit_sequence = self.params.get('cancel_limit_sequence')
+        self.cancel_stop_sequence = self.params.get('cancel_stop_sequence')
 
         # Internal state
         self.tick_count = 0
         self.active_trade: Optional[Dict[str, Any]] = None
         self._started_trade_indices: set = set()
         self._pending_limit_order_id: Optional[str] = None
+        self._pending_stop_order_id: Optional[str] = None
 
         # Backtesting tracking
         self.warmup_errors: List[str] = []
@@ -193,6 +218,21 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 param_type=list,
                 default=[],
                 description="List of pending limit order modification specs: tick_number, price, stop_loss, take_profit"
+            ),
+            'modify_stop_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of pending stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit"
+            ),
+            'cancel_limit_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of limit order cancellation specs: tick_number"
+            ),
+            'cancel_stop_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of stop order cancellation specs: tick_number"
             ),
         }
 
@@ -378,9 +418,12 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 "No trading_api available - skipping execution")
             return None
 
-        # Process any pending modifications (positions + limit orders)
+        # Process any pending modifications (positions + limit/stop orders)
         self._process_modify_sequence()
         self._process_modify_limit_sequence()
+        self._process_modify_stop_sequence()
+        self._process_cancel_limit_sequence()
+        self._process_cancel_stop_sequence()
 
         # Get parameters from decision metadata or defaults
         lot_size = decision.metadata.get('lot_size', self.default_lot_size)
@@ -416,9 +459,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
-                # Track pending order ID for modify_limit_sequence
+                # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
+                if order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and order_response.order_id:
+                    self._pending_stop_order_id = order_response.order_id
                 return order_response
 
         # ============================================
@@ -440,9 +485,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
-                # Track pending order ID for modify_limit_sequence
+                # Track pending order ID for modify sequences
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
+                if order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and order_response.order_id:
+                    self._pending_stop_order_id = order_response.order_id
                 return order_response
 
         # ============================================
@@ -525,6 +572,97 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     f"🔧 Limit order modify at tick {self.tick_count}: "
                     f"{'success' if result.success else 'FAILED'} — {kwargs}"
                 )
+
+    def _process_modify_stop_sequence(self) -> None:
+        """
+        Execute pending stop order modifications from modify_stop_sequence config.
+
+        Modifies the tracked pending stop order at the configured tick_number.
+        Only keys present in the spec are passed (omitted = no change).
+        """
+        if not self.modify_stop_sequence:
+            return
+
+        for spec in self.modify_stop_sequence:
+            if self.tick_count == spec['tick_number']:
+                if not self._pending_stop_order_id:
+                    self.logger.warning(
+                        f"Modify stop at tick {self.tick_count}: "
+                        f"no pending stop order tracked")
+                    return
+
+                kwargs: Dict[str, Any] = {}
+                if 'stop_price' in spec:
+                    kwargs['stop_price'] = spec['stop_price']
+                if 'price' in spec:
+                    kwargs['price'] = spec['price']
+                if 'stop_loss' in spec:
+                    kwargs['stop_loss'] = spec['stop_loss']
+                if 'take_profit' in spec:
+                    kwargs['take_profit'] = spec['take_profit']
+
+                result = self.trading_api.modify_stop_order(
+                    order_id=self._pending_stop_order_id,
+                    **kwargs
+                )
+                self.logger.info(
+                    f"🔧 Stop order modify at tick {self.tick_count}: "
+                    f"{'success' if result.success else 'FAILED'} — {kwargs}"
+                )
+
+    def _process_cancel_limit_sequence(self) -> None:
+        """
+        Execute pending limit order cancellations from cancel_limit_sequence config.
+
+        Cancels the tracked pending limit order at the configured tick_number.
+        Clears the tracked order ID after cancellation.
+        """
+        if not self.cancel_limit_sequence:
+            return
+
+        for spec in self.cancel_limit_sequence:
+            if self.tick_count == spec['tick_number']:
+                if not self._pending_limit_order_id:
+                    self.logger.warning(
+                        f"Cancel limit at tick {self.tick_count}: "
+                        f"no pending limit order tracked")
+                    return
+
+                result = self.trading_api.cancel_limit_order(
+                    order_id=self._pending_limit_order_id
+                )
+                self.logger.info(
+                    f"🔧 Limit order cancel at tick {self.tick_count}: "
+                    f"{'success' if result else 'FAILED'}"
+                )
+                self._pending_limit_order_id = None
+
+    def _process_cancel_stop_sequence(self) -> None:
+        """
+        Execute pending stop order cancellations from cancel_stop_sequence config.
+
+        Cancels the tracked pending stop order at the configured tick_number.
+        Clears the tracked order ID after cancellation.
+        """
+        if not self.cancel_stop_sequence:
+            return
+
+        for spec in self.cancel_stop_sequence:
+            if self.tick_count == spec['tick_number']:
+                if not self._pending_stop_order_id:
+                    self.logger.warning(
+                        f"Cancel stop at tick {self.tick_count}: "
+                        f"no pending stop order tracked")
+                    return
+
+                result = self.trading_api.cancel_stop_order(
+                    order_id=self._pending_stop_order_id
+                )
+                self.logger.info(
+                    f"🔧 Stop order cancel at tick {self.tick_count}: "
+                    f"{'success' if result.success else 'FAILED'}"
+                )
+                self._pending_stop_order_id = None
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:
         """

@@ -918,6 +918,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 or len(self._active_limit_orders) > 0
                 or len(self._active_stop_orders) > 0)
 
+    def _has_pipeline_orders(self) -> bool:
+        """Check latency queue only — active limit/stop are intentionally preserved."""
+        return self.latency_simulator.has_pending_orders()
+
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
         return self.latency_simulator.is_pending_close(position_id)
@@ -1005,21 +1009,20 @@ class TradeSimulator(AbstractTradeExecutor):
                     pos.position_id)
                 self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
 
-        # Clear active limit orders (unfilled limits at scenario end)
+        # Active limit/stop orders are NOT cleared here — they are preserved
+        # so get_pending_stats() can snapshot them as ActiveOrderSnapshot.
+        # This shows the bot's pending "plan" at scenario end in reporting.
         if self._active_limit_orders:
-            self.logger.warning(
-                f"{len(self._active_limit_orders)} unfilled limit orders "
-                f"at scenario end — discarding"
+            self.logger.info(
+                f"📋 {len(self._active_limit_orders)} unfilled limit orders "
+                f"at scenario end — preserved for reporting"
             )
-            self._active_limit_orders.clear()
 
-        # Clear active stop orders (untriggered stops at scenario end)
         if self._active_stop_orders:
-            self.logger.warning(
-                f"{len(self._active_stop_orders)} unfilled stop orders "
-                f"at scenario end — discarding"
+            self.logger.info(
+                f"📋 {len(self._active_stop_orders)} untriggered stop orders "
+                f"at scenario end — preserved for reporting"
             )
-            self._active_stop_orders.clear()
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(
