@@ -198,10 +198,18 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         if request.comment:
             order_kwargs["comment"] = request.comment
 
-        # entry_price: limit price for LIMIT orders, 0 for MARKET
-        entry_price = (request.price
-                       if (request.order_type == OrderType.LIMIT and request.price is not None)
-                       else 0)
+        # entry_price: depends on order type
+        # LIMIT: limit price (fill price)
+        # STOP/STOP_LIMIT: stop_price (trigger price)
+        # MARKET: 0 (fill at current tick)
+        if request.order_type == OrderType.LIMIT and request.price is not None:
+            entry_price = request.price
+        elif request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and request.stop_price is not None:
+            entry_price = request.stop_price
+            if request.order_type == OrderType.STOP_LIMIT and request.price is not None:
+                order_kwargs["limit_price"] = request.price
+        else:
+            entry_price = 0
 
         # Store pending order (inherited storage)
         self.store_order(PendingOrder(

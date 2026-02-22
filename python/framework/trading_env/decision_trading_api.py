@@ -143,6 +143,7 @@ class DecisionTradingAPI:
         direction: OrderDirection,
         lots: float,
         price: Optional[float] = None,
+        stop_price: Optional[float] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = "",
@@ -156,26 +157,17 @@ class DecisionTradingAPI:
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
-            order_type: OrderType.MARKET or OrderType.LIMIT (MVP)
+            order_type: MARKET, LIMIT, STOP, or STOP_LIMIT
             direction: OrderDirection.LONG or OrderDirection.SHORT
             lots: Position size
-            price: Limit price (required for LIMIT orders, ignored for MARKET)
-            stop_loss: Optional stop loss price level
-            take_profit: Optional take profit price level
+            price: Limit price (required for LIMIT and STOP_LIMIT, None for MARKET/STOP)
+            stop_price: Stop trigger price (required for STOP and STOP_LIMIT, None for MARKET/LIMIT)
+            stop_loss: Optional stop loss price level on resulting position
+            take_profit: Optional take profit price level on resulting position
             comment: Order comment (e.g., strategy name)
 
         Returns:
             OrderResult with execution details
-
-        Example:
-            result = self.trading_api.send_order(
-                symbol="EURUSD",
-                order_type=OrderType.MARKET,
-                direction=OrderDirection.LONG,
-                lots=0.1,
-                stop_loss=1.0950,
-                take_profit=1.1050
-            )
         """
         request = OpenOrderRequest(
             symbol=symbol,
@@ -183,6 +175,7 @@ class DecisionTradingAPI:
             direction=direction,
             lots=lots,
             price=price,
+            stop_price=stop_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,

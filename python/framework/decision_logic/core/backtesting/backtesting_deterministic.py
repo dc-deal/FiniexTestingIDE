@@ -32,6 +32,23 @@ Configuration Example:
             "price": 1.2900,
             "hold_ticks": 200,
             "lot_size": 0.01
+        },
+        {
+            "tick_number": 800,
+            "direction": "LONG",
+            "order_type": "STOP",
+            "stop_price": 1.3000,
+            "hold_ticks": 150,
+            "lot_size": 0.01
+        },
+        {
+            "tick_number": 1100,
+            "direction": "SHORT",
+            "order_type": "STOP_LIMIT",
+            "stop_price": 1.2700,
+            "price": 1.2680,
+            "hold_ticks": 200,
+            "lot_size": 0.01
         }
     ],
     "modify_sequence": [
@@ -319,6 +336,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                         'hold_ticks': hold_ticks,
                         'order_type': spec.get('order_type', 'MARKET'),
                         'limit_price': spec.get('price'),
+                        'stop_price': spec.get('stop_price'),
                         'stop_loss': spec.get('stop_loss'),
                         'take_profit': spec.get('take_profit'),
                     }
@@ -370,6 +388,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         take_profit = decision.metadata.get('take_profit')
         order_type = OrderType[decision.metadata.get('order_type', 'MARKET')]
         limit_price = decision.metadata.get('limit_price')
+        stop_price = decision.metadata.get('stop_price')
 
         # Check for pending orders
         if self.trading_api.has_pending_orders():
@@ -390,13 +409,14 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     direction=OrderDirection.LONG,
                     lots=lot_size,
                     price=limit_price,
+                    stop_price=stop_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     comment=f"Backtest LONG at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
-                # Track limit order ID for modify_limit_sequence
+                # Track pending order ID for modify_limit_sequence
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
                 return order_response
@@ -413,13 +433,14 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     direction=OrderDirection.SHORT,
                     lots=lot_size,
                     price=limit_price,
+                    stop_price=stop_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     comment=f"Backtest SHORT at tick {self.tick_count}"
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
-                # Track limit order ID for modify_limit_sequence
+                # Track pending order ID for modify_limit_sequence
                 if order_type == OrderType.LIMIT and order_response.order_id:
                     self._pending_limit_order_id = order_response.order_id
                 return order_response

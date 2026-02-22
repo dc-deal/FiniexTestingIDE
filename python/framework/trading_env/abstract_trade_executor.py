@@ -325,7 +325,7 @@ class AbstractTradeExecutor(ABC):
             symbol_spec, self._current_tick.mid)
 
         # Create entry fee based on broker fee model
-        is_maker = (entry_type == EntryType.LIMIT)
+        is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
             lots=pending_order.lots,
