@@ -472,32 +472,79 @@ class AbstractTradeExecutor(ABC):
         exit_tick_value = self._calculate_tick_value(
             symbol_spec, (bid + ask) / 2.0)
 
-        # Close position with exit tick_value
-        realized_pnl = self.portfolio.close_position_portfolio(
-            position_id=pending_order.pending_order_id,
-            exit_price=close_price,
-            exit_tick_value=exit_tick_value,
-            exit_tick_index=self._tick_counter,
-            exit_fee=None,  # MVP: No exit commission
-            close_reason=close_reason
-        )
+        # --- Determine partial vs full close ---
+        close_lots = pending_order.close_lots
 
-        self.logger.debug(
-            f"💰 Position closed: {pending_order.pending_order_id} "
-            f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
-        )
+        # Validate erroneous inputs (post-latency)
+        if close_lots is not None and close_lots <= 0:
+            self.logger.warning(
+                f"⚠️ Invalid close_lots {close_lots} for {pending_order.pending_order_id} "
+                f"— skipping fill"
+            )
+            return
+
+        if close_lots is not None and close_lots > position.lots:
+            self.logger.warning(
+                f"⚠️ close_lots {close_lots} > position.lots {position.lots} "
+                f"for {pending_order.pending_order_id} — converting to full close"
+            )
+            close_lots = None  # Full close
+
+        is_partial = (close_lots is not None and close_lots < position.lots)
+
+        if is_partial:
+            remaining = position.lots - close_lots
+            if remaining < symbol_spec.volume_min - 1e-9:
+                self.logger.info(
+                    f"Partial close would leave {remaining:.5f} lots < volume_min "
+                    f"{symbol_spec.volume_min} — converting to full close"
+                )
+                is_partial = False
+
+        # Capture executed_lots before portfolio call (position may be deleted on full close)
+        executed_lots = close_lots if is_partial else position.lots
+
+        # Execute close
+        if is_partial:
+            realized_pnl = self.portfolio.partial_close_position(
+                position_id=pending_order.pending_order_id,
+                close_lots=close_lots,
+                exit_price=close_price,
+                exit_tick_value=exit_tick_value,
+                exit_tick_index=self._tick_counter,
+                exit_fee=None,  # MVP: No exit commission
+                close_reason=close_reason
+            )
+            self.logger.debug(
+                f"📊 Partial close: {pending_order.pending_order_id} "
+                f"{close_lots} lots at {close_price:.5f}, P&L: {realized_pnl:.2f}"
+            )
+        else:
+            realized_pnl = self.portfolio.close_position_portfolio(
+                position_id=pending_order.pending_order_id,
+                exit_price=close_price,
+                exit_tick_value=exit_tick_value,
+                exit_tick_index=self._tick_counter,
+                exit_fee=None,  # MVP: No exit commission
+                close_reason=close_reason
+            )
+            self.logger.debug(
+                f"💰 Position closed: {pending_order.pending_order_id} "
+                f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
+            )
 
         # Create order result for history
         result = OrderResult(
             order_id=pending_order.pending_order_id,
             status=OrderStatus.EXECUTED,
             executed_price=close_price,
-            executed_lots=pending_order.close_lots if pending_order.close_lots else position.lots,
+            executed_lots=executed_lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
             metadata={
                 "realized_pnl": realized_pnl,
-                "position_id": pending_order.pending_order_id
+                "position_id": pending_order.pending_order_id,
+                "close_type": "partial" if is_partial else "full"
             }
         )
 

@@ -158,6 +158,7 @@ class PortfolioManager:
             symbol=symbol,
             direction=direction,
             lots=lots,
+            original_lots=lots,
             entry_price=entry_price,
             entry_time=datetime.now(timezone.utc),
             stop_loss=stop_loss,
@@ -266,6 +267,126 @@ class PortfolioManager:
         self._update_statistics(position, realized_pnl)
 
         return realized_pnl
+
+    def partial_close_position(
+        self,
+        position_id: str,
+        close_lots: float,
+        exit_price: float,
+        exit_tick_value: float,
+        exit_tick_index: int,
+        exit_fee: Optional[AbstractTradingFee] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
+    ) -> float:
+        """
+        Partially close a position: realize P&L on closed lots, keep remainder open.
+
+        Args:
+            position_id: Position to partially close
+            close_lots: Number of lots to close (must be < position.lots)
+            exit_price: Price at which partial close happens
+            exit_tick_value: Tick value at exit for P&L conversion
+            exit_tick_index: Tick counter at close time
+            exit_fee: Optional exit fee (proportional to close_lots)
+            close_reason: Why the partial close happened
+
+        Returns:
+            Realized P&L for the closed portion
+        """
+        if position_id not in self.open_positions:
+            raise ValueError(f"Position {position_id} not found")
+
+        # Ensure position has latest P&L before partial close
+        self._ensure_positions_updated()
+
+        position = self.open_positions[position_id]
+
+        # Calculate proportions
+        close_ratio = close_lots / position.lots
+        remaining_ratio = 1.0 - close_ratio
+
+        # --- P&L for closed portion (proportional) ---
+        closed_gross_pnl = position.gross_pnl * close_ratio
+        closed_fees = position.get_total_fees() * close_ratio
+
+        # Add exit fee if provided
+        if exit_fee:
+            closed_fees += exit_fee.cost
+
+            # Update cost tracking
+            if exit_fee.fee_type == FeeType.COMMISSION:
+                self._cost_tracking.total_commission += exit_fee.cost
+            elif exit_fee.fee_type == FeeType.SWAP:
+                self._cost_tracking.total_swap += exit_fee.cost
+            self._cost_tracking.total_fees += exit_fee.cost
+
+        closed_net_pnl = closed_gross_pnl - closed_fees
+
+        # --- Update balance ---
+        self.balance += closed_net_pnl
+        self.realized_pnl += closed_net_pnl
+
+        # --- Create TradeRecord for closed portion (BEFORE mutating position) ---
+        trade_record = TradeRecord(
+            position_id=position.position_id,
+            symbol=position.symbol,
+            direction=position.direction,
+            lots=close_lots,
+            close_type=CloseType.PARTIAL,
+            entry_price=position.entry_price,
+            entry_time=position.entry_time,
+            entry_tick_value=position.entry_tick_value,
+            entry_bid=position.entry_bid,
+            entry_ask=position.entry_ask,
+            exit_price=exit_price,
+            exit_time=datetime.now(timezone.utc),
+            exit_tick_value=exit_tick_value,
+            entry_tick_index=position.entry_tick_index,
+            exit_tick_index=exit_tick_index,
+            digits=position.digits,
+            contract_size=position.contract_size,
+            spread_cost=position.get_spread_cost() * close_ratio,
+            commission_cost=position.get_commission_cost() * close_ratio,
+            swap_cost=position.get_swap_cost() * close_ratio,
+            total_fees=closed_fees,
+            gross_pnl=closed_gross_pnl,
+            net_pnl=closed_net_pnl,
+            stop_loss=position.stop_loss,
+            take_profit=position.take_profit,
+            close_reason=close_reason,
+            entry_type=position.entry_type,
+            comment=position.comment,
+            account_currency=self.account_currency
+        )
+
+        # Append to trade history (with limit warning)
+        if (self._trade_history_max > 0
+                and not self._trade_history_limit_warned
+                and len(self._trade_history) >= self._trade_history_max):
+            self._trade_history_limit_warned = True
+            self._logger.warning(
+                f"⚠️ Trade history limit reached ({self._trade_history_max}). "
+                f"Oldest entries will be discarded. Full history available in scenario log."
+            )
+        self._trade_history.append(trade_record)
+        self._log_trade_record(trade_record)
+
+        # --- Mutate position: reduce lots, scale fees for remaining portion ---
+        position.lots = round(position.lots - close_lots, 8)
+
+        for fee in position.fees:
+            fee.cost *= remaining_ratio
+
+        position.status = PositionStatus.PARTIALLY_CLOSED
+
+        # Recalculate P&L for remaining lots
+        position.gross_pnl *= remaining_ratio
+        position.unrealized_pnl = position.gross_pnl - position.get_total_fees()
+
+        # Update statistics (partial close counts as a completed trade)
+        self._update_statistics(position, closed_net_pnl)
+
+        return closed_net_pnl
 
     def _create_trade_record(
         self,

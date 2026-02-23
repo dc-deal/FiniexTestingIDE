@@ -143,6 +143,17 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         self._max_concurrent: int = 0
 
         # ============================================
+        # Partial Close Tracking (#119)
+        # ============================================
+
+        # Partial close sequence from config
+        self._partial_close_sequence: List[Dict[str, Any]] = self.params.get(
+            'partial_close_sequence')
+
+        # Prevent duplicate partial close submissions
+        self._partial_close_executed: Set[int] = set()
+
+        # ============================================
         # Backtesting Tracking (same pattern as BacktestingDeterministic)
         # ============================================
         self.warmup_errors: List[str] = []
@@ -175,6 +186,11 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                 min_val=0.01,
                 max_val=100.0,
                 description="Default lot size for trades without explicit lot_size"
+            ),
+            'partial_close_sequence': ParameterDef(
+                param_type=list,
+                default=[],
+                description="List of partial close specs: tick_number, position_index, close_lots"
             ),
         }
 
@@ -319,6 +335,11 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         self._close_expired_positions()
 
         # ============================================
+        # STEP 1.5: Process Partial Closes (#119)
+        # ============================================
+        self._process_partial_closes()
+
+        # ============================================
         # STEP 2: Open New Position (if signaled)
         # ============================================
         order_result = None
@@ -434,6 +455,71 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             # Remove from active trades regardless
             # (prevents duplicate close attempts on next tick)
             del self._active_trades[order_id]
+
+    # ============================================
+    # Partial Close Processing (#119)
+    # ============================================
+
+    def _process_partial_closes(self) -> None:
+        """
+        Execute partial close orders at configured ticks.
+
+        Reads from partial_close_sequence config. Each entry specifies:
+        - tick_number: When to submit partial close
+        - position_index: Which trade_sequence entry to partially close
+        - close_lots: How many lots to close
+
+        Partial close goes through latency pipeline (same as full close).
+        Position remains open with reduced lots after fill.
+        """
+        for idx, spec in enumerate(self._partial_close_sequence):
+            if idx in self._partial_close_executed:
+                continue
+            if self.tick_count != spec['tick_number']:
+                continue
+
+            self._partial_close_executed.add(idx)
+
+            position_index = spec['position_index']
+            close_lots = spec['close_lots']
+
+            # Find position by sequence index
+            order_id = self._position_map.get(position_index)
+            if not order_id:
+                self.logger.warning(
+                    f"⚠️ Partial close #{idx}: no position for "
+                    f"sequence index {position_index}"
+                )
+                continue
+
+            # Find position in trading API's view
+            positions = self.trading_api.get_open_positions()
+            found = False
+            for pos in positions:
+                if pos.position_id == order_id:
+                    if self.trading_api.is_pending_close(pos.position_id):
+                        self.logger.warning(
+                            f"⚠️ Partial close #{idx}: position {order_id} "
+                            f"has pending close — skipping"
+                        )
+                        break
+
+                    self.trading_api.close_position(
+                        pos.position_id, lots=close_lots)
+
+                    self.logger.info(
+                        f"📊 Partial close at tick {self.tick_count}: "
+                        f"{order_id} closing {close_lots} lots "
+                        f"(trade #{position_index})"
+                    )
+                    found = True
+                    break
+
+            if not found:
+                self.logger.warning(
+                    f"⚠️ Partial close #{idx}: position {order_id} "
+                    f"not found at tick {self.tick_count}"
+                )
 
     # ============================================
     # Worker Data Extraction

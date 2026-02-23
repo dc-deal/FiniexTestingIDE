@@ -277,6 +277,20 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Partial Close (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/partial_close/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "name": "🧩 Pytest: Active Order Display (All)",
             "type": "debugpy",
             "request": "launch",

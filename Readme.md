@@ -334,6 +334,7 @@ Validates data pipeline integrity:
 | [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
 | [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md) | 10 active limit/stop order reporting tests |
 | [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | ~82 SL/TP, limit, stop, and stop-limit validation tests |
+| [Partial Close Tests](docs/tests/tests_partial_close_docs.md) | 39 partial position close tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 
 ---
@@ -341,7 +342,7 @@ Validates data pipeline integrity:
 ## Current Limitations
 
 - **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
-- **No Partial Fills** - Full position close only, partial fills planned for post-MVP
+- **No Partial Fills on Live** - Partial position close supported in backtesting; live execution planned
 - **CORE Namespace Only** - Custom workers must be added to framework folders
 - **No Frontend** - CLI and VS Code launch configs only
 
