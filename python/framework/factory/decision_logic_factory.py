@@ -28,6 +28,7 @@ import importlib
 from typing import Any, Dict, Optional, Type
 
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
+from python.framework.decision_logic.core.cautious_macd import CautiousMACD
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -88,6 +89,7 @@ class DecisionLogicFactory:
             # Register with CORE namespace
             self._registry["CORE/simple_consensus"] = SimpleConsensus
             self._registry["CORE/aggressive_trend"] = AggressiveTrend
+            self._registry["CORE/cautious_macd"] = CautiousMACD
 
             # Backtesting decision logics
             self._registry["CORE/backtesting/backtesting_deterministic"] = BacktestingDeterministic

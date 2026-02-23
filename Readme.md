@@ -50,7 +50,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (~520 tests across 9 test suites)
+- ✅ Validated accuracy (~534 tests across 10 test suites)
 
 ---
 
@@ -234,12 +234,13 @@ live trading or commercial redistribution.
 
 ## Quality Assurance
 
-### Baseline Tests (44 tests)
+### Baseline Tests (48 tests)
 Validates trading mechanics accuracy:
 - Bar snapshots, warmup validation
 - P&L calculation (gross, net, fees)
 - Trade execution (entry/exit prices, directions)
 - Latency determinism (seeded delays)
+- Order history contents and execution_stats consistency
 
 ### Benchmark Tests (13 tests)
 Validates performance characteristics:
@@ -280,6 +281,12 @@ Validates pending order statistics and force-closed detection:
 - Synthetic close path (no false force-closed from end-of-scenario cleanup)
 - Force-closed anomaly detection with reason field
 
+### Active Order Display Tests (10 tests)
+Validates that unresolved pending orders are correctly reported at scenario end:
+- Active limit orders visible in `pending_stats.active_limit_orders`
+- Active stop orders visible in `pending_stats.active_stop_orders`
+- Direction, order type, and entry price match config
+
 ### SL/TP Validation Tests (~82 tests)
 Validates stop loss, take profit, limit, stop, and stop-limit order behavior:
 - SL/TP trigger for LONG and SHORT positions (close reason, exit price, P&L)
@@ -296,7 +303,7 @@ Validates data pipeline integrity:
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md), [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -318,13 +325,14 @@ Validates data pipeline integrity:
 | [Live Execution Architecture](docs/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Pending Order Architecture](docs/pending_order_architecture.md) | 3-world lifecycle (latency, limit, stop), modify rationale |
 | [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
-| [Baseline Tests](docs/tests/tests_baseline_docs.md) | 44 validation tests |
+| [Baseline Tests](docs/tests/tests_baseline_docs.md) | 48 validation tests |
 | [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
 | [Worker Tests](docs/tests/tests_worker_docs.md) | 202 parameter & computation tests |
 | [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md) | ~35 margin & lot validation tests |
 | [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
 | [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
 | [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
+| [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md) | 10 active limit/stop order reporting tests |
 | [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | ~82 SL/TP, limit, stop, and stop-limit validation tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 

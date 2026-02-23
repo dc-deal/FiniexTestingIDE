@@ -147,7 +147,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Limit/Stop Mock Test)",
+            "name": "🧪 Run (Limit/Stop History Mock Test)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -270,6 +270,19 @@
             "module": "pytest",
             "args": [
                 "tests/sltp_limit_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Active Order Display (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/active_order_display/",
                 "-v",
                 "--tb=short"
             ],
@@ -505,6 +518,18 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
+            "name": "🔬 Run cautious_macd_SANDBOX",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "cautious_macd_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run eurusd_3_SANDBOX - aggressive_trend",
             "type": "debugpy",
             "request": "launch",
@@ -671,7 +696,7 @@
                 "--strategy",
                 "blocks",
                 "--block-size",
-                "8",
+                "16",
                 "--count",
                 "8",
                 "--sessions",

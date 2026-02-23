@@ -41,4 +41,3 @@ class WorkerResult:
     confidence: float = 1.0
     computation_time_ms: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
-    is_stale: bool = False
