@@ -11,7 +11,7 @@ The MVP baseline test suite validates the core functionality of the FiniexTestin
 - Seeds: api_latency=12345, market_execution=67890
 - Max Ticks: 20,500
 
-**Total Tests:** 44
+**Total Tests:** 48
 
 **Location:** `tests/mvp_baseline/`
 
@@ -34,6 +34,7 @@ tests/
 │   ├── conftest.py             ← MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
 │   ├── test_bar_snapshots.py
 │   ├── test_latency_determinism.py
+│   ├── test_order_history.py
 │   ├── test_pnl_calculation.py
 │   ├── test_tick_count.py
 │   ├── test_trade_execution.py
@@ -75,6 +76,7 @@ The MVP baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_h
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `trade_history` | session | List of TradeRecord with full audit trail for each trade |
+| `order_history` | session | List of OrderResult (executed + rejected orders) |
 | `trade_sequence` | session | Expected trade sequence from decision logic config |
 
 ### Delay Generator Fixtures
@@ -88,6 +90,21 @@ The MVP baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_h
 ---
 
 ## Test Files
+
+### test_order_history.py (4 Tests)
+
+Validates order history contents and consistency with execution statistics counters.
+
+#### TestOrderHistoryBaseline
+
+| Test | Description |
+|------|-------------|
+| `test_order_history_not_none` | order_history is populated and not empty after execution |
+| `test_order_history_count_matches_stats` | Rejected entries == `orders_rejected`; executed entries >= `orders_executed` (close fills add extra entries beyond open fills) |
+| `test_order_history_executed_have_price` | Every executed entry carries a positive `executed_price` |
+| `test_order_history_rejection_reasons` | Every rejected entry carries a valid `RejectionReason` (trivially passes with 0 rejections) |
+
+---
 
 ### test_bar_snapshots.py (7 Tests)
 
@@ -240,6 +257,7 @@ BatchExecutionSummary
        └→ tick_loop_results: ProcessTickLoopResult
             ├→ portfolio_stats: PortfolioStats
             ├→ trade_history: List[TradeRecord]
+            ├→ order_history: List[OrderResult]
             ├→ execution_stats: ExecutionStats
             ├→ decision_statistics: DecisionLogicStats
             └→ coordination_statistics: WorkerCoordinatorPerformanceStats

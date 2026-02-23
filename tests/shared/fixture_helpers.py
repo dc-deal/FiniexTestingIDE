@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.types.order_types import OrderResult
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.types.scenario_set_types import ScenarioSet
@@ -119,6 +120,14 @@ def extract_execution_stats(
     """Extract execution statistics (order counts, SL/TP triggers)."""
     assert tick_loop_results.execution_stats is not None, "No execution stats"
     return tick_loop_results.execution_stats
+
+
+def extract_order_history(
+    tick_loop_results: ProcessTickLoopResult
+) -> List[OrderResult]:
+    """Extract order history (executed + rejected orders)."""
+    assert tick_loop_results.order_history is not None, "No order history"
+    return tick_loop_results.order_history
 
 
 # =============================================================================

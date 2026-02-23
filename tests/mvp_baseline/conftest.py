@@ -9,6 +9,7 @@ This conftest only wires the config path and creates pytest fixtures.
 import pytest
 from typing import Dict, Any, List
 
+from python.framework.types.order_types import OrderResult
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
@@ -23,6 +24,7 @@ from tests.shared.fixture_helpers import (
     extract_backtesting_metadata,
     extract_portfolio_stats,
     extract_trade_history,
+    extract_order_history,
     load_scenario_config,
     extract_trade_sequence,
     extract_seeds_config,
@@ -72,6 +74,12 @@ def portfolio_stats(tick_loop_results: ProcessTickLoopResult) -> PortfolioStats:
 def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
     return extract_trade_history(tick_loop_results)
+
+
+@pytest.fixture(scope="session")
+def order_history(tick_loop_results: ProcessTickLoopResult) -> List[OrderResult]:
+    """Extract order history (executed + rejected orders)."""
+    return extract_order_history(tick_loop_results)
 
 
 # =============================================================================

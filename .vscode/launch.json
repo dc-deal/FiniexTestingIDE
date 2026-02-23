@@ -147,7 +147,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Limit/Stop Mock Test)",
+            "name": "🧪 Run (Limit/Stop History Mock Test)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -270,6 +270,19 @@
             "module": "pytest",
             "args": [
                 "tests/sltp_limit_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Active Order Display (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/active_order_display/",
                 "-v",
                 "--tb=short"
             ],
