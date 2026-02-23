@@ -29,6 +29,7 @@ class Position:
     symbol: str
     direction: OrderDirection
     lots: float
+    original_lots: float  # Immutable after open — tracks initial lot size before partial closes
     entry_price: float
     entry_time: datetime
 
@@ -167,5 +168,5 @@ class Position:
 
     @property
     def is_open(self) -> bool:
-        """Check if position is still open"""
-        return self.status == PositionStatus.OPEN
+        """Check if position is still open (includes partially closed)"""
+        return self.status in (PositionStatus.OPEN, PositionStatus.PARTIALLY_CLOSED)
