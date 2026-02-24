@@ -684,10 +684,26 @@ class AbstractTradeExecutor(ABC):
         """
         Are there any orders in flight (submitted but not yet filled)?
 
-        Used by single-position strategies to avoid double-ordering.
+        Includes ALL pending worlds: latency pipeline, active limit orders,
+        active stop orders. Used by single-position strategies that need
+        to know about any outstanding order activity.
 
-        TradeSimulator: Checks latency queue for pending opens/closes
-        LiveTradeExecutor: Checks broker order status cache
+        TradeSimulator: Latency queue + active limits + active stops
+        LiveTradeExecutor: Broker order status cache
+        """
+        pass
+
+    @abstractmethod
+    def has_pipeline_orders(self) -> bool:
+        """
+        Are there orders in the latency/submission pipeline only?
+
+        Unlike has_pending_orders(), this excludes broker-accepted orders
+        waiting for price trigger (active limit/stop orders). Use this
+        when you need to know if orders are still "in transit" to the broker.
+
+        TradeSimulator: Checks latency queue only (excludes active limits/stops)
+        LiveTradeExecutor: Checks broker tracker for unconfirmed orders
         """
         pass
 

@@ -597,6 +597,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """Check if any orders are pending at broker."""
         return self._order_tracker.has_pending_orders()
 
+    def has_pipeline_orders(self) -> bool:
+        """Check if any orders are pending at broker (same as has_pending_orders for live)."""
+        return self._order_tracker.has_pending_orders()
+
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
         return self._order_tracker.is_pending_close(position_id)
