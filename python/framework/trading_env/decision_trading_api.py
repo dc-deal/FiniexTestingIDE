@@ -254,8 +254,9 @@ class DecisionTradingAPI:
         """
         Are there any orders in flight (submitted but not yet filled)?
 
-        Used by single-position strategies to avoid double-ordering
-        during execution delays.
+        Includes ALL pending worlds: latency pipeline, active limit orders,
+        active stop orders. Used by single-position strategies that need
+        to know about any outstanding order activity.
 
         Returns:
             True if any orders are pending (open or close)
@@ -265,6 +266,19 @@ class DecisionTradingAPI:
                 return  # Wait for pending orders to resolve
         """
         return self._executor.has_pending_orders()
+
+    def has_pipeline_orders(self) -> bool:
+        """
+        Are there orders in the latency/submission pipeline only?
+
+        Unlike has_pending_orders(), this excludes broker-accepted orders
+        waiting for price trigger (active limit/stop orders). Use this
+        when you need to know if orders are still "in transit" to the broker.
+
+        Returns:
+            True if orders are in the latency pipeline (not yet broker-accepted)
+        """
+        return self._executor.has_pipeline_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """

@@ -354,7 +354,7 @@ class CautiousMACD(AbstractDecisionLogic):
           - New BUY/SELL signal + margin ok → place STOP order, store ID
 
         PENDING_ENTRY (stop in latency or active):
-          - In latency (has_pending_orders=True, active_stops=0): wait
+          - In pipeline (has_pipeline_orders=True): wait
           - Active STOP + counter-direction crossover → cancel_stop_order
           - Active STOP + FLAT → keep waiting (stop may still trigger)
 
@@ -376,11 +376,11 @@ class CautiousMACD(AbstractDecisionLogic):
 
         open_positions = self.trading_api.get_open_positions()
         active_counts = self.trading_api.get_active_order_counts()
-        in_latency = self.trading_api.has_pending_orders()
+        in_pipeline = self.trading_api.has_pipeline_orders()
         has_active_stop = active_counts.get("active_stops", 0) > 0
 
         self.logger.debug(
-            f"[state] positions={len(open_positions)} in_latency={in_latency} "
+            f"[state] positions={len(open_positions)} in_pipeline={in_pipeline} "
             f"active_stops={active_counts.get('active_stops', 0)} "
             f"decision={decision.action.value}"
         )
@@ -427,9 +427,9 @@ class CautiousMACD(AbstractDecisionLogic):
         # ============================================
         # PENDING_ENTRY
         # ============================================
-        if in_latency or has_active_stop:
-            # In latency queue: cannot cancel yet, just wait
-            if in_latency and not has_active_stop:
+        if in_pipeline or has_active_stop:
+            # In latency pipeline: cannot cancel yet, just wait
+            if in_pipeline:
                 return None
 
             # Active STOP: cancel only on counter-direction crossover (FLAT = keep waiting)

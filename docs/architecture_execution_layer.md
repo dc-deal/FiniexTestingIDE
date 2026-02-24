@@ -238,7 +238,8 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `_process_pending_orders()` — How pending orders are resolved
 - `open_order()` — How orders are submitted
 - `close_position()` — How close requests are sent
-- `has_pending_orders()` — Whether any orders are in flight
+- `has_pending_orders()` — Whether any orders are in flight (all worlds)
+- `has_pipeline_orders()` — Whether orders are in latency pipeline only
 - `is_pending_close(position_id)` — Whether a specific position is being closed
 - `close_all_remaining_orders(current_tick)` — End-of-run cleanup: direct-fills open positions via synthetic orders (no pending), then `clear_pending()` for stuck pipeline orders
 - `get_pending_stats()` — Aggregated pending order statistics (latency, outcomes)
@@ -311,7 +312,7 @@ The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 
 - Order-type validation at startup (fail early, not at tick 50,000)
 - Clean method signatures (`send_order`, `get_open_positions`, `close_position`)
-- Pending order awareness (`has_pending_orders`, `is_pending_close`)
+- Pending order awareness (`has_pending_orders`, `has_pipeline_orders`, `is_pending_close`)
 - Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
 
 ### PortfolioManager
@@ -373,10 +374,17 @@ The new design separates concerns completely:
 
 **`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
 
-**`has_pending_orders()`** — Global check: "Is anything in flight?" Used by single-position strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
+**`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Covers latency pipeline, active limit orders, and active stop orders. Used by market-only strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
 ```
 if self.trading_api.has_pending_orders():
     return None  # Wait for pending orders to resolve
+```
+
+**`has_pipeline_orders()`** — Pipeline-only check: "Are orders still in transit (latency queue)?" Excludes broker-accepted orders waiting for price trigger (active limit/stop orders). Used by strategies that place limit/stop orders and need to distinguish between "order underway" and "order waiting at broker for price":
+```
+if self.trading_api.has_pipeline_orders():
+    return None  # Order still in latency pipeline — wait
+# Active limit/stop orders are NOT blocking here
 ```
 
 **`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (BacktestingMultiPosition, BacktestingMarginStress) to avoid duplicate close submissions:
@@ -385,7 +393,15 @@ if self.trading_api.is_pending_close(pos.position_id):
     continue  # Close already in flight
 ```
 
-Both methods delegate through DecisionTradingAPI → AbstractTradeExecutor → the respective PendingOrderManager. The logic lives in AbstractPendingOrderManager (shared), queried by the executor, exposed through the API.
+All methods delegate through DecisionTradingAPI → AbstractTradeExecutor → the respective PendingOrderManager. The logic lives in AbstractPendingOrderManager (shared), queried by the executor, exposed through the API.
+
+**Scope comparison:**
+
+| Method | Latency Pipeline | Active Limits | Active Stops |
+|--------|:---:|:---:|:---:|
+| `has_pending_orders()` | ✓ | ✓ | ✓ |
+| `has_pipeline_orders()` | ✓ | — | — |
+| `is_pending_close(id)` | ✓ | — | — |
 
 ---
 
@@ -615,5 +631,6 @@ We considered a separate `OrderExecutionAdapter` interface for live execution me
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
 | **Active Limit Order** | A limit order that passed latency simulation but hasn't triggered yet — sits in `_active_limit_orders` waiting for price |
 | **Active Stop Order** | A stop/stop-limit order that passed latency simulation but hasn't triggered yet — sits in `_active_stop_orders` waiting for trigger price |
+| **Pipeline Orders** | Orders in the latency/submission pipeline (not yet broker-accepted). Queried via `has_pipeline_orders()` — excludes active limit/stop orders |
 | **ActiveOrderSnapshot** | Dataclass exposing order_id, type, symbol, direction, lots, prices for active limit/stop orders in stats |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

@@ -918,9 +918,13 @@ class TradeSimulator(AbstractTradeExecutor):
                 or len(self._active_limit_orders) > 0
                 or len(self._active_stop_orders) > 0)
 
-    def _has_pipeline_orders(self) -> bool:
+    def has_pipeline_orders(self) -> bool:
         """Check latency queue only — active limit/stop are intentionally preserved."""
         return self.latency_simulator.has_pending_orders()
+
+    def _has_pipeline_orders(self) -> bool:
+        """Internal alias for check_clean_shutdown() compatibility."""
+        return self.has_pipeline_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
