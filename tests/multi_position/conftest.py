@@ -14,7 +14,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.trading_env.order_latency_simulator import SeededDelayGenerator
+from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 from tests.shared.fixture_helpers import (
     run_scenario,

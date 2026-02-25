@@ -28,7 +28,8 @@
     },
     "execution_config": {
       "strict_parameter_validation": false
-    }
+    },
+    "stress_test_config": {}
   },
   "scenarios": [
     {

@@ -48,6 +48,12 @@ def prepare_trade_executor_for_scenario(
         f"   Initial Balance: {config.initial_balance}"
     )
 
+    # Log stress test config if any test is enabled
+    if config.stress_test_config.has_any_enabled():
+        logger.info(
+            f"⚡ Stress Test Configuration: ACTIVE"
+        )
+
     if executor_mode == ExecutorMode.SIMULATION:
         return TradeSimulator(
             broker_config=broker_config,
@@ -55,6 +61,7 @@ def prepare_trade_executor_for_scenario(
             account_currency=config.account_currency,
             logger=logger,
             seeds=config.seeds,
+            stress_test_config=config.stress_test_config,
             order_history_max=config.order_history_max,
             trade_history_max=config.trade_history_max
         )

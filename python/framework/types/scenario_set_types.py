@@ -52,6 +52,9 @@ class SingleScenario:
     broker_type: BrokerType = None
     trade_simulator_config: Optional[Dict[str, Any]] = None
 
+    # Stress test configuration (per scenario, cascaded from global)
+    stress_test_config: Optional[Dict[str, Any]] = None
+
     account_currency: str = ''
     configured_account_currency: str = ''
 

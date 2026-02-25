@@ -267,7 +267,7 @@ Simulation-specific pending order manager. Adds tick-based latency modeling with
 - `submit_close_order()` — Same pattern for close orders
 - `process_tick(tick_number)` — Returns orders whose `fill_at_tick` has been reached, removes them via inherited `remove_order()`
 
-Uses `SeededDelayGenerator` for deterministic API latency + market execution delays.
+Uses `SeededDelayGenerator` (`utils/seeded_generators/`) for deterministic API latency + market execution delays.
 
 ### LiveOrderTracker (extends AbstractPendingOrderManager)
 
@@ -523,7 +523,7 @@ At scenario end, `close_all_remaining_orders()` discards unfilled limit orders f
 
 ### Tick-Based → Millisecond-Based Latency
 **Problem:** OrderLatencySimulator models delays as tick counts. Real broker latency is time-based. Tick-counting is meaningless in live trading where ticks arrive at irregular intervals.
-- Affects: OrderLatencySimulator, SeededDelayGenerator, PendingOrder
+- Affects: OrderLatencySimulator, SeededDelayGenerator (`utils/seeded_generators/`), PendingOrder
 - See: `ISSUE_tick_to_ms_latency_migration.md`
 
 ### Error Handling in Execution Chain (Partially Resolved)

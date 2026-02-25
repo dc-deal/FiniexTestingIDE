@@ -70,7 +70,8 @@
         "api_latency_seed": 12345,
         "market_execution_seed": 67890
       }
-    }
+    },
+    "stress_test_config": {}
   },
   "scenarios": [
     {

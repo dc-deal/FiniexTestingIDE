@@ -39,6 +39,13 @@
     },
     "execution_config": {
       "strict_parameter_validation": false
+    },
+    "stress_test_config": {
+      "reject_open_order": {
+        "enabled": true,
+        "seed": 999,
+        "probability": 0.6
+      }
     }
   },
   "scenarios": [

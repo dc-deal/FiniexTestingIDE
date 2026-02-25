@@ -106,8 +106,8 @@ PARTIAL_CLOSE_CONFIG = "backtesting/partial_close_test.json"
 | `trade_sequence` | session | Configured trade specifications |
 | `partial_close_sequence` | session | Configured partial close events |
 | `seeds_config` | session | Seed values for deterministic latency |
-| `api_delay_generator` | function | Fresh SeededDelayGenerator per test |
-| `exec_delay_generator` | function | Fresh SeededDelayGenerator per test |
+| `api_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
+| `exec_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
 
 ---
 

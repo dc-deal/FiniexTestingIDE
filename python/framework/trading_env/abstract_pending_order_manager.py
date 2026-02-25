@@ -20,7 +20,7 @@ Architecture:
     AbstractPendingOrderManager
         │
         ├── SimulationLatencyManager (OrderLatencySimulator)
-        │   - SeededDelayGenerator for deterministic delays
+        │   - SeededDelayGenerator (utils/seeded_generators/) for deterministic delays
         │   - process_tick() → fills based on tick count
         │
         └── LiveOrderTracker (Horizon 2)

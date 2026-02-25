@@ -50,6 +50,13 @@
         "api_latency_seed": 42,
         "market_execution_seed": 123
       }
+    },
+    "stress_test_config": {
+      "reject_open_order": {
+        "enabled": false,
+        "seed": 999,
+        "probability": 0.3
+      }
     }
   },
   "scenarios": [

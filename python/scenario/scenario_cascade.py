@@ -14,7 +14,8 @@ class ScenarioCascade:
     Supports 3-level cascade for execution_config:
         app_config → global → scenario
 
-    Supports 2-level cascade for strategy_config and trade_simulator_config:
+    Supports 2-level cascade for strategy_config, trade_simulator_config
+    and stress_test_config:
         global → scenario
 
     Key principle: Scenario values ALWAYS override global, global ALWAYS overrides app defaults.
@@ -87,6 +88,28 @@ class ScenarioCascade:
 
         Returns:
             Merged trade_simulator_config with scenario taking precedence
+        """
+        result = copy.deepcopy(global_config)
+
+        if scenario_config:
+            result = ScenarioCascade._deep_merge(result, scenario_config)
+
+        return result
+
+    @staticmethod
+    def merge_stress_test_config(
+        global_config: Dict[str, Any],
+        scenario_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        2-level cascade merge for stress_test_config.
+
+        Args:
+            global_config: Global stress_test_config from scenario_set
+            scenario_config: Scenario-specific stress_test_config
+
+        Returns:
+            Merged stress_test_config with scenario taking precedence
         """
         result = copy.deepcopy(global_config)
 
