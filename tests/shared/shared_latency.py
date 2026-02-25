@@ -9,7 +9,7 @@ Import these classes into suite-specific test_latency_determinism.py files.
 import pytest
 from typing import Dict
 
-from python.framework.trading_env.order_latency_simulator import SeededDelayGenerator
+from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 
 class TestLatencyDeterminism:

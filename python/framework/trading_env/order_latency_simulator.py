@@ -34,51 +34,13 @@ Post-MVP Extensions:
 """
 
 from datetime import datetime, timezone
-import random
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.order_types import OpenOrderRequest, OrderDirection, OrderType
-
-
-# ============================================
-# Seeded Delay Generator
-# ============================================
-
-class SeededDelayGenerator:
-    """
-    Generate deterministic random delays using seeds.
-
-    Uses Python's random.Random with explicit seed for reproducibility.
-    Every run with same seed produces identical delay sequence.
-
-    NOTE: Currently tick-based (ticks to wait).
-    Post-MVP: Will be MS-based with tick→timestamp mapping.
-    """
-
-    def __init__(self, seed: int, min_delay: int, max_delay: int):
-        """
-        Initialize delay generator.
-
-        Args:
-            seed: Random seed for reproducibility
-            min_delay: Minimum delay in ticks (MVP) / ms (Post-MVP)
-            max_delay: Maximum delay in ticks (MVP) / ms (Post-MVP)
-        """
-        self.rng = random.Random(seed)
-        self.min_delay = min_delay
-        self.max_delay = max_delay
-
-    def next(self) -> int:
-        """
-        Generate next delay value.
-
-        Returns:
-            Random delay between min_delay and max_delay (inclusive)
-        """
-        return self.rng.randint(self.min_delay, self.max_delay)
+from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 
 # ============================================
@@ -119,9 +81,6 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             - market_execution_seed: 123
         """
         super().__init__(logger)
-
-        # Fill counter for stress test hooks
-        self._fill_counter = 0
 
         # Extract seeds with defaults
         DEFAULT_API_LATENCY_SEED = 42

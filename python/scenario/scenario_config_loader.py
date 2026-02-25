@@ -63,6 +63,9 @@ class ScenarioConfigLoader:
         global_trade_simulator = global_config.get(
             'trade_simulator_config', {})
 
+        # Parse global stress_test_config
+        global_stress_test = global_config.get('stress_test_config', {})
+
         # Get warn_on_override flag from app_config
         app_config = AppConfigManager()
         warn_on_override = app_config.should_warn_on_override()
@@ -102,6 +105,12 @@ class ScenarioConfigLoader:
             scenario_trade_simulator = ScenarioCascade.merge_trade_simulator_config(
                 global_trade_simulator,
                 scenario_data.get('trade_simulator_config', {})
+            )
+
+            # Deep merge stress_test_config (2-level: global → scenario)
+            scenario_stress_test = ScenarioCascade.merge_stress_test_config(
+                global_stress_test,
+                scenario_data.get('stress_test_config', {})
             )
 
             # ============================================
@@ -158,6 +167,8 @@ class ScenarioConfigLoader:
                 execution_config=scenario_execution,
                 # Add trade_simulator_config to SingleScenario
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
+                # Add stress_test_config to SingleScenario
+                stress_test_config=scenario_stress_test if scenario_stress_test else None,
             )
             scenarios.append(scenario)
             current_scenario_index += 1

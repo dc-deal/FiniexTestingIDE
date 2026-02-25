@@ -27,6 +27,7 @@ from python.framework.types.performance_stats_types import DecisionLogicStats, W
 from python.framework.types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.stress_test_types import StressTestConfig
 from python.framework.types.market_data_types import TickData
 from python.framework.types.order_types import OrderResult
 from python.framework.types.pending_order_stats_types import PendingOrderStats
@@ -205,6 +206,9 @@ class ProcessScenarioConfig:
     seeds: Dict[str, Any] = field(default_factory=dict)
     executor_mode: str = 'simulation'  # "simulation" | "live_dry_run"
 
+    # === STRESS TEST CONFIG ===
+    stress_test_config: StressTestConfig = field(default_factory=StressTestConfig.disabled)
+
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
     order_history_max: int = 10000
@@ -274,6 +278,9 @@ class ProcessScenarioConfig:
         market_type = market_config_manager.get_market_type(
             scenario.broker_type.value)
 
+        # Parse stress test config from scenario
+        stress_test_config = StressTestConfig.from_dict(scenario.stress_test_config)
+
         # Default live stats config if not provided
         if live_stats_config is None:
             live_stats_config = LiveStatsExportConfig(enabled=False)
@@ -300,6 +307,7 @@ class ProcessScenarioConfig:
             account_currency=account_currency,
             seeds=seeds,
             executor_mode=executor_mode,
+            stress_test_config=stress_test_config,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max()

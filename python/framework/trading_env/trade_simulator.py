@@ -27,11 +27,13 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.stress_test.stress_test_rejection import StressTestRejection
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
 from python.framework.types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
+from python.framework.types.stress_test_types import StressTestConfig, StressTestRejectOrderConfig
 from .broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from ..types.order_types import (
@@ -46,13 +48,6 @@ from ..types.order_types import (
     OpenOrderRequest,
     create_rejection_result
 )
-
-
-# ============================================
-# Stress Test Configuration (Workaround — will be config-driven later)
-# ============================================
-STRESS_TEST_REJECTION_ENABLED = False
-STRESS_TEST_REJECT_EVERY_N = 3
 
 
 class TradeSimulator(AbstractTradeExecutor):
@@ -78,6 +73,7 @@ class TradeSimulator(AbstractTradeExecutor):
         account_currency: str,
         logger: AbstractLogger,
         seeds: Optional[Dict[str, int]] = None,
+        stress_test_config: Optional[StressTestConfig] = None,
         order_history_max: int = 10000,
         trade_history_max: int = 5000,
     ):
@@ -90,6 +86,7 @@ class TradeSimulator(AbstractTradeExecutor):
             account_currency: Account currency (or "auto" for symbol-based detection)
             logger: Logger instance
             seeds: Seeds for order execution delays (from config)
+            stress_test_config: Stress test configuration (config-driven)
             order_history_max: Max order history entries (0=unlimited)
             trade_history_max: Max trade history entries (0=unlimited)
         """
@@ -108,6 +105,11 @@ class TradeSimulator(AbstractTradeExecutor):
         self.latency_simulator = OrderLatencySimulator(
             seeds, logger
         )
+
+        # Stress test: order rejection (config-driven)
+        stress_test_config = stress_test_config or StressTestConfig.disabled()
+        reject_config = stress_test_config.reject_open_order or StressTestRejectOrderConfig()
+        self._stress_test_rejection = StressTestRejection(reject_config, logger)
 
         # Active limit orders waiting for price trigger (post-latency)
         self._active_limit_orders: List[PendingOrder] = []
@@ -280,34 +282,22 @@ class TradeSimulator(AbstractTradeExecutor):
             self._active_stop_orders = remaining_stops
 
     # ============================================
-    # Stress Test: Seeded Rejection (toggle via module constants)
+    # Stress Test: Seeded Rejection (config-driven)
     # ============================================
 
-    def _stress_test_should_reject(self, pending_order) -> bool:
+    def _stress_test_should_reject(self, pending_order: PendingOrder) -> bool:
         """
         Check if this order should be rejected by the stress test.
 
-        Controlled by STRESS_TEST_REJECTION_ENABLED and STRESS_TEST_REJECT_EVERY_N
-        module-level constants. Returns True if order was rejected (and handled).
+        Delegates to StressTestRejection module (config-driven, seeded probability).
+        Returns True if order was rejected (and handled).
         """
-        if not STRESS_TEST_REJECTION_ENABLED:
+        rejection = self._stress_test_rejection.should_reject(pending_order)
+        if rejection is None:
             return False
 
-        self.latency_simulator._fill_counter += 1
-        if self.latency_simulator._fill_counter % STRESS_TEST_REJECT_EVERY_N != 0:
-            return False
-
-        rejection = create_rejection_result(
-            order_id=pending_order.pending_order_id,
-            reason=RejectionReason.BROKER_ERROR,
-            message=f"[STRESS TEST] Seeded rejection for order #{self.latency_simulator._fill_counter}"
-        )
         self._orders_rejected += 1
         self._order_history.append(rejection)
-        self.logger.warning(
-            f"[STRESS TEST] Order {pending_order.pending_order_id} rejected "
-            f"(every {STRESS_TEST_REJECT_EVERY_N}. order rule)"
-        )
         return True
 
     # ============================================

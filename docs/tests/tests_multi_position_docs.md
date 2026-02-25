@@ -115,8 +115,8 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 | `scenario_config` | session | Raw JSON config for assertion values |
 | `trade_sequence` | session | Configured trade specifications from JSON |
 | `seeds_config` | session | Seed values for deterministic latency |
-| `api_delay_generator` | function | Fresh SeededDelayGenerator per test |
-| `exec_delay_generator` | function | Fresh SeededDelayGenerator per test |
+| `api_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
+| `exec_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
 
 ---
 
