@@ -50,7 +50,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (~534 tests across 10 test suites)
+- ✅ Validated accuracy (~570 tests across 11 test suites)
 
 ---
 
@@ -94,7 +94,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 
 ```
 1. Collect tick data    →  TickCollector (MT5)
-2. Import to Parquet    →  📥 Import: Offset +3
+2. Import to Parquet    →  📥 Import (config-driven offsets)
 3. Create your bot      →  Worker + Decision + Config
 4. Run backtest         →  🔬 Run Scenario
 ```
@@ -110,12 +110,14 @@ FiniexTestingIDE uses a **two-tier configuration system** for flexible customiza
 ```
 configs/              # Default configurations (version controlled)
 ├── app_config.json        # Application settings
+├── import_config.json     # Import pipeline settings (offsets, paths, processing)
 ├── market_config.json     # Market & broker mappings
 ├── brokers/              # Broker-specific configs
 └── scenario_sets/        # Trading scenario definitions
 
 user_configs/         # Your personal overrides (gitignored)
 ├── app_config.json        # Optional: override app settings
+├── import_config.json     # Optional: override import settings (offsets, paths)
 ├── market_config.json     # Optional: override market config
 └── analysis_config.json   # Optional: override analysis/discovery settings
 ```
@@ -297,13 +299,22 @@ Validates stop loss, take profit, limit, stop, and stop-limit order behavior:
 - Order cancellation: cancel_stop_sequence, cancel_limit_sequence
 - Discovery-driven test data (real extreme move windows from Extreme Move Scanner)
 
+### Import Pipeline Tests (~36 tests)
+Validates tick data import lifecycle:
+- JSON schema validation (required fields, legacy field support)
+- Parquet conversion (columns, dtypes, directory structure)
+- UTC offset application (registry-based, per-broker)
+- Parquet metadata (core fields, source_meta_ preservation)
+- Duplicate detection (hash-based, override mode)
+- Quality checks (prices, spreads, temp column cleanup)
+
 ### Data Integration Tests (9 tests)
 Validates data pipeline integrity:
 - Volume consistency (crypto > 0, forex = 0)
 - Tick count validation across all markets
 - Index-to-bar-data consistency
 
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md), [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md), [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md), [Import Pipeline Tests](docs/tests/tests_import_pipeline_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
 
 ---
 
@@ -335,7 +346,9 @@ Validates data pipeline integrity:
 | [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md) | 10 active limit/stop order reporting tests |
 | [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | ~82 SL/TP, limit, stop, and stop-limit validation tests |
 | [Partial Close Tests](docs/tests/tests_partial_close_docs.md) | 39 partial position close tests |
+| [Import Pipeline Tests](docs/tests/tests_import_pipeline_docs.md) | ~36 import lifecycle tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
+| [Data Import Pipeline](docs/data_import_pipeline.md) | Import flow, schema, offset registry, config |
 
 ---
 

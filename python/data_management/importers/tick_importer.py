@@ -6,7 +6,7 @@ Converts MQL5 JSON exports to optimized Parquet files with UTC conversion.
 Workflow: Load JSON → Validate → Optimize → UTC Conversion → Save Parquet
 
 Author: FiniexTestingIDE Team
-Version: 1.4 (Market Type Support)
+Version: 1.6 (Import Config Isolation + Source Metadata)
 """
 
 import json
@@ -21,7 +21,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -59,34 +59,40 @@ class TickDataImporter:
         time_offset (int): Manual UTC offset in hours (e.g., -3 for GMT+3)
     """
 
-    VERSION = "1.5"
+    VERSION = "1.6"
 
     def __init__(self, source_dir: str, target_dir: str,
-                 override: bool = False, time_offset: int = 0,
-                 offset_broker: Optional[str] = None):
+                 override: bool = False,
+                 offset_registry: Optional[Dict[str, int]] = None,
+                 move_processed_files: bool = True,
+                 finished_dir: Optional[str] = None,
+                 auto_render_bars: bool = True):
         """
         Initialize importer with source and target paths.
 
         Args:
             source_dir: MQL5 JSON export directory
-            target_dir: Parquet target directory
+            target_dir: Parquet target directory (import_output)
             override: Overwrite existing files
-            time_offset: UTC offset in hours
-            offset_broker: Apply offset only to files with this broker_type
+            offset_registry: Per-broker offset mapping {broker_type: offset_hours}
+            move_processed_files: Move JSON to finished_dir after import
+            finished_dir: Directory for processed JSON files
+            auto_render_bars: Automatically render bars after tick import
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
         self.target_dir.mkdir(parents=True, exist_ok=True)
 
         self.override = override
-        self.time_offset = time_offset
-        self.offset_broker = offset_broker
+        self._offset_registry: Dict[str, int] = offset_registry or {}
+        self._move_processed_files = move_processed_files
+        self._finished_dir = Path(finished_dir) if finished_dir else None
+        self._auto_render_bars = auto_render_bars
 
         # Batch processing statistics
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
-        self._app_config_loader = AppConfigManager()
 
         # Track processed broker_types for bar rendering
         self._processed_broker_types: Set[str] = set()
@@ -125,12 +131,14 @@ class TickDataImporter:
         vLog.info(f"Found: {len(json_files)} JSON files")
         vLog.info(
             f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
-        if self.time_offset != 0:
-            vLog.info(f"Time Offset: {self.time_offset:+d} hours")
-            vLog.warning("⚠️ CRITICAL: After offset ALL TIMES ARE UTC!")
-            vLog.warning("⚠️ Sessions will be RECALCULATED based on UTC time!")
+        if self._offset_registry:
+            for bt, offset in self._offset_registry.items():
+                if offset != 0:
+                    vLog.info(f"Offset: {bt} → {offset:+d}h (UTC conversion)")
+                else:
+                    vLog.info(f"Offset: {bt} → 0h (no conversion)")
         else:
-            vLog.info(f"Time Offset: NONE (timestamps remain as-is)")
+            vLog.info(f"Offset Registry: EMPTY (no offsets configured)")
         vLog.info("=" * 80 + "\n")
 
         # Sequential processing with error recovery
@@ -155,7 +163,7 @@ class TickDataImporter:
 
         # === AUTO-TRIGGER BAR RENDERING ===
         # After all ticks imported, render bars automatically
-        if self.processed_files > 0:
+        if self.processed_files > 0 and self._auto_render_bars:
             self._trigger_bar_rendering()
 
         self._print_summary()
@@ -165,7 +173,7 @@ class TickDataImporter:
         vLog.info("\n🔄 Rebuilding Parquet index...")
         try:
 
-            index_manager = TickIndexManager()
+            index_manager = TickIndexManager(data_dir=str(self.target_dir))
             index_manager.build_index(force_rebuild=True)
 
             symbols = index_manager.list_symbols()
@@ -251,26 +259,24 @@ class TickDataImporter:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
 
         # ===========================================
-        # 4. APPLY TIME OFFSET
+        # 4. APPLY TIME OFFSET (from registry)
         # ===========================================
         broker_type_normalized = self._validate_broker_type(
             metadata)
 
-        should_apply_offset = (
-            self.time_offset != 0 and
-            self.offset_broker is not None and
-            broker_type_normalized == self.offset_broker
-        )
+        # Resolve offset for this file's broker_type from registry
+        file_offset = self._offset_registry.get(broker_type_normalized, 0)
+        should_apply_offset = file_offset != 0
 
         if should_apply_offset:
-            df = self._apply_time_offset(df)
+            df = self._apply_time_offset(df, file_offset)
             df = self._recalculate_sessions(df)
             vLog.info(
-                f"   ✅ Time offset {self.time_offset:+d}h applied (broker_type={broker_type_normalized})")
+                f"   ✅ Time offset {file_offset:+d}h applied (broker_type={broker_type_normalized})")
             vLog.info(f"   ✅ Sessions recalculated based on UTC time")
-        elif self.time_offset != 0:
+        else:
             vLog.info(
-                f"   ℹ️  No offset applied (broker_type={broker_type_normalized} != {self.offset_broker})")
+                f"   ℹ️  No offset for broker_type={broker_type_normalized} (0h in registry)")
 
         # ===========================================
         # 6. QUALITY CHECKS
@@ -315,9 +321,17 @@ class TickDataImporter:
             "processed_at": datetime.now(timezone.utc).isoformat(),
             "tick_count": str(len(df)),
             "importer_version": self.VERSION,
-            "user_time_offset_hours": str(self.time_offset if broker_type_normalized == self.offset_broker else 0),
-            "utc_conversion_applied": "true" if (self.time_offset != 0 and broker_type_normalized == self.offset_broker) else "false",
+            "user_time_offset_hours": str(file_offset),
+            "utc_conversion_applied": "true" if should_apply_offset else "false",
         }
+
+        # Preserve original MQL5 metadata for traceability (source_meta_ prefix)
+        _NESTED_META_KEYS = {"symbol_info", "collection_settings", "error_tracking"}
+        for meta_key, meta_value in metadata.items():
+            if meta_key in _NESTED_META_KEYS:
+                parquet_metadata[f"source_meta_{meta_key}"] = json.dumps(meta_value)
+            elif meta_key not in ("symbol", "broker", "ticks"):
+                parquet_metadata[f"source_meta_{meta_key}"] = str(meta_value)
 
         # ===========================================
         # 8. CHECK FOR EXISTING DUPLICATES
@@ -354,11 +368,9 @@ class TickDataImporter:
             parquet_size = parquet_path.stat().st_size
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
 
-            if self._app_config_loader.get_move_processed_files:
-                finished_dir = Path(
-                    self._app_config_loader.get_data_finished_path())
-                finished_dir.mkdir(exist_ok=True)
-                finished_file = finished_dir / json_file.name
+            if self._move_processed_files and self._finished_dir:
+                self._finished_dir.mkdir(exist_ok=True)
+                finished_file = self._finished_dir / json_file.name
                 json_file.rename(finished_file)
                 vLog.info(f"→ Moved {json_file.name} to finished/")
 
@@ -380,17 +392,18 @@ class TickDataImporter:
             vLog.error(f"Error Type: {type(e)}")
             raise
 
-    def _apply_time_offset(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_time_offset(self, df: pd.DataFrame, offset_hours: int) -> pd.DataFrame:
         """
-        Applies manual time offset to timestamps.
+        Applies time offset to timestamps for UTC conversion.
 
         Args:
             df: DataFrame with 'timestamp' column
+            offset_hours: Hours to add (e.g. -3 for GMT+3 → UTC subtracts 3h)
 
         Returns:
             DataFrame with adjusted timestamps
         """
-        if self.time_offset == 0:
+        if offset_hours == 0:
             return df
 
         if "timestamp" not in df.columns:
@@ -400,14 +413,14 @@ class TickDataImporter:
         original_first = df["timestamp"].iloc[0]
         original_last = df["timestamp"].iloc[-1]
 
-        # Apply offset
-        offset_timedelta = pd.Timedelta(hours=self.time_offset)
-        df["timestamp"] = df["timestamp"] - offset_timedelta
+        # Apply offset (e.g. offset=-3 → subtract 3h from timestamp)
+        offset_timedelta = pd.Timedelta(hours=offset_hours)
+        df["timestamp"] = df["timestamp"] + offset_timedelta
 
         utc_first = df["timestamp"].iloc[0]
         utc_last = df["timestamp"].iloc[-1]
 
-        vLog.info(f"   🕐 Time Offset Applied: {self.time_offset:+d} hours")
+        vLog.info(f"   🕐 Time Offset Applied: {offset_hours:+d} hours")
         vLog.info(f"      Original: {original_first} → {original_last}")
         vLog.info(f"      UTC:      {utc_first} → {utc_last}")
 
@@ -416,11 +429,16 @@ class TickDataImporter:
     def _recalculate_sessions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Recalculates trading sessions based on UTC time.
-        """
 
-        if 'session' in df.columns:
-            df['session'] = df['session'].apply(
-                lambda x: x.value if hasattr(x, 'value') else str(x)
+        Args:
+            df: DataFrame with 'timestamp' column (must be UTC after offset)
+
+        Returns:
+            DataFrame with corrected session labels
+        """
+        if 'session' in df.columns and 'timestamp' in df.columns:
+            df['session'] = df['timestamp'].dt.hour.map(
+                lambda h: get_session_from_utc_hour(h).value
             )
         return df
 
@@ -553,9 +571,10 @@ class TickDataImporter:
         vLog.info("=" * 80)
         vLog.info(f"✅ Processed files: {self.processed_files}")
         vLog.info(f"✅ Total ticks: {self.total_ticks:,}")
-        if self.time_offset != 0:
-            vLog.info(
-                f"✅ Time Offset: {self.time_offset:+d} hours (ALL TIMES ARE UTC!)")
+        active_offsets = {bt: off for bt, off in self._offset_registry.items() if off != 0}
+        if active_offsets:
+            offsets_str = ", ".join(f"{bt}: {off:+d}h" for bt, off in active_offsets.items())
+            vLog.info(f"✅ Offsets applied: {offsets_str} (UTC converted)")
         vLog.info(f"❌ Errors: {len(self.errors)}")
 
         if self.errors:
@@ -575,7 +594,7 @@ class TickDataImporter:
         vLog.info("=" * 80)
 
         try:
-            bar_importer = BarImporter()
+            bar_importer = BarImporter(data_dir=str(self.target_dir))
 
             for broker_type in self._processed_broker_types:
                 vLog.info(f"\n📊 Rendering bars for broker_type: {broker_type}")

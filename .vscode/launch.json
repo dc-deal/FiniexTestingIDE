@@ -5,16 +5,23 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📥 Import: MT5 Offset -3",
+            "name": "📥 Import",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
                 "import",
-                "--time-offset",
-                "-3",
-                "--offset-broker",
-                "mt5"
+                "--override"
             ],
             "console": "integratedTerminal"
         },
@@ -171,12 +178,12 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: MVP Baseline (All)",
+            "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/mvp_baseline/",
+                "tests/import_pipeline/",
                 "-v",
                 "--tb=short"
             ],
@@ -197,12 +204,12 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: MVP Benchmark (All)",
+            "name": "🧩 Pytest: MVP Baseline (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/mvp_benchmark/",
+                "tests/mvp_baseline/",
                 "-v",
                 "--tb=short"
             ],
@@ -222,46 +229,6 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "cwd": "${workspaceFolder}"
-        },
-        {
-            "name": "🧩 Pytest: Margin Validation (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/margin_validation/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "name": "🧩 Pytest: Worker Tests (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/worker_tests/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🧩 Pytest: Trader Pending Stats (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/pending_stats/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
         },
         {
             "name": "🧩 Pytest: SL/TP & Limit Validation (All)",
@@ -291,6 +258,33 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "name": "🧩 Pytest: Margin Validation (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/margin_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "🧩 Pytest: Trader Pending Stats (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/pending_stats/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: Active Order Display (All)",
             "type": "debugpy",
             "request": "launch",
@@ -304,12 +298,38 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Worker Tests (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: Live Trading Executor (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
                 "tests/live_executor/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: MVP Benchmark (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/mvp_benchmark/",
                 "-v",
                 "--tb=short"
             ],
