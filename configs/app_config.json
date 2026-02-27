@@ -48,8 +48,7 @@
         "generator_output": "configs/scenario_sets",
         "data_raw": "data/raw",
         "data_processed": "data/processed",
-        "data_finished": "data/finished",
-        "data_parquet": "data/parquet"
+        "data_finished": "data/finished"
     },
     "monitoring": {
         "enabled": true,
