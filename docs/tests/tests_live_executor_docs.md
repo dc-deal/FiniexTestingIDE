@@ -10,7 +10,7 @@ The live executor test suite validates the LiveTradeExecutor, LiveOrderTracker, 
 - Initial Balance: 10,000 USD
 - Execution Modes: instant_fill, delayed_fill, reject_all, timeout
 
-**Total Tests:** 47
+**Total Tests:** 58
 
 **Location:** `tests/live_executor/`
 
@@ -29,7 +29,8 @@ tests/
 │   ├── conftest.py                        ← Fixtures: mock modes, executor instances, tracker
 │   ├── test_live_order_tracker.py         ← Level 1: LiveOrderTracker isolated
 │   ├── test_live_executor_mock.py         ← Level 2: LiveTradeExecutor + MockAdapter integration
-│   └── test_live_executor_multi_order.py  ← Level 3: Multi-order scenarios
+│   ├── test_live_executor_multi_order.py  ← Level 3: Multi-order scenarios
+│   └── test_live_executor_modify.py       ← Level 4: Limit order modification via broker
 ```
 
 **Why this pattern?**
@@ -231,6 +232,48 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 ---
 
+### test_live_executor_modify.py (11 Tests)
+
+Limit order modification via broker adapter: successful modify, non-existent order, broker rejection, adapter exceptions, and `get_broker_ref()` reverse lookup.
+
+#### TestModifyLimitOrderSuccess
+
+| Test | Description |
+|------|-------------|
+| `test_modify_pending_order_price` | modify_limit_order() succeeds for tracked pending order |
+| `test_modify_pending_order_sl_tp` | Modify SL and TP on pending order |
+| `test_modify_with_unset_keeps_current` | UNSET parameters translated to None (no change) |
+
+#### TestModifyLimitOrderNotFound
+
+| Test | Description |
+|------|-------------|
+| `test_modify_nonexistent_order` | Returns LIMIT_ORDER_NOT_FOUND for unknown order_id |
+| `test_modify_after_fill_returns_not_found` | Returns NOT_FOUND after order has been filled |
+
+#### TestModifyLimitOrderBrokerRejection
+
+| Test | Description |
+|------|-------------|
+| `test_broker_rejects_modify` | Returns failure when broker rejects modification |
+
+#### TestModifyLimitOrderAdapterException
+
+| Test | Description |
+|------|-------------|
+| `test_adapter_exception_handled` | Adapter exceptions handled gracefully |
+
+#### TestGetBrokerRefReverseLookup
+
+| Test | Description |
+|------|-------------|
+| `test_get_broker_ref_returns_ref` | get_broker_ref() returns broker_ref for known order_id |
+| `test_get_broker_ref_unknown_returns_none` | Returns None for unknown order_id |
+| `test_get_broker_ref_after_fill_returns_none` | Returns None after order filled (removed from index) |
+| `test_get_broker_ref_multiple_orders` | Correct ref returned with multiple tracked orders |
+
+---
+
 ## Running the Tests
 
 ```bash
@@ -265,10 +308,12 @@ MockOrderExecution
   |     +-- execute_order() -> BrokerResponse
   |     +-- check_order_status() -> BrokerResponse
   |     +-- cancel_order() -> BrokerResponse
+  |     +-- modify_order() -> BrokerResponse
   |
   +-- LiveTradeExecutor (extends AbstractTradeExecutor)
         +-- open_order() -> OrderResult
         +-- close_position() -> OrderResult
+        +-- modify_limit_order() -> ModificationResult
         +-- on_tick() -> _process_pending_orders()
         |     +-- LiveOrderTracker.get_pending_orders()
         |     +-- adapter.check_order_status()
@@ -279,12 +324,12 @@ MockOrderExecution
 
 ### MockBrokerAdapter Modes
 
-| Mode | execute_order() | check_order_status() | Use Case |
-|------|----------------|---------------------|----------|
-| `INSTANT_FILL` | Returns FILLED | N/A (never pending) | Synchronous broker APIs |
-| `DELAYED_FILL` | Returns PENDING | Returns FILLED on first check | Asynchronous broker APIs |
-| `REJECT_ALL` | Returns REJECTED | N/A (never pending) | Error handling paths |
-| `TIMEOUT` | Returns PENDING | Always PENDING | Timeout detection |
+| Mode | execute_order() | check_order_status() | modify_order() | Use Case |
+|------|----------------|---------------------|----------------|----------|
+| `INSTANT_FILL` | Returns FILLED | N/A (never pending) | FILLED if pending | Synchronous broker APIs |
+| `DELAYED_FILL` | Returns PENDING | Returns FILLED on first check | FILLED if pending | Asynchronous broker APIs |
+| `REJECT_ALL` | Returns REJECTED | N/A (never pending) | Returns REJECTED | Error handling paths |
+| `TIMEOUT` | Returns PENDING | Always PENDING | FILLED if pending | Timeout detection |
 
 ### Bug Found During Test Development
 

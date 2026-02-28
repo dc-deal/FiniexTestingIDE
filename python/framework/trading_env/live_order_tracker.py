@@ -299,6 +299,24 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             return None
         return self._pending_orders.get(order_id)
 
+    def get_broker_ref(self, order_id: str) -> Optional[str]:
+        """
+        Reverse lookup: get broker reference for a given order ID.
+
+        O(n) scan of broker_ref index. Used by modify_limit_order()
+        to resolve internal order_id to broker_ref for adapter call.
+
+        Args:
+            order_id: Internal order identifier
+
+        Returns:
+            Broker reference string if found, None otherwise
+        """
+        for broker_ref, mapped_order_id in self._broker_ref_index.items():
+            if mapped_order_id == order_id:
+                return broker_ref
+        return None
+
     # ============================================
     # Cleanup (override to also clear index)
     # ============================================

@@ -149,7 +149,7 @@ Simulation fields (`placed_at_tick`, `fill_at_tick`) remain None in live mode.
 
 The `BaseAdapter` abstract class organizes methods in tiers. Live execution is Tier 3:
 
-**Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `is_live_capable()` — default `NotImplementedError` / `False`
+**Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `modify_order()`, `is_live_capable()` — default `NotImplementedError` / `False`
 
 Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 
@@ -164,6 +164,45 @@ Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three
 - `TIMEOUT` — Returns PENDING, `check_order_status()` stays PENDING forever
 
 Used by `MockOrderExecution` utility (`python/framework/testing/mock_order_execution.py`) to create pre-configured LiveTradeExecutor instances for testing.
+
+---
+
+## Live Limit Order Modification
+
+`LiveTradeExecutor.modify_limit_order()` modifies pending limit orders at the broker via `adapter.modify_order()`.
+
+### Flow
+
+```
+modify_limit_order(order_id, new_price, new_sl, new_tp)
+    │
+    ├── 1. LiveOrderTracker.get_broker_ref(order_id)
+    │      → None? → LIMIT_ORDER_NOT_FOUND
+    │
+    ├── 2. UNSET → None translation (adapter uses None=no change)
+    │
+    ├── 3. adapter.modify_order(broker_ref, new_price, new_sl, new_tp)
+    │      → Exception? → INVALID_PRICE
+    │
+    ├── 4. BrokerResponse.is_rejected?
+    │      → Yes: INVALID_PRICE
+    │
+    └── 5. Success → ModificationResult(success=True)
+```
+
+### Design Notes
+
+- **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
+- **No local shadow state update** — LiveTradeExecutor has no `_active_limit_orders` queue (that lives in TradeSimulator only). When the order lifecycle is lifted into AbstractTradeExecutor (#133 Step 4), local shadow state updates will be added after successful broker modify.
+- **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
+- **`get_broker_ref(order_id)`** — Reverse lookup on `LiveOrderTracker._broker_ref_index` (O(n) scan). The forward lookup `get_by_broker_ref(broker_ref)` is O(1) and used in the polling flow.
+
+### MockBrokerAdapter.modify_order()
+
+Mock behavior:
+- `REJECT_ALL` mode: Returns REJECTED
+- Other modes: Returns FILLED (modification accepted) if broker_ref exists in `_mock_pending`
+- Unknown broker_ref: Returns REJECTED
 
 ---
 

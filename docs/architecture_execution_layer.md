@@ -297,7 +297,7 @@ Abstract interface for all broker adapters. Methods are organized in tiers:
 
 **Tier 2 — Optional (extended orders):** `create_stop_order()`, `create_stop_limit_order()`, `create_iceberg_order()` — default `NotImplementedError`
 
-**Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `is_live_capable()` — see [live_execution_architecture.md](live_execution_architecture.md)
+**Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `modify_order()`, `is_live_capable()` — see [live_execution_architecture.md](live_execution_architecture.md)
 
 Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 

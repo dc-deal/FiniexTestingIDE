@@ -429,6 +429,64 @@ class MockBrokerAdapter(BaseAdapter):
             timestamp=now,
         )
 
+    def modify_order(
+        self,
+        broker_ref: str,
+        new_price: Optional[float] = None,
+        new_stop_loss: Optional[float] = None,
+        new_take_profit: Optional[float] = None,
+    ) -> BrokerResponse:
+        """
+        Simulate order modification based on configured mode.
+
+        In REJECT_ALL mode: returns REJECTED.
+        Otherwise: returns FILLED (modification accepted).
+        Unknown broker_ref: returns REJECTED.
+
+        Args:
+            broker_ref: Broker's order reference ID
+            new_price: New limit price (None=no change)
+            new_stop_loss: New stop loss level (None=no change)
+            new_take_profit: New take profit level (None=no change)
+
+        Returns:
+            BrokerResponse with modification status
+        """
+        now = datetime.now(timezone.utc)
+
+        if self._mode == MockExecutionMode.REJECT_ALL:
+            return BrokerResponse(
+                broker_ref=broker_ref,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason="Mock broker: reject_all mode",
+                timestamp=now,
+            )
+
+        # Check if order exists in pending (delayed/timeout) or was instant-filled
+        if broker_ref not in self._mock_pending:
+            return BrokerResponse(
+                broker_ref=broker_ref,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=f"Unknown broker_ref: {broker_ref}",
+                timestamp=now,
+            )
+
+        # Apply modification to mock pending state
+        order_data = self._mock_pending[broker_ref]
+        if new_price is not None:
+            order_data["expected_price"] = new_price
+        # SL/TP stored but not used in mock fill logic
+        if new_stop_loss is not None:
+            order_data["stop_loss"] = new_stop_loss
+        if new_take_profit is not None:
+            order_data["take_profit"] = new_take_profit
+
+        return BrokerResponse(
+            broker_ref=broker_ref,
+            status=BrokerOrderStatus.FILLED,
+            timestamp=now,
+        )
+
     # ============================================
     # Mock Configuration Helpers
     # ============================================
