@@ -20,7 +20,7 @@ A trading bot consists of three parts:
 
 | Component | Responsibility | Base Class |
 |-----------|----------------|------------|
-| **Worker** | Compute indicators from bar data | `AbstactWorker` |
+| **Worker** | Compute indicators from bar data | `AbstractWorker` |
 | **Decision Logic** | Make trading decisions from worker results | `AbstractDecisionLogic` |
 | **Config** | Connect workers + decision + scenarios | JSON file |
 
@@ -35,7 +35,7 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 ```python
 # Location: python/framework/workers/core/rsi_worker.py
 
-class RSIWorker(AbstactWorker):
+class RSIWorker(AbstractWorker):
     """RSI computation from bar close prices"""
     
     def __init__(
@@ -115,7 +115,7 @@ This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2
 ```python
 from python.framework.types.parameter_types import ParameterDef, REQUIRED
 
-class EnvelopeWorker(AbstactWorker):
+class EnvelopeWorker(AbstractWorker):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
@@ -163,7 +163,7 @@ class EnvelopeWorker(AbstactWorker):
 **Example: Market-aware warning in worker:**
 
 ```python
-class OBVWorker(AbstactWorker):
+class OBVWorker(AbstractWorker):
     def __init__(self, name, parameters, logger, trading_context=None):
         super().__init__(name, parameters, logger, trading_context=trading_context)
         
@@ -502,7 +502,7 @@ Current limitations:
 ```python
 # 1. Worker: SMA (you could also just use bars directly in decision)
 
-class SMAWorker(AbstactWorker):
+class SMAWorker(AbstractWorker):
     def compute(self, tick, bar_history, current_bars):
         bars = bar_history.get("M5", [])
         closes = [b.close for b in bars[-self.period:]]

@@ -22,7 +22,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
-from python.framework.workers.abstract_worker import AbstactWorker
+from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.workers.core.macd_worker import MACDWorker
 from python.framework.workers.core.rsi_worker import RSIWorker
@@ -54,7 +54,7 @@ class WorkerFactory:
         """
         self._logger = logger
         self._strict_validation = strict_parameter_validation
-        self._registry: Dict[str, Type[AbstactWorker]] = {}
+        self._registry: Dict[str, Type[AbstractWorker]] = {}
         self._load_core_workers()
 
     def _load_core_workers(self):
@@ -88,7 +88,7 @@ class WorkerFactory:
     def register_worker(
         self,
         worker_type: str,
-        worker_class: Type[AbstactWorker]
+        worker_class: Type[AbstractWorker]
     ):
         """
         Manually register a worker class.
@@ -98,15 +98,15 @@ class WorkerFactory:
 
         Args:
             worker_type: Full worker type with namespace (e.g., "USER/my_worker")
-            worker_class: Worker class (must inherit from AbstactWorker)
+            worker_class: Worker class (must inherit from AbstractWorker)
 
         Raises:
-            ValueError: If worker_class doesn't inherit from AbstactWorker
+            ValueError: If worker_class doesn't inherit from AbstractWorker
         """
-        if not issubclass(worker_class, AbstactWorker):
+        if not issubclass(worker_class, AbstractWorker):
             raise ValueError(
                 f"Worker class {worker_class.__name__} must inherit from "
-                f"AbstactWorker"
+                f"AbstractWorker"
             )
 
         self._registry[worker_type] = worker_class
@@ -119,7 +119,7 @@ class WorkerFactory:
         worker_type: str,
         worker_config: Dict[str, Any] = None,
         trading_context: TradingContext = None,
-    ) -> AbstactWorker:
+    ) -> AbstractWorker:
         """
         Create a worker instance with validation.
 
@@ -183,7 +183,7 @@ class WorkerFactory:
         self,
         strategy_config: Dict[str, Any],
         trading_context: TradingContext = None
-    ) -> Dict[str, AbstactWorker]:
+    ) -> Dict[str, AbstractWorker]:
         """
         Create all workers from strategy configuration.
 
@@ -238,7 +238,7 @@ class WorkerFactory:
     def _resolve_worker_class(
         self,
         worker_type: str
-    ) -> Type[AbstactWorker]:
+    ) -> Type[AbstractWorker]:
         """
         Resolve worker type string to worker class.
 
@@ -271,7 +271,7 @@ class WorkerFactory:
     def _load_custom_worker(
         self,
         worker_type: str
-    ) -> Type[AbstactWorker]:
+    ) -> Type[AbstractWorker]:
         """
         Dynamically load custom worker from USER or BLACKBOX namespace.
 
