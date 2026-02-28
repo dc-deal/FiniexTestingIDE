@@ -12,7 +12,7 @@ Offsets are applied automatically per broker_type from the offset registry.
 
 REFACTORED:
 - Tick index commands moved to tick_index_cli.py (rebuild, status, coverage, files)
-- Gap/validate commands moved to coverage_report_cli.py (gaps, validate)
+- Gap/validate commands moved to discoveries_cli.py coverage (gaps, validate)
 - This CLI now focuses on: import, reports, inspection
 """
 
@@ -42,7 +42,7 @@ class DataIndexCLI:
     - Inspect tick/bar data structure
 
     For index management, use tick_index_cli.py
-    For gap analysis, use coverage_report_cli.py
+    For gap analysis, use discoveries_cli.py coverage
     """
 
     def __init__(self):
@@ -180,7 +180,7 @@ Configuration:
 
 Related CLIs:
     tick_index_cli.py      - Tick index management (rebuild, status, coverage, files)
-    coverage_report_cli.py - Gap analysis (build, show, validate, status)
+    discoveries_cli.py     - Gap analysis (coverage build, show, validate, status)
     bar_index_cli.py       - Bar index management (rebuild, status, report, render)
 """)
 
@@ -242,14 +242,14 @@ def main():
             sys.exit(1)
 
         elif command == "gaps":
-            print("⚠️  'gaps' moved to coverage_report_cli.py")
+            print("⚠️  'gaps' moved to discoveries_cli.py")
             print(
-                "   Run: python python/cli/coverage_report_cli.py show BROKER_TYPE SYMBOL")
+                "   Run: python python/cli/discoveries_cli.py coverage show BROKER_TYPE SYMBOL")
             sys.exit(1)
 
         elif command == "validate":
-            print("⚠️  'validate' moved to coverage_report_cli.py")
-            print("   Run: python python/cli/coverage_report_cli.py validate")
+            print("⚠️  'validate' moved to discoveries_cli.py")
+            print("   Run: python python/cli/discoveries_cli.py coverage validate")
             sys.exit(1)
 
         else:

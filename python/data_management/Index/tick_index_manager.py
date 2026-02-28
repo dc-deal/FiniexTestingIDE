@@ -19,7 +19,7 @@ import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.reporting.coverage_report import (
+from python.framework.discoveries.coverage_report import (
     CoverageReport,
     IndexEntry
 )

@@ -19,8 +19,7 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 | `data_index_cli.py` | Import & Inspektion | import, tick_data_report, inspect |
 | `tick_index_cli.py` | Tick-Index Management | rebuild, status, coverage, files |
 | `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
-| `coverage_report_cli.py` | Gap-Analyse & Cache | build, show, validate, status, clear |
-| `discoveries_cli.py` | Marktanalyse & Discoveries | analyze, extreme-moves |
+| `discoveries_cli.py` | Marktanalyse, Discoveries & Coverage | analyze, extreme-moves, coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `scenario_cli.py` | Szenarien | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
@@ -153,7 +152,7 @@ Files:
 | | |
 |---|---|
 | **VS Code** | `📊 Coverage: Validate All` |
-| **CLI** | `python coverage_report_cli.py validate` |
+| **CLI** | `python discoveries_cli.py coverage validate` |
 | **Zweck** | Schneller Gap-Check über alle Symbole |
 
 ```
@@ -176,7 +175,7 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 | | |
 |---|---|
 | **VS Code** | `↔️ Coverage: mt5/EURUSD` |
-| **CLI** | `python coverage_report_cli.py show mt5 EURUSD` |
+| **CLI** | `python discoveries_cli.py coverage show mt5 EURUSD` |
 | **Zweck** | Detaillierte Lückenanalyse für ein Symbol |
 
 Klassifiziert Gaps automatisch:
@@ -214,7 +213,7 @@ GAP ANALYSIS:
 | | |
 |---|---|
 | **VS Code** | `📊 Coverage: Build Cache` |
-| **CLI** | `python coverage_report_cli.py build` |
+| **CLI** | `python discoveries_cli.py coverage build` |
 | **Zweck** | Gap-Reports für alle Symbole vorberechnen |
 
 ```
@@ -229,7 +228,7 @@ Force Rebuild: DISABLED (skip valid caches)
 | | |
 |---|---|
 | **VS Code** | `📊 Coverage: Status` |
-| **CLI** | `python coverage_report_cli.py status` |
+| **CLI** | `python discoveries_cli.py coverage status` |
 | **Zweck** | Cache-Status anzeigen |
 
 ```
@@ -568,9 +567,9 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
 | **Daten-Übersicht** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
-| **Gap-Check (alle)** | `📊 Coverage: Validate All` | `coverage_report_cli.py validate` |
-| **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `coverage_report_cli.py show mt5 EURUSD` |
-| **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `coverage_report_cli.py build` |
+| **Gap-Check (alle)** | `📊 Coverage: Validate All` | `discoveries_cli.py coverage validate` |
+| **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `discoveries_cli.py coverage show mt5 EURUSD` |
+| **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `discoveries_cli.py coverage build` |
 | **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `discoveries_cli.py analyze mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Extreme Moves - mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |

@@ -427,32 +427,10 @@
             "name": "↔️ Coverage: Status",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
+                "coverage",
                 "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Coverage: Build Cache",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
-            "args": [
-                "build"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Coverage: Build Cache --force",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
-            "args": [
-                "build",
-                "--force"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -461,8 +439,9 @@
             "name": "↔️ Coverage: Validate All",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
+                "coverage",
                 "validate"
             ],
             "console": "integratedTerminal",
@@ -472,8 +451,9 @@
             "name": "↔️ Coverage: Show mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
+                "coverage",
                 "show",
                 "mt5",
                 "EURUSD"
@@ -485,8 +465,9 @@
             "name": "↔️ Coverage: Show mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
+                "coverage",
                 "show",
                 "mt5",
                 "USDJPY"
@@ -498,22 +479,12 @@
             "name": "↔️ Coverage: Show kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
+                "coverage",
                 "show",
                 "kraken_spot",
                 "BTCUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Coverage: Clear Cache",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/coverage_report_cli.py",
-            "args": [
-                "clear"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

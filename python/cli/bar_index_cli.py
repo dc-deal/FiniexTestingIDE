@@ -22,7 +22,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReport
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.reporting.coverage_report_cache import CoverageReportCache
+from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.data_management.importers.bar_importer import BarImporter
 
@@ -47,9 +47,9 @@ class BarIndexCLI:
         self.index_manager.build_index(force_rebuild=True)
         self.index_manager.print_summary()
 
-        # Coverage Cache rebuilden
-        print("\n🔄 Rebuilding coverage cache index...")
-        CoverageReportCache().build_all(force_rebuild=True)
+        # Rebuild all discovery caches
+        print("\n🔄 Rebuilding discovery caches...")
+        DiscoveryCacheManager().rebuild_all(force=True)
 
         print("\n✅ Bar index rebuild complete\n")
 
@@ -216,9 +216,9 @@ class BarIndexCLI:
             print("\n🔄 Rebuilding bar index...")
             self.index_manager.build_index(force_rebuild=True)
 
-            # Coverage Cache rebuilden
-            print("\n🔄 Rebuilding coverage cache index...")
-            CoverageReportCache().build_all(force_rebuild=True)
+            # Rebuild all discovery caches
+            print("\n🔄 Rebuilding discovery caches...")
+            DiscoveryCacheManager().rebuild_all(force=True)
 
             print("\n✅ Bar rendering completed!")
             print("="*80 + "\n")

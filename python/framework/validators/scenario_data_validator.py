@@ -13,7 +13,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
-from python.framework.reporting.coverage_report import CoverageReport
+from python.framework.discoveries.coverage_report import CoverageReport
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.utils.time_utils import ensure_utc_aware
 

@@ -17,8 +17,8 @@ from typing import Dict, List, Optional, Tuple
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.framework.reporting.coverage_report import CoverageReport
-from python.framework.reporting.coverage_report_cache import CoverageReportCache
+from python.framework.discoveries.coverage_report import CoverageReport
+from python.framework.discoveries.coverage_report_cache import CoverageReportCache
 from python.framework.types.coverage_report_types import IndexEntry
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_set_types import SingleScenario
