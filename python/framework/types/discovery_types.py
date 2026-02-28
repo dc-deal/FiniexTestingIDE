@@ -3,7 +3,7 @@ Discovery Types
 ===============
 Type definitions for market discovery results.
 
-Location: python/framework/discoveries/discovery_types.py
+Location: python/framework/types/discovery_types.py
 """
 
 from dataclasses import dataclass

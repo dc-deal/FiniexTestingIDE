@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional
 
 from python.framework.types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
 from python.framework.types.market_data_types import TickData
-from .base_adapter import BaseAdapter
+from .abstract_adapter import AbstractAdapter
 from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -26,7 +26,7 @@ from python.framework.types.order_types import (
 )
 
 
-class KrakenAdapter(BaseAdapter):
+class KrakenAdapter(AbstractAdapter):
     """
     Kraken Crypto Exchange Adapter - JSON-based implementation.
 

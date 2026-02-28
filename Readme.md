@@ -24,7 +24,7 @@
 - **Live Trade Executor** — Full LiveTradeExecutor implementation with broker adapter communication
 - **LiveOrderTracker** — Time-based pending order management with broker reference tracking and timeout detection
 - **MockBrokerAdapter** — 4-mode test adapter (instant_fill, delayed_fill, reject_all, timeout) with real Kraken BTCUSD spec
-- **BaseAdapter Tier 3** — Optional live execution methods (execute_order, check_order_status, cancel_order)
+- **AbstractAdapter Tier 3** — Optional live execution methods (execute_order, check_order_status, cancel_order)
 - **Margin Validation Tests** — Margin checks, lot validation, retry logic, edge case coverage
 - **Multi-Position Tests** — Concurrent position management, close events, hedging validation
 - **Live Executor Tests** — 47 tests covering LiveOrderTracker, LiveTradeExecutor, and MockBrokerAdapter pipeline

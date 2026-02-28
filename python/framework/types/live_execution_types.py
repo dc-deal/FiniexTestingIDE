@@ -41,7 +41,7 @@ class BrokerResponse:
     Standardized response from broker API.
 
     Wraps broker-specific response formats into a unified structure.
-    Used by BaseAdapter.execute_order(), check_order_status(), cancel_order().
+    Used by AbstractAdapter.execute_order(), check_order_status(), cancel_order().
 
     Args:
         broker_ref: Broker's order reference ID (e.g., Kraken txid)

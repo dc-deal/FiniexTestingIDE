@@ -16,7 +16,7 @@ Uses DELAYED_FILL mode so orders stay in pending (broker_ref tracked).
 
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.trading_env.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.order_types import (
     OrderType,
     OrderDirection,

@@ -9,7 +9,7 @@ Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
 from typing import Dict, Any, List, Optional
 
 from python.framework.types.market_data_types import TickData
-from .base_adapter import BaseAdapter
+from .abstract_adapter import AbstractAdapter
 from python.framework.types.order_types import (
     OrderCapabilities,
     MarketOrder,
@@ -28,7 +28,7 @@ from python.framework.types.broker_types import (
 )
 
 
-class MT5Adapter(BaseAdapter):
+class MT5Adapter(AbstractAdapter):
     """
     MT5 Broker Adapter - Full implementation.
 

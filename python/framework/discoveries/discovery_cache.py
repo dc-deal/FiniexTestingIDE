@@ -28,7 +28,7 @@ import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.discovery_types import (
+from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
     MoveDirection,

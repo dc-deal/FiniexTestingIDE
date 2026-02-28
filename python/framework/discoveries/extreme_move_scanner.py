@@ -19,7 +19,7 @@ import pandas as pd
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.discovery_types import (
+from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
     MoveDirection,

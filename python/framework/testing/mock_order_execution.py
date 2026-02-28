@@ -32,7 +32,7 @@ from typing import Optional
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.broker_types import BrokerType
 from python.framework.types.live_execution_types import TimeoutConfig
 from python.framework.types.market_data_types import TickData
