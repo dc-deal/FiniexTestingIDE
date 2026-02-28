@@ -1,0 +1,28 @@
+{
+    "version": "1.0",
+    "description": "Import Pipeline Configuration — Offset Registry, Paths & Processing Defaults",
+    "paths": {
+        "data_raw": "data/raw",
+        "import_output": "data/processed",
+        "data_finished": "data/finished"
+    },
+    "test_paths": {
+        "data_raw": "data/test/import/raw",
+        "import_output": "data/test/import/processed",
+        "data_finished": "data/test/import/finished"
+    },
+    "offset_registry": {
+        "mt5": {
+            "default_offset_hours": -3,
+            "description": "MetaTrader 5 brokers typically report GMT+3"
+        },
+        "kraken_spot": {
+            "default_offset_hours": 0,
+            "description": "Kraken reports in UTC natively"
+        }
+    },
+    "processing": {
+        "move_processed_files": true,
+        "auto_render_bars": true
+    }
+}

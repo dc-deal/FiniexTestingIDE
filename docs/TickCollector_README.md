@@ -580,13 +580,29 @@ input bool IncludeRealVolume = false;      // Skip if not needed
 
 ```
 MQL5 TickCollector
-    ↓ JSON Files
-tick_importer.py
-    ↓ Parquet Files (indexed)
-bar_importer.py
-    ↓ Pre-rendered Bars
+    ↓ JSON Files (data/raw/)
+tick_importer.py (config-driven UTC offsets from import_config.json)
+    ↓ Parquet Files (indexed, with source_meta_* preservation)
+bar_importer.py (auto-triggered)
+    ↓ Pre-rendered Bars (M1 → D1)
 FiniexTestingIDE
 ```
+
+### Import Configuration
+
+UTC offsets are defined in `configs/import_config.json` (offset registry per broker_type). No CLI parameters needed — the config is leading. User overrides via `user_config/import_config.json`.
+
+See [Data Import Pipeline](data_import_pipeline.md) for full configuration details.
+
+### Broker Type Field
+
+The importer accepts both `broker_type` (preferred) and `data_collector` (legacy) in JSON metadata. Current MQL5 exports use `data_collector: "mt5"` — both are recognized. New collectors should use `broker_type`.
+
+### Source Metadata Preservation
+
+All original MQL5 metadata from the JSON is preserved in the Parquet file header with `source_meta_` prefix:
+- Flat fields: `source_meta_broker_type`, `source_meta_data_format_version`, etc.
+- Nested objects as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`, `source_meta_error_tracking`
 
 ### Data Format Version Tracking
 
@@ -594,13 +610,13 @@ FiniexTestingIDE
 ```
 TickCollector v1.0.5 → data_format_version: "1.0.5" (JSON metadata)
     ↓
-tick_importer.py → Parquet metadata (preserved)
+tick_importer.py → Parquet metadata (source_meta_data_format_version preserved)
     ↓
 bar_importer.py → source_version_min/max in bar files
 ```
 
 **Purpose:**
-- Track data provenance
+- Track data provenance end-to-end
 - Detect format changes
 - Validate compatibility
 - Debug data quality issues

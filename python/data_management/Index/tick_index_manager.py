@@ -43,10 +43,15 @@ class TickIndexManager:
     INDEX_FILE_PARQUET = ".parquet_tick_index.parquet"
     INDEX_FILE_JSON_LEGACY = ".parquet_tick_index.json"
 
-    def __init__(self, logger: AbstractLogger = vLog):
+    def __init__(self, logger: AbstractLogger = vLog, data_dir: Optional[str] = None):
+        """
+        Args:
+            logger: Logger instance
+            data_dir: Override data directory (default: from AppConfigManager)
+        """
         self.logger = logger
         self._app_config = AppConfigManager()
-        self.data_dir = Path(self._app_config.get_data_processed_path())
+        self.data_dir = Path(data_dir) if data_dir else Path(self._app_config.get_data_processed_path())
 
         # NEW: Parquet index file
         self.index_file = self.data_dir / self.INDEX_FILE_PARQUET

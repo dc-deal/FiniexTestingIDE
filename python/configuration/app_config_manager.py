@@ -33,9 +33,8 @@ class AppConfigManager:
     def _print_config_status(self):
         """Print config status (replaces old config.py print)"""
         dev_mode = self.get_dev_mode()
-        move_files = self.get_move_processed_files()
         print(
-            f"🔧 Config loaded - DEV_MODE: {dev_mode}, MOVE_FILES: {move_files}")
+            f"🔧 Config loaded - DEV_MODE: {dev_mode}")
 
     def get_console_logging_config_object(self) -> ConsoleLoggingConfig:
         """
@@ -197,15 +196,6 @@ class AppConfigManager:
         """
         return self._config.get("development", {})
 
-    def get_importer_config(self) -> Dict[str, Any]:
-        """
-        Get importer configuration.
-
-        Returns:
-            Importer config dict
-        """
-        return self._config.get("importer", {})
-
     def get_dev_mode(self) -> bool:
         """
         Get dev mode setting.
@@ -215,27 +205,6 @@ class AppConfigManager:
         """
         dev_config = self.get_development_config()
         return dev_config.get("dev_mode", False)
-
-    def get_move_processed_files(self) -> bool:
-        """
-        Get move processed files setting.
-
-        Returns:
-            True if processed files should be moved
-        """
-        importer_config = self.get_importer_config()
-        return importer_config.get("move_processed_files", True)
-
-    @classmethod
-    def get_delete_on_error(self) -> bool:
-        """
-        Get delete on error setting.
-
-        Returns:
-            True if files should be deleted on error
-        """
-        importer_config = self.get_importer_config()
-        return importer_config.get("delete_on_error", False)
 
     # ============================================
     # History Config
@@ -298,25 +267,6 @@ class AppConfigManager:
     # Centralized Path Methods (Validated)
     # ============================================
 
-    def get_data_raw_path(self) -> str:
-        """
-        Get data raw path from config.
-
-        Returns:
-            Path string for raw data directory
-
-        Raises:
-            ValueError: If path not configured
-        """
-        paths = self.get_paths_config()
-        path = paths.get("data_raw")
-        if not path:
-            raise ValueError(
-                "Missing required path 'data_raw' in app_config.json. "
-                "Add to 'paths' section: \"data_raw\": \"data/raw\""
-            )
-        return path
-
     def get_data_processed_path(self) -> str:
         """
         Get data processed path from config.
@@ -333,25 +283,6 @@ class AppConfigManager:
             raise ValueError(
                 "Missing required path 'data_processed' in app_config.json. "
                 "Add to 'paths' section: \"data_processed\": \"data/processed\""
-            )
-        return path
-
-    def get_data_finished_path(self) -> str:
-        """
-        Get data finished path from config.
-
-        Returns:
-            Path string for finished data directory
-
-        Raises:
-            ValueError: If path not configured
-        """
-        paths = self.get_paths_config()
-        path = paths.get("data_finished")
-        if not path:
-            raise ValueError(
-                "Missing required path 'data_finished' in app_config.json. "
-                "Add to 'paths' section: \"data_finished\": \"data/finished\""
             )
         return path
 

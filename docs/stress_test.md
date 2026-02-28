@@ -100,6 +100,18 @@ Scenario JSON
 
 No changes needed in config loading pipeline — cascade handles nested dicts automatically.
 
+## Reporting Integration
+
+Active stress tests are prominently displayed in batch reports to prevent confusion about intentional errors.
+
+**BatchSummary (top banner):** Red warning banner at the very top of the report output, before any results. Shows active stress test types with parameters.
+
+**ExecutiveSummary (detailed warning):** Grouped by config signature — scenarios sharing the same stress test config are listed together. Scenarios with overridden configs appear as separate groups.
+
+Both renderers derive stress test status from `SingleScenario.stress_test_config` via `StressTestConfig.from_dict()`. New stress test types are picked up automatically once added to `StressTestConfig.has_any_enabled()`.
+
+Key files: `framework/reporting/batch_summary.py`, `framework/reporting/executive_summary.py`
+
 ## Determinism
 
 Same `seed` + same order sequence = identical rejection pattern across runs. This is guaranteed by `SeededProbabilityFilter` which wraps `random.Random(seed)`.

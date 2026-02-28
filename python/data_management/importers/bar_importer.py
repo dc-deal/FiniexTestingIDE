@@ -16,14 +16,14 @@ INDEX STRUCTURE: {broker_type: {symbol: [files]}}
 """
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import time
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -45,18 +45,24 @@ class BarImporter:
 
     VERSION = "1.1"  # Updated for broker_type-first index structure
 
-    def __init__(self):
+    def __init__(self, data_dir: Optional[str] = None):
         """
-        Initialize Bar importer with paths from AppConfigManager.
+        Initialize Bar importer.
+
+        Args:
+            data_dir: Override data directory (default: from ImportConfigManager)
         """
-        app_config = AppConfigManager()
-        self.data_dir = Path(app_config.get_data_processed_path())
+        if data_dir:
+            self.data_dir = Path(data_dir)
+        else:
+            import_config = ImportConfigManager()
+            self.data_dir = Path(import_config.get_import_output_path())
         if not self.data_dir.exists():
             raise FileNotFoundError(
                 f"Data directory not found: {self.data_dir}")
 
         # Initialize tick index for finding tick files
-        self.tick_index = TickIndexManager()
+        self.tick_index = TickIndexManager(data_dir=str(self.data_dir))
         self.tick_index.build_index()
 
         # Statistics

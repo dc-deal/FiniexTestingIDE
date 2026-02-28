@@ -37,7 +37,8 @@
                 "api_latency_seed": 42,
                 "market_execution_seed": 123
             }
-        }
+        },
+        "stress_test_config": {}
     },
     "scenarios": []
 }

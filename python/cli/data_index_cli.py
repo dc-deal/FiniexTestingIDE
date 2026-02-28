@@ -3,11 +3,14 @@ FiniexTestingIDE - Data Index CLI
 Command-line tools for tick data import and inspection
 
 Usage:
-    python python/cli/data_index_cli.py import [--override] [--time-offset +N/-N --offset-broker TYPE]
+    python python/cli/data_index_cli.py import [--override]
     python python/cli/data_index_cli.py tick_data_report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
-REFACTORED: 
+Import configuration is driven by configs/import_config.json (with user_config override).
+Offsets are applied automatically per broker_type from the offset registry.
+
+REFACTORED:
 - Tick index commands moved to tick_index_cli.py (rebuild, status, coverage, files)
 - Gap/validate commands moved to coverage_report_cli.py (gaps, validate)
 - This CLI now focuses on: import, reports, inspection
@@ -18,7 +21,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -43,41 +46,57 @@ class DataIndexCLI:
     """
 
     def __init__(self):
-        """Initialize CLI with paths from AppConfigManager."""
-        self._app_config = AppConfigManager()
+        """Initialize CLI with config managers."""
+        self._import_config = ImportConfigManager()
         self.index_manager = TickIndexManager()
         self.bar_index_manager = BarsIndexManager()
 
-    def cmd_import(self, override: bool = False, time_offset: int = 0, offset_broker: Optional[str] = None):
+    def cmd_import(self, override: bool = False):
         """
         Import tick data from JSON to Parquet with UTC conversion.
+        Offsets are applied automatically per broker_type from import_config.json.
 
         Args:
             override: If True, overwrite existing Parquet files
-            time_offset: Manual UTC offset in hours (e.g., -3 for GMT+3 → UTC)
-            offset_broker: Apply offset only to files with this broker_type
         """
         print("\n" + "="*80)
         print("📥 Tick Data Import")
         print("="*80)
-        print(f"Override Mode: {'ENABLED' if override else 'DISABLED'}")
+        print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
+        print(f"Move Files:     {'YES' if self._import_config.get_move_processed_files() else 'NO'}")
+        print(f"Auto Bars:      {'YES' if self._import_config.get_auto_render_bars() else 'NO'}")
 
-        if time_offset != 0:
-            print(
-                f"Time Offset:   {time_offset:+d} hours (for broker_type='{offset_broker}')")
-            print("\n⚠️  WARNING: After offset ALL TIMES WILL BE UTC!")
-            print("⚠️  Sessions will be RECALCULATED based on UTC time!")
+        # Display offset registry
+        registry = self._import_config.get_offset_registry()
+        if registry:
+            print(f"Offset Registry:")
+            for bt, entry in registry.items():
+                offset = entry.get("default_offset_hours", 0)
+                desc = entry.get("description", "")
+                if offset != 0:
+                    print(f"   {bt}: {offset:+d}h — {desc}")
+                    print(f"   ⚠️  Times for {bt} will be converted to UTC!")
+                else:
+                    print(f"   {bt}: {offset:+d}h — {desc}")
         else:
-            print("Time Offset:   NONE")
+            print(f"Offset Registry: EMPTY (no offsets configured)")
 
         print("="*80 + "\n")
 
+        # Build offset registry as flat dict {broker_type: offset_hours}
+        offset_flat = {
+            bt: entry.get("default_offset_hours", 0)
+            for bt, entry in registry.items()
+        }
+
         importer = TickDataImporter(
-            source_dir=self._app_config.get_data_raw_path(),
-            target_dir=self._app_config.get_data_processed_path(),
+            source_dir=self._import_config.get_data_raw_path(),
+            target_dir=self._import_config.get_import_output_path(),
             override=override,
-            time_offset=time_offset,
-            offset_broker=offset_broker
+            offset_registry=offset_flat,
+            move_processed_files=self._import_config.get_move_processed_files(),
+            finished_dir=self._import_config.get_data_finished_path(),
+            auto_render_bars=self._import_config.get_auto_render_bars(),
         )
 
         importer.process_all_exports()
@@ -132,12 +151,11 @@ class DataIndexCLI:
 📥 Data Index CLI - Usage
 
 Commands:
-    import [--override] [--time-offset +N/-N --offset-broker TYPE]
-                        Import tick data from JSON to Parquet
-                        --override: Overwrite existing files
-                        --time-offset: UTC offset (REQUIRES explicit +/- sign!)
-                        --offset-broker: Apply offset only to this broker_type
-                                    REQUIRED if --time-offset is set!
+    import [--override]
+                        Import tick data from JSON to Parquet.
+                        Configuration is driven by configs/import_config.json.
+                        Offsets are applied automatically per broker_type.
+                        --override: Overwrite existing Parquet files
 
     tick_data_report [BROKER_TYPE]
                         Data Loader Summary Report
@@ -150,52 +168,21 @@ Commands:
 
 Examples:
     python python/cli/data_index_cli.py import
-    python python/cli/data_index_cli.py import --time-offset -3 --offset-broker mt5
-    python python/cli/data_index_cli.py import --override --time-offset -3 --offset-broker mt5
+    python python/cli/data_index_cli.py import --override
     python python/cli/data_index_cli.py tick_data_report
     python python/cli/data_index_cli.py tick_data_report mt5
     python python/cli/data_index_cli.py inspect mt5 EURUSD
     python python/cli/data_index_cli.py inspect kraken_spot BTCUSD M5
 
-⚠️  IMPORTANT: --time-offset REQUIRES explicit sign (+/-) to prevent accidents!
+Configuration:
+    configs/import_config.json      - Base import config (offset registry, paths, processing)
+    user_config/import_config.json  - User overrides (optional, deep-merged)
 
 Related CLIs:
     tick_index_cli.py      - Tick index management (rebuild, status, coverage, files)
     coverage_report_cli.py - Gap analysis (build, show, validate, status)
     bar_index_cli.py       - Bar index management (rebuild, status, report, render)
 """)
-
-
-def parse_time_offset(value: str) -> int:
-    """
-    Parse time offset with MANDATORY explicit sign.
-
-    Args:
-        value: Offset string (must start with + or -)
-
-    Returns:
-        Integer offset value
-
-    Raises:
-        ValueError: If sign is missing or value is invalid
-    """
-    if not value:
-        raise ValueError("Time offset cannot be empty")
-
-    # Check for explicit sign
-    if not (value.startswith('+') or value.startswith('-')):
-        raise ValueError(
-            f"Time offset MUST have explicit sign (+/-): '{value}'\n"
-            f"   Valid examples: +1, -3, +5, -2\n"
-            f"   Invalid: 1, 3 (missing sign - ambiguous!)\n"
-            f"   This is a safety feature to prevent accidental timezone mistakes."
-        )
-
-    try:
-        return int(value)
-    except ValueError:
-        raise ValueError(
-            f"Invalid time offset format: '{value}' (must be integer)")
 
 
 def main():
@@ -210,32 +197,7 @@ def main():
     try:
         if command == "import":
             override = "--override" in sys.argv
-            time_offset = 0
-            offset_broker = None
-
-            for i, arg in enumerate(sys.argv):
-                if arg == "--time-offset" and i + 1 < len(sys.argv):
-                    try:
-                        time_offset = parse_time_offset(sys.argv[i + 1])
-                    except ValueError as e:
-                        print(f"\n❌ ERROR: {e}\n")
-                        sys.exit(1)
-                elif arg == "--offset-broker" and i + 1 < len(sys.argv):
-                    offset_broker = sys.argv[i + 1].lower().strip()
-
-            # Validation: time_offset requires offset_broker
-            if time_offset != 0 and offset_broker is None:
-                print("\n❌ ERROR: --time-offset requires --offset-broker")
-                print("   Example: --time-offset -3 --offset-broker mt5\n")
-                sys.exit(1)
-
-            if offset_broker is not None and time_offset == 0:
-                print("\n❌ ERROR: --offset-broker requires --time-offset")
-                print("   Example: --time-offset -3 --offset-broker mt5\n")
-                sys.exit(1)
-
-            cli.cmd_import(override=override, time_offset=time_offset,
-                           offset_broker=offset_broker)
+            cli.cmd_import(override=override)
 
         elif command == "tick_data_report":
             broker_type = sys.argv[2] if len(sys.argv) > 2 else None
