@@ -42,7 +42,7 @@
     },
     "stress_test_config": {
       "reject_open_order": {
-        "enabled": true,
+        "enabled": false,
         "seed": 999,
         "probability": 0.6
       }

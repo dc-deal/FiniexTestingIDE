@@ -93,6 +93,7 @@ class TickDataImporter:
         self.processed_files = 0
         self.total_ticks = 0
         self.errors = []
+        self.warnings = []
 
         # Track processed broker_types for bar rendering
         self._processed_broker_types: Set[str] = set()
@@ -149,10 +150,10 @@ class TickDataImporter:
                 self.processed_files += 1
             except ArtificialDuplicateException as e:
                 # Special handling for duplicate detection
-                error_msg = f"DUPLICATE DETECTED in {json_file.name}"
-                vLog.error(error_msg)
-                vLog.error(str(e))
-                self.errors.append(error_msg)
+                warning_msg = f"DUPLICATE DETECTED in {json_file.name}"
+                vLog.warning(warning_msg)
+                vLog.warning(str(e))
+                self.warnings.append(warning_msg)
                 vLog.info("→ Skipping import (duplicate already exists)")
             except Exception as e:
                 error_msg = f"ERROR in {json_file.name}: {str(e)}"
@@ -575,7 +576,13 @@ class TickDataImporter:
         if active_offsets:
             offsets_str = ", ".join(f"{bt}: {off:+d}h" for bt, off in active_offsets.items())
             vLog.info(f"✅ Offsets applied: {offsets_str} (UTC converted)")
+        vLog.info(f"⚠️  Warnings: {len(self.warnings)}")
         vLog.info(f"❌ Errors: {len(self.errors)}")
+
+        if self.warnings:
+            vLog.warning("\nWARNING LIST:")
+            for warning in self.warnings:
+                vLog.warning(f"  - {warning}")
 
         if self.errors:
             vLog.error("\nERROR LIST:")
