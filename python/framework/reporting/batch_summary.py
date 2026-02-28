@@ -19,6 +19,7 @@ from python.framework.reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.rendering_types import BatchStatus
+from python.framework.types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -129,6 +130,9 @@ class BatchSummary:
         # Calculate batch status
         batch_status = self._calculate_batch_status()
 
+        # Stress test banner (before everything else)
+        self._render_stress_test_banner()
+
         # Header with batch status
         self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)
@@ -213,6 +217,36 @@ class BatchSummary:
 
         # Footer
         self._renderer.print_separator(width=120)
+
+    def _render_stress_test_banner(self):
+        """Render prominent stress test banner if any scenario has active stress tests."""
+        scenarios = self.batch_execution_summary.single_scenario_list
+
+        # Collect active stress test details
+        active_details = []
+        for scenario in scenarios:
+            config = StressTestConfig.from_dict(scenario.stress_test_config)
+            if config.has_any_enabled():
+                if config.reject_open_order and config.reject_open_order.enabled:
+                    ro = config.reject_open_order
+                    active_details.append(
+                        f"reject_open_order ({ro.probability:.0%} rejection, seed={ro.seed})")
+
+        if not active_details:
+            return
+
+        # Deduplicate (same config across scenarios)
+        unique_details = list(dict.fromkeys(active_details))
+        details_str = " | ".join(unique_details)
+
+        print()
+        print(self._renderer.red("=" * 68))
+        print(self._renderer.red(
+            f"⚠️  STRESS TEST ACTIVE: {details_str}"))
+        print(self._renderer.red(
+            "⚠️  Results may contain INTENTIONAL errors and rejections!"))
+        print(self._renderer.red("=" * 68))
+        print()
 
     def _render_basic_stats(self, batch_status: BatchStatus):
         """

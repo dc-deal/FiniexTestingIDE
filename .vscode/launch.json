@@ -612,13 +612,13 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (USDJPY_stress)",
+            "name": "🔬 Run (EURGBP stress_test_config)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "USDJPY_stress_20260201_2000.json"
+                "EURGBP_stress_test_config.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

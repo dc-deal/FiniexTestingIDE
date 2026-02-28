@@ -34,7 +34,13 @@
       "initial_balance": 10000,
       "currency": "EUR"
     },
-    "stress_test_config": {}
+    "stress_test_config": {
+      "reject_open_order": {
+        "enabled": true,
+        "seed": 999,
+        "probability": 0.7
+      }
+    }
   },
   "scenarios": [
     {
@@ -165,7 +171,14 @@
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {},
+      "stress_test_config": {
+        "reject_open_order": {
+          "enabled": true,
+          "seed": 1,
+          "probability": 1
+        }
+      }
     },
     {
       "name": "EURGBP_balanced_11",

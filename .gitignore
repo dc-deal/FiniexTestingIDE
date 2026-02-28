@@ -130,7 +130,8 @@ dmypy.json
 
 # FiniexTestingIDE specific - Data directories
 data/raw/*.json
-data/finished/*.json
+data/finished/*
+!data/finished/.gitkeep
 data/cache/
 
 # UPDATED (C#003): Ignore all subdirectories in processed/

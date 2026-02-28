@@ -349,6 +349,7 @@ Validates data pipeline integrity:
 | [Import Pipeline Tests](docs/tests/tests_import_pipeline_docs.md) | ~36 import lifecycle tests |
 | [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
 | [Data Import Pipeline](docs/data_import_pipeline.md) | Import flow, schema, offset registry, config |
+| [Stress Test System](docs/stress_test.md) | Config-driven stress test injection, cascade, reporting |
 
 ---
 
