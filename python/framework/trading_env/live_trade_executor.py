@@ -516,10 +516,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order (local tracking only).
+        Modify a pending limit order via broker adapter.
 
-        Live executor does not manage limit orders locally — broker handles them.
-        Broker-side modify API is out of scope (future work).
+        Resolves order_id to broker_ref via LiveOrderTracker, then calls
+        adapter.modify_order() to modify the order at the broker.
+
+        No local SL/TP validation — broker handles that server-side.
+        TODO: When order lifecycle is lifted into AbstractTradeExecutor
+        (#133 Step 4), local active limit/stop tracking will enable
+        local shadow state updates after successful broker modify.
 
         Args:
             order_id: Pending limit order ID
@@ -528,14 +533,52 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             new_take_profit: New TP level (UNSET=no change, None=remove)
 
         Returns:
-            ModificationResult (always NOT_FOUND — no local limit order queue)
+            ModificationResult with success status and rejection reason
         """
-        # Live executor has no _active_limit_orders queue —
-        # broker manages limit orders server-side.
-        # Broker modify API will be added in a future iteration.
-        return ModificationResult(
-            success=False,
-            rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
+        # Resolve order_id → broker_ref via tracker
+        broker_ref = self._order_tracker.get_broker_ref(order_id)
+        if broker_ref is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
+
+        # Translate UNSET → None for adapter (adapter uses None=no change)
+        adapter_price = None if isinstance(new_price, _UnsetType) else new_price
+        adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Call broker adapter
+        try:
+            response = self.broker.adapter.modify_order(
+                broker_ref=broker_ref,
+                new_price=adapter_price,
+                new_stop_loss=adapter_sl,
+                new_take_profit=adapter_tp,
+            )
+        except Exception as e:
+            self.logger.warning(
+                f"modify_limit_order failed for {order_id}: {e}"
+            )
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+
+        # Handle broker rejection
+        if response.is_rejected:
+            self.logger.warning(
+                f"Broker rejected modify for {order_id}: "
+                f"{response.rejection_reason}"
+            )
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+
+        self.logger.info(
+            f"✏️ Limit order {order_id} modified at broker "
+            f"(broker_ref={broker_ref})"
+        )
+
+        return ModificationResult(success=True)
 
     def modify_stop_order(
         self,

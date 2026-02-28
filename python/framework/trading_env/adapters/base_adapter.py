@@ -384,6 +384,32 @@ class BaseAdapter(ABC):
             f"{self.get_broker_name()} does not support live order cancellation"
         )
 
+    def modify_order(
+        self,
+        broker_ref: str,
+        new_price: Optional[float] = None,
+        new_stop_loss: Optional[float] = None,
+        new_take_profit: Optional[float] = None,
+    ) -> BrokerResponse:
+        """
+        Modify a pending order at broker (price, SL, TP).
+
+        OPTIONAL — Only live-capable adapters implement this.
+        Default raises NotImplementedError.
+
+        Args:
+            broker_ref: Broker's order reference ID
+            new_price: New limit price (None=no change)
+            new_stop_loss: New stop loss level (None=no change)
+            new_take_profit: New take profit level (None=no change)
+
+        Returns:
+            BrokerResponse with modification status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not support live order modification"
+        )
+
     # ============================================
     # Required: Order Validation
     # ============================================
