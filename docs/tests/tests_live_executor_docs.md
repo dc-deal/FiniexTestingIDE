@@ -304,7 +304,7 @@ The live executor tests use **direct pipeline validation** rather than scenario 
 
 ```
 MockOrderExecution
-  +-- MockBrokerAdapter (extends BaseAdapter)
+  +-- MockBrokerAdapter (extends AbstractAdapter)
   |     +-- execute_order() -> BrokerResponse
   |     +-- check_order_status() -> BrokerResponse
   |     +-- cancel_order() -> BrokerResponse

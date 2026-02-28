@@ -128,7 +128,7 @@ from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
-from python.framework.batch.coverage_report_manager import CoverageReportManager
+from python.framework.discoveries.coverage_report_manager import CoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 
 

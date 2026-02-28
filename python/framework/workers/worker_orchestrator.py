@@ -16,7 +16,7 @@ from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.worker_types import WorkerResult, WorkerState
-from python.framework.workers.abstract_worker import AbstactWorker
+from python.framework.workers.abstract_worker import AbstractWorker
 
 
 class WorkerOrchestrator:
@@ -33,7 +33,7 @@ class WorkerOrchestrator:
 
     def __init__(
         self,
-        workers: List[AbstactWorker],
+        workers: List[AbstractWorker],
         decision_logic: AbstractDecisionLogic,
         strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
@@ -52,7 +52,7 @@ class WorkerOrchestrator:
         # ============================================
         # Injected dependencies
         # ============================================
-        self.workers: Dict[str, AbstactWorker] = {
+        self.workers: Dict[str, AbstractWorker] = {
             worker.name: worker for worker in workers
         }
         self.decision_logic = decision_logic
@@ -116,7 +116,7 @@ class WorkerOrchestrator:
             f"parallel={self.parallel_workers}"
         )
 
-    def _extract_worker_type(self, worker: AbstactWorker) -> str:
+    def _extract_worker_type(self, worker: AbstractWorker) -> str:
         """
         Extract worker type from worker instance.
 
@@ -428,7 +428,7 @@ class WorkerOrchestrator:
             self._coordination_stats.parallel_time_saved_ms += time_saved
 
     def _filter_bar_history_for_worker(
-        self, worker: AbstactWorker, bar_history: Dict[str, List[Bar]]
+        self, worker: AbstractWorker, bar_history: Dict[str, List[Bar]]
     ) -> Dict[str, List[Bar]]:
         """
         Filter bar_history to only include timeframes required by worker.
@@ -450,7 +450,7 @@ class WorkerOrchestrator:
 
     def _compute_worker(
         self,
-        worker: AbstactWorker,
+        worker: AbstractWorker,
         tick: TickData,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],

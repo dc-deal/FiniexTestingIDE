@@ -290,7 +290,7 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. Delegates pending order management to LiveOrderTracker. MARKET and LIMIT orders supported.
 
-### BaseAdapter (Tiered Interface)
+### AbstractAdapter (Tiered Interface)
 Abstract interface for all broker adapters. Methods are organized in tiers:
 
 **Tier 1 — Required (all brokers):** `create_market_order()`, `create_limit_order()`, `validate_order()`, `get_symbol_specification()`, `get_broker_specification()`
@@ -301,7 +301,7 @@ Abstract interface for all broker adapters. Methods are organized in tiers:
 
 Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 
-### MockBrokerAdapter (extends BaseAdapter, for testing)
+### MockBrokerAdapter (extends AbstractAdapter, for testing)
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
@@ -594,13 +594,13 @@ Extracting AbstractPendingOrderManager provides:
 
 The split: AbstractPendingOrderManager owns the "what" (storage, query). Subclasses own the "when" (tick-based fill detection vs broker-response detection).
 
-### Why BaseAdapter Was Extended, Not Split
+### Why AbstractAdapter Was Extended, Not Split
 
 We considered a separate `OrderExecutionAdapter` interface for live execution methods. This was rejected because:
 
-1. **Existing pattern works**: BaseAdapter already has optional methods with `NotImplementedError` defaults (Tier 2: `create_stop_order`, `create_iceberg_order`). Same pattern for Tier 3 execution methods.
+1. **Existing pattern works**: AbstractAdapter already has optional methods with `NotImplementedError` defaults (Tier 2: `create_stop_order`, `create_iceberg_order`). Same pattern for Tier 3 execution methods.
 2. **No interface pollution**: Backtesting code never calls `execute_order()` — TradeSimulator uses its own latency queue. The methods exist but are never invoked.
-3. **One inheritance chain**: `MockBrokerAdapter extends BaseAdapter` — one class provides data, validation, AND execution. No diamond inheritance, no adapter composition.
+3. **One inheritance chain**: `MockBrokerAdapter extends AbstractAdapter` — one class provides data, validation, AND execution. No diamond inheritance, no adapter composition.
 4. **File organization solves complexity**: As adapters grow, execution logic moves to utility files (`kraken_order_execution.py`) while the adapter class remains the entry point.
 
 ---

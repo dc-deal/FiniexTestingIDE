@@ -139,7 +139,7 @@ For lower-level control (changing mode mid-test, slippage simulation):
 ```python
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.broker_types import BrokerType
 
 adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
@@ -227,10 +227,11 @@ python/framework/
     mock_adapter.py              ← MockBrokerAdapter, MockExecutionMode
     mock_order_execution.py      ← MockOrderExecution utility
   trading_env/
-    live_trade_executor.py       ← LiveTradeExecutor (uses adapter)
-    live_order_tracker.py        ← LiveOrderTracker (time-based pending)
+    live/
+      live_trade_executor.py     ← LiveTradeExecutor (uses adapter)
+      live_order_tracker.py      ← LiveOrderTracker (time-based pending)
     adapters/
-      base_adapter.py            ← Tier 3: execute_order, check_order_status, cancel_order
+      abstract_adapter.py        ← Tier 3: execute_order, check_order_status, cancel_order
   types/
     live_execution_types.py      ← BrokerResponse, BrokerOrderStatus, TimeoutConfig
   exceptions/

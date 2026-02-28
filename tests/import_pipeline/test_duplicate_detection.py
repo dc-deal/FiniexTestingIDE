@@ -70,9 +70,9 @@ class TestDuplicateDetection:
         )
         importer2.process_all_exports()
 
-        # Should have duplicate error
-        assert len(importer2.errors) > 0
-        assert "DUPLICATE" in importer2.errors[0]
+        # Should have duplicate warning (skipped, not imported)
+        assert len(importer2.warnings) > 0
+        assert "DUPLICATE" in importer2.warnings[0]
 
     def test_override_allows_reimport(self, tmp_path):
         """With override=True, duplicate file should be replaced."""

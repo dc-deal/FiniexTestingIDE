@@ -26,7 +26,7 @@ from python.framework.types.order_types import (
 )
 
 
-class BaseAdapter(ABC):
+class AbstractAdapter(ABC):
     """
     Abstract interface for broker order capabilities.
 

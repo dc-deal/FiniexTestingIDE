@@ -11,7 +11,7 @@ market_config.json          → MarketType (forex/crypto) + broker_type mapping
     ↓
 broker_config.json          → Broker-specific settings (fees, leverage, symbols)
     ↓
-BaseAdapter                 → Abstract interface, common validation
+AbstractAdapter                 → Abstract interface, common validation
     ↓
 MT5Adapter / KrakenAdapter  → Broker-specific implementation
 ```
@@ -20,7 +20,7 @@ MT5Adapter / KrakenAdapter  → Broker-specific implementation
 
 | Class | Purpose |
 |-------|---------|
-| `BaseAdapter` | Abstract base, `_validate_common_config()` for shared validation |
+| `AbstractAdapter` | Abstract base, `_validate_common_config()` for shared validation |
 | `MT5Adapter` | MetaTrader 5 brokers (Forex, CFD) |
 | `KrakenAdapter` | Kraken crypto exchange (Spot) |
 | `FeeType` | Enum: `SPREAD`, `MAKER_TAKER`, `SWAP`, `COMMISSION` |
@@ -31,7 +31,7 @@ MT5Adapter / KrakenAdapter  → Broker-specific implementation
 1. `market_config.json` maps `broker_type` → `market_type` + config path
 2. `BrokerConfigFactory` loads JSON and detects `broker_type`
 3. Appropriate adapter is instantiated (MT5 or Kraken)
-4. `BaseAdapter._validate_common_config()` validates shared fields
+4. `AbstractAdapter._validate_common_config()` validates shared fields
 5. Adapter-specific `_validate_config()` validates broker-specific fields
 
 ---
@@ -197,5 +197,5 @@ MarketType controls:
 
 1. Create JSON config in `configs/brokers/<broker>/`
 2. Add entry to `market_config.json` with `broker_type` and `market_type`
-3. If new broker type: Create adapter extending `BaseAdapter`
+3. If new broker type: Create adapter extending `AbstractAdapter`
 4. Implement required abstract methods: `_validate_config()`, `get_broker_type()`, `get_symbol_specification()`, etc.

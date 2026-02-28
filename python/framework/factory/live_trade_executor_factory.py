@@ -12,7 +12,7 @@ from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.live_execution_types import TimeoutConfig
 
 

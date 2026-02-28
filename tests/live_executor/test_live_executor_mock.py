@@ -278,7 +278,7 @@ class TestNotLiveCapable:
 
         import pytest
         with pytest.raises(ValueError, match="not live-capable"):
-            from python.framework.trading_env.live_trade_executor import LiveTradeExecutor
+            from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
             LiveTradeExecutor(
                 broker_config=broker_config,
                 initial_balance=10000.0,

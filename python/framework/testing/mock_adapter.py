@@ -5,7 +5,7 @@
 FiniexTestingIDE - Mock Broker Adapter
 Simulates broker responses for testing LiveTradeExecutor without a real broker.
 
-Extends BaseAdapter with mock data (BTCUSD from real Kraken config)
+Extends AbstractAdapter with mock data (BTCUSD from real Kraken config)
 and configurable execution behavior (instant fill, delayed, reject, timeout).
 
 Modes:
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from python.framework.trading_env.adapters.base_adapter import BaseAdapter
+from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.types.broker_types import (
     BrokerSpecification,
     BrokerType,
@@ -87,7 +87,7 @@ _MOCK_BROKER_CONFIG: Dict[str, Any] = {
 }
 
 
-class MockBrokerAdapter(BaseAdapter):
+class MockBrokerAdapter(AbstractAdapter):
     """
     Mock broker adapter for testing LiveTradeExecutor.
 
@@ -125,7 +125,7 @@ class MockBrokerAdapter(BaseAdapter):
         self._slippage_points: float = 0.0
 
     # ============================================
-    # Configuration (required by BaseAdapter)
+    # Configuration (required by AbstractAdapter)
     # ============================================
 
     def _validate_config(self) -> None:
@@ -154,7 +154,7 @@ class MockBrokerAdapter(BaseAdapter):
         )
 
     # ============================================
-    # Order Creation (required by BaseAdapter)
+    # Order Creation (required by AbstractAdapter)
     # ============================================
 
     def create_market_order(
@@ -209,7 +209,7 @@ class MockBrokerAdapter(BaseAdapter):
         raise NotImplementedError("MockBrokerAdapter does not support limit orders (MVP)")
 
     # ============================================
-    # Order Validation (required by BaseAdapter)
+    # Order Validation (required by AbstractAdapter)
     # ============================================
 
     def validate_order(
@@ -232,7 +232,7 @@ class MockBrokerAdapter(BaseAdapter):
         return self._validate_lot_size(symbol, lots)
 
     # ============================================
-    # Symbol Information (required by BaseAdapter)
+    # Symbol Information (required by AbstractAdapter)
     # ============================================
 
     def get_all_aviable_symbols(self) -> List[str]:

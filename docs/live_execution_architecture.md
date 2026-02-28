@@ -145,15 +145,15 @@ Simulation fields (`placed_at_tick`, `fill_at_tick`) remain None in live mode.
 
 ---
 
-## BaseAdapter: Live Execution Interface (Tier 3)
+## AbstractAdapter: Live Execution Interface (Tier 3)
 
-The `BaseAdapter` abstract class organizes methods in tiers. Live execution is Tier 3:
+The `AbstractAdapter` abstract class organizes methods in tiers. Live execution is Tier 3:
 
 **Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `modify_order()`, `is_live_capable()` — default `NotImplementedError` / `False`
 
 Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 
-### MockBrokerAdapter (extends BaseAdapter, for testing)
+### MockBrokerAdapter (extends AbstractAdapter, for testing)
 
 Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three tiers with configurable behavior. Uses real Kraken BTCUSD symbol specification.
 

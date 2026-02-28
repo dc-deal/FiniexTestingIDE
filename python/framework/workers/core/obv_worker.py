@@ -23,10 +23,10 @@ from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.market_types import TradingContext
 from python.framework.types.market_config_types import MarketType
 from python.framework.types.worker_types import WorkerResult, WorkerType
-from python.framework.workers.abstract_worker import AbstactWorker
+from python.framework.workers.abstract_worker import AbstractWorker
 
 
-class OBVWorker(AbstactWorker):
+class OBVWorker(AbstractWorker):
     """
     On-Balance Volume (OBV) indicator worker.
 

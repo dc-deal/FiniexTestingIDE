@@ -14,7 +14,7 @@ from enum import Enum
 
 from python.framework.types.market_data_types import TickData
 
-from .adapters.base_adapter import BaseAdapter
+from .adapters.abstract_adapter import AbstractAdapter
 from .adapters.mt5_adapter import MT5Adapter
 from .adapters.kraken_adapter import KrakenAdapter
 from ..types.order_types import (
@@ -45,7 +45,7 @@ class BrokerConfig:
 
     """
 
-    def __init__(self, broker_type: BrokerType, adapter: BaseAdapter):
+    def __init__(self, broker_type: BrokerType, adapter: AbstractAdapter):
         """
         Initialize broker config with adapter.
 
@@ -117,7 +117,7 @@ class BrokerConfig:
     def _create_adapter(
         broker_type: BrokerType,
         config: Dict[str, Any]
-    ) -> BaseAdapter:
+    ) -> AbstractAdapter:
         """
         Create appropriate adapter for broker type.
 

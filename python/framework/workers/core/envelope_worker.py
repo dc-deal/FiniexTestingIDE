@@ -12,10 +12,10 @@ from python.framework.types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
-    AbstactWorker
+    AbstractWorker
 
 
-class EnvelopeWorker(AbstactWorker):
+class EnvelopeWorker(AbstractWorker):
     """Envelope/Bollinger Band worker - Bar-based computation"""
 
     def __init__(self, name, parameters, logger, trading_context=None):

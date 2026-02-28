@@ -17,7 +17,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
-class AbstactWorker(ABC):
+class AbstractWorker(ABC):
     """
     Abstract base class for all blackbox workers
 

@@ -18,7 +18,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class BarIndexReportGenerator:
+class BarIndexReport:
     """
     Generates comprehensive reports about bar index status.
 
