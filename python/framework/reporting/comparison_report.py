@@ -2,8 +2,6 @@
 Comparison Report
 =================
 Cross-instrument volatility and liquidity ranking report.
-
-Location: python/framework/reporting/comparison_report.py
 """
 
 from typing import List, Optional

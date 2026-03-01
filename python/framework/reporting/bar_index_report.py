@@ -1,9 +1,6 @@
 """
 Bar Index Report Generator
 Generates structured reports for pre-rendered bar data
-
-Location: python/framework/reports/bar_index_report.py
-Output: framework/reports/bar_index_YYYYMMDD_HHMMSS.json
 """
 
 import json

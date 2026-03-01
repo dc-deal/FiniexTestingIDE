@@ -1,10 +1,7 @@
 """
 TickIndexManager - Fast File Selection via Metadata Index
 
-REFACTORED: Parquet storage format (was JSON)
-- Flat table structure for efficient filtering
-- Nested dict in memory for API compatibility
-- Auto-migration from legacy JSON format
+
 """
 
 import json
@@ -19,11 +16,6 @@ import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.discoveries.coverage_report import (
-    CoverageReport,
-    IndexEntry
-)
-
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.broker_types import BrokerType
 vLog = get_global_logger()
@@ -51,9 +43,10 @@ class TickIndexManager:
         """
         self.logger = logger
         self._app_config = AppConfigManager()
-        self.data_dir = Path(data_dir) if data_dir else Path(self._app_config.get_data_processed_path())
+        self.data_dir = Path(data_dir) if data_dir else Path(
+            self._app_config.get_data_processed_path())
 
-        # NEW: Parquet index file
+        # Parquet index file
         self.index_file = self.data_dir / self.INDEX_FILE_PARQUET
         # Legacy JSON for migration
         self._legacy_json_file = self.data_dir / self.INDEX_FILE_JSON_LEGACY
@@ -415,27 +408,10 @@ class TickIndexManager:
         self._load_index()
 
     # =========================================================================
-    # COVERAGE REPORTS
+    # FILE COVERAGE
     # =========================================================================
 
-    def get_coverage_report(self, broker_type: BrokerType, symbol: str) -> CoverageReport:
-        """Generate coverage report for a symbol."""
-        if broker_type not in self.index:
-            self.logger.warning(
-                f"Broker type '{broker_type}' not found in tick index")
-            return None
-
-        if symbol not in self.index[broker_type]:
-            self.logger.warning(
-                f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'")
-            return None
-
-        report = CoverageReport(
-            symbol, broker_type=broker_type)
-        report.analyze()
-        return report
-
-    def get_symbol_coverage(self, broker_type: str, symbol: str) -> Dict:
+    def get_symbol_file_coverage(self, broker_type: str, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol."""
         if broker_type not in self.index:
             return {}
@@ -488,7 +464,7 @@ class TickIndexManager:
             print(f"\n📂 {broker_type}:")
 
             for symbol in sorted(self.index[broker_type].keys()):
-                coverage = self.get_symbol_coverage(broker_type, symbol)
+                coverage = self.get_symbol_file_coverage(broker_type, symbol)
                 print(f"   {symbol}:")
                 print(f"      Files:  {coverage['num_files']}")
                 print(f"      Ticks:  {coverage['total_ticks']:,}")
@@ -497,9 +473,3 @@ class TickIndexManager:
                     f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
         print("="*60 + "\n")
-
-    def print_coverage_report(self, broker_type: BrokerType, symbol: str) -> None:
-        """Print coverage report for a symbol."""
-        report = self.get_coverage_report(broker_type, symbol)
-        if report is not None:
-            print(report.generate_report())

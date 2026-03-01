@@ -29,7 +29,7 @@ class SingleScenario:
     symbol: str
 
     # ============================================
-    # DATA SOURCE (NEW - REQUIRED)
+    # DATA SOURCE (REQUIRED)
     # ============================================
     # Determines which tick/bar data collection to load from
     # Examples: "mt5", "kraken_spot"

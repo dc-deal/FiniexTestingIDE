@@ -300,7 +300,7 @@ class WorkerOrchestrator:
         )
 
         # ============================================
-        # OPTIMIZED LOGGING (NEW - with caching)
+        # OPTIMIZED LOGGING (with caching)
         # ============================================
         self.tick_logger.log_tick_data(
             tick=tick,

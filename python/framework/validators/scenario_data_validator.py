@@ -3,7 +3,6 @@ FiniexTestingIDE - Scenario Data Validator
 Validates scenario configurations against data availability and quality requirements
 
 Phase 1.5: Post-Load Data Quality Validation
-Location: python/framework/validators/scenario_data_validator.py
 """
 
 from typing import Dict, List, Tuple
@@ -13,7 +12,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
-from python.framework.discoveries.coverage_report import CoverageReport
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.utils.time_utils import ensure_utc_aware
 
@@ -33,7 +32,7 @@ class ScenarioDataValidator:
 
     def __init__(
         self,
-        coverage_reports: Dict[str, CoverageReport],
+        data_coverage_reports: Dict[str, DataCoverageReport],
         app_config: AppConfigManager,
         logger: AbstractLogger
     ):
@@ -41,12 +40,12 @@ class ScenarioDataValidator:
         Initialize validator.
 
         Args:
-            coverage_reports: Dict mapping (broker_type, symbol) tuple to CoverageReport
+            data_coverage_reports: Dict mapping (broker_type, symbol) tuple to DataCoverageReport
             app_config: Application config manager
             logger: Logger instance
         """
 
-        self._coverage_reports = coverage_reports
+        self._data_coverage_reports = data_coverage_reports
         self._app_config = app_config
         self._logger = logger
 
@@ -119,7 +118,7 @@ class ScenarioDataValidator:
     def validate_data_availability(
         self,
         scenario: SingleScenario,
-        report: CoverageReport
+        report: DataCoverageReport
     ) -> List[str]:
         """
         Validate that scenario dates are within available data range.
@@ -237,7 +236,7 @@ class ScenarioDataValidator:
 
         # Get coverage report for this symbol
         report_key = (scenario.data_broker_type, scenario.symbol)
-        report = self._coverage_reports.get(report_key)
+        report = self._data_coverage_reports.get(report_key)
         if not report:
             errors.append(
                 f"No coverage report available for {scenario.data_broker_type}/{scenario.symbol}")
@@ -275,7 +274,7 @@ class ScenarioDataValidator:
     def _validate_start_date_not_in_gap(
         self,
         scenario: SingleScenario,
-        report: CoverageReport
+        report: DataCoverageReport
     ) -> List[str]:
         """
         Validate that start_date is not inside a gap.
@@ -309,7 +308,7 @@ class ScenarioDataValidator:
     def _validate_tick_stretch(
         self,
         scenario: SingleScenario,
-        report: CoverageReport,
+        report: DataCoverageReport,
         scenario_package: ProcessDataPackage
     ) -> List[str]:
         """

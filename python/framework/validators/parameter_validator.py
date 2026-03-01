@@ -4,8 +4,6 @@ Validates config values against ParameterDef schemas
 
 Stateless utility functions for parameter validation and default injection.
 Used by both Factories (Phase 6) and static validation (Phase 0).
-
-Location: python/framework/validators/parameter_validator.py
 """
 
 from typing import Any, Dict, List

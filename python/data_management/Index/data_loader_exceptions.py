@@ -1,9 +1,6 @@
 """
 FiniexTestingIDE Data Quality Exceptions
 Custom exceptions for data validation and quality issues
-
-Location: python/data_management/index/exceptions.py
-Version: 1.3 (Refactored: data_collector → broker_type)
 """
 
 from dataclasses import dataclass
@@ -221,7 +218,7 @@ class ArtificialDuplicateException(DataQualityException):
     Artificial duplicates occur when:
     - Same source JSON is imported multiple times (should overwrite, not duplicate)
     - Parquet files are manually copied in processed/ directory
-    - Same data imported under different data_collectors (NEW in C#003b)
+    - Same data imported under different data_collectors
     - File system issues cause duplication
 
     This exception includes a detailed DuplicateReport for analysis.

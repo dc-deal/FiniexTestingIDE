@@ -52,7 +52,7 @@ class FileLoggingConfig:
                 "file_logging.append_mode is required (must be true/false)")
 
         self._global_enabled = self._config['enabled']
-        # CHANGED: Validate global log level - will raise ValueError if invalid
+        # Validate global log level - will raise ValueError if invalid
         self._global_log_level = LogLevel.validate(
             self._config['log_level']
         )

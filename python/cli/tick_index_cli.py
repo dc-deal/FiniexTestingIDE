@@ -5,16 +5,14 @@ Command-line tools for Tick Index management
 Usage:
     python python/cli/tick_index_cli.py rebuild
     python python/cli/tick_index_cli.py status
-    python python/cli/tick_index_cli.py coverage BROKER_TYPE SYMBOL
+    python python/cli/tick_index_cli.py file-coverage BROKER_TYPE SYMBOL
     python python/cli/tick_index_cli.py files BROKER_TYPE SYMBOL --start DATE --end DATE
-
-REFACTORED: Extracted from data_index_cli.py for separation of concerns
 """
 
+import argparse
 import sys
 import traceback
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 
@@ -80,7 +78,7 @@ class TickIndexCLI:
         if self.index_manager.needs_rebuild():
             print("⚠️  Index is outdated - run 'rebuild' to update\n")
 
-    def cmd_coverage(self, broker_type: str, symbol: str):
+    def cmd_file_coverage(self, broker_type: str, symbol: str):
         """
         Show coverage statistics for symbol.
 
@@ -91,7 +89,7 @@ class TickIndexCLI:
         self.index_manager.build_index()
 
         try:
-            coverage = self.index_manager.get_symbol_coverage(
+            coverage = self.index_manager.get_symbol_file_coverage(
                 broker_type, symbol)
 
             if not coverage:
@@ -106,7 +104,7 @@ class TickIndexCLI:
             print(f"Size:        {coverage['total_size_mb']:.1f} MB")
             print(f"Start:       {coverage['start_time']}")
             print(f"End:         {coverage['end_time']}")
-            print("\nFiles:")
+            print('\nFiles:')
             for file in coverage['files']:
                 print(f"   • {file}")
             print("="*60 + "\n")
@@ -126,11 +124,6 @@ class TickIndexCLI:
         """
         self.index_manager.build_index()
 
-        if not start or not end:
-            print("\n❌ Error: --start and --end required\n")
-            print("Example: files mt5 EURUSD --start '2025-09-23' --end '2025-09-24'")
-            return
-
         try:
             start_dt = pd.to_datetime(start)
             end_dt = pd.to_datetime(end)
@@ -144,7 +137,7 @@ class TickIndexCLI:
             print("="*60)
             print(f"Time range:  {start} → {end}")
             print(f"Selected:    {len(files)} files")
-            print("\nFiles:")
+            print('\nFiles:')
             for file in files:
                 print(f"   • {file.name}")
             print("="*60 + "\n")
@@ -152,78 +145,75 @@ class TickIndexCLI:
         except Exception as e:
             print(f"\n❌ Error: {e}\n")
 
-    def cmd_help(self):
-        """Show help."""
-        print("""
-📚 Tick Index CLI - Usage
-
-Commands:
-    rebuild                         Rebuild tick index from Parquet files
-    status                          Show tick index status and metadata
-    coverage BROKER_TYPE SYMBOL     Show coverage statistics for symbol
-    files BROKER_TYPE SYMBOL --start DATE --end DATE
-                                    Show files selected for time range
-    help                            Show this help
-
-Examples:
-    python python/cli/tick_index_cli.py rebuild
-    python python/cli/tick_index_cli.py status
-    python python/cli/tick_index_cli.py coverage mt5 EURUSD
-    python python/cli/tick_index_cli.py coverage kraken_spot BTCUSD
-    python python/cli/tick_index_cli.py files mt5 EURUSD --start "2025-09-23" --end "2025-09-24"
-""")
-
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("❌ Missing command. Use 'help' for usage.")
+    parser = argparse.ArgumentParser(
+        description='Tick Index management CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REBUILD command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'rebuild', help='Rebuild tick index from Parquet files')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STATUS command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'status', help='Show tick index status and metadata')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # FILE-COVERAGE command
+    # ─────────────────────────────────────────────────────────────────────────
+    cov_parser = subparsers.add_parser(
+        'file-coverage', help='Show coverage statistics for symbol')
+    cov_parser.add_argument(
+        'broker_type', help='Broker type identifier')
+    cov_parser.add_argument(
+        'symbol', help='Trading symbol')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # FILES command
+    # ─────────────────────────────────────────────────────────────────────────
+    files_parser = subparsers.add_parser(
+        'files', help='Show files selected for time range')
+    files_parser.add_argument(
+        'broker_type', help='Broker type identifier')
+    files_parser.add_argument(
+        'symbol', help='Trading symbol')
+    files_parser.add_argument(
+        '--start', required=True, help='Start date (ISO format)')
+    files_parser.add_argument(
+        '--end', required=True, help='End date (ISO format)')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Parse and execute
+    # ─────────────────────────────────────────────────────────────────────────
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
         sys.exit(1)
 
     cli = TickIndexCLI()
-    command = sys.argv[1].lower()
 
     try:
-        if command == "rebuild":
+        if args.command == 'rebuild':
             cli.cmd_rebuild()
 
-        elif command == "status":
+        elif args.command == 'status':
             cli.cmd_status()
 
-        elif command == "coverage":
-            if len(sys.argv) < 4:
-                print("❌ Usage: coverage BROKER_TYPE SYMBOL")
-                print("   Example: coverage mt5 EURUSD")
-                sys.exit(1)
-            cli.cmd_coverage(sys.argv[2], sys.argv[3])
+        elif args.command == 'file-coverage':
+            cli.cmd_file_coverage(args.broker_type, args.symbol)
 
-        elif command == "files":
-            if len(sys.argv) < 7:
-                print("❌ Usage: files BROKER_TYPE SYMBOL --start DATE --end DATE")
-                print(
-                    "   Example: files mt5 EURUSD --start '2025-09-23' --end '2025-09-24'")
-                sys.exit(1)
-
-            broker_type = sys.argv[2]
-            symbol = sys.argv[3]
-            start = None
-            end = None
-
-            for i, arg in enumerate(sys.argv):
-                if arg == "--start" and i + 1 < len(sys.argv):
-                    start = sys.argv[i + 1]
-                elif arg == "--end" and i + 1 < len(sys.argv):
-                    end = sys.argv[i + 1]
-
-            cli.cmd_files(broker_type, symbol, start, end)
-
-        elif command == "help":
-            cli.cmd_help()
-
-        else:
-            print(f"❌ Unknown command: {command}")
-            print("Use 'help' for usage.")
-            sys.exit(1)
+        elif args.command == 'files':
+            cli.cmd_files(args.broker_type, args.symbol, args.start, args.end)
 
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")
@@ -234,5 +224,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

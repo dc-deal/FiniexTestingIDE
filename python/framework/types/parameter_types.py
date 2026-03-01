@@ -6,8 +6,6 @@ Provides ParameterDef for declaring configurable parameters with
 type, default, range, and description metadata.
 
 Future: UX layer can consume these definitions for sliders, dropdowns, etc.
-
-Location: python/framework/types/parameter_types.py
 """
 
 from dataclasses import dataclass

@@ -2,7 +2,6 @@
 FiniexTestingIDE Data Loader - Reports Module
 Summary reports, formatted output, and developer convenience tools
 
-Location: python/data_management/reports.py
 """
 
 from pathlib import Path

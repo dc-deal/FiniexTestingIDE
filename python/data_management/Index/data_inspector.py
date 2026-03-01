@@ -2,8 +2,6 @@
 FiniexTestingIDE - Data Inspector
 Inspect tick and bar data: metadata, schema, and sample rows
 
-Location: python/data_management/index/data_inspector.py
-
 Usage:
     inspector = DataInspector(tick_index, bar_index)
     

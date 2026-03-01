@@ -83,7 +83,7 @@ class AggregateScenarioDataRequirements:
         self.requirements.add_tick_requirement(tick_req)
 
         # === BAR REQUIREMENTS (via Config + Classmethod) ===
-        # NEW APPROACH: No worker instantiation needed!
+        # No worker instantiation needed!
         # Use calculate_requirements() classmethod instead
 
         warmup_by_timeframe = {}

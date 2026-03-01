@@ -1,9 +1,8 @@
 """
-CoverageReport - Data Continuity Analysis
+DataCoverageReport - Data Continuity Analysis
 Validates time range coverage and detects gaps in tick data
 
-NEW  Gap detection and human-readable coverage reports
-UPDATED  Weekend gap listing with Berlin local time conversion
+Gap detection and human-readable coverage reports
 """
 
 from dataclasses import dataclass
@@ -24,7 +23,7 @@ from python.framework.types.market_types import VALIDATION_TIMEZONE
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 
 
-class CoverageReport:
+class DataCoverageReport:
     """
     Analyzes time range coverage and generates reports.
 

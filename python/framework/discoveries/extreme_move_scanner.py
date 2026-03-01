@@ -5,8 +5,6 @@ Scans bar data for extreme directional price movements (strong LONG/SHORT trends
 
 Uses ATR-based normalization for cross-instrument comparability.
 Sliding window approach over multiple configurable window sizes.
-
-Location: python/framework/discoveries/extreme_move_scanner.py
 """
 
 import json
@@ -83,8 +81,10 @@ class ExtremeMoveScanner:
 
         if broker_type not in self._loaded_broker_types:
             try:
-                broker_path = self._market_config.get_broker_config_path(broker_type)
-                broker_config = BrokerConfigFactory.build_broker_config(broker_path)
+                broker_path = self._market_config.get_broker_config_path(
+                    broker_type)
+                broker_config = BrokerConfigFactory.build_broker_config(
+                    broker_path)
                 for sym in broker_config.get_all_aviable_symbols():
                     try:
                         spec = broker_config.get_symbol_specification(sym)
@@ -93,7 +93,8 @@ class ExtremeMoveScanner:
                         pass
                 self._loaded_broker_types.add(broker_type)
             except Exception as e:
-                self._logger.warning(f"Failed to load broker config for {broker_type}: {e}")
+                self._logger.warning(
+                    f"Failed to load broker config for {broker_type}: {e}")
 
         return self._symbol_specs.get(symbol)
 
@@ -113,7 +114,8 @@ class ExtremeMoveScanner:
         bar_index = self._get_bar_index()
         bar_file = bar_index.get_bar_file(broker_type, symbol, timeframe)
         if not bar_file:
-            raise ValueError(f"No bar data found for {broker_type}/{symbol} {timeframe}")
+            raise ValueError(
+                f"No bar data found for {broker_type}/{symbol} {timeframe}")
 
         df = pd.read_parquet(bar_file)
 
@@ -166,7 +168,8 @@ class ExtremeMoveScanner:
         tf = timeframe or self._config.get('timeframe', 'M5')
         spec = self._load_symbol_spec(broker_type, symbol)
         if not spec:
-            raise ValueError(f"No symbol specification found for {broker_type}/{symbol}")
+            raise ValueError(
+                f"No symbol specification found for {broker_type}/{symbol}")
 
         pip_size = self._get_pip_size(spec)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
@@ -231,8 +234,10 @@ class ExtremeMoveScanner:
                             symbol=symbol,
                             timeframe=tf,
                             direction=MoveDirection.LONG,
-                            start_time=pd.Timestamp(timestamps[start_idx]).to_pydatetime(),
-                            end_time=pd.Timestamp(timestamps[end_idx - 1]).to_pydatetime(),
+                            start_time=pd.Timestamp(
+                                timestamps[start_idx]).to_pydatetime(),
+                            end_time=pd.Timestamp(
+                                timestamps[end_idx - 1]).to_pydatetime(),
                             bar_count=window_size,
                             entry_price=entry_price,
                             extreme_price=window_high,
@@ -257,15 +262,18 @@ class ExtremeMoveScanner:
                             symbol=symbol,
                             timeframe=tf,
                             direction=MoveDirection.SHORT,
-                            start_time=pd.Timestamp(timestamps[start_idx]).to_pydatetime(),
-                            end_time=pd.Timestamp(timestamps[end_idx - 1]).to_pydatetime(),
+                            start_time=pd.Timestamp(
+                                timestamps[start_idx]).to_pydatetime(),
+                            end_time=pd.Timestamp(
+                                timestamps[end_idx - 1]).to_pydatetime(),
                             bar_count=window_size,
                             entry_price=entry_price,
                             extreme_price=window_low,
                             exit_price=exit_price,
                             move_pips=round(short_move / pip_size, 1),
                             move_atr_multiple=round(short_move_atr, 2),
-                            max_adverse_pips=round(short_adverse / pip_size, 1),
+                            max_adverse_pips=round(
+                                short_adverse / pip_size, 1),
                             window_atr=round(window_atr, spec.digits),
                             tick_count=window_ticks,
                         ))
@@ -315,8 +323,10 @@ class ExtremeMoveScanner:
                 overlap_start = max(candidate.start_time, existing.start_time)
                 overlap_end = min(candidate.end_time, existing.end_time)
                 if overlap_start < overlap_end:
-                    overlap_bars = (overlap_end - overlap_start).total_seconds()
-                    candidate_bars = (candidate.end_time - candidate.start_time).total_seconds()
+                    overlap_bars = (
+                        overlap_end - overlap_start).total_seconds()
+                    candidate_bars = (candidate.end_time -
+                                      candidate.start_time).total_seconds()
                     if candidate_bars > 0 and overlap_bars / candidate_bars > 0.5:
                         overlaps = True
                         break

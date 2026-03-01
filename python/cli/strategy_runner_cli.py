@@ -2,14 +2,13 @@
 FiniexTestingIDE - Strategy Runner CLI
 Command-line interface for batch strategy testing
 
-FIX01: Enhanced display with time analysis and strategy info
-
 Usage:
     python python/cli/strategy_runner_cli.py run eurusd_3_windows.json
     python python/cli/strategy_runner_cli.py list
     python python/cli/strategy_runner_cli.py list --full-details
 """
 
+import argparse
 import sys
 import traceback
 
@@ -37,7 +36,7 @@ class StrategyRunnerCLI:
         Run strategy test with specified scenario set
 
         Args:
-            scenario_set_json: Config filename (e.g., "eurusd_3_windows.json")
+            scenario_set_json: Config filename (e.g., 'eurusd_3_windows.json')
         """
         print("\n" + "="*80)
         print("🔬 Strategy Runner")
@@ -142,56 +141,50 @@ class StrategyRunnerCLI:
 
             print()
 
-    def cmd_help(self):
-        """Show help"""
-        print("""
-📚 Strategy Runner CLI - Usage
-
-Commands:
-    run SCENARIO_SET.json    Run strategy test with specified scenario set
-    list                     List available scenario set files (fast)
-    list --full-details      List with full metadata (slow, validates all)
-    help                     Show this help
-
-Examples:
-    python python/cli/strategy_runner_cli.py run eurusd_3_windows.json
-    python python/cli/strategy_runner_cli.py list
-    python python/cli/strategy_runner_cli.py list --full-details
-
-Config Location:
-    ./configs/scenario_sets/
-""")
-
 
 def main():
-    """Main entry point"""
-    if len(sys.argv) < 2:
-        print("❌ Missing command. Use 'help' for usage.")
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description='Batch strategy testing CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # RUN command
+    # ─────────────────────────────────────────────────────────────────────────
+    run_parser = subparsers.add_parser(
+        'run', help='Run strategy test with specified scenario set')
+    run_parser.add_argument(
+        'scenario_set', help='Scenario set config filename (e.g., eurusd_3_windows.json)')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # LIST command
+    # ─────────────────────────────────────────────────────────────────────────
+    list_parser = subparsers.add_parser(
+        'list', help='List available scenario set files')
+    list_parser.add_argument(
+        '--full-details', action='store_true', default=False,
+        help='Load and validate all configs (slow)')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Parse and execute
+    # ─────────────────────────────────────────────────────────────────────────
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
         sys.exit(1)
 
     cli = StrategyRunnerCLI()
-    command = sys.argv[1].lower()
 
     try:
-        if command == "run":
-            if len(sys.argv) < 3:
-                print("❌ Missing scenario set filename. Usage: run SCENARIO_SET.json")
-                sys.exit(1)
+        if args.command == 'run':
+            cli.cmd_run(args.scenario_set)
 
-            scenario_set_json = sys.argv[2]
-            cli.cmd_run(scenario_set_json)
-
-        elif command == "list":
-            full_details = "--full-details" in sys.argv
-            cli.cmd_list(full_details=full_details)
-
-        elif command == "help":
-            cli.cmd_help()
-
-        else:
-            print(f"❌ Unknown command: {command}")
-            print("Use 'help' for usage.")
-            sys.exit(1)
+        elif args.command == 'list':
+            cli.cmd_list(full_details=args.full_details)
 
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")
@@ -202,5 +195,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

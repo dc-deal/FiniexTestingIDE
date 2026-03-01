@@ -58,7 +58,7 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 **Mode:** Serial (main process)  
 **Key Operations:**
 - `TickIndexManager.build_index()` - Load or rebuild tick index
-- `CoverageReportManager.generate_reports()` - Analyze data coverage and gaps
+- `DataCoverageReportManager.generate_reports()` - Analyze data coverage and gaps
 
 **Performance:** Fast (index-based, <1s for 8 symbols)
 

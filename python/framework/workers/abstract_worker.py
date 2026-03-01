@@ -62,7 +62,7 @@ class AbstractWorker(ABC):
         self.logger = logger
         self.performance_logger: WorkerPerformanceTracker = None
 
-        # --- Parameter access (NEW) ---
+        # --- Parameter access ---
         # Auto-wrap dict → ValidatedParameters for test convenience
         # Factory already provides ValidatedParameters; direct dict
         # construction (tests, legacy) gets wrapped transparently.

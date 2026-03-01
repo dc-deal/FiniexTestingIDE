@@ -128,7 +128,7 @@ from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
-from python.framework.discoveries.coverage_report_manager import CoverageReportManager
+from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 
 
@@ -325,7 +325,7 @@ class BatchOrchestrator:
 
         # Build tick index and generate coverage reports
         tick_index_manager = data_coordinator.get_tick_index_manager()
-        coverage_report_manager = CoverageReportManager(
+        coverage_report_manager = DataCoverageReportManager(
             logger=self._logger,
             scenarios=self._scenario_set.get_valid_scenarios(),
             tick_index_manager=tick_index_manager,

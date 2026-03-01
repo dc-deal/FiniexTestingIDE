@@ -1,13 +1,6 @@
 """
 FiniexTestingIDE - Portfolio Manager ()
 Tracks account balance, equity, open positions, and P&L with full fee tracking
-
- CHANGES:
-- Direct attributes for statistics (_total_trades, _winning_trades, etc.)
-- CostBreakdown object instead of dict for _cost_tracking
-- Always-copy public API (using replace())
-- Cleaner, more maintainable code structure
-- CURRENCY: Changed 'currency' to 'account_currency' for clarity
 """
 
 from collections import deque

@@ -1,12 +1,9 @@
 """
 Scenario CLI
-============
 Command-line interface for scenario generation.
 
 Commands:
 - generate: Generate scenario configs based on analysis
-
-Location: python/cli/scenario_cli.py
 """
 
 import argparse
@@ -32,12 +29,7 @@ class ScenarioCLI:
     """
 
     def __init__(self):
-        """
-        Initialize CLI handler.
-
-        Args:
-            data_dir: Path to processed data directory
-        """
+        """Initialize CLI handler."""
         pass
 
     # =========================================================================
@@ -48,7 +40,7 @@ class ScenarioCLI:
         self,
         broker_type: str,
         symbols: List[str],
-        strategy: str = "balanced",
+        strategy: str = 'balanced',
         count: Optional[int] = None,
         block_size: Optional[int] = None,
         session: Optional[str] = None,
@@ -308,5 +300,5 @@ def main():
         )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
