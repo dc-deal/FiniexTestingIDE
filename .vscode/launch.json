@@ -57,7 +57,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
-                "tick_data_report",
+                "tick-data-report",
                 "mt5"
             ],
             "console": "integratedTerminal",
@@ -69,7 +69,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/data_index_cli.py",
             "args": [
-                "tick_data_report",
+                "tick-data-report",
                 "kraken_spot"
             ],
             "console": "integratedTerminal",
@@ -493,7 +493,7 @@
             "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
                 "files",
                 "mt5",

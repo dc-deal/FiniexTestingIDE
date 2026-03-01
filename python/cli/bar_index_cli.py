@@ -7,15 +7,13 @@ Usage:
     python python/cli/bar_index_cli.py status
     python python/cli/bar_index_cli.py report
     python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
-
 """
 
+import argparse
 import sys
-from pathlib import Path
-from datetime import datetime
 import traceback
+from datetime import datetime
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.reporting.bar_index_report import BarIndexReport
@@ -223,69 +221,68 @@ class BarIndexCLI:
             vLog.error(f"❌ Bar rendering failed: {e}")
             raise
 
-    def cmd_help(self):
-        """Show help"""
-        print("""
-📚 Bar Index CLI - Usage
-
-Commands:
-    rebuild                         Rebuild bar index from parquet files
-    status                          Show bar index status and overview
-    report                          Generate detailed report (saved to framework/reports)
-    help                            Show this help
-
-Examples:
-    python python/cli/bar_index_cli.py rebuild
-    python python/cli/bar_index_cli.py status
-    python python/cli/bar_index_cli.py report
-    python python/cli/bar_index_cli.py render mt5
-    python python/cli/bar_index_cli.py render kraken_spot --clean
-
-Reports are saved to: ./framework/reports/bar_index_YYYYMMDD_HHMMSS.json
-
-⚠️  Note: 'render --clean' deletes ALL bars before re-rendering (recommended until bar append is implemented)
-""")
-
 
 def main():
-    """Main entry point"""
-    if len(sys.argv) < 2:
-        print("❌ Missing command. Use 'help' for usage.")
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description='Bar index management and reporting CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REBUILD command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'rebuild', help='Rebuild bar index from parquet files')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STATUS command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'status', help='Show bar index status and overview')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REPORT command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'report', help='Generate detailed report (saved to framework/reports)')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # RENDER command
+    # ─────────────────────────────────────────────────────────────────────────
+    render_parser = subparsers.add_parser(
+        'render', help='Render bars from tick data')
+    render_parser.add_argument(
+        'broker_type', help='Broker type identifier')
+    render_parser.add_argument(
+        '--clean', action='store_true', default=False,
+        help='Delete existing bars before rendering')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Parse and execute
+    # ─────────────────────────────────────────────────────────────────────────
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
         sys.exit(1)
 
     cli = BarIndexCLI()
-    command = sys.argv[1].lower()
 
     try:
-        if command == 'rebuild':
+        if args.command == 'rebuild':
             cli.cmd_rebuild()
 
-        elif command == 'status':
+        elif args.command == 'status':
             cli.cmd_status()
 
-        elif command == 'report':
+        elif args.command == 'report':
             cli.cmd_report()
 
-        elif command == 'render':
-            # render requires BROKER_TYPE as second argument
-            if len(sys.argv) < 3:
-                print("❌ Usage: render BROKER_TYPE [--clean]")
-                print("   Example: render mt5")
-                print("   Example: render kraken_spot --clean")
-                sys.exit(1)
-
-            broker_type = sys.argv[2]
-            clean = '--clean' in sys.argv
-
-            cli.cmd_render(broker_type=broker_type, clean=clean)
-
-        elif command == 'help':
-            cli.cmd_help()
-
-        else:
-            print(f"❌ Unknown command: {command}")
-            print("Use 'help' for usage.")
-            sys.exit(1)
+        elif args.command == 'render':
+            cli.cmd_render(broker_type=args.broker_type, clean=args.clean)
 
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")

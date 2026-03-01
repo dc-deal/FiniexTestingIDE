@@ -4,17 +4,16 @@ Command-line tools for tick data import and inspection
 
 Usage:
     python python/cli/data_index_cli.py import [--override]
-    python python/cli/data_index_cli.py tick_data_report [BROKER_TYPE]
+    python python/cli/data_index_cli.py tick-data-report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
 Import configuration is driven by configs/import_config.json (with user_config override).
 Offsets are applied automatically per broker_type from the offset registry.
 """
 
+import argparse
 import sys
 import traceback
-from pathlib import Path
-from typing import Optional
 
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
@@ -35,9 +34,6 @@ class DataIndexCLI:
     - Import tick data from JSON to Parquet
     - Generate tick data summary reports
     - Inspect tick/bar data structure
-
-    For index management, use tick_index_cli.py
-    For gap analysis, use discoveries_cli.py coverage
     """
 
     def __init__(self):
@@ -142,83 +138,71 @@ class DataIndexCLI:
             result = inspector.inspect_bars(broker_type, symbol, timeframe)
             inspector.print_inspection(result)
 
-    def cmd_help(self):
-        """Show help."""
-        print("""
-📥 Data Index CLI - Usage
-
-Commands:
-    import [--override]
-                        Import tick data from JSON to Parquet.
-                        Configuration is driven by configs/import_config.json.
-                        Offsets are applied automatically per broker_type.
-                        --override: Overwrite existing Parquet files
-
-    tick_data_report [BROKER_TYPE]
-                        Data Loader Summary Report
-                        Optional: filter by broker_type
-
-    inspect BROKER_TYPE SYMBOL [TIMEFRAME]
-                        Inspect tick or bar data (metadata, schema, sample)
-
-    help                Show this help
-
-Examples:
-    python python/cli/data_index_cli.py import
-    python python/cli/data_index_cli.py import --override
-    python python/cli/data_index_cli.py tick_data_report
-    python python/cli/data_index_cli.py tick_data_report mt5
-    python python/cli/data_index_cli.py inspect mt5 EURUSD
-    python python/cli/data_index_cli.py inspect kraken_spot BTCUSD M5
-
-Configuration:
-    configs/import_config.json      - Base import config (offset registry, paths, processing)
-    user_config/import_config.json  - User overrides (optional, deep-merged)
-
-Related CLIs:
-    tick_index_cli.py      - Tick index management (rebuild, status, coverage, files)
-    discoveries_cli.py     - Gap analysis (coverage build, show, validate, status)
-    bar_index_cli.py       - Bar index management (rebuild, status, report, render)
-""")
-
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("❌ Missing command. Use 'help' for usage.")
+    parser = argparse.ArgumentParser(
+        description='Data import and inspection CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # IMPORT command
+    # ─────────────────────────────────────────────────────────────────────────
+    import_parser = subparsers.add_parser(
+        'import', help='Import tick data from JSON to Parquet')
+    import_parser.add_argument(
+        '--override', action='store_true', default=False,
+        help='Overwrite existing Parquet files')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # TICK-DATA-REPORT command
+    # ─────────────────────────────────────────────────────────────────────────
+    report_parser = subparsers.add_parser(
+        'tick-data-report', help='Data Loader Summary Report')
+    report_parser.add_argument(
+        'broker_type', nargs='?', default=None,
+        help='Optional: filter by broker_type')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # INSPECT command
+    # ─────────────────────────────────────────────────────────────────────────
+    inspect_parser = subparsers.add_parser(
+        'inspect', help='Inspect tick or bar data (metadata, schema, sample)')
+    inspect_parser.add_argument(
+        'broker_type', help='Broker type identifier')
+    inspect_parser.add_argument(
+        'symbol', help='Trading symbol')
+    inspect_parser.add_argument(
+        'timeframe', nargs='?', default=None,
+        help='Optional timeframe for bar inspection')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Parse and execute
+    # ─────────────────────────────────────────────────────────────────────────
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
         sys.exit(1)
 
     cli = DataIndexCLI()
-    command = sys.argv[1].lower()
 
     try:
-        if command == 'import':
-            override = '--override' in sys.argv
-            cli.cmd_import(override=override)
+        if args.command == 'import':
+            cli.cmd_import(override=args.override)
 
-        elif command == 'tick_data_report':
-            broker_type = sys.argv[2] if len(sys.argv) > 2 else None
-            cli.cmd_tick_data_report(broker_type=broker_type)
+        elif args.command == 'tick-data-report':
+            cli.cmd_tick_data_report(broker_type=args.broker_type)
 
-        elif command == 'inspect':
-            if len(sys.argv) < 4:
-                print("❌ Usage: inspect BROKER_TYPE SYMBOL [TIMEFRAME]")
-                print("   Example: inspect mt5 EURUSD M5")
-                sys.exit(1)
-
-            broker_type = sys.argv[2]
-            symbol = sys.argv[3]
-            timeframe = sys.argv[4] if len(sys.argv) > 4 else None
-
-            cli.cmd_inspect(broker_type, symbol, timeframe)
-
-        elif command == 'help':
-            cli.cmd_help()
-
-        else:
-            print(f"❌ Unknown command: {command}")
-            print("Use 'help' for usage.")
-            sys.exit(1)
+        elif args.command == 'inspect':
+            cli.cmd_inspect(
+                broker_type=args.broker_type,
+                symbol=args.symbol,
+                timeframe=args.timeframe
+            )
 
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")
