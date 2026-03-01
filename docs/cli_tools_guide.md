@@ -16,10 +16,10 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 
 | CLI | Zweck | Befehle |
 |-----|-------|---------|
-| `data_index_cli.py` | Import & Inspektion | import, tick_data_report, inspect |
-| `tick_index_cli.py` | Tick-Index Management | rebuild, status, coverage, files |
+| `data_index_cli.py` | Import & Inspektion | import, tick-data-report, inspect |
+| `tick_index_cli.py` | Tick-Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
-| `discoveries_cli.py` | Marktanalyse, Discoveries & Coverage | analyze, extreme-moves, coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
+| `discoveries_cli.py` | Marktanalyse, Discoveries & Data Coverage | analyze, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `scenario_cli.py` | Szenarien | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
@@ -121,16 +121,16 @@ USDJPY:
       ...
 ```
 
-### 📚 Tick Coverage: SYMBOL
+### 📚 Tick File Coverage: SYMBOL
 
 | | |
 |---|---|
-| **VS Code** | `📚 Tick Coverage: mt5/EURUSD` |
-| **CLI** | `python tick_index_cli.py coverage mt5 EURUSD` |
+| **VS Code** | `📚 Tick File Coverage: mt5/EURUSD` |
+| **CLI** | `python tick_index_cli.py file-coverage mt5 EURUSD` |
 | **Zweck** | File-Liste für ein Symbol |
 
 ```
-📊 Coverage: mt5/EURUSD
+📊 File Coverage: mt5/EURUSD
 Files:       113
 Ticks:       5,268,906
 Size:        100.6 MB
@@ -147,12 +147,12 @@ Files:
 
 ## C) Datenqualität
 
-### 📊 Coverage: Validate All
+### 📊 Data Coverage: Validate All
 
 | | |
 |---|---|
-| **VS Code** | `📊 Coverage: Validate All` |
-| **CLI** | `python discoveries_cli.py coverage validate` |
+| **VS Code** | `📊 Data Coverage: Validate All` |
+| **CLI** | `python discoveries_cli.py data-coverage validate` |
 | **Zweck** | Schneller Gap-Check über alle Symbole |
 
 ```
@@ -170,12 +170,12 @@ Files:
 Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 ```
 
-### 📊 Coverage: Show Gap Report
+### 📊 Data Coverage: Show Gap Report
 
 | | |
 |---|---|
-| **VS Code** | `↔️ Coverage: mt5/EURUSD` |
-| **CLI** | `python discoveries_cli.py coverage show mt5 EURUSD` |
+| **VS Code** | `↔️ Data Coverage: mt5/EURUSD` |
+| **CLI** | `python discoveries_cli.py data-coverage show mt5 EURUSD` |
 | **Zweck** | Detaillierte Lückenanalyse für ein Symbol |
 
 Klassifiziert Gaps automatisch:
@@ -208,31 +208,31 @@ GAP ANALYSIS:
    • 🔴 Large gaps detected - consider re-collecting data
 ```
 
-### 📊 Coverage: Build Cache
+### 📊 Data Coverage: Build Cache
 
 | | |
 |---|---|
-| **VS Code** | `📊 Coverage: Build Cache` |
-| **CLI** | `python discoveries_cli.py coverage build` |
+| **VS Code** | `📊 Data Coverage: Build Cache` |
+| **CLI** | `python discoveries_cli.py data-coverage build` |
 | **Zweck** | Gap-Reports für alle Symbole vorberechnen |
 
 ```
-🔧 Building Coverage Report Cache
+🔧 Building Data Coverage Report Cache
 Force Rebuild: DISABLED (skip valid caches)
 
-✅ Coverage cache built: 16 generated, 0 skipped, 0 failed (16 total) in 8.23s
+✅ Data coverage cache built: 16 generated, 0 skipped, 0 failed (16 total) in 8.23s
 ```
 
-### 📊 Coverage: Status
+### 📊 Data Coverage: Status
 
 | | |
 |---|---|
-| **VS Code** | `📊 Coverage: Status` |
-| **CLI** | `python discoveries_cli.py coverage status` |
+| **VS Code** | `📊 Data Coverage: Status` |
+| **CLI** | `python discoveries_cli.py data-coverage status` |
 | **Zweck** | Cache-Status anzeigen |
 
 ```
-📦 Coverage Report Cache Status
+📦 Data Coverage Report Cache Status
 Cache Dir:     data/processed/.coverage_cache
 Cache Files:   16
 Cache Size:    0.02 MB
@@ -567,9 +567,9 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
 | **Daten-Übersicht** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
-| **Gap-Check (alle)** | `📊 Coverage: Validate All` | `discoveries_cli.py coverage validate` |
-| **Gap-Details** | `↔️ Coverage: mt5/EURUSD` | `discoveries_cli.py coverage show mt5 EURUSD` |
-| **Coverage Cache bauen** | `📊 Coverage: Build Cache` | `discoveries_cli.py coverage build` |
+| **Gap-Check (alle)** | `📊 Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
+| **Gap-Details** | `↔️ Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
+| **Data Coverage Cache bauen** | `📊 Data Coverage: Build Cache` | `discoveries_cli.py data-coverage build` |
 | **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `discoveries_cli.py analyze mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Extreme Moves - mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
@@ -585,9 +585,9 @@ Nützlich um die Rohdatenstruktur zu verstehen:
          ↓
 2. Import:          📥 Import: Offset +3
          ↓
-3. Cache aufbauen:  📊 Coverage: Build Cache
+3. Cache aufbauen:  📊 Data Coverage: Build Cache
          ↓
-4. Qualität prüfen: 📊 Coverage: Validate → ↔️ Coverage: show
+4. Qualität prüfen: 📊 Data Coverage: Validate → ↔️ Data Coverage: show
          ↓
 5. Markt analysieren: 📊 MARKET ANALYSIS REPORT
          ↓
@@ -608,7 +608,7 @@ Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
 |-------|-------|-----------|
 | Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
 | Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
-| Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
+| Data Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
 | Discovery Cache | `.discovery_cache/*.parquet` | Extreme Moves Cache |
 
 Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.

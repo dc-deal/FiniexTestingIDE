@@ -14,7 +14,7 @@ import argparse
 import sys
 from typing import List, Optional
 
-from python.framework.discoveries.coverage_report_cache import CoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.discoveries.market_analyzer import MarketAnalyzer
 from python.framework.discoveries.discovery_cache import DiscoveryCache
@@ -121,7 +121,7 @@ class DiscoveriesCLI:
     # COVERAGE COMMANDS
     # =========================================================================
 
-    def cmd_coverage_build(self, force: bool = False) -> None:
+    def cmd_data_coverage_build(self, force: bool = False) -> None:
         """
         Build coverage report cache for all symbols.
 
@@ -138,7 +138,7 @@ class DiscoveriesCLI:
         bar_index = BarsIndexManager()
         bar_index.build_index()
 
-        cache = CoverageReportCache()
+        cache = DataCoverageReportCache()
         stats = cache.build_all(force_rebuild=force)
 
         print("\n" + "-"*60)
@@ -148,15 +148,15 @@ class DiscoveriesCLI:
         print(f"   ❌ Failed:    {stats['failed']}")
         print("-"*60 + "\n")
 
-    def cmd_coverage_status(self) -> None:
+    def cmd_data_coverage_status(self) -> None:
         """Show coverage cache status overview."""
         bar_index = BarsIndexManager()
         bar_index.build_index()
 
-        cache = CoverageReportCache()
+        cache = DataCoverageReportCache()
         cache.print_status()
 
-    def cmd_coverage_show(
+    def cmd_data_coverage_show(
         self, broker_type: str, symbol: str, force: bool = False
     ) -> None:
         """
@@ -170,7 +170,7 @@ class DiscoveriesCLI:
         bar_index = BarsIndexManager()
         bar_index.build_index()
 
-        cache = CoverageReportCache()
+        cache = DataCoverageReportCache()
         report = cache.get_report(broker_type, symbol, force_rebuild=force)
 
         if report is None:
@@ -179,12 +179,12 @@ class DiscoveriesCLI:
 
         print(report.generate_report())
 
-    def cmd_coverage_validate(self) -> None:
+    def cmd_data_coverage_validate(self) -> None:
         """Validate all symbols and show gap summary."""
         bar_index = BarsIndexManager()
         bar_index.build_index()
 
-        cache = CoverageReportCache()
+        cache = DataCoverageReportCache()
 
         print("\n" + "="*60)
         print("🔍 Validating All Symbols")
@@ -224,13 +224,13 @@ class DiscoveriesCLI:
             print("✅ All symbols have clean coverage")
         print("="*60 + "\n")
 
-    def cmd_coverage_clear(self) -> None:
+    def cmd_data_coverage_clear(self) -> None:
         """Clear all cached coverage reports."""
         print("\n" + "="*60)
         print("🗑️  Clearing Data Coverage Report Cache")
         print("="*60 + "\n")
 
-        cache = CoverageReportCache()
+        cache = DataCoverageReportCache()
         count = cache.clear_cache()
 
         print(f"✅ Deleted {count} cache files\n")
@@ -445,19 +445,19 @@ def main():
             sys.exit(1)
 
         if args.coverage_command == 'build':
-            cli.cmd_coverage_build(force=args.force)
+            cli.cmd_data_coverage_build(force=args.force)
         elif args.coverage_command == 'status':
-            cli.cmd_coverage_status()
+            cli.cmd_data_coverage_status()
         elif args.coverage_command == 'show':
-            cli.cmd_coverage_show(
+            cli.cmd_data_coverage_show(
                 broker_type=args.broker_type,
                 symbol=args.symbol,
                 force=args.force
             )
         elif args.coverage_command == 'validate':
-            cli.cmd_coverage_validate()
+            cli.cmd_data_coverage_validate()
         elif args.coverage_command == 'clear':
-            cli.cmd_coverage_clear()
+            cli.cmd_data_coverage_clear()
 
     elif args.command == 'cache':
         if not args.cache_command:

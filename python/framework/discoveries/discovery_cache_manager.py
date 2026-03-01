@@ -17,7 +17,7 @@ Used by:
 
 from typing import Dict
 
-from python.framework.discoveries.coverage_report_cache import CoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -40,7 +40,7 @@ class DiscoveryCacheManager:
         """
         self._logger = logger or get_global_logger()
         self._discovery_cache = DiscoveryCache(logger=self._logger)
-        self._coverage_cache = CoverageReportCache()
+        self._data_coverage_cache = DataCoverageReportCache()
 
     def rebuild_all(self, force: bool = False) -> Dict[str, Dict[str, int]]:
         """
@@ -56,7 +56,7 @@ class DiscoveryCacheManager:
 
         self._logger.info("Rebuilding all discovery caches...")
 
-        results["coverage"] = self._coverage_cache.build_all(
+        results["coverage"] = self._data_coverage_cache.build_all(
             force_rebuild=force
         )
         results["extreme_moves"] = self._discovery_cache.build_all(
@@ -82,7 +82,7 @@ class DiscoveryCacheManager:
             Dict mapping cache name to status dict
         """
         return {
-            "coverage": self._coverage_cache.get_cache_status(),
+            "coverage": self._data_coverage_cache.get_cache_status(),
             "extreme_moves": self._discovery_cache.get_cache_status(),
         }
 
@@ -95,7 +95,7 @@ class DiscoveryCacheManager:
         """
         results: Dict[str, int] = {}
 
-        results["coverage"] = self._coverage_cache.clear_cache()
+        results["coverage"] = self._data_coverage_cache.clear_cache()
         results["extreme_moves"] = self._discovery_cache.clear_cache()
 
         total = sum(results.values())

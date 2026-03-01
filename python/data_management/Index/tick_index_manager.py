@@ -16,11 +16,6 @@ import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.discoveries.coverage_report import (
-    CoverageReport,
-    IndexEntry
-)
-
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.broker_types import BrokerType
 vLog = get_global_logger()
@@ -413,25 +408,8 @@ class TickIndexManager:
         self._load_index()
 
     # =========================================================================
-    # COVERAGE REPORTS
+    # FILE COVERAGE
     # =========================================================================
-
-    def get_coverage_report(self, broker_type: BrokerType, symbol: str) -> CoverageReport:
-        """Generate coverage report for a symbol."""
-        if broker_type not in self.index:
-            self.logger.warning(
-                f"Broker type '{broker_type}' not found in tick index")
-            return None
-
-        if symbol not in self.index[broker_type]:
-            self.logger.warning(
-                f"Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'")
-            return None
-
-        report = CoverageReport(
-            symbol, broker_type=broker_type)
-        report.analyze()
-        return report
 
     def get_symbol_file_coverage(self, broker_type: str, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol."""
@@ -495,9 +473,3 @@ class TickIndexManager:
                     f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
         print("="*60 + "\n")
-
-    def print_coverage_report(self, broker_type: BrokerType, symbol: str) -> None:
-        """Print coverage report for a symbol."""
-        report = self.get_coverage_report(broker_type, symbol)
-        if report is not None:
-            print(report.generate_report())

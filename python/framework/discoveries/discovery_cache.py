@@ -3,7 +3,7 @@ Discovery Cache
 ================
 Parquet-based caching for discovery results (extreme moves, etc.).
 
-Follows CoverageReportCache pattern:
+Follows DataCoverageReportCache pattern:
 - Parquet storage with Arrow metadata
 - Invalidation based on source bar file modification time
 - Lazy bar index loading

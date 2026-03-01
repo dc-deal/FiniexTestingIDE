@@ -20,7 +20,6 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.types.market_config_types import MarketType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.scenario_generator_types import (
     GeneratorConfig,
@@ -64,10 +63,6 @@ class MarketAnalyzer:
         # Initialize bar index
         self._bar_index = BarsIndexManager()
         self._bar_index.build_index()
-
-        # Initialize tick index for coverage reports
-        self._tick_index = TickIndexManager()
-        self._tick_index.build_index()
 
         # Symbol specification cache (lazy loaded per broker_type)
         self._market_symbol_specs: Dict[str, SymbolSpecification] = {}

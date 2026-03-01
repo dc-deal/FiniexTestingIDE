@@ -1,13 +1,13 @@
 """
-CoverageReportCache - Parquet-based caching for Coverage Reports
+DataCoverageReportCache - Parquet-based caching for Coverage Reports
 ================================================================
 
 Caches gap analysis results to avoid expensive bar-file scanning.
 Invalidation based on source bar file modification time.
 
 Architecture:
-- CoverageReport remains UNCHANGED
-- Cache wraps and hydrates CoverageReport instances
+- DataCoverageReport remains UNCHANGED
+- Cache wraps and hydrates DataCoverageReport instances
 - Storage: .coverage_cache/{broker_type}_{symbol}.parquet
 """
 
@@ -25,16 +25,16 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.discoveries.coverage_report import CoverageReport
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, GapCategory
 
 vLog = get_global_logger()
 
 
-class CoverageReportCache:
+class DataCoverageReportCache:
     """
-    Parquet-based cache for CoverageReport gap analysis.
+    Parquet-based cache for DataCoverageReport gap analysis.
 
     Avoids expensive bar-file scanning by caching gap results.
     Auto-invalidates when source bar files change.
@@ -122,9 +122,9 @@ class CoverageReportCache:
         broker_type: str,
         symbol: str,
         force_rebuild: bool = False
-    ) -> Optional[CoverageReport]:
+    ) -> Optional[DataCoverageReport]:
         """
-        Get CoverageReport, using cache if valid.
+        Get DataCoverageReport, using cache if valid.
 
         Args:
             broker_type: Broker type identifier
@@ -132,7 +132,7 @@ class CoverageReportCache:
             force_rebuild: Force regeneration, ignore cache
 
         Returns:
-            CoverageReport instance or None if data unavailable
+            DataCoverageReport instance or None if data unavailable
         """
         # Convert string to BrokerType if needed
         if isinstance(broker_type, str):
@@ -151,7 +151,7 @@ class CoverageReportCache:
 
         # Generate fresh report
         self.logger.debug(f"🔄 Generating report: {broker_type}/{symbol}")
-        report = CoverageReport(symbol=symbol, broker_type=broker_type)
+        report = DataCoverageReport(symbol=symbol, broker_type=broker_type)
         report.analyze()
 
         # Cache the result
@@ -164,8 +164,8 @@ class CoverageReportCache:
         broker_type: str,
         symbol: str,
         broker_type_enum: BrokerType
-    ) -> Optional[CoverageReport]:
-        """Load CoverageReport from cache and hydrate."""
+    ) -> Optional[DataCoverageReport]:
+        """Load DataCoverageReport from cache and hydrate."""
         cache_path = self._get_cache_path(broker_type, symbol)
 
         try:
@@ -175,7 +175,7 @@ class CoverageReportCache:
             df = pd.read_parquet(cache_path)
 
             # Create empty report
-            report = CoverageReport(
+            report = DataCoverageReport(
                 symbol=symbol, broker_type=broker_type)
 
             # Hydrate from metadata
@@ -216,9 +216,9 @@ class CoverageReportCache:
         self,
         broker_type: str,
         symbol: str,
-        report: CoverageReport
+        report: DataCoverageReport
     ) -> None:
-        """Save CoverageReport to cache."""
+        """Save DataCoverageReport to cache."""
         cache_path = self._get_cache_path(broker_type, symbol)
 
         try:

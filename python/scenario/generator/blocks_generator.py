@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.framework.discoveries.coverage_report import CoverageReport
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.types.scenario_generator_types import (
@@ -78,10 +78,13 @@ class BlocksGenerator:
         tick_index = TickIndexManager()
         tick_index.build_index()
 
-        coverage_report = tick_index.get_coverage_report(broker_type, symbol)
+        data_coverage_report = DataCoverageReport(
+            symbol=symbol, broker_type=broker_type)
+        data_coverage_report.analyze()
 
         # Extract continuous regions with gap information
-        continuous_regions = self._extract_continuous_regions(coverage_report)
+        continuous_regions = self._extract_continuous_regions(
+            data_coverage_report)
 
         if not continuous_regions:
             raise ValueError(
@@ -91,7 +94,7 @@ class BlocksGenerator:
         allowed_sessions = self._parse_sessions_filter(sessions_filter)
 
         # Log gap filtering info
-        self._log_coverage_info(continuous_regions, coverage_report)
+        self._log_coverage_info(continuous_regions, data_coverage_report)
 
         # Generate blocks from continuous regions with warmup handling
         scenarios = []
@@ -403,7 +406,7 @@ class BlocksGenerator:
 
     def _extract_continuous_regions(
         self,
-        coverage_report: CoverageReport
+        data_coverage_report: DataCoverageReport
     ) -> List[Dict]:
         """
         Extract continuous data regions from coverage report.
@@ -412,7 +415,7 @@ class BlocksGenerator:
         SMALL gaps are ignored (treated as continuous).
 
         Args:
-            coverage_report: Coverage report with gap analysis
+            data_coverage_report: Coverage report with gap analysis
 
         Returns:
             List of region dicts with 'start', 'end', 'following_gap'
@@ -421,15 +424,15 @@ class BlocksGenerator:
 
         # Filter for interrupting gaps only
         interrupting_gaps = [
-            g for g in coverage_report.gaps
+            g for g in data_coverage_report.gaps
             if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
         ]
 
         if not interrupting_gaps:
             # No interrupting gaps - single continuous region
             return [{
-                'start': coverage_report.start_time,
-                'end': coverage_report.end_time,
+                'start': data_coverage_report.start_time,
+                'end': data_coverage_report.end_time,
                 'following_gap': None
             }]
 
@@ -438,7 +441,7 @@ class BlocksGenerator:
             interrupting_gaps, key=lambda g: g.gap_start)
 
         # Build regions between gaps
-        current_start = coverage_report.start_time
+        current_start = data_coverage_report.start_time
 
         for gap in interrupting_gaps:
             if gap.gap_start <= current_start:
@@ -460,7 +463,7 @@ class BlocksGenerator:
             current_start = gap.gap_end
 
         # Add final region (no following gap)
-        final_end = coverage_report.end_time
+        final_end = data_coverage_report.end_time
         if final_end > current_start:
             regions.append({
                 'start': current_start,
@@ -592,17 +595,17 @@ class BlocksGenerator:
     def _log_coverage_info(
         self,
         continuous_regions: List[Dict],
-        coverage_report: CoverageReport
+        data_coverage_report: DataCoverageReport
     ) -> None:
         """
         Log coverage and gap statistics.
 
         Args:
             continuous_regions: Extracted continuous regions
-            coverage_report: Coverage report
+            data_coverage_report: Coverage report
         """
         filtered_gaps = [
-            g for g in coverage_report.gaps
+            g for g in data_coverage_report.gaps
             if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
         ]
 
@@ -616,10 +619,10 @@ class BlocksGenerator:
             f"Coverage: {total_coverage_hours:.1f}h usable, "
             f"{total_gap_hours:.1f}h gaps filtered "
             f"({len(filtered_gaps)} gaps: "
-            f"{coverage_report.gap_counts['weekend']} weekend, "
-            f"{coverage_report.gap_counts['holiday']} holiday, "
-            f"{coverage_report.gap_counts['moderate']} moderate, "
-            f"{coverage_report.gap_counts['large']} large)"
+            f"{data_coverage_report.gap_counts['weekend']} weekend, "
+            f"{data_coverage_report.gap_counts['holiday']} holiday, "
+            f"{data_coverage_report.gap_counts['moderate']} moderate, "
+            f"{data_coverage_report.gap_counts['large']} large)"
         )
 
     def _get_gap_info(self, region: Dict) -> str:

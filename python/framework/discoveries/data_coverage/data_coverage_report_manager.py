@@ -4,7 +4,7 @@ Generates coverage reports for data quality validation
 
 Responsibilities:
 - Load tick index for symbols
-- Generate CoverageReport instances
+- Generate DataCoverageReport instances
 - Cache reports for batch validation
 - Phase 0.5: Gap analysis preparation
 
@@ -16,8 +16,8 @@ from typing import Dict, List, Optional, Tuple
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.framework.discoveries.coverage_report import CoverageReport
-from python.framework.discoveries.coverage_report_cache import CoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.types.coverage_report_types import IndexEntry
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_set_types import SingleScenario
@@ -25,7 +25,7 @@ from python.framework.types.validation_types import ValidationResult
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 
-class CoverageReportManager:
+class DataCoverageReportManager:
     """
     Manages coverage report generation for batch validation.
 
@@ -53,21 +53,21 @@ class CoverageReportManager:
         self._logger = logger
         self._scenarios = scenarios
         self._tick_index_manager = tick_index_manager
-        self._coverage_reports: Dict[str, CoverageReport] = {}
+        self._data_coverage_reports: Dict[str, DataCoverageReport] = {}
         self._app_config = app_config
         self._use_cache = use_cache
 
         # Initialize cache if enabled
-        self._cache: Optional[CoverageReportCache] = None
+        self._cache: Optional[DataCoverageReportCache] = None
         if use_cache:
-            self._cache = CoverageReportCache(logger=logger)
+            self._cache = DataCoverageReportCache(logger=logger)
 
         # Create validator
         self._validator = None
 
     def generate_reports(self):
         """Generate coverage reports for all unique (broker_type, symbol) pairs."""
-        coverage_reports = {}
+        data_coverage_reports = {}
 
         # Get unique (broker_type, symbol) pairs from scenarios
         pairs = set(
@@ -77,25 +77,25 @@ class CoverageReportManager:
 
         # Generate report for each (broker_type, symbol) pair
         for broker_type, symbol in pairs:
-            report = self._get_coverage_report(broker_type, symbol)
+            report = self._get_data_coverage_report(broker_type, symbol)
             if report:
                 # Key is tuple (broker_type, symbol)
-                coverage_reports[(broker_type, symbol)] = report
+                data_coverage_reports[(broker_type, symbol)] = report
 
         self._logger.info(
-            f"✅ Generated {len(coverage_reports)} gap report(s)"
+            f"✅ Generated {len(data_coverage_reports)} gap report(s)"
         )
 
-        self._coverage_reports = coverage_reports
+        self._data_coverage_reports = data_coverage_reports
 
         # Create validator
         self._validator = ScenarioDataValidator(
-            coverage_reports=self._coverage_reports,
+            data_coverage_reports=self._data_coverage_reports,
             app_config=self._app_config,
             logger=self._logger
         )
 
-    def _get_coverage_report(self, broker_type: str, symbol: str) -> Optional[CoverageReport]:
+    def _get_data_coverage_report(self, broker_type: str, symbol: str) -> Optional[DataCoverageReport]:
         """
         Get coverage report, using cache if available.
 
@@ -104,14 +104,16 @@ class CoverageReportManager:
             symbol: Trading symbol
 
         Returns:
-            CoverageReport or None
+            DataCoverageReport or None
         """
         # Use cache if enabled
         if self._cache:
             return self._cache.get_report(broker_type, symbol)
 
-        # Fallback to direct generation via tick index
-        return self._tick_index_manager.get_coverage_report(broker_type, symbol)
+        # Fallback to direct generation
+        report = DataCoverageReport(symbol=symbol, broker_type=broker_type)
+        report.analyze()
+        return report
 
     def validate_availability(
         self,
@@ -156,7 +158,7 @@ class CoverageReportManager:
 
             # === STEP 2: Check coverage report availability ===
             report_key = (scenario.data_broker_type, scenario.symbol)
-            report = self._coverage_reports.get(report_key)
+            report = self._data_coverage_reports.get(report_key)
             if not report:
                 validation_result = ValidationResult(
                     is_valid=False,
