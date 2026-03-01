@@ -110,7 +110,7 @@ Active stress tests are prominently displayed in batch reports to prevent confus
 
 Both renderers derive stress test status from `SingleScenario.stress_test_config` via `StressTestConfig.from_dict()`. New stress test types are picked up automatically once added to `StressTestConfig.has_any_enabled()`.
 
-Key files: `framework/reporting/batch_summary.py`, `framework/reporting/executive_summary.py`
+Key files: `framework/batch_reporting/batch_summary.py`, `framework/batch_reporting/executive_summary.py`
 
 ## Determinism
 

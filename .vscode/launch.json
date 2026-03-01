@@ -520,7 +520,11 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["cache", "rebuild-all", "--force"],
+            "args": [
+                "cache",
+                "rebuild-all",
+                "--force"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -529,7 +533,10 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["cache", "status"],
+            "args": [
+                "cache",
+                "status"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -539,7 +546,11 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["analyze", "mt5", "GBPUSD"],
+            "args": [
+                "analyze",
+                "mt5",
+                "GBPUSD"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -548,7 +559,11 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["analyze", "kraken_spot", "BTCUSD"],
+            "args": [
+                "analyze",
+                "kraken_spot",
+                "BTCUSD"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -558,7 +573,13 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["extreme-moves", "mt5", "USDJPY", "--top", "100"],
+            "args": [
+                "extreme-moves",
+                "mt5",
+                "USDJPY",
+                "--top",
+                "100"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -567,7 +588,13 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["extreme-moves", "kraken_spot", "BTCUSD", "--top", "100"],
+            "args": [
+                "extreme-moves",
+                "kraken_spot",
+                "BTCUSD",
+                "--top",
+                "100"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -577,7 +604,10 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["data-coverage", "status"],
+            "args": [
+                "data-coverage",
+                "status"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -586,7 +616,10 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["data-coverage", "validate"],
+            "args": [
+                "data-coverage",
+                "validate"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -595,7 +628,12 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["data-coverage", "show", "mt5", "EURUSD"],
+            "args": [
+                "data-coverage",
+                "show",
+                "mt5",
+                "EURUSD"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -604,7 +642,12 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["data-coverage", "show", "mt5", "USDJPY"],
+            "args": [
+                "data-coverage",
+                "show",
+                "mt5",
+                "USDJPY"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -613,7 +656,12 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": ["data-coverage", "show", "kraken_spot", "BTCUSD"],
+            "args": [
+                "data-coverage",
+                "show",
+                "kraken_spot",
+                "BTCUSD"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },

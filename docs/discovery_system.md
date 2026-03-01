@@ -24,7 +24,7 @@ discoveries_cli.py
 - Cache classes: `python/framework/discoveries/`
 - Data coverage: `python/framework/discoveries/data_coverage/`
 - Types: `python/framework/types/scenario_generator_types.py`, `discovery_types.py`, `coverage_report_types.py`
-- Reports: `python/framework/reporting/market_report.py`, `comparison_report.py`
+- Reports: `python/framework/discoveries/market_analyzer/market_analyzer_report.py`, `market_analyzer_comparison_report.py`
 - CLI: `python/cli/discoveries_cli.py`
 
 ## Cache System

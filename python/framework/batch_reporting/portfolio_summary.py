@@ -7,7 +7,7 @@ Rendered in BOX format matching scenario details.
 
 from typing import Dict
 
-from python.framework.reporting.grid.console_box_renderer import ConsoleBoxRenderer
+from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.pending_order_stats_types import PendingOrderStats

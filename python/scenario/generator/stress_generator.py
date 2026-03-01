@@ -14,7 +14,7 @@ Features:
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.discoveries.market_analyzer import MarketAnalyzer
+from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
 from python.framework.types.scenario_generator_types import (
     GeneratorConfig,
     PeriodAnalysis,

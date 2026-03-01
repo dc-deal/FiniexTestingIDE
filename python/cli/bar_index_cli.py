@@ -16,7 +16,7 @@ from datetime import datetime
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.reporting.bar_index_report import BarIndexReport
+from python.data_management.index.bar_index_report import BarIndexReport
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
