@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 
-from python.framework.types.broker_types import FeeStatus, FeeType
+from python.framework.types.trading_env_types.broker_types import FeeStatus, FeeType
 
 
 @dataclass

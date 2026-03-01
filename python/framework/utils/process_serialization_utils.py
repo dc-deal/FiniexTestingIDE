@@ -2,7 +2,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Tuple
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 
 
 def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict[str, Tuple[Any, ...]]) -> Tuple[TickData, ...]:

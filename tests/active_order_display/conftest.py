@@ -15,7 +15,7 @@ import pytest
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
-from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 
 from tests.shared.fixture_helpers import (
     run_scenario,

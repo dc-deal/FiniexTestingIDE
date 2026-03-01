@@ -12,9 +12,9 @@ from typing import List
 
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.order_types import OrderResult
-from python.framework.types.order_types import OrderDirection
-from python.framework.types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
+from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
 from python.framework.types.process_data_types import ProcessResult
 
 
@@ -86,7 +86,8 @@ class TradeHistorySummary:
                 continue
             order_history = scenario.tick_loop_results.order_history
             if order_history:
-                all_rejections.extend(o for o in order_history if o.is_rejected)
+                all_rejections.extend(
+                    o for o in order_history if o.is_rejected)
 
         self._render_aggregated_stats(all_trades, all_rejections, renderer)
         print()
@@ -282,7 +283,8 @@ class TradeHistorySummary:
 
         # Basic counts
         total_trades = len(trades)
-        long_trades = sum(1 for t in trades if t.direction == OrderDirection.LONG)
+        long_trades = sum(1 for t in trades if t.direction ==
+                          OrderDirection.LONG)
         short_trades = total_trades - long_trades
 
         # P&L stats
@@ -307,9 +309,12 @@ class TradeHistorySummary:
         currency = trades[0].account_currency if trades else "USD"
 
         # Close reason counts
-        sl_closes = sum(1 for t in trades if t.close_reason == CloseReason.SL_TRIGGERED)
-        tp_closes = sum(1 for t in trades if t.close_reason == CloseReason.TP_TRIGGERED)
-        scenario_closes = sum(1 for t in trades if t.close_reason == CloseReason.SCENARIO_END)
+        sl_closes = sum(1 for t in trades if t.close_reason ==
+                        CloseReason.SL_TRIGGERED)
+        tp_closes = sum(1 for t in trades if t.close_reason ==
+                        CloseReason.TP_TRIGGERED)
+        scenario_closes = sum(
+            1 for t in trades if t.close_reason == CloseReason.SCENARIO_END)
         manual_closes = total_trades - sl_closes - tp_closes - scenario_closes
 
         print(f"\n   {renderer.bold('📈 TRADE BREAKDOWN:')}")

@@ -14,11 +14,11 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
 from python.framework.types.decision_logic_types import Decision
-from python.framework.types.market_data_types import TickData
-from python.framework.types.market_types import TradingContext
-from python.framework.types.order_types import OrderResult, OrderType
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
 from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
-from python.framework.types.performance_stats_types import DecisionLogicStats
+from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 

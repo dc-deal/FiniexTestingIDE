@@ -15,11 +15,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
-from python.framework.types.scenario_generator_types import (
-    GeneratorConfig,
+from python.framework.types.market_types.market_analysis_types import (
     PeriodAnalysis,
-    ScenarioCandidate,
     VolatilityRegime,
+)
+from python.framework.types.scenario_types.scenario_generator_types import (
+    GeneratorConfig,
+    ScenarioCandidate,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 

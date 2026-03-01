@@ -14,7 +14,7 @@ Import this class into suite-specific test_order_history.py files.
 
 from typing import List
 
-from python.framework.types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.process_data_types import ProcessTickLoopResult
 
 

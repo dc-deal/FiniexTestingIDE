@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.validation_types import ValidationResult
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.coverage_report_types import GapCategory

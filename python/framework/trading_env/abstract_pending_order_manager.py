@@ -37,12 +37,12 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.latency_simulator_types import (
+from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
     PendingOrderOutcome,
 )
-from python.framework.types.pending_order_stats_types import (
+from python.framework.types.trading_env_types.pending_order_stats_types import (
     PendingOrderRecord,
     PendingOrderStats,
 )

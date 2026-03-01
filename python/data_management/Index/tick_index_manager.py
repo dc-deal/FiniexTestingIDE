@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType
 vLog = get_global_logger()
 
 

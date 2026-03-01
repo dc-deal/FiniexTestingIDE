@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
-from python.framework.types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
-from python.framework.types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
 @dataclass
@@ -121,7 +121,8 @@ class PendingOrderStats:
     anomaly_orders: List[PendingOrderRecord] = field(default_factory=list)
 
     # Active order snapshots (populated by TradeSimulator.get_pending_stats())
-    active_limit_orders: List[ActiveOrderSnapshot] = field(default_factory=list)
+    active_limit_orders: List[ActiveOrderSnapshot] = field(
+        default_factory=list)
     active_stop_orders: List[ActiveOrderSnapshot] = field(default_factory=list)
     latency_queue_count: int = 0
 

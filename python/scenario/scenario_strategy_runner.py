@@ -6,7 +6,7 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator

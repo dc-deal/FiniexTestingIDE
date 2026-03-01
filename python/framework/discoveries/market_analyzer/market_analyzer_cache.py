@@ -34,8 +34,8 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.market_config_types import MarketType
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_analysis_types import (
     PeriodAnalysis,
     SessionSummary,
     SymbolAnalysis,

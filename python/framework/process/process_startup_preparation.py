@@ -8,7 +8,7 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch

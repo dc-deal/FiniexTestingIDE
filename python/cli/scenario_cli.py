@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.scenario_generator import ScenarioGenerator
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
 )

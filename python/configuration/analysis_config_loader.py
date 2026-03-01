@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.scenario_generator_types import GeneratorConfig
+from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
 vLog = get_global_logger()
 
 

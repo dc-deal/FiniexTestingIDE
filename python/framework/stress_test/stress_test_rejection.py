@@ -12,9 +12,9 @@ config-driven, per-scenario rejection injection.
 from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.stress_test_types import StressTestRejectOrderConfig
-from python.framework.types.order_types import OrderResult, RejectionReason, create_rejection_result
-from python.framework.types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.stress_test_types import StressTestRejectOrderConfig
+from python.framework.types.trading_env_types.order_types import OrderResult, RejectionReason, create_rejection_result
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.utils.seeded_generators.seeded_probability_filter import SeededProbabilityFilter
 
 
@@ -69,7 +69,7 @@ class StressTestRejection:
             order_id=pending_order.pending_order_id,
             reason=RejectionReason.BROKER_ERROR,
             message=f"[STRESS TEST] Seeded rejection #{self._rejection_count} "
-                    f"(probability: {self._config.probability:.0%})"
+            f"(probability: {self._config.probability:.0%})"
         )
 
         self._logger.warning(

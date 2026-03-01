@@ -11,7 +11,7 @@ Provides:
 """
 
 import re
-from python.framework.types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.types.log_level import ColorCodes
 
 

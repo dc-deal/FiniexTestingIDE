@@ -19,11 +19,11 @@ from python.framework.batch_reporting.profiling_summary import ProfilingSummary
 from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.rendering_types import BatchStatus
-from python.framework.types.stress_test_types import StressTestConfig
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.scenario_set_performance_types import ProfilingData
+from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData
 
 
 class BatchSummary:

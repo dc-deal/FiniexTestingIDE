@@ -6,7 +6,7 @@ Cross-instrument volatility and liquidity ranking report.
 
 from typing import List, Optional
 
-from python.framework.types.scenario_generator_types import SymbolAnalysis
+from python.framework.types.market_types.market_analysis_types import SymbolAnalysis
 
 
 def print_cross_instrument_ranking(

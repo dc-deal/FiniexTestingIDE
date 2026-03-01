@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from enum import Enum
 
-from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData
 
 from .adapters.abstract_adapter import AbstractAdapter
 from .adapters.mt5_adapter import MT5Adapter
 from .adapters.kraken_adapter import KrakenAdapter
-from ..types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     MarketOrder,
     LimitOrder,
@@ -26,7 +26,7 @@ from ..types.order_types import (
     IcebergOrder,
     OrderDirection,
 )
-from python.framework.types.broker_types import (
+from python.framework.types.trading_env_types.broker_types import (
     BrokerType,
     SymbolSpecification,
     BrokerSpecification

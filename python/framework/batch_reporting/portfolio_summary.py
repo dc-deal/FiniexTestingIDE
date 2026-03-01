@@ -10,9 +10,9 @@ from typing import Dict
 from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_stats_types import ExecutionStats, CostBreakdown
-from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats, CostBreakdown
+from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
@@ -252,9 +252,11 @@ class PortfolioSummary:
         # Active orders at scenario end (bot's pending plan)
         active_parts = []
         if pending_stats.active_limit_orders:
-            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+            active_parts.append(
+                f"{len(pending_stats.active_limit_orders)} limits")
         if pending_stats.active_stop_orders:
-            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+            active_parts.append(
+                f"{len(pending_stats.active_stop_orders)} stops")
         if active_parts:
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))

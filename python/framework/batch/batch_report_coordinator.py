@@ -6,7 +6,7 @@ Extracted from strategy_runner.py to separate reporting concerns.
 This is the coordination layer - actual rendering logic stays in framework/batch_reporting/
 """
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
 from python.configuration.app_config_manager import AppConfigManager
 import sys

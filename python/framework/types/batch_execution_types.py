@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from typing import Dict, List
 
-from python.framework.types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.process_data_types import ProcessResult
-from python.framework.types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 
 
 class BatchExecutionSummary:

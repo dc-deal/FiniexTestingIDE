@@ -34,7 +34,7 @@ from python.framework.decision_logic.core.backtesting.backtesting_multi_position
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 

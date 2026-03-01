@@ -11,14 +11,16 @@ from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
-from python.framework.types.market_config_types import MarketType
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_analysis_types import (
+    TradingSession,
+    VolatilityRegime,
+)
+from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
     GeneratorConfig,
     ScenarioCandidate,
-    TradingSession,
-    VolatilityRegime,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 

@@ -4,8 +4,8 @@ Formats static broker configuration data for logs and reports
 """
 
 from typing import Dict, Optional, List
-from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.trading_env_types.broker_types import BrokerSpecification, SymbolSpecification
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 class BrokerInfoRenderer:

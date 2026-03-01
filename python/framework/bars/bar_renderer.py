@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 

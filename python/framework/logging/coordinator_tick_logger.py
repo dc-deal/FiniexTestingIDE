@@ -11,7 +11,7 @@ from typing import Dict, List, Any
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.log_level import LogLevel
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import WorkerResult
 
 

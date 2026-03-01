@@ -18,18 +18,18 @@ from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.activity_volume_provider import get_activity_provider
-from python.framework.types.scenario_generator_types import (
-    GeneratorConfig,
+from python.framework.types.market_types.market_analysis_types import (
     PeriodAnalysis,
     SessionSummary,
     SymbolAnalysis,
     TradingSession,
     VolatilityRegime,
 )
-from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
+from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 

@@ -11,7 +11,7 @@ Note: London/NY overlap = 13:00-16:00 UTC (markiert als "london")
 """
 
 
-from python.framework.types.scenario_generator_types import TradingSession
+from python.framework.types.market_types.market_analysis_types import TradingSession
 
 
 def get_session_from_utc_hour(hour):

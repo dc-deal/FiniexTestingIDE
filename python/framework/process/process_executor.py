@@ -8,9 +8,9 @@ from multiprocessing import Queue
 from typing import Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.process.process_main import process_main
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
 
 class ProcessExecutor:

@@ -20,18 +20,18 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
-from python.framework.types.broker_types import BrokerType
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_config_types import MarketType
-from python.framework.types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.scenario_set_types import SingleScenario
-from python.framework.types.stress_test_types import StressTestConfig
-from python.framework.types.market_data_types import TickData
-from python.framework.types.order_types import OrderResult
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_stats_types import CostBreakdown, ExecutionStats
+from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown, ExecutionStats
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -207,7 +207,8 @@ class ProcessScenarioConfig:
     executor_mode: str = 'simulation'  # "simulation" | "live_dry_run"
 
     # === STRESS TEST CONFIG ===
-    stress_test_config: StressTestConfig = field(default_factory=StressTestConfig.disabled)
+    stress_test_config: StressTestConfig = field(
+        default_factory=StressTestConfig.disabled)
 
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
@@ -279,7 +280,8 @@ class ProcessScenarioConfig:
             scenario.broker_type.value)
 
         # Parse stress test config from scenario
-        stress_test_config = StressTestConfig.from_dict(scenario.stress_test_config)
+        stress_test_config = StressTestConfig.from_dict(
+            scenario.stress_test_config)
 
         # Default live stats config if not provided
         if live_stats_config is None:

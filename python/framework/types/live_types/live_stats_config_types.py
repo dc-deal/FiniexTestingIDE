@@ -3,7 +3,7 @@ from enum import Enum
 from multiprocessing import Queue
 from typing import Any, Dict, Optional
 
-from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData
 
 
 @dataclass

@@ -60,7 +60,7 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 ```python
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.testing.mock_adapter import MockExecutionMode
-from python.framework.types.order_types import OpenOrderRequest, OrderType, OrderDirection
+from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderType, OrderDirection
 
 mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL, initial_balance=10000.0)
 executor = mock.create_executor()
@@ -140,7 +140,7 @@ For lower-level control (changing mode mid-test, slippage simulation):
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType
 
 adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
 adapter.set_slippage(5.0)  # +5 points on every fill

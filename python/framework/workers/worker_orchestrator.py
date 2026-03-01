@@ -13,8 +13,8 @@ from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogg
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.decision_logic_types import Decision
-from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
+from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.worker_types import WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 

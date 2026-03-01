@@ -97,12 +97,12 @@ from typing import Any, Dict, List, Optional, Set
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.market_data_types import TickData
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.order_types import OrderResult, OrderType, OrderDirection
-from python.framework.types.performance_stats_types import DecisionLogicStats
+from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
+from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
 
@@ -396,7 +396,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         if not self.trading_api:
-            self.logger.warning("No trading_api available - skipping execution")
+            self.logger.warning(
+                "No trading_api available - skipping execution")
             return None
 
         # ============================================
@@ -412,7 +413,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         # ============================================
         # STEP 3: Process Edge Case (close_nonexistent)
         # ============================================
-        event_type = decision.metadata.get('event_type') if decision.metadata else None
+        event_type = decision.metadata.get(
+            'event_type') if decision.metadata else None
 
         if event_type == 'edge_case' and decision.metadata.get('edge_type') == 'close_nonexistent':
             position_id = decision.metadata['position_id']
@@ -458,7 +460,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 direction=direction,
                 lots=lot_size,
                 comment=f"MarginStress #{seq_idx if seq_idx is not None else 'retry'} "
-                        f"{'[EXPECT_REJECT]' if expect_rejection else ''}"
+                f"{'[EXPECT_REJECT]' if expect_rejection else ''}"
             )
 
             if order_result and not order_result.is_rejected:

@@ -174,7 +174,7 @@ This provides comprehensive failure reporting rather than stopping at first erro
 **Debug:**
 ```python
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.broker_types import MarketType
+from python.framework.types.trading_env_types.broker_types import MarketType
 
 config = MarketConfigManager()
 print(config.get_market_type("kraken_spot"))  # Expected: MarketType.CRYPTO

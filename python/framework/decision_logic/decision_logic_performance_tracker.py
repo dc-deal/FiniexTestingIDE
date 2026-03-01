@@ -11,7 +11,7 @@ Tracks performance metrics for decision logic execution
 
 
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.performance_stats_types import DecisionLogicStats
+from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 
 
 class DecisionLogicPerformanceTracker:

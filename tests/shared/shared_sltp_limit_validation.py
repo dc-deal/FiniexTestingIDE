@@ -23,9 +23,9 @@ Import these classes into suite-specific test_sltp_limit_validation.py files.
 
 from typing import List
 
-from python.framework.types.order_types import OrderDirection
-from python.framework.types.portfolio_trade_record_types import EntryType, TradeRecord, CloseReason
-from python.framework.types.trading_env_stats_types import ExecutionStats
+from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType, TradeRecord, CloseReason
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 # =============================================================================

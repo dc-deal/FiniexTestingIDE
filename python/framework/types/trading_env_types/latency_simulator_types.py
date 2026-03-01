@@ -17,7 +17,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, Optional
 
-from python.framework.types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.utils.process_serialization_utils import serialize_value
 
 

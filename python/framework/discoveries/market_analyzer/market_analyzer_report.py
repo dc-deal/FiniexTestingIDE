@@ -6,8 +6,8 @@ Single symbol market analysis report generator.
 
 from typing import Dict
 
-from python.framework.types.market_config_types import MarketType
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_analysis_types import (
     SymbolAnalysis,
     TradingSession,
     VolatilityRegime,

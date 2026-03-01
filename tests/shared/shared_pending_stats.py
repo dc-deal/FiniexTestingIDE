@@ -16,9 +16,9 @@ Import these classes into suite-specific test_pending_stats.py files.
 import pytest
 from typing import List
 
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.latency_simulator_types import PendingOrderOutcome
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderOutcome
 
 
 class TestPendingStatsBaseline:

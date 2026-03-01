@@ -12,12 +12,12 @@ All box types maintain identical line count for grid alignment.
 """
 
 from typing import List, Optional
-from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.process_data_types import ProcessResult
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.batch_reporting.grid.console_grid_renderer import render_box
-from python.framework.types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
@@ -86,10 +86,13 @@ def _build_success_portfolio_box(
         pending_stats = process_result.tick_loop_results.pending_stats
         active_parts = []
         if pending_stats and pending_stats.active_limit_orders:
-            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+            active_parts.append(
+                f"{len(pending_stats.active_limit_orders)} limits")
         if pending_stats and pending_stats.active_stop_orders:
-            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
-        active_line = renderer.cyan(f"Active: {' | '.join(active_parts)}") if active_parts else ""
+            active_parts.append(
+                f"{len(pending_stats.active_stop_orders)} stops")
+        active_line = renderer.cyan(
+            f"Active: {' | '.join(active_parts)}") if active_parts else ""
 
         lines = [
             f"💰 {scenario_name}",
@@ -240,10 +243,13 @@ def _build_hybrid_portfolio_box(
         pending_stats = process_result.tick_loop_results.pending_stats
         active_parts = []
         if pending_stats and pending_stats.active_limit_orders:
-            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+            active_parts.append(
+                f"{len(pending_stats.active_limit_orders)} limits")
         if pending_stats and pending_stats.active_stop_orders:
-            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
-        active_line = renderer.cyan(f"Active: {' | '.join(active_parts)}") if active_parts else ""
+            active_parts.append(
+                f"{len(pending_stats.active_stop_orders)} stops")
+        active_line = renderer.cyan(
+            f"Active: {' | '.join(active_parts)}") if active_parts else ""
 
         lines = [
             f"💰 {scenario_name}",

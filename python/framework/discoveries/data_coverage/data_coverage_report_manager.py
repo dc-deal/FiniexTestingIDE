@@ -20,7 +20,7 @@ from python.framework.discoveries.data_coverage.data_coverage_report import Data
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.types.coverage_report_types import IndexEntry
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 

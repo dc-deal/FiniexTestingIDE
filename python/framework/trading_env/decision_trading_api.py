@@ -34,7 +34,7 @@ from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .portfolio_manager import UNSET, _UnsetType
-from ..types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderResult,

@@ -9,11 +9,11 @@ This conftest only wires the config path and creates pytest fixtures.
 import pytest
 from typing import Dict, Any, List
 
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 from tests.shared.fixture_helpers import (

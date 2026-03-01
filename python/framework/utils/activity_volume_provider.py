@@ -11,7 +11,7 @@ This provider abstracts the difference for consistent reporting.
 from typing import Dict, Optional, Tuple, Union
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 class ActivityVolumeProvider:

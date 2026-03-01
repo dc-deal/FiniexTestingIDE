@@ -9,7 +9,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import WorkerResult
 
 

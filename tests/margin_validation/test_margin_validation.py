@@ -13,10 +13,10 @@ import pytest
 from typing import Dict, Any, List
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
-from python.framework.types.trading_env_stats_types import ExecutionStats
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 class TestMarginExhaustion:

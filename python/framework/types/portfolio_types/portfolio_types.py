@@ -5,9 +5,9 @@ from typing import List, Optional
 
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
-from python.framework.types.broker_types import FeeType
-from python.framework.types.order_types import OrderDirection
-from python.framework.types.portfolio_trade_record_types import EntryType
+from python.framework.types.trading_env_types.broker_types import FeeType
+from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 
 
 class PositionStatus(Enum):
@@ -29,7 +29,8 @@ class Position:
     symbol: str
     direction: OrderDirection
     lots: float
-    original_lots: float  # Immutable after open — tracks initial lot size before partial closes
+    # Immutable after open — tracks initial lot size before partial closes
+    original_lots: float
     entry_price: float
     entry_time: datetime
 

@@ -9,9 +9,9 @@ Import these classes into suite-specific test_pnl_calculation.py files.
 import pytest
 from typing import List
 
-from python.framework.types.order_types import OrderDirection
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 
 
 class TestPnLCalculation:
@@ -142,7 +142,8 @@ class TestPnLCalculation:
         portfolio_stats: PortfolioStats
     ):
         """Long/short trade counts should match."""
-        expected_long = sum(1 for t in trade_history if t.direction == OrderDirection.LONG)
+        expected_long = sum(
+            1 for t in trade_history if t.direction == OrderDirection.LONG)
         expected_short = sum(
             1 for t in trade_history if t.direction == OrderDirection.SHORT)
 

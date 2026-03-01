@@ -177,8 +177,8 @@ class OBVWorker(AbstractWorker):
 Workers receive an optional `TradingContext` with market metadata:
 
 ```python
-from python.framework.types.market_types import TradingContext
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.market_types.market_config_types import MarketType
 
 @dataclass
 class TradingContext:

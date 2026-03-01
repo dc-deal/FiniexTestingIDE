@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from typing import List
 
 
-from python.framework.types.broker_types import BrokerType
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_stats_types import (
+from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown
 )

@@ -33,12 +33,12 @@ from typing import Any, Dict, List, Optional
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     OrderDirection,
@@ -96,7 +96,8 @@ class CautiousMACD(AbstractDecisionLogic):
         self.sl_pips = self.params.get('sl_pips')
         self.tp_pips = self.params.get('tp_pips')
         self.pip_size = self.params.get('pip_size')
-        self.break_even_trigger_pips = self.params.get('break_even_trigger_pips')
+        self.break_even_trigger_pips = self.params.get(
+            'break_even_trigger_pips')
         self.min_histogram = self.params.get('min_histogram')
         self.min_confidence = self.params.get('min_confidence')
         self.lot_size = self.params.get('lot_size')
@@ -315,7 +316,8 @@ class CautiousMACD(AbstractDecisionLogic):
 
         # SELL: crossed down + RSI not oversold
         if crossed_down and rsi_value > self.rsi_filter_sell:
-            confidence = self._calculate_confidence(histogram, rsi_value, False)
+            confidence = self._calculate_confidence(
+                histogram, rsi_value, False)
             if self.min_confidence > 0.0 and confidence < self.min_confidence:
                 self.logger.info(
                     f"🚫 SELL blocked by confidence: {confidence:.2f} < {self.min_confidence}"
@@ -607,9 +609,11 @@ class CautiousMACD(AbstractDecisionLogic):
 
         # RSI distance from filter boundary = extra margin of safety
         if is_buy:
-            rsi_margin = (self.rsi_filter_buy - rsi_value) / self.rsi_filter_buy
+            rsi_margin = (self.rsi_filter_buy - rsi_value) / \
+                self.rsi_filter_buy
         else:
-            rsi_margin = (rsi_value - self.rsi_filter_sell) / (100 - self.rsi_filter_sell)
+            rsi_margin = (rsi_value - self.rsi_filter_sell) / \
+                (100 - self.rsi_filter_sell)
 
         confidence += max(0.0, min(rsi_margin * 0.2, 0.2))
 

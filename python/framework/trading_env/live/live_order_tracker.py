@@ -31,9 +31,9 @@ from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.live_execution_types import TimeoutConfig
-from python.framework.types.order_types import OrderDirection
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.live_types.live_execution_types import TimeoutConfig
+from python.framework.types.trading_env_types.order_types import OrderDirection
 
 
 class LiveOrderTracker(AbstractPendingOrderManager):

@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
 
-from python.framework.types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.time_utils import parse_datetime
