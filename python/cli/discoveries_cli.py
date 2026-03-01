@@ -17,6 +17,7 @@ from typing import List, Optional
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.discoveries.market_analyzer import MarketAnalyzer
+from python.framework.discoveries.market_analyzer_cache import MarketAnalyzerCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
 from python.framework.types.scenario_generator_types import (
@@ -46,24 +47,28 @@ class DiscoveriesCLI:
         self,
         broker_type: str,
         symbol: str,
-        timeframe: Optional[str] = None
+        timeframe: Optional[str] = None,
+        force: bool = False
     ) -> None:
         """
         Analyze market data and print report with cross-instrument comparison.
+        Uses cache by default, reanalyzes only when source bar data changes.
 
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Symbol to analyze
             timeframe: Timeframe override
+            force: Force reanalysis ignoring cache
         """
-        try:
-            analysis = self._analyzer.analyze_symbol(
-                broker_type, symbol, timeframe)
-            print_analysis_report(analysis)
-        except Exception as e:
-            print(f"Failed to analyze {symbol}: {e}")
-            vLog.error(f"Analysis failed for {symbol}: {e}")
+        cache = MarketAnalyzerCache()
+
+        analysis = cache.get_analysis(
+            broker_type, symbol, timeframe, force_rebuild=force)
+        if not analysis:
+            print(f"Failed to analyze {symbol}")
             return
+
+        print_analysis_report(analysis)
 
         all_symbols = self._analyzer.list_symbols(broker_type)
         all_analyses: List[SymbolAnalysis] = [analysis]
@@ -71,12 +76,12 @@ class DiscoveriesCLI:
         for sym in all_symbols:
             if sym == symbol:
                 continue
-            try:
-                sym_analysis = self._analyzer.analyze_symbol(
-                    broker_type, sym, timeframe)
+            sym_analysis = cache.get_analysis(
+                broker_type, sym, timeframe, force_rebuild=force)
+            if sym_analysis:
                 all_analyses.append(sym_analysis)
-            except Exception as e:
-                vLog.warning(f"Could not analyze {sym} for comparison: {e}")
+            else:
+                vLog.warning(f"Could not analyze {sym} for comparison")
 
         if len(all_analyses) > 1:
             config = self._analyzer.get_config()
@@ -241,7 +246,7 @@ class DiscoveriesCLI:
 
     def cmd_cache_rebuild_all(self, force: bool = False) -> None:
         """
-        Rebuild all discovery caches (coverage + extreme moves).
+        Rebuild all discovery caches (coverage + extreme moves + market analyzer).
 
         Args:
             force: Force rebuild even if cache is valid
@@ -315,6 +320,12 @@ def main():
         type=str,
         default=None,
         help='Timeframe to analyze (default: M5)'
+    )
+    analyze_parser.add_argument(
+        '--force',
+        action='store_true',
+        default=False,
+        help='Force reanalysis ignoring cache'
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -427,7 +438,8 @@ def main():
         cli.cmd_analyze(
             broker_type=args.broker_type,
             symbol=args.symbol,
-            timeframe=args.timeframe
+            timeframe=args.timeframe,
+            force=args.force
         )
 
     elif args.command == 'extreme-moves':

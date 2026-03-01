@@ -151,7 +151,7 @@ Files:
 
 | | |
 |---|---|
-| **VS Code** | `📊 Data Coverage: Validate All` |
+| **VS Code** | `🔍 Disc - Data Coverage: Validate All` |
 | **CLI** | `python discoveries_cli.py data-coverage validate` |
 | **Zweck** | Schneller Gap-Check über alle Symbole |
 
@@ -174,7 +174,7 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 
 | | |
 |---|---|
-| **VS Code** | `↔️ Data Coverage: mt5/EURUSD` |
+| **VS Code** | `🔍 Disc - Data Coverage: mt5/EURUSD` |
 | **CLI** | `python discoveries_cli.py data-coverage show mt5 EURUSD` |
 | **Zweck** | Detaillierte Lückenanalyse für ein Symbol |
 
@@ -212,7 +212,7 @@ GAP ANALYSIS:
 
 | | |
 |---|---|
-| **VS Code** | `📊 Data Coverage: Build Cache` |
+| **VS Code** | `🔍 Disc - Cache: Rebuild All` |
 | **CLI** | `python discoveries_cli.py data-coverage build` |
 | **Zweck** | Gap-Reports für alle Symbole vorberechnen |
 
@@ -227,13 +227,13 @@ Force Rebuild: DISABLED (skip valid caches)
 
 | | |
 |---|---|
-| **VS Code** | `📊 Data Coverage: Status` |
+| **VS Code** | `🔍 Disc - Data Coverage: Status` |
 | **CLI** | `python discoveries_cli.py data-coverage status` |
 | **Zweck** | Cache-Status anzeigen |
 
 ```
 📦 Data Coverage Report Cache Status
-Cache Dir:     data/processed/.coverage_cache
+Cache Dir:     data/processed/.discovery_caches/data_coverage_cache
 Cache Files:   16
 Cache Size:    0.02 MB
 ------------------------------------------------------------
@@ -247,13 +247,21 @@ Total Symbols: 16
 
 ## D) Marktanalyse & Discoveries
 
+> 📖 Siehe [Discovery System](discovery_system.md) für Architektur, Cache-System und Details.
+
 ### 📊 MARKET ANALYSIS REPORT
 
 | | |
 |---|---|
-| **VS Code** | `📊 MARKET ANALYSIS REPORT - USDJPY` |
+| **VS Code** | `🔍 Disc - Analyze: mt5/GBPUSD` |
 | **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
 | **Zweck** | ATR-Volatilität, Session-Aktivität, Cross-Instrument Ranking |
+
+Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
+
+**Parameter:**
+- `--force` — Cache ignorieren und neu analysieren
+- `--timeframe` — Timeframe Override (default: M5, non-M5 bypasses cache)
 
 Analysiert Marktdaten für strategische Szenario-Planung:
 
@@ -304,7 +312,7 @@ Timeframe:      M5
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Extreme Moves - mt5/USDJPY` |
+| **VS Code** | `🔍 Disc - Extreme Moves: mt5/USDJPY` |
 | **CLI** | `python discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Zweck** | Extreme directional price movements (LONG/SHORT) finden |
 
@@ -567,11 +575,12 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
 | **Daten-Übersicht** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
-| **Gap-Check (alle)** | `📊 Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
-| **Gap-Details** | `↔️ Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Data Coverage Cache bauen** | `📊 Data Coverage: Build Cache` | `discoveries_cli.py data-coverage build` |
-| **Marktanalyse** | `📊 MARKET ANALYSIS REPORT - USDJPY` | `discoveries_cli.py analyze mt5 USDJPY` |
-| **Extreme Moves** | `🔍 Extreme Moves - mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Gap-Check (alle)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
+| **Gap-Details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
+| **Marktanalyse** | `🔍 Disc - Analyze: mt5/GBPUSD` | `discoveries_cli.py analyze mt5 GBPUSD` |
+| **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
+| **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
+| **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
 | **Szenarien: Stress** | `📊 Scenario Generator - Generate Stress` | `scenario_cli.py generate EURGBP --strategy stress` |
 | **Backtest starten** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
@@ -585,13 +594,13 @@ Nützlich um die Rohdatenstruktur zu verstehen:
          ↓
 2. Import:          📥 Import: Offset +3
          ↓
-3. Cache aufbauen:  📊 Data Coverage: Build Cache
+3. Cache aufbauen:  🔍 Disc - Cache: Rebuild All
          ↓
-4. Qualität prüfen: 📊 Data Coverage: Validate → ↔️ Data Coverage: show
+4. Qualität prüfen: 🔍 Disc - Data Coverage: Validate All
          ↓
-5. Markt analysieren: 📊 MARKET ANALYSIS REPORT
+5. Markt analysieren: 🔍 Disc - Analyze
          ↓
-5b. Extreme Moves:   🔍 Extreme Moves
+5b. Extreme Moves:   🔍 Disc - Extreme Moves
          ↓
 6. Szenarien erstellen: 📊 Generate Blocks/Stress
          ↓
@@ -608,7 +617,8 @@ Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
 |-------|-------|-----------|
 | Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
 | Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
-| Data Coverage Cache | `.coverage_cache/*.parquet` | Neu in v1.1 |
-| Discovery Cache | `.discovery_cache/*.parquet` | Extreme Moves Cache |
+| Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
+| Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
+| Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility/session analysis |
 
 Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.

@@ -39,19 +39,6 @@
             "justMyCode": false
         },
         {
-            "name": "🔄 Discovery Cache: Rebuild All",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "cache",
-                "rebuild-all",
-                "--force"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "📊 Tick Data Report: mt5",
             "type": "debugpy",
             "request": "launch",
@@ -420,75 +407,6 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
-        // ====================================================
-        // ↔️ GAP ANALYSIS & COVERAGE
-        // ==================================================== 
-        {
-            "name": "↔️ Data Coverage: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Data Coverage: Validate All",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "validate"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Data Coverage: Show mt5/EURUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "show",
-                "mt5",
-                "EURUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Data Coverage: Show mt5/USDJPY",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "show",
-                "mt5",
-                "USDJPY"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "↔️ Data Coverage: Show kraken_spot/BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "show",
-                "kraken_spot",
-                "BTCUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
         {
             "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
             "type": "debugpy",
@@ -596,59 +514,106 @@
         // ====================================================
         // 🔍 DISCOVERIES
         // ====================================================
+        // --- Cache Management ---
         {
-            "name": "📊 Market Analysis - mt5/GBPUSD",
+            "name": "🔍 Disc - Cache: Rebuild All",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "analyze",
-                "mt5",
-                "GBPUSD"
-            ],
+            "args": ["cache", "rebuild-all", "--force"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "📊 Market Analysis - kraken_spot/BTCUSD",
+            "name": "🔍 Disc - Cache: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "analyze",
-                "kraken_spot",
-                "BTCUSD"
-            ],
+            "args": ["cache", "status"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // --- Market Analysis ---
+        {
+            "name": "🔍 Disc - Analyze: mt5/GBPUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["analyze", "mt5", "GBPUSD"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🔍 Extreme Moves - mt5/USDJPY",
+            "name": "🔍 Disc - Analyze: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "extreme-moves",
-                "mt5",
-                "USDJPY",
-                "--top",
-                "100"
-            ],
+            "args": ["analyze", "kraken_spot", "BTCUSD"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // --- Extreme Moves ---
+        {
+            "name": "🔍 Disc - Extreme Moves: mt5/USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["extreme-moves", "mt5", "USDJPY", "--top", "100"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🔍 Extreme Moves - kraken_spot/BTCUSD",
+            "name": "🔍 Disc - Extreme Moves: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "extreme-moves",
-                "kraken_spot",
-                "BTCUSD",
-                "--top",
-                "100"
-            ],
+            "args": ["extreme-moves", "kraken_spot", "BTCUSD", "--top", "100"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // --- Data Coverage ---
+        {
+            "name": "🔍 Disc - Data Coverage: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["data-coverage", "status"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Data Coverage: Validate All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["data-coverage", "validate"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Data Coverage: mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["data-coverage", "show", "mt5", "EURUSD"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Data Coverage: mt5/USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["data-coverage", "show", "mt5", "USDJPY"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Data Coverage: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": ["data-coverage", "show", "kraken_spot", "BTCUSD"],
             "console": "integratedTerminal",
             "justMyCode": false
         },

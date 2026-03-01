@@ -8,7 +8,7 @@ Invalidation based on source bar file modification time.
 Architecture:
 - DataCoverageReport remains UNCHANGED
 - Cache wraps and hydrates DataCoverageReport instances
-- Storage: .coverage_cache/{broker_type}_{symbol}.parquet
+- Storage: .discovery_caches/data_coverage_cache/{broker_type}_{symbol}.parquet
 """
 
 import json
@@ -40,7 +40,7 @@ class DataCoverageReportCache:
     Auto-invalidates when source bar files change.
 
     Cache Structure:
-        .coverage_cache/
+        .discovery_caches/data_coverage_cache/
             mt5_EURUSD.parquet
             mt5_USDJPY.parquet
             kraken_spot_BTCUSD.parquet
@@ -50,17 +50,18 @@ class DataCoverageReportCache:
         - Metadata (start_time, end_time, gap_counts, source_bar_mtime)
     """
 
-    CACHE_DIR_NAME = ".coverage_cache"
+    CACHE_PARENT_DIR = ".discovery_caches"
+    CACHE_SUB_DIR = "data_coverage_cache"
     GRANULARITY = "M5"  # Bar granularity used for gap detection
 
     def __init__(self, logger: AbstractLogger = vLog):
         self.logger = logger
         self._app_config = AppConfigManager()
         self.data_dir = Path(self._app_config.get_data_processed_path())
-        self.cache_dir = self.data_dir / self.CACHE_DIR_NAME
+        self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
 
         # Ensure cache directory exists
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Bar index for source file lookup
         self._bar_index: Optional[BarsIndexManager] = None

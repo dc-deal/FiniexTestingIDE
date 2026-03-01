@@ -9,7 +9,7 @@ Follows DataCoverageReportCache pattern:
 - Lazy bar index loading
 
 Cache Structure:
-    .discovery_cache/
+    .discovery_caches/extreme_moves_cache/
         mt5_EURUSD_extreme_moves.parquet
         mt5_USDJPY_extreme_moves.parquet
 """
@@ -45,15 +45,16 @@ class DiscoveryCache:
     Auto-invalidates when source bar files change (mtime comparison).
     """
 
-    CACHE_DIR_NAME = ".discovery_cache"
+    CACHE_PARENT_DIR = ".discovery_caches"
+    CACHE_SUB_DIR = "extreme_moves_cache"
     GRANULARITY = "M5"
 
     def __init__(self, logger: AbstractLogger = vLog):
         self._logger = logger
         self._app_config = AppConfigManager()
         self.data_dir = Path(self._app_config.get_data_processed_path())
-        self.cache_dir = self.data_dir / self.CACHE_DIR_NAME
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._bar_index: Optional[BarsIndexManager] = None
 
     def _get_bar_index(self) -> BarsIndexManager:
