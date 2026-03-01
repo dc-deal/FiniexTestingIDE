@@ -8,7 +8,7 @@ Central coordinator for all discovery cache systems.
 
 Provides a single entry point for rebuilding, clearing, and
 inspecting all discovery caches (Extreme Moves, Coverage/Gap,
-and future MarketAnalyzer cache).
+and MarketAnalyzer cache).
 
 Used by:
 - bar_importer.py (rebuild after bar import)
@@ -19,6 +19,7 @@ from typing import Dict
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
+from python.framework.discoveries.market_analyzer_cache import MarketAnalyzerCache
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 
@@ -41,6 +42,7 @@ class DiscoveryCacheManager:
         self._logger = logger or get_global_logger()
         self._discovery_cache = DiscoveryCache(logger=self._logger)
         self._data_coverage_cache = DataCoverageReportCache()
+        self._market_analyzer_cache = MarketAnalyzerCache(logger=self._logger)
 
     def rebuild_all(self, force: bool = False) -> Dict[str, Dict[str, int]]:
         """
@@ -60,6 +62,9 @@ class DiscoveryCacheManager:
             force_rebuild=force
         )
         results["extreme_moves"] = self._discovery_cache.build_all(
+            force_rebuild=force
+        )
+        results["market_analyzer"] = self._market_analyzer_cache.build_all(
             force_rebuild=force
         )
 
@@ -84,6 +89,7 @@ class DiscoveryCacheManager:
         return {
             "coverage": self._data_coverage_cache.get_cache_status(),
             "extreme_moves": self._discovery_cache.get_cache_status(),
+            "market_analyzer": self._market_analyzer_cache.get_cache_status(),
         }
 
     def clear_all(self) -> Dict[str, int]:
@@ -97,12 +103,14 @@ class DiscoveryCacheManager:
 
         results["coverage"] = self._data_coverage_cache.clear_cache()
         results["extreme_moves"] = self._discovery_cache.clear_cache()
+        results["market_analyzer"] = self._market_analyzer_cache.clear_cache()
 
         total = sum(results.values())
         self._logger.info(
             f"All caches cleared: {total} files deleted "
             f"(coverage: {results['coverage']}, "
-            f"extreme_moves: {results['extreme_moves']})"
+            f"extreme_moves: {results['extreme_moves']}, "
+            f"market_analyzer: {results['market_analyzer']})"
         )
 
         return results

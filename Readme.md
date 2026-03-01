@@ -61,7 +61,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Parquet Storage** - Compressed, indexed tick data with quality metrics
 - **Multi-Timeframe Bars** - Auto-rendered M1, M5, M15, M30, H1, H4, D1
 - **Gap Detection** - Weekend, holiday, and data quality analysis
-- **Coverage Caching** - Pre-computed gap reports with automatic invalidation
+- **Discovery Caching** - Unified cache system for all analyses (gap reports, market analysis, extreme moves)
 
 ### Backtesting Engine
 - **Parallel Execution** - ProcessPoolExecutor for multi-scenario runs
@@ -82,9 +82,14 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Analysis Tools
-- **Market Analysis** - ATR volatility, session activity, cross-instrument ranking
+- **Discovery System** - Unified analysis with Parquet-based caching (auto-invalidation on data change)
+  - **Market Analysis** - ATR volatility, session activity, cross-instrument ranking
+  - **Extreme Move Scanner** - Directional price movement detection (ATR-normalized)
+  - **Data Coverage** - Gap detection and data quality assessment
 - **Scenario Generation** - Automatic blocks (chronological) or stress (high-volatility)
 - **Performance Profiling** - Operation-level breakdown, bottleneck detection
+
+> See [Discovery System](docs/discovery_system.md) for architecture details.
 
 → See [CLI Tools Guide](docs/cli_tools_guide.md) for all available commands.
 
