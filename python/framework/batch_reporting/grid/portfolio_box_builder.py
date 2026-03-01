@@ -16,7 +16,7 @@ from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.reporting.grid.console_grid_renderer import render_box
+from python.framework.batch_reporting.grid.console_grid_renderer import render_box
 from python.framework.types.currency_codes import format_currency_simple
 from python.framework.utils.math_utils import force_negative, force_positive
 

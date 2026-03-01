@@ -19,7 +19,7 @@ from typing import Dict
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
-from python.framework.discoveries.market_analyzer_cache import MarketAnalyzerCache
+from python.framework.discoveries.market_analyzer.market_analyzer_cache import MarketAnalyzerCache
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 

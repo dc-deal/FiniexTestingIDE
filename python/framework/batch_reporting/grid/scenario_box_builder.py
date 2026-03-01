@@ -14,7 +14,7 @@ All box types maintain identical line count for grid alignment.
 from typing import List
 from python.framework.types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.reporting.grid.console_grid_renderer import render_box
+from python.framework.batch_reporting.grid.console_grid_renderer import render_box
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.utils.time_utils import format_duration, format_tick_timespan
 

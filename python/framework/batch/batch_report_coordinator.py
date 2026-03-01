@@ -3,11 +3,11 @@ FiniexTestingIDE - Batch Report Coordinator
 Coordinates batch execution report generation and logging
 
 Extracted from strategy_runner.py to separate reporting concerns.
-This is the coordination layer - actual rendering logic stays in framework/reporting/
+This is the coordination layer - actual rendering logic stays in framework/batch_reporting/
 """
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_set_types import ScenarioSet
-from python.framework.reporting.batch_summary import BatchSummary
+from python.framework.batch_reporting.batch_summary import BatchSummary
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
@@ -24,7 +24,7 @@ class BatchReportCoordinator:
     - Strip colors for file logging
     - Log to scenario set logger
 
-    Note: Actual report rendering logic is in framework/reporting/batch_summary.py
+    Note: Actual report rendering logic is in framework/batch_reporting/batch_summary.py
     """
 
     def __init__(

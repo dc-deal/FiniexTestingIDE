@@ -18,7 +18,7 @@ from python.framework.types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.reporting.portfolio_aggregator import PortfolioAggregator
+from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.types.currency_codes import format_currency_simple
 
 

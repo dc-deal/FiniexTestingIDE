@@ -1,7 +1,7 @@
 from typing import Any, Dict, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.reporting.broker_info_renderer import BrokerInfoRenderer
+from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import (

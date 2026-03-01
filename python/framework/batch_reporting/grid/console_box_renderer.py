@@ -8,9 +8,9 @@ This class now serves as a facade for backward compatibility.
 from typing import List
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.reporting.grid.console_grid_renderer import render_grid
-from python.framework.reporting.grid.scenario_box_builder import create_scenario_box
-from python.framework.reporting.grid.portfolio_box_builder import create_portfolio_box
+from python.framework.batch_reporting.grid.console_grid_renderer import render_grid
+from python.framework.batch_reporting.grid.scenario_box_builder import create_scenario_box
+from python.framework.batch_reporting.grid.portfolio_box_builder import create_portfolio_box
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.rendering_types import BoxRenderConfig
 
