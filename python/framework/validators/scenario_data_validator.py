@@ -3,7 +3,6 @@ FiniexTestingIDE - Scenario Data Validator
 Validates scenario configurations against data availability and quality requirements
 
 Phase 1.5: Post-Load Data Quality Validation
-Location: python/framework/validators/scenario_data_validator.py
 """
 
 from typing import Dict, List, Tuple

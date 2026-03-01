@@ -12,8 +12,6 @@ Cache Structure:
     .discovery_cache/
         mt5_EURUSD_extreme_moves.parquet
         mt5_USDJPY_extreme_moves.parquet
-
-Location: python/framework/discoveries/discovery_cache.py
 """
 
 import json
@@ -72,7 +70,8 @@ class DiscoveryCache:
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
         """Get modification time of source M5 bar file."""
         bar_index = self._get_bar_index()
-        bar_file = bar_index.get_bar_file(broker_type, symbol, self.GRANULARITY)
+        bar_file = bar_index.get_bar_file(
+            broker_type, symbol, self.GRANULARITY)
         if bar_file and bar_file.exists():
             return bar_file.stat().st_mtime
         return None
@@ -97,7 +96,8 @@ class DiscoveryCache:
         try:
             pq_file = pq.ParquetFile(cache_path)
             metadata = pq_file.schema_arrow.metadata or {}
-            cached_mtime = float(metadata.get(b'source_bar_mtime', b'0').decode())
+            cached_mtime = float(metadata.get(
+                b'source_bar_mtime', b'0').decode())
         except Exception:
             return False
 
@@ -133,7 +133,8 @@ class DiscoveryCache:
         if not force_rebuild and self.is_cache_valid(broker_type, symbol, discovery_type):
             result = self._load_extreme_moves(broker_type, symbol)
             if result:
-                self._logger.debug(f"Cache hit: {broker_type}/{symbol} extreme_moves")
+                self._logger.debug(
+                    f"Cache hit: {broker_type}/{symbol} extreme_moves")
                 return result
 
         self._logger.debug(f"Scanning: {broker_type}/{symbol} extreme_moves")
@@ -206,7 +207,8 @@ class DiscoveryCache:
             )
 
         except Exception as e:
-            self._logger.warning(f"Failed to load cache for {broker_type}/{symbol}: {e}")
+            self._logger.warning(
+                f"Failed to load cache for {broker_type}/{symbol}: {e}")
             return None
 
     def _save_extreme_moves(
@@ -246,7 +248,8 @@ class DiscoveryCache:
                     'window_atr', 'tick_count',
                 ])
 
-            source_mtime = self._get_source_bar_mtime(broker_type, symbol) or 0.0
+            source_mtime = self._get_source_bar_mtime(
+                broker_type, symbol) or 0.0
 
             metadata = {
                 b'broker_type': broker_type.encode(),
@@ -269,7 +272,8 @@ class DiscoveryCache:
             self._logger.debug(f"Cached: {broker_type}/{symbol} extreme_moves")
 
         except Exception as e:
-            self._logger.warning(f"Failed to cache {broker_type}/{symbol}: {e}")
+            self._logger.warning(
+                f"Failed to cache {broker_type}/{symbol}: {e}")
 
     # =========================================================================
     # BULK OPERATIONS
@@ -295,7 +299,8 @@ class DiscoveryCache:
                         stats['skipped'] += 1
                         continue
 
-                    result = self.get_extreme_moves(broker_type, symbol, force_rebuild=True)
+                    result = self.get_extreme_moves(
+                        broker_type, symbol, force_rebuild=True)
                     if result:
                         stats['generated'] += 1
                     else:
@@ -334,12 +339,14 @@ class DiscoveryCache:
         missing = 0
 
         cache_files = list(self.cache_dir.glob("*.parquet"))
-        total_size_mb = sum(f.stat().st_size for f in cache_files) / (1024 * 1024)
+        total_size_mb = sum(
+            f.stat().st_size for f in cache_files) / (1024 * 1024)
 
         for broker_type in bar_index.list_broker_types():
             for symbol in bar_index.list_symbols(broker_type):
                 total_symbols += 1
-                cache_path = self._get_cache_path(broker_type, symbol, "extreme_moves")
+                cache_path = self._get_cache_path(
+                    broker_type, symbol, "extreme_moves")
                 if not cache_path.exists():
                     missing += 1
                 elif self.is_cache_valid(broker_type, symbol, "extreme_moves"):

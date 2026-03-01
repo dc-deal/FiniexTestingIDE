@@ -25,11 +25,11 @@ Strategy Rules:
 - SELL when RSI > 65 OR price above upper envelope
 - Uses OR logic instead of AND (more aggressive)
 
-Trading Rules (NEW):
+Trading Rules:
 - Market orders only (MVP)
 - Check free margin before trading (min 1000 EUR)
-- Fixed lot size 0.1 (TODO: Position sizing logic)
-- No SL/TP for MVP (TODO: Risk management)
+- Fixed lot size 0.1
+- No SL/TP for MVP
 - ONE POSITION ONLY: Maximum one position at a time
 
 Position Management:

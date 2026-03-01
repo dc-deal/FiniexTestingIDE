@@ -11,8 +11,6 @@ Workflow:
 3. Write bar parquet files (one per timeframe)
 4. Update bar index
 
-REFACTORED: broker_type is now required parameter (no default)
-INDEX STRUCTURE: {broker_type: {symbol: [files]}}
 """
 
 from pathlib import Path
@@ -285,7 +283,7 @@ class BarImporter:
             'symbol': symbol,
             'timeframe': timeframe,
             'broker_type': broker_type,
-            'market_type': market_type.value,  # NEW: Correct market_type from config
+            'market_type': market_type.value,
             'bar_count': str(len(bars_df)),
             'start_time': bars_df['timestamp'].min().isoformat(),
             'end_time': bars_df['timestamp'].max().isoformat(),

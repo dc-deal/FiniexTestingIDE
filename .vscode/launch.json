@@ -39,6 +39,19 @@
             "justMyCode": false
         },
         {
+            "name": "🔄 Discovery Cache: Rebuild All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "cache",
+                "rebuild-all",
+                "--force"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "📊 Tick Data Report: mt5",
             "type": "debugpy",
             "request": "launch",
@@ -362,27 +375,14 @@
             "justMyCode": false
         },
         {
-            "name": "📚 Tick Coverage: mt5/EURUSD",
+            "name": "📚 File Coverage: mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
             "args": [
-                "coverage",
+                "file-coverage",
                 "mt5",
                 "EURUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "📚 Tick Coverage: kraken_spot/BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
-            "args": [
-                "coverage",
-                "kraken_spot",
-                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -424,36 +424,36 @@
         // ↔️ GAP ANALYSIS & COVERAGE
         // ==================================================== 
         {
-            "name": "↔️ Coverage: Status",
+            "name": "↔️ Data Coverage: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "coverage",
+                "data-coverage",
                 "status"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "↔️ Coverage: Validate All",
+            "name": "↔️ Data Coverage: Validate All",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "coverage",
+                "data-coverage",
                 "validate"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "↔️ Coverage: Show mt5/EURUSD",
+            "name": "↔️ Data Coverage: Show mt5/EURUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "coverage",
+                "data-coverage",
                 "show",
                 "mt5",
                 "EURUSD"
@@ -462,12 +462,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Coverage: Show mt5/USDJPY",
+            "name": "↔️ Data Coverage: Show mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "coverage",
+                "data-coverage",
                 "show",
                 "mt5",
                 "USDJPY"
@@ -476,12 +476,12 @@
             "justMyCode": false
         },
         {
-            "name": "↔️ Coverage: Show kraken_spot/BTCUSD",
+            "name": "↔️ Data Coverage: Show kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "coverage",
+                "data-coverage",
                 "show",
                 "kraken_spot",
                 "BTCUSD"
@@ -502,19 +502,6 @@
                 "2025-09-23T00:00:00+00:00",
                 "--end",
                 "2025-09-25T23:59:00+00:00"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "📶 File Coverage: kraken_spot/BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "coverage",
-                "kraken_spot",
-                "BTCUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

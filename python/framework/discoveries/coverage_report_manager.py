@@ -8,7 +8,6 @@ Responsibilities:
 - Cache reports for batch validation
 - Phase 0.5: Gap analysis preparation
 
-REFACTORED: Optional cache support via CoverageReportCache
 """
 
 from pathlib import Path
@@ -33,7 +32,6 @@ class CoverageReportManager:
     Generates gap analysis reports for all symbols in a batch run.
     Reports are used by ScenarioDataValidator to validate data quality.
 
-    REFACTORED: Now uses CoverageReportCache for faster report generation.
     """
 
     def __init__(self,

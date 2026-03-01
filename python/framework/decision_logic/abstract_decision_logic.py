@@ -2,14 +2,6 @@
 FiniexTestingIDE - Abstract Decision Logic (Refactored)
 Base class for all decision logic implementations
 
-CHANGES:
-- Added get_required_order_types() as abstractmethod
-- Added execute_decision() as abstractmethod (Template Method pattern)
-- Added set_trading_api() for API injection after validation
-- Removed trading_env parameter (replaced by DecisionTradingAPI)
-- REFACTORED: _statistics is now DecisionLogicStats dataclass (type-safe)
-- REFACTORED: Uses DecisionLogicAction enum instead of string comparisons
-
 Decision Logic orchestrates worker results into trading decisions AND executes them.
 This layer is separate from worker coordination - it focuses purely
 on decision-making strategy AND trade execution, not on worker management.
@@ -84,7 +76,7 @@ class AbstractDecisionLogic(ABC):
         self.logger = logger
         self.performance_logger: DecisionLogicPerformanceTracker = None
 
-        # --- Parameter access (NEW) ---
+        # --- Parameter access  ---
         if isinstance(config, ValidatedParameters):
             self.params = config
         else:
@@ -121,7 +113,7 @@ class AbstractDecisionLogic(ABC):
         pass
 
     # ============================================
-    # Parameter Schema (NEW)
+    # Parameter Schema
     # ============================================
 
     @classmethod

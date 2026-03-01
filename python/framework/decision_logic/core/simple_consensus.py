@@ -22,8 +22,8 @@ Strategy Rules:
 Trading Rules:
 - Market orders only (MVP)
 - Check free margin before trading (min 1000 EUR)
-- Fixed lot size 0.1 (TODO: Position sizing logic)
-- No SL/TP for MVP (TODO: Risk management)
+- Fixed lot size 0.1
+- No SL/TP for MVP
 - ONE POSITION ONLY: Maximum one position at a time
 
 Position Management:
@@ -73,7 +73,7 @@ class SimpleConsensus(AbstractDecisionLogic):
     - min_free_margin: Minimum free margin required for trades (default: 1000)
     - lot_size: Fixed lot size for orders (default: 0.1)
 
-    OBV Configuration (NEW):
+    OBV Configuration:
     - obv_filter_enabled: Enable/disable OBV filter (default: True)
     - obv_block_opposite_trend: Block trades against OBV trend (default: True)
     - obv_confidence_boost: Confidence bonus when OBV confirms (default: 0.1)
@@ -309,7 +309,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         Requires:
         - rsi_fast: Fast RSI indicator for overbought/oversold detection
         - envelope_main: Envelope for price position analysis
-        - obv_volume: On-Balance Volume for volume confirmation (NEW)
+        - obv_volume: On-Balance Volume for volume confirmation
 
         Returns:
             Dict[instance_name, worker_type]
@@ -359,7 +359,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Envelope provides position (0.0 = lower band, 1.0 = upper band)
         envelope_position = envelope_data.get("position", 0.5)
 
-        # Extract OBV trend (NEW)
+        # Extract OBV trend
         obv_trend = "neutral"
         obv_has_volume = False
         if obv_result and obv_result.metadata:

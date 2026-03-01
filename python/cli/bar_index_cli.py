@@ -8,7 +8,6 @@ Usage:
     python python/cli/bar_index_cli.py report
     python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
 
-REFACTORED: Index structure is now {broker_type: {symbol: {timeframe: entry}}}
 """
 
 import sys
@@ -132,11 +131,8 @@ class BarIndexCLI:
                 market_type = market_config.get_market_type(broker_type).value
 
                 # Version metadata from index entry
-                source_version_min = first_entry.get(
-                    'source_version_min', 'unknown')
-                source_version_max = first_entry.get(
-                    'source_version_max', 'unknown')
-                # CHANGED: data_source → broker_type
+                source_version_min = first_entry.get('source_version_min', 'unknown')
+                source_version_max = first_entry.get('source_version_max', 'unknown')
                 data_source = first_entry.get('broker_type', broker_type)
 
                 # Version display
@@ -261,16 +257,16 @@ def main():
     command = sys.argv[1].lower()
 
     try:
-        if command == "rebuild":
+        if command == 'rebuild':
             cli.cmd_rebuild()
 
-        elif command == "status":
+        elif command == 'status':
             cli.cmd_status()
 
-        elif command == "report":
+        elif command == 'report':
             cli.cmd_report()
 
-        elif command == "render":
+        elif command == 'render':
             # render requires BROKER_TYPE as second argument
             if len(sys.argv) < 3:
                 print("❌ Usage: render BROKER_TYPE [--clean]")
@@ -279,11 +275,11 @@ def main():
                 sys.exit(1)
 
             broker_type = sys.argv[2]
-            clean = "--clean" in sys.argv
+            clean = '--clean' in sys.argv
 
             cli.cmd_render(broker_type=broker_type, clean=clean)
 
-        elif command == "help":
+        elif command == 'help':
             cli.cmd_help()
 
         else:
@@ -300,5 +296,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

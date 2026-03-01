@@ -8,7 +8,6 @@ Usage:
     python python/cli/tick_index_cli.py coverage BROKER_TYPE SYMBOL
     python python/cli/tick_index_cli.py files BROKER_TYPE SYMBOL --start DATE --end DATE
 
-REFACTORED: Extracted from data_index_cli.py for separation of concerns
 """
 
 import sys
@@ -80,7 +79,7 @@ class TickIndexCLI:
         if self.index_manager.needs_rebuild():
             print("⚠️  Index is outdated - run 'rebuild' to update\n")
 
-    def cmd_coverage(self, broker_type: str, symbol: str):
+    def cmd_file_coverage(self, broker_type: str, symbol: str):
         """
         Show coverage statistics for symbol.
 
@@ -91,7 +90,7 @@ class TickIndexCLI:
         self.index_manager.build_index()
 
         try:
-            coverage = self.index_manager.get_symbol_coverage(
+            coverage = self.index_manager.get_symbol_file_coverage(
                 broker_type, symbol)
 
             if not coverage:
@@ -106,7 +105,7 @@ class TickIndexCLI:
             print(f"Size:        {coverage['total_size_mb']:.1f} MB")
             print(f"Start:       {coverage['start_time']}")
             print(f"End:         {coverage['end_time']}")
-            print("\nFiles:")
+            print('\nFiles:')
             for file in coverage['files']:
                 print(f"   • {file}")
             print("="*60 + "\n")
@@ -158,12 +157,12 @@ class TickIndexCLI:
 📚 Tick Index CLI - Usage
 
 Commands:
-    rebuild                         Rebuild tick index from Parquet files
-    status                          Show tick index status and metadata
-    coverage BROKER_TYPE SYMBOL     Show coverage statistics for symbol
+    rebuild                          Rebuild tick index from Parquet files
+    status                           Show tick index status and metadata
+    file-coverage BROKER_TYPE SYMBOL Show coverage statistics for symbol
     files BROKER_TYPE SYMBOL --start DATE --end DATE
-                                    Show files selected for time range
-    help                            Show this help
+                                     Show files selected for time range
+    help                             Show this help
 
 Examples:
     python python/cli/tick_index_cli.py rebuild
@@ -184,20 +183,20 @@ def main():
     command = sys.argv[1].lower()
 
     try:
-        if command == "rebuild":
+        if command == 'rebuild':
             cli.cmd_rebuild()
 
-        elif command == "status":
+        elif command == 'status':
             cli.cmd_status()
 
-        elif command == "coverage":
+        elif command == 'file-coverage':
             if len(sys.argv) < 4:
-                print("❌ Usage: coverage BROKER_TYPE SYMBOL")
-                print("   Example: coverage mt5 EURUSD")
+                print("❌ Usage: file-coverage BROKER_TYPE SYMBOL")
+                print("   Example: file-coverage mt5 EURUSD")
                 sys.exit(1)
-            cli.cmd_coverage(sys.argv[2], sys.argv[3])
+            cli.cmd_file_coverage(sys.argv[2], sys.argv[3])
 
-        elif command == "files":
+        elif command == 'files':
             if len(sys.argv) < 7:
                 print("❌ Usage: files BROKER_TYPE SYMBOL --start DATE --end DATE")
                 print(
@@ -210,14 +209,14 @@ def main():
             end = None
 
             for i, arg in enumerate(sys.argv):
-                if arg == "--start" and i + 1 < len(sys.argv):
+                if arg == '--start' and i + 1 < len(sys.argv):
                     start = sys.argv[i + 1]
-                elif arg == "--end" and i + 1 < len(sys.argv):
+                elif arg == '--end' and i + 1 < len(sys.argv):
                     end = sys.argv[i + 1]
 
             cli.cmd_files(broker_type, symbol, start, end)
 
-        elif command == "help":
+        elif command == 'help':
             cli.cmd_help()
 
         else:
@@ -234,5 +233,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

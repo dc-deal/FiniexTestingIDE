@@ -2,8 +2,6 @@
 FiniexTestingIDE - OBV Worker (On-Balance Volume)
 Volume-based momentum indicator
 
-Location: python/framework/workers/core/obv_worker.py
-
 OBV Logic:
 - If close > prev_close: OBV += volume
 - If close < prev_close: OBV -= volume

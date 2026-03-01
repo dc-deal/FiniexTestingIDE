@@ -5,10 +5,6 @@
 FiniexTestingIDE - Worker Performance Tracker
 Tracks performance metrics for individual workers
 
-REFACTORED:
-- Renamed from PerformanceLogWorker to WorkerPerformanceTracker
-- Works internally with WorkerPerformanceStats dataclass
-- Returns complete WorkerPerformanceStats
 """
 
 

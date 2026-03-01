@@ -3,8 +3,6 @@ Market Analyzer
 ===============
 Analyzes bar data for volatility regimes, tick density, and session patterns.
 Used by scenario generator to select optimal time periods.
-
-Location: python/framework/discoveries/market_analyzer.py
 """
 
 from datetime import datetime, timezone, timedelta

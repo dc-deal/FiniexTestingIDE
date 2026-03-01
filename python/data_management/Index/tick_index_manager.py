@@ -1,10 +1,7 @@
 """
 TickIndexManager - Fast File Selection via Metadata Index
 
-REFACTORED: Parquet storage format (was JSON)
-- Flat table structure for efficient filtering
-- Nested dict in memory for API compatibility
-- Auto-migration from legacy JSON format
+
 """
 
 import json
@@ -51,9 +48,10 @@ class TickIndexManager:
         """
         self.logger = logger
         self._app_config = AppConfigManager()
-        self.data_dir = Path(data_dir) if data_dir else Path(self._app_config.get_data_processed_path())
+        self.data_dir = Path(data_dir) if data_dir else Path(
+            self._app_config.get_data_processed_path())
 
-        # NEW: Parquet index file
+        # Parquet index file
         self.index_file = self.data_dir / self.INDEX_FILE_PARQUET
         # Legacy JSON for migration
         self._legacy_json_file = self.data_dir / self.INDEX_FILE_JSON_LEGACY
@@ -435,7 +433,7 @@ class TickIndexManager:
         report.analyze()
         return report
 
-    def get_symbol_coverage(self, broker_type: str, symbol: str) -> Dict:
+    def get_symbol_file_coverage(self, broker_type: str, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol."""
         if broker_type not in self.index:
             return {}
@@ -488,7 +486,7 @@ class TickIndexManager:
             print(f"\n📂 {broker_type}:")
 
             for symbol in sorted(self.index[broker_type].keys()):
-                coverage = self.get_symbol_coverage(broker_type, symbol)
+                coverage = self.get_symbol_file_coverage(broker_type, symbol)
                 print(f"   {symbol}:")
                 print(f"      Files:  {coverage['num_files']}")
                 print(f"      Ticks:  {coverage['total_ticks']:,}")

@@ -2,8 +2,6 @@
 Scenario Generator Types
 ========================
 Type definitions for market analysis and scenario generation.
-
-Location: python/framework/types/scenario_generator_types.py
 """
 
 from dataclasses import dataclass, field

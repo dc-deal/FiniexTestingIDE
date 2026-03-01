@@ -2,8 +2,6 @@
 FiniexTestingIDE - Strategy Runner CLI
 Command-line interface for batch strategy testing
 
-FIX01: Enhanced display with time analysis and strategy info
-
 Usage:
     python python/cli/strategy_runner_cli.py run eurusd_3_windows.json
     python python/cli/strategy_runner_cli.py list
@@ -173,7 +171,7 @@ def main():
     command = sys.argv[1].lower()
 
     try:
-        if command == "run":
+        if command == 'run':
             if len(sys.argv) < 3:
                 print("❌ Missing scenario set filename. Usage: run SCENARIO_SET.json")
                 sys.exit(1)
@@ -181,11 +179,11 @@ def main():
             scenario_set_json = sys.argv[2]
             cli.cmd_run(scenario_set_json)
 
-        elif command == "list":
-            full_details = "--full-details" in sys.argv
+        elif command == 'list':
+            full_details = '--full-details' in sys.argv
             cli.cmd_list(full_details=full_details)
 
-        elif command == "help":
+        elif command == 'help':
             cli.cmd_help()
 
         else:
@@ -202,5 +200,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

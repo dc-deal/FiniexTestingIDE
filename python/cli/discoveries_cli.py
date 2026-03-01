@@ -1,6 +1,5 @@
 """
 Discoveries CLI
-===============
 Command-line interface for market discoveries, data analysis,
 and unified cache management.
 
@@ -9,8 +8,6 @@ Commands:
 - extreme-moves: Scan for extreme directional price movements
 - coverage: Gap analysis and coverage report management
 - cache: Unified discovery cache operations
-
-Location: python/cli/discoveries_cli.py
 """
 
 import argparse
@@ -132,7 +129,7 @@ class DiscoveriesCLI:
             force: Force rebuild even if cache is valid
         """
         print("\n" + "="*80)
-        print("🔧 Building Coverage Report Cache")
+        print("🔧 Building Data Coverage Report Cache")
         print("="*80)
         print(
             f"Force Rebuild: {'ENABLED' if force else 'DISABLED (skip valid caches)'}")
@@ -230,7 +227,7 @@ class DiscoveriesCLI:
     def cmd_coverage_clear(self) -> None:
         """Clear all cached coverage reports."""
         print("\n" + "="*60)
-        print("🗑️  Clearing Coverage Report Cache")
+        print("🗑️  Clearing Data Coverage Report Cache")
         print("="*60 + "\n")
 
         cache = CoverageReportCache()
@@ -358,7 +355,7 @@ def main():
     # COVERAGE command group
     # ─────────────────────────────────────────────────────────────────────────
     coverage_parser = subparsers.add_parser(
-        'coverage',
+        'data-coverage',
         help='Gap analysis and coverage report management'
     )
     coverage_sub = coverage_parser.add_subparsers(
@@ -442,7 +439,7 @@ def main():
             force_rebuild=args.force
         )
 
-    elif args.command == 'coverage':
+    elif args.command == 'data-coverage':
         if not args.coverage_command:
             coverage_parser.print_help()
             sys.exit(1)
@@ -473,5 +470,5 @@ def main():
             cli.cmd_cache_status()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -7,8 +7,6 @@ Features:
 - Warmup period after interrupting gaps
 - Session extension support
 - Detailed gap-aware warnings with color coding
-
-Location: python/scenario/generator/blocks_generator.py
 """
 
 from datetime import datetime, timedelta

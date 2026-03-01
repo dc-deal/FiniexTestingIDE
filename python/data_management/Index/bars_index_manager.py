@@ -5,10 +5,7 @@ Parquet Bars Index Manager - Fast Bar File Selection
 Manages index for pre-rendered bar files.
 Enables O(1) file selection for warmup and backtesting.
 
-REFACTORED: Parquet storage format (was JSON)
-- Flat table structure for efficient filtering
-- Nested dict in memory for API compatibility
-- Auto-migration from legacy JSON format
+
 """
 
 import json
@@ -46,7 +43,7 @@ class BarsIndexManager:
         self._app_config = AppConfigManager()
         self.data_dir = Path(self._app_config.get_data_processed_path())
 
-        # NEW: Parquet index file
+        # Parquet index file
         self.index_file = self.data_dir / self.INDEX_FILE_PARQUET
         # Legacy JSON for migration
         self._legacy_json_file = self.data_dir / self.INDEX_FILE_JSON_LEGACY

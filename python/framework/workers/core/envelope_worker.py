@@ -22,7 +22,7 @@ class EnvelopeWorker(AbstractWorker):
         """
         Initialize Envelope worker.
 
-        NEW CONFIG STRUCTURE:
+        CONFIG STRUCTURE:
         {
             "periods": {"M5": 20, "M30": 50},  # REQUIRED for INDICATOR
             "deviation": 2.0                   # Optional

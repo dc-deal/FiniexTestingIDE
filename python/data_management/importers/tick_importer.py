@@ -289,7 +289,6 @@ class TickDataImporter:
 
         # ===========================================
         # 7. PREPARE PARQUET OUTPUT
-        # CHANGED: New path construction!
         # ===========================================
 
         symbol = metadata.get("symbol", "UNKNOWN")
@@ -304,7 +303,6 @@ class TickDataImporter:
         market_type = market_config.get_market_type(
             broker_type_normalized).value
 
-        # NEW STRUCTURE: broker_type / ticks / symbol
         target_path = self.target_dir / broker_type_normalized / "ticks" / symbol
         target_path.mkdir(parents=True, exist_ok=True)
 
@@ -327,10 +325,12 @@ class TickDataImporter:
         }
 
         # Preserve original MQL5 metadata for traceability (source_meta_ prefix)
-        _NESTED_META_KEYS = {"symbol_info", "collection_settings", "error_tracking"}
+        _NESTED_META_KEYS = {"symbol_info",
+                             "collection_settings", "error_tracking"}
         for meta_key, meta_value in metadata.items():
             if meta_key in _NESTED_META_KEYS:
-                parquet_metadata[f"source_meta_{meta_key}"] = json.dumps(meta_value)
+                parquet_metadata[f"source_meta_{meta_key}"] = json.dumps(
+                    meta_value)
             elif meta_key not in ("symbol", "broker", "ticks"):
                 parquet_metadata[f"source_meta_{meta_key}"] = str(meta_value)
 
@@ -572,9 +572,11 @@ class TickDataImporter:
         vLog.info("=" * 80)
         vLog.info(f"✅ Processed files: {self.processed_files}")
         vLog.info(f"✅ Total ticks: {self.total_ticks:,}")
-        active_offsets = {bt: off for bt, off in self._offset_registry.items() if off != 0}
+        active_offsets = {bt: off for bt,
+                          off in self._offset_registry.items() if off != 0}
         if active_offsets:
-            offsets_str = ", ".join(f"{bt}: {off:+d}h" for bt, off in active_offsets.items())
+            offsets_str = ", ".join(
+                f"{bt}: {off:+d}h" for bt, off in active_offsets.items())
             vLog.info(f"✅ Offsets applied: {offsets_str} (UTC converted)")
         vLog.info(f"⚠️  Warnings: {len(self.warnings)}")
         vLog.info(f"❌ Errors: {len(self.errors)}")

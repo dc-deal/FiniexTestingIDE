@@ -2,8 +2,7 @@
 CoverageReport - Data Continuity Analysis
 Validates time range coverage and detects gaps in tick data
 
-NEW  Gap detection and human-readable coverage reports
-UPDATED  Weekend gap listing with Berlin local time conversion
+Gap detection and human-readable coverage reports
 """
 
 from dataclasses import dataclass

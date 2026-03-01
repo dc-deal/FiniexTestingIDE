@@ -55,7 +55,7 @@ class ExecutiveSummary:
         self._render_stress_test_warning(renderer)
         self._render_execution_results(renderer)
         print()
-        self._render_data_sources(renderer)  # NEW
+        self._render_data_sources(renderer)
         print()
         self._render_time_performance(renderer)
         print()
@@ -82,7 +82,8 @@ class ExecutiveSummary:
             parts = []
             if config.reject_open_order and config.reject_open_order.enabled:
                 ro = config.reject_open_order
-                parts.append(f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
+                parts.append(
+                    f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
             signature = " | ".join(parts)
             if signature not in config_groups:
                 config_groups[signature] = []
@@ -459,7 +460,8 @@ class ExecutiveSummary:
         # Anomalies (yellow)
         anomaly_parts = []
         if pending_stats.total_force_closed > 0:
-            anomaly_parts.append(f"{pending_stats.total_force_closed} force-closed")
+            anomaly_parts.append(
+                f"{pending_stats.total_force_closed} force-closed")
         if pending_stats.total_timed_out > 0:
             anomaly_parts.append(f"{pending_stats.total_timed_out} timed out")
         if anomaly_parts:
@@ -467,9 +469,11 @@ class ExecutiveSummary:
         # Active orders at scenario end (cyan)
         active_parts = []
         if pending_stats.active_limit_orders:
-            active_parts.append(f"{len(pending_stats.active_limit_orders)} limits")
+            active_parts.append(
+                f"{len(pending_stats.active_limit_orders)} limits")
         if pending_stats.active_stop_orders:
-            active_parts.append(f"{len(pending_stats.active_stop_orders)} stops")
+            active_parts.append(
+                f"{len(pending_stats.active_stop_orders)} stops")
         if active_parts:
             result += f" | {renderer.cyan(' | '.join(active_parts))}"
         return result

@@ -6,9 +6,6 @@ Unified activity metric abstraction for different market types.
 Forex uses tick_count (price changes), Crypto uses volume.
 This provider abstracts the difference for consistent reporting.
 
-REFACTORED: Uses MarketConfigManager as Single Source of Truth for market rules.
-
-Location: python/framework/utils/activity_volume_provider.py
 """
 
 from typing import Dict, Optional, Tuple, Union

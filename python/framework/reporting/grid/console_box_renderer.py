@@ -2,11 +2,6 @@
 FiniexTestingIDE - Console Box Renderer
 Thin wrapper for scenario and portfolio box rendering
 
-REFACTORED: Now delegates to:
-- console_grid_renderer (generic grid layout)
-- scenario_box_builder (scenario content)
-- portfolio_box_builder (portfolio content)
-
 This class now serves as a facade for backward compatibility.
 """
 
@@ -23,9 +18,6 @@ from python.framework.types.rendering_types import BoxRenderConfig
 class ConsoleBoxRenderer:
     """
     Facade for box rendering functionality.
-
-    REFACTORED: Delegates to generic grid renderer and specialized box builders.
-    Maintains backward compatibility with existing code.
     """
 
     def __init__(self, renderer: ConsoleRenderer, config: BoxRenderConfig = None):

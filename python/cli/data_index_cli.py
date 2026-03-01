@@ -9,11 +9,6 @@ Usage:
 
 Import configuration is driven by configs/import_config.json (with user_config override).
 Offsets are applied automatically per broker_type from the offset registry.
-
-REFACTORED:
-- Tick index commands moved to tick_index_cli.py (rebuild, status, coverage, files)
-- Gap/validate commands moved to discoveries_cli.py coverage (gaps, validate)
-- This CLI now focuses on: import, reports, inspection
 """
 
 import sys
@@ -63,16 +58,18 @@ class DataIndexCLI:
         print("📥 Tick Data Import")
         print("="*80)
         print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
-        print(f"Move Files:     {'YES' if self._import_config.get_move_processed_files() else 'NO'}")
-        print(f"Auto Bars:      {'YES' if self._import_config.get_auto_render_bars() else 'NO'}")
+        print(
+            f"Move Files:     {'YES' if self._import_config.get_move_processed_files() else 'NO'}")
+        print(
+            f"Auto Bars:      {'YES' if self._import_config.get_auto_render_bars() else 'NO'}")
 
         # Display offset registry
         registry = self._import_config.get_offset_registry()
         if registry:
             print(f"Offset Registry:")
             for bt, entry in registry.items():
-                offset = entry.get("default_offset_hours", 0)
-                desc = entry.get("description", "")
+                offset = entry.get('default_offset_hours', 0)
+                desc = entry.get('description', '')
                 if offset != 0:
                     print(f"   {bt}: {offset:+d}h — {desc}")
                     print(f"   ⚠️  Times for {bt} will be converted to UTC!")
@@ -85,7 +82,7 @@ class DataIndexCLI:
 
         # Build offset registry as flat dict {broker_type: offset_hours}
         offset_flat = {
-            bt: entry.get("default_offset_hours", 0)
+            bt: entry.get('default_offset_hours', 0)
             for bt, entry in registry.items()
         }
 
@@ -195,15 +192,15 @@ def main():
     command = sys.argv[1].lower()
 
     try:
-        if command == "import":
-            override = "--override" in sys.argv
+        if command == 'import':
+            override = '--override' in sys.argv
             cli.cmd_import(override=override)
 
-        elif command == "tick_data_report":
+        elif command == 'tick_data_report':
             broker_type = sys.argv[2] if len(sys.argv) > 2 else None
             cli.cmd_tick_data_report(broker_type=broker_type)
 
-        elif command == "inspect":
+        elif command == 'inspect':
             if len(sys.argv) < 4:
                 print("❌ Usage: inspect BROKER_TYPE SYMBOL [TIMEFRAME]")
                 print("   Example: inspect mt5 EURUSD M5")
@@ -215,42 +212,8 @@ def main():
 
             cli.cmd_inspect(broker_type, symbol, timeframe)
 
-        elif command == "help":
+        elif command == 'help':
             cli.cmd_help()
-
-        # === LEGACY REDIRECTS ===
-        elif command == "rebuild":
-            print("⚠️  'rebuild' moved to tick_index_cli.py")
-            print("   Run: python python/cli/tick_index_cli.py rebuild")
-            sys.exit(1)
-
-        elif command == "status":
-            print("⚠️  'status' moved to tick_index_cli.py")
-            print("   Run: python python/cli/tick_index_cli.py status")
-            sys.exit(1)
-
-        elif command == "coverage":
-            print("⚠️  'coverage' moved to tick_index_cli.py")
-            print(
-                "   Run: python python/cli/tick_index_cli.py coverage BROKER_TYPE SYMBOL")
-            sys.exit(1)
-
-        elif command == "files":
-            print("⚠️  'files' moved to tick_index_cli.py")
-            print(
-                "   Run: python python/cli/tick_index_cli.py files BROKER_TYPE SYMBOL --start DATE --end DATE")
-            sys.exit(1)
-
-        elif command == "gaps":
-            print("⚠️  'gaps' moved to discoveries_cli.py")
-            print(
-                "   Run: python python/cli/discoveries_cli.py coverage show BROKER_TYPE SYMBOL")
-            sys.exit(1)
-
-        elif command == "validate":
-            print("⚠️  'validate' moved to discoveries_cli.py")
-            print("   Run: python python/cli/discoveries_cli.py coverage validate")
-            sys.exit(1)
 
         else:
             print(f"❌ Unknown command: {command}")
@@ -266,5 +229,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

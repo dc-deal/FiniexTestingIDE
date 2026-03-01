@@ -9,8 +9,6 @@ Features:
 - Warmup-aware with gap checking
 - No overlap between scenarios
 - Enhanced debug logging for diagnostics
-
-Location: python/scenario/generator/stress_generator.py
 """
 
 from datetime import datetime, timedelta

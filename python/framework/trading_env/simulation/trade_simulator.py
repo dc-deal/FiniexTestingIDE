@@ -12,16 +12,6 @@ Key Simulation Features:
 - Order latency: Seeded delays between order submission and fill
 - Pending order lifecycle: PENDING → EXECUTED with realistic timing
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
-
-CHANGES:
-- Direct attributes for execution stats (_orders_sent, _orders_executed, etc.)
-- Always-copy public API (using replace())
-- Cleaner, more maintainable code structure
-- FULLY TYPED: All statistics methods return dataclasses (no more dicts!)
-- CURRENCY: account_currency with auto-detection from symbol
-- REFACTOR: Inherits from AbstractTradeExecutor for live trading foundation
-- REFACTOR: Fill logic (_fill_open_order, _fill_close_order) moved to base class
-- REFACTOR: Pseudo-positions eliminated — Decision Logic uses has_pending_orders()
 """
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Union
@@ -109,7 +99,8 @@ class TradeSimulator(AbstractTradeExecutor):
         # Stress test: order rejection (config-driven)
         stress_test_config = stress_test_config or StressTestConfig.disabled()
         reject_config = stress_test_config.reject_open_order or StressTestRejectOrderConfig()
-        self._stress_test_rejection = StressTestRejection(reject_config, logger)
+        self._stress_test_rejection = StressTestRejection(
+            reject_config, logger)
 
         # Active limit orders waiting for price trigger (post-latency)
         self._active_limit_orders: List[PendingOrder] = []
@@ -207,7 +198,8 @@ class TradeSimulator(AbstractTradeExecutor):
                             self._convert_stop_limit_to_limit(pending_order)
                         else:
                             self._active_stop_orders.append(pending_order)
-                            limit_price = pending_order.order_kwargs.get("limit_price", 0)
+                            limit_price = pending_order.order_kwargs.get(
+                                "limit_price", 0)
                             self.logger.info(
                                 f"📋 Stop-Limit order {pending_order.pending_order_id} "
                                 f"activated — waiting for trigger {pending_order.entry_price:.5f} "
@@ -236,7 +228,8 @@ class TradeSimulator(AbstractTradeExecutor):
 
                 if self._is_limit_price_reached(pending):
                     # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
-                    is_from_stop = pending.order_kwargs.get("_from_stop_limit", False)
+                    is_from_stop = pending.order_kwargs.get(
+                        "_from_stop_limit", False)
                     entry_type = EntryType.STOP_LIMIT if is_from_stop else EntryType.LIMIT
                     fill_type = FillType.STOP_LIMIT if is_from_stop else FillType.LIMIT
                     self._fill_open_order(
@@ -326,7 +319,8 @@ class TradeSimulator(AbstractTradeExecutor):
         # Pre-delay validation (doesn't need to wait for latency)
 
         # Validate order
-        is_valid, error = self.broker.validate_order(request.symbol, request.lots)
+        is_valid, error = self.broker.validate_order(
+            request.symbol, request.lots)
         if not is_valid:
             self._orders_rejected += 1
             result = create_rejection_result(
@@ -675,12 +669,17 @@ class TradeSimulator(AbstractTradeExecutor):
                     rejection_reason=ModificationRejectionReason.INVALID_PRICE)
 
         # Determine effective values (merge UNSET with current)
-        effective_price = pending.entry_price if isinstance(new_price, _UnsetType) else new_price
+        effective_price = pending.entry_price if isinstance(
+            new_price, _UnsetType) else new_price
 
-        current_sl = pending.order_kwargs.get('stop_loss') if pending.order_kwargs else None
-        current_tp = pending.order_kwargs.get('take_profit') if pending.order_kwargs else None
-        effective_sl = current_sl if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
-        effective_tp = current_tp if isinstance(new_take_profit, _UnsetType) else new_take_profit
+        current_sl = pending.order_kwargs.get(
+            'stop_loss') if pending.order_kwargs else None
+        current_tp = pending.order_kwargs.get(
+            'take_profit') if pending.order_kwargs else None
+        effective_sl = current_sl if isinstance(
+            new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = current_tp if isinstance(
+            new_take_profit, _UnsetType) else new_take_profit
 
         # Validate SL/TP against limit price (not current tick)
         rejection = self._validate_limit_order_sl_tp(
@@ -849,15 +848,22 @@ class TradeSimulator(AbstractTradeExecutor):
                     rejection_reason=ModificationRejectionReason.INVALID_PRICE)
 
         # Determine effective values (merge UNSET with current)
-        effective_stop = pending.entry_price if isinstance(new_stop_price, _UnsetType) else new_stop_price
+        effective_stop = pending.entry_price if isinstance(
+            new_stop_price, _UnsetType) else new_stop_price
 
-        current_limit = pending.order_kwargs.get('limit_price') if pending.order_kwargs else None
-        effective_limit = current_limit if isinstance(new_limit_price, _UnsetType) else new_limit_price
+        current_limit = pending.order_kwargs.get(
+            'limit_price') if pending.order_kwargs else None
+        effective_limit = current_limit if isinstance(
+            new_limit_price, _UnsetType) else new_limit_price
 
-        current_sl = pending.order_kwargs.get('stop_loss') if pending.order_kwargs else None
-        current_tp = pending.order_kwargs.get('take_profit') if pending.order_kwargs else None
-        effective_sl = current_sl if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
-        effective_tp = current_tp if isinstance(new_take_profit, _UnsetType) else new_take_profit
+        current_sl = pending.order_kwargs.get(
+            'stop_loss') if pending.order_kwargs else None
+        current_tp = pending.order_kwargs.get(
+            'take_profit') if pending.order_kwargs else None
+        effective_sl = current_sl if isinstance(
+            new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = current_tp if isinstance(
+            new_take_profit, _UnsetType) else new_take_profit
 
         # Validate SL/TP against reference price
         # STOP: validate against stop_price (market fill approximation)
@@ -953,7 +959,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 direction=p.direction,
                 lots=p.lots,
                 entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get("limit_price") if p.order_kwargs else None,
+                limit_price=p.order_kwargs.get(
+                    "limit_price") if p.order_kwargs else None,
             )
             for p in self._active_limit_orders
         ]
@@ -965,7 +972,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 direction=p.direction,
                 lots=p.lots,
                 entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get("limit_price") if p.order_kwargs else None,
+                limit_price=p.order_kwargs.get(
+                    "limit_price") if p.order_kwargs else None,
             )
             for p in self._active_stop_orders
         ]
@@ -1001,7 +1009,8 @@ class TradeSimulator(AbstractTradeExecutor):
             for pos in open_positions:
                 synthetic = self.latency_simulator.create_synthetic_close_order(
                     pos.position_id)
-                self._fill_close_order(synthetic, close_reason=CloseReason.SCENARIO_END)
+                self._fill_close_order(
+                    synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Active limit/stop orders are NOT cleared here — they are preserved
         # so get_pending_stats() can snapshot them as ActiveOrderSnapshot.

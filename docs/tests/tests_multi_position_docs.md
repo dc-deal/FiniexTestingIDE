@@ -122,7 +122,7 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 
 ## Test Files
 
-### test_multi_position.py (28 Tests) — NEW
+### test_multi_position.py (28 Tests)
 
 Multi-position specific tests organized in 6 groups.
 

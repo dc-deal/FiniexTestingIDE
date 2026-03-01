@@ -2,8 +2,6 @@
 Discovery Types
 ===============
 Type definitions for market discovery results.
-
-Location: python/framework/types/discovery_types.py
 """
 
 from dataclasses import dataclass
@@ -46,7 +44,7 @@ class ExtremeMove:
 
     # Movement metrics
     move_pips: float         # directional move in pips (entry → extreme)
-    move_atr_multiple: float # move size as multiple of avg ATR
+    move_atr_multiple: float  # move size as multiple of avg ATR
     max_adverse_pips: float  # max retracement against the move direction
     window_atr: float        # average ATR over this window (raw price units)
 

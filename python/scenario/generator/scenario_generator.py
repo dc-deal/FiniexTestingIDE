@@ -2,8 +2,6 @@
 Scenario Generator - Main Orchestrator
 ======================================
 Coordinates analysis and dispatches to strategy-specific generators.
-
-Location: python/scenario/generator/scenario_generator.py
 """
 
 import json
