@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "scenario_set_name": "USDJPY_stress_20260201_2000",
-  "created": "2026-02-01T20:00:10.606285+00:00",
+  "scenario_set_name": "USDJPY_high_volatility_20260302_1945",
+  "created": "2026-03-02T19:45:51.000643+00:00",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -42,11 +42,11 @@
   },
   "scenarios": [
     {
-      "name": "USDJPY_stress_01",
+      "name": "USDJPY_high_volatility_01",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-29T17:00:00+00:00",
-      "end_date": "2026-01-29T23:00:00+00:00",
+      "start_date": "2026-01-29T11:00:00+00:00",
+      "end_date": "2026-01-29T17:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -55,7 +55,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_stress_02",
+      "name": "USDJPY_high_volatility_02",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-10-10T12:00:00+00:00",
@@ -68,11 +68,11 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_stress_03",
+      "name": "USDJPY_high_volatility_03",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-28T17:00:00+00:00",
-      "end_date": "2026-01-28T23:00:00+00:00",
+      "start_date": "2026-01-28T11:00:00+00:00",
+      "end_date": "2026-01-28T17:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true,
@@ -81,7 +81,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_stress_04",
+      "name": "USDJPY_high_volatility_04",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-12-10T15:00:00+00:00",
@@ -94,7 +94,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_stress_05",
+      "name": "USDJPY_high_volatility_05",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2026-01-23T13:00:00+00:00",
@@ -107,7 +107,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_stress_06",
+      "name": "USDJPY_high_volatility_06",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-11-25T11:00:00+00:00",

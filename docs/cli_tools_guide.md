@@ -8,7 +8,7 @@ FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow
 │                                                                             │
 │  TickCollector (MT5) → Import → Analyse → Szenario-Generierung → Backtest  │
 │        ↓                 ↓         ↓              ↓                  ↓      │
-│    JSON Files      Parquet+Bars  Gaps/ATR    blocks/stress      Ergebnisse  │
+│    JSON Files      Parquet+Bars  Gaps/ATR  blocks/high_vol     Ergebnisse  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -386,32 +386,32 @@ Total:      415h (10.4h avg/block)
 - `--count` - Anzahl Blöcke
 - `--sessions` - Filter: `new_york`, `london`, `sydney_tokyo`
 
-### 📊 Scenario Generator - Stress
+### 📊 Scenario Generator - High Volatility
 
 | | |
 |---|---|
-| **VS Code** | `📊 Scenario Generator - Generate Stress` |
-| **CLI** | `python scenario_cli.py generate EURGBP --strategy stress --count 5` |
-| **Zweck** | High-Volatility Perioden für Stresstests |
+| **VS Code** | `⚡ Scenario Gen. - 6 High Volatility - mt5/USDJPY` |
+| **CLI** | `python scenario_cli.py generate mt5 EURGBP --strategy high_volatility --count 5` |
+| **Zweck** | High-Volatility Perioden für Szenario-Generierung |
 
 Findet automatisch die volatilsten Marktphasen (HIGH/VERY_HIGH ATR) und erstellt Szenarien um diese Zeitpunkte herum.
 
 ```
-Found 530 stress periods (HIGH/VERY_HIGH) from 1704 total
-Generating 5 stress scenarios from 530 high-volatility periods
+Found 530 high-volatility periods (HIGH/VERY_HIGH) from 1704 total
+Generating 5 high-volatility scenarios from 530 high-volatility periods
 
 Checking period: 2025-11-26 11:00 (11,653 ticks)
-  Stress center: 11:30
+  Volatility center: 11:30
   Warmup: 2025-11-25 19:00 → 2025-11-26 08:00 (13h)
   Scenario: 2025-11-26 08:00 → 2025-11-26 14:00 (6h)
   ✓ VALID: All checks passed
-✓ Stress #01: 2025-11-26 11:00 (very_high, 11,653 ticks)
+✓ High-Vol #01: 2025-11-26 11:00 (very_high, 11,653 ticks)
 
 Checking period: 2025-11-26 12:00 (11,546 ticks)
   ✗ SKIP: Overlaps with existing scenario
 
 ============================================================
-STRESS GENERATION SUMMARY
+HIGH-VOLATILITY GENERATION SUMMARY
 Total candidates: 530
 Scenarios generated: 5
 Skip reasons: Overlap: 10 (1.9%)
@@ -428,7 +428,7 @@ Beide Generatoren erzeugen eine JSON-Konfiguration:
 ```json
 {
   "version": "1.0",
-  "scenario_set_name": "EURGBP_stress_20260109_0743",
+  "scenario_set_name": "EURGBP_high_volatility_20260109_0743",
   "global": {
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
@@ -444,7 +444,7 @@ Beide Generatoren erzeugen eine JSON-Konfiguration:
   },
   "scenarios": [
     {
-      "name": "EURGBP_stress_01",
+      "name": "EURGBP_high_volatility_01",
       "symbol": "EURGBP",
       "start_date": "2025-11-26T08:00:00+00:00",
       "end_date": "2025-11-26T14:00:00+00:00",
@@ -582,7 +582,7 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
-| **Szenarien: Stress** | `📊 Scenario Generator - Generate Stress` | `scenario_cli.py generate EURGBP --strategy stress` |
+| **Szenarien: High Volatility** | `⚡ Scenario Gen. - High Volatility` | `scenario_cli.py generate mt5 EURGBP --strategy high_volatility` |
 | **Backtest starten** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
 
 ---

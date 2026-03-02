@@ -1,35 +1,164 @@
 """
 Scenario Generator Types
 ========================
-Type definitions for scenario generation: strategies, configs, and output.
+Type definitions for market analysis and scenario generation.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
-from python.framework.types.market_types.market_analysis_types import (
-    VolatilityRegime,
-    TradingSession,
-    PeriodAnalysis,
-    SessionSummary,
-    SymbolAnalysis,
-)
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 # =============================================================================
 # ENUMS
 # =============================================================================
 
-class GenerationStrategy(Enum):
-    """Scenario generation strategies."""
-    BLOCKS = "blocks"
-    STRESS = "stress"
+class VolatilityRegime(Enum):
+    """Volatility regime classification."""
+    VERY_LOW = "very_low"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    VERY_HIGH = "very_high"
 
     def __str__(self) -> str:
         """String representation returns the enum value"""
         return self.value
+
+
+class TradingSession(Enum):
+    """Trading session identifiers."""
+    SYDNEY_TOKYO = "sydney_tokyo"
+    LONDON = "london"
+    NEW_YORK = "new_york"
+    TRANSITION = "transition"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
+
+
+class GenerationStrategy(Enum):
+    """Scenario generation strategies."""
+    BLOCKS = "blocks"
+    HIGH_VOLATILITY = "high_volatility"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
+
+
+# =============================================================================
+# ANALYSIS RESULTS
+# =============================================================================
+
+@dataclass
+class PeriodAnalysis:
+    """
+    Analysis results for a single time period.
+
+    Represents one hour of market data with volatility and activity metrics.
+    """
+    start_time: datetime
+    end_time: datetime
+    session: TradingSession
+
+    # Volatility metrics
+    atr: float
+    atr_percentile: float
+    regime: VolatilityRegime
+
+    # Activity metrics
+    tick_count: int
+    tick_density: float  # ticks per hour
+
+    # Unified activity metric (tick_count for forex, volume for crypto)
+    activity: float
+
+    # Bar statistics
+    bar_count: int
+    real_bar_count: int
+    synthetic_bar_count: int
+
+    # Price range
+    high: float
+    low: float
+    range_pips: float
+
+
+@dataclass
+class SessionSummary:
+    """
+    Aggregated statistics for a trading session.
+    """
+    session: TradingSession
+    period_count: int
+
+    # Volatility
+    avg_atr: float
+    min_atr: float
+    max_atr: float
+
+    # Activity
+    total_ticks: int
+    avg_tick_density: float
+    min_tick_density: float
+    max_tick_density: float
+
+    # Unified activity metric (sum of activity for all periods)
+    total_activity: float
+
+    # Regime distribution
+    regime_distribution: Dict[VolatilityRegime, int]
+
+
+@dataclass
+class SymbolAnalysis:
+    """
+    Complete market analysis for a symbol.
+    """
+    symbol: str
+    timeframe: str
+    market_type: MarketType
+    data_source: str
+
+    # Time range
+    start_time: datetime
+    end_time: datetime
+    total_days: int
+
+    # Overall statistics
+    total_bars: int
+    total_ticks: int
+    real_bar_ratio: float
+
+    # ATR statistics
+    atr_min: float
+    atr_max: float
+    atr_avg: float
+    atr_std: float
+
+    # Cross-instrument comparison (ATR as percentage of price)
+    atr_percent: float
+
+    # Unified activity metric (tick_count for forex, volume for crypto)
+    total_activity: float
+
+    # Average pips per day (None if symbol spec not available)
+    avg_pips_per_day: Optional[float]
+
+    # Regime distribution
+    regime_distribution: Dict[VolatilityRegime, int]
+    regime_percentages: Dict[VolatilityRegime, float]
+
+    # Session summaries
+    session_summaries: Dict[TradingSession, SessionSummary]
+
+    # All period analyses
+    periods: List[PeriodAnalysis]
 
 
 # =============================================================================
@@ -53,6 +182,12 @@ class AnalysisConfig:
 
 
 @dataclass
+class CrossInstrumentRankingConfig:
+    """Configuration for cross-instrument comparison ranking."""
+    top_count: int = 3
+
+
+@dataclass
 class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
@@ -64,9 +199,9 @@ class BlocksStrategyConfig:
 
 
 @dataclass
-class StressStrategyConfig:
-    """Stress testing strategy configuration."""
-    stress_scenario_hours: int = 6
+class HighVolatilityStrategyConfig:
+    """High-volatility scenario generation strategy configuration."""
+    scenario_hours: int = 6
     warmup_hours: int = 13
     min_real_bar_ratio: float = 0.5
     volatility_percentile: float = 0.90
@@ -82,7 +217,8 @@ class GeneratorConfig:
     """
     analysis: AnalysisConfig
     blocks: BlocksStrategyConfig
-    stress: StressStrategyConfig
+    high_volatility: HighVolatilityStrategyConfig
+    cross_instrument_ranking: CrossInstrumentRankingConfig
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'GeneratorConfig':
@@ -97,7 +233,8 @@ class GeneratorConfig:
         """
         analysis_data = data.get('analysis', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
-        stress_data = data.get('strategies', {}).get('stress', {})
+        high_vol_data = data.get('strategies', {}).get('high_volatility', {})
+        ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
             analysis=AnalysisConfig(
@@ -118,16 +255,19 @@ class GeneratorConfig:
                     'extend_blocks_beyond_session', True),
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
-            stress=StressStrategyConfig(
-                stress_scenario_hours=stress_data.get(
-                    'stress_scenario_hours', 6),
-                warmup_hours=stress_data.get('warmup_hours', 13),
-                min_real_bar_ratio=stress_data.get('min_real_bar_ratio', 0.5),
-                volatility_percentile=stress_data.get(
+            high_volatility=HighVolatilityStrategyConfig(
+                scenario_hours=high_vol_data.get(
+                    'scenario_hours', 6),
+                warmup_hours=high_vol_data.get('warmup_hours', 13),
+                min_real_bar_ratio=high_vol_data.get('min_real_bar_ratio', 0.5),
+                volatility_percentile=high_vol_data.get(
                     'volatility_percentile', 0.90),
-                activity_percentile=stress_data.get(
+                activity_percentile=high_vol_data.get(
                     'activity_percentile', 0.90)
             ),
+            cross_instrument_ranking=CrossInstrumentRankingConfig(
+                top_count=ranking_data.get('top_count', 3)
+            )
         )
 
 

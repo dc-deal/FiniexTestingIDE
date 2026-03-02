@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
+
 vLog = get_global_logger()
 
 
@@ -32,13 +32,6 @@ class AnalysisConfigLoader:
         self.config_path = Path(config_path)
         self.user_config_path = Path(user_config_path)
         self.config = self._load()
-
-    def get_generator_config(self) -> GeneratorConfig:
-        """
-        Load and get Genearator Config
-        """
-        config = self._load()
-        return GeneratorConfig.from_dict(config)
 
     def get_config_raw(self) -> Dict[str, Any]:
         """

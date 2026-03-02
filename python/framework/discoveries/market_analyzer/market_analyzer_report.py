@@ -152,9 +152,8 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
     print("\n" + "─" * 60)
     print("💡 GENERATION RECOMMENDATIONS")
     print("─" * 60)
-    print(f"   • Balanced testing: --strategy balanced --count 12")
     print(f"   • Chronological:    --strategy blocks --block-size 6")
-    print(f"   • Stress testing:   --strategy stress --count 5")
+    print(f"   • High volatility:  --strategy high_volatility --count 5")
     print(
         f"\n   Run: python scenario_cli.py generate {analysis.symbol} --help")
 

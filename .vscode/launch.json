@@ -542,14 +542,14 @@
         },
         // --- Market Analysis ---
         {
-            "name": "🔍 Disc - Analyze: mt5/GBPUSD",
+            "name": "🔍 Disc - Analyze: mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
                 "analyze",
                 "mt5",
-                "GBPUSD"
+                "USDJPY"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -711,7 +711,7 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Gen. - 6 Blocks Stress - mt5/USDJPY",
+            "name": "⚡ Scenario Gen. - 6 High Volatility - mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/scenario_cli.py",
@@ -720,7 +720,7 @@
                 "mt5",
                 "USDJPY",
                 "--strategy",
-                "stress",
+                "high_volatility",
                 "--count",
                 "6"
             ],

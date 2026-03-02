@@ -1,11 +1,11 @@
 """
-Stress Strategy Generator
-==========================
+High-Volatility Strategy Generator
+====================================
 Generates scenarios centered on high-volatility periods.
 
 Features:
 - Filters HIGH/VERY_HIGH volatility regimes
-- Centers scenario windows around stress peaks (with hour alignment)
+- Centers scenario windows around volatility peaks (with hour alignment)
 - Warmup-aware with gap checking
 - No overlap between scenarios
 - Enhanced debug logging for diagnostics
@@ -28,9 +28,9 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class StressGenerator:
+class HighVolatilityGenerator:
     """
-    Stress scenario generator.
+    High-volatility scenario generator.
 
     Selects high-volatility periods and builds scenarios centered
     around them, ensuring proper warmup and no overlap.
@@ -38,7 +38,7 @@ class StressGenerator:
 
     def __init__(self, config: GeneratorConfig, analyzer: MarketAnalyzer):
         """
-        Initialize stress generator.
+        Initialize high-volatility generator.
 
         Args:
             config: Generator configuration
@@ -56,12 +56,12 @@ class StressGenerator:
         max_ticks: Optional[int] = None
     ) -> List[ScenarioCandidate]:
         """
-        Generate stress scenarios centered on high-volatility periods.
+        Generate scenarios centered on high-volatility periods.
 
         Algorithm:
         1. Get HIGH/VERY_HIGH volatility periods
         2. Sort by tick_count (highest activity first)
-        3. For each stress period:
+        3. For each high-volatility period:
            - Center scenario window around it (aligned to hour boundaries)
            - Ensure warmup data available
            - Check for gaps in window
@@ -72,21 +72,21 @@ class StressGenerator:
             symbol: Trading symbol
             block_hours: Scenario duration in hours
             count: Number of scenarios to generate
-            max_ticks: Unused for stress (time-based only)
+            max_ticks: Unused for high-volatility (time-based only)
 
         Returns:
             List of scenario candidates
         """
-        # Get stress periods (HIGH/VERY_HIGH regimes)
-        stress_periods = self._analyzer.get_stress_periods(broker_type, symbol)
+        # Get high-volatility periods (HIGH/VERY_HIGH regimes)
+        high_vol_periods = self._analyzer.get_high_volatility_periods(broker_type, symbol)
 
-        if not stress_periods:
+        if not high_vol_periods:
             raise ValueError(
                 f"No HIGH/VERY_HIGH volatility periods found for {broker_type}/{symbol}"
             )
 
         vLog.info(
-            f"Generating {count} stress scenarios from {len(stress_periods)} "
+            f"Generating {count} high-volatility scenarios from {len(high_vol_periods)} "
             f"high-volatility periods"
         )
 
@@ -97,8 +97,8 @@ class StressGenerator:
         scenarios = []
         used_ranges: List[Tuple[datetime, datetime]] = []
 
-        warmup_hours = self._config.stress.warmup_hours
-        min_real_bar_ratio = self._config.stress.min_real_bar_ratio
+        warmup_hours = self._config.high_volatility.warmup_hours
+        min_real_bar_ratio = self._config.high_volatility.min_real_bar_ratio
 
         # Skip reason tracking
         skip_reasons: Dict[str, int] = {
@@ -124,15 +124,15 @@ class StressGenerator:
         detailed_log_count = 0
         max_detailed_logs = 5
 
-        for idx, stress_period in enumerate(stress_periods, 1):
+        for idx, high_vol_period in enumerate(high_vol_periods, 1):
             if len(scenarios) >= count:
                 break
 
-            # Build scenario centered on stress period
+            # Build scenario centered on high-volatility period
             result = self._build_centered_scenario(
                 broker_type,
                 symbol,
-                stress_period,
+                high_vol_period,
                 all_periods,
                 block_hours,
                 warmup_hours,
@@ -153,9 +153,9 @@ class StressGenerator:
             used_ranges.append(scenario_range)
 
             vLog.info(
-                f"✔ Stress #{len(scenarios):02d}: "
-                f"{stress_period.start_time.strftime('%Y-%m-%d %H:%M')} "
-                f"({stress_period.regime.value}, {stress_period.tick_count:,} ticks)"
+                f"✔ High-Vol #{len(scenarios):02d}: "
+                f"{high_vol_period.start_time.strftime('%Y-%m-%d %H:%M')} "
+                f"({high_vol_period.regime.value}, {high_vol_period.tick_count:,} ticks)"
             )
 
         # Summary
@@ -163,9 +163,9 @@ class StressGenerator:
 
         vLog.info("")
         vLog.info("=" * 60)
-        vLog.info("STRESS GENERATION SUMMARY")
+        vLog.info("HIGH-VOLATILITY GENERATION SUMMARY")
         vLog.info("=" * 60)
-        vLog.info(f"Total candidates: {len(stress_periods)}")
+        vLog.info(f"Total candidates: {len(high_vol_periods)}")
         vLog.info(f"Scenarios generated: {len(scenarios)}")
         vLog.info(f"Scenarios skipped: {total_skipped}")
 
@@ -174,7 +174,7 @@ class StressGenerator:
             vLog.info("Skip reasons breakdown:")
             for reason, count in skip_reasons.items():
                 if count > 0:
-                    pct = (count / len(stress_periods)) * 100
+                    pct = (count / len(high_vol_periods)) * 100
                     vLog.info(
                         f"  • {reason.replace('_', ' ').title()}: {count} ({pct:.1f}%)")
 
@@ -192,7 +192,7 @@ class StressGenerator:
         self,
         broker_type: str,
         symbol: str,
-        stress_period: PeriodAnalysis,
+        high_vol_period: PeriodAnalysis,
         all_periods: List[PeriodAnalysis],
         block_hours: int,
         warmup_hours: int,
@@ -203,12 +203,12 @@ class StressGenerator:
         detailed_log: bool = False
     ) -> Optional[Tuple[ScenarioCandidate, Tuple[datetime, datetime]]]:
         """
-        Build scenario centered on stress period.
+        Build scenario centered on high-volatility period.
 
         Args:
             broker_type: Broker type identifier
             symbol: Trading symbol
-            stress_period: High-volatility period to center on
+            high_vol_period: High-volatility period to center on
             all_periods: All periods for gap checking
             block_hours: Scenario duration
             warmup_hours: Warmup duration
@@ -221,9 +221,9 @@ class StressGenerator:
         Returns:
             (ScenarioCandidate, time_range) or None if invalid
         """
-        # Calculate scenario window centered on stress period
-        stress_center = stress_period.start_time + timedelta(minutes=30)
-        scenario_start = stress_center - timedelta(hours=block_hours / 2)
+        # Calculate scenario window centered on high-volatility period
+        vol_center = high_vol_period.start_time + timedelta(minutes=30)
+        scenario_start = vol_center - timedelta(hours=block_hours / 2)
 
         # CRITICAL FIX: Align to hour boundary (floor)
         # Periods are 1h blocks on full hours (09:00, 10:00, 11:00, ...)
@@ -237,9 +237,9 @@ class StressGenerator:
 
         if detailed_log:
             vLog.info("")
-            vLog.info(f"Checking period: {stress_period.start_time.strftime('%Y-%m-%d %H:%M')} "
-                      f"({stress_period.tick_count:,} ticks)")
-            vLog.info(f"  Stress center: {stress_center.strftime('%H:%M')}")
+            vLog.info(f"Checking period: {high_vol_period.start_time.strftime('%Y-%m-%d %H:%M')} "
+                      f"({high_vol_period.tick_count:,} ticks)")
+            vLog.info(f"  Volatility center: {vol_center.strftime('%H:%M')}")
             vLog.info(f"  Warmup: {warmup_start.strftime('%Y-%m-%d %H:%M')} → "
                       f"{scenario_start.strftime('%Y-%m-%d %H:%M')} ({warmup_hours}h)")
             vLog.info(f"  Scenario: {scenario_start.strftime('%Y-%m-%d %H:%M')} → "
@@ -258,8 +258,8 @@ class StressGenerator:
             return None
 
         # Check 2: Quality threshold
-        real_ratio = stress_period.real_bar_count / \
-            max(stress_period.bar_count, 1)
+        real_ratio = high_vol_period.real_bar_count / \
+            max(high_vol_period.bar_count, 1)
         if real_ratio < min_real_bar_ratio:
             skip_reasons['low_quality'] += 1
             if detailed_log:
@@ -294,11 +294,11 @@ class StressGenerator:
             start_time=scenario_start,
             end_time=scenario_end,
             broker_type=broker_type,
-            regime=stress_period.regime,
-            session=stress_period.session,
+            regime=high_vol_period.regime,
+            session=high_vol_period.session,
             estimated_ticks=0,  # Time-based, no tick limit
-            atr=stress_period.atr,
-            tick_density=stress_period.tick_density,
+            atr=high_vol_period.atr,
+            tick_density=high_vol_period.tick_density,
             real_bar_ratio=real_ratio
         )
 

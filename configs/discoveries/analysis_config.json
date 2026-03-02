@@ -21,22 +21,6 @@
             "./configs/brokers/mt5/ic_markets_demo.json"
         ]
     },
-    "strategies": {
-        "blocks": {
-            "default_block_hours": 6,
-            "warmup_hours": 13,
-            "min_block_hours": 1,
-            "extend_blocks_beyond_session": true,
-            "min_real_bar_ratio": 0.5
-        },
-        "stress": {
-            "stress_scenario_hours": 6,
-            "warmup_hours": 13,
-            "min_real_bar_ratio": 0.5,
-            "volatility_percentile": 0.90,
-            "activity_percentile": 0.90
-        }
-    },
     "cross_instrument_ranking": {
         "top_count": 10
     }

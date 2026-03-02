@@ -86,7 +86,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
   - **Market Analysis** - ATR volatility, session activity, cross-instrument ranking
   - **Extreme Move Scanner** - Directional price movement detection (ATR-normalized)
   - **Data Coverage** - Gap detection and data quality assessment
-- **Scenario Generation** - Automatic blocks (chronological) or stress (high-volatility)
+- **Scenario Generation** - Automatic blocks (chronological) or high-volatility selection
 - **Performance Profiling** - Operation-level breakdown, bottleneck detection
 
 > See [Discovery System](docs/discovery_system.md) for architecture details.

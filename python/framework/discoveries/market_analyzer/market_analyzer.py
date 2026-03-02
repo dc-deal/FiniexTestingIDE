@@ -14,7 +14,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.generator_config_loader import GeneratorConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
@@ -56,8 +56,7 @@ class MarketAnalyzer:
         Args:
             data_dir: Path to processed data directory
         """
-        analysis_config = AnalysisConfigLoader()
-        self._config = analysis_config.get_generator_config()
+        self._config = GeneratorConfigLoader().get_generator_config()
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
@@ -282,7 +281,7 @@ class MarketAnalyzer:
         Returns only periods with real bar data (no synthetic-only periods).
         Periods are regime-classified and gap-aware.
 
-        Public accessor for stress/custom scenario generators.
+        Public accessor for high-volatility/custom scenario generators.
 
         Args:
             broker_type: Broker type identifier
@@ -312,7 +311,7 @@ class MarketAnalyzer:
 
         return periods
 
-    def get_stress_periods(
+    def get_high_volatility_periods(
         self,
         broker_type: str,
         symbol: str,
@@ -320,7 +319,7 @@ class MarketAnalyzer:
         regimes: Optional[List[VolatilityRegime]] = None
     ) -> List[PeriodAnalysis]:
         """
-        Get high-volatility periods for stress testing.
+        Get high-volatility periods for scenario generation.
 
         Convenience method that filters for HIGH/VERY_HIGH regimes
         and sorts by tick activity.
@@ -339,21 +338,21 @@ class MarketAnalyzer:
         if regimes is None:
             regimes = [VolatilityRegime.HIGH, VolatilityRegime.VERY_HIGH]
 
-        stress_periods = [p for p in all_periods if p.regime in regimes]
+        high_vol_periods = [p for p in all_periods if p.regime in regimes]
 
         # Sort by tick count (highest activity first)
-        stress_periods = sorted(
-            stress_periods,
+        high_vol_periods = sorted(
+            high_vol_periods,
             key=lambda p: p.tick_count,
             reverse=True
         )
 
         vLog.info(
-            f"Found {len(stress_periods)} stress periods "
+            f"Found {len(high_vol_periods)} high-volatility periods "
             f"(HIGH/VERY_HIGH) from {len(all_periods)} total"
         )
 
-        return stress_periods
+        return high_vol_periods
 
     # =========================================================================
     # INTERNAL HELPERS
