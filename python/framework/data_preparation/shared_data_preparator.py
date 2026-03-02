@@ -24,7 +24,7 @@ from python.framework.types.process_data_types import (
 )
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.time_utils import ensure_utc_aware
 

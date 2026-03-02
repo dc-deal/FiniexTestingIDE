@@ -22,7 +22,7 @@ import pytest
 
 from python.framework.workers.core.obv_worker import OBVWorker
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 
 from conftest import make_bars_with_volume, make_tick
 
@@ -60,7 +60,8 @@ class TestOBVBasicComputation:
         )
         tick = make_tick(bid=102.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert isinstance(result, WorkerResult)
         assert isinstance(result.value, float)
@@ -83,7 +84,8 @@ class TestOBVBasicComputation:
         )
         tick = make_tick(bid=104.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == pytest.approx(1000.0, abs=0.01)
 
@@ -104,7 +106,8 @@ class TestOBVBasicComputation:
         )
         tick = make_tick(bid=100.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == pytest.approx(-1000.0, abs=0.01)
 
@@ -125,7 +128,8 @@ class TestOBVBasicComputation:
         )
         tick = make_tick(bid=100.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == pytest.approx(0.0, abs=0.01)
 
@@ -144,7 +148,8 @@ class TestOBVEdgeCases:
         bars = make_bars_with_volume(closes=[100], volumes=[50])
         tick = make_tick(bid=100.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == 0.0
         assert result.confidence == 0.0
@@ -167,7 +172,8 @@ class TestOBVEdgeCases:
         )
         tick = make_tick(bid=103.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == pytest.approx(0.0, abs=0.01)
 
@@ -188,7 +194,8 @@ class TestOBVEdgeCases:
         )
         tick = make_tick(bid=105.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.value == pytest.approx(500.0, abs=0.01)
 
@@ -206,12 +213,14 @@ class TestOBVMetadata:
         )
         tick = make_tick(bid=102.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.metadata["period"] == 20
         assert result.metadata["timeframe"] == "M5"
         assert result.metadata["bars_used"] == 5
-        assert result.metadata["total_volume"] == pytest.approx(3800.0, abs=0.01)
+        assert result.metadata["total_volume"] == pytest.approx(
+            3800.0, abs=0.01)
         assert result.metadata["has_volume"] is True
         assert result.metadata["trend"] in ("bullish", "bearish", "neutral")
 
@@ -225,7 +234,8 @@ class TestOBVMetadata:
         )
         tick = make_tick(bid=101.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.metadata["has_volume"] is False
 
@@ -261,6 +271,7 @@ class TestOBVMetadata:
         )
         tick = make_tick(bid=101.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={
+                                "M5": bars}, current_bars={})
 
         assert result.worker_name == "my_obv_instance"

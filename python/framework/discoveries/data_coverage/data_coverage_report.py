@@ -16,10 +16,10 @@ import pytz
 from python.configuration.analysis_config_loader import AnalysisConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
-from python.framework.types.market_types import VALIDATION_TIMEZONE
+from python.framework.types.market_types.market_types import VALIDATION_TIMEZONE
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 
 

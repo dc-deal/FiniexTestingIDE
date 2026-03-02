@@ -12,7 +12,7 @@ from datetime import datetime
 import json
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_set_types import ScenarioSetMetadata
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSetMetadata
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 from python.framework.logging.bootstrap_logger import get_global_logger

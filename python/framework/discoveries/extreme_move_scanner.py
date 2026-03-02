@@ -25,7 +25,7 @@ from python.framework.types.discovery_types import (
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.broker_types import SymbolSpecification
+from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 
 vLog = get_global_logger()
 

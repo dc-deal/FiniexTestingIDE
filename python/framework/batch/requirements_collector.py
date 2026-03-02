@@ -7,7 +7,7 @@ Extracted from BatchOrchestrator to separate requirement collection logic.
 import traceback
 from python.framework.data_preparation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
 from python.framework.types.process_data_types import RequirementsMap
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.logging.abstract_logger import AbstractLogger
 from typing import List, Dict
 

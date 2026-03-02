@@ -19,7 +19,7 @@ import json
 from typing import Any, Dict, List, Type
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker

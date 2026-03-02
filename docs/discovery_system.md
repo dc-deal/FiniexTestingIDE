@@ -23,7 +23,7 @@ discoveries_cli.py
 **Code locations:**
 - Cache classes: `python/framework/discoveries/`
 - Data coverage: `python/framework/discoveries/data_coverage/`
-- Types: `python/framework/types/scenario_generator_types.py`, `discovery_types.py`, `coverage_report_types.py`
+- Types: `python/framework/types/market_analysis_types.py`, `scenario_generator_types.py`, `discovery_types.py`, `coverage_report_types.py`
 - Reports: `python/framework/discoveries/market_analyzer/market_analyzer_report.py`, `market_analyzer_comparison_report.py`
 - CLI: `python/cli/discoveries_cli.py`
 

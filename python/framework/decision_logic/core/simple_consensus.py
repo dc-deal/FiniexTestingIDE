@@ -43,11 +43,11 @@ from typing import Any, Dict, List, Optional
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
-from python.framework.types.market_data_types import Bar, TickData
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     OrderDirection,

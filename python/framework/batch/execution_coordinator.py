@@ -8,9 +8,9 @@ import pickle
 from python.framework.process.process_executor import ProcessExecutor
 from python.framework.process.process_live_queue_helper import broadcast_status_update
 from python.framework.process.process_main import process_main
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
-from python.framework.types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed

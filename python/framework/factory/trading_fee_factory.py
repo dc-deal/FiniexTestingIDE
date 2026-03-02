@@ -5,7 +5,7 @@ Factory functions for creating fee objects from order parameters
 Creates appropriate fee objects based on broker type and order context.
 """
 
-from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.trading_env.trading_fees import (
     SpreadFee,
     MakerTakerFee

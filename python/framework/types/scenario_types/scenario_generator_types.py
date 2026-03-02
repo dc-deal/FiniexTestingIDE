@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 # =============================================================================
@@ -44,7 +44,7 @@ class TradingSession(Enum):
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
     BLOCKS = "blocks"
-    STRESS = "stress"
+    HIGH_VOLATILITY = "high_volatility"
 
     def __str__(self) -> str:
         """String representation returns the enum value"""
@@ -188,14 +188,6 @@ class CrossInstrumentRankingConfig:
 
 
 @dataclass
-class BalancedStrategyConfig:
-    """Configuration for balanced generation strategy."""
-    regime_count: int = 5
-    min_scenarios_per_regime: int = 1
-    prefer_real_bars: bool = True
-
-
-@dataclass
 class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
@@ -207,9 +199,9 @@ class BlocksStrategyConfig:
 
 
 @dataclass
-class StressStrategyConfig:
-    """Stress testing strategy configuration."""
-    stress_scenario_hours: int = 6
+class HighVolatilityStrategyConfig:
+    """High-volatility scenario generation strategy configuration."""
+    scenario_hours: int = 6
     warmup_hours: int = 13
     min_real_bar_ratio: float = 0.5
     volatility_percentile: float = 0.90
@@ -224,9 +216,8 @@ class GeneratorConfig:
     Combines analysis config with strategy-specific settings.
     """
     analysis: AnalysisConfig
-    balanced: BalancedStrategyConfig
     blocks: BlocksStrategyConfig
-    stress: StressStrategyConfig
+    high_volatility: HighVolatilityStrategyConfig
     cross_instrument_ranking: CrossInstrumentRankingConfig
 
     @classmethod
@@ -241,9 +232,8 @@ class GeneratorConfig:
             GeneratorConfig instance
         """
         analysis_data = data.get('analysis', {})
-        balanced_data = data.get('strategies', {}).get('balanced', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
-        stress_data = data.get('strategies', {}).get('stress', {})
+        high_vol_data = data.get('strategies', {}).get('high_volatility', {})
         ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
@@ -257,13 +247,6 @@ class GeneratorConfig:
                     'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
                 ),
             ),
-            balanced=BalancedStrategyConfig(
-                regime_count=balanced_data.get('regime_count', 5),
-                min_scenarios_per_regime=balanced_data.get(
-                    'min_scenarios_per_regime', 1
-                ),
-                prefer_real_bars=balanced_data.get('prefer_real_bars', True)
-            ),
             blocks=BlocksStrategyConfig(
                 default_block_hours=blocks_data.get('default_block_hours', 6),
                 warmup_hours=blocks_data.get('warmup_hours', 13),
@@ -272,14 +255,14 @@ class GeneratorConfig:
                     'extend_blocks_beyond_session', True),
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
-            stress=StressStrategyConfig(
-                stress_scenario_hours=stress_data.get(
-                    'stress_scenario_hours', 6),
-                warmup_hours=stress_data.get('warmup_hours', 13),
-                min_real_bar_ratio=stress_data.get('min_real_bar_ratio', 0.5),
-                volatility_percentile=stress_data.get(
+            high_volatility=HighVolatilityStrategyConfig(
+                scenario_hours=high_vol_data.get(
+                    'scenario_hours', 6),
+                warmup_hours=high_vol_data.get('warmup_hours', 13),
+                min_real_bar_ratio=high_vol_data.get('min_real_bar_ratio', 0.5),
+                volatility_percentile=high_vol_data.get(
                     'volatility_percentile', 0.90),
-                activity_percentile=stress_data.get(
+                activity_percentile=high_vol_data.get(
                     'activity_percentile', 0.90)
             ),
             cross_instrument_ranking=CrossInstrumentRankingConfig(

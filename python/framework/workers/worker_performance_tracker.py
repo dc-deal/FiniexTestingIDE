@@ -8,7 +8,7 @@ Tracks performance metrics for individual workers
 """
 
 
-from python.framework.types.performance_stats_types import WorkerPerformanceStats
+from python.framework.types.performance_types.performance_stats_types import WorkerPerformanceStats
 
 
 class WorkerPerformanceTracker:

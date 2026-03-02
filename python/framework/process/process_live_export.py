@@ -6,8 +6,8 @@ import time
 from typing import Dict, Optional, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.portfolio_manager import PortfolioManager
-from python.framework.types.live_stats_config_types import ProcessLiveSetup
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.live_types.live_stats_config_types import ProcessLiveSetup
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.process_serialization_utils import serialize_current_bars
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator

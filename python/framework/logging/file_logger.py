@@ -20,7 +20,7 @@ from pathlib import Path
 from python.framework.types.log_level import LogLevel
 from datetime import datetime
 
-from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.utils.file_utils import sanitize_filename
 from python.framework.utils.time_utils import format_timestamp
 

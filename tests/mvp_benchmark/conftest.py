@@ -19,7 +19,7 @@ from typing import Dict, Any, Optional, List
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
-from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 

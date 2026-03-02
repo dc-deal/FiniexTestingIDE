@@ -4,9 +4,9 @@ Manages live statistics cache and status broadcasting
 
 Extracted from BatchOrchestrator to separate live stats management.
 """
-from python.framework.types.live_scenario_stats_types import LiveScenarioStats
-from python.framework.types.live_stats_config_types import ScenarioStatus
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats
+from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from typing import Dict, List, Optional
 from multiprocessing import Queue
 

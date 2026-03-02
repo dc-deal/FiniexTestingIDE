@@ -17,17 +17,17 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.order_types import OrderResult
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
-from python.framework.types.scenario_set_types import ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_stats_types import ExecutionStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
 # =============================================================================

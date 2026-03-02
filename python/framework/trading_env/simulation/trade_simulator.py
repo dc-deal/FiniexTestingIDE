@@ -20,13 +20,13 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
-from python.framework.types.portfolio_trade_record_types import CloseReason, EntryType
-from python.framework.types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
-from python.framework.types.stress_test_types import StressTestConfig, StressTestRejectOrderConfig
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
+from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig, StressTestRejectOrderConfig
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,

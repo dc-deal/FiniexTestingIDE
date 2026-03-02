@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.scenario_generator import ScenarioGenerator
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
 )
@@ -40,7 +40,7 @@ class ScenarioCLI:
         self,
         broker_type: str,
         symbols: List[str],
-        strategy: str = 'balanced',
+        strategy: str = 'blocks',
         count: Optional[int] = None,
         block_size: Optional[int] = None,
         session: Optional[str] = None,
@@ -56,7 +56,7 @@ class ScenarioCLI:
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbols: List of symbols
-            strategy: Generation strategy (balanced, blocks, stress)
+            strategy: Generation strategy (blocks, high_volatility)
             count: Number of scenarios
             block_size: Block size in hours (for blocks strategy)
             session: Single session filter
@@ -219,9 +219,9 @@ def main():
     generate_parser.add_argument(
         '--strategy',
         type=str,
-        default='balanced',
-        choices=['balanced', 'blocks', 'stress'],
-        help='Generation strategy (default: balanced)'
+        default='blocks',
+        choices=['blocks', 'high_volatility'],
+        help='Generation strategy (default: blocks)'
     )
     generate_parser.add_argument(
         '--count',

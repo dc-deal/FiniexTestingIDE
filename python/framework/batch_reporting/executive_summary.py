@@ -14,12 +14,12 @@ import psutil
 from typing import Dict
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.stress_test_types import StressTestConfig
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
-from python.framework.types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 
 class ExecutiveSummary:

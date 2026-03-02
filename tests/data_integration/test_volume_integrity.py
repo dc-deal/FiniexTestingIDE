@@ -23,7 +23,7 @@ import pandas as pd
 
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 class TestVolumeSchema:

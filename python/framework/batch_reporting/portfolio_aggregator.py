@@ -12,13 +12,13 @@ Responsibilities:
 from typing import Dict, List
 from datetime import datetime
 
-from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.process_data_types import ProcessResult
-from python.framework.types.trading_env_stats_types import (
+from python.framework.types.trading_env_types.trading_env_stats_types import (
     ExecutionStats,
     CostBreakdown
 )
-from python.framework.types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats
 
 
 class PortfolioAggregator:

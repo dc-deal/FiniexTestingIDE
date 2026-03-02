@@ -18,8 +18,8 @@ from typing import Optional
 from enum import Enum
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
-from python.framework.types.broker_types import FeeStatus, FeeType
-from python.framework.types.market_data_types import TickData
+from python.framework.types.trading_env_types.broker_types import FeeStatus, FeeType
+from python.framework.types.market_types.market_data_types import TickData
 
 # ============================================
 # Concrete Fee Types

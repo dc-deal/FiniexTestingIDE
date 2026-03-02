@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict
 
 from python.framework.types.coverage_report_types import GapCategory
-from python.framework.types.market_types import WeekendClosureWindow
+from python.framework.types.market_types.market_types import WeekendClosureWindow
 
 
 class MarketCalendar:

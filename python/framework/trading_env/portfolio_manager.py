@@ -10,15 +10,15 @@ from typing import Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
-from python.framework.types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import CloseType, CloseReason, EntryType, TradeRecord
-from python.framework.types.portfolio_types import Position, PositionStatus
+from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, CloseReason, EntryType, TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
 
-from ..types.order_types import ModificationRejectionReason, ModificationResult, OrderDirection
-from python.framework.types.trading_env_stats_types import AccountInfo, CostBreakdown
+from python.framework.types.trading_env_types.order_types import ModificationRejectionReason, ModificationResult, OrderDirection
+from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData
 
 
 class _UnsetType:

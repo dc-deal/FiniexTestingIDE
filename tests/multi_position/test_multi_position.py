@@ -18,9 +18,9 @@ import pytest
 from typing import Dict, Any, List
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.order_types import OrderDirection
-from python.framework.types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
 
 
@@ -239,7 +239,8 @@ class TestHedging:
         Trade #0 (LONG) and Trade #2 (SHORT) overlap at ticks ~3006-7006.
         """
         longs = [t for t in trade_history if t.direction == OrderDirection.LONG]
-        shorts = [t for t in trade_history if t.direction == OrderDirection.SHORT]
+        shorts = [t for t in trade_history if t.direction ==
+                  OrderDirection.SHORT]
 
         # Check if any LONG overlaps with any SHORT
         has_overlap = False
@@ -273,8 +274,10 @@ class TestHedging:
         hedging_tick = 5000
         open_trades = _trades_open_at_tick(trade_history, hedging_tick)
 
-        long_count = sum(1 for t in open_trades if t.direction == OrderDirection.LONG)
-        short_count = sum(1 for t in open_trades if t.direction == OrderDirection.SHORT)
+        long_count = sum(
+            1 for t in open_trades if t.direction == OrderDirection.LONG)
+        short_count = sum(
+            1 for t in open_trades if t.direction == OrderDirection.SHORT)
 
         assert long_count == 2, (
             f"Expected 2 LONGs at tick {hedging_tick}, got {long_count}"

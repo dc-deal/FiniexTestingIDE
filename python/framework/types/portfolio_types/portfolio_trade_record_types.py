@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from python.framework.types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderDirection
 
 
 class CloseType(Enum):

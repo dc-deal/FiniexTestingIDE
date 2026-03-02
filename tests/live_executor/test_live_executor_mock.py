@@ -13,7 +13,7 @@ MockOrderExecution provides tick feeding for pending order processing.
 
 from python.framework.testing.mock_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -266,7 +266,7 @@ class TestNotLiveCapable:
         """LiveTradeExecutor raises ValueError for non-live adapter."""
         from python.framework.trading_env.broker_config import BrokerConfig
         from python.framework.testing.mock_adapter import MockBrokerAdapter
-        from python.framework.types.broker_types import BrokerType
+        from python.framework.types.trading_env_types.broker_types import BrokerType
         from python.framework.logging.global_logger import GlobalLogger
 
         adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)

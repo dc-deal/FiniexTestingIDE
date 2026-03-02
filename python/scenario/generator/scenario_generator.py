@@ -11,19 +11,21 @@ from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
-from python.framework.types.market_config_types import MarketType
-from python.framework.types.scenario_generator_types import (
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_analysis_types import (
+    TradingSession,
+    VolatilityRegime,
+)
+from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
     GeneratorConfig,
     ScenarioCandidate,
-    TradingSession,
-    VolatilityRegime,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 from .blocks_generator import BlocksGenerator
-from .stress_generator import StressGenerator
+from .high_volatility_generator import HighVolatilityGenerator
 
 vLog = get_global_logger()
 
@@ -48,7 +50,7 @@ class ScenarioGenerator:
 
         # Initialize strategy generators
         self._blocks_gen = BlocksGenerator(self._config)
-        self._stress_gen = StressGenerator(self._config, self._analyzer)
+        self._high_volatility_gen = HighVolatilityGenerator(self._config, self._analyzer)
 
     # =========================================================================
     # MAIN GENERATION
@@ -75,7 +77,7 @@ class ScenarioGenerator:
             symbols: List of symbols to generate for
             strategy: Generation strategy
             count: Number of scenarios
-            block_hours: Block size for blocks/stress strategy
+            block_hours: Block size for blocks/high_volatility strategy
             session_filter: Filter by session name (deprecated)
             sessions_filter: Filter by multiple session names
             start_filter: Start date filter
@@ -104,7 +106,7 @@ class ScenarioGenerator:
                 f"filter acts as time-of-day separation only."
             )
 
-        # Note: Blocks and Stress generators handle their own data access
+        # Note: Blocks and HighVolatility generators handle their own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")
 
         # Dispatch to strategy-specific generator
@@ -117,12 +119,12 @@ class ScenarioGenerator:
             vLog.info(
                 f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
 
-        elif strategy == GenerationStrategy.STRESS:
-            hours = block_hours or self._config.stress.stress_scenario_hours
+        elif strategy == GenerationStrategy.HIGH_VOLATILITY:
+            hours = block_hours or self._config.high_volatility.scenario_hours
             effective_count = count or 5
             vLog.info(
                 f"Generating {effective_count} {strategy.value} scenarios")
-            scenarios = self._stress_gen.generate(
+            scenarios = self._high_volatility_gen.generate(
                 broker_type, symbol, hours, effective_count, max_ticks
             )
 
@@ -217,10 +219,10 @@ class ScenarioGenerator:
         config['scenarios'] = []
         for i, candidate in enumerate(scenarios, 1):
             name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
-            # Blocks/Stress strategy: max_ticks = None (time-based only)
+            # Blocks/HighVolatility strategy: max_ticks = None (time-based only)
             use_max_ticks = None if result.strategy in [
                 GenerationStrategy.BLOCKS,
-                GenerationStrategy.STRESS
+                GenerationStrategy.HIGH_VOLATILITY
             ] else candidate.estimated_ticks
             scenario_dict = candidate.to_scenario_dict(name, use_max_ticks)
             config['scenarios'].append(scenario_dict)

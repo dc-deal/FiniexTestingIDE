@@ -35,7 +35,7 @@ Data Flow:
 from typing import Any, Dict, List
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import ParameterDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker

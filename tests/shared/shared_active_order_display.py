@@ -10,8 +10,8 @@ Used by: active_order_display
 Import these classes into suite-specific test files.
 """
 
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
 class TestActiveLimitOrdersReported:

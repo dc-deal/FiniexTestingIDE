@@ -8,7 +8,7 @@ weekend closure windows, and trading hour configurations.
 from dataclasses import dataclass
 from typing import Tuple
 
-from python.framework.types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType
 
 
 # Validation timezone for UTC offset verification

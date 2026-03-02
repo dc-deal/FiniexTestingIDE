@@ -36,14 +36,14 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_order_tracker import LiveOrderTracker
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
-from python.framework.types.portfolio_trade_record_types import CloseReason
-from python.framework.types.live_execution_types import (
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
     TimeoutConfig,
 )
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -54,7 +54,7 @@ from python.framework.types.order_types import (
     OpenOrderRequest,
     create_rejection_result,
 )
-from python.framework.types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -543,9 +543,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
 
         # Translate UNSET → None for adapter (adapter uses None=no change)
-        adapter_price = None if isinstance(new_price, _UnsetType) else new_price
-        adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
-        adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+        adapter_price = None if isinstance(
+            new_price, _UnsetType) else new_price
+        adapter_sl = None if isinstance(
+            new_stop_loss, _UnsetType) else new_stop_loss
+        adapter_tp = None if isinstance(
+            new_take_profit, _UnsetType) else new_take_profit
 
         # Call broker adapter
         try:

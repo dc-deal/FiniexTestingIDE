@@ -26,7 +26,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
-from python.framework.types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, GapCategory
 
 vLog = get_global_logger()

@@ -19,7 +19,7 @@ from python.framework.types.process_data_types import (
     TickRequirement,
     BarRequirement,
 )
-from python.framework.types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.factory.worker_factory import WorkerFactory
 
 

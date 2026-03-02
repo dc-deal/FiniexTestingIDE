@@ -46,11 +46,11 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
-from python.framework.types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.portfolio_trade_record_types import CloseReason
-from python.framework.types.market_data_types import TickData
-from python.framework.types.order_types import (
+from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -63,9 +63,9 @@ from python.framework.types.order_types import (
     OpenOrderRequest,
     create_rejection_result,
 )
-from python.framework.types.portfolio_trade_record_types import EntryType
-from python.framework.types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_stats_types import AccountInfo, ExecutionStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, ExecutionStats
 
 
 class ExecutorMode(Enum):

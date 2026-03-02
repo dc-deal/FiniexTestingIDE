@@ -17,11 +17,13 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
-from python.framework.types.scenario_generator_types import (
-    GeneratorConfig,
-    ScenarioCandidate,
+from python.framework.types.market_types.market_analysis_types import (
     TradingSession,
     VolatilityRegime,
+)
+from python.framework.types.scenario_types.scenario_generator_types import (
+    GeneratorConfig,
+    ScenarioCandidate,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 

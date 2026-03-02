@@ -23,7 +23,7 @@ from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.trading_env.adapters.mt5_adapter import MT5Adapter
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
-from python.framework.types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
 
 
 class BrokerConfigFactory:

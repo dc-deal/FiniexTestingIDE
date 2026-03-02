@@ -38,8 +38,8 @@ from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
-from python.framework.types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.order_types import OpenOrderRequest, OrderDirection, OrderType
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderDirection, OrderType
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 

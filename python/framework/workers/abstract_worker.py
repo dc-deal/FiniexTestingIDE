@@ -6,11 +6,11 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from python.framework.types.market_types import TradingContext
+from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
-from python.framework.types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
     WorkerResult, WorkerState, WorkerType)
 from python.framework.logging.scenario_logger import ScenarioLogger

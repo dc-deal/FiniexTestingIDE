@@ -8,7 +8,7 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.broker_types import BrokerSpecification, SymbolSpecification
+from python.framework.types.trading_env_types.broker_types import BrokerSpecification, SymbolSpecification
 from python.configuration.app_config_manager import AppConfigManager
 
 
