@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 import pytz
 
-from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -100,7 +100,7 @@ class DataCoverageReport:
         """
         gaps = []
 
-        alysis_config = AnalysisConfigLoader()
+        alysis_config = DiscoveriesConfigLoader()
         config = alysis_config.get_config_raw()
 
         # Get configuration

@@ -124,7 +124,7 @@ user_configs/         # Your personal overrides (gitignored)
 ├── app_config.json        # Optional: override app settings
 ├── import_config.json     # Optional: override import settings (offsets, paths)
 ├── market_config.json     # Optional: override market config
-└── analysis_config.json   # Optional: override analysis/discovery settings
+└── discoveries_config.json # Optional: override analysis/discovery settings
 ```
 
 ### How It Works

@@ -7,14 +7,13 @@ Uses ATR-based normalization for cross-instrument comparability.
 Sliding window approach over multiple configurable window sizes.
 """
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.discovery_types import (
@@ -28,8 +27,6 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 
 vLog = get_global_logger()
-
-_DEFAULT_CONFIG_PATH = "configs/discoveries/extreme_moves_config.json"
 
 
 class ExtremeMoveScanner:
@@ -46,26 +43,14 @@ class ExtremeMoveScanner:
 
     def __init__(
         self,
-        config_path: str = _DEFAULT_CONFIG_PATH,
         logger: AbstractLogger = vLog
     ):
         self._logger = logger
-        self._config = self._load_config(config_path)
+        self._config = DiscoveriesConfigLoader().get_config_raw().get('extreme_moves', {})
         self._bar_index: Optional[BarsIndexManager] = None
         self._symbol_specs: Dict[str, SymbolSpecification] = {}
         self._loaded_broker_types: set = set()
         self._market_config = MarketConfigManager()
-
-    def _load_config(self, config_path: str) -> dict:
-        """Load extreme moves configuration."""
-        path = Path(config_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Config not found: {config_path}")
-
-        with open(path, 'r') as f:
-            raw = json.load(f)
-
-        return raw.get('extreme_moves', raw)
 
     def _get_bar_index(self) -> BarsIndexManager:
         """Lazy-load bar index."""

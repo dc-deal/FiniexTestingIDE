@@ -3,14 +3,14 @@ Generator Configuration Loader
 Loader for generator_config.json (strategy configurations for scenario generation).
 
 Merges strategy configs from generator_config.json with analysis params
-from analysis_config.json to build the complete GeneratorConfig.
+from discoveries_config.json to build the complete GeneratorConfig.
 """
 
 import json
 from pathlib import Path
 from typing import Any, Dict
 
-from python.configuration.analysis_config_loader import AnalysisConfigLoader
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
 
@@ -22,7 +22,7 @@ class GeneratorConfigLoader:
     Loader for generator configuration.
 
     Loads strategy configs from configs/generator/generator_config.json
-    and merges with analysis params from analysis_config.json to produce
+    and merges with analysis params from discoveries_config.json to produce
     a complete GeneratorConfig.
     """
 
@@ -45,7 +45,7 @@ class GeneratorConfigLoader:
         """
         Load and return GeneratorConfig.
 
-        Merges analysis params from analysis_config.json with
+        Merges analysis params from discoveries_config.json with
         strategy configs from generator_config.json.
 
         Returns:
@@ -55,7 +55,7 @@ class GeneratorConfigLoader:
         generator_data = self._load()
 
         # Load analysis params (analysis, cross_instrument_ranking)
-        analysis_data = AnalysisConfigLoader().get_config_raw()
+        analysis_data = DiscoveriesConfigLoader().get_config_raw()
 
         # Merge: analysis params + strategy configs
         merged = {

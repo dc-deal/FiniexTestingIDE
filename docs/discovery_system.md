@@ -96,7 +96,7 @@ Output: `SymbolAnalysis` dataclass with `periods`, `session_summaries`, `regime_
 Scans bar data with sliding windows to find extreme directional price movements:
 - ATR-normalized scoring (move_atr_multiple)
 - Separate LONG/SHORT rankings
-- Configurable via `configs/discoveries/extreme_moves_config.json`
+- Configurable via `configs/discoveries/discoveries_config.json` (section `extreme_moves`)
 
 ## Data Coverage Details
 
