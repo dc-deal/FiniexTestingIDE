@@ -1,6 +1,6 @@
 """
-Analysis Configuration Loader
-Simple loader for analysis_config.json
+Discoveries Configuration Loader
+Simple loader for discoveries_config.json
 """
 
 import json
@@ -11,22 +11,22 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class AnalysisConfigLoader:
+class DiscoveriesConfigLoader:
     """
-    Simple loader for analysis configuration.
+    Simple loader for discoveries configuration.
 
-    Loads configs/discoveries/analysis_config.json without caching.
-    Supports user overrides from user_configs/analysis_config.json.
+    Loads configs/discoveries/discoveries_config.json without caching.
+    Supports user overrides from user_configs/discoveries_config.json.
     """
 
     def __init__(self,
-                 config_path: str = "configs/discoveries/analysis_config.json",
-                 user_config_path: str = "user_configs/analysis_config.json"):
-        """ 
-        Initialize analysis config loader.
+                 config_path: str = 'configs/discoveries/discoveries_config.json',
+                 user_config_path: str = 'user_configs/discoveries_config.json'):
+        """
+        Initialize discoveries config loader.
 
         Args:
-            config_path: Path to base analysis config
+            config_path: Path to base discoveries config
             user_config_path: Path to user override config
         """
         self.config_path = Path(config_path)
@@ -41,10 +41,10 @@ class AnalysisConfigLoader:
 
     def _load(self) -> Dict[str, Any]:
         """
-        Load analysis configuration with user override support.
+        Load discoveries configuration with user override support.
 
-        Loads base config from configs/discoveries/analysis_config.json and
-        optionally merges user overrides from user_configs/analysis_config.json.
+        Loads base config from configs/discoveries/discoveries_config.json and
+        optionally merges user overrides from user_configs/discoveries_config.json.
 
         Returns:
             Merged config dict, or empty dict if base config not found
@@ -57,7 +57,7 @@ class AnalysisConfigLoader:
             with open(self.config_path, 'r') as f:
                 base_config = json.load(f)
         except Exception as e:
-            vLog.error(f"Failed to load analysis_config: {e}")
+            vLog.error(f"Failed to load discoveries_config: {e}")
             raise e
 
         # Try to load user override configuration
@@ -69,17 +69,17 @@ class AnalysisConfigLoader:
                 # Merge user overrides into base config
                 merged_config = self._deep_merge(base_config, user_override)
                 vLog.debug(
-                    f"Merged user analysis config from {self.user_config_path}")
+                    f"Merged user discoveries config from {self.user_config_path}")
                 return merged_config
 
             except json.JSONDecodeError as e:
                 raise RuntimeError(
-                    f"Invalid JSON in user analysis config: {self.user_config_path}\n"
+                    f"Invalid JSON in user discoveries config: {self.user_config_path}\n"
                     f"Error: {e}\n"
                     f"Please fix the JSON syntax or remove the file."
                 )
             except Exception as e:
-                vLog.error(f"Failed to load user analysis config: {e}")
+                vLog.error(f"Failed to load user discoveries config: {e}")
                 raise e
 
         # No user config - return base config
