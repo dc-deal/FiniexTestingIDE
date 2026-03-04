@@ -4,12 +4,9 @@ Scenario Generator - Main Orchestrator
 Coordinates analysis and dispatches to strategy-specific generators.
 """
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
 from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.types.market_types.market_analysis_types import (
@@ -19,7 +16,6 @@ from python.framework.types.market_types.market_analysis_types import (
 from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
-    GeneratorConfig,
     ScenarioCandidate,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -38,15 +34,9 @@ class ScenarioGenerator:
     """
 
     def __init__(self):
-        """Initialize scenario generator with paths from AppConfigManager."""
-        app_config = AppConfigManager()
+        """Initialize scenario generator with market analyzer and strategy generators."""
         self._analyzer = MarketAnalyzer()
         self._config = self._analyzer.get_config()
-
-        # Template and output paths from centralized config
-        self._template_path = Path(app_config.get_generator_template_path())
-        self._output_dir = Path(app_config.get_generator_output_path())
-        self._output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize strategy generators
         self._blocks_gen = BlocksGenerator(self._config)
@@ -179,59 +169,3 @@ class ScenarioGenerator:
             config_used=self._config
         )
 
-    # =========================================================================
-    # CONFIG SAVING
-    # =========================================================================
-
-    def save_config(
-        self,
-        result: GenerationResult,
-        filename: str
-    ) -> Path:
-        """
-        Save generation result as scenario set config.
-
-        Args:
-            result: Generation result
-            filename: Output filename
-
-        Returns:
-            Path to saved config file
-        """
-        # Load template
-        if not self._template_path.exists():
-            raise FileNotFoundError(
-                f"Scenario template not found: {self._template_path}\n"
-                f"Configure 'generator_template' in app_config.json paths section.\n"
-                f"This file is required for generating scenario configs."
-            )
-
-        with open(self._template_path, 'r') as f:
-            config = json.load(f)
-
-        # Update metadata
-        config['version'] = "1.0"
-        config['scenario_set_name'] = filename.replace('.json', '')
-        config['created'] = datetime.now(timezone.utc).isoformat()
-
-        # Add scenarios
-        scenarios = result.scenarios
-        config['scenarios'] = []
-        for i, candidate in enumerate(scenarios, 1):
-            name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
-            # Blocks/HighVolatility strategy: max_ticks = None (time-based only)
-            use_max_ticks = None if result.strategy in [
-                GenerationStrategy.BLOCKS,
-                GenerationStrategy.HIGH_VOLATILITY
-            ] else candidate.estimated_ticks
-            scenario_dict = candidate.to_scenario_dict(name, use_max_ticks)
-            config['scenarios'].append(scenario_dict)
-
-        # Save to file
-        output_path = self._output_dir / filename
-        with open(output_path, 'w') as f:
-            json.dump(config, f, indent=2, default=str)
-
-        vLog.info(f"Saved {len(scenarios)} scenarios to {output_path}")
-
-        return output_path
