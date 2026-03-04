@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.scenario_generator import ScenarioGenerator
+from python.scenario.generator.scenario_generator_config_saver import ScenarioGeneratorConfigSaver
 from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
@@ -107,7 +108,8 @@ class ScenarioCLI:
                 symbols, gen_strategy
             )
 
-            config_path = generator.save_config(result, output_file)
+            saver = ScenarioGeneratorConfigSaver()
+            config_path = saver.save_config(result, output_file)
 
             # Print summary
             self._print_generation_summary(result, config_path)

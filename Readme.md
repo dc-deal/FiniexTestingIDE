@@ -50,7 +50,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (~570 tests across 11 test suites)
+- ✅ Validated accuracy (~570+ tests across 12 test suites)
 
 ---
 
