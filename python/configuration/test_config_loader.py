@@ -1,0 +1,131 @@
+"""
+Test Configuration Loader
+Simple loader for test_config.json
+"""
+
+import json
+from pathlib import Path
+from typing import Any, Dict, List
+from python.framework.logging.bootstrap_logger import get_global_logger
+
+vLog = get_global_logger()
+
+
+class TestConfigLoader:
+    """
+    Simple loader for test runner configuration.
+
+    Loads configs/test_config.json without caching.
+    Supports user overrides from user_configs/test_config.json.
+    """
+
+    def __init__(self,
+                 config_path: str = 'configs/test_config.json',
+                 user_config_path: str = 'user_configs/test_config.json'):
+        """
+        Initialize test config loader.
+
+        Args:
+            config_path: Path to base test config
+            user_config_path: Path to user override config
+        """
+        self.config_path = Path(config_path)
+        self.user_config_path = Path(user_config_path)
+        self.config = self._load()
+
+    def get_excluded(self) -> List[str]:
+        """
+        Get list of excluded test suite directories.
+
+        Returns:
+            List of directory names to exclude from test runs
+        """
+        return self.config.get('excluded', [])
+
+    def get_ignored(self) -> List[str]:
+        """
+        Get list of ignored directories (not test suites).
+
+        Returns:
+            List of directory names to ignore silently
+        """
+        return self.config.get('ignored', [])
+
+    def is_fail_fast(self) -> bool:
+        """
+        Check if fail-fast mode is enabled.
+
+        Returns:
+            True if runner should abort on first suite failure
+        """
+        return self.config.get('fail_fast', True)
+
+    def _load(self) -> Dict[str, Any]:
+        """
+        Load test configuration with user override support.
+
+        Returns:
+            Merged config dict, or empty dict if base config not found
+        """
+        # Load base configuration
+        if not self.config_path.exists():
+            return {}
+
+        try:
+            with open(self.config_path, 'r') as f:
+                base_config = json.load(f)
+        except Exception as e:
+            vLog.error(f"Failed to load test_config: {e}")
+            raise e
+
+        # Try to load user override configuration
+        if self.user_config_path.exists():
+            try:
+                with open(self.user_config_path, 'r') as f:
+                    user_override = json.load(f)
+
+                # Merge user overrides into base config
+                merged_config = self._deep_merge(base_config, user_override)
+                vLog.debug(
+                    f"Merged user test config from {self.user_config_path}")
+                return merged_config
+
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"Invalid JSON in user test config: {self.user_config_path}\n"
+                    f"Error: {e}\n"
+                    f"Please fix the JSON syntax or remove the file."
+                )
+            except Exception as e:
+                vLog.error(f"Failed to load user test config: {e}")
+                raise e
+
+        # No user config - return base config
+        return base_config
+
+    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Deep merge override dict into base dict.
+
+        Args:
+            base: Base configuration dictionary
+            override: Override configuration dictionary
+
+        Returns:
+            Merged configuration dictionary
+        """
+        result = base.copy()
+
+        for key, value in override.items():
+            if (
+                key in result and
+                isinstance(result[key], dict) and
+                isinstance(value, dict)
+            ):
+                # Recursive merge for nested dicts
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                # Direct override for non-dict values
+                result[key] = value
+
+        return result
