@@ -93,6 +93,16 @@ class AppConfigManager:
         logging_config = self.get_console_logging_config_object()
         return logging_config.should_log_scenarios()
 
+    def get_summary_detail(self) -> bool:
+        """
+        Check if per-scenario detail blocks should be shown in console summary.
+
+        Returns:
+            True if per-scenario details should be displayed
+        """
+        logging_config = self.get_console_logging_config_object()
+        return logging_config.scenario_summary_detail
+
     def get_logging_write_system_info(self) -> bool:
         """
         Check if system info should be written for scenarios.

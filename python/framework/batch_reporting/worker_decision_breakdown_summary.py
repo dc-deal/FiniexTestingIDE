@@ -11,6 +11,7 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import Any, Dict, List, Optional
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_metrics_types import (
@@ -19,13 +20,15 @@ from python.framework.types.performance_types.performance_metrics_types import (
 from python.framework.types.process_data_types import ProcessResult
 
 
-class WorkerDecisionBreakdownSummary:
+class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
     """
     Worker decision breakdown - facts only.
 
     FULLY TYPED: Uses BatchPerformanceStats instead of dicts.
     Uses typed ProfilingData for clean access.
     """
+
+    _section_title = '🔍 WORKER DECISION BREAKDOWN'
 
     def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]):
         self.batch_execution_summary = batch_execution_summary
@@ -35,6 +38,8 @@ class WorkerDecisionBreakdownSummary:
 
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """Render per scenario breakdown."""
+        self._render_section_header(renderer)
+
         if not self.breakdowns:
             print("No data")
             return

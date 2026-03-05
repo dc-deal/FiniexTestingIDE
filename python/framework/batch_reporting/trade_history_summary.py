@@ -10,6 +10,7 @@ Renders:
 
 from typing import List
 
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -18,13 +19,15 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.process_data_types import ProcessResult
 
 
-class TradeHistorySummary:
+class TradeHistorySummary(AbstractBatchSummarySection):
     """
     Trade history summary renderer.
 
     Displays detailed trade-by-trade breakdown for each scenario,
     sorted chronologically by entry tick index.
     """
+
+    _section_title = '📋 TRADE HISTORY (PER SCENARIO)'
 
     def __init__(self, batch_execution_summary: BatchExecutionSummary) -> None:
         """
@@ -43,6 +46,8 @@ class TradeHistorySummary:
         Args:
             renderer: ConsoleRenderer instance
         """
+        self._render_section_header(renderer)
+
         if not self._process_results:
             print("No trade history available")
             return

@@ -22,7 +22,8 @@
         "scenario": {
             "enabled": false,
             "log_level": "WARNING",
-            "write_system_info": true
+            "write_system_info": true,
+            "summary_detail": false
         }
     },
     "file_logging": {

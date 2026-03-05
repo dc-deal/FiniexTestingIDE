@@ -4,6 +4,7 @@ Performance profiling and bottleneck analysis reporting
 """
 
 from typing import Any, Dict, List, Optional
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_metrics_types import (
@@ -14,7 +15,7 @@ from python.framework.types.performance_types.performance_metrics_types import (
 from python.framework.types.process_data_types import ProcessResult
 
 
-class ProfilingSummary:
+class ProfilingSummary(AbstractBatchSummarySection):
     """
     Performance profiling and bottleneck analysis.
 
@@ -25,6 +26,8 @@ class ProfilingSummary:
     - Cross-scenario comparison
     - Optimization recommendations
     """
+
+    _section_title = '⚡ PROFILING ANALYSIS'
 
     def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]
                  ):
@@ -53,6 +56,8 @@ class ProfilingSummary:
         Args:
             renderer: ConsoleRenderer instance
         """
+        self._render_section_header(renderer)
+
         if not self._process_results:
             print("No profiling data available")
             return

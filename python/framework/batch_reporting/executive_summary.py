@@ -13,6 +13,7 @@ Provides comprehensive summary:
 import psutil
 from typing import Dict
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
@@ -22,13 +23,15 @@ from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggre
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 
-class ExecutiveSummary:
+class ExecutiveSummary(AbstractBatchSummarySection):
     """
     Generates executive summary for batch execution.
 
     Aggregates all key metrics into single-screen overview.
     Designed for quick performance assessment.
     """
+
+    _section_title = '🎯 EXECUTIVE SUMMARY'
 
     def __init__(
         self,
@@ -52,6 +55,8 @@ class ExecutiveSummary:
         Args:
             renderer: Console renderer for formatting
         """
+        self._render_section_header(renderer)
+
         self._render_stress_test_warning(renderer)
         self._render_execution_results(renderer)
         print()

@@ -51,9 +51,10 @@ class BatchReportCoordinator:
 
         Workflow:
         1. Create BatchSummary instance
-        2. Capture rendered output with ANSI colors
-        3. Print colored version to console
-        4. Strip colors and log to scenario file
+        2. Capture full output (all per-scenario details) for file logging
+        3. Capture console output (respects summary_detail config)
+        4. Print colored version to console
+        5. Strip colors and log full version to scenario file
         """
         # Create summary renderer
         summary = BatchSummary(
@@ -61,18 +62,28 @@ class BatchReportCoordinator:
             app_config=self._app_config
         )
 
-        # Capture stdout (with ANSI colors for console)
+        summary_detail = self._app_config.get_summary_detail()
+
+        # Always capture full output for file logging
         old_stdout = sys.stdout
-        sys.stdout = summary_capture = io.StringIO()
-
-        summary.render_all()
-
+        sys.stdout = file_capture = io.StringIO()
+        summary.render_all(summary_detail=True)
         sys.stdout = old_stdout
-        summary_with_colors = summary_capture.getvalue()
+        full_output = file_capture.getvalue()
+
+        if summary_detail:
+            # Full detail mode — same output for console
+            console_output = full_output
+        else:
+            # Compact mode — render again without per-scenario details
+            sys.stdout = console_capture = io.StringIO()
+            summary.render_all(summary_detail=False)
+            sys.stdout = old_stdout
+            console_output = console_capture.getvalue()
 
         # Print summary to console (with colors)
-        print(summary_with_colors)
+        print(console_output)
 
-        # Log to file (without colors)
-        summary_clean = re.sub(r'\033\[[0-9;]+m', '', summary_with_colors)
+        # Log to file (without colors) — always full detail
+        summary_clean = re.sub(r'\033\[[0-9;]+m', '', full_output)
         self._scenario_set.printed_summary_logger.info(summary_clean)

@@ -5,6 +5,7 @@ Displays broker configuration in batch summary reports
 
 from typing import Dict, List, Set
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -12,8 +13,10 @@ from python.framework.types.trading_env_types.broker_types import BrokerSpecific
 from python.configuration.app_config_manager import AppConfigManager
 
 
-class BrokerSummary:
+class BrokerSummary(AbstractBatchSummarySection):
     """Renders broker configuration summary for batch reports."""
+
+    _section_title = '🏦 BROKER CONFIGURATION'
 
     def __init__(
         self,
@@ -59,6 +62,8 @@ class BrokerSummary:
         Args:
             renderer: Console renderer for formatting
         """
+        self._render_section_header(renderer)
+
         if len(self._broker_scenario_map) <= 0:
             renderer.red("⚠️  No broker configuration available")
             return

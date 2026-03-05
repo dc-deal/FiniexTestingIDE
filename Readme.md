@@ -143,12 +143,16 @@ Want to enable DEBUG logging locally? Create `user_configs/app_config.json`:
 ```json
 {
   "console_logging": {
-    "log_level": "DEBUG"
+    "log_level": "DEBUG",
+    "scenario": {
+      "summary_detail": true
+    }
   }
 }
 ```
 
 The system automatically merges this with the base config - all other settings remain unchanged.
+`summary_detail` controls whether per-scenario detail blocks appear in the console batch summary (`false` = compact, aggregated only). File logging always gets the full summary.
 
 → For multi-level scenario configuration, see [Config Cascade Guide](docs/config_cascade_readme.md).
 
