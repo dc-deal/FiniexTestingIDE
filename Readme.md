@@ -245,85 +245,15 @@ live trading or commercial redistribution.
 
 ## Quality Assurance
 
-### Baseline Tests (48 tests)
-Validates trading mechanics accuracy:
-- Bar snapshots, warmup validation
-- P&L calculation (gross, net, fees)
-- Trade execution (entry/exit prices, directions)
-- Latency determinism (seeded delays)
-- Order history contents and execution_stats consistency
+670+ tests across 12 core suites validate trading mechanics, margin logic, execution pipeline, and data integrity.
 
-### Benchmark Tests (13 tests)
-Validates performance characteristics:
-- Tick processing speed (target: 8,000+ ticks/sec)
-- Warmup time, scenario duration
-- System-bound tolerances (±10-15%)
-- Certificate-based CI validation
+```bash
+python python/cli/test_runner_cli.py
+```
 
-### Worker Tests (202 tests)
-Validates parameter validation and indicator computation:
-- Schema integrity across all workers and decision logics
-- Parameter validation (types, bounds, strict/non-strict)
-- Default application and factory integration
-- RSI, Envelope, MACD, OBV computation correctness
+Individual suites can be run separately: `pytest tests/<suite>/ -v`
 
-### Margin Validation Tests (~35 tests)
-Validates margin checks and order validation:
-- Margin requirements, lot size validation
-- Retry logic, edge case orders
-- Rejection handling and error propagation
-
-### Multi-Position Tests (65 tests)
-Validates concurrent position management:
-- Multiple simultaneous positions, close events
-- Hedging validation, position tracking
-- Reused baseline assertions for consistency
-
-### Live Executor Tests (47 tests)
-Validates live execution pipeline with MockBrokerAdapter:
-- LiveOrderTracker (submit, fill, reject, timeout, cleanup)
-- LiveTradeExecutor integration (all 4 mock modes)
-- Multi-order scenarios (open+close, close_all, stats consistency)
-
-### Pending Stats Tests (12 tests)
-Validates pending order statistics and force-closed detection:
-- Latency stats population (avg/min/max)
-- Outcome counting consistency (filled + rejected + timed_out + force_closed = total)
-- Synthetic close path (no false force-closed from end-of-scenario cleanup)
-- Force-closed anomaly detection with reason field
-
-### Active Order Display Tests (10 tests)
-Validates that unresolved pending orders are correctly reported at scenario end:
-- Active limit orders visible in `pending_stats.active_limit_orders`
-- Active stop orders visible in `pending_stats.active_stop_orders`
-- Direction, order type, and entry price match config
-
-### SL/TP Validation Tests (~82 tests)
-Validates stop loss, take profit, limit, stop, and stop-limit order behavior:
-- SL/TP trigger for LONG and SHORT positions (close reason, exit price, P&L)
-- Deterministic fill at SL/TP level (bypasses latency pipeline)
-- Limit order fills (LONG/SHORT), limit then SL, modify limit price
-- STOP / STOP_LIMIT orders (market fill vs. limit conversion), STOP then TP
-- Order modification: modify_sequence (TP), modify_limit_sequence, modify_stop_sequence
-- Order cancellation: cancel_stop_sequence, cancel_limit_sequence
-- Discovery-driven test data (real extreme move windows from Extreme Move Scanner)
-
-### Import Pipeline Tests (~36 tests)
-Validates tick data import lifecycle:
-- JSON schema validation (required fields, legacy field support)
-- Parquet conversion (columns, dtypes, directory structure)
-- UTC offset application (registry-based, per-broker)
-- Parquet metadata (core fields, source_meta_ preservation)
-- Duplicate detection (hash-based, override mode)
-- Quality checks (prices, spreads, temp column cleanup)
-
-### Data Integration Tests (9 tests)
-Validates data pipeline integrity:
-- Volume consistency (crypto > 0, forex = 0)
-- Tick count validation across all markets
-- Index-to-bar-data consistency
-
-→ See [Baseline Tests](docs/tests/tests_baseline_docs.md), [Benchmark Tests](docs/tests/tests_benchmark_docs.md), [Worker Tests](docs/tests/tests_worker_docs.md), [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md), [Multi-Position Tests](docs/tests/tests_multi_position_docs.md), [Live Executor Tests](docs/tests/tests_live_executor_docs.md), [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md), [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md), [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md), [Import Pipeline Tests](docs/tests/tests_import_pipeline_docs.md), and [Data Integration Tests](docs/tests/tests_data_integration_docs.md)
+Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior). Each test suite has its own documentation in [`docs/tests/`](docs/tests/).
 
 ---
 
@@ -345,18 +275,7 @@ Validates data pipeline integrity:
 | [Live Execution Architecture](docs/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Pending Order Architecture](docs/pending_order_architecture.md) | 3-world lifecycle (latency, limit, stop), modify rationale |
 | [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
-| [Baseline Tests](docs/tests/tests_baseline_docs.md) | 48 validation tests |
-| [Benchmark Tests](docs/tests/tests_benchmark_docs.md) | 13 performance tests |
-| [Worker Tests](docs/tests/tests_worker_docs.md) | 202 parameter & computation tests |
-| [Margin Validation Tests](docs/tests/tests_margin_validation_docs.md) | ~35 margin & lot validation tests |
-| [Multi-Position Tests](docs/tests/tests_multi_position_docs.md) | 65 concurrent position tests |
-| [Live Executor Tests](docs/tests/tests_live_executor_docs.md) | 47 live execution pipeline tests |
-| [Pending Stats Tests](docs/tests/tests_pending_stats_docs.md) | 12 pending order statistics tests |
-| [Active Order Display Tests](docs/tests/tests_active_order_display_docs.md) | 10 active limit/stop order reporting tests |
-| [SL/TP & Limit Validation Tests](docs/tests/tests_sltp_limit_validation_docs.md) | ~82 SL/TP, limit, stop, and stop-limit validation tests |
-| [Partial Close Tests](docs/tests/tests_partial_close_docs.md) | 39 partial position close tests |
-| [Import Pipeline Tests](docs/tests/tests_import_pipeline_docs.md) | ~36 import lifecycle tests |
-| [Data Integration Tests](docs/tests/tests_data_integration_docs.md) | 9 volume integrity tests |
+| [Test Runner](docs/tests/tests_runner_docs.md) | Unified test runner, config, per-suite docs in `docs/tests/` |
 | [Data Import Pipeline](docs/data_import_pipeline.md) | Import flow, schema, offset registry, config |
 | [Stress Test System](docs/stress_test.md) | Config-driven stress test injection, cascade, reporting |
 
