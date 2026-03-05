@@ -7,6 +7,7 @@ Rendered in BOX format matching scenario details.
 
 from typing import Dict
 
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -16,10 +17,12 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import A
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
-class PortfolioSummary:
+class PortfolioSummary(AbstractBatchSummarySection):
     """
     Portfolio and trading statistics summary.
     """
+
+    _section_title = '💰 PORTFOLIO & TRADING RESULTS'
 
     def __init__(self, batch_execution_summary: BatchExecutionSummary):
         """
@@ -27,13 +30,16 @@ class PortfolioSummary:
         """
         self.batch_execution_summary = batch_execution_summary
 
-    def render_per_scenario(self, box_renderer: ConsoleBoxRenderer):
+    def render_per_scenario(self, renderer: ConsoleRenderer, box_renderer: ConsoleBoxRenderer):
         """
         Render portfolio stats per scenario in BOX format.
 
         Args:
             renderer: ConsoleRenderer instance
+            box_renderer: ConsoleBoxRenderer instance
         """
+        self._render_section_header(renderer)
+
         # Use grid renderer
         print()
         box_renderer.render_portfolio_grid(

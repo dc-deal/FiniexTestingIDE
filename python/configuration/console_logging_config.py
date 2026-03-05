@@ -86,6 +86,12 @@ class ConsoleLoggingConfig:
                 "logging.scenario.write_system_info is required (must be true/false)")
         self._scenario_write_system_info = scenario_config['write_system_info']
 
+        # Scenario summary_detail (required)
+        if not isinstance(scenario_config['summary_detail'], bool):
+            raise ValueError(
+                "logging.scenario.summary_detail must be true/false")
+        self._scenario_summary_detail = scenario_config['summary_detail']
+
     def _validate_scenario_config(self, scenario_config: dict):
         """
         Validate scenario config structure.
@@ -102,7 +108,7 @@ class ConsoleLoggingConfig:
                 "Must contain: enabled, log_level, write_system_info"
             )
 
-        required_fields = ['enabled', 'log_level', 'write_system_info']
+        required_fields = ['enabled', 'log_level', 'write_system_info', 'summary_detail']
         for field in required_fields:
             if field not in scenario_config:
                 raise ValueError(f"logging.scenario.{field} is required")
@@ -144,6 +150,11 @@ class ConsoleLoggingConfig:
     def scenario_write_system_info(self) -> bool:
         """Write system info for scenarios"""
         return self._scenario_write_system_info
+
+    @property
+    def scenario_summary_detail(self) -> bool:
+        """Show per-scenario detail blocks in console summary"""
+        return self._scenario_summary_detail
 
     # ============================================
     # Utility Methods

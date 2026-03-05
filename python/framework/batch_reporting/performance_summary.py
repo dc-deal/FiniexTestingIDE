@@ -17,13 +17,14 @@ Renders:
 
 from typing import Dict, List, Tuple
 
+from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_summary_aggregation_types import AggregatedPerformanceStats, DecisionLogicBottleneckData, ParallelBottleneckData, PerformanceBottlenecks, ScenarioBottleneckData, WorkerAggregateData, WorkerBottleneckData
 from python.framework.types.process_data_types import ProcessResult, ProcessResult
 
 
-class PerformanceSummary:
+class PerformanceSummary(AbstractBatchSummarySection):
     """
     Worker and decision logic performance summary.
 
@@ -31,6 +32,8 @@ class PerformanceSummary:
     - Uses BatchExecutionSummary for data access
     - FULLY TYPED: Direct attribute access instead of .get()
     """
+
+    _section_title = '📊 PERFORMANCE DETAILS (PER SCENARIO)'
 
     def __init__(self, batch_execution_summary: BatchExecutionSummary) -> None:
         """
@@ -54,6 +57,8 @@ class PerformanceSummary:
         Args:
             renderer: ConsoleRenderer instance
         """
+        self._render_section_header(renderer)
+
         if not self._process_results:
             print("No profiling data available")
             return

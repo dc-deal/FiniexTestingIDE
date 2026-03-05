@@ -8,7 +8,7 @@ Architecture:
 - Uses ConsoleRenderer for unified output
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
 from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
@@ -114,9 +114,13 @@ class BatchSummary:
             profiling_data_map[process_result.scenario_index] = profiling
         return profiling_data_map
 
-    def render_all(self):
+    def render_all(self, summary_detail: Optional[bool] = None):
         """
         Render complete batch summary.
+
+        Args:
+            summary_detail: Override for per-scenario detail rendering.
+                            None = use config value, True/False = force.
 
         Sequence:
         1. Header with basic stats (INCLUDING batch status)
@@ -149,15 +153,15 @@ class BatchSummary:
             show_status_line=show_status_line
         )
 
-        # Portfolio summaries
-        self._renderer.section_separator()
-        self._renderer.print_bold("💰 PORTFOLIO & TRADING RESULTS")
-        self._renderer.section_separator()
+        # Summary detail flag (per-scenario vs aggregated only)
+        if summary_detail is None:
+            summary_detail = self.app_config.get_summary_detail()
 
-        # Pass show_status_line flag
-        self.portfolio_summary.render_per_scenario(
-            self._box_renderer
-        )
+        # Portfolio summaries
+        if summary_detail:
+            self.portfolio_summary.render_per_scenario(
+                self._renderer, self._box_renderer
+            )
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(
@@ -167,47 +171,32 @@ class BatchSummary:
             self._renderer, aggregated_portfolios)
 
         # Trade History
-        self._renderer.section_separator()
-        self._renderer.print_bold("📋 TRADE HISTORY (PER SCENARIO)")
-        self._renderer.section_separator()
-        self.trade_history_summary.render_per_scenario(self._renderer)
+        if summary_detail:
+            self.trade_history_summary.render_per_scenario(self._renderer)
         self.trade_history_summary.render_aggregated(self._renderer)
 
         # Broker configuration
-        self._renderer.section_separator()
-        self._renderer.print_bold("🏦 BROKER CONFIGURATION")
-        self._renderer.section_separator()
         self.broker_summary.render(self._renderer)
 
         # Performance summaries
-        self._renderer.section_separator()
-        self._renderer.print_bold("📊 PERFORMANCE DETAILS (PER SCENARIO)")
-        self._renderer.section_separator()
-        self.performance_summary.render_per_scenario(self._renderer)
+        if summary_detail:
+            self.performance_summary.render_per_scenario(self._renderer)
         self.performance_summary.render_aggregated(self._renderer)
         self.performance_summary.render_bottleneck_analysis(self._renderer)
 
-        # === Profiling Analysis ===
-        self._renderer.section_separator()
-        self._renderer.print_bold("⚡ PROFILING ANALYSIS")
-        self._renderer.section_separator()
-        self.profiling_summary.render_per_scenario(self._renderer)
+        # Profiling Analysis
+        if summary_detail:
+            self.profiling_summary.render_per_scenario(self._renderer)
         self.profiling_summary.render_aggregated(self._renderer)
         self.profiling_summary.render_bottleneck_analysis(self._renderer)
 
-        # === Worker Decision Breakdown ===
-        self._renderer.section_separator()
-        self._renderer.print_bold("🔍 WORKER DECISION BREAKDOWN")
-        self._renderer.section_separator()
-        self.worker_decision_breakdown.render_per_scenario(self._renderer)
+        # Worker Decision Breakdown
+        if summary_detail:
+            self.worker_decision_breakdown.render_per_scenario(self._renderer)
         self.worker_decision_breakdown.render_aggregated()
         self.worker_decision_breakdown.render_overhead_analysis(self._renderer)
 
-        # === Executive Summary ===
-        self._renderer.section_separator()
-        self._renderer.print_bold("🎯 EXECUTIVE SUMMARY")
-        self._renderer.section_separator()
-
+        # Executive Summary
         executive = ExecutiveSummary(
             self.batch_execution_summary, self.app_config)
         executive.render(self._renderer)

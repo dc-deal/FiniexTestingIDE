@@ -57,18 +57,25 @@ This system enables:
 {
   "version": "1.0",
   "execution": {
-    "default_parallel_workers": true,
-    "default_max_parallel_scenarios": 20,
-    "default_worker_parallel_threshold_ms": 1.0
+    "parallel_scenarios": true,
+    "max_parallel_scenarios": 99,
+    "default_scenario_execution_config": { ... }
   },
-  "logging": {
+  "console_logging": {
+    "enabled": true,
+    "log_level": "DEBUG",
     "warn_on_parameter_override": true,
-    "performance_tracking": true,
-    "show_worker_details": true
+    "scenario": {
+      "enabled": false,
+      "log_level": "WARNING",
+      "write_system_info": true,
+      "summary_detail": false
+    }
   },
+  "file_logging": { ... },
   "paths": {
     "scenario_sets": "configs/scenario_sets",
-    "data_raw": "data/raw",
+    "brokers": "configs/brokers",
     "data_processed": "data/processed"
   }
 }
@@ -79,6 +86,7 @@ This system enables:
 - ✅ **Loaded at app boot** - Singleton pattern (AppConfigLoader)
 - ✅ **Controls behavior** - Flags like `warn_on_parameter_override`
 - ✅ **Default paths** - Where to find scenario sets, data, etc.
+- ✅ **`summary_detail`** - When `false`, console batch summary shows only aggregated sections (no per-scenario detail blocks). File logging always gets the full summary regardless of this setting. Default: `false`
 
 ---
 
