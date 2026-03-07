@@ -1,16 +1,19 @@
 //+------------------------------------------------------------------+
 //| FiniexTestingIDE Tick Data Collector - Enhanced Error Version    |
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
-//| Version 1.0.6 - UTC Offset Auto-Detection                       |
+//| Version 1.0.7 - Per-Tick Collection Timestamp                    |
 //|                                                                  |
-//| NEW in V1.0.6:                                                   |
-//| - added broker_type : "mt5" to json                    |
+//| NEW in V1.0.7:                                                   |
+//| - collected_msc: monotonic local timestamp per tick (ms)        |
+//| - Uses GetMicrosecondCount() for precise inter-tick deltas      |
+//| - data_format_version bumped to 1.3.0                           |
 //|                                                                  |
-//| NEW in V1.0.5:                                                   |
-//| - Automatic broker UTC offset detection                         |
-//| - Warns user to verify offset (depends on PC clock)             |
-//| - Adds broker_utc_offset_hours, local_device_time to JSON       |
-//| - Tick times remain in broker server time (unchanged)           |
+//| V1.0.6: broker_type in json                                      |
+//| V1.0.5: UTC offset auto-detection, local_device_time            |
+//|                                                                  |
+//| Docs:                                                             |
+//| - docs/TickCollector_README.md  (collector usage & JSON schema) |
+//| - docs/data_import_pipeline.md  (import pipeline & parquet)     |
 //+------------------------------------------------------------------+
 #property copyright "FiniexTestingIDE"
 #property strict
@@ -43,7 +46,7 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.2.0"; 
+input string DataFormatVersion = "1.3.0";
 // Identifies the data collection platform (mt5, ib, etc.)
 // Only change when importing from a different broker platform!
 input string DataCollectorName = "mt5"; 
@@ -76,6 +79,11 @@ long lastTickMsc = 0;
 int consecutiveErrorTicks = 0;
 bool dataStreamCorrupted = false;
 
+// V1.0.7: Epoch offset for collected_msc computation
+// collected_msc = g_epochOffsetMs + (GetMicrosecondCount() / 1000)
+// Monotonic, epoch-based, millisecond precision
+long g_epochOffsetMs = 0;
+
 // Erweiterte Validierungsparameter
 double maxSpreadPercent = 5.0;        // Max 5% Spread
 double maxPriceJumpPercent = 10.0;    // Max 10% Preis-Sprung
@@ -88,8 +96,8 @@ int warningDataGapSeconds = 60;       // Warning bei 1 Min Lücke
 int OnInit()
 {
     Print("═══════════════════════════════════════════════════════════");
-    Print("  FiniexTestingIDE TickCollector V1.0.6                    ");
-    Print("  UTC Offset Auto-Detection ENABLED (time_msc method)      ");
+    Print("  FiniexTestingIDE TickCollector V1.0.7                    ");
+    Print("  Per-Tick Collection Timestamp (collected_msc)             ");
     Print("═══════════════════════════════════════════════════════════");
     
     // NEW: 100% ZUVERLÄSSIGE UTC-Offset-Erkennung via time_msc
@@ -136,6 +144,12 @@ int OnInit()
     Print("   UTC conversion will be handled by tick_importer.py");
     Print("═══════════════════════════════════════════════════════════\n");
     
+    // V1.0.7: Compute epoch offset for collected_msc
+    // TimeLocal() is seconds-only, GetMicrosecondCount() is monotonic microseconds since EA start
+    // Combined: epoch-based ms timestamp with monotonic deltas
+    g_epochOffsetMs = (long)TimeLocal() * 1000 - (long)(GetMicrosecondCount() / 1000);
+    Print("   collected_msc epoch offset: ", g_epochOffsetMs);
+
     // Error-System initialisieren
     ArrayResize(errorBuffer, 0);
     ArrayInitialize(errorCounts, 0);
@@ -156,7 +170,7 @@ int OnInit()
         return INIT_FAILED;
     }
     
-    Print("✅ TickCollector V1.0.6 erfolgreich gestartet für ", Symbol());
+    Print("✅ TickCollector V1.0.7 erfolgreich gestartet für ", Symbol());
     Print("✅ Export-Pfad: ", ExportPath);
     Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
@@ -602,14 +616,18 @@ bool ExportTick(MqlTick &tick)
     
     string session = GetTradingSession(tick.time);
     
+    // V1.0.7: Local collection timestamp (monotonic, epoch-based, ms precision)
+    long collectedMsc = g_epochOffsetMs + (long)(GetMicrosecondCount() / 1000);
+
     // JSON-Objekt erstellen
     // NOTE: tick.time bleibt in BROKER SERVER ZEIT (unverändert!)
     // UTC-Konvertierung erfolgt später im tick_importer.py
     string jsonTick = StringFormat(
-        "%s\n    {\n      \"timestamp\": \"%s\",\n      \"time_msc\": %I64d,\n      \"bid\": %.5f,\n      \"ask\": %.5f,\n      \"last\": %.5f,\n      \"tick_volume\": %d,\n      \"real_volume\": %.2f,\n      \"chart_tick_volume\": %d,\n      \"spread_points\": %d,\n      \"spread_pct\": %.6f,\n      \"tick_flags\": \"%s\",\n      \"session\": \"%s\",\n      \"server_time\": \"%s\"\n    }",
+        "%s\n    {\n      \"timestamp\": \"%s\",\n      \"time_msc\": %I64d,\n      \"collected_msc\": %I64d,\n      \"bid\": %.5f,\n      \"ask\": %.5f,\n      \"last\": %.5f,\n      \"tick_volume\": %d,\n      \"real_volume\": %.2f,\n      \"chart_tick_volume\": %d,\n      \"spread_points\": %d,\n      \"spread_pct\": %.6f,\n      \"tick_flags\": \"%s\",\n      \"session\": \"%s\",\n      \"server_time\": \"%s\"\n    }",
         (tickCounter > 0) ? "," : "",
         TimeToString(tick.time, TIME_DATE | TIME_SECONDS),
         tick.time_msc,
+        collectedMsc,
         tick.bid,
         tick.ask,
         tick.last,
@@ -788,7 +806,7 @@ void OnDeinit(const int reason)
     // Finale Statistiken
     int totalErrors = errorCounts[ERROR_NEGLIGIBLE] + errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL];
     Print("========================================");
-    Print("TickCollector V1.0.6 gestoppt");
+    Print("TickCollector V1.0.7 gestoppt");
     Print("Grund: ", reasonText);
     Print(StringFormat("Finale Statistiken: %d Ticks, %d Errors", tickCounter, totalErrors));
     if (totalErrors > 0)

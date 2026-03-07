@@ -1,5 +1,5 @@
 # MQL5 Tick Data Collection System
-**TickCollector Enhanced v1.0.5 - Professional Tick Data Acquisition**
+**TickCollector Enhanced — Professional Tick Data Acquisition**
 
 ---
 
@@ -152,8 +152,8 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
     "timeframe": "TICK",
     "volume_timeframe": "PERIOD_M1",
     "volume_timeframe_minutes": 1,
-    "data_format_version": "1.0.5",
-    "data_collector": "mt5",
+    "data_format_version": "...",
+    "broker_type": "mt5",
     "market_type": "forex_cfd",
     "collection_purpose": "backtesting",
     "operator": "automated",
@@ -184,11 +184,12 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 ```
 
 **Key Fields:**
-- `data_format_version`: "1.0.5" - Current JSON format version
-- `market_type`: "forex_cfd" - Market classification
-- `collection_purpose`: "backtesting" - Use case identifier
-- `volume_timeframe`: "PERIOD_M1" - Volume aggregation period
-- `error_tracking.enabled`: true - Error system active
+- `data_format_version`: Schema version of the data collector output
+- `broker_type`: Broker identifier (e.g. "mt5", "kraken_spot")
+- `market_type`: Market classification (e.g. "forex_cfd")
+- `collection_purpose`: Use case identifier (e.g. "backtesting")
+- `volume_timeframe`: Volume aggregation period (e.g. "PERIOD_M1")
+- `error_tracking.enabled`: Error system active
 
 ### Tick Data Section
 
@@ -196,24 +197,39 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 {
   "ticks": [
     {
-      "timestamp": "2025.11.23 21:23:45.123",
-      "timestamp_unix": 1763933025,
-      "bid": 1.05234,
-      "ask": 1.05246,
-      "volume": 123,
-      "flags": 6
+      "timestamp": "2026.03.07 09:03:42",
+      "time_msc": 1772874222978,
+      "collected_msc": 1772870622342,
+      "bid": 97259.14000,
+      "ask": 97282.98000,
+      "last": 0.00000,
+      "real_volume": 0.00,
+      "tick_volume": 1,
+      "chart_tick_volume": 1,
+      "spread_points": 2384,
+      "spread_pct": 0.02450,
+      "tick_flags": "BID ASK",
+      "session": "sydney_tokyo",
+      "server_time": "2026.03.07 09:03:42"
     }
   ]
 }
 ```
 
 **Tick Fields:**
-- `timestamp`: Human-readable time (broker server time)
-- `timestamp_unix`: Unix timestamp (milliseconds)
-- `bid`: Bid price
-- `ask`: Ask price
-- `volume`: Real volume (if available) or tick volume
-- `flags`: Tick flags (bid/ask/last/volume changes)
+- `timestamp`: Human-readable time (broker server time, seconds precision). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
+- `time_msc`: Broker matching engine timestamp (Unix epoch ms). **Not monotonic** in arrival order — within the same second, bid/ask interleaving can cause `time_msc` regressions (~19% on forex pairs).
+- `collected_msc`: Local device clock at tick receipt (Unix epoch ms). **Monotonic** — uses `GetMicrosecondCount()` for precise deltas. Added in data format V1.3.0 (TickCollector V1.0.7). This is the correct source for inter-tick interval measurement.
+- `bid` / `ask`: Bid and ask price
+- `last`: Last trade price (0 for forex/CFD)
+- `real_volume`: Real trade volume (crypto > 0, forex/CFD = 0)
+- `tick_volume`: Tick-based volume counter
+- `chart_tick_volume`: Chart tick volume counter
+- `spread_points`: Spread in points
+- `spread_pct`: Spread as percentage of bid
+- `tick_flags`: Tick type flags (e.g. "BID ASK", "BUY", "SELL")
+- `session`: Trading session label (broker-side, recalculated to UTC by importer)
+- `server_time`: Server-side timestamp (same precision as `timestamp`)
 
 ### Error Report Section
 
@@ -579,7 +595,9 @@ input bool IncludeRealVolume = false;      // Skip if not needed
 ### Workflow
 
 ```
-MQL5 TickCollector
+Data Collectors
+├─ MQL5 TickCollector (MT5 broker ticks)
+└─ Kraken Data Collector (Kraken WebSocket ticks)
     ↓ JSON Files (data/raw/)
 tick_importer.py (config-driven UTC offsets from import_config.json)
     ↓ Parquet Files (indexed, with source_meta_* preservation)
@@ -596,7 +614,7 @@ See [Data Import Pipeline](data_import_pipeline.md) for full configuration detai
 
 ### Broker Type Field
 
-The importer accepts both `broker_type` (preferred) and `data_collector` (legacy) in JSON metadata. Current MQL5 exports use `data_collector: "mt5"` — both are recognized. New collectors should use `broker_type`.
+The importer accepts both `broker_type` (preferred) and `data_collector` (legacy) in JSON metadata. Both are recognized. Current collectors use `broker_type`.
 
 ### Source Metadata Preservation
 
@@ -608,7 +626,7 @@ All original MQL5 metadata from the JSON is preserved in the Parquet file header
 
 **Version Chain:**
 ```
-TickCollector v1.0.5 → data_format_version: "1.0.5" (JSON metadata)
+TickCollector → data_format_version: "X.Y.Z" (JSON metadata)
     ↓
 tick_importer.py → Parquet metadata (source_meta_data_format_version preserved)
     ↓

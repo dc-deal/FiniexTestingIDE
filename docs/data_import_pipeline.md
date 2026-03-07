@@ -2,11 +2,15 @@
 
 ## Overview
 
-The import pipeline converts MQL5 JSON tick exports into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
+The import pipeline converts JSON tick exports from data collectors into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
+
+**Related**: [TickCollector_README.md](TickCollector_README.md) — MQL5 collector usage, JSON schema, error classification.
 
 **Flow:**
 ```
-MQL5 TickCollector (JSON)
+Data Collectors (JSON)
+├─ MQL5 TickCollector (MT5 broker ticks)
+└─ Kraken Data Collector (Kraken WebSocket ticks)
        ↓
   TickDataImporter
   ├─ Validate JSON schema
@@ -47,7 +51,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `bid` | float | Always | Bid price |
 | `ask` | float | Always | Ask price |
 
-### Optional Metadata Fields (v1.0.5+)
+### Optional Metadata Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -57,7 +61,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `local_device_time` | string | Device time at collection start |
 | `broker_server_time` | string | Server time at collection start |
 | `start_time_unix` | int | Unix timestamp of start_time |
-| `data_format_version` | string | Schema version (e.g. "1.0.5") |
+| `data_format_version` | string | Schema version of the data collector |
 | `collection_purpose` | string | Purpose (e.g. "backtesting") |
 | `operator` | string | Collector operator identifier |
 | `timeframe` | string | Collection timeframe |
@@ -67,7 +71,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `collection_settings` | object | Collector configuration (see nested schema) |
 | `error_tracking` | object | Error tracking config (see nested schema) |
 
-### Optional Tick Fields (v1.0.5+)
+### Optional Tick Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -80,7 +84,11 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
 | `server_time` | string | Server-side timestamp |
-| `time_msc` | int | Millisecond-precision timestamp |
+| `time_msc` | int | Broker matching engine timestamp (Unix epoch ms). Not monotonic in arrival order — see ISSUE #194 |
+
+> **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
+
+> **Note — `collected_msc`**: A new per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) is being introduced across the pipeline. See `ISSUE_tick_collection_timestamp.md` (ISSUE #194) for status and phases.
 
 ### Nested Metadata Schemas
 
@@ -259,7 +267,6 @@ Each output Parquet file includes metadata in the file header:
 | `data_format_version` | Schema version |
 | `utc_conversion_applied` | "true"/"false" |
 | `user_time_offset_hours` | Applied offset (e.g. "-3") |
-| `session_recalculated` | "true"/"false" |
 
 ### Source Metadata (preserved from JSON)
 
