@@ -19,6 +19,7 @@ class TickData:
     bid: float
     ask: float
     volume: float = 0.0
+    time_msc: int = 0  # Millisecond-precision Unix timestamp from broker (0 = not available)
 
     @property
     def mid(self) -> float:

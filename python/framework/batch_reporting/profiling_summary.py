@@ -8,6 +8,7 @@ from python.framework.batch_reporting.abstract_batch_summary_section import Abst
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_metrics_types import (
+    InterTickIntervalStats,
     TickLoopProfile,
     OperationProfile,
     ProfilingMetrics
@@ -171,7 +172,8 @@ class ProfilingSummary(AbstractBatchSummarySection):
             operations=operations,
             total_time_ms=profiling.total_per_tick_ms,
             avg_time_per_tick_ms=profiling.total_per_tick_ms / ticks_processed
-            if ticks_processed > 0 else 0.0
+            if ticks_processed > 0 else 0.0,
+            interval_stats=profiling.interval_stats
         )
 
     def _build_profiling_metrics(self) -> ProfilingMetrics:
@@ -253,6 +255,37 @@ class ProfilingSummary(AbstractBatchSummarySection):
             print(f"  {icon} {renderer.bold(profile.bottleneck_operation)} "
                   f"({profile.bottleneck_percentage:.1f}%)")
 
+        # Inter-tick interval stats
+        if profile.interval_stats:
+            self._render_interval_stats(profile.interval_stats, renderer)
+
+    def _render_interval_stats(
+        self,
+        stats: InterTickIntervalStats,
+        renderer: ConsoleRenderer
+    ) -> None:
+        """
+        Render inter-tick interval distribution statistics.
+
+        Args:
+            stats: Computed interval statistics
+            renderer: ConsoleRenderer instance
+        """
+        print()
+        print(renderer.bold('Inter-Tick Intervals (market-side time between consecutive ticks):'))
+        print(f"  Min: {stats.min_ms:.1f}ms  |  "
+              f"P5 (5th pctl): {stats.p5_ms:.1f}ms  |  "
+              f"Median: {stats.median_ms:.1f}ms  |  "
+              f"Mean: {stats.mean_ms:.1f}ms  |  "
+              f"P95 (95th pctl): {stats.p95_ms:.1f}ms  |  "
+              f"Max: {stats.max_ms:.1f}ms")
+        gaps_info = f", gaps removed: {stats.gaps_removed}, threshold: {stats.gap_threshold_s:.0f}s" \
+            if stats.gaps_removed > 0 else ''
+        print(f"  Intervals: {stats.filtered_intervals:,}{gaps_info}")
+        print(renderer.gray(
+            '  Note: P5 = fastest 5% of tick arrivals. '
+            'If avg processing > P5, the algorithm can\'t keep up with peak tick rate.'))
+
     def _render_aggregated_details(self, renderer):
         """Render aggregated profiling statistics."""
         metrics = self.profiling_metrics
@@ -272,8 +305,43 @@ class ProfilingSummary(AbstractBatchSummarySection):
                   f"({freq}/{metrics.total_scenarios}, {pct:.0f}%)")
             print()
 
+        # Budget warnings (avg processing vs fastest tick intervals)
+        self._render_budget_warnings(renderer)
+
         # Per-operation averages
         self._render_cross_scenario_averages(renderer)
+
+    def _render_budget_warnings(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render budget warnings when avg tick processing exceeds fastest tick intervals.
+
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        warnings = []
+        p5_values = []
+
+        for profile in self.profiling_metrics.scenario_profiles:
+            if not profile.interval_stats:
+                continue
+            p5_values.append(profile.interval_stats.p5_ms)
+            if profile.avg_time_per_tick_ms > profile.interval_stats.p5_ms:
+                warnings.append(profile)
+
+        if warnings:
+            for profile in warnings:
+                print(renderer.red(
+                    f"  ⚠️  BUDGET WARNING: avg tick processing ({profile.avg_time_per_tick_ms:.3f}ms) "
+                    f"exceeds fastest 5% tick interval ({profile.interval_stats.p5_ms:.1f}ms) "
+                    f"in {profile.scenario_name} — risk of clipping in live"))
+            print()
+
+        if p5_values:
+            min_p5 = min(p5_values)
+            max_p5 = max(p5_values)
+            print(f"  {renderer.bold('P5 range across scenarios:')} "
+                  f"{min_p5:.1f}ms — {max_p5:.1f}ms")
+            print()
 
     def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):
         """Render average operation times across all scenarios."""

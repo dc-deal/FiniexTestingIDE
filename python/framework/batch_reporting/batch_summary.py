@@ -109,7 +109,9 @@ class BatchSummary:
                 continue
             profiling = ProfilingData.from_dicts(
                 process_result.tick_loop_results.profiling_data.profile_times,
-                process_result.tick_loop_results.profiling_data.profile_counts
+                process_result.tick_loop_results.profiling_data.profile_counts,
+                inter_tick_intervals_ms=process_result.tick_loop_results.profiling_data.inter_tick_intervals_ms,
+                gap_threshold_s=process_result.tick_loop_results.profiling_data.gap_threshold_s
             )
             profiling_data_map[process_result.scenario_index] = profiling
         return profiling_data_map

@@ -7,7 +7,11 @@ ProfilingData now fully typed instead of Dict[str, Any]
 """
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List, Optional
+
+import numpy as np
+
+from python.framework.types.performance_types.performance_metrics_types import InterTickIntervalStats
 
 
 @dataclass
@@ -58,6 +62,7 @@ class ProfilingData:
     """
     operations: Dict[str, OperationTiming]
     total_per_tick_ms: float
+    interval_stats: Optional[InterTickIntervalStats] = None
 
     def get_operation_time(self, operation_name: str) -> float:
         """
@@ -89,7 +94,9 @@ class ProfilingData:
     def from_dicts(
         cls,
         profile_times: Dict[str, float],
-        profile_counts: Dict[str, int]
+        profile_counts: Dict[str, int],
+        inter_tick_intervals_ms: Optional[List[float]] = None,
+        gap_threshold_s: float = 300.0
     ) -> 'ProfilingData':
         """
         Build ProfilingData from raw dict data (AFTER loop).
@@ -100,14 +107,11 @@ class ProfilingData:
         Args:
             profile_times: Map of operation_name -> total_time_ms
             profile_counts: Map of operation_name -> call_count
+            inter_tick_intervals_ms: Raw inter-tick intervals in milliseconds
+            gap_threshold_s: Threshold for filtering session/weekend gaps (seconds)
 
         Returns:
             ProfilingData instance
-
-        Example:
-            >>> times = {'worker_decision': 123.45, 'bar_rendering': 67.89}
-            >>> counts = {'worker_decision': 1000, 'bar_rendering': 1000}
-            >>> profiling = ProfilingData.from_dicts(times, counts)
         """
         # Extract total_per_tick (special key)
         total_per_tick = profile_times.pop('total_per_tick', 0.0)
@@ -121,7 +125,57 @@ class ProfilingData:
             for name, time_ms in profile_times.items()
         }
 
+        # Build inter-tick interval stats
+        interval_stats = None
+        if inter_tick_intervals_ms:
+            interval_stats = cls._compute_interval_stats(
+                inter_tick_intervals_ms, gap_threshold_s
+            )
+
         return cls(
             operations=operations,
-            total_per_tick_ms=total_per_tick
+            total_per_tick_ms=total_per_tick,
+            interval_stats=interval_stats
+        )
+
+    @staticmethod
+    def _compute_interval_stats(
+        intervals_ms: List[float],
+        gap_threshold_s: float
+    ) -> Optional[InterTickIntervalStats]:
+        """
+        Compute distribution statistics from raw inter-tick intervals.
+
+        Filters out session/weekend gaps exceeding the threshold,
+        then computes min, max, mean, median, P5, P95.
+
+        Args:
+            intervals_ms: Raw intervals in milliseconds
+            gap_threshold_s: Gaps longer than this (seconds) are excluded
+
+        Returns:
+            InterTickIntervalStats or None if no valid intervals remain
+        """
+        total_intervals = len(intervals_ms)
+        gap_threshold_ms = gap_threshold_s * 1000
+
+        # Filter out session/weekend gaps
+        filtered = [x for x in intervals_ms if x <= gap_threshold_ms]
+        gaps_removed = total_intervals - len(filtered)
+
+        if not filtered:
+            return None
+
+        arr = np.array(filtered)
+        return InterTickIntervalStats(
+            min_ms=float(np.min(arr)),
+            max_ms=float(np.max(arr)),
+            mean_ms=float(np.mean(arr)),
+            median_ms=float(np.median(arr)),
+            p5_ms=float(np.percentile(arr, 5)),
+            p95_ms=float(np.percentile(arr, 95)),
+            total_intervals=total_intervals,
+            filtered_intervals=len(filtered),
+            gaps_removed=gaps_removed,
+            gap_threshold_s=gap_threshold_s
         )
