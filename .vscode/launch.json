@@ -5,16 +5,6 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📥 Import",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "import"
-            ],
-            "console": "integratedTerminal"
-        },
-        {
             "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
@@ -70,7 +60,7 @@
             "args": [
                 "inspect",
                 "mt5",
-                "EURUSD",
+                "USDJPY",
                 "M30"
             ],
             "console": "integratedTerminal",
@@ -502,6 +492,26 @@
                 "project_analysis_detailed.txt",
                 "--path",
                 "python"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "📊 Report collected_msc quality",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/report_collected_msc.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔧 Restore collected_msc (apply + force)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/restore_collected_msc.py",
+            "args": [
+                "--apply",
+                "--force"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

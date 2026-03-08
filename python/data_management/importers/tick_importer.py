@@ -290,7 +290,9 @@ class TickDataImporter:
 
         self._processed_broker_types.add(broker_type_normalized)
         df = self._quality_checks(df)
-        df = df.sort_values("timestamp").reset_index(drop=True)
+        # Preserve JSON array order (= authentic arrival order)
+        # No sort — collected_msc monotonicity depends on this
+        df = df.reset_index(drop=True)
 
         # ===========================================
         # 7. PREPARE PARQUET OUTPUT
