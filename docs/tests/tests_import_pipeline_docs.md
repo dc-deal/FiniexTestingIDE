@@ -132,6 +132,31 @@ Validates hash-based duplicate detection.
 
 ---
 
+### test_collected_msc.py (~9 tests)
+
+Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, and `server_time` removal.
+
+**TestCollectedMscPresence:**
+- `collected_msc` column present in Parquet output
+- `collected_msc` dtype is int64
+
+**TestCollectedMscBackwardCompat:**
+- Old JSON without `collected_msc` imports with default value 0
+
+**TestCollectedMscValues:**
+- V1.3.0 data preserves `collected_msc` values through import
+- `collected_msc` not affected by time offset (stays unchanged)
+
+**TestTimeMscOffset:**
+- `time_msc` shifted by same offset as `timestamp`
+- `time_msc` unchanged when no offset applied
+- `timestamp` and `time_msc` consistent (same UTC moment) after offset
+
+**TestServerTimeRemoved:**
+- New imports do not contain `server_time` column
+
+---
+
 ### test_quality_checks.py (~6 tests)
 
 Validates quality validation and file management.

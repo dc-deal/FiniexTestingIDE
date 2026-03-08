@@ -623,7 +623,7 @@ bool ExportTick(MqlTick &tick)
     // NOTE: tick.time bleibt in BROKER SERVER ZEIT (unverändert!)
     // UTC-Konvertierung erfolgt später im tick_importer.py
     string jsonTick = StringFormat(
-        "%s\n    {\n      \"timestamp\": \"%s\",\n      \"time_msc\": %I64d,\n      \"collected_msc\": %I64d,\n      \"bid\": %.5f,\n      \"ask\": %.5f,\n      \"last\": %.5f,\n      \"tick_volume\": %d,\n      \"real_volume\": %.2f,\n      \"chart_tick_volume\": %d,\n      \"spread_points\": %d,\n      \"spread_pct\": %.6f,\n      \"tick_flags\": \"%s\",\n      \"session\": \"%s\",\n      \"server_time\": \"%s\"\n    }",
+        "%s\n    {\n      \"timestamp\": \"%s\",\n      \"time_msc\": %I64d,\n      \"collected_msc\": %I64d,\n      \"bid\": %.5f,\n      \"ask\": %.5f,\n      \"last\": %.5f,\n      \"tick_volume\": %d,\n      \"real_volume\": %.2f,\n      \"chart_tick_volume\": %d,\n      \"spread_points\": %d,\n      \"spread_pct\": %.6f,\n      \"tick_flags\": \"%s\",\n      \"session\": \"%s\"\n    }",
         (tickCounter > 0) ? "," : "",
         TimeToString(tick.time, TIME_DATE | TIME_SECONDS),
         tick.time_msc,
@@ -637,8 +637,7 @@ bool ExportTick(MqlTick &tick)
         spreadPoints,
         spreadPct,
         tickFlags,
-        session,
-        TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS)
+        session
     );
     
     FileWriteString(fileHandle, jsonTick);

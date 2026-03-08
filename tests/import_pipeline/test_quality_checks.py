@@ -32,12 +32,12 @@ class TestQualityChecks:
                  "last": 1.1, "tick_volume": 0, "real_volume": 100.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
                  "tick_flags": "BUY", "session": "24h",
-                 "server_time": "2026.01.15 10:00:00"},
+                 "collected_msc": 0},
                 {"timestamp": "2026.01.15 10:00:01", "bid": 1.1, "ask": 1.1001,
                  "last": 1.1, "tick_volume": 0, "real_volume": 100.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
                  "tick_flags": "BUY", "session": "24h",
-                 "server_time": "2026.01.15 10:00:01"},
+                 "collected_msc": 0},
             ],
         )
         write_json_fixture(source, "BADPRICE_ticks.json", data)
@@ -67,12 +67,12 @@ class TestQualityChecks:
                  "last": 1.0, "tick_volume": 0, "real_volume": 100.0,
                  "chart_tick_volume": 1, "spread_points": 1000, "spread_pct": 10.0,
                  "tick_flags": "BUY", "session": "24h",
-                 "server_time": "2026.01.15 10:00:00"},
+                 "collected_msc": 0},
                 {"timestamp": "2026.01.15 10:00:01", "bid": 1.1, "ask": 1.1001,
                  "last": 1.1, "tick_volume": 0, "real_volume": 100.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
                  "tick_flags": "BUY", "session": "24h",
-                 "server_time": "2026.01.15 10:00:01"},
+                 "collected_msc": 0},
             ],
         )
         write_json_fixture(source, "BIGSPREAD_ticks.json", data)

@@ -253,6 +253,11 @@ class TickDataImporter:
         # ===========================================
 
         df = pd.DataFrame(ticks)
+
+        # Ensure collected_msc column exists (missing in pre-V1.3.0 data)
+        if 'collected_msc' not in df.columns:
+            df['collected_msc'] = 0
+
         df = self._optimize_datatypes(df)
 
         # Parse timestamps as timezone-naive
@@ -360,6 +365,18 @@ class TickDataImporter:
         # 9. WRITE PARQUET
         # ===========================================
 
+        # Drop columns not in ImportTickSchema (e.g. legacy server_time)
+        _PARQUET_COLUMNS = [
+            'timestamp', 'time_msc', 'collected_msc',
+            'bid', 'ask', 'last',
+            'tick_volume', 'real_volume', 'chart_tick_volume',
+            'spread_points', 'spread_pct',
+            'tick_flags', 'session',
+        ]
+        extra_cols = [c for c in df.columns if c not in _PARQUET_COLUMNS]
+        if extra_cols:
+            df = df.drop(columns=extra_cols)
+
         try:
             table = pa.Table.from_pandas(df)
             table = table.replace_schema_metadata(parquet_metadata)
@@ -417,6 +434,11 @@ class TickDataImporter:
         # Apply offset (e.g. offset=-3 → subtract 3h from timestamp)
         offset_timedelta = pd.Timedelta(hours=offset_hours)
         df["timestamp"] = df["timestamp"] + offset_timedelta
+
+        # Apply same offset to time_msc (broker epoch → UTC epoch)
+        if "time_msc" in df.columns:
+            offset_ms = offset_hours * 3_600_000
+            df["time_msc"] = df["time_msc"] + offset_ms
 
         utc_first = df["timestamp"].iloc[0]
         utc_last = df["timestamp"].iloc[-1]
@@ -535,6 +557,12 @@ class TickDataImporter:
         for col in int_cols:
             if col in df.columns:
                 df[col] = df[col].astype("int32")
+
+        # Millisecond epoch columns — int64 (too large for int32)
+        int64_cols = ["time_msc", "collected_msc"]
+        for col in int64_cols:
+            if col in df.columns:
+                df[col] = df[col].astype("int64")
 
         return df
 

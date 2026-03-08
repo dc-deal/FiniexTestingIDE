@@ -83,12 +83,14 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `spread_pct` | float | Spread as percentage |
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
-| `server_time` | string | Server-side timestamp |
-| `time_msc` | int | Broker matching engine timestamp (Unix epoch ms). Not monotonic in arrival order — see ISSUE #194 |
+| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms), UTC-converted by importer. Not monotonic in arrival order — see ISSUE #194 |
+| `collected_msc` | int64 | Local device clock at tick receipt (Unix epoch ms). Monotonic. Added in V1.3.0. Default `0` for older data |
 
 > **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
 
-> **Note — `collected_msc`**: A new per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) is being introduced across the pipeline. See `ISSUE_tick_collection_timestamp.md` (ISSUE #194) for status and phases.
+> **Note — `collected_msc`**: Per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) added in V1.3.0. See `ISSUE_tick_collection_timestamp.md` (ISSUE #194) for status and phases.
+
+> **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files may still contain it — the importer passes it through but new imports no longer produce it.
 
 ### Nested Metadata Schemas
 

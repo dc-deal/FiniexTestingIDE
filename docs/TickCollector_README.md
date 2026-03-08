@@ -209,8 +209,7 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
       "spread_points": 2384,
       "spread_pct": 0.02450,
       "tick_flags": "BID ASK",
-      "session": "sydney_tokyo",
-      "server_time": "2026.03.07 09:03:42"
+      "session": "sydney_tokyo"
     }
   ]
 }
@@ -218,7 +217,7 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 
 **Tick Fields:**
 - `timestamp`: Human-readable time (broker server time, seconds precision). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
-- `time_msc`: Broker matching engine timestamp (Unix epoch ms). **Not monotonic** in arrival order — within the same second, bid/ask interleaving can cause `time_msc` regressions (~19% on forex pairs).
+- `time_msc`: Broker matching engine timestamp (Unix epoch ms). UTC-converted by importer (offset applied). **Not monotonic** in arrival order — within the same second, bid/ask interleaving can cause `time_msc` regressions (~19% on forex pairs).
 - `collected_msc`: Local device clock at tick receipt (Unix epoch ms). **Monotonic** — uses `GetMicrosecondCount()` for precise deltas. Added in data format V1.3.0 (TickCollector V1.0.7). This is the correct source for inter-tick interval measurement.
 - `bid` / `ask`: Bid and ask price
 - `last`: Last trade price (0 for forex/CFD)
@@ -229,7 +228,6 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 - `spread_pct`: Spread as percentage of bid
 - `tick_flags`: Tick type flags (e.g. "BID ASK", "BUY", "SELL")
 - `session`: Trading session label (broker-side, recalculated to UTC by importer)
-- `server_time`: Server-side timestamp (same precision as `timestamp`)
 
 ### Error Report Section
 

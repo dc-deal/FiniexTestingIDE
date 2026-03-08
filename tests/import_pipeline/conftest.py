@@ -120,7 +120,7 @@ def build_minimal_tick_json(
                 "spread_pct": 0.01,
                 "tick_flags": "BUY",
                 "session": "24h",
-                "server_time": ts
+                "collected_msc": 1769000000000 + (i * 1000)
             })
 
     return {"metadata": metadata, "ticks": ticks}
