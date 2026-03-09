@@ -21,7 +21,7 @@ import time
 import traceback
 from collections import defaultdict
 from multiprocessing import Queue
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
@@ -74,6 +74,10 @@ def execute_tick_loop(
         profile_times = defaultdict(float)
         profile_counts = defaultdict(int)
 
+        # Inter-tick interval collection (collected_msc preferred, time_msc fallback)
+        inter_tick_intervals: List[float] = []
+        prev_interval_msc: int = 0
+
         tick_range_stats = get_tick_range_stats(prepared_objects)
 
         live_setup = process_live_setup(
@@ -97,6 +101,15 @@ def execute_tick_loop(
             tick_start = time.perf_counter()
             current_tick = tick
             current_index = tick_idx
+
+            # Inter-tick interval: use collected_msc (monotonic) when available,
+            # fall back to time_msc for pre-V1.3.0 data (with negative-diff skip)
+            current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
+            if prev_interval_msc > 0 and current_msc > 0:
+                delta = current_msc - prev_interval_msc
+                if tick.collected_msc > 0 or delta >= 0:
+                    inter_tick_intervals.append(float(delta))
+            prev_interval_msc = current_msc
 
             # === 1. Trade Executor ===
             # Unified tick lifecycle: update prices + process pending orders
@@ -212,7 +225,9 @@ def execute_tick_loop(
             pending_stats=pending_stats,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
-                profile_counts=profile_counts
+                profile_counts=profile_counts,
+                inter_tick_intervals_ms=inter_tick_intervals,
+                gap_threshold_s=config.inter_tick_gap_threshold_s
             ),
             tick_range_stats=tick_range_stats,
             tick_loop_error=tick_loop_error

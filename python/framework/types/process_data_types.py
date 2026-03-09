@@ -215,6 +215,9 @@ class ProcessScenarioConfig:
     order_history_max: int = 10000
     trade_history_max: int = 5000
 
+    # === INTER-TICK PROFILING ===
+    inter_tick_gap_threshold_s: float = 300.0
+
     @staticmethod
     def from_scenario(
         scenario: SingleScenario,
@@ -279,6 +282,10 @@ class ProcessScenarioConfig:
         market_type = market_config_manager.get_market_type(
             scenario.broker_type.value)
 
+        # Inter-tick gap threshold from market rules
+        market_rules = market_config_manager.get_market_rules(market_type)
+        inter_tick_gap_threshold_s = market_rules.inter_tick_gap_threshold_s
+
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
@@ -312,7 +319,8 @@ class ProcessScenarioConfig:
             stress_test_config=stress_test_config,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
-            trade_history_max=app_config_loader.get_trade_history_max()
+            trade_history_max=app_config_loader.get_trade_history_max(),
+            inter_tick_gap_threshold_s=inter_tick_gap_threshold_s
         )
 
 
@@ -333,11 +341,13 @@ class ProcessPreparedDataObjects:
 @dataclass
 class ProcessProfileData:
     """
-        Profiling from Tick Loop, 
+        Profiling from Tick Loop,
         various profiling points.
     """
     profile_times: Dict[Any, float] = None
     profile_counts: Dict[Any, int] = None
+    inter_tick_intervals_ms: Optional[List[float]] = None
+    gap_threshold_s: float = 300.0
 
 
 @dataclass

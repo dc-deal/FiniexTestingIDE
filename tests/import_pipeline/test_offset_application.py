@@ -33,15 +33,15 @@ class TestOffsetCorrectness:
                 {"timestamp": "2026.01.15 15:00:00", "bid": 1.1, "ask": 1.1001,
                  "last": 1.1, "tick_volume": 0, "real_volume": 0.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
-                 "tick_flags": "BUY", "session": "london", "server_time": "2026.01.15 15:00:00"},
+                 "tick_flags": "BUY", "session": "london", "collected_msc": 0},
                 {"timestamp": "2026.01.15 15:01:00", "bid": 1.1001, "ask": 1.1002,
                  "last": 1.1001, "tick_volume": 0, "real_volume": 0.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
-                 "tick_flags": "BUY", "session": "london", "server_time": "2026.01.15 15:01:00"},
+                 "tick_flags": "BUY", "session": "london", "collected_msc": 0},
                 {"timestamp": "2026.01.15 15:02:00", "bid": 1.1002, "ask": 1.1003,
                  "last": 1.1002, "tick_volume": 0, "real_volume": 0.0,
                  "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
-                 "tick_flags": "BUY", "session": "london", "server_time": "2026.01.15 15:02:00"},
+                 "tick_flags": "BUY", "session": "london", "collected_msc": 0},
             ],
         )
         write_json_fixture(source, "EURUSD_ticks.json", data)
@@ -125,7 +125,7 @@ class TestOffsetCorrectness:
                 "last": 150.0, "tick_volume": 0, "real_volume": 0.0,
                 "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
                 "tick_flags": "BUY", "session": "new_york",
-                "server_time": "2026.01.15 18:00:00",
+                "collected_msc": 0,
             }],
         )
         write_json_fixture(source, "USDJPY_ticks.json", data)
@@ -163,7 +163,7 @@ class TestSessionRecalculation:
                 "last": 1.25, "tick_volume": 0, "real_volume": 0.0,
                 "chart_tick_volume": 1, "spread_points": 1, "spread_pct": 0.01,
                 "tick_flags": "BUY", "session": "sydney_tokyo",
-                "server_time": "2026.01.15 00:00:00",
+                "collected_msc": 0,
             }],
         )
         write_json_fixture(source, "GBPUSD_ticks.json", data)

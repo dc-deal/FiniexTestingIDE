@@ -16,7 +16,6 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
@@ -57,7 +56,6 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         """
         self._render_section_header(renderer)
 
-        self._render_stress_test_warning(renderer)
         self._render_execution_results(renderer)
         print()
         self._render_data_sources(renderer)
@@ -67,51 +65,6 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         self._render_portfolio_performance(renderer)
         print()
         self._render_system_resources(renderer)
-
-    def _render_stress_test_warning(self, renderer: ConsoleRenderer):
-        """
-        Render prominent stress test warning if any scenario has active stress tests.
-
-        Args:
-            renderer: Console renderer for formatting
-        """
-        scenarios = self._batch_summary.single_scenario_list
-
-        # Group scenarios by stress test config signature for compact output
-        config_groups: dict[str, list[str]] = {}
-        for scenario in scenarios:
-            config = StressTestConfig.from_dict(scenario.stress_test_config)
-            if not config.has_any_enabled():
-                continue
-            # Build config signature string
-            parts = []
-            if config.reject_open_order and config.reject_open_order.enabled:
-                ro = config.reject_open_order
-                parts.append(
-                    f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
-            signature = " | ".join(parts)
-            if signature not in config_groups:
-                config_groups[signature] = []
-            config_groups[signature].append(scenario.name)
-
-        if not config_groups:
-            return
-
-        # Build warning block
-        renderer.print_bold(renderer.red("⚠️  STRESS TEST ACTIVE ⚠️"))
-        renderer.print_separator(width=68)
-        print(renderer.red(
-            "Results are AFFECTED by stress test injection!"))
-        print(renderer.red(
-            "Errors and rejections may be INTENTIONAL."))
-        print()
-
-        for signature, scenario_names in config_groups.items():
-            print(renderer.yellow(f"  → {signature}"))
-            print(renderer.yellow(
-                f"    Scenarios ({len(scenario_names)}): {', '.join(scenario_names)}"))
-
-        print()
 
     def _render_execution_results(self, renderer: ConsoleRenderer):
         """Render execution results section."""

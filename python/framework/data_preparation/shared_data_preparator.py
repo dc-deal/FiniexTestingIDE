@@ -137,6 +137,12 @@ class SharedDataPreparator:
                 bar_counts=scenario_bars['counts']
             )
 
+            # Collect data_format_versions from actually loaded Parquet files
+            tick_range = scenario_ticks['ranges'].get(scenario.symbol)
+            scenario.data_format_versions = self._collect_parquet_versions(
+                scenario.data_broker_type, scenario.symbol, tick_range
+            )
+
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())
             bar_count = sum(scenario_bars['counts'].values())
@@ -150,6 +156,47 @@ class SharedDataPreparator:
         )
 
         return scenario_packages
+
+    def _collect_parquet_versions(
+        self,
+        broker_type: str,
+        symbol: str,
+        tick_range: Optional[Tuple[datetime, datetime]] = None
+    ) -> List[str]:
+        """
+        Collect data_format_version from Parquet files that overlap the loaded time range.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+            tick_range: (first_tick, last_tick) of actually loaded data, None = all files
+
+        Returns:
+            List of version strings from matching Parquet files
+        """
+        if broker_type not in self.tick_index_manager.index:
+            return []
+        if symbol not in self.tick_index_manager.index[broker_type]:
+            return []
+
+        files = self.tick_index_manager.index[broker_type][symbol]
+
+        if tick_range is None:
+            return [
+                f.get('data_format_version', 'unknown')
+                for f in files
+            ]
+
+        # Only include files that overlap with the loaded tick range
+        range_start, range_end = tick_range
+        versions = []
+        for f in files:
+            file_start = pd.to_datetime(f['start_time'], utc=True)
+            file_end = pd.to_datetime(f['end_time'], utc=True)
+            # File overlaps if it starts before range ends AND ends after range starts
+            if file_start <= range_end and file_end >= range_start:
+                versions.append(f.get('data_format_version', 'unknown'))
+        return versions
 
     def _filter_ticks_for_scenario(
         self,

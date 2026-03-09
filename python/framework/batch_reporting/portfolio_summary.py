@@ -332,3 +332,4 @@ class PortfolioSummary(AbstractBatchSummarySection):
 
         print("   3. RECOMMENDATION:")
         print("      Use currency-grouped reports above for accurate P&L values.")
+

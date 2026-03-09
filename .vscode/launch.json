@@ -5,16 +5,6 @@
         // 📊 DATA PIPELINE
         // ====================================================
         {
-            "name": "📥 Import",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "import"
-            ],
-            "console": "integratedTerminal"
-        },
-        {
             "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
@@ -70,7 +60,7 @@
             "args": [
                 "inspect",
                 "mt5",
-                "EURUSD",
+                "USDJPY",
                 "M30"
             ],
             "console": "integratedTerminal",
@@ -507,6 +497,26 @@
             "justMyCode": false
         },
         {
+            "name": "📊 Report collected_msc quality",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/report_collected_msc.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔧 Restore collected_msc (apply + force)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/restore_collected_msc.py",
+            "args": [
+                "--apply",
+                "--force"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 GIL Benchmark - Threading vs Multiprocessing",
             "type": "debugpy",
             "request": "launch",
@@ -728,6 +738,19 @@
             "module": "pytest",
             "args": [
                 "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Inter Tick Interval (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/inter_tick_interval/",
                 "-v",
                 "--tb=short"
             ],

@@ -6,7 +6,7 @@ The import pipeline test suite validates the full tick data import lifecycle: JS
 
 **Test Location:** `tests/import_pipeline/`
 **Config Source:** `configs/import_config.json` (offset registry, paths, processing)
-**Total Tests:** 46
+**Total Tests:** 57
 
 ---
 
@@ -129,6 +129,35 @@ Validates hash-based duplicate detection.
 - Different source file not flagged as duplicate
 
 **DUPLICATE AT LAST Policy:** The `populate_persistent_test_output` session fixture imports 4 reference files into `data/test/import/processed/` at session start. All duplicate detection tests use `tmp_path` for full isolation, so they don't conflict with the persistent import. However, the persistent import must complete first — if duplicate detection tests ever run against shared directories, they must be ordered last (after the reference data is established and directories are clean).
+
+---
+
+### test_collected_msc.py (~11 tests)
+
+Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tick order preservation, and `server_time` removal.
+
+**TestCollectedMscPresence:**
+- `collected_msc` column present in Parquet output
+- `collected_msc` dtype is int64
+
+**TestCollectedMscBackwardCompat:**
+- Old JSON without `collected_msc` imports with default value 0
+
+**TestCollectedMscValues:**
+- V1.3.0 data preserves `collected_msc` values through import
+- `collected_msc` not affected by time offset (stays unchanged)
+
+**TestTimeMscOffset:**
+- `time_msc` shifted by same offset as `timestamp`
+- `time_msc` unchanged when no offset applied
+- `timestamp` and `time_msc` consistent (same UTC moment) after offset
+
+**TestTickOrderPreservation:**
+- Parquet row order matches JSON array order (not `time_msc` order) — uses non-chronological `time_msc` with bid values as position markers
+- `collected_msc` monotonicity survives import — 5 ticks with monotonic `collected_msc` but chaotic `time_msc`, all consecutive diffs must be positive
+
+**TestServerTimeRemoved:**
+- New imports do not contain `server_time` column
 
 ---
 

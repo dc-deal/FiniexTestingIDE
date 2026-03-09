@@ -44,7 +44,9 @@ class MarketConfigManager:
                     has_trading_sessions=rules_dict.get(
                         "has_trading_sessions", True),
                     primary_activity_metric=rules_dict.get(
-                        "primary_activity_metric", "tick_count")
+                        "primary_activity_metric", "tick_count"),
+                    inter_tick_gap_threshold_s=rules_dict.get(
+                        "inter_tick_gap_threshold_s", 300.0)
                 )
             except ValueError:
                 raise ValueError(

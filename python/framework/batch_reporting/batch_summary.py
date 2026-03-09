@@ -17,9 +17,9 @@ from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
 from python.framework.batch_reporting.performance_summary import PerformanceSummary
 from python.framework.batch_reporting.profiling_summary import ProfilingSummary
 from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
+from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.rendering_types import BatchStatus
-from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -70,6 +70,9 @@ class BatchSummary:
         self.trade_history_summary = TradeHistorySummary(
             batch_execution_summary)
 
+        # Warnings summary (always rendered)
+        self.warnings_summary = WarningsSummary(batch_execution_summary)
+
         # Renderer for unified console output
         self._renderer = ConsoleRenderer()
         self._box_renderer = ConsoleBoxRenderer(self._renderer)
@@ -109,7 +112,9 @@ class BatchSummary:
                 continue
             profiling = ProfilingData.from_dicts(
                 process_result.tick_loop_results.profiling_data.profile_times,
-                process_result.tick_loop_results.profiling_data.profile_counts
+                process_result.tick_loop_results.profiling_data.profile_counts,
+                inter_tick_intervals_ms=process_result.tick_loop_results.profiling_data.inter_tick_intervals_ms,
+                gap_threshold_s=process_result.tick_loop_results.profiling_data.gap_threshold_s
             )
             profiling_data_map[process_result.scenario_index] = profiling
         return profiling_data_map
@@ -133,9 +138,6 @@ class BatchSummary:
         """
         # Calculate batch status
         batch_status = self._calculate_batch_status()
-
-        # Stress test banner (before everything else)
-        self._render_stress_test_banner()
 
         # Header with batch status
         self._renderer.section_header("🎉 EXECUTION RESULTS")
@@ -196,6 +198,9 @@ class BatchSummary:
         self.worker_decision_breakdown.render_aggregated()
         self.worker_decision_breakdown.render_overhead_analysis(self._renderer)
 
+        # Warnings & Notices (always rendered, before executive summary)
+        self.warnings_summary.render(self._renderer)
+
         # Executive Summary
         executive = ExecutiveSummary(
             self.batch_execution_summary, self.app_config)
@@ -206,36 +211,6 @@ class BatchSummary:
 
         # Footer
         self._renderer.print_separator(width=120)
-
-    def _render_stress_test_banner(self):
-        """Render prominent stress test banner if any scenario has active stress tests."""
-        scenarios = self.batch_execution_summary.single_scenario_list
-
-        # Collect active stress test details
-        active_details = []
-        for scenario in scenarios:
-            config = StressTestConfig.from_dict(scenario.stress_test_config)
-            if config.has_any_enabled():
-                if config.reject_open_order and config.reject_open_order.enabled:
-                    ro = config.reject_open_order
-                    active_details.append(
-                        f"reject_open_order ({ro.probability:.0%} rejection, seed={ro.seed})")
-
-        if not active_details:
-            return
-
-        # Deduplicate (same config across scenarios)
-        unique_details = list(dict.fromkeys(active_details))
-        details_str = " | ".join(unique_details)
-
-        print()
-        print(self._renderer.red("=" * 68))
-        print(self._renderer.red(
-            f"⚠️  STRESS TEST ACTIVE: {details_str}"))
-        print(self._renderer.red(
-            "⚠️  Results may contain INTENTIONAL errors and rejections!"))
-        print(self._renderer.red("=" * 68))
-        print()
 
     def _render_basic_stats(self, batch_status: BatchStatus):
         """

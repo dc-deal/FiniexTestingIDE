@@ -2,11 +2,15 @@
 
 ## Overview
 
-The import pipeline converts MQL5 JSON tick exports into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
+The import pipeline converts JSON tick exports from data collectors into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
+
+**Related**: [TickCollector_README.md](TickCollector_README.md) — MQL5 collector usage, JSON schema, error classification.
 
 **Flow:**
 ```
-MQL5 TickCollector (JSON)
+Data Collectors (JSON)
+├─ MQL5 TickCollector (MT5 broker ticks)
+└─ Kraken Data Collector (Kraken WebSocket ticks)
        ↓
   TickDataImporter
   ├─ Validate JSON schema
@@ -47,7 +51,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `bid` | float | Always | Bid price |
 | `ask` | float | Always | Ask price |
 
-### Optional Metadata Fields (v1.0.5+)
+### Optional Metadata Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -57,7 +61,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `local_device_time` | string | Device time at collection start |
 | `broker_server_time` | string | Server time at collection start |
 | `start_time_unix` | int | Unix timestamp of start_time |
-| `data_format_version` | string | Schema version (e.g. "1.0.5") |
+| `data_format_version` | string | Schema version of the data collector |
 | `collection_purpose` | string | Purpose (e.g. "backtesting") |
 | `operator` | string | Collector operator identifier |
 | `timeframe` | string | Collection timeframe |
@@ -67,7 +71,42 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `collection_settings` | object | Collector configuration (see nested schema) |
 | `error_tracking` | object | Error tracking config (see nested schema) |
 
-### Optional Tick Fields (v1.0.5+)
+### Metadata Timestamp Architecture
+
+Four metadata fields capture temporal context at collection start. Their timezone semantics differ by broker:
+
+| Field | MT5 | Kraken | Purpose |
+|-------|-----|--------|---------|
+| `start_time` | Broker time (GMT+3) | UTC | Collection start as formatted string |
+| `start_time_unix` | UTC epoch (seconds) | UTC epoch (seconds) | Absolute UTC anchor |
+| `local_device_time` | Collector machine local time (GMT+1) | Collector machine local time (GMT+1) | Device clock at start |
+| `broker_server_time` | Broker time (GMT+3) | UTC | Exchange/broker server time |
+
+**Key invariant**: `start_time_unix` is always a UTC epoch timestamp regardless of broker. It serves as the absolute reference point.
+
+**Deriving the collector timezone** from any file:
+
+```
+collector_utc_offset = local_device_time - epoch_to_datetime(start_time_unix)
+```
+
+Example (MT5, real data):
+```
+start_time_unix:     1773002406  → 2026.03.08 17:40:06 UTC
+local_device_time:   "2026.03.08 18:40:06"
+                     18:40:06 - 17:40:06 = +1h → GMT+1
+```
+
+Example (Kraken, real data):
+```
+start_time_unix:     1772991694  → 2026.03.08 17:41:34 UTC
+local_device_time:   "2026.03.08 18:41:34"
+                     18:41:34 - 17:41:34 = +1h → GMT+1
+```
+
+> **Note**: These metadata timestamps are informational only — they are preserved in Parquet metadata but never used in pipeline calculations. Actual tick timing relies exclusively on `time_msc` and `collected_msc` (epoch-based, unambiguous).
+
+### Optional Tick Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -79,8 +118,14 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `spread_pct` | float | Spread as percentage |
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
-| `server_time` | string | Server-side timestamp |
-| `time_msc` | int | Millisecond-precision timestamp |
+| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms), UTC-converted by importer. Not monotonic in arrival order — see ISSUE #194 |
+| `collected_msc` | int64 | Local device clock at tick receipt (Unix epoch ms). Monotonic. Added in V1.3.0. Default `0` for older data |
+
+> **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
+
+> **Note — `collected_msc`**: Per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) added in V1.3.0. See `ISSUE_tick_collection_timestamp.md` (ISSUE #194) for status and phases.
+
+> **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files may still contain it — the importer drops it during Parquet export (column filter). New collectors no longer produce it.
 
 ### Nested Metadata Schemas
 
@@ -259,13 +304,33 @@ Each output Parquet file includes metadata in the file header:
 | `data_format_version` | Schema version |
 | `utc_conversion_applied` | "true"/"false" |
 | `user_time_offset_hours` | Applied offset (e.g. "-3") |
-| `session_recalculated` | "true"/"false" |
 
 ### Source Metadata (preserved from JSON)
 
 Original MQL5 metadata is preserved with `source_meta_` prefix:
 - Flat scalars: `source_meta_broker_type`, `source_meta_data_format_version`, etc.
 - Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`, `source_meta_error_tracking`
+
+### Data Format Version Tracking
+
+`data_format_version` flows from Parquet metadata through the tick index into batch execution reports:
+
+```
+Parquet metadata → TickIndexManager (index entry) → SharedDataPreparator
+    → SingleScenario.data_format_versions → PortfolioSummary (warning)
+```
+
+**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata and stores it per index entry. Cached index files without this field default to `'unknown'` (requires index rebuild to populate).
+
+**Report warning**: When any scenario uses pre-V1.3.0 data (version is `'unknown'` or < `'1.3.0'`), the aggregated portfolio section displays:
+
+```
+⚠️  Data includes pre-V1.3.0 files (186/186): inter-tick intervals based on synthesized collected_msc
+```
+
+This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing.
+
+**Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
 
 ---
 
@@ -290,6 +355,47 @@ Offset Registry:
    kraken_spot:     0h (Kraken reports in UTC natively)
 ════════════════════════════════════════
 ```
+
+---
+
+## Parquet → Simulation Pipeline
+
+After import, tick data flows from Parquet into the simulation engine:
+
+```
+Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
+       ↓
+  SharedDataPreparator
+  ├─ Loads tick Parquet via DataLoader
+  ├─ df.to_dict('records') → list of tick dicts
+  └─ Passes tick dicts to process serialization
+       ↓
+  ProcessSerializationUtils
+  ├─ Converts tick dicts → TickData objects
+  └─ Fields: timestamp, symbol, bid, ask, volume, time_msc, collected_msc
+       ↓
+  ProcessTickLoop
+  ├─ Iterates TickData objects in order
+  ├─ Inter-tick interval: collected_msc (monotonic, preferred)
+  │   Fallback: time_msc when collected_msc == 0 (pre-V1.3.0 data)
+  └─ Feeds TradingEnvironment per tick
+```
+
+### Field Flow Through Pipeline
+
+| Field | JSON | Parquet | TickData | Used in Simulation |
+|-------|------|---------|----------|-------------------|
+| `timestamp` | string | timestamp[ns] | datetime | Tick timing, bar bucketing |
+| `time_msc` | int64 | int64 | int | Fallback interval source |
+| `collected_msc` | int64 | int64 | int | Primary interval source (V1.3.0+) |
+| `bid` | float | float | float | Price feed |
+| `ask` | float | float | float | Price feed, spread |
+| `real_volume` | float | float | float (as volume) | Volume tracking |
+| `tick_flags` | string | string | — | Not in TickData (import-only) |
+| `session` | string | string | — | Not in TickData (import-only) |
+| `spread_pct` | float | float | — | Quality checks only |
+
+> **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies UTC offset to `time_msc` (not `collected_msc`). The simulation reads both from TickData and decides which to use for inter-tick intervals.
 
 ---
 

@@ -164,13 +164,14 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 ---
 
 ### Phase 7: Summary & Reporting
-**Purpose:** Build comprehensive execution summary  
-**Mode:** Serial (main process)  
+**Purpose:** Build comprehensive execution summary
+**Mode:** Serial (main process)
 **Key Operations:**
 - Aggregate results from all scenarios
 - Calculate portfolio metrics
 - Build BatchExecutionSummary
 - Error handling for failed scenarios
+- Inter-tick interval profiling: distribution stats (min/P5/median/mean/P95/max) for the market-side time between consecutive ticks. Session/weekend gaps are filtered using a configurable threshold from `market_config.json`. A budget warning is shown when avg tick processing time exceeds the 5th percentile interval (P5), indicating the algorithm may not keep up with peak tick arrival rate in live operation.
 
 **Performance:** Fast (<1s)
 

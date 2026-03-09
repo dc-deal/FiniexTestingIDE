@@ -5,12 +5,14 @@
         "forex": {
             "weekend_closure": true,
             "has_trading_sessions": true,
-            "primary_activity_metric": "tick_count"
+            "primary_activity_metric": "tick_count",
+            "inter_tick_gap_threshold_s": 300
         },
         "crypto": {
             "weekend_closure": false,
             "has_trading_sessions": false,
-            "primary_activity_metric": "volume"
+            "primary_activity_metric": "volume",
+            "inter_tick_gap_threshold_s": 600
         }
     },
     "brokers": [

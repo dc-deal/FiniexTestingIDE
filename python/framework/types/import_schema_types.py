@@ -106,7 +106,7 @@ class ImportTickSchema(TypedDict, total=False):
     spread_pct: float
     tick_flags: str
     session: str
-    server_time: str
+    collected_msc: int
 
 
 class ImportJsonSchema(TypedDict):

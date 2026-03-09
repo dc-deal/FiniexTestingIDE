@@ -4,13 +4,20 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.1.2
+> **Version:** 1.2.0
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.1.2
+## What's New in 1.2.0
+
+- **`collected_msc` Tick Timestamp** — Per-tick monotonic collection timestamp (device clock, ms precision). Primary source for inter-tick interval profiling. Replaces non-monotonic `time_msc` which had ~19% negative diffs in MT5 forex data.
+- **Data Format V1.3.0** — New parquet field `collected_msc` (int64). Backward compatible: defaults to `0` for pre-V1.3.0 data with automatic `time_msc` fallback.
+- **WarningsSummary** — Consolidated global warnings section in batch reports (stress tests, data version notices). Always rendered regardless of `summary_detail` setting.
+- **Data Version Tracking** — Parquet metadata `data_format_version` flows through tick index → `SingleScenario` → batch reports. Pre-V1.3.0 files flagged with synthesized interval warning.
+
+### Previous: 1.1.2
 
 - **STOP / STOP_LIMIT Orders** — Breakout entry orders: STOP fills at market price (taker fee), STOP_LIMIT triggers at stop price then fills at limit price (maker fee)
 - **Active Order Preservation** — Unfilled limit/stop orders preserved at scenario end, captured in `PendingOrderStats` for post-run inspection

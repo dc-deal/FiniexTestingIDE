@@ -220,7 +220,9 @@ class TickIndexManager:
 
             'sessions': {str(k): int(v) for k, v in sessions.items()},
 
-            'broker_type': broker_type
+            'broker_type': broker_type,
+            'data_format_version': custom_metadata.get(
+                b'data_format_version', b'unknown').decode('utf-8')
         }
 
     def needs_rebuild(self) -> bool:
