@@ -311,6 +311,27 @@ Original MQL5 metadata is preserved with `source_meta_` prefix:
 - Flat scalars: `source_meta_broker_type`, `source_meta_data_format_version`, etc.
 - Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`, `source_meta_error_tracking`
 
+### Data Format Version Tracking
+
+`data_format_version` flows from Parquet metadata through the tick index into batch execution reports:
+
+```
+Parquet metadata → TickIndexManager (index entry) → SharedDataPreparator
+    → SingleScenario.data_format_versions → PortfolioSummary (warning)
+```
+
+**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata and stores it per index entry. Cached index files without this field default to `'unknown'` (requires index rebuild to populate).
+
+**Report warning**: When any scenario uses pre-V1.3.0 data (version is `'unknown'` or < `'1.3.0'`), the aggregated portfolio section displays:
+
+```
+⚠️  Data includes pre-V1.3.0 files (186/186): inter-tick intervals based on synthesized collected_msc
+```
+
+This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing.
+
+**Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
+
 ---
 
 ## CLI Usage

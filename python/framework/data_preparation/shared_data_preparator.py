@@ -137,6 +137,11 @@ class SharedDataPreparator:
                 bar_counts=scenario_bars['counts']
             )
 
+            # Collect data_format_versions from loaded Parquet files
+            scenario.data_format_versions = self._collect_parquet_versions(
+                scenario.data_broker_type, scenario.symbol
+            )
+
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())
             bar_count = sum(scenario_bars['counts'].values())
@@ -150,6 +155,32 @@ class SharedDataPreparator:
         )
 
         return scenario_packages
+
+    def _collect_parquet_versions(
+        self,
+        broker_type: str,
+        symbol: str
+    ) -> List[str]:
+        """
+        Collect data_format_version from all Parquet files for a broker/symbol pair.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            List of version strings from loaded Parquet files
+        """
+        if broker_type not in self.tick_index_manager.index:
+            return []
+        if symbol not in self.tick_index_manager.index[broker_type]:
+            return []
+
+        files = self.tick_index_manager.index[broker_type][symbol]
+        return [
+            f.get('data_format_version', 'unknown')
+            for f in files
+        ]
 
     def _filter_ticks_for_scenario(
         self,

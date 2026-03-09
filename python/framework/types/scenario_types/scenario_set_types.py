@@ -61,6 +61,9 @@ class SingleScenario:
     # === VALIDATION TRACKING ===
     validation_result: List[ValidationResult] = field(default_factory=list)
 
+    # === DATA SOURCE METADATA (populated during data loading) ===
+    data_format_versions: List[str] = field(default_factory=list)
+
     def __post_init__(self):
         if self.name is None:
             raise ValueError(
