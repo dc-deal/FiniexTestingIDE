@@ -676,7 +676,15 @@ Adding metadata to reports does NOT require threading through subprocesses. The 
 3. **If the data is loaded once for all scenarios** (e.g., broker configs):
    → Distribute via `ProcessDataPackage.broker_configs` AND tag on `BatchExecutionSummary.broker_scenario_map`. No round-trip.
 
-**Example**: `data_format_versions` (V1.3.0 warning) follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, read by `PortfolioSummary._render_data_version_warning()`. Zero subprocess overhead.
+**Example**: `data_format_versions` (V1.3.0 warning) follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, read by `WarningsSummary._build_data_version_warning()`. Zero subprocess overhead.
+
+### Report Sections: WarningsSummary
+
+`WarningsSummary` (`python/framework/batch_reporting/warnings_summary.py`) consolidates all global warnings into a single report section. Unlike other report sections, it is **always rendered** regardless of the `summary_detail` flag, but only when at least one warning is active.
+
+Current warnings:
+- **Stress test active** — lists active stress test configs grouped by signature
+- **Data format version** — flags pre-V1.3.0 data with synthesized `collected_msc` intervals, includes Kraken-specific caveat about synthetic 1ms fill spacing
 
 ---
 

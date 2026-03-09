@@ -19,6 +19,10 @@ pytest tests/inter_tick_interval/ -v
 | Timestamp collection | Known tick timestamps produce expected interval values in ms |
 | Backward compatibility | `from_dicts()` without interval args works unchanged |
 
+## Interval Source
+
+The tick loop uses `collected_msc` (monotonic device clock, V1.3.0+) as primary interval source. Falls back to `time_msc` when `collected_msc == 0` (pre-V1.3.0 data), with negative-diff skip for non-monotonic broker timestamps. See `process_tick_loop.py` lines 105-112.
+
 ## Dependencies
 
 None — pure mock-based, no data files or external services required.
