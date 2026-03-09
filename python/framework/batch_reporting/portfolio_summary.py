@@ -88,9 +88,6 @@ class PortfolioSummary(AbstractBatchSummarySection):
             self._render_aggregation_warnings(
                 renderer, aggregated_portfolios)
 
-        # Render data format version warning if pre-V1.3.0 data is present
-        self._render_data_version_warning(renderer)
-
         print()
 
     def _render_currency_group(
@@ -336,25 +333,3 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print("   3. RECOMMENDATION:")
         print("      Use currency-grouped reports above for accurate P&L values.")
 
-    def _render_data_version_warning(self, renderer: ConsoleRenderer):
-        """
-        Warn if any scenario uses pre-V1.3.0 data (synthesized collected_msc).
-
-        Args:
-            renderer: ConsoleRenderer instance
-        """
-        total_files = 0
-        pre_v130_files = 0
-
-        for scenario in self.batch_execution_summary.single_scenario_list:
-            for version in scenario.data_format_versions:
-                total_files += 1
-                # 'unknown' or any non-semver string treated as pre-V1.3.0
-                if not version.startswith('1.') or version < '1.3.0':
-                    pre_v130_files += 1
-
-        if pre_v130_files > 0:
-            print()
-            print(renderer.yellow(
-                f"⚠️  Data includes pre-V1.3.0 files ({pre_v130_files}/{total_files}): "
-                f"inter-tick intervals based on synthesized collected_msc"))
