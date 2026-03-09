@@ -30,7 +30,8 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
                 bid=float(tick_data['bid']),
                 ask=float(tick_data['ask']),
                 volume=float(tick_data.get('volume', 0.0)),
-                time_msc=int(tick_data.get('time_msc', 0))
+                time_msc=int(tick_data.get('time_msc', 0)),
+                collected_msc=int(tick_data.get('collected_msc', 0))
             ))
     return tuple(result)
 

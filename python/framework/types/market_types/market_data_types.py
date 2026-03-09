@@ -20,6 +20,7 @@ class TickData:
     ask: float
     volume: float = 0.0
     time_msc: int = 0  # Millisecond-precision Unix timestamp from broker (0 = not available)
+    collected_msc: int = 0  # Local device clock at tick receipt, ms precision (0 = not available)
 
     @property
     def mid(self) -> float:

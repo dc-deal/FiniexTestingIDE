@@ -125,6 +125,22 @@ class WarningsSummary(AbstractBatchSummarySection):
         if pre_v130_files == 0:
             return ''
 
-        return renderer.yellow(
+        lines = []
+        lines.append(renderer.yellow(
             f"Data includes pre-V1.3.0 files ({pre_v130_files}/{total_files}): "
-            f"inter-tick intervals based on synthesized collected_msc")
+            f"inter-tick intervals based on synthesized collected_msc"))
+
+        # Kraken-specific caveat: synthetic 1ms spacing dominates interval statistics
+        has_kraken = any(
+            'kraken' in s.data_broker_type
+            for s in self._batch_summary.single_scenario_list
+            if s.data_format_versions and any(
+                not v.startswith('1.') or v < '1.3.0'
+                for v in s.data_format_versions
+            )
+        )
+        if has_kraken:
+            lines.append(renderer.yellow(
+                '  → Kraken trade fills: 1ms spacing is synthetic — real arrival cadence unknown'))
+
+        return '\n'.join(lines)

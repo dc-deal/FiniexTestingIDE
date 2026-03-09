@@ -74,9 +74,9 @@ def execute_tick_loop(
         profile_times = defaultdict(float)
         profile_counts = defaultdict(int)
 
-        # Inter-tick interval collection (using time_msc for millisecond precision)
+        # Inter-tick interval collection (collected_msc preferred, time_msc fallback)
         inter_tick_intervals: List[float] = []
-        prev_time_msc: int = 0
+        prev_interval_msc: int = 0
 
         tick_range_stats = get_tick_range_stats(prepared_objects)
 
@@ -102,14 +102,14 @@ def execute_tick_loop(
             current_tick = tick
             current_index = tick_idx
 
-            # Inter-tick interval (market-side time between consecutive ticks)
-            # Skip negative diffs: within the same second, time_msc order may
-            # differ from timestamp sort order (MT5 bid/ask interleaving)
-            if prev_time_msc > 0:
-                delta = tick.time_msc - prev_time_msc
-                if delta >= 0:
+            # Inter-tick interval: use collected_msc (monotonic) when available,
+            # fall back to time_msc for pre-V1.3.0 data (with negative-diff skip)
+            current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
+            if prev_interval_msc > 0 and current_msc > 0:
+                delta = current_msc - prev_interval_msc
+                if tick.collected_msc > 0 or delta >= 0:
                     inter_tick_intervals.append(float(delta))
-            prev_time_msc = tick.time_msc
+            prev_interval_msc = current_msc
 
             # === 1. Trade Executor ===
             # Unified tick lifecycle: update prices + process pending orders
