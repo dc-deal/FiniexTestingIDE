@@ -257,6 +257,107 @@ class TestTimeMscOffset:
         assert abs(ts_epoch_ms - time_msc) < 1000
 
 
+class TestTickOrderPreservation:
+    """Verify importer preserves JSON array order (no sorting)."""
+
+    def test_tick_order_matches_json_array_order(self, tmp_path):
+        """Parquet row order must match JSON tick array order, not time_msc order."""
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+
+        # Intentionally non-chronological time_msc to prove no sorting occurs.
+        # JSON array order: tick A (msc=3000), tick B (msc=1000), tick C (msc=2000)
+        # If importer sorted by time_msc, order would be B, C, A — wrong.
+        ticks = [
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 1.0, 'ask': 1.001,
+             'last': 1.0, 'tick_volume': 0, 'real_volume': 10.0,
+             'chart_tick_volume': 1, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000003000, 'collected_msc': 1769000003000},
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 2.0, 'ask': 2.001,
+             'last': 2.0, 'tick_volume': 0, 'real_volume': 20.0,
+             'chart_tick_volume': 2, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000001000, 'collected_msc': 1769000004000},
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 3.0, 'ask': 3.001,
+             'last': 3.0, 'tick_volume': 0, 'real_volume': 30.0,
+             'chart_tick_volume': 3, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000002000, 'collected_msc': 1769000005000},
+        ]
+        data = build_minimal_tick_json(
+            symbol='XRPUSD', broker_type='kraken_spot',
+            tick_count=0, custom_ticks=ticks)
+        write_json_fixture(source, 'XRPUSD_ticks.json', data)
+
+        importer = TickDataImporter(
+            source_dir=str(source), target_dir=str(target),
+            auto_render_bars=False)
+        importer.process_all_exports()
+
+        df = pd.read_parquet(find_tick_parquets(target)[0])
+
+        # Verify row order matches JSON array order (bid values as markers)
+        assert list(df['bid']) == [1.0, 2.0, 3.0]
+        # Verify time_msc is NOT sorted (proves no sort happened)
+        assert list(df['time_msc']) == [1769000003000, 1769000001000, 1769000002000]
+        # Verify collected_msc is monotonic (authentic arrival order)
+        assert list(df['collected_msc']) == [1769000003000, 1769000004000, 1769000005000]
+
+    def test_collected_msc_monotonicity_preserved(self, tmp_path):
+        """collected_msc monotonicity must survive the import pipeline."""
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+
+        # 5 ticks with monotonic collected_msc but non-monotonic time_msc
+        ticks = [
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 100.0, 'ask': 100.01,
+             'last': 100.0, 'tick_volume': 0, 'real_volume': 1.0,
+             'chart_tick_volume': 1, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000005000, 'collected_msc': 1769000000100},
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 100.01, 'ask': 100.02,
+             'last': 100.01, 'tick_volume': 0, 'real_volume': 1.1,
+             'chart_tick_volume': 2, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000003000, 'collected_msc': 1769000000200},
+            {'timestamp': '2026.01.15 10:00:00', 'bid': 100.02, 'ask': 100.03,
+             'last': 100.02, 'tick_volume': 0, 'real_volume': 1.2,
+             'chart_tick_volume': 3, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000004000, 'collected_msc': 1769000000300},
+            {'timestamp': '2026.01.15 10:00:01', 'bid': 100.03, 'ask': 100.04,
+             'last': 100.03, 'tick_volume': 0, 'real_volume': 1.3,
+             'chart_tick_volume': 4, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000001000, 'collected_msc': 1769000000400},
+            {'timestamp': '2026.01.15 10:00:01', 'bid': 100.04, 'ask': 100.05,
+             'last': 100.04, 'tick_volume': 0, 'real_volume': 1.4,
+             'chart_tick_volume': 5, 'spread_points': 1, 'spread_pct': 0.01,
+             'tick_flags': 'BID ASK', 'session': '24h',
+             'time_msc': 1769000002000, 'collected_msc': 1769000000500},
+        ]
+        data = build_minimal_tick_json(
+            symbol='DASHUSD', broker_type='kraken_spot',
+            tick_count=0, custom_ticks=ticks)
+        write_json_fixture(source, 'DASHUSD_ticks.json', data)
+
+        importer = TickDataImporter(
+            source_dir=str(source), target_dir=str(target),
+            auto_render_bars=False)
+        importer.process_all_exports()
+
+        df = pd.read_parquet(find_tick_parquets(target)[0])
+        collected = list(df['collected_msc'])
+
+        # All consecutive diffs must be positive (strictly monotonic)
+        for i in range(1, len(collected)):
+            assert collected[i] > collected[i - 1], (
+                f"collected_msc not monotonic at index {i}: "
+                f"{collected[i - 1]} -> {collected[i]}"
+            )
+
+
 class TestServerTimeRemoved:
     """Verify server_time is no longer in new imports."""
 

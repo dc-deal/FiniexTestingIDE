@@ -6,7 +6,7 @@ The import pipeline test suite validates the full tick data import lifecycle: JS
 
 **Test Location:** `tests/import_pipeline/`
 **Config Source:** `configs/import_config.json` (offset registry, paths, processing)
-**Total Tests:** 46
+**Total Tests:** 57
 
 ---
 
@@ -132,9 +132,9 @@ Validates hash-based duplicate detection.
 
 ---
 
-### test_collected_msc.py (~9 tests)
+### test_collected_msc.py (~11 tests)
 
-Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, and `server_time` removal.
+Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tick order preservation, and `server_time` removal.
 
 **TestCollectedMscPresence:**
 - `collected_msc` column present in Parquet output
@@ -151,6 +151,10 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, and
 - `time_msc` shifted by same offset as `timestamp`
 - `time_msc` unchanged when no offset applied
 - `timestamp` and `time_msc` consistent (same UTC moment) after offset
+
+**TestTickOrderPreservation:**
+- Parquet row order matches JSON array order (not `time_msc` order) — uses non-chronological `time_msc` with bid values as position markers
+- `collected_msc` monotonicity survives import — 5 ticks with monotonic `collected_msc` but chaotic `time_msc`, all consecutive diffs must be positive
 
 **TestServerTimeRemoved:**
 - New imports do not contain `server_time` column
