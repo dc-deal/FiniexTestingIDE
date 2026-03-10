@@ -10,8 +10,9 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 - 17 scenarios: 5 SL/TP + 4 limit order + 7 stop order + 1 cancel limit, each opening 1 trade at tick 10
 - Seeds: api_latency=12345, market_execution=67890
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`
+- Per-scenario `max_ticks` caps to limit tick loop processing (see Scenario Design)
 
-**Total Tests:** ~54 (SL/TP + limit) + ~27 (stop orders) + 1 (cancel limit) = ~82
+**Total Tests:** ~54 (SL/TP + limit) + ~27 (stop orders) + 1 (cancel limit) + 1 (batch health) = ~83
 
 **Location:** `tests/sltp_limit_validation/`
 
@@ -23,10 +24,11 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 tests/
 ├── shared/
 │   ├── fixture_helpers.py                ← extract_execution_stats() added here
+│   ├── shared_batch_health.py            ← TestBatchHealth (all-suite guard)
 │   └── shared_sltp_limit_validation.py   ← Reusable test classes (17 classes, ~82 tests)
 ├── sltp_limit_validation/
 │   ├── conftest.py                       ← SLTP_LIMIT_VALIDATION_CONFIG = "backtesting/sltp_limit_validation_test.json"
-│   └── test_sltp_limit_validation.py     ← Imports shared test classes
+│   └── test_sltp_limit_validation.py     ← Imports shared test classes + TestBatchHealth
 ```
 
 ---
@@ -262,6 +264,32 @@ Scenarios use real extreme move windows from the Discovery system (`discoveries_
 | `modify_stop_trigger` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | STOP 158.000→157.000 at tick 500 |
 | `cancel_stop_no_fill` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | Cancelled at tick 100, 0 trades |
 | `cancel_limit_no_fill` | LONG #9 (+128.1 pips) | 2026-01-08 → 2026-01-09 | LIMIT at 150.000, cancelled at tick 100, 0 trades |
+
+### Tick Cap (`max_ticks`)
+
+Each scenario has a `max_ticks` cap to prevent the tick loop from processing the full time window after the relevant event (trigger, fill, cancel) has already fired. The cap is set to the event tick + ~1,000 buffer.
+
+| Scenario | Event Tick | max_ticks | Rationale |
+|----------|-----------|-----------|-----------|
+| `long_tp_trigger` | 29,433 (TP) | 30,500 | TP fires, rest is idle |
+| `long_sl_trigger` | 69,863 (SL) | 71,000 | SL fires, rest is idle |
+| `short_tp_trigger` | 69,942 (TP) | 71,000 | TP fires, rest is idle |
+| `short_sl_trigger` | 10,602 (SL) | 12,000 | SL fires, rest is idle |
+| `modify_tp_trigger` | 29,433 (TP) | 30,500 | Modify@500, TP fires |
+| `long_limit_fill` | 69,942 (fill) | 71,000 | Limit fills, SCENARIO_END |
+| `short_limit_fill` | 29,433 (fill) | 30,500 | Limit fills, SCENARIO_END |
+| `limit_fill_then_sl` | 71,631 (SL) | 73,000 | Limit fills, SL fires |
+| `modify_limit_price_fill` | 49,515 (fill) | 51,000 | Modify@500, limit fills |
+| `stop_long_trigger` | 3,393 (fill) | 4,500 | Stop triggers early |
+| `stop_short_trigger` | 49,492 (fill) | 51,000 | Stop triggers, SCENARIO_END |
+| `stop_limit_long_trigger` | 3,393 (fill) | 4,500 | Stop→limit fills early |
+| `stop_limit_short_trigger` | 49,492 (fill) | 51,000 | Stop→limit fills, SCENARIO_END |
+| `stop_long_then_tp` | 29,433 (TP) | 30,500 | Stop fills, TP fires |
+| `modify_stop_trigger` | 3,393 (fill) | 4,500 | Modify@500, stop triggers |
+| `cancel_stop_no_fill` | 100 (cancel) | 1,500 | Cancel at tick 100, 0 trades |
+| `cancel_limit_no_fill` | 100 (cancel) | 1,500 | Cancel at tick 100, 0 trades |
+
+Without these caps, the suite processes ~3.58M ticks (full time windows). With caps: ~590k ticks — roughly 6x reduction.
 
 ### SL/TP Trigger Mechanics
 

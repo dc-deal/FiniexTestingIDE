@@ -660,7 +660,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 )
                 self.logger.info(
                     f"🔧 Stop order cancel at tick {self.tick_count}: "
-                    f"{'success' if result.success else 'FAILED'}"
+                    f"{'success' if result else 'FAILED'}"
                 )
                 self._pending_stop_order_id = None
 

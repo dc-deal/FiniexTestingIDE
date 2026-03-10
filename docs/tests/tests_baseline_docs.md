@@ -28,7 +28,8 @@ tests/
 ├── __init__.py
 ├── shared/
 │   ├── __init__.py
-│   └── fixture_helpers.py      ← Plain functions (no pytest decorators)
+│   ├── fixture_helpers.py      ← Plain functions (no pytest decorators)
+│   └── shared_batch_health.py  ← TestBatchHealth (included in every suite)
 ├── mvp_baseline/
 │   ├── __init__.py
 │   ├── conftest.py             ← MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
@@ -48,6 +49,14 @@ tests/
 - Adding a new test suite = one `conftest.py` with a different config path
 - Test files are reusable across suites (fixture names are identical)
 - Shared helpers are plain functions — easy to test and debug independently
+
+### Batch Health Guard (shared_batch_health.py)
+
+`TestBatchHealth` is included in **every** test suite. It validates that all scenarios in the batch completed without runtime errors before any domain-specific tests run.
+
+**Why this matters:** When a scenario fails with a runtime error (e.g. `AttributeError`, `TypeError`), the batch orchestrator logs the error but continues executing other scenarios. Domain-specific tests that depend on the failed scenario's fixtures will produce confusing failures (missing data, `None` values) without indicating the root cause. `TestBatchHealth` catches this immediately with a clear error message listing which scenario failed and why.
+
+**Rule: Every new test suite must import `TestBatchHealth` in its main test file.**
 
 ---
 

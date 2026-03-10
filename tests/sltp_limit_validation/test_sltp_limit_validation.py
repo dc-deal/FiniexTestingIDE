@@ -22,6 +22,7 @@ Uses sltp_limit_validation_test.json scenario config:
 - Scenario 16: Cancel limit no fill (limit cancelled, 0 trades)
 """
 
+from tests.shared.shared_batch_health import TestBatchHealth
 from tests.shared.shared_sltp_limit_validation import (
     TestLongTpTrigger,
     TestLongSlTrigger,
