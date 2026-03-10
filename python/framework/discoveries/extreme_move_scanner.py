@@ -16,6 +16,8 @@ import pandas as pd
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
@@ -48,6 +50,7 @@ class ExtremeMoveScanner:
         self._logger = logger
         self._config = DiscoveriesConfigLoader().get_config_raw().get('extreme_moves', {})
         self._bar_index: Optional[BarsIndexManager] = None
+        self._coverage_cache: Optional[DataCoverageReportCache] = None
         self._symbol_specs: Dict[str, SymbolSpecification] = {}
         self._loaded_broker_types: set = set()
         self._market_config = MarketConfigManager()
@@ -58,6 +61,12 @@ class ExtremeMoveScanner:
             self._bar_index = BarsIndexManager(logger=self._logger)
             self._bar_index.build_index()
         return self._bar_index
+
+    def _get_coverage_cache(self) -> DataCoverageReportCache:
+        """Lazy-load coverage report cache."""
+        if self._coverage_cache is None:
+            self._coverage_cache = DataCoverageReportCache(logger=self._logger)
+        return self._coverage_cache
 
     def _load_symbol_spec(self, broker_type: str, symbol: str) -> Optional[SymbolSpecification]:
         """Load symbol specification from broker config."""
@@ -267,6 +276,10 @@ class ExtremeMoveScanner:
         all_longs = self._deduplicate_moves(all_longs)
         all_shorts = self._deduplicate_moves(all_shorts)
 
+        # Filter out moves without tick data coverage
+        all_longs = self._filter_by_tick_coverage(all_longs, broker_type, symbol)
+        all_shorts = self._filter_by_tick_coverage(all_shorts, broker_type, symbol)
+
         # Sort by ATR multiple (strongest first)
         all_longs.sort(key=lambda m: m.move_atr_multiple, reverse=True)
         all_shorts.sort(key=lambda m: m.move_atr_multiple, reverse=True)
@@ -287,6 +300,69 @@ class ExtremeMoveScanner:
             pip_size=pip_size,
             generated_at=datetime.now(timezone.utc),
         )
+
+    def _filter_by_tick_coverage(
+        self,
+        moves: List[ExtremeMove],
+        broker_type: str,
+        symbol: str
+    ) -> List[ExtremeMove]:
+        """
+        Filter out moves whose start falls within a data gap.
+
+        Uses the data coverage report to detect weekend, holiday,
+        and large gaps. Moves starting inside such gaps are removed.
+
+        Args:
+            moves: List of detected extreme moves
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Moves that do not start within a significant data gap
+        """
+        if not moves:
+            return []
+
+        coverage_cache = self._get_coverage_cache()
+        report = coverage_cache.get_report(broker_type, symbol)
+        if not report:
+            self._logger.warning(
+                f"No coverage report for {broker_type}/{symbol}, skipping gap filter"
+            )
+            return moves
+
+        # Collect gap ranges that indicate no tick data
+        gap_categories = {GapCategory.WEEKEND, GapCategory.HOLIDAY, GapCategory.LARGE}
+        gap_ranges = [
+            (pd.to_datetime(g.gap_start, utc=True),
+             pd.to_datetime(g.gap_end, utc=True))
+            for g in report.gaps
+            if g.category in gap_categories and g.gap_start and g.gap_end
+        ]
+
+        if not gap_ranges:
+            return moves
+
+        validated: List[ExtremeMove] = []
+        filtered_count = 0
+
+        for move in moves:
+            start = pd.to_datetime(move.start_time, utc=True)
+            in_gap = any(gs <= start <= ge for gs, ge in gap_ranges)
+            if not in_gap:
+                validated.append(move)
+            else:
+                filtered_count += 1
+
+        if filtered_count > 0:
+            direction = moves[0].direction.value.upper()
+            self._logger.info(
+                f"Coverage gap filter: removed {filtered_count} "
+                f"{direction} move(s) starting in data gaps"
+            )
+
+        return validated
 
     def _deduplicate_moves(self, moves: List[ExtremeMove]) -> List[ExtremeMove]:
         """
@@ -356,9 +432,9 @@ class ExtremeMoveScanner:
             result: ExtremeMoveResult (from scan or cache)
             top_n: Number of top results per direction
         """
-        print("\n" + "=" * 130)
+        print("\n" + "=" * 158)
         print(f"EXTREME MOVE DISCOVERY: {result.symbol}")
-        print("=" * 130)
+        print("=" * 158)
         print(f"Data Source:    {result.broker_type}")
         print(f"Timeframe:      {result.timeframe}")
         print(f"Bars Scanned:   {result.scanned_bars:,}")
@@ -370,13 +446,13 @@ class ExtremeMoveScanner:
         header = (
             f"{'#':>3}  {'ATR Mult':>8}  {'Pips':>8}  {'Adverse':>8}  "
             f"{'Entry':>10}  {'Extreme':>10}  {'Adverse@':>10}  {'Exit':>10}  "
-            f"{'W-ATR':>7}  {'Bars':>6}  {'Ticks':>8}  {'Start':>20}  {'End':>20}"
+            f"{'W-ATR':>7}  {'Bars':>6}  {'Ticks':>8}  {'Start':>24}  {'End':>24}"
         )
 
         # LONG moves
-        print("\n" + "-" * 150)
+        print("\n" + "-" * 158)
         print(f"LONG Extreme Moves (top {top_n})")
-        print("-" * 150)
+        print("-" * 158)
         if result.longs:
             print(header)
             for i, move in enumerate(result.longs[:top_n], 1):
@@ -388,16 +464,16 @@ class ExtremeMoveScanner:
                     f"{adverse_price:>10.3f}  {move.exit_price:>10.3f}  "
                     f"{move.window_atr:>7.3f}  "
                     f"{move.bar_count:>6}  {move.tick_count:>8}  "
-                    f"{move.start_time.strftime('%Y-%m-%d %H:%M'):>20}  "
-                    f"{move.end_time.strftime('%Y-%m-%d %H:%M'):>20}"
+                    f"{move.start_time.strftime('%Y-%m-%d %a %H:%M'):>24}  "
+                    f"{move.end_time.strftime('%Y-%m-%d %a %H:%M'):>24}"
                 )
         else:
             print("   No extreme LONG moves found")
 
         # SHORT moves
-        print("\n" + "-" * 150)
+        print("\n" + "-" * 158)
         print(f"SHORT Extreme Moves (top {top_n})")
-        print("-" * 150)
+        print("-" * 158)
         if result.shorts:
             print(header)
             for i, move in enumerate(result.shorts[:top_n], 1):
@@ -409,10 +485,10 @@ class ExtremeMoveScanner:
                     f"{adverse_price:>10.3f}  {move.exit_price:>10.3f}  "
                     f"{move.window_atr:>7.3f}  "
                     f"{move.bar_count:>6}  {move.tick_count:>8}  "
-                    f"{move.start_time.strftime('%Y-%m-%d %H:%M'):>20}  "
-                    f"{move.end_time.strftime('%Y-%m-%d %H:%M'):>20}"
+                    f"{move.start_time.strftime('%Y-%m-%d %a %H:%M'):>24}  "
+                    f"{move.end_time.strftime('%Y-%m-%d %a %H:%M'):>24}"
                 )
         else:
             print("   No extreme SHORT moves found")
 
-        print("=" * 150 + "\n")
+        print("=" * 158 + "\n")
