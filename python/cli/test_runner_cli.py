@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -27,6 +28,7 @@ class SuiteResult:
     errors: int
     skipped: int
     exit_code: int
+    duration: float
 
 
 class TestRunnerCLI:
@@ -79,11 +81,20 @@ class TestRunnerCLI:
 
         results: List[SuiteResult] = []
         aborted = False
+        max_name_len = max(len(s) for s in suites)
 
         for suite in suites:
+            # Show "running..." on current line
+            running_text = f"  {suite.ljust(max_name_len)}   running..."
+            sys.stdout.write(running_text)
+            sys.stdout.flush()
+
             result = self._run_suite(suite)
             results.append(result)
-            self._print_suite_result(result, suites)
+
+            # Overwrite "running..." with result
+            sys.stdout.write('\r')
+            self._print_suite_result(result, max_name_len)
 
             if fail_fast and result.exit_code != 0:
                 aborted = True
@@ -108,12 +119,14 @@ class TestRunnerCLI:
             SuiteResult with parsed test counts and exit code
         """
         suite_path = f"tests/{suite_name}/"
+        start = time.monotonic()
         proc = subprocess.run(
             [sys.executable, '-m', 'pytest', suite_path, '-v', '--tb=short'],
             capture_output=True,
             text=True,
             cwd=os.getcwd()
         )
+        duration = time.monotonic() - start
 
         passed, failed, errors, skipped = self._parse_pytest_output(proc.stdout)
 
@@ -123,7 +136,8 @@ class TestRunnerCLI:
             failed=failed,
             errors=errors,
             skipped=skipped,
-            exit_code=proc.returncode
+            exit_code=proc.returncode,
+            duration=duration
         )
 
     def _parse_pytest_output(self, output: str) -> tuple:
@@ -156,22 +170,22 @@ class TestRunnerCLI:
 
         return passed, failed, errors, skipped
 
-    def _print_suite_result(self, result: SuiteResult, all_suites: List[str]) -> None:
+    def _print_suite_result(self, result: SuiteResult, max_name_len: int) -> None:
         """
-        Print a single suite result line.
+        Print a single suite result line, overwriting the "running..." indicator.
 
         Args:
             result: Suite execution result
-            all_suites: All suite names (for column alignment)
+            max_name_len: Max suite name length for column alignment
         """
-        max_name_len = max(len(s) for s in all_suites)
         name_col = result.name.ljust(max_name_len)
+        duration = self._format_duration(result.duration)
 
         if result.exit_code == 0:
             status = f"{result.passed} passed"
             if result.skipped > 0:
                 status += f", {result.skipped} skipped"
-            print(f"  {name_col}   {status}")
+            line = f"  {name_col}   {status}  ({duration})"
         else:
             parts = []
             if result.failed > 0:
@@ -181,11 +195,14 @@ class TestRunnerCLI:
             if result.passed > 0:
                 parts.append(f"{result.passed} passed")
             status = ', '.join(parts) if parts else f"exit code {result.exit_code}"
-            print(f"  {name_col}   \u274c {status}")
+            line = f"  {name_col}   \u274c {status}  ({duration})"
+
+        # Pad to overwrite any leftover characters from "running..."
+        print(f"{line:<80}")
 
     def _print_summary(self, results: List[SuiteResult], aborted: bool) -> None:
         """
-        Print final summary.
+        Print final summary with total duration.
 
         Args:
             results: All collected suite results
@@ -195,6 +212,7 @@ class TestRunnerCLI:
         total_failed = sum(r.failed for r in results)
         total_errors = sum(r.errors for r in results)
         total_skipped = sum(r.skipped for r in results)
+        total_duration = sum(r.duration for r in results)
         suites_run = len(results)
 
         if aborted:
@@ -210,7 +228,24 @@ class TestRunnerCLI:
         if total_skipped > 0:
             parts.append(f"{total_skipped} skipped")
 
-        print(f"TOTAL: {', '.join(parts)}")
+        print(f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """
+        Format duration in human-readable form.
+
+        Args:
+            seconds: Duration in seconds
+
+        Returns:
+            Formatted string (e.g. "4s", "1m 23s")
+        """
+        if seconds < 60:
+            return f"{seconds:.0f}s"
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs:02d}s"
 
 
 def main() -> None:

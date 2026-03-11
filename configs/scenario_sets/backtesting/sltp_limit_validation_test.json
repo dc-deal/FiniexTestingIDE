@@ -40,12 +40,12 @@
   "scenarios": [
     {
       "name": "long_tp_trigger",
-      "description": "LONG position with take profit — TP should trigger during uptrend (LONG extreme move #9: +128.1 pips)",
+      "description": "LONG position with take profit — TP should trigger during uptrend (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 6000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -56,8 +56,8 @@
               "direction": "LONG",
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 156.000,
-              "take_profit": 157.300
+              "stop_loss": 155.900,
+              "take_profit": 156.550
             }
           ]
         }
@@ -67,12 +67,12 @@
     },
     {
       "name": "long_sl_trigger",
-      "description": "LONG position against downtrend — SL should trigger (SHORT extreme move #8: -175.0 pips)",
+      "description": "LONG position against downtrend — SL should trigger (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 6500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -83,8 +83,8 @@
               "direction": "LONG",
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 156.000,
-              "take_profit": 157.500
+              "stop_loss": 151.700,
+              "take_profit": 152.300
             }
           ]
         }
@@ -94,12 +94,12 @@
     },
     {
       "name": "short_tp_trigger",
-      "description": "SHORT position with take profit — TP should trigger during downtrend (SHORT extreme move #8: -175.0 pips)",
+      "description": "SHORT position with take profit — TP should trigger during downtrend (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 7500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -110,8 +110,8 @@
               "direction": "SHORT",
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 157.500,
-              "take_profit": 156.000
+              "stop_loss": 152.200,
+              "take_profit": 151.650
             }
           ]
         }
@@ -121,12 +121,12 @@
     },
     {
       "name": "short_sl_trigger",
-      "description": "SHORT position against uptrend — SL should trigger (LONG extreme move #7: +102.1 pips)",
+      "description": "SHORT position against uptrend — SL should trigger (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-30T11:30:00+00:00",
-      "end_date": "2026-01-01T05:05:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 5500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -137,8 +137,8 @@
               "direction": "SHORT",
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 156.300,
-              "take_profit": 155.000
+              "stop_loss": 156.500,
+              "take_profit": 155.500
             }
           ]
         }
@@ -148,12 +148,12 @@
     },
     {
       "name": "modify_tp_trigger",
-      "description": "LONG position with modify — initial TP unreachable, modified TP triggers (LONG extreme move #9)",
+      "description": "LONG position with modify — initial TP unreachable, modified TP triggers (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 6000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -164,14 +164,14 @@
               "direction": "LONG",
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 156.000,
+              "stop_loss": 155.900,
               "take_profit": 160.000
             }
           ],
           "modify_sequence": [
             {
               "tick_number": 500,
-              "take_profit": 157.300
+              "take_profit": 156.550
             }
           ]
         }
@@ -181,12 +181,12 @@
     },
     {
       "name": "long_limit_fill",
-      "description": "LONG limit buy fills when price drops to limit level (SHORT extreme move #9: -175 pips)",
+      "description": "LONG limit buy fills when price drops to limit level (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 6500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -196,7 +196,7 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "LIMIT",
-              "price": 156.000,
+              "price": 151.700,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -208,12 +208,12 @@
     },
     {
       "name": "short_limit_fill",
-      "description": "SHORT limit sell fills when price rises to limit level (LONG extreme move #11: +128.1 pips)",
+      "description": "SHORT limit sell fills when price rises to limit level (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 6000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -223,7 +223,7 @@
               "tick_number": 10,
               "direction": "SHORT",
               "order_type": "LIMIT",
-              "price": 157.300,
+              "price": 156.500,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -235,12 +235,12 @@
     },
     {
       "name": "limit_fill_then_sl",
-      "description": "LONG limit fills at dip, then SL triggers as price drops further (SHORT extreme: -175 pips)",
+      "description": "LONG limit fills at dip, then SL triggers as price drops further (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 8500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -250,11 +250,11 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "LIMIT",
-              "price": 156.500,
+              "price": 151.750,
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "stop_loss": 155.800,
-              "take_profit": 157.000
+              "stop_loss": 151.600,
+              "take_profit": 152.300
             }
           ]
         }
@@ -264,12 +264,12 @@
     },
     {
       "name": "modify_limit_price_fill",
-      "description": "Limit order placed deep, price modified closer before fill (SHORT extreme: -175 pips)",
+      "description": "Limit order placed deep, price modified closer before fill (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 6500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -279,7 +279,7 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "LIMIT",
-              "price": 155.000,
+              "price": 148.000,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -287,7 +287,7 @@
           "modify_limit_sequence": [
             {
               "tick_number": 500,
-              "price": 156.200
+              "price": 151.700
             }
           ]
         }
@@ -297,12 +297,12 @@
     },
     {
       "name": "stop_long_trigger",
-      "description": "STOP LONG — stop triggers when uptrend pushes price above stop_price (LONG extreme move #9: +128.1 pips)",
+      "description": "STOP LONG — stop triggers when uptrend pushes price above stop_price (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 4000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -312,7 +312,7 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "STOP",
-              "stop_price": 157.000,
+              "stop_price": 156.400,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -324,12 +324,12 @@
     },
     {
       "name": "stop_short_trigger",
-      "description": "STOP SHORT — stop triggers when downtrend pushes price below stop_price (SHORT extreme move #8: -175.0 pips)",
+      "description": "STOP SHORT — stop triggers when downtrend pushes price below stop_price (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 6500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -339,7 +339,7 @@
               "tick_number": 10,
               "direction": "SHORT",
               "order_type": "STOP",
-              "stop_price": 156.200,
+              "stop_price": 151.700,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -351,12 +351,12 @@
     },
     {
       "name": "stop_limit_long_trigger",
-      "description": "STOP_LIMIT LONG — stop triggers at 157.000, fills at limit 157.200 (LONG extreme move #9: +128.1 pips)",
+      "description": "STOP_LIMIT LONG — stop triggers at 156.400, fills at limit 156.450 (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 4000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -366,8 +366,8 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "STOP_LIMIT",
-              "stop_price": 157.000,
-              "price": 157.200,
+              "stop_price": 156.400,
+              "price": 156.450,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -379,12 +379,12 @@
     },
     {
       "name": "stop_limit_short_trigger",
-      "description": "STOP_LIMIT SHORT — stop triggers at 156.200, fills at limit 156.000 (SHORT extreme move #8: -175.0 pips)",
+      "description": "STOP_LIMIT SHORT — stop triggers at 151.700, fills at limit 151.600 (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2025-12-10T12:20:00+00:00",
-      "end_date": "2025-12-12T05:55:00+00:00",
-      "max_ticks": null,
+      "start_date": "2025-10-21T20:55:00+00:00",
+      "end_date": "2025-10-22T01:00:00+00:00",
+      "max_ticks": 6500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -394,8 +394,8 @@
               "tick_number": 10,
               "direction": "SHORT",
               "order_type": "STOP_LIMIT",
-              "stop_price": 156.200,
-              "price": 156.000,
+              "stop_price": 151.700,
+              "price": 151.600,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -407,12 +407,12 @@
     },
     {
       "name": "stop_long_then_tp",
-      "description": "STOP LONG triggers, then TP closes position — validates STOP+TP combo (LONG extreme: +128.1 pips)",
+      "description": "STOP LONG triggers, then TP closes position — validates STOP+TP combo (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 6000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -422,10 +422,10 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "STOP",
-              "stop_price": 156.800,
+              "stop_price": 156.300,
               "hold_ticks": 999999,
               "lot_size": 0.01,
-              "take_profit": 157.300
+              "take_profit": 156.550
             }
           ]
         }
@@ -435,12 +435,12 @@
     },
     {
       "name": "modify_stop_trigger",
-      "description": "STOP LONG with unreachable stop, modified closer — triggers after modification (LONG extreme: +128.1 pips)",
+      "description": "STOP LONG with unreachable stop, modified closer — triggers after modification (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 4000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -450,7 +450,7 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "STOP",
-              "stop_price": 158.000,
+              "stop_price": 160.000,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -458,7 +458,7 @@
           "modify_stop_sequence": [
             {
               "tick_number": 500,
-              "stop_price": 157.000
+              "stop_price": 156.400
             }
           ]
         }
@@ -468,12 +468,12 @@
     },
     {
       "name": "cancel_stop_no_fill",
-      "description": "STOP LONG cancelled before trigger — validates 0 trades after cancellation (LONG extreme: +128.1 pips)",
+      "description": "STOP LONG cancelled before trigger — validates 0 trades after cancellation (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 1500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {
@@ -483,7 +483,7 @@
               "tick_number": 10,
               "direction": "LONG",
               "order_type": "STOP",
-              "stop_price": 157.000,
+              "stop_price": 156.400,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -500,12 +500,12 @@
     },
     {
       "name": "cancel_limit_no_fill",
-      "description": "LONG LIMIT at utopian price cancelled before fill — validates 0 trades after cancellation (LONG extreme: +128.1 pips)",
+      "description": "LONG LIMIT at utopian price cancelled before fill — validates 0 trades after cancellation (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
-      "start_date": "2026-01-08T22:35:00+00:00",
-      "end_date": "2026-01-09T15:10:00+00:00",
-      "max_ticks": null,
+      "start_date": "2026-01-05T18:55:00+00:00",
+      "end_date": "2026-01-05T23:00:00+00:00",
+      "max_ticks": 1500,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {

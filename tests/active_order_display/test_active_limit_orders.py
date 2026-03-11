@@ -8,6 +8,7 @@ Tests:
 - active_stop_orders is empty (no stop orders in this scenario)
 """
 
+from tests.shared.shared_batch_health import TestBatchHealth
 from tests.shared.shared_active_order_display import TestActiveLimitOrdersReported
 
 # All test classes imported from shared module.

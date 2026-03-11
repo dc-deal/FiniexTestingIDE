@@ -98,6 +98,12 @@ Scans bar data with sliding windows to find extreme directional price movements:
 - Separate LONG/SHORT rankings
 - Configurable via `configs/discoveries/discoveries_config.json` (section `extreme_moves`)
 
+### Data Coverage Awareness
+
+After deduplication, discovered moves are filtered against the Data Coverage report. Moves whose `start_time` falls within a **weekend**, **holiday**, or **large** data gap are removed. This prevents selecting time windows where tick data is absent or unreliable (e.g. a Sunday start where the bar data exists as synthetic but no real ticks are available for backtesting).
+
+The filter uses `DataCoverageReportCache` to load the gap report for the broker/symbol pair. If no coverage report exists, filtering is skipped with a warning.
+
 ## Data Coverage Details
 
 Detects gaps in M5 bar data by identifying consecutive synthetic bars:

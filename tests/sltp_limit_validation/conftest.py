@@ -15,7 +15,7 @@ Config design:
 """
 
 import pytest
-from typing import List
+from typing import Any, Dict, List
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -28,6 +28,9 @@ from tests.shared.fixture_helpers import (
     extract_tick_loop_results,
     extract_trade_history,
     extract_execution_stats,
+    load_scenario_config,
+    extract_scenario_expected_values,
+    ScenarioExpectedValues,
 )
 
 # =============================================================================
@@ -44,6 +47,106 @@ SLTP_LIMIT_VALIDATION_CONFIG = "backtesting/sltp_limit_validation_test.json"
 def batch_execution_summary() -> BatchExecutionSummary:
     """Execute SL/TP & limit order validation scenarios once per session."""
     return run_scenario(SLTP_LIMIT_VALIDATION_CONFIG)
+
+
+@pytest.fixture(scope="session")
+def scenario_config() -> Dict[str, Any]:
+    """Load raw scenario config for expected value extraction."""
+    return load_scenario_config(SLTP_LIMIT_VALIDATION_CONFIG)
+
+
+# =============================================================================
+# EXPECTED VALUES (extracted from config — no hardcoded prices in tests)
+# =============================================================================
+
+@pytest.fixture(scope="session")
+def long_tp_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for LONG TP trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=0)
+
+
+@pytest.fixture(scope="session")
+def long_sl_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for LONG SL trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=1)
+
+
+@pytest.fixture(scope="session")
+def short_tp_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for SHORT TP trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=2)
+
+
+@pytest.fixture(scope="session")
+def short_sl_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for SHORT SL trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=3)
+
+
+@pytest.fixture(scope="session")
+def modify_tp_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for modify TP trigger scenario (applies modify override)."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=4)
+
+
+@pytest.fixture(scope="session")
+def long_limit_fill_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for LONG limit fill scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=5)
+
+
+@pytest.fixture(scope="session")
+def short_limit_fill_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for SHORT limit fill scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=6)
+
+
+@pytest.fixture(scope="session")
+def limit_sl_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for limit fill then SL trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=7)
+
+
+@pytest.fixture(scope="session")
+def modify_limit_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for modify limit price fill scenario (applies modify override)."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=8)
+
+
+@pytest.fixture(scope="session")
+def stop_long_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for STOP LONG trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=9)
+
+
+@pytest.fixture(scope="session")
+def stop_short_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for STOP SHORT trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=10)
+
+
+@pytest.fixture(scope="session")
+def stop_limit_long_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for STOP_LIMIT LONG trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=11)
+
+
+@pytest.fixture(scope="session")
+def stop_limit_short_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for STOP_LIMIT SHORT trigger scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=12)
+
+
+@pytest.fixture(scope="session")
+def stop_tp_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for STOP LONG then TP scenario."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=13)
+
+
+@pytest.fixture(scope="session")
+def modify_stop_expected(scenario_config: Dict[str, Any]) -> ScenarioExpectedValues:
+    """Expected values for modify stop trigger scenario (applies modify override)."""
+    return extract_scenario_expected_values(scenario_config, scenario_index=14)
 
 
 # =============================================================================

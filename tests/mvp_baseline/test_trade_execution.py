@@ -8,6 +8,7 @@ Tests:
 - Orders executed without rejection
 """
 
+from tests.shared.shared_batch_health import TestBatchHealth
 from tests.shared.shared_execution import TestTradeExecution
 
 # All test classes imported from shared module.
