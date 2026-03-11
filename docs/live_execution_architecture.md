@@ -217,12 +217,9 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 ### Reconciliation Layer for Live Trading
 **Problem:** Local portfolio (shadow state) can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes operational.
 - Affects: LiveTradeExecutor, PortfolioManager
-- See: `ISSUE_reconciliation_layer_live_trading.md`
 
 ### Live Autotrader Pipeline
 **Next step:** Build FiniexAutoTrader (live runner) that connects tick source → workers → decision logic → LiveTradeExecutor. The execution layer (LiveTradeExecutor, LiveOrderTracker, MockBrokerAdapter) is complete and tested (47 tests). Missing: live runner, Kraken tick source, KrakenAdapter Tier 3.
-- Replaces: GitHub Issue #133
-- See: `ISSUE_live_autotrader_pipeline.md`
 
 ---
 

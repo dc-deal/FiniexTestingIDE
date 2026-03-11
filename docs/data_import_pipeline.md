@@ -118,12 +118,12 @@ local_device_time:   "2026.03.08 18:41:34"
 | `spread_pct` | float | Spread as percentage |
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
-| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms), UTC-converted by importer. Not monotonic in arrival order — see ISSUE #194 |
+| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms), UTC-converted by importer. Not monotonic in arrival order |
 | `collected_msc` | int64 | Local device clock at tick receipt (Unix epoch ms). Monotonic. Added in V1.3.0. Default `0` for older data |
 
 > **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
 
-> **Note — `collected_msc`**: Per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) added in V1.3.0. See `ISSUE_tick_collection_timestamp.md` (ISSUE #194) for status and phases.
+> **Note — `collected_msc`**: Per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) added in V1.3.0. 
 
 > **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files may still contain it — the importer drops it during Parquet export (column filter). New collectors no longer produce it.
 
@@ -366,13 +366,16 @@ After import, tick data flows from Parquet into the simulation engine:
 Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
        ↓
   SharedDataPreparator
-  ├─ Loads tick Parquet via DataLoader
-  ├─ df.to_dict('records') → list of tick dicts
-  └─ Passes tick dicts to process serialization
+  ├─ Loads tick Parquet via pd.read_parquet()
+  ├─ Filters by timestamp (UTC-aware)
+  ├─ serialize_ticks_for_transport(df) → trimmed dicts
+  │   Only TickTransportColumn fields cross the process boundary
+  └─ Passes trimmed tick dicts via ProcessDataPackage (pickle)
        ↓
-  ProcessSerializationUtils
-  ├─ Converts tick dicts → TickData objects
-  └─ Fields: timestamp, symbol, bid, ask, volume, time_msc, collected_msc
+  process_deserialize_ticks_batch()          [process_serialization_utils.py]
+  ├─ Derives timestamp from time_msc (epoch ms → UTC datetime)
+  ├─ Symbol from scenario config (not from dict)
+  └─ Produces TickData objects for tick loop
        ↓
   ProcessTickLoop
   ├─ Iterates TickData objects in order
@@ -381,19 +384,29 @@ Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
   └─ Feeds TradingEnvironment per tick
 ```
 
-### Field Flow Through Pipeline
+### Transport Contract (`TickTransportColumn`)
 
-| Field | JSON | Parquet | TickData | Used in Simulation |
-|-------|------|---------|----------|-------------------|
-| `timestamp` | string | timestamp[ns] | datetime | Tick timing, bar bucketing |
-| `time_msc` | int64 | int64 | int | Fallback interval source |
-| `collected_msc` | int64 | int64 | int | Primary interval source (V1.3.0+) |
-| `bid` | float | float | float | Price feed |
-| `ask` | float | float | float | Price feed, spread |
-| `real_volume` | float | float | float (as volume) | Volume tracking |
-| `tick_flags` | string | string | — | Not in TickData (import-only) |
-| `session` | string | string | — | Not in TickData (import-only) |
-| `spread_pct` | float | float | — | Quality checks only |
+Only fields defined in `TickTransportColumn` (`market_data_types.py`) cross the process boundary. All other Parquet columns are trimmed before serialization to reduce pickle payload (~50% reduction).
+
+| Transport Field | Parquet Column | TickData Field | Notes |
+|----------------|---------------|----------------|-------|
+| `TIME_MSC` | `time_msc` (int64) | `time_msc` + `timestamp` | timestamp derived via `datetime.fromtimestamp()` |
+| `COLLECTED_MSC` | `collected_msc` (int64) | `collected_msc` | Optional, default 0 (pre-V1.3.0) |
+| `BID` | `bid` (float) | `bid` | Mandatory |
+| `ASK` | `ask` (float) | `ask` | Mandatory |
+| `VOLUME` | `volume` (float) | `volume` | Optional, default 0.0 |
+
+### Dropped at Transport Boundary
+
+These fields exist in Parquet but are **not** transported to subprocesses:
+
+| Field | Reason |
+|-------|--------|
+| `timestamp` | Derived from `time_msc` during deserialization (eliminates Pandas Timestamp from pickle) |
+| `symbol` | Injected from scenario config during deserialization |
+| `last`, `tick_volume`, `real_volume`, `chart_tick_volume` | Not consumed by tick loop |
+| `spread_points`, `spread_pct` | Quality checks only (pre-transport) |
+| `tick_flags`, `session` | Import metadata only |
 
 > **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies UTC offset to `time_msc` (not `collected_msc`). The simulation reads both from TickData and decides which to use for inter-tick intervals.
 

@@ -19,8 +19,10 @@ class TickData:
     bid: float
     ask: float
     volume: float = 0.0
-    time_msc: int = 0  # Millisecond-precision Unix timestamp from broker (0 = not available)
-    collected_msc: int = 0  # Local device clock at tick receipt, ms precision (0 = not available)
+    # Millisecond-precision Unix timestamp from broker (0 = not available)
+    time_msc: int = 0
+    # Local device clock at tick receipt, ms precision (0 = not available)
+    collected_msc: int = 0
 
     @property
     def mid(self) -> float:
@@ -104,3 +106,22 @@ class Bar:
             'tick_count': self.tick_count,
             'is_complete': self.is_complete
         }
+
+# ============================================================================
+# TICK TRANSPORT CONTRACT
+# ============================================================================
+
+
+class TickTransportColumn(str, Enum):
+    """
+    Columns that cross the process boundary via pickle.
+
+    Shared between serialize (pack) and deserialize (unpack).
+    timestamp is NOT transported — derived from TIME_MSC during deserialization.
+    str-based Enum: values are usable directly as dict keys and DataFrame column names.
+    """
+    TIME_MSC = 'time_msc'
+    COLLECTED_MSC = 'collected_msc'
+    BID = 'bid'
+    ASK = 'ask'
+    VOLUME = 'volume'

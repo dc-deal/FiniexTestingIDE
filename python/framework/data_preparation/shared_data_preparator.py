@@ -26,6 +26,7 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.process_serialization_utils import serialize_ticks_for_transport, time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware
 
 
@@ -449,8 +450,8 @@ class SharedDataPreparator:
             if len(all_ticks) == 0:
                 df = df[df['timestamp'] >= start_time]
 
-            # Convert to dicts
-            all_ticks.extend(df.to_dict('records'))
+            # Convert to transport dicts (trimmed columns)
+            all_ticks.extend(serialize_ticks_for_transport(df))
 
             # Check if we have enough
             if len(all_ticks) >= max_ticks:
@@ -466,11 +467,8 @@ class SharedDataPreparator:
             )
             return None
 
-        # Get time range
-        time_range = (
-            all_ticks[0]['timestamp'],
-            all_ticks[-1]['timestamp']
-        )
+        # Get time range (derived from time_msc)
+        time_range = time_range_from_transport_ticks(all_ticks)
 
         return all_ticks, len(all_ticks), time_range
 
@@ -524,7 +522,7 @@ class SharedDataPreparator:
             df = df[(df['timestamp'] >= start_time)
                     & (df['timestamp'] <= end_time)]
 
-            all_ticks.extend(df.to_dict('records'))
+            all_ticks.extend(serialize_ticks_for_transport(df))
 
         if not all_ticks:
             self._logger.error(
@@ -533,11 +531,8 @@ class SharedDataPreparator:
             )
             return None
 
-        # Get time range
-        time_range = (
-            all_ticks[0]['timestamp'],
-            all_ticks[-1]['timestamp']
-        )
+        # Get time range (derived from time_msc)
+        time_range = time_range_from_transport_ticks(all_ticks)
 
         return all_ticks, len(all_ticks), time_range
 

@@ -1,15 +1,66 @@
+"""
+Process Serialization Utilities
 
-from datetime import datetime
+Centralized serialization contract for cross-process tick data transport.
+Owns both the "pack" (DataFrame -> transport dicts) and "unpack" (transport dicts -> TickData) logic.
+
+Transport contract: Only fields listed in TickTransportColumn cross the process boundary.
+All other Parquet columns are trimmed before serialization to reduce pickle payload (~50% reduction).
+"""
+
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Tuple
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from typing import Any, Dict, List, Tuple
+
+import pandas as pd
+
+from python.framework.types.market_types.market_data_types import Bar, TickData, TickTransportColumn
+
+
+# ============================================================================
+# TICK SERIALIZATION (DataFrame -> transport dicts)
+# ============================================================================
+
+
+def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Trim DataFrame to transport columns and convert to list of dicts.
+
+    Filters the DataFrame to only the columns needed by the tick loop consumer,
+    dropping all other Parquet columns (last, tick_volume, real_volume,
+    chart_tick_volume, spread_points, spread_pct, tick_flags, session, etc.).
+
+    Gracefully handles missing columns (e.g. collected_msc in pre-V1.3.0 data,
+    volume if not present) — consumer uses defaults for absent fields.
+
+    Args:
+        df: DataFrame with tick data from Parquet (post-filtering)
+
+    Returns:
+        List of dicts with only transport-relevant fields
+    """
+    available_cols = [c.value for c in TickTransportColumn if c.value in df.columns]
+    return df[available_cols].to_dict('records')
+
+
+# ============================================================================
+# TICK DESERIALIZATION (transport dicts -> TickData)
+# ============================================================================
 
 
 def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict[str, Tuple[Any, ...]]) -> Tuple[TickData, ...]:
     """
-    Optimierte Batch-Deserialisierung für große Tick-Mengen.
+    Batch deserialization of transport tick dicts into TickData objects.
 
-    Nutzt list comprehension für bessere Performance.
+    Derives timestamp from time_msc (epoch ms -> UTC datetime).
+    Symbol is taken from scenario config, not from the dict.
+
+    Args:
+        scenario_symbol: Trading symbol from scenario config (authoritative source)
+        ticks_tuple_list: Dict mapping symbol -> tuple of tick dicts
+
+    Returns:
+        Tuple of TickData objects for the tick loop
     """
     ticks_tuple = ticks_tuple_list[scenario_symbol]
     if not ticks_tuple:
@@ -20,20 +71,47 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
         if isinstance(tick_data, TickData):
             result.append(tick_data)
         elif isinstance(tick_data, dict):
-            ts = tick_data['timestamp']
-            if isinstance(ts, str):
-                ts = datetime.fromisoformat(ts)
+            time_msc = int(tick_data[TickTransportColumn.TIME_MSC])
+            ts = datetime.fromtimestamp(time_msc / 1000, tz=timezone.utc)
 
             result.append(TickData(
                 timestamp=ts,
                 symbol=scenario_symbol,
-                bid=float(tick_data['bid']),
-                ask=float(tick_data['ask']),
-                volume=float(tick_data.get('volume', 0.0)),
-                time_msc=int(tick_data.get('time_msc', 0)),
-                collected_msc=int(tick_data.get('collected_msc', 0))
+                bid=float(tick_data[TickTransportColumn.BID]),
+                ask=float(tick_data[TickTransportColumn.ASK]),
+                volume=float(tick_data.get(TickTransportColumn.VOLUME, 0.0)),
+                time_msc=time_msc,
+                collected_msc=int(tick_data.get(TickTransportColumn.COLLECTED_MSC, 0))
             ))
     return tuple(result)
+
+
+# ============================================================================
+# TICK TIME RANGE HELPER
+# ============================================================================
+
+
+def time_range_from_transport_ticks(
+    ticks: List[Dict[str, Any]]
+) -> Tuple[datetime, datetime]:
+    """
+    Extract (first_tick, last_tick) datetime range from transport tick dicts.
+
+    Derives UTC datetime from time_msc. Used by SharedDataPreparator for
+    tick_ranges metadata (before process boundary).
+
+    Args:
+        ticks: List of transport tick dicts (must have 'time_msc' key)
+
+    Returns:
+        (first_tick_datetime, last_tick_datetime) as UTC-aware datetimes
+    """
+    first_msc = int(ticks[0][TickTransportColumn.TIME_MSC])
+    last_msc = int(ticks[-1][TickTransportColumn.TIME_MSC])
+    return (
+        datetime.fromtimestamp(first_msc / 1000, tz=timezone.utc),
+        datetime.fromtimestamp(last_msc / 1000, tz=timezone.utc)
+    )
 
 
 # ============================================================================
