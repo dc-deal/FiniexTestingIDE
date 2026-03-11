@@ -13,8 +13,9 @@ Convention:
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -163,3 +164,75 @@ def extract_trade_sequence(scenario_config: Dict[str, Any]) -> list:
 def extract_seeds_config(scenario_config: Dict[str, Any]) -> Dict[str, int]:
     """Extract seeds from config."""
     return scenario_config['global']['trade_simulator_config']['seeds']
+
+
+# =============================================================================
+# EXPECTED VALUES (from config → test assertions)
+# =============================================================================
+
+@dataclass
+class ScenarioExpectedValues:
+    """Expected trade values extracted from scenario config.
+
+    Args:
+        stop_loss: Expected SL level (from trade_sequence or modify_sequence)
+        take_profit: Expected TP level (from trade_sequence or modify_sequence)
+        price: Expected limit/fill price (from trade_sequence or modify_limit_sequence)
+        stop_price: Expected stop trigger price (from trade_sequence or modify_stop_sequence)
+
+    Returns:
+        Populated dataclass with effective values after modify overrides
+    """
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    price: Optional[float] = None
+    stop_price: Optional[float] = None
+
+
+def extract_scenario_expected_values(
+    config: Dict[str, Any],
+    scenario_index: int
+) -> ScenarioExpectedValues:
+    """
+    Extract effective expected values for a scenario.
+
+    Reads trade_sequence for base values, then applies overrides
+    from modify_sequence, modify_limit_sequence, or modify_stop_sequence.
+
+    Args:
+        config: Parsed scenario set config dict
+        scenario_index: Index of scenario in scenarios list
+
+    Returns:
+        ScenarioExpectedValues with effective values after modifications
+    """
+    scenario = config['scenarios'][scenario_index]
+    dlc = scenario.get('strategy_config', {}).get('decision_logic_config', {})
+    trade = dlc['trade_sequence'][0]
+
+    values = ScenarioExpectedValues(
+        stop_loss=trade.get('stop_loss'),
+        take_profit=trade.get('take_profit'),
+        price=trade.get('price'),
+        stop_price=trade.get('stop_price'),
+    )
+
+    # Modify sequences override the original values
+    if 'modify_sequence' in dlc:
+        mod = dlc['modify_sequence'][0]
+        if 'take_profit' in mod:
+            values.take_profit = mod['take_profit']
+        if 'stop_loss' in mod:
+            values.stop_loss = mod['stop_loss']
+
+    if 'modify_limit_sequence' in dlc:
+        mod = dlc['modify_limit_sequence'][0]
+        if 'price' in mod:
+            values.price = mod['price']
+
+    if 'modify_stop_sequence' in dlc:
+        mod = dlc['modify_stop_sequence'][0]
+        if 'stop_price' in mod:
+            values.stop_price = mod['stop_price']
+
+    return values

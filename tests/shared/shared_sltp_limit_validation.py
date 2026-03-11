@@ -17,6 +17,9 @@ Validates:
 - Modify stop: unreachable stop modified closer, triggers after modify
 - Cancel stop: cancelled before trigger, 0 trades
 
+Expected values are injected via fixtures (ScenarioExpectedValues),
+extracted from the scenario config — no hardcoded prices in tests.
+
 Used by: sltp_limit_validation test suite
 Import these classes into suite-specific test_sltp_limit_validation.py files.
 """
@@ -26,6 +29,8 @@ from typing import List
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType, TradeRecord, CloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+
+from tests.shared.fixture_helpers import ScenarioExpectedValues
 
 
 # =============================================================================
@@ -62,18 +67,18 @@ class TestLongTpTrigger:
             f"Exit price {trade.exit_price} != take_profit {trade.take_profit}"
         )
 
-    def test_tp_level_matches_config(self, long_tp_trade_history: List[TradeRecord]):
+    def test_tp_level_matches_config(self, long_tp_trade_history: List[TradeRecord], long_tp_expected: ScenarioExpectedValues):
         """Take profit on TradeRecord should match configured level."""
         trade = long_tp_trade_history[0]
-        assert trade.take_profit == 157.300, (
-            f"Expected TP=157.300, got {trade.take_profit}"
+        assert trade.take_profit == long_tp_expected.take_profit, (
+            f"Expected TP={long_tp_expected.take_profit}, got {trade.take_profit}"
         )
 
-    def test_sl_level_matches_config(self, long_tp_trade_history: List[TradeRecord]):
+    def test_sl_level_matches_config(self, long_tp_trade_history: List[TradeRecord], long_tp_expected: ScenarioExpectedValues):
         """Stop loss on TradeRecord should match configured level."""
         trade = long_tp_trade_history[0]
-        assert trade.stop_loss == 156.000, (
-            f"Expected SL=156.000, got {trade.stop_loss}"
+        assert trade.stop_loss == long_tp_expected.stop_loss, (
+            f"Expected SL={long_tp_expected.stop_loss}, got {trade.stop_loss}"
         )
 
     def test_sl_tp_triggered_count(self, long_tp_execution_stats: ExecutionStats):
@@ -117,11 +122,11 @@ class TestLongSlTrigger:
             f"Exit price {trade.exit_price} != stop_loss {trade.stop_loss}"
         )
 
-    def test_sl_level_matches_config(self, long_sl_trade_history: List[TradeRecord]):
+    def test_sl_level_matches_config(self, long_sl_trade_history: List[TradeRecord], long_sl_expected: ScenarioExpectedValues):
         """Stop loss on TradeRecord should match configured level."""
         trade = long_sl_trade_history[0]
-        assert trade.stop_loss == 156.000, (
-            f"Expected SL=156.000, got {trade.stop_loss}"
+        assert trade.stop_loss == long_sl_expected.stop_loss, (
+            f"Expected SL={long_sl_expected.stop_loss}, got {trade.stop_loss}"
         )
 
     def test_sl_tp_triggered_count(self, long_sl_execution_stats: ExecutionStats):
@@ -172,11 +177,11 @@ class TestShortTpTrigger:
             f"Exit price {trade.exit_price} != take_profit {trade.take_profit}"
         )
 
-    def test_tp_level_matches_config(self, short_tp_trade_history: List[TradeRecord]):
+    def test_tp_level_matches_config(self, short_tp_trade_history: List[TradeRecord], short_tp_expected: ScenarioExpectedValues):
         """Take profit on TradeRecord should match configured level."""
         trade = short_tp_trade_history[0]
-        assert trade.take_profit == 156.000, (
-            f"Expected TP=156.000, got {trade.take_profit}"
+        assert trade.take_profit == short_tp_expected.take_profit, (
+            f"Expected TP={short_tp_expected.take_profit}, got {trade.take_profit}"
         )
 
     def test_sl_tp_triggered_count(self, short_tp_execution_stats: ExecutionStats):
@@ -220,11 +225,11 @@ class TestShortSlTrigger:
             f"Exit price {trade.exit_price} != stop_loss {trade.stop_loss}"
         )
 
-    def test_sl_level_matches_config(self, short_sl_trade_history: List[TradeRecord]):
+    def test_sl_level_matches_config(self, short_sl_trade_history: List[TradeRecord], short_sl_expected: ScenarioExpectedValues):
         """Stop loss on TradeRecord should match configured level."""
         trade = short_sl_trade_history[0]
-        assert trade.stop_loss == 156.300, (
-            f"Expected SL=156.300, got {trade.stop_loss}"
+        assert trade.stop_loss == short_sl_expected.stop_loss, (
+            f"Expected SL={short_sl_expected.stop_loss}, got {trade.stop_loss}"
         )
 
     def test_sl_tp_triggered_count(self, short_sl_execution_stats: ExecutionStats):
@@ -261,19 +266,18 @@ class TestModifyTpTrigger:
             f"Expected TP_TRIGGERED, got {trade.close_reason}"
         )
 
-    def test_tp_is_modified_value(self, modify_tp_trade_history: List[TradeRecord]):
+    def test_tp_is_modified_value(self, modify_tp_trade_history: List[TradeRecord], modify_tp_expected: ScenarioExpectedValues):
         """TradeRecord should carry the modified TP, not the original."""
         trade = modify_tp_trade_history[0]
-        # Original TP was 160.000, modified to 157.300
-        assert trade.take_profit == 157.300, (
-            f"Expected modified TP=157.300, got {trade.take_profit}"
+        assert trade.take_profit == modify_tp_expected.take_profit, (
+            f"Expected modified TP={modify_tp_expected.take_profit}, got {trade.take_profit}"
         )
 
-    def test_exit_price_equals_modified_tp(self, modify_tp_trade_history: List[TradeRecord]):
+    def test_exit_price_equals_modified_tp(self, modify_tp_trade_history: List[TradeRecord], modify_tp_expected: ScenarioExpectedValues):
         """Exit price should equal the modified TP level."""
         trade = modify_tp_trade_history[0]
-        assert trade.exit_price == 157.300, (
-            f"Exit price {trade.exit_price} != modified TP 157.300"
+        assert trade.exit_price == modify_tp_expected.take_profit, (
+            f"Exit price {trade.exit_price} != modified TP {modify_tp_expected.take_profit}"
         )
 
     def test_sl_tp_triggered_count(self, modify_tp_execution_stats: ExecutionStats):
@@ -303,11 +307,11 @@ class TestLongLimitFill:
             f"Expected LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_equals_limit(self, long_limit_fill_trade_history: List[TradeRecord]):
+    def test_entry_price_equals_limit(self, long_limit_fill_trade_history: List[TradeRecord], long_limit_fill_expected: ScenarioExpectedValues):
         """Entry price should equal the configured limit price."""
         trade = long_limit_fill_trade_history[0]
-        assert trade.entry_price == 156.000, (
-            f"Expected entry_price=156.000, got {trade.entry_price}"
+        assert trade.entry_price == long_limit_fill_expected.price, (
+            f"Expected entry_price={long_limit_fill_expected.price}, got {trade.entry_price}"
         )
 
     def test_direction_is_long(self, long_limit_fill_trade_history: List[TradeRecord]):
@@ -345,11 +349,11 @@ class TestShortLimitFill:
             f"Expected LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_equals_limit(self, short_limit_fill_trade_history: List[TradeRecord]):
+    def test_entry_price_equals_limit(self, short_limit_fill_trade_history: List[TradeRecord], short_limit_fill_expected: ScenarioExpectedValues):
         """Entry price should equal the configured limit price."""
         trade = short_limit_fill_trade_history[0]
-        assert trade.entry_price == 157.300, (
-            f"Expected entry_price=157.300, got {trade.entry_price}"
+        assert trade.entry_price == short_limit_fill_expected.price, (
+            f"Expected entry_price={short_limit_fill_expected.price}, got {trade.entry_price}"
         )
 
     def test_direction_is_short(self, short_limit_fill_trade_history: List[TradeRecord]):
@@ -387,11 +391,11 @@ class TestLimitFillThenSl:
             f"Expected LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_equals_limit(self, limit_sl_trade_history: List[TradeRecord]):
+    def test_entry_price_equals_limit(self, limit_sl_trade_history: List[TradeRecord], limit_sl_expected: ScenarioExpectedValues):
         """Entry price should equal the configured limit price."""
         trade = limit_sl_trade_history[0]
-        assert trade.entry_price == 156.500, (
-            f"Expected entry_price=156.500, got {trade.entry_price}"
+        assert trade.entry_price == limit_sl_expected.price, (
+            f"Expected entry_price={limit_sl_expected.price}, got {trade.entry_price}"
         )
 
     def test_close_reason_is_sl(self, limit_sl_trade_history: List[TradeRecord]):
@@ -401,11 +405,11 @@ class TestLimitFillThenSl:
             f"Expected SL_TRIGGERED, got {trade.close_reason}"
         )
 
-    def test_exit_price_equals_sl(self, limit_sl_trade_history: List[TradeRecord]):
+    def test_exit_price_equals_sl(self, limit_sl_trade_history: List[TradeRecord], limit_sl_expected: ScenarioExpectedValues):
         """Exit price should equal stop loss level."""
         trade = limit_sl_trade_history[0]
-        assert trade.exit_price == 155.800, (
-            f"Expected exit_price=155.800, got {trade.exit_price}"
+        assert trade.exit_price == limit_sl_expected.stop_loss, (
+            f"Expected exit_price={limit_sl_expected.stop_loss}, got {trade.exit_price}"
         )
 
     def test_negative_pnl(self, limit_sl_trade_history: List[TradeRecord]):
@@ -442,12 +446,11 @@ class TestModifyLimitPriceFill:
             f"Expected LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_is_modified(self, modify_limit_trade_history: List[TradeRecord]):
+    def test_entry_price_is_modified(self, modify_limit_trade_history: List[TradeRecord], modify_limit_expected: ScenarioExpectedValues):
         """Entry price should equal the modified limit price, not original."""
         trade = modify_limit_trade_history[0]
-        # Original was 155.000, modified to 156.200
-        assert trade.entry_price == 156.200, (
-            f"Expected modified entry_price=156.200, got {trade.entry_price}"
+        assert trade.entry_price == modify_limit_expected.price, (
+            f"Expected modified entry_price={modify_limit_expected.price}, got {trade.entry_price}"
         )
 
     def test_direction_is_long(self, modify_limit_trade_history: List[TradeRecord]):
@@ -478,11 +481,11 @@ class TestStopLongTrigger:
             f"Expected STOP, got {trade.entry_type}"
         )
 
-    def test_entry_price_at_or_above_stop(self, stop_long_trade_history: List[TradeRecord]):
+    def test_entry_price_at_or_above_stop(self, stop_long_trade_history: List[TradeRecord], stop_long_expected: ScenarioExpectedValues):
         """Entry price should be at or above stop_price (market fill after trigger)."""
         trade = stop_long_trade_history[0]
-        assert trade.entry_price >= 157.000, (
-            f"Expected entry_price >= 157.000, got {trade.entry_price}"
+        assert trade.entry_price >= stop_long_expected.stop_price, (
+            f"Expected entry_price >= {stop_long_expected.stop_price}, got {trade.entry_price}"
         )
 
     def test_direction_is_long(self, stop_long_trade_history: List[TradeRecord]):
@@ -520,11 +523,11 @@ class TestStopShortTrigger:
             f"Expected STOP, got {trade.entry_type}"
         )
 
-    def test_entry_price_at_or_below_stop(self, stop_short_trade_history: List[TradeRecord]):
+    def test_entry_price_at_or_below_stop(self, stop_short_trade_history: List[TradeRecord], stop_short_expected: ScenarioExpectedValues):
         """Entry price should be at or below stop_price (market fill after trigger)."""
         trade = stop_short_trade_history[0]
-        assert trade.entry_price <= 156.200, (
-            f"Expected entry_price <= 156.200, got {trade.entry_price}"
+        assert trade.entry_price <= stop_short_expected.stop_price, (
+            f"Expected entry_price <= {stop_short_expected.stop_price}, got {trade.entry_price}"
         )
 
     def test_direction_is_short(self, stop_short_trade_history: List[TradeRecord]):
@@ -562,11 +565,11 @@ class TestStopLimitLongTrigger:
             f"Expected STOP_LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_equals_limit(self, stop_limit_long_trade_history: List[TradeRecord]):
+    def test_entry_price_equals_limit(self, stop_limit_long_trade_history: List[TradeRecord], stop_limit_long_expected: ScenarioExpectedValues):
         """Entry price should equal the configured limit price."""
         trade = stop_limit_long_trade_history[0]
-        assert trade.entry_price == 157.200, (
-            f"Expected entry_price=157.200, got {trade.entry_price}"
+        assert trade.entry_price == stop_limit_long_expected.price, (
+            f"Expected entry_price={stop_limit_long_expected.price}, got {trade.entry_price}"
         )
 
     def test_direction_is_long(self, stop_limit_long_trade_history: List[TradeRecord]):
@@ -604,11 +607,11 @@ class TestStopLimitShortTrigger:
             f"Expected STOP_LIMIT, got {trade.entry_type}"
         )
 
-    def test_entry_price_equals_limit(self, stop_limit_short_trade_history: List[TradeRecord]):
+    def test_entry_price_equals_limit(self, stop_limit_short_trade_history: List[TradeRecord], stop_limit_short_expected: ScenarioExpectedValues):
         """Entry price should equal the configured limit price."""
         trade = stop_limit_short_trade_history[0]
-        assert trade.entry_price == 156.000, (
-            f"Expected entry_price=156.000, got {trade.entry_price}"
+        assert trade.entry_price == stop_limit_short_expected.price, (
+            f"Expected entry_price={stop_limit_short_expected.price}, got {trade.entry_price}"
         )
 
     def test_direction_is_short(self, stop_limit_short_trade_history: List[TradeRecord]):
@@ -653,11 +656,11 @@ class TestStopLongThenTp:
             f"Expected TP_TRIGGERED, got {trade.close_reason}"
         )
 
-    def test_exit_price_equals_tp(self, stop_tp_trade_history: List[TradeRecord]):
+    def test_exit_price_equals_tp(self, stop_tp_trade_history: List[TradeRecord], stop_tp_expected: ScenarioExpectedValues):
         """Exit price should equal take profit level."""
         trade = stop_tp_trade_history[0]
-        assert trade.exit_price == 157.300, (
-            f"Expected exit_price=157.300, got {trade.exit_price}"
+        assert trade.exit_price == stop_tp_expected.take_profit, (
+            f"Expected exit_price={stop_tp_expected.take_profit}, got {trade.exit_price}"
         )
 
     def test_sl_tp_triggered_count(self, stop_tp_execution_stats: ExecutionStats):
@@ -687,12 +690,11 @@ class TestModifyStopTrigger:
             f"Expected STOP, got {trade.entry_type}"
         )
 
-    def test_entry_price_at_or_above_modified_stop(self, modify_stop_trade_history: List[TradeRecord]):
+    def test_entry_price_at_or_above_modified_stop(self, modify_stop_trade_history: List[TradeRecord], modify_stop_expected: ScenarioExpectedValues):
         """Entry price should be at or above the modified stop_price."""
         trade = modify_stop_trade_history[0]
-        # Original was 158.000 (unreachable), modified to 157.000
-        assert trade.entry_price >= 157.000, (
-            f"Expected entry_price >= 157.000, got {trade.entry_price}"
+        assert trade.entry_price >= modify_stop_expected.stop_price, (
+            f"Expected entry_price >= {modify_stop_expected.stop_price}, got {trade.entry_price}"
         )
 
     def test_direction_is_long(self, modify_stop_trade_history: List[TradeRecord]):
