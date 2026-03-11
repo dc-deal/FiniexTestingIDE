@@ -61,7 +61,7 @@ execute_tick_loop(config, prepared_objects)
 
 The live flow processes real-time ticks from a broker connection. The runner is **not yet implemented** — the execution layer (LiveTradeExecutor, LiveOrderTracker) is complete and tested.
 
-**Entry point:** `FiniexAutoTrader` (planned, see `ISSUE_live_autotrader_pipeline.md`)
+**Entry point:** `FiniexAutoTrader`
 
 ```
 FiniexAutoTrader (not yet implemented)

@@ -14,6 +14,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.coverage_report_types import GapCategory
+from python.framework.utils.process_serialization_utils import time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware
 
 
@@ -330,8 +331,7 @@ class ScenarioDataValidator:
             # No ticks loaded - cannot validate stretch
             return errors
 
-        first_tick = ensure_utc_aware(tick_data[0]['timestamp'])
-        last_tick = ensure_utc_aware(tick_data[-1]['timestamp'])
+        first_tick, last_tick = time_range_from_transport_ticks(tick_data)
 
         # Check gaps in this stretch
         for gap in report.gaps:

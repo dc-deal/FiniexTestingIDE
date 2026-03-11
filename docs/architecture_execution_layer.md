@@ -524,23 +524,19 @@ At scenario end, `close_all_remaining_orders()` discards unfilled limit orders f
 ### Tick-Based → Millisecond-Based Latency
 **Problem:** OrderLatencySimulator models delays as tick counts. Real broker latency is time-based. Tick-counting is meaningless in live trading where ticks arrive at irregular intervals.
 - Affects: OrderLatencySimulator, SeededDelayGenerator (`utils/seeded_generators/`), PendingOrder
-- See: `ISSUE_tick_to_ms_latency_migration.md`
 
 ### Error Handling in Execution Chain (Partially Resolved)
 **Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in `_order_history` instead of returned. Margin rejections and stress test rejections follow the same pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
 **Remaining:** `_fill_close_order()` still returns None silently on position-not-found. `close_position()` result not checked by DecisionLogic. Broader error propagation pattern (timeouts, broker errors in live) still needs design.
 - Affects: AbstractTradeExecutor (close path), DecisionTradingAPI, DecisionLogic
-- See: `ISSUE_error_handling_execution_chain.md`
 
 ### Stress Test Configuration
 **Problem:** Stress test rejection in TradeSimulator is controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Needs to be config-file driven for per-scenario control.
 - Affects: TradeSimulator, scenario configuration
-- See: `ISSUE_stress_test_config.md`
 
 ### Baseline Tests: order_history Coverage
 **Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history` contents. Tests correctly detect stress test rejections (test_no_rejected_orders, test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for order_history data.
 - Affects: Baseline test suite, test fixtures
-- See: `ISSUE_baseline_tests_order_history.md`
 
 ### Live-Specific Open Issues
 See [live_execution_architecture.md](live_execution_architecture.md): Reconciliation Layer, Live Autotrader Pipeline.
