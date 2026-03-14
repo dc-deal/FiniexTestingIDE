@@ -17,9 +17,9 @@ from python.framework.types.parameter_types import ParameterDef, REQUIRED
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from conftest import ALL_WORKERS, ALL_DECISION_LOGICS
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.macd_worker import MACDWorker
+from python.framework.workers.core.macd_worker import MacdWorker
 
 # ============================================
 # Test Schema Fixtures
@@ -112,15 +112,15 @@ class TestRealWorkerDefaults:
         assert merged['deviation'] == 2.0
 
     def test_heavy_rsi_default_load(self):
-        """HeavyRSIWorker: empty config → artificial_load_ms=5.0."""
+        """HeavyRsiWorker: empty config → artificial_load_ms=5.0."""
 
-        schema = HeavyRSIWorker.get_parameter_schema()
+        schema = HeavyRsiWorker.get_parameter_schema()
         merged = apply_defaults({}, schema)
         assert merged['artificial_load_ms'] == 5.0
 
     def test_macd_no_defaults_for_required(self):
-        """MACDWorker: empty config → no fast/slow/signal injected."""
-        schema = MACDWorker.get_parameter_schema()
+        """MacdWorker: empty config → no fast/slow/signal injected."""
+        schema = MacdWorker.get_parameter_schema()
         merged = apply_defaults({}, schema)
         assert 'fast_period' not in merged
         assert 'slow_period' not in merged

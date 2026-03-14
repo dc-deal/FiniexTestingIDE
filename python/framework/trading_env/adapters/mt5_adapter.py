@@ -28,7 +28,7 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 
 
-class MT5Adapter(AbstractAdapter):
+class Mt5Adapter(AbstractAdapter):
     """
     MT5 Broker Adapter - Full implementation.
 

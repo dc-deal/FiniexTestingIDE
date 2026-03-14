@@ -42,7 +42,7 @@ The solution is a **shared-core architecture** where common logic lives in base 
 └──────────────────┬──────────────────────────────┘
                    │  calls
 ┌──────────────────▼──────────────────────────────┐
-│             DecisionTradingAPI                    │
+│             DecisionTradingApi                    │
 │  Public API surface. Validates order types.       │
 │  Routes to executor. Hides execution mode.        │
 └──────────────────┬──────────────────────────────┘
@@ -299,7 +299,7 @@ Abstract interface for all broker adapters. Methods are organized in tiers:
 
 **Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `modify_order()`, `is_live_capable()` — see [live_execution_architecture.md](live_execution_architecture.md)
 
-Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
+Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 
 ### MockBrokerAdapter (extends AbstractAdapter, for testing)
 
@@ -307,7 +307,7 @@ Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 
 
 Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three tiers with configurable behavior (INSTANT_FILL, DELAYED_FILL, REJECT_ALL, TIMEOUT). Used by `MockOrderExecution` for testing LiveTradeExecutor without a real broker.
 
-### DecisionTradingAPI
+### DecisionTradingApi
 The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 
 - Order-type validation at startup (fail early, not at tick 50,000)
@@ -393,7 +393,7 @@ if self.trading_api.is_pending_close(pos.position_id):
     continue  # Close already in flight
 ```
 
-All methods delegate through DecisionTradingAPI → AbstractTradeExecutor → the respective PendingOrderManager. The logic lives in AbstractPendingOrderManager (shared), queried by the executor, exposed through the API.
+All methods delegate through DecisionTradingApi → AbstractTradeExecutor → the respective PendingOrderManager. The logic lives in AbstractPendingOrderManager (shared), queried by the executor, exposed through the API.
 
 **Scope comparison:**
 
@@ -474,7 +474,7 @@ Limit orders follow a **two-phase lifecycle** in simulation. The order is first 
 
 ```
 1. DecisionLogic calls send_order(order_type=LIMIT, price=1.1000)
-2. DecisionTradingAPI builds OpenOrderRequest, passes to executor
+2. DecisionTradingApi builds OpenOrderRequest, passes to executor
 3. TradeSimulator.open_order(request)
    → Validates price > 0
    → Submits to OrderLatencySimulator with order_type=LIMIT, entry_price=limit_price
@@ -528,7 +528,7 @@ At scenario end, `close_all_remaining_orders()` discards unfilled limit orders f
 ### Error Handling in Execution Chain (Partially Resolved)
 **Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in `_order_history` instead of returned. Margin rejections and stress test rejections follow the same pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
 **Remaining:** `_fill_close_order()` still returns None silently on position-not-found. `close_position()` result not checked by DecisionLogic. Broader error propagation pattern (timeouts, broker errors in live) still needs design.
-- Affects: AbstractTradeExecutor (close path), DecisionTradingAPI, DecisionLogic
+- Affects: AbstractTradeExecutor (close path), DecisionTradingApi, DecisionLogic
 
 ### Stress Test Configuration
 **Problem:** Stress test rejection in TradeSimulator is controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Needs to be config-file driven for per-scenario control.

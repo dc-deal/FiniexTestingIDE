@@ -7,7 +7,7 @@ The worker test suite validates the parameter validation system, schema integrit
 **Test Location:** `tests/worker_tests/`
 
 **Components Covered:**
-- 6 Workers: RSIWorker, EnvelopeWorker, MACDWorker, OBVWorker, HeavyRSIWorker, BacktestingSampleWorker
+- 6 Workers: RsiWorker, EnvelopeWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
 **Total Tests:** 202
@@ -381,11 +381,11 @@ All 9 components tested across schema and defaults tests:
 
 | Component | Type | Parameters |
 |-----------|------|------------|
-| RSIWorker | Worker | (no algorithm params) |
+| RsiWorker | Worker | (no algorithm params) |
 | EnvelopeWorker | Worker | `deviation` |
-| MACDWorker | Worker | `fast_period`, `slow_period`, `signal_period` |
-| OBVWorker | Worker | (no algorithm params) |
-| HeavyRSIWorker | Worker | `artificial_load_ms` |
+| MacdWorker | Worker | `fast_period`, `slow_period`, `signal_period` |
+| ObvWorker | Worker | (no algorithm params) |
+| HeavyRsiWorker | Worker | `artificial_load_ms` |
 | BacktestingSampleWorker | Worker | `computation_weight` |
 | SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, envelope thresholds, lot_size, etc.) |
 | AggressiveTrend | DecisionLogic | 6 parameters (RSI thresholds, lot_size, etc.) |

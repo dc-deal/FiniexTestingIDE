@@ -24,7 +24,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class ScenarioCLI:
+class ScenarioCli:
     """
     CLI handler for scenario generation.
     """
@@ -284,7 +284,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = ScenarioCLI()
+    cli = ScenarioCli()
 
     if args.command == 'generate':
         cli.cmd_generate(

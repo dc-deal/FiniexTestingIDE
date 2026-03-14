@@ -9,7 +9,7 @@ ENHANCED: OBV as confirmation filter
 :
 - Implements get_required_order_types() → [OrderType.MARKET]
 - Implements execute_decision() → Market orders with margin checks
-- Uses DecisionTradingAPI instead of TradeSimulator directly
+- Uses DecisionTradingApi instead of TradeSimulator directly
 - ONE POSITION ONLY: Closes existing position before opening new one
 
 Strategy Rules:
@@ -192,7 +192,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         """
-        Implementation: Execute trading decision via DecisionTradingAPI.
+        Implementation: Execute trading decision via DecisionTradingApi.
 
         ONE POSITION ONLY Strategy:
         1. FLAT signal → Close existing position (exit)

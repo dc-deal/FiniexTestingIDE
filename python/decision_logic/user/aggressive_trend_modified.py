@@ -123,7 +123,7 @@ class AggressiveTrendModified(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         """
-        Implementation: Execute trading decision via DecisionTradingAPI.
+        Implementation: Execute trading decision via DecisionTradingApi.
 
         ONE POSITION ONLY Strategy:
         1. FLAT signal → Close existing position (exit)

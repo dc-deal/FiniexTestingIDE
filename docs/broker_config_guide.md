@@ -13,7 +13,7 @@ broker_config.json          → Broker-specific settings (fees, leverage, symbol
     ↓
 AbstractAdapter                 → Abstract interface, common validation
     ↓
-MT5Adapter / KrakenAdapter  → Broker-specific implementation
+Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 ```
 
 ### Key Classes
@@ -21,7 +21,7 @@ MT5Adapter / KrakenAdapter  → Broker-specific implementation
 | Class | Purpose |
 |-------|---------|
 | `AbstractAdapter` | Abstract base, `_validate_common_config()` for shared validation |
-| `MT5Adapter` | MetaTrader 5 brokers (Forex, CFD) |
+| `Mt5Adapter` | MetaTrader 5 brokers (Forex, CFD) |
 | `KrakenAdapter` | Kraken crypto exchange (Spot) |
 | `FeeType` | Enum: `SPREAD`, `MAKER_TAKER`, `SWAP`, `COMMISSION` |
 | `MarketType` | Enum: `FOREX`, `CRYPTO` |

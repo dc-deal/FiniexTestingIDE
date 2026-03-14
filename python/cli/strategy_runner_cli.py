@@ -20,7 +20,7 @@ from python.scenario.scenario_strategy_runner import run_strategy_test
 vLog = get_global_logger()
 
 
-class StrategyRunnerCLI:
+class StrategyRunnerCli:
     """
     Command-line interface for strategy testing
 
@@ -177,7 +177,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = StrategyRunnerCLI()
+    cli = StrategyRunnerCli()
 
     try:
         if args.command == 'run':

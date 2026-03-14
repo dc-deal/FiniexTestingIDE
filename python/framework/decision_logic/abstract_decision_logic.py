@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
-from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
@@ -28,7 +28,7 @@ class AbstractDecisionLogic(ABC):
     Abstract base class for decision logic implementations.
 
     Decision Logic takes worker results, generates trading decisions,
-    and executes them via DecisionTradingAPI.
+    and executes them via DecisionTradingApi.
 
     Philosophy (from Worker Manifest):
     - Workers are atomic units (first level)
@@ -38,7 +38,7 @@ class AbstractDecisionLogic(ABC):
     Architecture:
     1. get_required_order_types() declares needed order types
     2. BatchOrchestrator validates against broker capabilities
-    3. DecisionTradingAPI is injected after validation
+    3. DecisionTradingApi is injected after validation
     4. compute() generates decisions
     5. execute_decision() executes trades (Template Method)
        - Calls _execute_decision_impl() (subclass implements this)
@@ -72,7 +72,7 @@ class AbstractDecisionLogic(ABC):
         self._trading_context = trading_context
 
         # API and loggers
-        self.trading_api: Optional[DecisionTradingAPI] = None
+        self.trading_api: Optional[DecisionTradingApi] = None
         self.logger = logger
         self.performance_logger: DecisionLogicPerformanceTracker = None
 
@@ -160,7 +160,7 @@ class AbstractDecisionLogic(ABC):
         tick: TickData
     ) -> Optional[OrderResult]:
         """
-        Execute trading decision via DecisionTradingAPI (Template Method).
+        Execute trading decision via DecisionTradingApi (Template Method).
 
         This is a template method that:
         1. Calls _execute_decision_impl() (implemented by subclass)
@@ -266,15 +266,15 @@ class AbstractDecisionLogic(ABC):
     # API Injection
     # ============================================
 
-    def set_trading_api(self, trading_api: DecisionTradingAPI) -> None:
+    def set_trading_api(self, trading_api: DecisionTradingApi) -> None:
         """
-        Inject DecisionTradingAPI after validation.
+        Inject DecisionTradingApi after validation.
 
         This is called by BatchOrchestrator after verifying that
         the broker supports all required order types.
 
         Args:
-            trading_api: Validated DecisionTradingAPI instance
+            trading_api: Validated DecisionTradingApi instance
         """
         self.trading_api = trading_api
 

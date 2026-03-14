@@ -3,7 +3,7 @@ FiniexTestingIDE - Worker Factory
 Config-driven worker instantiation with namespace support
 
 The Factory is responsible for:
-1. Resolving worker types from config (e.g., "CORE/rsi" → RSIWorker class)
+1. Resolving worker types from config (e.g., "CORE/rsi" → RsiWorker class)
 2. Validating required parameters are provided
 3. Merging user config with worker defaults
 4. Instantiating workers with correct parameters
@@ -27,11 +27,11 @@ from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
-from python.framework.workers.core.macd_worker import MACDWorker
-from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
-from python.framework.workers.core.obv_worker import OBVWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.obv_worker import ObvWorker
 
 
 class WorkerFactory:
@@ -75,11 +75,11 @@ class WorkerFactory:
         # Import core workers
         try:
             # Register with CORE namespace
-            self._registry["CORE/rsi"] = RSIWorker
+            self._registry["CORE/rsi"] = RsiWorker
             self._registry["CORE/envelope"] = EnvelopeWorker
-            self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
-            self._registry["CORE/macd"] = MACDWorker
-            self._registry["CORE/obv"] = OBVWorker
+            self._registry["CORE/heavy_rsi"] = HeavyRsiWorker
+            self._registry["CORE/macd"] = MacdWorker
+            self._registry["CORE/obv"] = ObvWorker
 
             # Backtesting workers
             self._registry["CORE/backtesting/backtesting_sample_worker"] = BacktestingSampleWorker

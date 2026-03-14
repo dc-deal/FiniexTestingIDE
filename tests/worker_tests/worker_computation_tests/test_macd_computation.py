@@ -18,7 +18,7 @@ Key implementation details (verified from source):
 import numpy as np
 import pytest
 
-from python.framework.workers.core.macd_worker import MACDWorker
+from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.types.worker_types import WorkerResult
 
 from conftest import make_bars, make_tick
@@ -33,7 +33,7 @@ class TestEMACalculation:
 
     def _make_macd_worker(self, mock_logger):
         """Helper: create a MACD worker for EMA access."""
-        return MACDWorker(
+        return MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -115,7 +115,7 @@ class TestMACDStructure:
 
     def test_macd_returns_worker_result(self, mock_logger):
         """MACD compute() must return a WorkerResult."""
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -136,7 +136,7 @@ class TestMACDStructure:
 
     def test_macd_value_keys(self, mock_logger):
         """Result value dict must contain: macd, signal, histogram, fast_ema, slow_ema."""
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -157,7 +157,7 @@ class TestMACDStructure:
 
     def test_macd_values_are_float(self, mock_logger):
         """All MACD values must be Python floats (not numpy)."""
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -180,7 +180,7 @@ class TestMACDStructure:
 
     def test_macd_metadata_fields(self, mock_logger):
         """Metadata must contain fast_period, slow_period, signal_period, timeframe, bars_used."""
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -212,7 +212,7 @@ class TestMACDDirection:
 
         Fast EMA reacts quicker to the uptrend, overshooting slow EMA.
         """
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -241,7 +241,7 @@ class TestMACDDirection:
 
         Fast EMA drops quicker, undershooting slow EMA.
         """
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},
@@ -266,7 +266,7 @@ class TestMACDDirection:
 
     def test_macd_histogram_equals_macd_minus_signal(self, mock_logger):
         """Histogram must always equal MACD line minus Signal line."""
-        worker = MACDWorker(
+        worker = MacdWorker(
             name="test_macd",
             parameters={
                 "periods": {"M5": 10},

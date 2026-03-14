@@ -3,7 +3,7 @@ FiniexTestingIDE - Decision Logic Factory ()
 Config-driven decision logic instantiation with namespace support
 
 :
-- DecisionTradingAPI is injected later via set_trading_api()
+- DecisionTradingApi is injected later via set_trading_api()
 
 The DecisionLogic Factory mirrors the Worker Factory pattern.
 It resolves decision logic types from config strings and instantiates
@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
-from python.framework.decision_logic.core.cautious_macd import CautiousMACD
+from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -94,7 +94,7 @@ class DecisionLogicFactory:
             # Register with CORE namespace
             self._registry["CORE/simple_consensus"] = SimpleConsensus
             self._registry["CORE/aggressive_trend"] = AggressiveTrend
-            self._registry["CORE/cautious_macd"] = CautiousMACD
+            self._registry["CORE/cautious_macd"] = CautiousMacd
 
             # Backtesting decision logics
             self._registry["CORE/backtesting/backtesting_deterministic"] = BacktestingDeterministic
@@ -268,7 +268,7 @@ class DecisionLogicFactory:
         Create a decision logic instance from configuration.
 
         No longer accepts trading_env parameter.
-        DecisionTradingAPI is injected later via set_trading_api().
+        DecisionTradingApi is injected later via set_trading_api().
 
         This is the main entry point for decision logic creation. It:
         1. Resolves the logic type to a logic class

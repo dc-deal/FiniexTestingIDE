@@ -112,7 +112,7 @@ else:
 5. Create TradeSimulator
    └─> Loads broker config from shared_data
    └─> Initializes PortfolioManager
-   └─> Injects DecisionTradingAPI into decision logic
+   └─> Injects DecisionTradingApi into decision logic
 
 6. Create BarRenderingController
    └─> Register workers requiring bar data

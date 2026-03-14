@@ -15,11 +15,11 @@ from python.framework.validators.parameter_validator import validate_parameters,
 # ============================================
 # Worker & Logic Imports
 # ============================================
-from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.macd_worker import MACDWorker
-from python.framework.workers.core.obv_worker import OBVWorker
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.obv_worker import ObvWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
@@ -31,11 +31,11 @@ from python.framework.decision_logic.core.backtesting.backtesting_deterministic 
 # All CORE workers with schemas
 # ============================================
 ALL_WORKERS = [
-    RSIWorker,
+    RsiWorker,
     EnvelopeWorker,
-    MACDWorker,
-    OBVWorker,
-    HeavyRSIWorker,
+    MacdWorker,
+    ObvWorker,
+    HeavyRsiWorker,
     BacktestingSampleWorker,
 ]
 

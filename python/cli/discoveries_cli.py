@@ -29,7 +29,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 vLog = get_global_logger()
 
 
-class DiscoveriesCLI:
+class DiscoveriesCli:
     """
     CLI handler for market discoveries and analysis.
     """
@@ -430,7 +430,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = DiscoveriesCLI()
+    cli = DiscoveriesCli()
 
     if args.command == 'analyze':
         cli.cmd_analyze(

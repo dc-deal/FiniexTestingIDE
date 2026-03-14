@@ -35,7 +35,7 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 ```python
 # Location: python/framework/workers/core/rsi_worker.py
 
-class RSIWorker(AbstractWorker):
+class RsiWorker(AbstractWorker):
     """RSI computation from bar close prices"""
     
     def __init__(
@@ -163,7 +163,7 @@ class EnvelopeWorker(AbstractWorker):
 **Example: Market-aware warning in worker:**
 
 ```python
-class OBVWorker(AbstractWorker):
+class ObvWorker(AbstractWorker):
     def __init__(self, name, parameters, logger, trading_context=None):
         super().__init__(name, parameters, logger, trading_context=trading_context)
         

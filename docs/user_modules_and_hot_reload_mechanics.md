@@ -53,7 +53,7 @@ python/
 │     └── external_dir_2/*.py (if configured)             │
 │  4. Registry complete, runs can start                   │
 │                                                         │
-│  Registry: { "CORE/rsi": RSIWorker,                     │
+│  Registry: { "CORE/rsi": RsiWorker,                     │
 │              "CORE/envelope": EnvelopeWorker,            │
 │              "USER/envelope_modified": EnvelopeModifiedWorker, │
 │              ... }                                       │

@@ -22,7 +22,7 @@
 - **STOP / STOP_LIMIT Orders** — Breakout entry orders: STOP fills at market price (taker fee), STOP_LIMIT triggers at stop price then fills at limit price (maker fee)
 - **Active Order Preservation** — Unfilled limit/stop orders preserved at scenario end, captured in `PendingOrderStats` for post-run inspection
 - **Active Order Reporting** — Active order counts displayed in terminal output (executive summary, per-scenario box, portfolio summary)
-- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingAPI.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
+- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingApi.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
 - **`cancel_limit_sequence` Config** — BacktestingDeterministic parameter to cancel a limit order at a configured tick (analogous to `cancel_stop_sequence`)
 - **SL/TP & Limit Validation Tests** — Expanded from 8 to 17 scenarios (~82 tests): STOP/STOP_LIMIT triggers, STOP then TP, modify stop, cancel stop/limit
 

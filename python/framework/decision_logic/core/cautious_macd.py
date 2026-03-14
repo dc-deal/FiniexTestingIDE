@@ -46,7 +46,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 
 
-class CautiousMACD(AbstractDecisionLogic):
+class CautiousMacd(AbstractDecisionLogic):
     """
     Cautious MACD strategy: STOP entries with RSI filter, SL/TP, break-even.
 
@@ -115,7 +115,7 @@ class CautiousMACD(AbstractDecisionLogic):
         _order_mode = "STOP_LIMIT" if self.use_stop_limit else "STOP"
         _conf_str = f"minConf={self.min_confidence}" if self.min_confidence > 0.0 else "minConf=off"
         self.logger.debug(
-            f"CautiousMACD initialized: "
+            f"CautiousMacd initialized: "
             f"RSI filter({self.rsi_filter_buy}/{self.rsi_filter_sell}), "
             f"{_order_mode} dist={self.stop_distance_pips}pip, "
             f"SL={self.sl_pips}/TP={self.tp_pips}, "
@@ -129,7 +129,7 @@ class CautiousMACD(AbstractDecisionLogic):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
-        """CautiousMACD decision logic parameters."""
+        """CautiousMacd decision logic parameters."""
         return {
             'rsi_filter_buy': ParameterDef(
                 param_type=float, default=60, min_val=1, max_val=99,
@@ -188,7 +188,7 @@ class CautiousMACD(AbstractDecisionLogic):
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
-        Declare required order types for CautiousMACD.
+        Declare required order types for CautiousMacd.
 
         Uses STOP by default. Set use_stop_limit=true in decision_logic_config
         for brokers that do not support pure STOP orders (e.g. Kraken).
@@ -202,7 +202,7 @@ class CautiousMACD(AbstractDecisionLogic):
 
     def get_required_worker_instances(self) -> Dict[str, str]:
         """
-        Define required worker instances for CautiousMACD strategy.
+        Define required worker instances for CautiousMacd strategy.
 
         Requires:
         - macd_main: MACD for crossover signal
@@ -507,7 +507,7 @@ class CautiousMACD(AbstractDecisionLogic):
                     price=limit_price,
                     stop_loss=sl_price,
                     take_profit=tp_price,
-                    comment=f"CautiousMACD: {decision.reason[:50]}"
+                    comment=f"CautiousMacd: {decision.reason[:50]}"
                 )
             else:
                 order_result = self.trading_api.send_order(
@@ -518,7 +518,7 @@ class CautiousMACD(AbstractDecisionLogic):
                     stop_price=stop_price,
                     stop_loss=sl_price,
                     take_profit=tp_price,
-                    comment=f"CautiousMACD: {decision.reason[:50]}"
+                    comment=f"CautiousMacd: {decision.reason[:50]}"
                 )
 
             _mode = "STOP_LIMIT" if self.use_stop_limit else "STOP"

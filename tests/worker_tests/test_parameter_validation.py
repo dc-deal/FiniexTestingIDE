@@ -258,8 +258,8 @@ class TestContextName:
 
     def test_context_name_in_type_error(self, sample_schema):
         """Worker/Logic name should appear in type error."""
-        with pytest.raises(ValueError, match="'MACDWorker'"):
+        with pytest.raises(ValueError, match="'MacdWorker'"):
             validate_parameters(
                 {'fast_period': "bad"}, sample_schema,
-                strict=True, context_name="MACDWorker"
+                strict=True, context_name="MacdWorker"
             )

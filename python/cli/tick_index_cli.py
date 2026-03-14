@@ -22,7 +22,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class TickIndexCLI:
+class TickIndexCli:
     """
     Command-line interface for Tick Index management.
 
@@ -200,7 +200,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = TickIndexCLI()
+    cli = TickIndexCli()
 
     try:
         if args.command == 'rebuild':

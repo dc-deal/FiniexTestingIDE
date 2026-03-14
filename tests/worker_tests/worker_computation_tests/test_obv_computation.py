@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.workers.core.obv_worker import OBVWorker
+from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.market_types.market_config_types import MarketType
 
@@ -29,7 +29,7 @@ from conftest import make_bars_with_volume, make_tick
 
 def _make_obv_worker(mock_logger, period=20, trading_context=None):
     """Helper: create OBV worker with standard config."""
-    return OBVWorker(
+    return ObvWorker(
         name="test_obv",
         parameters={"periods": {"M5": period}},
         logger=mock_logger,
@@ -258,7 +258,7 @@ class TestOBVMetadata:
 
     def test_obv_worker_name(self, mock_logger):
         """WorkerResult.worker_name must match the worker instance name."""
-        worker = OBVWorker(
+        worker = ObvWorker(
             name="my_obv_instance",
             parameters={"periods": {"M5": 20}},
             logger=mock_logger,
