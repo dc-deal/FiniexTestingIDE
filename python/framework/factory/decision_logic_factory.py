@@ -3,7 +3,7 @@ FiniexTestingIDE - Decision Logic Factory ()
 Config-driven decision logic instantiation with namespace support
 
 :
-- DecisionTradingAPI is injected later via set_trading_api()
+- DecisionTradingApi is injected later via set_trading_api()
 
 The DecisionLogic Factory mirrors the Worker Factory pattern.
 It resolves decision logic types from config strings and instantiates
@@ -25,10 +25,13 @@ Example Config:
 """
 
 import importlib
-from typing import Any, Dict, Optional, Type
+import importlib.util
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Type
 
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
-from python.framework.decision_logic.core.cautious_macd import CautiousMACD
+from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -68,7 +71,9 @@ class DecisionLogicFactory:
         self.logger = logger
         self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstractDecisionLogic]] = {}
+        self._extra_dirs: List[str] = []
         self._load_core_logics()
+        self._scan_user_namespace()
 
     def _load_core_logics(self):
         """
@@ -89,7 +94,7 @@ class DecisionLogicFactory:
             # Register with CORE namespace
             self._registry["CORE/simple_consensus"] = SimpleConsensus
             self._registry["CORE/aggressive_trend"] = AggressiveTrend
-            self._registry["CORE/cautious_macd"] = CautiousMACD
+            self._registry["CORE/cautious_macd"] = CautiousMacd
 
             # Backtesting decision logics
             self._registry["CORE/backtesting/backtesting_deterministic"] = BacktestingDeterministic
@@ -101,6 +106,128 @@ class DecisionLogicFactory:
             )
         except ImportError as e:
             self.logger.warning(f"Failed to load core decision logics: {e}")
+
+    def set_extra_dirs(self, extra_dirs: List[str]):
+        """
+        Set additional USER decision logic directories and re-scan.
+
+        Args:
+            extra_dirs: List of external directory paths to scan
+        """
+        self._extra_dirs = extra_dirs
+        self._scan_user_namespace()
+
+    def _scan_user_namespace(self):
+        """
+        Scan USER directories for decision logic modules and register them.
+
+        Scans the default directory (python/decision_logic/user/) plus any
+        extra directories configured via app_config.json paths.user_decision_logic_dirs.
+        Broken modules are skipped with a warning log.
+        """
+        default_dir = Path('python/decision_logic/user')
+        scan_dirs = [default_dir] + [Path(d) for d in self._extra_dirs]
+
+        discovered = 0
+        for scan_dir in scan_dirs:
+            is_external = scan_dir != default_dir
+            if not scan_dir.exists():
+                if is_external:
+                    self.logger.warning(
+                        f"USER decision logic directory not found: {scan_dir}")
+                return
+            if not scan_dir.is_dir():
+                continue
+
+            for py_file in sorted(scan_dir.glob('*.py')):
+                if py_file.name.startswith('TEMPLATE_'):
+                    continue
+                if py_file.name.startswith('__'):
+                    continue
+
+                stem = py_file.stem
+                logic_type = f'USER/{stem}'
+
+                # Derive class name: snake_case → PascalCase (no suffix)
+                class_name = ''.join(
+                    word.capitalize() for word in stem.split('_'))
+
+                try:
+                    if is_external:
+                        # External dir: load by file location (no sys.path pollution)
+                        spec = importlib.util.spec_from_file_location(
+                            f'user_ext.decision_logic.{stem}', str(py_file))
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[spec.name] = module
+                        spec.loader.exec_module(module)
+                    else:
+                        # Default dir: standard import
+                        module_path = f'python.decision_logic.user.{stem}'
+                        module = importlib.import_module(module_path)
+
+                    if not hasattr(module, class_name):
+                        found = [n for n in dir(module) if not n.startswith('_')]
+                        self.logger.warning(
+                            f"Skipping USER/{stem}: expected class '{class_name}' "
+                            f"(derived from filename '{py_file.name}'), "
+                            f"but not found. Module contains: {found}. "
+                            f"Rename the class or the file to match "
+                            f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
+                        continue
+
+                    logic_class = getattr(module, class_name)
+
+                    if not issubclass(logic_class, AbstractDecisionLogic):
+                        self.logger.warning(
+                            f"Skipping USER/{stem}: {class_name} does not "
+                            f"inherit from AbstractDecisionLogic")
+                        continue
+
+                    if logic_type in self._registry:
+                        self.logger.warning(
+                            f"USER/{stem} overrides previous registration "
+                            f"(from {scan_dir})")
+
+                    self._registry[logic_type] = logic_class
+                    discovered += 1
+
+                except (SyntaxError, ImportError) as e:
+                    self.logger.warning(
+                        f"Skipping USER/{stem}: {type(e).__name__}: {e}")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Skipping USER/{stem}: unexpected error: "
+                        f"{type(e).__name__}: {e}")
+
+        if discovered > 0:
+            self.logger.debug(
+                f"USER decision logics discovered: {discovered}")
+
+    def rescan(self):
+        """
+        Hot-reload USER namespace: clear cached modules, re-scan directories.
+
+        Removes all USER/ entries from the registry and invalidates
+        Python's module cache for user modules, then re-scans.
+        Prepared for Issue #21 REPL shell integration.
+        """
+        # Clear USER entries from registry
+        self._registry = {
+            k: v for k, v in self._registry.items()
+            if not k.startswith('USER/')
+        }
+
+        # Invalidate sys.modules for user decision logic modules
+        stale_keys = [
+            key for key in sys.modules
+            if key.startswith('python.decision_logic.user.')
+            or key.startswith('user_ext.decision_logic.')
+        ]
+        for key in stale_keys:
+            del sys.modules[key]
+
+        # Re-scan
+        self._scan_user_namespace()
 
     def register_logic(
         self,
@@ -141,7 +268,7 @@ class DecisionLogicFactory:
         Create a decision logic instance from configuration.
 
         No longer accepts trading_env parameter.
-        DecisionTradingAPI is injected later via set_trading_api().
+        DecisionTradingApi is injected later via set_trading_api().
 
         This is the main entry point for decision logic creation. It:
         1. Resolves the logic type to a logic class
@@ -174,6 +301,9 @@ class DecisionLogicFactory:
         logic_config = apply_defaults(
             logic_config, logic_class.get_parameter_schema()
         )
+
+        # Step 3.5: Inject decision_logic_type for performance tracking
+        logic_config['decision_logic_type'] = logic_type
 
         # Step 4: Extract simple name for instance
         logic_name = self._extract_logic_name(logic_type)
@@ -269,6 +399,15 @@ class DecisionLogicFactory:
             class_name = "".join(word.capitalize()
                                  for word in logic_name.split("_"))
 
+            if not hasattr(module, class_name):
+                found = [n for n in dir(module) if not n.startswith('_')]
+                raise AttributeError(
+                    f"Expected class '{class_name}' in '{module_path}' "
+                    f"(derived from filename). "
+                    f"Module contains: {found}. "
+                    f"Rename the class or the file to match "
+                    f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
+
             logic_class = getattr(module, class_name)
 
             # Register for future use
@@ -278,10 +417,10 @@ class DecisionLogicFactory:
                 f"Dynamically loaded decision logic: {logic_type}")
             return logic_class
 
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError, SyntaxError) as e:
             raise ValueError(
                 f"Failed to load custom decision logic {logic_type}: {e}"
-            )
+            ) from e
 
     def _extract_logic_name(self, logic_type: str) -> str:
         """

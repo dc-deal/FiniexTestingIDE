@@ -8,11 +8,11 @@ Base class for all trade execution engines (TradeSimulator, LiveTradeExecutor).
 
 This defines the contract that:
 - process_tick_loop uses for tick processing
-- DecisionTradingAPI routes orders through
+- DecisionTradingApi routes orders through
 - Framework code uses for statistics collection
 
 Architecture:
-    DecisionLogic → DecisionTradingAPI → AbstractTradeExecutor
+    DecisionLogic → DecisionTradingApi → AbstractTradeExecutor
                                               │
                                     ┌─────────┴──────────┐
                                     │                    │
@@ -20,7 +20,7 @@ Architecture:
                               (Simulation)        (Horizon 2: Live)
 
 Design Principles:
-- DecisionLogic NEVER sees the executor directly (only DecisionTradingAPI)
+- DecisionLogic NEVER sees the executor directly (only DecisionTradingApi)
 - process_tick_loop calls on_tick() each tick (unified lifecycle)
 - Portfolio is shared infrastructure (same PortfolioManager for all executors)
 - Concrete methods: portfolio queries, broker info, fill processing
@@ -239,7 +239,7 @@ class AbstractTradeExecutor(ABC):
                 self._sl_tp_triggered += 1
 
     # ============================================
-    # Order Submission (DecisionTradingAPI routes here)
+    # Order Submission (DecisionTradingApi routes here)
     # ============================================
 
     @abstractmethod

@@ -26,7 +26,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class DataIndexCLI:
+class DataIndexCli:
     """
     Command-line interface for data import and inspection.
 
@@ -188,7 +188,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = DataIndexCLI()
+    cli = DataIndexCli()
 
     try:
         if args.command == 'import':

@@ -399,7 +399,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         """
-        Execute trading decision via DecisionTradingAPI.
+        Execute trading decision via DecisionTradingApi.
 
         Simplified execution for backtesting:
         - BUY → Open long position

@@ -1,44 +1,6 @@
-# ============================================
-# python/framework/decision_logic/core/aggressive_trend.py
-# ============================================
 """
-FiniexTestingIDE - Aggressive Trend Decision Logic ( + FIXED)
-Alternative implementation demonstrating different trading philosophy
-
-:
-- Implements get_required_order_types() → [OrderType.MARKET]
-- Implements execute_decision() → Market orders with margin checks
-- Uses DecisionTradingApi instead of TradeSimulator directly
-- ONE POSITION ONLY: Closes existing position before opening new one
-
-FIXED (Issue: Duplicate Orders):
-- Now checks BOTH open_positions AND pending_orders
-- Prevents duplicate order submissions during execution delays
-
-This logic is more aggressive than SimpleConsensus:
-- Acts on single indicator signals (no consensus needed)
-- Uses wider RSI thresholds (35/65 instead of 30/70)
-- Generates more signals, higher risk/reward
-
-Strategy Rules:
-- BUY when RSI < 35 OR price below lower envelope
-- SELL when RSI > 65 OR price above upper envelope
-- Uses OR logic instead of AND (more aggressive)
-
-Trading Rules:
-- Market orders only (MVP)
-- Check free margin before trading (min 1000 EUR)
-- Fixed lot size 0.1
-- No SL/TP for MVP
-- ONE POSITION ONLY: Maximum one position at a time
-
-Position Management:
-- FLAT signal → Close existing position
-- Same direction signal → Skip (already have position)
-- Opposite direction signal → Close old, open new (reversal)
-
-This demonstrates how different DecisionLogic implementations
-can use the same workers but with completely different strategies.
+USER Aggressive Trend Modified — Modified copy of CORE/aggressive_trend for USER namespace testing.
+Demonstrates mixed CORE+USER worker composition: uses CORE/rsi + USER/envelope_modified.
 """
 
 import traceback
@@ -60,9 +22,9 @@ from python.framework.types.trading_env_types.order_types import (
 )
 
 
-class AggressiveTrend(AbstractDecisionLogic):
+class AggressiveTrendModified(AbstractDecisionLogic):
     """
-    Aggressive trend-following strategy using RSI and Envelope.
+    Aggressive trend-following strategy using RSI and Envelope (USER modified).
 
     Unlike SimpleConsensus, this logic:
     - Uses OR instead of AND (single indicator can trigger)
@@ -86,9 +48,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         trading_context: TradingContext = None
     ):
         """
-        Initialize Aggressive Trend logic.
-
-        No longer accepts trading_env parameter.
+        Initialize Aggressive Trend Modified logic.
 
         Args:
             name: Logic identifier
@@ -107,7 +67,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.lot_size = self.params.get('lot_size')
 
         self.logger.debug(
-            f"AggressiveTrend initialized: "
+            f"AggressiveTrendModified initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
             f"Envelope extremes({self.envelope_extremes}), "
             f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
@@ -119,7 +79,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
-        """AggressiveTrend decision logic parameters with validation ranges."""
+        """AggressiveTrendModified decision logic parameters with validation ranges."""
         return {
             'rsi_buy_threshold': ParameterDef(
                 param_type=float, default=35, min_val=1, max_val=49,
@@ -152,9 +112,6 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         Declare required order types for this strategy.
 
-        AggressiveTrend uses only Market orders for MVP.
-        Same as SimpleConsensus - demonstrates standardization.
-
         Returns:
             List containing OrderType.MARKET
         """
@@ -173,9 +130,6 @@ class AggressiveTrend(AbstractDecisionLogic):
         2. Same direction signal → Skip (already have what we want)
         3. Opposite direction signal → Close old, open new (reversal)
         4. New signal with no position → Open position (entry)
-
-        Note: get_open_positions() automatically excludes positions being closed.
-        Latency simulation is handled internally by TradeSimulator.
 
         Args:
             decision: Decision object from compute()
@@ -250,7 +204,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 order_type=OrderType.MARKET,
                 direction=new_direction,
                 lots=self.lot_size,
-                comment=f"AggressiveTrend: {decision.reason[:50]}"
+                comment=f"AggressiveTrendModified: {decision.reason[:50]}"
             )
 
             # Log order submission status
@@ -278,18 +232,16 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     def get_required_worker_instances(self) -> Dict[str, str]:
         """
-        Define required worker instances for AggressiveTrend strategy.
+        Define required worker instances for AggressiveTrendModified strategy.
 
-        Requires:
-        - rsi_fast: Fast RSI indicator for trend detection
-        - envelope_main: Envelope for price position analysis
+        Uses CORE/rsi + USER/envelope_modified to demonstrate mixed composition.
 
         Returns:
             Dict[instance_name, worker_type]
         """
         return {
             "rsi_fast": "CORE/rsi",
-            "envelope_main": "CORE/envelope"
+            "envelope_main": "USER/envelope_modified"
         }
 
     def compute(
@@ -443,7 +395,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         if envelope_triggered:
             reasons.append(f"Envelope={envelope_position:.2f}")
 
-        return " OR ".join(reasons) + " (aggressive)"
+        return " OR ".join(reasons) + " (aggressive-modified)"
 
     def _build_sell_reason(
         self,
@@ -461,4 +413,4 @@ class AggressiveTrend(AbstractDecisionLogic):
         if envelope_triggered:
             reasons.append(f"Envelope={envelope_position:.2f}")
 
-        return " OR ".join(reasons) + " (aggressive)"
+        return " OR ".join(reasons) + " (aggressive-modified)"

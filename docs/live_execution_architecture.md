@@ -151,7 +151,7 @@ The `AbstractAdapter` abstract class organizes methods in tiers. Live execution 
 
 **Tier 3 — Optional (live execution):** `execute_order()`, `check_order_status()`, `cancel_order()`, `modify_order()`, `is_live_capable()` — default `NotImplementedError` / `False`
 
-Adapters that only serve backtesting (KrakenAdapter, MT5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
+Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 1+2. Live-capable adapters additionally implement Tier 3.
 
 ### MockBrokerAdapter (extends AbstractAdapter, for testing)
 

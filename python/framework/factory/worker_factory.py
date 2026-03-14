@@ -3,7 +3,7 @@ FiniexTestingIDE - Worker Factory
 Config-driven worker instantiation with namespace support
 
 The Factory is responsible for:
-1. Resolving worker types from config (e.g., "CORE/rsi" → RSIWorker class)
+1. Resolving worker types from config (e.g., "CORE/rsi" → RsiWorker class)
 2. Validating required parameters are provided
 3. Merging user config with worker defaults
 4. Instantiating workers with correct parameters
@@ -15,7 +15,12 @@ Namespace System:
 """
 
 import importlib
+import importlib.util
 import json
+import sys
+
+from python.configuration.app_config_manager import AppConfigManager
+from pathlib import Path
 from typing import Any, Dict, List, Type
 
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -24,11 +29,11 @@ from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
-from python.framework.workers.core.macd_worker import MACDWorker
-from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
-from python.framework.workers.core.obv_worker import OBVWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.obv_worker import ObvWorker
 
 
 class WorkerFactory:
@@ -55,7 +60,9 @@ class WorkerFactory:
         self._logger = logger
         self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstractWorker]] = {}
+        self._extra_dirs: List[str] = AppConfigManager().get_user_worker_dirs()
         self._load_core_workers()
+        self._scan_user_namespace()
 
     def _load_core_workers(self):
         """
@@ -70,11 +77,11 @@ class WorkerFactory:
         # Import core workers
         try:
             # Register with CORE namespace
-            self._registry["CORE/rsi"] = RSIWorker
+            self._registry["CORE/rsi"] = RsiWorker
             self._registry["CORE/envelope"] = EnvelopeWorker
-            self._registry["CORE/heavy_rsi"] = HeavyRSIWorker
-            self._registry["CORE/macd"] = MACDWorker
-            self._registry["CORE/obv"] = OBVWorker
+            self._registry["CORE/heavy_rsi"] = HeavyRsiWorker
+            self._registry["CORE/macd"] = MacdWorker
+            self._registry["CORE/obv"] = ObvWorker
 
             # Backtesting workers
             self._registry["CORE/backtesting/backtesting_sample_worker"] = BacktestingSampleWorker
@@ -84,6 +91,122 @@ class WorkerFactory:
             )
         except ImportError as e:
             self._logger.warning(f"Failed to load core workers: {e}")
+
+        self._scan_user_namespace()
+
+    def _scan_user_namespace(self):
+        """
+        Scan USER directories for worker modules and register them.
+
+        Scans the default directory (python/workers/user/) plus any
+        extra directories configured via app_config.json paths.user_worker_dirs.
+        Broken modules are skipped with a warning log.
+        """
+        default_dir = Path('python/workers/user')
+        scan_dirs = [default_dir] + [Path(d) for d in self._extra_dirs]
+
+        discovered = 0
+        for scan_dir in scan_dirs:
+            is_external = scan_dir != default_dir
+            if not scan_dir.exists():
+                if is_external:
+                    self._logger.warning(
+                        f"USER worker directory not found: {scan_dir}")
+                return
+            if not scan_dir.is_dir():
+                continue
+
+            for py_file in sorted(scan_dir.glob('*.py')):
+                if py_file.name.startswith('TEMPLATE_'):
+                    continue
+                if py_file.name.startswith('__'):
+                    continue
+
+                stem = py_file.stem
+                worker_type = f'USER/{stem}'
+
+                # Derive class name: snake_case → PascalCase + "Worker" suffix
+                class_name = ''.join(
+                    word.capitalize() for word in stem.split('_'))
+                if not class_name.endswith('Worker'):
+                    class_name += 'Worker'
+
+                try:
+                    if is_external:
+                        # External dir: load by file location (no sys.path pollution)
+                        spec = importlib.util.spec_from_file_location(
+                            f'user_ext.workers.{stem}', str(py_file))
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[spec.name] = module
+                        spec.loader.exec_module(module)
+                    else:
+                        # Default dir: standard import
+                        module_path = f'python.workers.user.{stem}'
+                        module = importlib.import_module(module_path)
+
+                    if not hasattr(module, class_name):
+                        found = [n for n in dir(module) if not n.startswith('_')]
+                        self._logger.warning(
+                            f"Skipping USER/{stem}: expected class '{class_name}' "
+                            f"(derived from filename '{py_file.name}'), "
+                            f"but not found. Module contains: {found}. "
+                            f"Rename the class or the file to match "
+                            f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
+                        continue
+
+                    worker_class = getattr(module, class_name)
+
+                    if not issubclass(worker_class, AbstractWorker):
+                        self._logger.warning(
+                            f"Skipping USER/{stem}: {class_name} does not "
+                            f"inherit from AbstractWorker")
+                        continue
+
+                    if worker_type in self._registry:
+                        self._logger.warning(
+                            f"USER/{stem} overrides previous registration "
+                            f"(from {scan_dir})")
+
+                    self._registry[worker_type] = worker_class
+                    discovered += 1
+
+                except (SyntaxError, ImportError) as e:
+                    self._logger.warning(
+                        f"Skipping USER/{stem}: {type(e).__name__}: {e}")
+                except Exception as e:
+                    self._logger.warning(
+                        f"Skipping USER/{stem}: unexpected error: "
+                        f"{type(e).__name__}: {e}")
+
+        if discovered > 0:
+            self._logger.debug(
+                f"USER workers discovered: {discovered}")
+
+    def rescan(self):
+        """
+        Hot-reload USER namespace: clear cached modules, re-scan directories.
+
+        Removes all USER/ entries from the registry and invalidates
+        Python's module cache for user modules, then re-scans.
+        Prepared for Issue #21 REPL shell integration.
+        """
+        # Clear USER entries from registry
+        self._registry = {
+            k: v for k, v in self._registry.items()
+            if not k.startswith('USER/')
+        }
+
+        # Invalidate sys.modules for user worker modules
+        stale_keys = [
+            key for key in sys.modules
+            if key.startswith('python.workers.user.')
+            or key.startswith('user_ext.workers.')
+        ]
+        for key in stale_keys:
+            del sys.modules[key]
+
+        # Re-scan
+        self._scan_user_namespace()
 
     def register_worker(
         self,
@@ -160,6 +283,9 @@ class WorkerFactory:
         merged_params = apply_defaults(
             worker_config, worker_class.get_parameter_schema()
         )
+
+        # Step 3.5: Inject worker_type for performance tracking
+        merged_params['worker_type'] = worker_type
 
         # Step 4: Wrap validated+defaulted config into ValidatedParameters
         validated_params = ValidatedParameters(merged_params)
@@ -304,30 +430,63 @@ class WorkerFactory:
         # ============================================
         # USER: Active Loading
         # ============================================
-        if namespace == "USER":
-            module_path = f"python.workers.user.{worker_name}"
-        else:
+        if namespace != "USER":
             raise ValueError(f"Unknown namespace: {namespace}")
 
-        # Try to import module
-        try:
-            module = importlib.import_module(module_path)
+        # Derive expected class name
+        class_name = ''.join(word.capitalize()
+                             for word in worker_name.split('_'))
+        if not class_name.endswith('Worker'):
+            class_name += 'Worker'
 
-            # Find worker class in module (convention: capitalized name)
-            class_name = "".join(word.capitalize()
-                                 for word in worker_name.split("_"))
-            if not class_name.endswith("Worker"):
-                class_name += "Worker"
+        # Search paths: default dir + external dirs
+        default_path = Path('python/workers/user') / f'{worker_name}.py'
+        search_paths = [default_path] + [
+            Path(d) / f'{worker_name}.py' for d in self._extra_dirs
+        ]
 
-            worker_class = getattr(module, class_name)
+        # Try each path
+        for py_file in search_paths:
+            if not py_file.exists():
+                continue
 
-            # Register for future use
-            self._registry[worker_type] = worker_class
+            try:
+                is_external = py_file != default_path
+                if is_external:
+                    spec = importlib.util.spec_from_file_location(
+                        f'user_ext.workers.{worker_name}', str(py_file))
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[spec.name] = module
+                    spec.loader.exec_module(module)
+                else:
+                    module = importlib.import_module(
+                        f'python.workers.user.{worker_name}')
 
-            self._logger.info(f"Dynamically loaded worker: {worker_type}")
-            return worker_class
+                if not hasattr(module, class_name):
+                    found = [n for n in dir(module) if not n.startswith('_')]
+                    raise AttributeError(
+                        f"Expected class '{class_name}' in '{py_file}' "
+                        f"(derived from filename). "
+                        f"Module contains: {found}. "
+                        f"Rename the class or the file to match "
+                        f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
 
-        except (ImportError, AttributeError) as e:
-            raise ValueError(
-                f"Failed to load custom worker {worker_type}: {e}"
-            )
+                worker_class = getattr(module, class_name)
+
+                # Register for future use
+                self._registry[worker_type] = worker_class
+
+                self._logger.info(f"Dynamically loaded worker: {worker_type}")
+                return worker_class
+
+            except (ImportError, AttributeError, SyntaxError) as e:
+                raise ValueError(
+                    f"Failed to load custom worker {worker_type}: {e}"
+                ) from e
+
+        # File not found in any search path
+        searched = [str(p.parent) for p in search_paths]
+        raise ValueError(
+            f"Failed to load custom worker {worker_type}: "
+            f"file '{worker_name}.py' not found in search paths: {searched}"
+        )

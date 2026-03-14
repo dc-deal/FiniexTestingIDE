@@ -24,7 +24,7 @@ from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
-class OBVWorker(AbstractWorker):
+class ObvWorker(AbstractWorker):
     """
     On-Balance Volume (OBV) indicator worker.
 

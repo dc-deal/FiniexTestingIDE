@@ -26,7 +26,7 @@ from python.data_management.importers.bar_importer import BarImporter
 vLog = get_global_logger()
 
 
-class BarIndexCLI:
+class BarIndexCli:
     """
     Command-line interface for bar index management and reporting.
     """
@@ -269,7 +269,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = BarIndexCLI()
+    cli = BarIndexCli()
 
     try:
         if args.command == 'rebuild':

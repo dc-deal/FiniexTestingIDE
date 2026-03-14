@@ -14,11 +14,11 @@ Tests (parametrized over all CORE components):
 import pytest
 
 from python.framework.types.parameter_types import ParameterDef, REQUIRED, _RequiredSentinel
-from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
-from python.framework.workers.core.macd_worker import MACDWorker
-from python.framework.workers.core.obv_worker import OBVWorker
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRSIWorker
+from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.obv_worker import ObvWorker
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
@@ -176,12 +176,12 @@ class TestWorkerSpecificSchemas:
 
     def test_rsi_has_no_algorithm_params(self):
         """RSI only uses periods (structural) - no algorithm parameters."""
-        schema = RSIWorker.get_parameter_schema()
+        schema = RsiWorker.get_parameter_schema()
         assert schema == {}
 
     def test_obv_has_no_algorithm_params(self):
         """OBV only uses periods (structural) - no algorithm parameters."""
-        schema = OBVWorker.get_parameter_schema()
+        schema = ObvWorker.get_parameter_schema()
         assert schema == {}
 
     def test_envelope_has_deviation(self):
@@ -196,16 +196,16 @@ class TestWorkerSpecificSchemas:
         assert dev.max_val == 5.0
 
     def test_macd_has_three_required_periods(self):
-        """MACDWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
-        schema = MACDWorker.get_parameter_schema()
+        """MacdWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
+        schema = MacdWorker.get_parameter_schema()
         for param_name in ('fast_period', 'slow_period', 'signal_period'):
             assert param_name in schema, f"Missing {param_name}"
             assert schema[param_name].is_required, f"{param_name} should be REQUIRED"
             assert schema[param_name].param_type == int
 
     def test_heavy_rsi_has_artificial_load(self):
-        """HeavyRSIWorker must declare artificial_load_ms."""
-        schema = HeavyRSIWorker.get_parameter_schema()
+        """HeavyRsiWorker must declare artificial_load_ms."""
+        schema = HeavyRsiWorker.get_parameter_schema()
         assert 'artificial_load_ms' in schema
         assert schema['artificial_load_ms'].param_type == float
         assert not schema['artificial_load_ms'].is_required

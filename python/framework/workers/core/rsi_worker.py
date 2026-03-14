@@ -9,7 +9,7 @@ from python.framework.workers.abstract_worker import \
     AbstractWorker
 
 
-class RSIWorker(AbstractWorker):
+class RsiWorker(AbstractWorker):
     """RSI computation worker - Bar-based computation"""
 
     def __init__(self, name, parameters, logger, trading_context=None):

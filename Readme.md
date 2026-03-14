@@ -22,7 +22,7 @@
 - **STOP / STOP_LIMIT Orders** — Breakout entry orders: STOP fills at market price (taker fee), STOP_LIMIT triggers at stop price then fills at limit price (maker fee)
 - **Active Order Preservation** — Unfilled limit/stop orders preserved at scenario end, captured in `PendingOrderStats` for post-run inspection
 - **Active Order Reporting** — Active order counts displayed in terminal output (executive summary, per-scenario box, portfolio summary)
-- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingAPI.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
+- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingApi.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
 - **`cancel_limit_sequence` Config** — BacktestingDeterministic parameter to cancel a limit order at a configured tick (analogous to `cancel_stop_sequence`)
 - **SL/TP & Limit Validation Tests** — Expanded from 8 to 17 scenarios (~82 tests): STOP/STOP_LIMIT triggers, STOP then TP, modify stop, cancel stop/limit
 
@@ -111,7 +111,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 4. Run backtest         →  🔬 Run Scenario
 ```
 
-→ See [Quickstart Guide](docs/quickstart_guide.md) for step-by-step instructions.
+→ See [Quickstart Guide](docs/user_guides/quickstart_guide.md) for step-by-step instructions.
 
 ---
 
@@ -269,9 +269,9 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 | Document | Description |
 |----------|-------------|
 | [CLI Tools Guide](docs/cli_tools_guide.md) | All CLI commands with examples |
-| [Quickstart Guide](docs/quickstart_guide.md) | Create your first trading bot |
+| [Quickstart Guide](docs/user_guides/quickstart_guide.md) | Create your first trading bot |
 | [TickCollector README](docs/TickCollector_README.md) | MQL5 data collection setup |
-| [Worker Naming](docs/worker_naming_doc.md) | Worker system and naming conventions |
+| [Worker Naming](docs/user_guides/worker_naming_doc.md) | Worker system and naming conventions |
 | [Config Cascade](docs/config_cascade_readme.md) | 3-level configuration system |
 | [Broker Config](docs/broker_config_guide.md) | Multi-broker setup (MT5, Kraken) |
 | [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |

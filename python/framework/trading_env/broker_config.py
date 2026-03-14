@@ -15,7 +15,7 @@ from enum import Enum
 from python.framework.types.market_types.market_data_types import TickData
 
 from .adapters.abstract_adapter import AbstractAdapter
-from .adapters.mt5_adapter import MT5Adapter
+from .adapters.mt5_adapter import Mt5Adapter
 from .adapters.kraken_adapter import KrakenAdapter
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
@@ -132,7 +132,7 @@ class BrokerConfig:
             ValueError: If broker type not supported
         """
         if broker_type in [BrokerType.MT5_FOREX, BrokerType.MT5_CFD, BrokerType.MT5_CRYPTO]:
-            return MT5Adapter(config)
+            return Mt5Adapter(config)
 
         elif broker_type == BrokerType.KRAKEN_SPOT:
             return KrakenAdapter(config)

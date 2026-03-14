@@ -28,6 +28,34 @@ This separation allows you to extend the framework with your own implementations
 
 ---
 
+## Class–File Naming Convention (Global Pattern)
+
+The **filename determines the expected class name** — this is a global project pattern enforced across CORE and USER namespaces alike. The scanner, factories, and all module loading rely on this convention.
+
+**Workers:** `snake_case.py` → `PascalCase` + `Worker` suffix
+
+| File | Class |
+|------|-------|
+| `rsi_worker.py` | `RsiWorker` |
+| `macd_worker.py` | `MacdWorker` |
+| `envelope_modified.py` | `EnvelopeModifiedWorker` |
+| `my_custom_rsi.py` | `MyCustomRsiWorker` |
+
+**Decision Logics:** `snake_case.py` → `PascalCase`, **no suffix**
+
+| File | Class |
+|------|-------|
+| `aggressive_trend.py` | `AggressiveTrend` |
+| `cautious_macd.py` | `CautiousMacd` |
+| `simple_consensus.py` | `SimpleConsensus` |
+| `my_strategy.py` | `MyStrategy` |
+
+**Acronyms** use standard `capitalize()`: `rsi` → `Rsi`, `macd` → `Macd`, `obv` → `Obv`.
+
+If the class name doesn't match the filename, the module is **skipped with a warning** during scan, or **rejected with a clear error** during on-demand loading. The error message shows the expected class name and what was actually found in the module.
+
+---
+
 ## How It Works: The Contract Model
 
 The worker requirement system follows a three-step contract model that ensures type safety and clear dependencies. Let's walk through each step to understand how DecisionLogic and configuration work together.
@@ -223,7 +251,7 @@ This happens when you reference a worker type that doesn't exist. Either you hav
 ```
 **Fix**: Check worker's `get_parameter_schema()` for `REQUIRED` parameters and provide them.
 
-Each worker declares its parameters via `get_parameter_schema()`. Parameters with `default=REQUIRED` must be provided in config. The factory validates this in Phase 3 (static) and Phase 6 (instantiation). Example: MACDWorker requires `fast_period`, `slow_period`, and `signal_period`.
+Each worker declares its parameters via `get_parameter_schema()`. Parameters with `default=REQUIRED` must be provided in config. The factory validates this in Phase 3 (static) and Phase 6 (instantiation). Example: MacdWorker requires `fast_period`, `slow_period`, and `signal_period`.
 
 
 ### ❌ Parameter Out of Range

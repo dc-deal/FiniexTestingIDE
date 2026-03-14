@@ -35,7 +35,7 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 ```python
 # Location: python/framework/workers/core/rsi_worker.py
 
-class RSIWorker(AbstractWorker):
+class RsiWorker(AbstractWorker):
     """RSI computation from bar close prices"""
     
     def __init__(
@@ -163,7 +163,7 @@ class EnvelopeWorker(AbstractWorker):
 **Example: Market-aware warning in worker:**
 
 ```python
-class OBVWorker(AbstractWorker):
+class ObvWorker(AbstractWorker):
     def __init__(self, name, parameters, logger, trading_context=None):
         super().__init__(name, parameters, logger, trading_context=trading_context)
         
@@ -391,31 +391,63 @@ The JSON config connects everything together.
 
 ---
 
-## Step 4: Register Your Bot (Alpha)
+## Step 4: Deploy Your Bot
 
-In 1.0 Alpha, custom bots must be registered manually in the factories.
+Place your files in the USER directories — they are **auto-discovered at startup**. No factory registration needed.
 
-### Add Worker to Factory
+### Create a Worker
 
-```python
-# python/framework/workers/worker_factory.py
+1. Copy the template: `python/workers/user/TEMPLATE_worker.py` → `python/workers/user/my_indicator.py`
+2. Rename the class: `TEMPLATEWorker` → `MyIndicatorWorker`
+3. Implement `compute()`, `get_warmup_requirements()`, `get_parameter_schema()`
 
-def _load_core_workers(self):
-    # ... existing workers ...
-    self._registry["CORE/my_indicator"] = MyIndicatorWorker
+### Create a Decision Logic
+
+1. Copy the template: `python/decision_logic/user/TEMPLATE_logic.py` → `python/decision_logic/user/my_strategy.py`
+2. Rename the class: `TEMPLATELogic` → `MyStrategy`
+3. Implement `compute()`, `_execute_decision_impl()`, `get_required_worker_instances()`
+
+### Reference in Config
+
+```json
+{
+    "decision_logic_type": "USER/my_strategy",
+    "worker_instances": {
+        "custom_ind": "USER/my_indicator",
+        "rsi_filter": "CORE/rsi"
+    }
+}
 ```
 
-### Add Decision Logic to Factory
+USER and CORE modules can be freely combined in a single scenario.
 
-```python
-# python/framework/decision_logic/decision_logic_factory.py
+### External Directories (optional)
 
-def _load_core_logics(self):
-    # ... existing logics ...
-    self._registry["CORE/my_strategy"] = MyStrategy
+Keep your strategies in a separate repo — configure additional scan paths in `app_config.json`:
+
+```json
+{
+    "paths": {
+        "user_worker_dirs": ["/path/to/my-strategies/workers"],
+        "user_decision_logic_dirs": ["/path/to/my-strategies/decision_logic"]
+    }
+}
 ```
 
-> **Note:** USER/ namespace is feature-gated in Alpha. Place your files in the `core/` folders for now.
+Default project directories (`python/workers/user/`, `python/decision_logic/user/`) are always scanned. External directories are scanned additionally.
+
+### Naming Convention
+
+| File | Expected Class | Rule |
+|------|---------------|------|
+| `my_custom_rsi.py` | `MyCustomRsiWorker` | PascalCase + "Worker" suffix |
+| `my_strategy.py` | `MyStrategy` | PascalCase, no suffix (decision logic) |
+
+### Error Handling
+
+Syntax errors or broken imports → file is skipped with a warning log. Framework continues normally. Fix the file and restart (or `rescan()` in REPL mode).
+
+> See [user_modules_and_hot_reload_mechanics.md](user_modules_and_hot_reload_mechanics.md) for the full technical reference including hot-reload, sys.modules invalidation, and external directory mechanics.
 
 ---
 

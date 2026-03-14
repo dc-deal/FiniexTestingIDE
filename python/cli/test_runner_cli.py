@@ -31,7 +31,7 @@ class SuiteResult:
     duration: float
 
 
-class TestRunnerCLI:
+class TestRunnerCli:
     """
     CLI handler for unified test execution.
     """
@@ -255,7 +255,7 @@ def main() -> None:
     )
     parser.parse_args()
 
-    cli = TestRunnerCLI()
+    cli = TestRunnerCli()
     cli.cmd_run()
 
 

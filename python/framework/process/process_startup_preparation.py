@@ -7,7 +7,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.trading_env.decision_trading_api import DecisionTradingAPI
+from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
@@ -109,13 +109,13 @@ def process_startup_preparation(
         f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
     )
 
-    # === PHASE 6: Inject DecisionTradingAPI (validated against required_order_types) ===
-    trading_api = DecisionTradingAPI(
+    # === PHASE 6: Inject DecisionTradingApi (validated against required_order_types) ===
+    trading_api = DecisionTradingApi(
         executor=trade_simulator,
         required_order_types=required_order_types
     )
     decision_logic.set_trading_api(trading_api)
-    scenario_logger.debug("✅ DecisionTradingAPI injected into Decision Logic")
+    scenario_logger.debug("✅ DecisionTradingApi injected into Decision Logic")
 
     scenario_logger.debug(
         f"✅ Created trade simulator: "

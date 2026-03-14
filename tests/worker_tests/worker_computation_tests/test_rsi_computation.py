@@ -20,7 +20,7 @@ Reference formula:
 
 import pytest
 
-from python.framework.workers.core.rsi_worker import RSIWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.types.worker_types import WorkerResult
 
 from conftest import make_bars, make_tick
@@ -40,7 +40,7 @@ class TestRSIBasicComputation:
         RS = 1.25 / 0.25 = 5.0
         RSI = 100 - 100/(1+5) = 83.333...
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -68,7 +68,7 @@ class TestRSIBasicComputation:
         losses:  [ 0,  0,  0,  0]  → avg = 0.0
         avg_loss == 0 → RSI = 100.0 (special case in code)
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -96,7 +96,7 @@ class TestRSIBasicComputation:
         RS = 0/1 = 0.0
         RSI = 100 - 100/(1+0) = 0.0
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -124,7 +124,7 @@ class TestRSIBasicComputation:
         RS = 1.0
         RSI = 100 - 100/(1+1) = 50.0
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -147,7 +147,7 @@ class TestRSIMetadataAndConfidence:
 
     def test_rsi_worker_name(self, mock_logger):
         """WorkerResult.worker_name must match the worker instance name."""
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="my_rsi_instance",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -162,7 +162,7 @@ class TestRSIMetadataAndConfidence:
 
     def test_rsi_metadata_fields(self, mock_logger):
         """Metadata must contain period, timeframe, avg_gain, avg_loss, bars_used."""
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -187,7 +187,7 @@ class TestRSIMetadataAndConfidence:
         avg_gain = 5/4 = 1.25
         avg_loss = 1/4 = 0.25
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -207,7 +207,7 @@ class TestRSIMetadataAndConfidence:
 
         5 bars, period=4: confidence = min(1.0, 5/8) = 0.625
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -226,7 +226,7 @@ class TestRSIMetadataAndConfidence:
 
         10 bars, period=4: min(1.0, 10/8) = 1.0
         """
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -246,7 +246,7 @@ class TestRSIBoundaryAndRange:
 
     def test_rsi_always_between_0_and_100(self, mock_logger):
         """RSI must be in [0, 100] regardless of input."""
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
             logger=mock_logger,
@@ -262,7 +262,7 @@ class TestRSIBoundaryAndRange:
 
     def test_rsi_with_large_period(self, mock_logger):
         """RSI with period=14 (standard) and enough data."""
-        worker = RSIWorker(
+        worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 14}},
             logger=mock_logger,

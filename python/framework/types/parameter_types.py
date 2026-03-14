@@ -83,7 +83,7 @@ class ValidatedParameters:
       - Typo in key name → fix the string
 
     Note: Also accepts raw dict construction for test convenience:
-        worker = RSIWorker(parameters={"periods": {"M5": 4}}, ...)
+        worker = RsiWorker(parameters={"periods": {"M5": 4}}, ...)
     The AbstractWorker/AbstractDecisionLogic will auto-wrap dicts.
     """
 

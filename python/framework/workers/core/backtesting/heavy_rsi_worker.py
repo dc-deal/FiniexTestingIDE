@@ -16,7 +16,7 @@ from python.framework.workers.abstract_worker import \
     AbstractWorker
 
 
-class HeavyRSIWorker(AbstractWorker):
+class HeavyRsiWorker(AbstractWorker):
     """
     RSI worker with artificial CPU load.
     Simulates complex calculations (e.g., ML models, FFT, etc.)

@@ -14,7 +14,7 @@ from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
-class MACDWorker(AbstractWorker):
+class MacdWorker(AbstractWorker):
     """
     MACD (Moving Average Convergence Divergence) worker.
 
@@ -43,7 +43,7 @@ class MACDWorker(AbstractWorker):
         # Cross-field validation (business logic, stays in Worker)
         if self.fast_period >= self.slow_period:
             raise ValueError(
-                f"MACDWorker '{self.name}': fast_period ({self.fast_period}) "
+                f"MacdWorker '{self.name}': fast_period ({self.fast_period}) "
                 f"must be < slow_period ({self.slow_period})"
             )
 
@@ -103,7 +103,7 @@ class MACDWorker(AbstractWorker):
             ...     "slow_period": 26,
             ...     "signal_period": 9
             ... }
-            >>> MACDWorker.calculate_requirements(config)
+            >>> MacdWorker.calculate_requirements(config)
             {"M5": 35}
         """
         # Use periods directly from config

@@ -327,7 +327,7 @@ class OpenOrderRequest:
     """
     Bundled order parameters passed through the execution pipeline.
 
-    Built by DecisionTradingAPI.send_order(), consumed by TradeSimulator/LiveTradeExecutor.
+    Built by DecisionTradingApi.send_order(), consumed by TradeSimulator/LiveTradeExecutor.
 
     Args:
         symbol: Trading symbol

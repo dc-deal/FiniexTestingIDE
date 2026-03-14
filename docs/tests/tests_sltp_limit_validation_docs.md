@@ -380,7 +380,7 @@ The original TP is unreachable in the data range. After modification at tick 500
 
 ### Modify Stop Sequence
 
-`modify_stop_sequence` calls `modify_stop_order()` via DecisionTradingAPI at a configured tick:
+`modify_stop_sequence` calls `modify_stop_order()` via DecisionTradingApi at a configured tick:
 
 ```json
 "modify_stop_sequence": [

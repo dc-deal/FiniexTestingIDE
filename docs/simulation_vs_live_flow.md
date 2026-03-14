@@ -156,7 +156,7 @@ Portfolio (shared)
 **Strategy:**
 - DecisionLogic + Workers — completely unchanged between modes
 - Receives ticks, produces trading decisions
-- Interacts with execution only through DecisionTradingAPI
+- Interacts with execution only through DecisionTradingApi
 
 **ExecutionHandler:**
 - Simulation: TradeSimulator with OrderLatencySimulator

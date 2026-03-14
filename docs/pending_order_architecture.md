@@ -246,7 +246,7 @@ def get_active_order_counts(self) -> Dict[str, int]:
     }
 ```
 
-Exposed via `DecisionTradingAPI.get_active_order_counts()`.
+Exposed via `DecisionTradingApi.get_active_order_counts()`.
 
 ---
 
