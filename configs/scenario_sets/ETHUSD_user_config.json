@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "ETHUSD_user_config",
+  "created": "2026-03-14T00:00:00+00:00",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "USER/aggressive_trend_modified",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "envelope_main": "USER/envelope_modified"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "envelope_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confidence": 0.6
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "initial_balance": 10000,
+      "currency": "auto",
+      "seeds": {
+        "api_latency_seed": 42,
+        "market_execution_seed": 123
+      }
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "ETHUSD_user_02",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-25T16:00:00+00:00",
+      "end_date": "2026-01-26T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "ETHUSD_blocks_03",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-26T16:00:00+00:00",
+      "end_date": "2026-01-27T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    }
+  ]
+}

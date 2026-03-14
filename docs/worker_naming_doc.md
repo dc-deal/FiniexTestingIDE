@@ -28,6 +28,34 @@ This separation allows you to extend the framework with your own implementations
 
 ---
 
+## Class–File Naming Convention (Global Pattern)
+
+The **filename determines the expected class name** — this is a global project pattern enforced across CORE and USER namespaces alike. The scanner, factories, and all module loading rely on this convention.
+
+**Workers:** `snake_case.py` → `PascalCase` + `Worker` suffix
+
+| File | Class |
+|------|-------|
+| `rsi_worker.py` | `RSIWorker` |
+| `macd_worker.py` | `MACDWorker` |
+| `envelope_modified.py` | `EnvelopeModifiedWorker` |
+| `my_custom_rsi.py` | `MyCustomRsiWorker` |
+
+**Decision Logics:** `snake_case.py` → `PascalCase`, **no suffix**
+
+| File | Class |
+|------|-------|
+| `aggressive_trend.py` | `AggressiveTrend` |
+| `cautious_macd.py` | `CautiousMACD` |
+| `simple_consensus.py` | `SimpleConsensus` |
+| `my_strategy.py` | `MyStrategy` |
+
+**Acronyms** stay uppercase: `rsi` → `RSI`, `macd` → `MACD`, `obv` → `OBV`.
+
+If the class name doesn't match the filename, the module is **skipped with a warning** during scan, or **rejected with a clear error** during on-demand loading. The error message shows the expected class name and what was actually found in the module.
+
+---
+
 ## How It Works: The Contract Model
 
 The worker requirement system follows a three-step contract model that ensures type safety and clear dependencies. Let's walk through each step to understand how DecisionLogic and configuration work together.

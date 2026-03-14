@@ -1,4 +1,4 @@
-# User Decision Logics are tracked by default
-# Add specific files here if needed
+# USER Decision Logic — auto-discovered at startup
+# See docs/user_modules_and_hot_reload_mechanics.md
 __pycache__/
 *.pyc
