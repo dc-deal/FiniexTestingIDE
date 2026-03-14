@@ -7,8 +7,8 @@ Steps:
 3. Implement compute() and _execute_decision_impl() with your strategy
 4. Reference in config: "USER/my_strategy"
 
-See docs/user_modules_and_hot_reload_mechanics.md for details.
-See docs/quickstart_guide.md for a full walkthrough.
+See docs/user_guides/user_modules_and_hot_reload_mechanics.md for details.
+See docs/user_guides/quickstart_guide.md for a full walkthrough.
 """
 
 from typing import Any, Dict, List, Optional

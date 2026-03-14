@@ -172,7 +172,7 @@ class DecisionLogicFactory:
                             f"(derived from filename '{py_file.name}'), "
                             f"but not found. Module contains: {found}. "
                             f"Rename the class or the file to match "
-                            f"(see docs/user_modules_and_hot_reload_mechanics.md)")
+                            f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
                         continue
 
                     logic_class = getattr(module, class_name)
@@ -406,7 +406,7 @@ class DecisionLogicFactory:
                     f"(derived from filename). "
                     f"Module contains: {found}. "
                     f"Rename the class or the file to match "
-                    f"(see docs/user_modules_and_hot_reload_mechanics.md)")
+                    f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
 
             logic_class = getattr(module, class_name)
 

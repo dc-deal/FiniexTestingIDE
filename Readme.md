@@ -111,7 +111,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 4. Run backtest         →  🔬 Run Scenario
 ```
 
-→ See [Quickstart Guide](docs/quickstart_guide.md) for step-by-step instructions.
+→ See [Quickstart Guide](docs/user_guides/quickstart_guide.md) for step-by-step instructions.
 
 ---
 
@@ -269,9 +269,9 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 | Document | Description |
 |----------|-------------|
 | [CLI Tools Guide](docs/cli_tools_guide.md) | All CLI commands with examples |
-| [Quickstart Guide](docs/quickstart_guide.md) | Create your first trading bot |
+| [Quickstart Guide](docs/user_guides/quickstart_guide.md) | Create your first trading bot |
 | [TickCollector README](docs/TickCollector_README.md) | MQL5 data collection setup |
-| [Worker Naming](docs/worker_naming_doc.md) | Worker system and naming conventions |
+| [Worker Naming](docs/user_guides/worker_naming_doc.md) | Worker system and naming conventions |
 | [Config Cascade](docs/config_cascade_readme.md) | 3-level configuration system |
 | [Broker Config](docs/broker_config_guide.md) | Multi-broker setup (MT5, Kraken) |
 | [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |

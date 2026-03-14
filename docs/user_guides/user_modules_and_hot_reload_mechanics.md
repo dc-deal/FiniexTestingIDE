@@ -113,7 +113,7 @@ Keep strategies in a separate repo by configuring additional scan paths in `app_
 - External directories that don't exist → warning log, no crash
 - Name collision between default and external → external wins, warning logged
 
-**Import mechanism for external dirs:** Uses `importlib.util.spec_from_file_location()` — no `sys.path` pollution.
+**Import mechanism for external dirs:** Uses `importlib.util.spec_from_file_location()` — no `sys.path` pollution. The file is loaded directly by its absolute path and registered under a synthetic module name (`user_ext.workers.*`) in `sys.modules`. Framework imports inside external workers (e.g., `from python.framework.workers.abstract_worker import AbstractWorker`) resolve normally because `/app` is in `sys.path`. In short: **file path for loading, `sys.path` for dependencies** — two separate mechanisms.
 
 ---
 

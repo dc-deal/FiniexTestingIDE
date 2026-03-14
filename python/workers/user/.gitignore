@@ -1,4 +1,4 @@
 # USER Workers — auto-discovered at startup
-# See docs/user_modules_and_hot_reload_mechanics.md
+# See docs/user_guides/user_modules_and_hot_reload_mechanics.md
 __pycache__/
 *.pyc

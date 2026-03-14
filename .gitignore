@@ -185,5 +185,8 @@ user_configs/*
 *.pkl
 *.h5
 
+# Docker Compose user overrides (external volumes, ports, etc.)
+docker-compose.override.yml
+
 # Claude Code
 CLAUDE.md

@@ -18,6 +18,8 @@ import importlib
 import importlib.util
 import json
 import sys
+
+from python.configuration.app_config_manager import AppConfigManager
 from pathlib import Path
 from typing import Any, Dict, List, Type
 
@@ -58,7 +60,7 @@ class WorkerFactory:
         self._logger = logger
         self._strict_validation = strict_parameter_validation
         self._registry: Dict[str, Type[AbstractWorker]] = {}
-        self._extra_dirs: List[str] = []
+        self._extra_dirs: List[str] = AppConfigManager().get_user_worker_dirs()
         self._load_core_workers()
         self._scan_user_namespace()
 
@@ -90,14 +92,6 @@ class WorkerFactory:
         except ImportError as e:
             self._logger.warning(f"Failed to load core workers: {e}")
 
-    def set_extra_dirs(self, extra_dirs: List[str]):
-        """
-        Set additional USER worker directories and re-scan.
-
-        Args:
-            extra_dirs: List of external directory paths to scan
-        """
-        self._extra_dirs = extra_dirs
         self._scan_user_namespace()
 
     def _scan_user_namespace(self):
@@ -157,7 +151,7 @@ class WorkerFactory:
                             f"(derived from filename '{py_file.name}'), "
                             f"but not found. Module contains: {found}. "
                             f"Rename the class or the file to match "
-                            f"(see docs/user_modules_and_hot_reload_mechanics.md)")
+                            f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
                         continue
 
                     worker_class = getattr(module, class_name)
@@ -436,39 +430,63 @@ class WorkerFactory:
         # ============================================
         # USER: Active Loading
         # ============================================
-        if namespace == "USER":
-            module_path = f"python.workers.user.{worker_name}"
-        else:
+        if namespace != "USER":
             raise ValueError(f"Unknown namespace: {namespace}")
 
-        # Try to import module
-        try:
-            module = importlib.import_module(module_path)
+        # Derive expected class name
+        class_name = ''.join(word.capitalize()
+                             for word in worker_name.split('_'))
+        if not class_name.endswith('Worker'):
+            class_name += 'Worker'
 
-            # Find worker class in module (convention: capitalized name)
-            class_name = "".join(word.capitalize()
-                                 for word in worker_name.split("_"))
-            if not class_name.endswith("Worker"):
-                class_name += "Worker"
+        # Search paths: default dir + external dirs
+        default_path = Path('python/workers/user') / f'{worker_name}.py'
+        search_paths = [default_path] + [
+            Path(d) / f'{worker_name}.py' for d in self._extra_dirs
+        ]
 
-            if not hasattr(module, class_name):
-                found = [n for n in dir(module) if not n.startswith('_')]
-                raise AttributeError(
-                    f"Expected class '{class_name}' in '{module_path}' "
-                    f"(derived from filename). "
-                    f"Module contains: {found}. "
-                    f"Rename the class or the file to match "
-                    f"(see docs/user_modules_and_hot_reload_mechanics.md)")
+        # Try each path
+        for py_file in search_paths:
+            if not py_file.exists():
+                continue
 
-            worker_class = getattr(module, class_name)
+            try:
+                is_external = py_file != default_path
+                if is_external:
+                    spec = importlib.util.spec_from_file_location(
+                        f'user_ext.workers.{worker_name}', str(py_file))
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[spec.name] = module
+                    spec.loader.exec_module(module)
+                else:
+                    module = importlib.import_module(
+                        f'python.workers.user.{worker_name}')
 
-            # Register for future use
-            self._registry[worker_type] = worker_class
+                if not hasattr(module, class_name):
+                    found = [n for n in dir(module) if not n.startswith('_')]
+                    raise AttributeError(
+                        f"Expected class '{class_name}' in '{py_file}' "
+                        f"(derived from filename). "
+                        f"Module contains: {found}. "
+                        f"Rename the class or the file to match "
+                        f"(see docs/user_guides/user_modules_and_hot_reload_mechanics.md)")
 
-            self._logger.info(f"Dynamically loaded worker: {worker_type}")
-            return worker_class
+                worker_class = getattr(module, class_name)
 
-        except (ImportError, AttributeError, SyntaxError) as e:
-            raise ValueError(
-                f"Failed to load custom worker {worker_type}: {e}"
-            ) from e
+                # Register for future use
+                self._registry[worker_type] = worker_class
+
+                self._logger.info(f"Dynamically loaded worker: {worker_type}")
+                return worker_class
+
+            except (ImportError, AttributeError, SyntaxError) as e:
+                raise ValueError(
+                    f"Failed to load custom worker {worker_type}: {e}"
+                ) from e
+
+        # File not found in any search path
+        searched = [str(p.parent) for p in search_paths]
+        raise ValueError(
+            f"Failed to load custom worker {worker_type}: "
+            f"file '{worker_name}.py' not found in search paths: {searched}"
+        )
