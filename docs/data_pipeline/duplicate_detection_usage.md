@@ -2,39 +2,39 @@
 
 ## 📋 Overview
 
-Das System schützt die Datenintegrität durch:
-1. **Artificial Duplicate Detection** - Erkennt manuell kopierte Parquet-Files
-2. **Cross-Directory Detection** - Erkennt Duplikate über data_collector Verzeichnisse hinweg (NEW in C#003)
-3. **Data Mode Support** - Steuert das Handling von natürlichen Duplikaten
+The system protects data integrity through:
+1. **Artificial Duplicate Detection** - Detects manually copied Parquet files
+2. **Cross-Directory Detection** - Detects duplicates across data_collector directories (NEW in C#003)
+3. **Data Mode Support** - Controls the handling of natural duplicates
 
 ---
 
 ## 🗂️ Directory Structure (NEW in C#003)
 
-### Hierarchische Organisation
+### Hierarchical Organization
 
 ```
 data/processed/
-├── .parquet_index.json          # Zentraler Index
+├── .parquet_index.json          # Central Index
 ├── mt5/                          # data_collector: MetaTrader 5
-│   ├── EURUSD/                   # Symbol-spezifische Verzeichnisse
+│   ├── EURUSD/                   # Symbol-specific directories
 │   │   ├── EURUSD_20250923_120000.parquet
 │   │   └── EURUSD_20250923_130000.parquet
 │   ├── GBPUSD/
 │   └── USDJPY/
-└── ib/                           # data_collector: Interactive Brokers (zukünftig)
+└── ib/                           # data_collector: Interactive Brokers (planned)
     └── EURUSD/
         └── EURUSD_20250923_120000.parquet
 ```
 
-### data_collector Feld
+### data_collector Field
 
 **In JSON Metadata (TickCollector v1.0.4):**
 ```json
 {
   "metadata": {
     "symbol": "EURUSD",
-    "data_collector": "mt5",      // NEU in v1.0.4
+    "data_collector": "mt5",      // NEW in v1.0.4
     "data_format_version": "1.0.4",
     "broker": "Vantage...",
     ...
@@ -47,19 +47,19 @@ data/processed/
 parquet_metadata = {
     "source_file": "EURUSD_20250923_120000_ticks.json",
     "symbol": "EURUSD",
-    "data_collector": "mt5",      // Wird aus JSON übernommen
+    "data_collector": "mt5",      // Taken from JSON
     "broker": "Vantage...",
     ...
 }
 ```
 
-**Fallback:** Wenn `data_collector` fehlt → automatisch "mt5"
+**Fallback:** If `data_collector` is missing → defaults to "mt5"
 
 ---
 
 ## 📄 Import Behavior
 
-### Normaler Import (C#003)
+### Normal Import (C#003)
 ```bash
 python tick_importer.py
 
@@ -83,8 +83,8 @@ Processing: EURUSD_20250923_120000_ticks.json
   → Checking for existing duplicates (all collectors)...
   ⚠️  Found existing Parquet: mt5/EURUSD/EURUSD_20250923_120000.parquet
       Existing: data_collector='mt5' | Importing: data_collector='mt5'
-  
-ERROR: 
+
+ERROR:
 ================================================================================
 ⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION
 ================================================================================
@@ -126,18 +126,18 @@ ERROR:
 
 ================================================================================
 
-→ Überspringe Import (Duplikat existiert bereits)
+→ Skipping import (duplicate already exists)
 ```
 
 ### Cross-Collector Duplicate Detection (NEW in C#003) 🔥
 
 ```bash
-# Scenario: Dieselbe Quelle versehentlich unter anderem Collector importiert
+# Scenario: The same source accidentally imported under a different collector
 
 python tick_importer.py
 
 Processing: EURUSD_20250923_120000_ticks.json
-  → Extracting data_collector: 'ib'  # Andere Quelle!
+  → Extracting data_collector: 'ib'  # Different source!
   → Target: data/processed/ib/EURUSD/
   → Checking for existing duplicates (all collectors)...
   ⚠️  Found existing Parquet: mt5/EURUSD/EURUSD_20250923_120000.parquet
@@ -188,23 +188,23 @@ ERROR:
 ### Enhanced Two-Layer Protection (C#003)
 
 #### 🛡️ Layer 1: Import Prevention (tick_importer.py)
-**Sucht über ALLE data_collector Verzeichnisse hinweg**
+**Searches across ALL data_collector directories**
 
 ```python
-# VORHER (Old):
+# BEFORE (Old):
 existing_files = list(self.target_dir.glob(f"{symbol}_*.parquet"))
-# Sucht nur: data/processed/EURUSD_*.parquet
+# Searches only: data/processed/EURUSD_*.parquet
 
-# NACHHER (C#003):
+# AFTER (C#003):
 search_pattern = f"*/{symbol}/{symbol}_*.parquet"
 existing_files = list(self.target_dir.glob(search_pattern))
-# Sucht: data/processed/*/EURUSD/EURUSD_*.parquet
+# Searches: data/processed/*/EURUSD/EURUSD_*.parquet
 #   → mt5/EURUSD/*.parquet
 #   → ib/EURUSD/*.parquet
-#   → (alle collector)
+#   → (all collectors)
 ```
 
-**Was es erkennt:**
+**What it detects:**
 ```
 Scenario 1: Same Collector Re-Import
 ────────────────────────────────────────
@@ -220,11 +220,11 @@ ib/EURUSD/EURUSD_20250923_120000.parquet     (trying to import)
 ```
 
 #### 🛡️ Layer 2: Load Validation (TickDataLoader)
-**Validiert beim Laden über alle Collector hinweg**
+**Validates across all collectors during loading**
 
 ```python
 # Uses index which scans recursively: glob("**/*.parquet")
-# Lädt ALLE Parquet-Files für das Symbol, egal unter welchem collector
+# Loads ALL Parquet files for the symbol, regardless of collector
 
 files = self.index_manager.get_relevant_files(symbol, start, end)
 # Returns: [
@@ -236,43 +236,43 @@ files = self.index_manager.get_relevant_files(symbol, start, end)
 duplicate_report = self._check_artificial_duplicates(files)
 ```
 
-### Metadata-Vergleich (Enhanced in C#003)
+### Metadata Comparison (Enhanced in C#003)
 
-Der Duplicate Report vergleicht jetzt auch `data_collector`:
+The duplicate report now also compares `data_collector`:
 
 ```
 📋 Parquet Metadata Comparison:
 
    • source_file        ✅ IDENTICAL
    • symbol             ✅ IDENTICAL
-   • data_collector     ⚠️  CROSS-COLLECTOR DUPLICATE!  // NEU!
+   • data_collector     ⚠️  CROSS-COLLECTOR DUPLICATE!  // NEW!
        [1] mt5
        [2] ib
    • broker             ✅ IDENTICAL
 ```
 
-**Wichtig:** `data_collector` wird **NICHT** als Duplicate-Kriterium verwendet!
-- Duplikat = Gleiche `source_file`
-- `data_collector` wird nur zur **Info** angezeigt
+**Important:** `data_collector` is **NOT** used as a duplicate criterion!
+- Duplicate = Same `source_file`
+- `data_collector` is only displayed for **informational purposes**
 
 ---
 
 ## 🎯 Data Modes
 
 ### `data_mode="raw"`
-- **Zweck:** Maximaler Realismus für Stress-Tests
-- **Verhalten:** Alle Duplikate bleiben erhalten (wie vom Broker empfangen)
-- **Use-Case:** Phase 3 Testing, Algo-Stress unter realen Bedingungen
+- **Purpose:** Maximum realism for stress tests
+- **Behavior:** All duplicates are preserved (as received from the broker)
+- **Use-Case:** Phase 3 testing, algo stress under real conditions
 
 ### `data_mode="realistic"`
-- **Zweck:** Normale Test-Bedingungen
-- **Verhalten:** Natürliche Duplikate werden entfernt
-- **Use-Case:** Standard-Testing, Performance-Validierung
+- **Purpose:** Normal test conditions
+- **Behavior:** Natural duplicates are removed
+- **Use-Case:** Standard testing, performance validation
 
 ### `data_mode="clean"`
-- **Zweck:** Optimierte Test-Bedingungen  
-- **Verhalten:** Natürliche Duplikate werden entfernt (wie realistic)
-- **Use-Case:** Benchmark-Tests, Clean-Data-Szenarien
+- **Purpose:** Optimized test conditions
+- **Behavior:** Natural duplicates are removed (same as realistic)
+- **Use-Case:** Benchmark tests, clean data scenarios
 
 ---
 
@@ -289,7 +289,7 @@ Der Duplicate Report vergleicht jetzt auch `data_collector`:
     {
       "name": "EURUSD_stress_test",
       "symbol": "EURUSD",
-      "data_mode": "raw"  // Override für dieses Scenario
+      "data_mode": "raw"  // Override for this scenario
     }
   ]
 }

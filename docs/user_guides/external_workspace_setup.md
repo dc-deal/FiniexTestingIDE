@@ -39,7 +39,7 @@ Docker Compose automatically merges `docker-compose.override.yml` into `docker-c
 
 ## Step 2: Register the Path in `user_configs/app_config.json`
 
-Create (or edit) `user_configs/app_config.json` to override the external paths. This file is gitignored and won't affect other users (see [config_cascade_readme.md](../config_cascade_readme.md) for the full override system):
+Create (or edit) `user_configs/app_config.json` to override the external paths. This file is gitignored and won't affect other users (see [config_cascade_guide.md](../config_cascade_guide.md) for the full override system):
 
 ```json
 {
