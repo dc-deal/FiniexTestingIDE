@@ -12,38 +12,21 @@
 
 ## What's New in 1.2.0
 
-- **`collected_msc` Tick Timestamp** — Per-tick monotonic collection timestamp (device clock, ms precision). Primary source for inter-tick interval profiling. Replaces non-monotonic `time_msc` which had ~19% negative diffs in MT5 forex data.
-- **Data Format V1.3.0** — New parquet field `collected_msc` (int64). Backward compatible: defaults to `0` for pre-V1.3.0 data with automatic `time_msc` fallback.
-- **WarningsSummary** — Consolidated global warnings section in batch reports (stress tests, data version notices). Always rendered regardless of `summary_detail` setting.
-- **Data Version Tracking** — Parquet metadata `data_format_version` flows through tick index → `SingleScenario` → batch reports. Pre-V1.3.0 files flagged with synthesized interval warning.
+- **USER Namespace** — Custom workers and decision logic outside framework code. Auto-discovery, hot-reload, external directory support via Docker volumes.
+- **Trading Core Completion** — Full order type coverage (Market, Limit, Stop, Stop-Limit), partial close, error handling chain, kwargs cleanup.
+- **Tick Data Trimming** — Cross-process payload reduction for multi-scenario memory efficiency.
+- **Per-Tick Collection Timestamp** — `collected_msc` (device clock, ms precision). Primary source for inter-tick interval profiling. Data Format V1.3.0.
+- **Unified Test Runner** — Sequential execution across all core suites with configurable exclusion and fail-fast.
+- **Summary Verbosity Control** — Configurable detail level for batch reports (`summary_detail` setting).
+- **Unified Discovery Cache** — Centralized cache management and invalidation across all analysis types.
+- **Scenario Generator Refactoring** — Improved block generation, high-volatility selection, full test suite.
+- **WarningsSummary** — Consolidated global warnings in batch reports (stress tests, data version notices).
 
-### Previous: 1.1.2
+### Previous Releases
 
-- **STOP / STOP_LIMIT Orders** — Breakout entry orders: STOP fills at market price (taker fee), STOP_LIMIT triggers at stop price then fills at limit price (maker fee)
-- **Active Order Preservation** — Unfilled limit/stop orders preserved at scenario end, captured in `PendingOrderStats` for post-run inspection
-- **Active Order Reporting** — Active order counts displayed in terminal output (executive summary, per-scenario box, portfolio summary)
-- **`cancel_limit_order` API** — Cancel active limit orders via `DecisionTradingApi.cancel_limit_order()` (symmetrical with `cancel_stop_order`)
-- **`cancel_limit_sequence` Config** — BacktestingDeterministic parameter to cancel a limit order at a configured tick (analogous to `cancel_stop_sequence`)
-- **SL/TP & Limit Validation Tests** — Expanded from 8 to 17 scenarios (~82 tests): STOP/STOP_LIMIT triggers, STOP then TP, modify stop, cancel stop/limit
-
-### Previous: 1.1.1
-
-- **Live Trade Executor** — Full LiveTradeExecutor implementation with broker adapter communication
-- **LiveOrderTracker** — Time-based pending order management with broker reference tracking and timeout detection
-- **MockBrokerAdapter** — 4-mode test adapter (instant_fill, delayed_fill, reject_all, timeout) with real Kraken BTCUSD spec
-- **AbstractAdapter Tier 3** — Optional live execution methods (execute_order, check_order_status, cancel_order)
-- **Margin Validation Tests** — Margin checks, lot validation, retry logic, edge case coverage
-- **Multi-Position Tests** — Concurrent position management, close events, hedging validation
-- **Live Executor Tests** — 47 tests covering LiveOrderTracker, LiveTradeExecutor, and MockBrokerAdapter pipeline
-- **141 New Tests** — 47 live executor + 35 margin validation + 65 multi-position (some reused from baseline)
-- **Pending Order Statistics** — Latency tracking (avg/min/max), outcome counting (filled/rejected/timed_out/force_closed), anomaly detection with individual records for hung orders
-- **History Retention Config** — Configurable limits for order_history, trade_history, and bar_history via `app_config.json` with one-time warnings and `deque(maxlen)` auto-trimming
-
-### Previous: 1.1
-
-- Multi-Market Support (Kraken Spot + MT5), TradingContext, OBV Worker
-- Parameter Validation (ParameterDef, strict/non-strict), Volume Integration
-- Parquet Indexes, Coverage Report Caching, 211 new tests
+- **1.1.2** — STOP/STOP_LIMIT orders, active order preservation and reporting
+- **1.1.1** — Live Trade Executor, MockBrokerAdapter, margin/multi-position/pending stats test suites
+- **1.1** — Multi-market support (Kraken Spot + MT5), parameter validation, OBV worker
 
 ---
 
@@ -57,7 +40,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
-- ✅ Validated accuracy (~570+ tests across 12 test suites)
+- ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites
 
 ---
 
@@ -76,6 +59,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Worker System** - Modular indicator computation (RSI, Envelope, MACD, OBV, ...)
 - **Decision Logic** - Pluggable trading strategies with clear separation
 - **Parameter Validation** - Schema-based validation with strict/non-strict modes
+- **USER Namespace** - Custom workers and decision logic with auto-discovery and hot-reload
 
 ### Trade Simulation & Live Execution
 - **Realistic Execution** - API latency + market execution delays (seeded)
@@ -117,51 +101,9 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 
 ## Configuration
 
-FiniexTestingIDE uses a **two-tier configuration system** for flexible customization:
+Two-tier system: **default configs** (`configs/`, version controlled) and **user overrides** (`user_configs/`, gitignored). The system deep-merges user overrides — override only what you need, everything else stays at defaults.
 
-```
-configs/              # Default configurations (version controlled)
-├── app_config.json        # Application settings
-├── import_config.json     # Import pipeline settings (offsets, paths, processing)
-├── market_config.json     # Market & broker mappings
-├── brokers/              # Broker-specific configs
-└── scenario_sets/        # Trading scenario definitions
-
-user_configs/         # Your personal overrides (gitignored)
-├── app_config.json        # Optional: override app settings
-├── import_config.json     # Optional: override import settings (offsets, paths)
-├── market_config.json     # Optional: override market config
-└── discoveries_config.json # Optional: override analysis/discovery settings
-```
-
-### How It Works
-
-**Default configs** (`configs/`) are tracked in git and provide sensible defaults for all users.
-
-**User overrides** (`user_configs/`) allow you to customize settings without modifying tracked files:
-- ✅ Gitignored - your local settings stay private
-- ✅ Deep merge - override only what you need
-- ✅ Optional - works without any user configs
-
-### Example Override
-
-Want to enable DEBUG logging locally? Create `user_configs/app_config.json`:
-
-```json
-{
-  "console_logging": {
-    "log_level": "DEBUG",
-    "scenario": {
-      "summary_detail": true
-    }
-  }
-}
-```
-
-The system automatically merges this with the base config - all other settings remain unchanged.
-`summary_detail` controls whether per-scenario detail blocks appear in the console batch summary (`false` = compact, aggregated only). File logging always gets the full summary.
-
-→ For multi-level scenario configuration, see [Config Cascade Guide](docs/config_cascade_readme.md).
+→ See [Config Cascade Guide](docs/config_cascade_guide.md) for the full configuration system, directory structure, and scenario-level parameter overrides.
 
 ---
 
@@ -179,34 +121,24 @@ Extract the ZIP contents to `data/processed/`:
 data/processed/
 ├── .parquet_tick_index.json
 ├── .parquet_bars_index.json
-└── mt5/
+├── mt5/
+│   ├── ticks/
+│   │   ├── AUDUSD/ ... USDJPY/
+│   └── bars/
+└── kraken_spot/
     ├── ticks/
-    │   ├── AUDUSD/
-    │   ├── EURGBP/
-    │   ├── EURUSD/
-    │   ├── GBPUSD/
-    │   ├── NZDUSD/
-    │   ├── USDCAD/
-    │   ├── USDCHF/
-    │   └── USDJPY/
+    │   ├── BTCUSD/ ... XRPUSD/
     └── bars/
-        └── (same structure)
 ```
 
 ### Dataset Overview
 
-| Symbol | Time Range | Ticks | Duration |
-|--------|------------|-------|----------|
-| AUDUSD | 2025-09-17 → 2026-01-02 | 5.3M | 107 days |
-| EURGBP | 2025-09-21 → 2026-01-02 | 4.6M | 102 days |
-| EURUSD | 2025-09-17 → 2026-01-02 | 5.3M | 107 days |
-| GBPUSD | 2025-09-17 → 2026-01-02 | 8.5M | 107 days |
-| NZDUSD | 2025-09-21 → 2026-01-02 | 3.5M | 102 days |
-| USDCAD | 2025-09-21 → 2026-01-02 | 5.4M | 102 days |
-| USDCHF | 2025-09-21 → 2026-01-02 | 4.7M | 102 days |
-| USDJPY | 2025-09-17 → 2026-01-02 | 9.9M | 107 days |
+| Broker | Symbols | Time Range | Ticks |
+|--------|---------|------------|-------|
+| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → Mar 2026 | ~96M |
+| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → Mar 2026 | ~8M |
 
-**Total: ~47M ticks across 8 forex pairs (~3.5 months)**
+**Total: ~104M ticks across 16 instruments (8 Forex pairs + 8 Crypto)**
 
 > ⚠️ **Data Disclaimer:** The provided dataset consists of historical tick and bar data
 collected locally via MetaTrader 5 and processed into Parquet format.
@@ -252,7 +184,7 @@ live trading or commercial redistribution.
 
 ## Quality Assurance
 
-670+ tests across 12 core suites validate trading mechanics, margin logic, execution pipeline, and data integrity.
+Comprehensive test suite covering integration tests, black-box tests, and white-box tests. All suites are runnable with the provided sample dataset.
 
 ```bash
 python python/cli/test_runner_cli.py
@@ -266,25 +198,7 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [CLI Tools Guide](docs/cli_tools_guide.md) | All CLI commands with examples |
-| [Quickstart Guide](docs/user_guides/quickstart_guide.md) | Create your first trading bot |
-| [TickCollector README](docs/TickCollector_README.md) | MQL5 data collection setup |
-| [Worker Naming](docs/user_guides/worker_naming_doc.md) | Worker system and naming conventions |
-| [Config Cascade](docs/config_cascade_readme.md) | 3-level configuration system |
-| [Broker Config](docs/broker_config_guide.md) | Multi-broker setup (MT5, Kraken) |
-| [Batch Preparation](docs/batch_preperation_system.md) | 7-phase orchestration system |
-| [Process Execution](docs/process_execution_guide.md) | Subprocess architecture |
-| [Duplicate Detection](docs/duplicate_detection_usage.md) | Data integrity protection |
-| [Execution Layer Architecture](docs/architecture_execution_layer.md) | Sim/Live hybrid execution design |
-| [Simulation vs Live Flow](docs/simulation_vs_live_flow.md) | Tick flow comparison, event-driven model |
-| [Live Execution Architecture](docs/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
-| [Pending Order Architecture](docs/pending_order_architecture.md) | 3-world lifecycle (latency, limit, stop), modify rationale |
-| [Mock Adapter Guide](docs/mock_adapter_guide.md) | MockBrokerAdapter usage and testing |
-| [Test Runner](docs/tests/tests_runner_docs.md) | Unified test runner, config, per-suite docs in `docs/tests/` |
-| [Data Import Pipeline](docs/data_import_pipeline.md) | Import flow, schema, offset registry, config |
-| [Stress Test System](docs/stress_test.md) | Config-driven stress test injection, cascade, reporting |
+See the [Documentation Index](docs/documentation_index.md) for a complete overview of all guides, architecture docs, data pipeline docs, and test suite documentation.
 
 ---
 
@@ -292,7 +206,6 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 
 - **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
 - **No Partial Fills on Live** - Partial position close supported in backtesting; live execution planned
-- **CORE Namespace Only** - Custom workers must be added to framework folders
 - **No Frontend** - CLI and VS Code launch configs only
 
 > **Note on Multiple Positions:** The system supports multiple simultaneous positions, validated by the multi-position test suite (65 tests). However, all included bots use single-position strategies. Multi-position strategies require careful margin management.
@@ -300,6 +213,12 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 ---
 
 ## Roadmap
+
+**Horizon 1 — Foundation: Complete (V1.2)**
+- Trading simulation core with all order types (Market, Limit, Stop, Stop-Limit, Partial Close)
+- USER Namespace — custom workers and decision logic outside framework code
+- Multi-market data pipeline (MT5 Forex + Kraken Spot, 16 instruments)
+- Unified test infrastructure and discovery cache management
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 

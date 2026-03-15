@@ -4,7 +4,7 @@
 
 The import pipeline converts JSON tick exports from data collectors into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
 
-**Related**: [TickCollector_README.md](TickCollector_README.md) — MQL5 collector usage, JSON schema, error classification.
+**Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
 
 **Flow:**
 ```
@@ -330,7 +330,7 @@ Parquet metadata → TickIndexManager (index entry) → SharedDataPreparator
 
 This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing.
 
-**Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
+**Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](../architecture/architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
 
 ---
 
