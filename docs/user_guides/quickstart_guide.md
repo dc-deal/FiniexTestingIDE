@@ -525,7 +525,7 @@ Current limitations:
 3. **Run backtests** - `🔬 Run Scenario`
 4. **Review results** - Check trade history and P&L
 
-→ See [CLI Tools Guide](cli_tools_guide.md) for all commands.
+→ See [CLI Tools Guide](../cli_tools_guide.md) for all commands.
 
 ---
 

@@ -1,35 +1,35 @@
-## Übersicht
+## Overview
 
-FiniexTestingIDE bietet eine Sammlung von CLI-Tools für den kompletten Workflow vom Daten-Import bis zum Backtesting. Alle Tools sind über VS Code Launch-Konfigurationen oder direkt per Terminal ausführbar.
+FiniexTestingIDE provides a collection of CLI tools for the complete workflow from data import to backtesting. All tools are accessible via VS Code launch configurations or directly from the terminal.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  WORKFLOW                                                                   │
 │                                                                             │
-│  TickCollector (MT5) → Import → Analyse → Szenario-Generierung → Backtest  │
+│  TickCollector (MT5) → Import → Analysis → Scenario Generation → Backtest  │
 │        ↓                 ↓         ↓              ↓                  ↓      │
-│    JSON Files      Parquet+Bars  Gaps/ATR  blocks/high_vol     Ergebnisse  │
+│    JSON Files      Parquet+Bars  Gaps/ATR  blocks/high_vol       Results   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### CLI-Struktur
+### CLI Structure
 
-| CLI | Zweck | Befehle |
-|-----|-------|---------|
-| `data_index_cli.py` | Import & Inspektion | import, tick-data-report, inspect |
-| `tick_index_cli.py` | Tick-Index Management | rebuild, status, file-coverage, files |
-| `bar_index_cli.py` | Bar-Index Management | rebuild, status, report, render |
-| `discoveries_cli.py` | Marktanalyse, Discoveries & Data Coverage | analyze, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
-| `scenario_cli.py` | Szenarien | generate |
+| CLI | Purpose | Commands |
+|-----|---------|----------|
+| `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
+| `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
+| `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
+| `discoveries_cli.py` | Market Analysis, Discoveries & Data Coverage | analyze, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
+| `scenario_cli.py` | Scenarios | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
 ---
 
 ## A) Data Pipeline - Import
 
-Tick-Daten werden vom **TickCollector** (MQL5 Expert Advisor) gesammelt und als JSON exportiert. Der Import konvertiert diese zu optimierten Parquet-Files und rendert automatisch Bars für alle Timeframes.
+Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and exported as JSON. The import converts these to optimized Parquet files and automatically renders bars for all timeframes.
 
-> 📖 Siehe `TickCollector_README.md` für Details zur Datensammlung.
+> 📖 See `tick_collector_guide.md` for details on data collection.
 
 ### 📥 Import: Offset +3
 
@@ -37,9 +37,9 @@ Tick-Daten werden vom **TickCollector** (MQL5 Expert Advisor) gesammelt und als 
 |---|---|
 | **VS Code** | `📥 Import: Offset +3` |
 | **CLI** | `python data_index_cli.py import --time-offset +3 --offset-broker mt5` |
-| **Zweck** | JSON Tick-Files zu Parquet konvertieren, Bars rendern |
+| **Purpose** | Convert JSON tick files to Parquet, render bars |
 
-Der `--time-offset` Parameter korrigiert Broker-Zeitzonen zu UTC. Nach dem Import werden automatisch Bars für alle Timeframes (M1, M5, M15, M30, H1, H4, D1) gerendert.
+The `--time-offset` parameter corrects broker timezones to UTC. After import, bars are automatically rendered for all timeframes (M1, M5, M15, M30, H1, H4, D1).
 
 ```
 📄 Processing: EURGBP_20251128_235635_ticks.json
@@ -56,12 +56,12 @@ Der `--time-offset` Parameter korrigiert Broker-Zeitzonen zu UTC. Nach dem Impor
    ├─ M5: 1,130 bars rendered
    ├─ M15: 377 bars rendered
    ...
-✅ Gerenderte Bars: 7,470
+✅ Rendered Bars: 7,470
 ```
 
 ---
 
-## B) Daten-Übersicht
+## B) Data Overview
 
 ### 📊 Tick Data Report
 
@@ -69,9 +69,9 @@ Der `--time-offset` Parameter korrigiert Broker-Zeitzonen zu UTC. Nach dem Impor
 |---|---|
 | **VS Code** | `📊 Tick Data Report` |
 | **CLI** | `python data_index_cli.py tick_data_report` |
-| **Zweck** | Vollständiger Report aller verfügbaren Symbole |
+| **Purpose** | Complete report of all available symbols |
 
-Zeigt für jedes Symbol: Zeitraum, Tick-Anzahl, Sessions-Verteilung, Spread-Statistiken.
+Shows for each symbol: time range, tick count, session distribution, spread statistics.
 
 ```
 📊 USDJPY
@@ -92,7 +92,7 @@ Zeigt für jedes Symbol: Zeitraum, Tick-Anzahl, Sessions-Verteilung, Spread-Stat
 |---|---|
 | **VS Code** | `📚 Tick Index: Status` |
 | **CLI** | `python tick_index_cli.py status` |
-| **Zweck** | Schnellübersicht: Anzahl Symbole und Files |
+| **Purpose** | Quick overview: number of symbols and files |
 
 ```
 Index file:   data/processed/.parquet_tick_index.parquet
@@ -108,7 +108,7 @@ Total files:  1462
 |---|---|
 | **VS Code** | `🔹 Bar Index: Status` |
 | **CLI** | `python bar_index_cli.py status` |
-| **Zweck** | Übersicht aller Timeframes pro Symbol |
+| **Purpose** | Overview of all timeframes per symbol |
 
 ```
 USDJPY:
@@ -127,7 +127,7 @@ USDJPY:
 |---|---|
 | **VS Code** | `📚 Tick File Coverage: mt5/EURUSD` |
 | **CLI** | `python tick_index_cli.py file-coverage mt5 EURUSD` |
-| **Zweck** | File-Liste für ein Symbol |
+| **Purpose** | File list for a symbol |
 
 ```
 📊 File Coverage: mt5/EURUSD
@@ -145,7 +145,7 @@ Files:
 
 ---
 
-## C) Datenqualität
+## C) Data Quality
 
 ### 📊 Data Coverage: Validate All
 
@@ -153,7 +153,7 @@ Files:
 |---|---|
 | **VS Code** | `🔍 Disc - Data Coverage: Validate All` |
 | **CLI** | `python discoveries_cli.py data-coverage validate` |
-| **Zweck** | Schneller Gap-Check über alle Symbole |
+| **Purpose** | Quick gap check across all symbols |
 
 ```
 🔍 Validating All Symbols
@@ -176,14 +176,14 @@ Use 'show BROKER_TYPE SYMBOL' for detailed gap analysis
 |---|---|
 | **VS Code** | `🔍 Disc - Data Coverage: mt5/EURUSD` |
 | **CLI** | `python discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Zweck** | Detaillierte Lückenanalyse für ein Symbol |
+| **Purpose** | Detailed gap analysis for a symbol |
 
-Klassifiziert Gaps automatisch:
-- ✅ **Weekend** - Erwartete Marktschließung (Fr 21:00 → So 21:00 UTC)
-- ✅ **Holiday** - Feiertage (Weihnachten, Neujahr)
-- ⚠️ **Short** - Kleine Lücken < 30min (MT5-Neustarts, Verbindungsabbrüche)
-- ⚠️ **Moderate** - 30min bis 4h
-- 🔴 **Large** - > 4h (Datensammlung prüfen!)
+Classifies gaps automatically:
+- ✅ **Weekend** - Expected market closure (Fri 21:00 → Sun 21:00 UTC)
+- ✅ **Holiday** - Holidays (Christmas, New Year)
+- ⚠️ **Short** - Small gaps < 30min (MT5 restarts, connection drops)
+- ⚠️ **Moderate** - 30min to 4h
+- 🔴 **Large** - > 4h (check data collection!)
 
 ```
 📊 DATA COVERAGE REPORT: GBPUSD
@@ -214,7 +214,7 @@ GAP ANALYSIS:
 |---|---|
 | **VS Code** | `🔍 Disc - Cache: Rebuild All` |
 | **CLI** | `python discoveries_cli.py data-coverage build` |
-| **Zweck** | Gap-Reports für alle Symbole vorberechnen |
+| **Purpose** | Pre-compute gap reports for all symbols |
 
 ```
 🔧 Building Data Coverage Report Cache
@@ -229,7 +229,7 @@ Force Rebuild: DISABLED (skip valid caches)
 |---|---|
 | **VS Code** | `🔍 Disc - Data Coverage: Status` |
 | **CLI** | `python discoveries_cli.py data-coverage status` |
-| **Zweck** | Cache-Status anzeigen |
+| **Purpose** | Show cache status |
 
 ```
 📦 Data Coverage Report Cache Status
@@ -245,9 +245,9 @@ Total Symbols: 16
 
 ---
 
-## D) Marktanalyse & Discoveries
+## D) Market Analysis & Discoveries
 
-> 📖 Siehe [Discovery System](discovery_system.md) für Architektur, Cache-System und Details.
+> 📖 See [Discovery System](discovery_system.md) for architecture, cache system and details.
 
 ### 📊 MARKET ANALYSIS REPORT
 
@@ -255,15 +255,15 @@ Total Symbols: 16
 |---|---|
 | **VS Code** | `🔍 Disc - Analyze: mt5/GBPUSD` |
 | **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
-| **Zweck** | ATR-Volatilität, Session-Aktivität, Cross-Instrument Ranking |
+| **Purpose** | ATR volatility, session activity, cross-instrument ranking |
 
-Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
+Results are cached and only recalculated when source data changes.
 
-**Parameter:**
-- `--force` — Cache ignorieren und neu analysieren
-- `--timeframe` — Timeframe Override (default: M5, non-M5 bypasses cache)
+**Parameters:**
+- `--force` — Ignore cache and re-analyze
+- `--timeframe` — Timeframe override (default: M5, non-M5 bypasses cache)
 
-Analysiert Marktdaten für strategische Szenario-Planung:
+Analyzes market data for strategic scenario planning:
 
 ```
 📊 MARKET ANALYSIS REPORT: GBPUSD
@@ -287,7 +287,7 @@ Timeframe:      M5
       Regimes:        VL: 6% | L: 35% | M: 40% | H: 16% | VH: 3%
 ```
 
-**Cross-Instrument Ranking** - Vergleicht alle Symbole:
+**Cross-Instrument Ranking** - Compares all symbols:
 
 ```
 📊 CROSS-INSTRUMENT RANKING
@@ -314,9 +314,9 @@ Timeframe:      M5
 |---|---|
 | **VS Code** | `🔍 Disc - Extreme Moves: mt5/USDJPY` |
 | **CLI** | `python discoveries_cli.py extreme-moves mt5 USDJPY` |
-| **Zweck** | Extreme directional price movements (LONG/SHORT) finden |
+| **Purpose** | Find extreme directional price movements (LONG/SHORT) |
 
-Scannt Bar-Daten mit ATR-basierter Normalisierung über konfigurierbare Fenstergrößen. Ergebnisse werden gecacht und nur bei Änderung der Quelldaten neu berechnet.
+Scans bar data with ATR-based normalization over configurable window sizes. Results are cached and only recalculated when source data changes.
 
 ```
 ==================================================================================================================================
@@ -337,23 +337,23 @@ LONG Extreme Moves (top 10)
   ...
 ```
 
-**Spalten:**
-- `ATR Mult` — Bewegung als Vielfaches des durchschnittlichen ATR im Fenster
-- `Pips` — Richtungsbewegung Entry → Extreme in Pips
-- `Adverse` — Maximaler Rücklauf gegen die Bewegungsrichtung (in Pips)
-- `Entry/Extreme/Adverse@/Exit` — Preisniveaus (Entry, Extrempunkt, schlimmster Rücklauf, Exit)
-- `W-ATR` — Durchschnittlicher ATR über das Fenster (Rohpreiseinheiten)
-- `Bars` — Fensterbreite in Bars
-- `Ticks` — Anzahl Ticks im Zeitfenster
+**Columns:**
+- `ATR Mult` — Movement as a multiple of the average ATR within the window
+- `Pips` — Directional movement Entry → Extreme in pips
+- `Adverse` — Maximum drawback against the movement direction (in pips)
+- `Entry/Extreme/Adverse@/Exit` — Price levels (entry, extreme point, worst drawback, exit)
+- `W-ATR` — Average ATR over the window (raw price units)
+- `Bars` — Window width in bars
+- `Ticks` — Number of ticks in the time window
 
-**Parameter:**
-- `--top` — Anzahl der Top-Ergebnisse pro Richtung in der Anzeige (default: 10, alle werden gecacht)
-- `--force` — Cache ignorieren und neu scannen
-- `--timeframe` — Timeframe Override (default: M5)
+**Parameters:**
+- `--top` — Number of top results per direction in the display (default: 10, all are cached)
+- `--force` — Ignore cache and re-scan
+- `--timeframe` — Timeframe override (default: M5)
 
 ---
 
-## E) Szenario-Generierung
+## E) Scenario Generation
 
 ### 📊 Scenario Generator - Blocks
 
@@ -361,9 +361,9 @@ LONG Extreme Moves (top 10)
 |---|---|
 | **VS Code** | `📊 Scenario Generator - Generate Blocks` |
 | **CLI** | `python scenario_cli.py generate USDJPY --strategy blocks --block-size 12 --count 40 --sessions new_york` |
-| **Zweck** | Chronologische Zeitblöcke für systematisches Testen |
+| **Purpose** | Chronological time blocks for systematic testing |
 
-Erzeugt aufeinanderfolgende Zeitfenster mit konfigurierbarer Länge. Erkennt automatisch Gaps und verkürzt Blöcke entsprechend.
+Generates consecutive time windows with configurable length. Automatically detects gaps and shortens blocks accordingly.
 
 ```
 Filtering blocks to sessions: ['new_york']
@@ -381,9 +381,9 @@ Total:      415h (10.4h avg/block)
 📂 Config saved to: configs/scenario_sets/USDJPY_blocks_20260109_0742.json
 ```
 
-**Parameter:**
-- `--block-size` - Ziel-Blockgröße in Stunden (default: 12)
-- `--count` - Anzahl Blöcke
+**Parameters:**
+- `--block-size` - Target block size in hours (default: 12)
+- `--count` - Number of blocks
 - `--sessions` - Filter: `new_york`, `london`, `sydney_tokyo`
 
 ### 📊 Scenario Generator - High Volatility
@@ -392,9 +392,9 @@ Total:      415h (10.4h avg/block)
 |---|---|
 | **VS Code** | `⚡ Scenario Gen. - 6 High Volatility - mt5/USDJPY` |
 | **CLI** | `python scenario_cli.py generate mt5 EURGBP --strategy high_volatility --count 5` |
-| **Zweck** | High-Volatility Perioden für Szenario-Generierung |
+| **Purpose** | High-volatility periods for scenario generation |
 
-Findet automatisch die volatilsten Marktphasen (HIGH/VERY_HIGH ATR) und erstellt Szenarien um diese Zeitpunkte herum.
+Automatically finds the most volatile market phases (HIGH/VERY_HIGH ATR) and creates scenarios around these time points.
 
 ```
 Found 530 high-volatility periods (HIGH/VERY_HIGH) from 1704 total
@@ -423,7 +423,7 @@ Regime coverage:
 
 ### Output: Scenario Set JSON
 
-Beide Generatoren erzeugen eine JSON-Konfiguration:
+Both generators produce a JSON configuration:
 
 ```json
 {
@@ -464,9 +464,9 @@ Beide Generatoren erzeugen eine JSON-Konfiguration:
 |---|---|
 | **VS Code** | `🔬 Run (eurusd_3 - REFERENCE)` |
 | **CLI** | `python strategy_runner_cli.py run eurusd_3_windows_reference.json` |
-| **Zweck** | Backtesting-Lauf mit einer Scenario-Set Konfiguration |
+| **Purpose** | Backtesting run with a scenario set configuration |
 
-Führt alle Szenarien parallel aus und zeigt Live-Progress:
+Executes all scenarios in parallel and shows live progress:
 
 ```
 🔬 Strategy Runner
@@ -484,7 +484,7 @@ Scenario Set: eurusd_3_windows_reference.json
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-**Ergebnisse:**
+**Results:**
 
 ```
 🎉 EXECUTION RESULTS
@@ -507,11 +507,11 @@ Scenario Set: eurusd_3_windows_reference.json
 |---|---|
 | **VS Code** | `🔬 List Scenarios` |
 | **CLI** | `python strategy_runner_cli.py list --full-details` |
-| **Zweck** | Verfügbare Scenario-Sets anzeigen |
+| **Purpose** | Show available scenario sets |
 
 ---
 
-## G) Technische Tools (für Fortgeschrittene)
+## G) Technical Tools (Advanced)
 
 ### 📊 TEST LOAD: Ticks & Bars
 
@@ -519,9 +519,9 @@ Scenario Set: eurusd_3_windows_reference.json
 |---|---|
 | **VS Code** | `📊 TEST LOAD: Ticks&Bars` |
 | **CLI** | `python data_index_cli.py inspect mt5 EURUSD M30` |
-| **Zweck** | Parquet-Schema, Metadaten und Sample-Daten anzeigen |
+| **Purpose** | Display Parquet schema, metadata and sample data |
 
-Nützlich um die Rohdatenstruktur zu verstehen:
+Useful for understanding the raw data structure:
 
 ```
 📁 File Information:
@@ -546,15 +546,15 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 1 2025-09-17 17:58:37   1.18509  1.18522            12  new_york
 ```
 
-### Index Rebuild (Wartung)
+### Index Rebuild (Maintenance)
 
 | | |
 |---|---|
 | **VS Code** | `📚 Tick Index: Rebuild` / `🔹 Bar Index: Rebuild` |
 | **CLI** | `python tick_index_cli.py rebuild` / `python bar_index_cli.py rebuild` |
-| **Zweck** | Index neu aufbauen bei Inkonsistenzen |
+| **Purpose** | Rebuild index in case of inconsistencies |
 
-> ⚠️ Normalerweise nicht nötig - der Import aktualisiert Indizes automatisch.
+> ⚠️ Normally not needed - the import updates indices automatically.
 
 ### Bar Import / Render
 
@@ -562,63 +562,63 @@ Nützlich um die Rohdatenstruktur zu verstehen:
 |---|---|
 | **VS Code** | `📥 Bar Import / Render --clean` |
 | **CLI** | `python bar_index_cli.py render --clean` |
-| **Zweck** | Bars komplett neu rendern |
+| **Purpose** | Re-render bars completely |
 
-> ⚠️ **Achtung:** Kann bei großen Datenmengen sehr lange dauern!
+> ⚠️ **Warning:** Can take a very long time with large datasets!
 
 ---
 
 ## Quick Reference
 
-| Aufgabe | VS Code Launch | CLI |
-|---------|----------------|-----|
-| **Daten importieren** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
-| **Daten-Übersicht** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
+| Task | VS Code Launch | CLI |
+|------|----------------|-----|
+| **Import data** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
+| **Data overview** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
-| **Gap-Check (alle)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
-| **Gap-Details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Marktanalyse** | `🔍 Disc - Analyze: mt5/GBPUSD` | `discoveries_cli.py analyze mt5 GBPUSD` |
+| **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
+| **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
+| **Market analysis** | `🔍 Disc - Analyze: mt5/GBPUSD` | `discoveries_cli.py analyze mt5 GBPUSD` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
-| **Szenarien: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
-| **Szenarien: High Volatility** | `⚡ Scenario Gen. - High Volatility` | `scenario_cli.py generate mt5 EURGBP --strategy high_volatility` |
-| **Backtest starten** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
+| **Scenarios: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
+| **Scenarios: High Volatility** | `⚡ Scenario Gen. - High Volatility` | `scenario_cli.py generate mt5 EURGBP --strategy high_volatility` |
+| **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
 
 ---
 
-## Typischer Workflow
+## Typical Workflow
 
 ```
-1. Tick-Daten sammeln (TickCollector auf MT5)
+1. Collect tick data (TickCollector on MT5)
          ↓
 2. Import:          📥 Import: Offset +3
          ↓
-3. Cache aufbauen:  🔍 Disc - Cache: Rebuild All
+3. Build cache:     🔍 Disc - Cache: Rebuild All
          ↓
-4. Qualität prüfen: 🔍 Disc - Data Coverage: Validate All
+4. Check quality:   🔍 Disc - Data Coverage: Validate All
          ↓
-5. Markt analysieren: 🔍 Disc - Analyze
+5. Analyze market:  🔍 Disc - Analyze
          ↓
-5b. Extreme Moves:   🔍 Disc - Extreme Moves
+5b. Extreme Moves:  🔍 Disc - Extreme Moves
          ↓
-6. Szenarien erstellen: 📊 Generate Blocks/Stress
+6. Create scenarios: 📊 Generate Blocks/Stress
          ↓
 7. Backtest:        🔬 Run Scenario
 ```
 
 ---
 
-## Index-Formate
+## Index Formats
 
-Die Indizes werden im Parquet-Format gespeichert (seit v1.1):
+The indices are stored in Parquet format (since v1.1):
 
-| Index | Datei | Migration |
-|-------|-------|-----------|
-| Tick Index | `.parquet_tick_index.parquet` | Auto von `.json` |
-| Bar Index | `.parquet_bars_index.parquet` | Auto von `.json` |
+| Index | File | Migration |
+|-------|------|-----------|
+| Tick Index | `.parquet_tick_index.parquet` | Auto from `.json` |
+| Bar Index | `.parquet_bars_index.parquet` | Auto from `.json` |
 | Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
 | Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
 | Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility/session analysis |
 
-Alte JSON-Indizes werden automatisch migriert und als `.json.bak` gesichert.
+Old JSON indices are automatically migrated and backed up as `.json.bak`.
