@@ -218,19 +218,13 @@ class BarIndexCli:
         try:
             bar_importer = BarImporter()
 
-            for bt in broker_types:
-                bar_importer.render_bars_for_all_symbols(
-                    broker_type=bt,
-                    clean_mode=clean
-                )
+            bar_importer.render_bars_for_all_symbols(
+                broker_types=broker_types,
+                clean_mode=clean
+            )
 
-            # Rebuild index after rendering
-            print("\n🔄 Rebuilding bar index...")
-            self.index_manager.build_index(force_rebuild=True)
-
-            # Rebuild all discovery caches
-            print("\n🔄 Rebuilding discovery caches...")
-            DiscoveryCacheManager().rebuild_all(force=True)
+            # Rebuild index and caches once after all rendering
+            bar_importer.update_bar_index()
 
             print("\n✅ Bar rendering completed!")
             print("="*80 + "\n")

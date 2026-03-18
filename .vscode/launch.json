@@ -16,6 +16,19 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "📥 Bar Render kraken_spot --clean",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "render",
+                "kraken_spot",
+                "--clean"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "📥 Bar Render --all",
             "type": "debugpy",
             "request": "launch",

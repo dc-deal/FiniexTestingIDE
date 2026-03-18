@@ -565,6 +565,8 @@ Useful for understanding the raw data structure:
 | **Purpose** | Re-render bars completely |
 
 > ⚠️ **Warning:** Can take a very long time with large datasets!
+>
+> Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 16). Set to `1` for sequential mode.
 
 ---
 

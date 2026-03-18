@@ -635,12 +635,11 @@ class TickDataImporter:
         try:
             bar_importer = BarImporter(data_dir=str(self.target_dir))
 
-            for broker_type in self._processed_broker_types:
-                vLog.info(f"\n📊 Rendering bars for broker_type: {broker_type}")
-                bar_importer.render_bars_for_all_symbols(
-                    broker_type=broker_type,
-                    clean_mode=True
-                )
+            bar_importer.render_bars_for_all_symbols(
+                broker_types=list(self._processed_broker_types),
+                clean_mode=True
+            )
+            bar_importer.update_bar_index()
 
             vLog.info("✅ Bar rendering completed!")
 

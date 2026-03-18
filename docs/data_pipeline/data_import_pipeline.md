@@ -24,6 +24,7 @@ Data Collectors (JSON)
   ├─ Load all ticks for symbol (from target_dir, not config)
   ├─ VectorizedBarRenderer → M1, M5, M15, M30, H1, H4, D1
   │   └─ Weekend/holiday exclusion (Forex only, see below)
+  ├─ Parallel rendering (symbol-level, ProcessPoolExecutor)
   └─ Write bar Parquet files
        ↓
   Index Update (tick + bar indexes, target_dir-aware)
@@ -237,7 +238,8 @@ Import configuration lives in `configs/import_config.json` with optional user ov
     },
     "processing": {
         "move_processed_files": true,
-        "auto_render_bars": true
+        "auto_render_bars": true,
+        "bar_render_workers": 16
     }
 }
 ```
@@ -285,6 +287,7 @@ data/test/import/
 | `get_data_finished_path()` | Finished directory path |
 | `get_move_processed_files()` | bool |
 | `get_auto_render_bars()` | bool |
+| `get_bar_render_workers()` | int (default: 1) |
 
 ---
 
