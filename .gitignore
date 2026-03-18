@@ -191,3 +191,7 @@ docker-compose.override.yml
 
 # Claude Code
 CLAUDE.md
+
+# GitHub issues export (local reference only)
+github_issues/
+export_github_issues.sh
