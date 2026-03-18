@@ -23,6 +23,7 @@ Data Collectors (JSON)
   BarImporter (auto-triggered, same target_dir)
   ├─ Load all ticks for symbol (from target_dir, not config)
   ├─ VectorizedBarRenderer → M1, M5, M15, M30, H1, H4, D1
+  │   └─ Weekend/holiday exclusion (Forex only, see below)
   └─ Write bar Parquet files
        ↓
   Index Update (tick + bar indexes, target_dir-aware)
@@ -415,6 +416,34 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 ## Duplicate Detection
 
 The importer calculates a SHA-256 hash of each JSON file and compares against existing Parquet metadata. If a file was already imported, it raises `ArtificialDuplicateException` (skipped gracefully). Use `--override` to force re-import.
+
+---
+
+## Synthetic Bars and Market Closures
+
+The bar renderer distinguishes between **market closures** and **data gaps**:
+
+| Situation | Bar Output | Meaning |
+|-----------|-----------|---------|
+| Weekend (Sat/Sun) | No bars (time jump) | Expected market closure — Forex only |
+| Holiday (Christmas, New Year) | No bars (time jump) | Expected market closure — Forex only |
+| Data gap (collector outage) | Synthetic bars (`bar_type='synthetic'`) | Data quality problem |
+| Crypto weekend | Normal bars | 24/7 market, no closure |
+
+**Consequence:** Every synthetic bar in the bar file indicates a real data collection issue (connection loss, restart, downtime). This makes synthetic bars a direct quality signal for the gap backfiller (#127).
+
+The market closure behavior is controlled by `market_config.json` → `market_rules.{market_type}.weekend_closure`. Forex has `weekend_closure: true`, Crypto has `weekend_closure: false`.
+
+### Gap Detection
+
+Gap detection (`DataCoverageReport`) uses timestamp jumps between consecutive bars at the configured granularity (`discoveries_config.json` → `gap_detection.granularity`, default: M1). Gaps are classified via `MarketCalendar`:
+
+- **WEEKEND / HOLIDAY** — expected market closure, allowed by default
+- **SHORT** (< 30 min) — minor interruption, allowed by default
+- **MODERATE** (30 min – 4h) — requires attention, blocks scenario generation
+- **LARGE** (> 4h) — data collection problem, blocks scenario generation
+
+Allowed gap categories are configured in `app_config.json` → `data_validation.allowed_gap_categories`. The block generator splits only at non-allowed gap categories.
 
 ---
 

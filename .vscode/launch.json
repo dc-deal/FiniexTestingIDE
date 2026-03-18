@@ -16,13 +16,13 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "📥 Bar Render kraken_spot --clean",
+            "name": "📥 Bar Render --all",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
                 "render",
-                "kraken_spot",
+                "--all",
                 "--clean"
             ],
             "console": "integratedTerminal",
@@ -815,7 +815,8 @@
                 "tests/benchmark/",
                 "-v",
                 "--tb=short",
-                "--release-version", "dev"
+                "--release-version",
+                "dev"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

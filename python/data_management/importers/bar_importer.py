@@ -173,7 +173,7 @@ class BarImporter:
 
         # === 2. RENDER BARS ===
         vLog.info(f"  ├─ Rendering bars...")
-        renderer = VectorizedBarRenderer(symbol)
+        renderer = VectorizedBarRenderer(symbol, broker_type)
         all_bars = renderer.render_all_timeframes(ticks_df, fill_gaps=True)
 
         # === 3. WRITE BAR FILES ===

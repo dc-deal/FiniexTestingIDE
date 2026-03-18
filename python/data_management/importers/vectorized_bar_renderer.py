@@ -19,7 +19,9 @@ import json
 import pandas as pd
 import numpy as np
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 vLog = get_global_logger()
 
@@ -32,14 +34,17 @@ class VectorizedBarRenderer:
     Perfect for pre-rendering bars from tick data.
     """
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, broker_type: str):
         """
         Initialize renderer for a specific symbol.
 
         Args:
             symbol: Trading symbol (e.g., 'EURUSD')
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
         """
         self.symbol = symbol
+        self._broker_type = broker_type
+        self._weekend_closure = MarketConfigManager().has_weekend_closure(broker_type)
         # Pandas resample() rules for each timeframe
         self._resample_rules = {
             tf: TimeframeConfig.get_resample_rule(tf)
@@ -207,24 +212,22 @@ class VectorizedBarRenderer:
 
     def _fill_gaps(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         """
-        Fill time gaps with synthetic bars.
+        Fill time gaps with synthetic bars for real data gaps only.
 
-        Gaps occur during:
-        - Weekends (Fr 21:00 → Mo 00:00)
-        - Broker downtime
-        - Data collection interruptions
+        Synthetic bars are created for actual data collection issues
+        (broker downtime, connection loss, restarts). Weekend and holiday
+        periods are excluded — no synthetic bars are generated for
+        expected market closures (Forex). Crypto (24/7) is unaffected.
 
-        Strategy:
-        - Create complete time series (no gaps)
-        - For missing periods: insert synthetic bar with OHLC = last_close
-        - Mark as 'synthetic' with appropriate metadata
+        After this method, every remaining synthetic bar is a signal
+        for a real data quality problem.
 
         Args:
             bars_df: Real bars from ticks
             timeframe: Timeframe string
 
         Returns:
-            DataFrame with gaps filled
+            DataFrame with data gaps filled, market closures left empty
         """
         if len(bars_df) == 0:
             return bars_df
@@ -236,6 +239,10 @@ class VectorizedBarRenderer:
         start = bars_df['timestamp'].min()
         end = bars_df['timestamp'].max()
         full_range = pd.date_range(start=start, end=end, freq=freq)
+
+        # Exclude weekend/holiday timestamps for markets with weekend closure
+        if self._weekend_closure:
+            full_range = self._exclude_market_closures(full_range)
 
         # Set timestamp as index for reindexing
         bars_df = bars_df.set_index('timestamp')
@@ -311,6 +318,45 @@ class VectorizedBarRenderer:
         bars_df.rename(columns={'index': 'timestamp'}, inplace=True)
 
         return bars_df
+
+    def _exclude_market_closures(
+        self,
+        full_range: pd.DatetimeIndex
+    ) -> pd.DatetimeIndex:
+        """
+        Remove weekend and holiday timestamps from date range.
+
+        Weekend: Saturday and Sunday (weekday >= 5).
+        Holidays: Known market holidays from MarketCalendar.
+
+        Only applied for markets with weekend_closure=True (Forex).
+        Crypto (24/7) is unaffected.
+
+        Args:
+            full_range: Complete DatetimeIndex covering entire period
+
+        Returns:
+            Filtered DatetimeIndex without market closure periods
+        """
+        # Weekday filter: Monday=0 .. Friday=4 are trading days
+        weekday_mask = full_range.weekday < 5
+
+        # Holiday filter: exclude known market holidays
+        holiday_mask = np.array([
+            not MarketCalendar.is_market_holiday(ts)
+            for ts in full_range
+        ])
+
+        filtered = full_range[weekday_mask & holiday_mask]
+
+        excluded_count = len(full_range) - len(filtered)
+        if excluded_count > 0:
+            vLog.info(
+                f"    ├─ Market closures: excluded {excluded_count:,} "
+                f"weekend/holiday timestamps from synthetic bar generation"
+            )
+
+        return filtered
 
     def _find_gap_ranges(
         self,

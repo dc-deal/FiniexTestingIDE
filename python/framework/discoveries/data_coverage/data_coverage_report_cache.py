@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -52,13 +53,17 @@ class DataCoverageReportCache:
 
     CACHE_PARENT_DIR = ".discovery_caches"
     CACHE_SUB_DIR = "data_coverage_cache"
-    GRANULARITY = "M5"  # Bar granularity used for gap detection
 
     def __init__(self, logger: AbstractLogger = vLog):
         self.logger = logger
         self._app_config = AppConfigManager()
         self.data_dir = Path(self._app_config.get_data_processed_path())
         self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
+
+        # Read granularity from discoveries config (consistent with DataCoverageReport)
+        discoveries_config = DiscoveriesConfigLoader().get_config_raw()
+        gap_config = discoveries_config.get('gap_detection', {})
+        self._granularity = gap_config.get('granularity', 'M5')
 
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -78,10 +83,10 @@ class DataCoverageReportCache:
         return self.cache_dir / f"{broker_type}_{symbol}.parquet"
 
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
-        """Get modification time of source M5 bar file."""
+        """Get modification time of source bar file at configured granularity."""
         bar_index = self._get_bar_index()
         bar_file = bar_index.get_bar_file(
-            broker_type, symbol, self.GRANULARITY)
+            broker_type, symbol, self._granularity)
 
         if bar_file and bar_file.exists():
             return bar_file.stat().st_mtime
@@ -95,19 +100,26 @@ class DataCoverageReportCache:
         - Cache file doesn't exist
         - Source bar file is newer than cache
         - Source bar file doesn't exist
+        - Granularity has changed since cache was built
         """
         cache_path = self._get_cache_path(broker_type, symbol)
 
         if not cache_path.exists():
             return False
 
-        # Get source bar mtime from cache metadata
+        # Get source bar mtime and granularity from cache metadata
         try:
             pq_file = pq.ParquetFile(cache_path)
             metadata = pq_file.schema_arrow.metadata or {}
             cached_mtime = float(metadata.get(
                 b'source_bar_mtime', b'0').decode())
+            cached_granularity = metadata.get(
+                b'granularity', b'').decode()
         except Exception:
+            return False
+
+        # Invalidate if granularity changed
+        if cached_granularity != self._granularity:
             return False
 
         # Compare with current bar file mtime
@@ -253,7 +265,7 @@ class DataCoverageReportCache:
                 b'generated_at': datetime.now(timezone.utc).isoformat().encode(),
                 b'broker_type': broker_type.encode(),
                 b'symbol': symbol.encode(),
-                b'granularity': self.GRANULARITY.encode(),
+                b'granularity': self._granularity.encode(),
             }
 
             # Write parquet with metadata

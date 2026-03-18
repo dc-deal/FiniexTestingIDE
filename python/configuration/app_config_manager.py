@@ -271,7 +271,7 @@ class AppConfigManager:
             List of allowed gap category strings (default: ['seamless', 'short'])
         """
         validation_config = self.get_data_validation_config()
-        return validation_config.get("allowed_gap_categories", ["seamless", "short"])
+        return validation_config.get("allowed_gap_categories", ["seamless", "short", "weekend", "holiday"])
 
     # ============================================
     # Centralized Path Methods (Validated)
