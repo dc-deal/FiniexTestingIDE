@@ -232,9 +232,12 @@ class TestBenchmarkCertificate:
             "valid_until",
             "system_id",
             "scenario",
+            "runs",
             "debug_mode_detected",
             "overall_status",
-            "metrics"
+            "metrics",
+            "raw_measurements",
+            "artifacts"
         ]
 
         missing = [f for f in required_fields if f not in report]

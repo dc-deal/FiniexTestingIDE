@@ -1,13 +1,14 @@
 {
     "description": "Benchmark Test Configuration",
     "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
+    "runs": 3,
     "tolerances": {
         "ticks_per_second": {
-            "percent": 30.0,
+            "percent": 20.0,
             "description": "Main throughput metric - CPU bound"
         },
         "tickrun_time_s": {
-            "percent": 30.0,
+            "percent": 20.0,
             "description": "Tick processing duration - CPU bound"
         },
         "warmup_time_s": {

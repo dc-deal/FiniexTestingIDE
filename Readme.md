@@ -41,6 +41,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
 - ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites
+- ✅ Validated performance — standardized benchmark certificate with regression detection
 
 ---
 
@@ -193,6 +194,8 @@ python python/cli/test_runner_cli.py
 Individual suites can be run separately: `pytest tests/<suite>/ -v`
 
 Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior). Each test suite has its own documentation in [`docs/tests/`](docs/tests/).
+
+**Benchmark Certificate:** Each release includes a benchmark report validating throughput performance against registered system baselines (3-run median, tolerance-based regression detection). The certificate is verified automatically in CI. See [`docs/tests/tests_benchmark_docs.md`](docs/tests/tests_benchmark_docs.md) for details.
 
 ---
 

@@ -1,5 +1,20 @@
 # Benchmark Tests Documentation
 
+## Quick Reference
+
+```bash
+# Validate existing certificate (CI, fast, no benchmark execution)
+pytest tests/benchmark/test_benchmark_certificate.py -v
+
+# Run full benchmark (3 runs, generates report + logs)
+pytest tests/benchmark/test_throughput_regression.py -v --release-version 1.2.0
+
+# With tester comment (stored in report JSON)
+pytest tests/benchmark/test_throughput_regression.py -v --release-version 1.2.0 --comment "Acer laptop, performance mode: balanced"
+```
+
+---
+
 ## Overview
 
 The benchmark test suite validates performance regression against registered system baselines. Unlike functional tests that verify correctness, these tests ensure the system performs within acceptable tolerances compared to a known baseline.
@@ -39,14 +54,14 @@ The benchmark test suite validates performance regression against registered sys
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `benchmark_execution_summary` | session | BatchExecutionSummary from running the 40-scenario benchmark |
-| `benchmark_metrics` | session | Extracted metrics: ticks/s, tickrun_time, warmup_time, total_ticks |
+| `benchmark_execution_runs` | session | List of BenchmarkRunResult from N runs (default: 3) with summary, timing, and log paths |
+| `benchmark_metrics` | session | Median metrics across all runs: ticks/s, tickrun_time, warmup_time, summary_generation_time, raw_measurements |
 
 ### Report Fixtures
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `benchmark_report` | session | Complete report dict with metrics, deviations, and status |
+| `benchmark_report` | session | Complete report dict with median metrics, deviations, raw measurements, artifacts, and status |
 
 ---
 
@@ -78,15 +93,15 @@ Main benchmark tests comparing measured performance against baseline. Only runs 
 
 | Test | Description |
 |------|-------------|
-| `test_ticks_per_second` | Primary throughput metric. Measured ticks/s must be within ±10% of baseline. FAILS if slower, PASSES with warning if faster. |
-| `test_tickrun_time` | Tick processing duration must be within ±10% of baseline. Excludes warmup time. |
-| `test_warmup_time` | Data loading phase must be within ±15% of baseline. Larger tolerance due to IO variance (disk speed, caching). |
+| `test_ticks_per_second` | Primary throughput metric (median of 3 runs). Must be within ±20% of baseline. FAILS if slower, PASSES with warning if faster. |
+| `test_tickrun_time` | Tick processing duration (median of 3 runs). Must be within ±20% of baseline. CPU-bound, excludes warmup. |
+| `test_warmup_time` | Data loading phase (median of 3 runs). Must be within ±30% of baseline. IO-bound, larger tolerance due to disk/cache variance. |
 
 #### TestBenchmarkExecution
 
 | Test | Description |
 |------|-------------|
-| `test_all_scenarios_successful` | All 40 benchmark scenarios must complete successfully |
+| `test_all_scenarios_successful` | All 40 benchmark scenarios must complete successfully in all 3 runs |
 | `test_tick_count_matches` | Total ticks processed (1,496,267) must match baseline exactly. Mismatch indicates config or data change. |
 | `test_scenario_count_matches` | Scenario count (40) must match baseline exactly |
 
@@ -94,7 +109,7 @@ Main benchmark tests comparing measured performance against baseline. Only runs 
 
 | Test | Description |
 |------|-------------|
-| `test_zz_save_benchmark_report` | Saves benchmark report to `reports/` directory. Runs last (alphabetically) to ensure all tests complete first. Outputs commit reminder. |
+| `test_zz_save_benchmark_report` | Saves benchmark report to `reports/` directory, copies log artifacts to `reports/logs/run_N/`. Runs last (alphabetically). |
 
 ---
 
@@ -121,11 +136,12 @@ Global benchmark settings including tolerances and validity.
 
 ```json
 {
-  "scenario":  "backtesting/backtesting_loadtest_40_scenarios.json",
+  "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
+  "runs": 3,
   "tolerances": {
-    "ticks_per_second": { "percent": 10.0 },
-    "tickrun_time_s": { "percent": 10.0 },
-    "warmup_time_s": { "percent": 15.0 }
+    "ticks_per_second": { "percent": 20.0 },
+    "tickrun_time_s": { "percent": 20.0 },
+    "warmup_time_s": { "percent": 30.0 }
   },
   "certificate": {
     "validity_days": 90
@@ -135,9 +151,10 @@ Global benchmark settings including tolerances and validity.
 
 | Setting | Value | Rationale |
 |---------|-------|-----------|
-| ticks_per_second tolerance | ±10% | Primary CPU-bound metric |
-| tickrun_time_s tolerance | ±10% | Tick processing duration |
-| warmup_time_s tolerance | ±15% | IO-bound, disk variance expected |
+| runs | 3 | Statistical stability via median — eliminates single-run variance |
+| ticks_per_second tolerance | ±20% | CPU-bound, stable across runs |
+| tickrun_time_s tolerance | ±20% | CPU-bound tick processing duration |
+| warmup_time_s tolerance | ±30% | IO-bound (disk, WSL bridge), higher variance expected |
 | validity_days | 90 | Forces quarterly re-validation |
 
 ### reference_systems.json
@@ -155,12 +172,12 @@ Registered systems with hardware specs and baseline metrics.
         "ram_minimum_gb": 28.0
       },
       "baseline": {
-        "created": "2026-01-07T07:12:34Z",
-        "scenario":  "backtesting/backtesting_loadtest_40_scenarios"",
+        "created": "2026-03-18T09:00:00Z",
+        "scenario": "backtesting/backtesting_loadtest_40_scenarios",
         "metrics": {
-          "ticks_per_second": 49133,
-          "tickrun_time_s": 30.5,
-          "warmup_time_s": 22.3,
+          "ticks_per_second": 90000,
+          "tickrun_time_s": 17.0,
+          "warmup_time_s": 18.0,
           "total_ticks": 1496267,
           "scenarios_count": 40
         }
@@ -177,7 +194,7 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
 ```json
 {
   "version": "1.0",
-  "scenario_set_name":  "backtesting/backtesting_loadtest_40_scenarios"",
+  "scenario_set_name": "backtesting_loadtest_40_scenarios",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -286,8 +303,8 @@ Extract the relevant values and add a new entry:
         "ram_minimum_gb": 24.0
       },
       "baseline": {
-        "created": "2026-01-08T00:00:00Z",
-        "scenario":  "backtesting/backtesting_loadtest_40_scenarios"",
+        "created": "2026-03-18T00:00:00Z",
+        "scenario": "backtesting/backtesting_loadtest_40_scenarios",
         "metrics": {
           "ticks_per_second": 72527,
           "tickrun_time_s": 20.6,
@@ -312,7 +329,7 @@ pytest tests/benchmark/test_throughput_regression.py -v
 **Important Notes:**
 
 - **Always review manually** - Performance tests require human judgment. Check that values are reasonable.
-- **Run multiple times** - Consider running 2-3 times to ensure stable measurements.
+- **3-run median** - The benchmark automatically runs 3 times and uses the median for each metric.
 - **No debugger** - Never run with debugger attached; it invalidates all timing.
 - **Consistent environment** - Close unnecessary applications, ensure no heavy background processes.
 
@@ -320,13 +337,14 @@ pytest tests/benchmark/test_throughput_regression.py -v
 
 ## Benchmark Report Format
 
-Reports are saved as JSON with full audit trail in `tests/benchmark/reports/`.
+Reports are saved as JSON with full audit trail in `tests/benchmark/reports/`. Filename format: `benchmark_report_{version}_{timestamp}.json`.
 
 ```json
 {
-  "timestamp": "2026-01-07T18:36:07Z",
-  "valid_until": "2026-04-07T18:36:07Z",
-  "git_commit": "986911d",
+  "release_version": "1.2.0",
+  "timestamp": "2026-03-18T09:08:33Z",
+  "valid_until": "2026-06-16T09:08:33Z",
+  "git_commit": "abc1234",
   "system_id": "ryzen_7_8845hs_16core",
   "system_details": {
     "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
@@ -334,41 +352,37 @@ Reports are saved as JSON with full audit trail in `tests/benchmark/reports/`.
     "ram_total_gb": 30.3,
     "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
   },
-  "release_version": "1.2.0",
-  "scenario":  "backtesting/backtesting_loadtest_40_scenarios.json",
+  "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
+  "runs": 3,
   "debug_mode_detected": false,
   "overall_status": "PASSED",
   "metrics": [
-    {
-      "name": "ticks_per_second",
-      "measured": 53510.66,
-      "reference": 49133,
-      "deviation_percent": 8.91,
-      "tolerance_percent": 10.0,
-      "status": "PASSED"
-    },
-    {
-      "name": "tickrun_time_s",
-      "measured": 27.96,
-      "reference": 30.5,
-      "deviation_percent": -8.32,
-      "tolerance_percent": 10.0,
-      "status": "PASSED"
-    },
-    {
-      "name": "warmup_time_s",
-      "measured": 19.46,
-      "reference": 22.3,
-      "deviation_percent": -12.73,
-      "tolerance_percent": 15.0,
-      "status": "PASSED"
-    }
+    {"name": "ticks_per_second", "measured": 90024.88, "reference": 90000, "deviation_percent": 0.03, "tolerance_percent": 20.0, "status": "PASSED"},
+    {"name": "tickrun_time_s", "measured": 16.62, "reference": 17.0, "deviation_percent": -2.24, "tolerance_percent": 20.0, "status": "PASSED"},
+    {"name": "warmup_time_s", "measured": 17.79, "reference": 18.0, "deviation_percent": -1.17, "tolerance_percent": 30.0, "status": "PASSED"},
+    {"name": "summary_generation_time_s", "measured": 1.2, "reference": null, "deviation_percent": null, "tolerance_percent": null, "status": "INFO"},
+    {"name": "total_ticks", "measured": 1496267, "reference": 1496267, "deviation_percent": null, "tolerance_percent": null, "status": "INFO"},
+    {"name": "scenarios_count", "measured": 40, "reference": 40, "deviation_percent": null, "tolerance_percent": null, "status": "INFO"}
+  ],
+  "raw_measurements": {
+    "ticks_per_second": [89500.12, 90024.88, 90500.44],
+    "tickrun_time_s": [16.8, 16.62, 16.5],
+    "warmup_time_s": [18.1, 17.79, 17.5],
+    "summary_generation_time_s": [1.1, 1.2, 1.3]
+  },
+  "artifacts": [
+    {"source": "logs/scenario_sets/.../scenario_summary.log", "destination": "tests/benchmark/reports/logs/run_1/scenario_summary.log", "copied_at": "..."},
+    {"source": "logs/scenario_sets/.../scenario_global_log.log", "destination": "tests/benchmark/reports/logs/run_1/scenario_global_log.log", "copied_at": "..."}
   ],
   "warnings": []
 }
 ```
 
-**Note:** If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results.
+**Notes:**
+- All measured values are **medians** across 3 runs
+- `raw_measurements` contains the individual run values for traceability
+- `artifacts` lists all log files copied to `reports/logs/run_N/`
+- If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results
 
 ---
 
@@ -392,6 +406,16 @@ pytest tests/benchmark/ -v --release-version 1.2.0
 | `"X.Y.Z"` | Release version. Report is a valid release artifact |
 
 Reports with `"release_version": "dev"` are not valid release artifacts. For releases, always specify the actual version number.
+
+### `--comment`
+
+Optional free-text comment stored in the report JSON. Useful for documenting test conditions.
+
+```bash
+pytest tests/benchmark/ -v --release-version 1.2.0 --comment "Acer laptop, performance mode: ultra"
+```
+
+The comment appears as `"comment": "..."` in the generated report. Omitted if not provided.
 
 ---
 
@@ -422,22 +446,31 @@ DEBUGGER_ACTIVE = (
 ### Key Data Flow
 
 ```
-BatchOrchestrator.run()
-  └→ BatchExecutionSummary
-       ├→ batch_warmup_time (IO-bound phase)
-       ├→ batch_tickrun_time (CPU-bound phase)
-       └→ process_result_list[]
-            └→ tick_loop_results.coordination_statistics.ticks_processed
+for each run (3x):
+  BatchOrchestrator.run()
+    └→ BatchExecutionSummary
+         ├→ batch_warmup_time (IO-bound: Phases 0-5)
+         ├→ batch_tickrun_time (CPU-bound: Phase 6)
+         └→ process_result_list[]
+              └→ tick_loop_results.coordination_statistics.ticks_processed
+  BatchReportCoordinator.generate_and_log()
+    └→ summary_generation_time (measured externally)
+
+Per metric: statistics.median([run_1, run_2, run_3]) → report value
 ```
 
 ### Metric Calculation
 
 ```python
-total_ticks = sum(
-    r.tick_loop_results.coordination_statistics.ticks_processed
-    for r in batch_execution_summary.process_result_list
-)
-ticks_per_second = total_ticks / batch_execution_summary.batch_tickrun_time
+# Per-run extraction
+tps_values = [total_ticks / r.summary.batch_tickrun_time for r in runs]
+tickrun_times = [r.summary.batch_tickrun_time for r in runs]
+warmup_times = [r.summary.batch_warmup_time for r in runs]
+
+# Median for report
+ticks_per_second = statistics.median(tps_values)
+tickrun_time = statistics.median(tickrun_times)
+warmup_time = statistics.median(warmup_times)
 ```
 
 ### Test Isolation
@@ -456,10 +489,13 @@ This is achieved by:
 ### Local Benchmark Run
 
 ```bash
-# Run benchmark and generate report (runs all 40 scenarios)
-pytest tests/benchmark/test_throughput_regression.py -v --release-version dev
+# Run benchmark (3 runs x 40 scenarios, generates median report + log artifacts)
+pytest tests/benchmark/ -v --release-version dev
 
-# Commit the report
+# Release benchmark
+pytest tests/benchmark/ -v --release-version 1.2.0
+
+# Commit the report and logs
 git add tests/benchmark/reports/
 git commit -m "Update benchmark report"
 ```

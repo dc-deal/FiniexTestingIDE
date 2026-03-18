@@ -207,7 +207,7 @@ Full TypedDict definitions: `python/framework/types/import_schema_types.py`
 
 ## Configuration
 
-Import configuration lives in `configs/import_config.json` with optional user overrides in `user_config/import_config.json`.
+Import configuration lives in `configs/import_config.json` with optional user overrides in `user_configs/import_config.json`.
 
 ### Structure
 
@@ -248,7 +248,7 @@ Each broker type has a registered UTC offset. During import, the offset is looke
 - **mt5:** `-3` hours (MT5 brokers typically report GMT+3, so subtract 3h for UTC)
 - **kraken_spot:** `0` hours (already UTC)
 
-To add a new broker or override an offset, create `user_config/import_config.json`:
+To add a new broker or override an offset, create `user_configs/import_config.json`:
 ```json
 {
     "offset_registry": {

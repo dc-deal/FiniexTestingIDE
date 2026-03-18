@@ -13,9 +13,9 @@ Unregistered systems will cause pytest.fail() in the validated_system fixture.
 
 import pytest
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
-from tests.benchmark.conftest import _save_benchmark_report
+from tests.benchmark.conftest import _save_benchmark_report, BenchmarkRunResult
 
 
 class TestThroughputRegression:
@@ -152,19 +152,18 @@ class TestBenchmarkExecution:
 
     def test_all_scenarios_successful(
         self,
-        benchmark_execution_summary
+        benchmark_execution_runs: List[BenchmarkRunResult]
     ):
-        """All benchmark scenarios should complete successfully."""
-        failed = [
-            r.scenario_name
-            for r in benchmark_execution_summary.process_result_list
-            if not r.success
-        ]
-
-        assert len(failed) == 0, (
-            f"{len(failed)} scenarios failed: {failed[:5]}..."
-            if len(failed) > 5 else f"Scenarios failed: {failed}"
-        )
+        """All benchmark scenarios in all runs should complete successfully."""
+        for run in benchmark_execution_runs:
+            failed = [
+                r.scenario_name
+                for r in run.summary.process_result_list
+                if not r.success
+            ]
+            assert len(failed) == 0, (
+                f"Run {run.run_index}: {len(failed)} scenarios failed: {failed[:5]}"
+            )
 
     def test_tick_count_matches(
         self,

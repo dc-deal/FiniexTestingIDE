@@ -15,12 +15,12 @@ class ImportConfigFileLoader:
     Singleton loader for import_config.json.
 
     Thread-safe, loads config only once and caches it.
-    Supports user overrides from user_config/import_config.json.
+    Supports user overrides from user_configs/import_config.json.
     """
 
     _config: Optional[Dict[str, Any]] = None
     _config_path: str = "configs/import_config.json"
-    _user_config_path: str = "user_config/import_config.json"
+    _user_config_path: str = "user_configs/import_config.json"
     _lock = Lock()
 
     @staticmethod
@@ -68,7 +68,7 @@ class ImportConfigFileLoader:
         Load import configuration with user override support.
 
         Loads base config from configs/import_config.json and optionally
-        merges user overrides from user_config/import_config.json.
+        merges user overrides from user_configs/import_config.json.
 
         Returns:
             Merged configuration dictionary
@@ -97,7 +97,7 @@ class ImportConfigFileLoader:
                 # Merge user overrides into base config
                 merged_config = ImportConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print(f"✅ Merged user_config/import_config.json")
+                print(f"✅ Merged user_configs/import_config.json")
                 return merged_config
 
             except json.JSONDecodeError as e:
