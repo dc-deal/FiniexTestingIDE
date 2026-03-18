@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.utils.market_calendar import GapCategory
@@ -413,8 +414,9 @@ class BlocksGenerator:
         """
         Extract continuous data regions from coverage report.
 
-        Splits timeline at MODERATE/LARGE/WEEKEND gaps.
-        SMALL gaps are ignored (treated as continuous).
+        Splits timeline at gaps that are NOT in allowed_gap_categories.
+        Allowed gaps (e.g. weekend, holiday, seamless, short) are treated
+        as continuous — blocks may span across them.
 
         Args:
             data_coverage_report: Coverage report with gap analysis
@@ -424,10 +426,17 @@ class BlocksGenerator:
         """
         regions = []
 
-        # Filter for interrupting gaps only
+        # Get allowed categories from config — split only at non-allowed gaps
+        allowed_strings = AppConfigManager().get_allowed_gap_categories()
+        allowed_categories = {
+            GapCategory(cat_str) for cat_str in allowed_strings
+            if cat_str in [c.value for c in GapCategory]
+        }
+
+        # Filter for interrupting gaps: those NOT in allowed categories
         interrupting_gaps = [
             g for g in data_coverage_report.gaps
-            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
+            if g.category not in allowed_categories
         ]
 
         if not interrupting_gaps:
@@ -606,9 +615,16 @@ class BlocksGenerator:
             continuous_regions: Extracted continuous regions
             data_coverage_report: Coverage report
         """
+        # Get allowed categories from config — only non-allowed gaps cause splits
+        allowed_strings = AppConfigManager().get_allowed_gap_categories()
+        allowed_categories = {
+            GapCategory(cat_str) for cat_str in allowed_strings
+            if cat_str in [c.value for c in GapCategory]
+        }
+
         filtered_gaps = [
             g for g in data_coverage_report.gaps
-            if g.category in [GapCategory.MODERATE, GapCategory.LARGE, GapCategory.WEEKEND, GapCategory.HOLIDAY]
+            if g.category not in allowed_categories
         ]
 
         total_coverage_hours = sum(
@@ -620,9 +636,7 @@ class BlocksGenerator:
         vLog.info(
             f"Coverage: {total_coverage_hours:.1f}h usable, "
             f"{total_gap_hours:.1f}h gaps filtered "
-            f"({len(filtered_gaps)} gaps: "
-            f"{data_coverage_report.gap_counts['weekend']} weekend, "
-            f"{data_coverage_report.gap_counts['holiday']} holiday, "
+            f"({len(filtered_gaps)} interrupting gaps, "
             f"{data_coverage_report.gap_counts['moderate']} moderate, "
             f"{data_coverage_report.gap_counts['large']} large)"
         )

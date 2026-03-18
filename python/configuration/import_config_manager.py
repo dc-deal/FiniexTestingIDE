@@ -223,3 +223,13 @@ class ImportConfigManager:
         """
         processing = self.get_processing_config()
         return processing.get("auto_render_bars", True)
+
+    def get_bar_render_workers(self) -> int:
+        """
+        Get number of parallel worker processes for bar rendering.
+
+        Returns:
+            Number of worker processes (default: 1)
+        """
+        processing = self.get_processing_config()
+        return processing.get("bar_render_workers", 1)

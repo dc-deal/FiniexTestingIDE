@@ -560,11 +560,18 @@ Useful for understanding the raw data structure:
 
 | | |
 |---|---|
-| **VS Code** | `📥 Bar Import / Render --clean` |
-| **CLI** | `python bar_index_cli.py render --clean` |
-| **Purpose** | Re-render bars completely |
+| **VS Code** | `📥 Bar Render --all` |
+| **CLI** | `python bar_index_cli.py render BROKER_TYPE [--clean]` |
+| **Purpose** | Re-render bars for a broker type or all |
+
+**Flags:**
+- `BROKER_TYPE` — Render a single broker type (e.g. `mt5`)
+- `--all` — Render all broker types from `market_config.json`
+- `--clean` — Delete existing bars before rendering
 
 > ⚠️ **Warning:** Can take a very long time with large datasets!
+>
+> Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 16). Set to `1` for sequential mode.
 
 ---
 

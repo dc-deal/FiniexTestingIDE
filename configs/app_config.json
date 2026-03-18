@@ -67,7 +67,9 @@
         "warmup_quality_mode": "standard",
         "allowed_gap_categories": [
             "seamless",
-            "short"
+            "short",
+            "weekend",
+            "holiday"
         ]
     }
 }

@@ -21,6 +21,7 @@ from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
 from python.framework.types.market_types.market_types import VALIDATION_TIMEZONE
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class DataCoverageReport:
@@ -86,17 +87,18 @@ class DataCoverageReport:
 
     def _detect_gaps_from_bars(self) -> List[Gap]:
         """
-        Detect gaps within files using bar data.
+        Detect gaps by finding timestamp jumps between consecutive bars.
 
-        Loads M5 (or configured granularity) bars and identifies consecutive
-        synthetic bars as gaps. This detects weekends and outages that span
-        across single tick files.
+        Loads bars at configured granularity and checks the time difference
+        between consecutive bars. When the gap exceeds the expected bar
+        interval, it is classified via MarketCalendar (weekend, holiday,
+        short, moderate, large).
 
-        Args:
-            config: Gap detection configuration
+        This approach works regardless of whether synthetic bars exist —
+        it detects gaps from timestamp discontinuities in the bar sequence.
 
         Returns:
-            List of Gap objects for intra-file gaps
+            List of Gap objects for detected gaps
         """
         gaps = []
 
@@ -108,6 +110,9 @@ class DataCoverageReport:
         granularity = gap_config.get('granularity', 'M5')
         thresholds = gap_config.get(
             'thresholds', {'short': 0.5, 'moderate': 4.0})
+
+        # Expected interval between bars (in seconds)
+        expected_interval_s = TimeframeConfig.get_minutes(granularity) * 60
 
         # Initialize bar index
         bar_index = BarsIndexManager()
@@ -123,73 +128,44 @@ class DataCoverageReport:
         # Load bars
         bars_df = pd.read_parquet(bar_file)
 
-        # fill start end end
+        # fill start and end
         if not (bars_df.empty or len(bars_df) == 0):
             self.start_time = ensure_utc_aware(bars_df.iloc[0]['timestamp'])
             self.end_time = ensure_utc_aware(bars_df.iloc[-1]['timestamp'])
 
-        # Detect consecutive synthetic bars
-        in_gap = False
-        gap_start = None
+        if len(bars_df) < 2:
+            return gaps
 
-        for idx, bar in bars_df.iterrows():
-            is_synthetic = (bar['bar_type'] == 'synthetic')
+        # Ensure timestamps are UTC-aware and sorted
+        bars_df = bars_df.sort_values('timestamp').reset_index(drop=True)
+        timestamps = bars_df['timestamp'].apply(ensure_utc_aware)
 
-            if is_synthetic and not in_gap:
-                # Gap begins
-                gap_start = bar['timestamp']
-                in_gap = True
+        # Detect gaps via timestamp jumps between consecutive bars
+        # A gap exists when the interval exceeds 2x the expected bar interval
+        # (allows for minor timing jitter without false positives)
+        gap_threshold_s = expected_interval_s * 2
 
-            elif not is_synthetic and in_gap:
-                # Gap ends
-                gap_end = bar['timestamp']
-                gap_seconds = (gap_end - gap_start).total_seconds()
+        for i in range(1, len(timestamps)):
+            prev_ts = timestamps.iloc[i - 1]
+            curr_ts = timestamps.iloc[i]
+            delta_s = (curr_ts - prev_ts).total_seconds()
 
-                # Only report gaps meeting threshold
-                if gap_seconds >= 60:  # Min 1 minute
-                    # Classify gap
-                    category, reason = MarketCalendar.classify_gap(
-                        gap_start,
-                        gap_end,
-                        gap_seconds,
-                        thresholds,
-                        weekend_closure=self._weekend_closure
-                    )
-
-                    # Create gap object (no file1/file2 for intra-file gaps)
-                    gap = Gap(
-                        gap_seconds=gap_seconds,
-                        category=category,
-                        reason=f"{reason} [intra-file, detected via {granularity}]",
-                        gap_start=gap_start,
-                        gap_end=gap_end
-                    )
-
-                    gaps.append(gap)
-
-                in_gap = False
-                gap_start = None
-
-        # Handle gap at end of data
-        if in_gap and gap_start is not None:
-            gap_end = bars_df.iloc[-1]['timestamp']
-            gap_seconds = (gap_end - gap_start).total_seconds()
-
-            if gap_seconds >= 60:
+            if delta_s > gap_threshold_s:
+                # Gap detected — classify it
                 category, reason = MarketCalendar.classify_gap(
-                    gap_start,
-                    gap_end,
-                    gap_seconds,
+                    prev_ts,
+                    curr_ts,
+                    delta_s,
                     thresholds,
                     weekend_closure=self._weekend_closure
                 )
 
                 gap = Gap(
-                    gap_seconds=gap_seconds,
+                    gap_seconds=delta_s,
                     category=category,
-                    reason=f"{reason} [intra-file, detected via {granularity}]",
-                    gap_start=gap_start,
-                    gap_end=gap_end
+                    reason=f"{reason} [detected via {granularity}]",
+                    gap_start=prev_ts,
+                    gap_end=curr_ts
                 )
 
                 gaps.append(gap)

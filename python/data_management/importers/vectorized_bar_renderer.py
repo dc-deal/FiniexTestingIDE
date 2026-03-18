@@ -13,13 +13,15 @@ Key Features:
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import json
 
 import pandas as pd
 import numpy as np
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 vLog = get_global_logger()
 
@@ -32,19 +34,46 @@ class VectorizedBarRenderer:
     Perfect for pre-rendering bars from tick data.
     """
 
-    def __init__(self, symbol: str):
+    def __init__(
+        self,
+        symbol: str,
+        broker_type: str,
+        log_buffer: Optional[list[str]] = None
+    ):
         """
         Initialize renderer for a specific symbol.
 
         Args:
             symbol: Trading symbol (e.g., 'EURUSD')
+            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+            log_buffer: Optional buffer for log messages (parallel rendering)
         """
         self.symbol = symbol
+        self._broker_type = broker_type
+        self._log_buffer = log_buffer
+        self._weekend_closure = MarketConfigManager().has_weekend_closure(broker_type)
         # Pandas resample() rules for each timeframe
         self._resample_rules = {
             tf: TimeframeConfig.get_resample_rule(tf)
             for tf in TimeframeConfig.sorted()
         }
+
+    def _log(self, level: str, message: str) -> None:
+        """
+        Route log output to buffer or global logger.
+
+        Args:
+            level: Log level ('info', 'debug', 'warning')
+            message: Log message
+        """
+        if self._log_buffer is not None:
+            self._log_buffer.append(message)
+        elif level == 'debug':
+            vLog.debug(message)
+        elif level == 'warning':
+            vLog.warning(message)
+        else:
+            vLog.info(message)
 
     def render_all_timeframes(
         self,
@@ -68,7 +97,7 @@ class VectorizedBarRenderer:
             >>> bars = renderer.render_all_timeframes(ticks_df)
             >>> m5_bars = bars['M5']  # Get M5 bars
         """
-        vLog.info(
+        self._log('info',
             f"🔧 Rendering bars for {self.symbol} from {len(ticks_df):,} ticks")
 
         # Prepare tick data for resampling
@@ -77,13 +106,13 @@ class VectorizedBarRenderer:
         # Render all timeframes
         all_bars = {}
         for timeframe in self._resample_rules.keys():
-            vLog.debug(f"  ├─ Rendering {timeframe}...")
+            self._log('debug', f"  ├─ Rendering {timeframe}...")
             bars_df = self._render_single_timeframe(
                 prepared_df, timeframe, fill_gaps)
             all_bars[timeframe] = bars_df
-            vLog.info(f"  ├─ {timeframe}: {len(bars_df):,} bars rendered")
+            self._log('info', f"  ├─ {timeframe}: {len(bars_df):,} bars rendered")
 
-        vLog.info(f"✅ All timeframes rendered for {self.symbol}")
+        self._log('info', f"✅ All timeframes rendered for {self.symbol}")
         return all_bars
 
     def _prepare_ticks_for_resampling(self, ticks_df: pd.DataFrame) -> pd.DataFrame:
@@ -207,24 +236,22 @@ class VectorizedBarRenderer:
 
     def _fill_gaps(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         """
-        Fill time gaps with synthetic bars.
+        Fill time gaps with synthetic bars for real data gaps only.
 
-        Gaps occur during:
-        - Weekends (Fr 21:00 → Mo 00:00)
-        - Broker downtime
-        - Data collection interruptions
+        Synthetic bars are created for actual data collection issues
+        (broker downtime, connection loss, restarts). Weekend and holiday
+        periods are excluded — no synthetic bars are generated for
+        expected market closures (Forex). Crypto (24/7) is unaffected.
 
-        Strategy:
-        - Create complete time series (no gaps)
-        - For missing periods: insert synthetic bar with OHLC = last_close
-        - Mark as 'synthetic' with appropriate metadata
+        After this method, every remaining synthetic bar is a signal
+        for a real data quality problem.
 
         Args:
             bars_df: Real bars from ticks
             timeframe: Timeframe string
 
         Returns:
-            DataFrame with gaps filled
+            DataFrame with data gaps filled, market closures left empty
         """
         if len(bars_df) == 0:
             return bars_df
@@ -236,6 +263,10 @@ class VectorizedBarRenderer:
         start = bars_df['timestamp'].min()
         end = bars_df['timestamp'].max()
         full_range = pd.date_range(start=start, end=end, freq=freq)
+
+        # Exclude weekend/holiday timestamps for markets with weekend closure
+        if self._weekend_closure:
+            full_range = self._exclude_market_closures(full_range)
 
         # Set timestamp as index for reindexing
         bars_df = bars_df.set_index('timestamp')
@@ -257,19 +288,20 @@ class VectorizedBarRenderer:
         total_bars = len(bars_df)
         gap_percentage = (gap_count / total_bars) * 100
 
-        vLog.info(
+        self._log('info',
             f"    ├─ Gap Analysis: {gap_count:,} gaps found ({gap_percentage:.1f}% of timeline)")
 
         # Find gap ranges (consecutive gaps)
         gap_ranges = self._find_gap_ranges(bars_df, gap_mask)
 
         if gap_ranges:
-            vLog.info(f"    ├─ Gap Ranges ({len(gap_ranges)} periods):")
+            self._log('info', f"    ├─ Gap Ranges ({len(gap_ranges)} periods):")
             for gap_start, gap_end, gap_size in gap_ranges[:5]:  # Show first 5
-                vLog.info(f"    │  └─ {gap_start.strftime('%Y-%m-%d %H:%M')} → "
-                          f"{gap_end.strftime('%Y-%m-%d %H:%M')} ({gap_size} bars)")
+                self._log('info',
+                    f"    │  └─ {gap_start.strftime('%Y-%m-%d %H:%M')} → "
+                    f"{gap_end.strftime('%Y-%m-%d %H:%M')} ({gap_size} bars)")
             if len(gap_ranges) > 5:
-                vLog.info(
+                self._log('info',
                     f"    │     ... and {len(gap_ranges) - 5} more gap ranges")
 
         # === FILL GAPS ===
@@ -303,7 +335,7 @@ class VectorizedBarRenderer:
         synthetic_count = gap_mask.sum()
 
         # === LOGGING: Fill Summary ===
-        vLog.info(
+        self._log('info',
             f"    ├─ Filled {synthetic_count:,} gaps with synthetic bars")
 
         # Reset index and return
@@ -311,6 +343,45 @@ class VectorizedBarRenderer:
         bars_df.rename(columns={'index': 'timestamp'}, inplace=True)
 
         return bars_df
+
+    def _exclude_market_closures(
+        self,
+        full_range: pd.DatetimeIndex
+    ) -> pd.DatetimeIndex:
+        """
+        Remove weekend and holiday timestamps from date range.
+
+        Weekend: Saturday and Sunday (weekday >= 5).
+        Holidays: Known market holidays from MarketCalendar.
+
+        Only applied for markets with weekend_closure=True (Forex).
+        Crypto (24/7) is unaffected.
+
+        Args:
+            full_range: Complete DatetimeIndex covering entire period
+
+        Returns:
+            Filtered DatetimeIndex without market closure periods
+        """
+        # Weekday filter: Monday=0 .. Friday=4 are trading days
+        weekday_mask = full_range.weekday < 5
+
+        # Holiday filter: exclude known market holidays
+        holiday_mask = np.array([
+            not MarketCalendar.is_market_holiday(ts)
+            for ts in full_range
+        ])
+
+        filtered = full_range[weekday_mask & holiday_mask]
+
+        excluded_count = len(full_range) - len(filtered)
+        if excluded_count > 0:
+            self._log('info',
+                f"    ├─ Market closures: excluded {excluded_count:,} "
+                f"weekend/holiday timestamps from synthetic bar generation"
+            )
+
+        return filtered
 
     def _find_gap_ranges(
         self,

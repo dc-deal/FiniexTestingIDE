@@ -131,8 +131,8 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 **Purpose:** Validate quality of loaded data  
 **Mode:** Serial (main process)  
 **Key Operations:**
-- Validate tick stretch gaps (no large gaps in loaded data)
-- Validate warmup bar quality (no synthetic bars in standard mode)
+- Validate tick stretch gaps (only non-allowed gap categories cause rejection)
+- Validate warmup bar quality (no synthetic bars in standard mode — synthetic bars now exclusively indicate real data gaps, not weekend/holiday closures)
 - Filter scenarios with quality issues
 
 **Input:** Pre-filtered scenarios (only those that passed Phase 2)  
@@ -318,9 +318,9 @@ Phase 7: Building summary...
 **Phase:** 2 (Availability Validation)  
 **Solution:** Adjust start_date in scenario config to match available data
 
-### Issue: "Large gap detected in tick stretch"
-**Phase:** 5 (Quality Validation)  
-**Solution:** Adjust start_date to avoid gap period, or use permissive mode
+### Issue: "MODERATE/LARGE gap detected in tick stretch"
+**Phase:** 5 (Quality Validation)
+**Solution:** Adjust start_date to avoid gap period. Weekend/holiday gaps are allowed by default (`app_config.json` → `allowed_gap_categories`). Only real data gaps (MODERATE/LARGE) block scenarios.
 
 ### Issue: "Only X warmup bars available (requested Y)"
 **Phase:** 4 (Data Loading) - Warning only  

@@ -7,6 +7,7 @@ Usage:
     python python/cli/bar_index_cli.py status
     python python/cli/bar_index_cli.py report
     python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
+    python python/cli/bar_index_cli.py render --all [--clean]
 """
 
 import argparse
@@ -129,8 +130,10 @@ class BarIndexCli:
                 market_type = market_config.get_market_type(broker_type).value
 
                 # Version metadata from index entry
-                source_version_min = first_entry.get('source_version_min', 'unknown')
-                source_version_max = first_entry.get('source_version_max', 'unknown')
+                source_version_min = first_entry.get(
+                    'source_version_min', 'unknown')
+                source_version_max = first_entry.get(
+                    'source_version_max', 'unknown')
                 data_source = first_entry.get('broker_type', broker_type)
 
                 # Version display
@@ -184,35 +187,44 @@ class BarIndexCli:
         print(f"\n✅ Report saved to: {report_path}")
         print("="*80 + "\n")
 
-    def cmd_render(self, broker_type: str, clean: bool = False):
+    def cmd_render(self, broker_type: str = None, clean: bool = False, render_all: bool = False):
         """
         Render bars from tick data.
 
         Args:
-            broker_type: Broker type identifier (REQUIRED)
+            broker_type: Broker type identifier (required unless render_all=True)
             clean: If True, delete existing bars before rendering
+            render_all: If True, render all known broker types from market_config
         """
-        print("\n" + "="*80)
-        print(f"🔄 Bar Rendering (broker_type: {broker_type})")
-        print("="*80)
-        print(
-            f"Clean Mode: {'ENABLED (delete all bars first)' if clean else 'DISABLED (skip symbols without ticks)'}")
-        print("="*80 + "\n")
+        if render_all:
+            broker_types = MarketConfigManager().get_all_broker_types()
+            if not broker_types:
+                print('No broker types found in market_config.json')
+                return
+            print("\n" + "="*80)
+            print(
+                f"🔄 Bar Rendering — ALL broker types ({', '.join(broker_types)})")
+            print(f"Clean Mode: {'ENABLED' if clean else 'DISABLED'}")
+            print("="*80 + "\n")
+        else:
+            broker_types = [broker_type]
+            print("\n" + "="*80)
+            print(f"🔄 Bar Rendering (broker_type: {broker_type})")
+            print("="*80)
+            print(
+                f"Clean Mode: {'ENABLED (delete all bars first)' if clean else 'DISABLED (skip symbols without ticks)'}")
+            print("="*80 + "\n")
 
         try:
             bar_importer = BarImporter()
+
             bar_importer.render_bars_for_all_symbols(
-                broker_type=broker_type,
+                broker_types=broker_types,
                 clean_mode=clean
             )
 
-            # Rebuild index after rendering
-            print("\n🔄 Rebuilding bar index...")
-            self.index_manager.build_index(force_rebuild=True)
-
-            # Rebuild all discovery caches
-            print("\n🔄 Rebuilding discovery caches...")
-            DiscoveryCacheManager().rebuild_all(force=True)
+            # Rebuild index and caches once after all rendering
+            bar_importer.update_bar_index()
 
             print("\n✅ Bar rendering completed!")
             print("="*80 + "\n")
@@ -255,10 +267,15 @@ def main():
     render_parser = subparsers.add_parser(
         'render', help='Render bars from tick data')
     render_parser.add_argument(
-        'broker_type', help='Broker type identifier')
+        'broker_type', nargs='?', default=None,
+        help='Broker type identifier (omit when using --all)')
     render_parser.add_argument(
         '--clean', action='store_true', default=False,
         help='Delete existing bars before rendering')
+    render_parser.add_argument(
+        '--all', action='store_true', default=False,
+        dest='render_all',
+        help='Render all known broker types from market_config')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -282,7 +299,14 @@ def main():
             cli.cmd_report()
 
         elif args.command == 'render':
-            cli.cmd_render(broker_type=args.broker_type, clean=args.clean)
+            if not args.render_all and not args.broker_type:
+                render_parser.error(
+                    'broker_type is required unless --all is used')
+            cli.cmd_render(
+                broker_type=args.broker_type,
+                clean=args.clean,
+                render_all=args.render_all
+            )
 
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")

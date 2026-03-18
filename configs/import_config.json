@@ -23,6 +23,7 @@
     },
     "processing": {
         "move_processed_files": true,
-        "auto_render_bars": true
+        "auto_render_bars": true,
+        "bar_render_workers": 16
     }
 }

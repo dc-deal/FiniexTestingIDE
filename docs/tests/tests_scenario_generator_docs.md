@@ -38,8 +38,9 @@ Both generators create their data dependencies internally. Tests use `unittest.m
 ### Region Extraction (`_extract_continuous_regions`)
 - No gaps → single region
 - SMALL/SHORT gaps → ignored (no split)
-- WEEKEND/MODERATE/LARGE gaps → region split
-- Multiple gaps → correct region count
+- WEEKEND gap → allowed, no split (professional platform behavior)
+- MODERATE/LARGE gaps → region split
+- Multiple gaps → only non-allowed gaps split (weekend gaps span across)
 - Gap at data start → region starts after gap
 
 ### Constrained Blocks (no sessions)

@@ -29,6 +29,19 @@
             "justMyCode": false
         },
         {
+            "name": "📥 Bar Render --all",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "render",
+                "--all",
+                "--clean"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "📊 Tick Data Report: mt5",
             "type": "debugpy",
             "request": "launch",
@@ -815,7 +828,8 @@
                 "tests/benchmark/",
                 "-v",
                 "--tb=short",
-                "--release-version", "dev"
+                "--release-version",
+                "dev"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

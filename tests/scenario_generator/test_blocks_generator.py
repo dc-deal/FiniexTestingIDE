@@ -62,8 +62,8 @@ class TestExtractContinuousRegions:
         assert regions[0]['start'] == start
         assert regions[0]['end'] == end
 
-    def test_weekend_gap_splits_region(self, generator_config: GeneratorConfig):
-        """WEEKEND gap splits data into two regions."""
+    def test_weekend_gap_does_not_split_region(self, generator_config: GeneratorConfig):
+        """WEEKEND gap is allowed — blocks span across it (professional platform behavior)."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 8)
@@ -74,13 +74,10 @@ class TestExtractContinuousRegions:
 
         regions = gen._extract_continuous_regions(report)
 
-        assert len(regions) == 2
+        assert len(regions) == 1
         assert regions[0]['start'] == start
-        assert regions[0]['end'] == utc(2025, 10, 3, 22)
-        assert regions[0]['following_gap'] == weekend_gap
-        assert regions[1]['start'] == utc(2025, 10, 5, 22)
-        assert regions[1]['end'] == end
-        assert regions[1]['following_gap'] is None
+        assert regions[0]['end'] == end
+        assert regions[0]['following_gap'] is None
 
     def test_moderate_gap_splits_region(self, generator_config: GeneratorConfig):
         """MODERATE gap splits data into two regions."""
@@ -113,7 +110,7 @@ class TestExtractContinuousRegions:
         assert len(regions) == 2
 
     def test_multiple_gaps_multiple_regions(self, generator_config: GeneratorConfig):
-        """Multiple interrupting gaps → correct number of regions."""
+        """Only non-allowed gaps split regions; weekend gaps are allowed."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 15)
@@ -126,7 +123,8 @@ class TestExtractContinuousRegions:
 
         regions = gen._extract_continuous_regions(report)
 
-        assert len(regions) == 4
+        # Only MODERATE gap splits — 2 WEEKEND gaps are allowed
+        assert len(regions) == 2
 
     def test_gap_at_data_start(self, generator_config: GeneratorConfig):
         """Gap starting at data start → region starts after gap."""
