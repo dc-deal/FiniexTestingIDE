@@ -2,7 +2,7 @@
 FiniexTestingIDE - Backtesting Metadata Types
 Type definitions for backtesting validation data
 
-MVP Validation Testing:
+Validation Testing:
 - Warmup validation errors
 - Bar snapshots at specific ticks
 - Expected trades from deterministic sequence

@@ -332,7 +332,7 @@ class DecisionLogicFactory:
         Supports:
         - CORE/simple_consensus → framework/decision_logic/core/simple_consensus.py
         - USER/my_strategy → decision_logic/user/my_strategy.py
-        - BLACKBOX/secret → decision_logic/blackbox/secret.pyc (Post-MVP)
+        - BLACKBOX/secret → decision_logic/blackbox/secret.pyc (Post-V1)
 
         Args:
             logic_type: Full logic type with namespace
@@ -354,7 +354,7 @@ class DecisionLogicFactory:
         """
         Dynamically load custom decision logic from USER namespace.
 
-        BLACKBOX namespace is prepared but feature-gated for Post-MVP.
+        BLACKBOX namespace is prepared but feature-gated for Post-V1.
 
         Args:
             logic_type: Full logic type (e.g., "USER/my_strategy")
@@ -375,11 +375,11 @@ class DecisionLogicFactory:
         namespace, logic_name = logic_type.split("/", 1)
 
         # ============================================
-        # BLACKBOX: Feature-gated for Post-MVP
+        # BLACKBOX: Feature-gated for Post-V1
         # ============================================
         if namespace == "BLACKBOX":
             raise NotImplementedError(
-                f"BLACKBOX decision logics are not yet implemented (Post-MVP). "
+                f"BLACKBOX decision logics are not yet implemented (Post-V1). "
                 f"Requested: {logic_type}"
             )
 

@@ -85,8 +85,8 @@ class TestEnvironmentCheck:
                 f"Debuggers add significant overhead that skews timing results.\n\n"
                 f"To get valid benchmark results:\n"
                 f"1. Stop the debugger\n"
-                f"2. Run pytest directly: pytest tests/mvp_benchmark/ -v\n"
-                f"3. Or use: python -m pytest tests/mvp_benchmark/ -v\n\n"
+                f"2. Run pytest directly: pytest tests/benchmark/ -v\n"
+                f"3. Or use: python -m pytest tests/benchmark/ -v\n\n"
                 f"Note: Other tests will continue but the report will show FAILED.\n"
                 f"{'='*60}"
             )

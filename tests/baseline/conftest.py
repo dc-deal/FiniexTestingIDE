@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - MVP Baseline Test Fixtures
-Suite-specific fixtures for mvp_backtesting_validation_test.json
+FiniexTestingIDE - Baseline Test Fixtures
+Suite-specific fixtures for backtesting_validation_test.json
 
 All extraction logic lives in tests/shared/fixture_helpers.py.
 This conftest only wires the config path and creates pytest fixtures.
@@ -33,7 +33,7 @@ from tests.shared.fixture_helpers import (
 # =============================================================================
 # CONFIG: Which scenario set does this suite run?
 # =============================================================================
-MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
+BASELINE_CONFIG = "backtesting/backtesting_validation_test.json"
 
 
 # =============================================================================
@@ -42,8 +42,8 @@ MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
 
 @pytest.fixture(scope="session")
 def batch_execution_summary() -> BatchExecutionSummary:
-    """Execute MVP backtesting scenario once per session."""
-    return run_scenario(MVP_CONFIG)
+    """Execute baseline backtesting scenario once per session."""
+    return run_scenario(BASELINE_CONFIG)
 
 
 @pytest.fixture(scope="session")
@@ -88,8 +88,8 @@ def order_history(tick_loop_results: ProcessTickLoopResult) -> List[OrderResult]
 
 @pytest.fixture(scope="session")
 def scenario_config() -> Dict[str, Any]:
-    """Load raw MVP scenario config."""
-    return load_scenario_config(MVP_CONFIG)
+    """Load raw baseline scenario config."""
+    return load_scenario_config(BASELINE_CONFIG)
 
 
 @pytest.fixture(scope="session")

@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - MVP Benchmark Throughput Tests
+FiniexTestingIDE - Benchmark Throughput Tests
 Performance regression tests against registered system baselines
 
 Tests:
@@ -15,7 +15,7 @@ import pytest
 from pathlib import Path
 from typing import Dict, Any
 
-from tests.mvp_benchmark.conftest import _save_benchmark_report
+from tests.benchmark.conftest import _save_benchmark_report
 
 
 class TestThroughputRegression:
@@ -224,7 +224,7 @@ class TestReportGeneration:
         Save benchmark report after all tests complete.
 
         This test runs last due to its name (zz_ prefix).
-        The report is saved to tests/mvp_benchmark/reports/ and should
+        The report is saved to tests/benchmark/reports/ and should
         be committed to the repository for CI validation.
 
         The report contains:

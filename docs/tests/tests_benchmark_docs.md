@@ -1,12 +1,12 @@
-# MVP Benchmark Tests Documentation
+# Benchmark Tests Documentation
 
 ## Overview
 
-The MVP benchmark test suite validates performance regression against registered system baselines. Unlike functional tests that verify correctness, these tests ensure the system performs within acceptable tolerances compared to a known baseline.
+The benchmark test suite validates performance regression against registered system baselines. Unlike functional tests that verify correctness, these tests ensure the system performs within acceptable tolerances compared to a known baseline.
 
 **Key Principle:** Performance tests are system-bound. A test passing on one system does not guarantee it passes on another. New systems can be registered by running the benchmark scenario manually and adding the results to the configuration.
 
-**Test Configuration:** `mvp_backtesting_loadtest_40_scenarios.json`
+**Test Configuration:** `backtesting_loadtest_40_scenarios.json`
 - Symbol: USDJPY
 - Account Currency: JPY (auto-detected)
 - Scenarios: 40 parallel blocks (12-hour windows, New York session)
@@ -121,7 +121,7 @@ Global benchmark settings including tolerances and validity.
 
 ```json
 {
-  "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
+  "scenario":  "backtesting/backtesting_loadtest_40_scenarios.json",
   "tolerances": {
     "ticks_per_second": { "percent": 10.0 },
     "tickrun_time_s": { "percent": 10.0 },
@@ -156,7 +156,7 @@ Registered systems with hardware specs and baseline metrics.
       },
       "baseline": {
         "created": "2026-01-07T07:12:34Z",
-        "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
+        "scenario":  "backtesting/backtesting_loadtest_40_scenarios"",
         "metrics": {
           "ticks_per_second": 49133,
           "tickrun_time_s": 30.5,
@@ -172,12 +172,12 @@ Registered systems with hardware specs and baseline metrics.
 
 ### Benchmark Scenario Structure
 
-The benchmark scenario `mvp_backtesting_loadtest_40_scenarios.json` defines 40 USDJPY trading blocks:
+The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJPY trading blocks:
 
 ```json
 {
   "version": "1.0",
-  "scenario_set_name":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
+  "scenario_set_name":  "backtesting/backtesting_loadtest_40_scenarios"",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -224,7 +224,7 @@ Use the launch configuration "🧪 Run (BENCHMARK Scenario)" but run it **withou
     "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
     "args": [
         "run",
-         "backtesting/mvp_backtesting_loadtest_40_scenarios.json"
+         "backtesting/backtesting_loadtest_40_scenarios.json"
     ],
     "console": "integratedTerminal",
     "justMyCode": false
@@ -234,7 +234,7 @@ Use the launch configuration "🧪 Run (BENCHMARK Scenario)" but run it **withou
 **Option B: CLI (Docker/Linux)**
 
 ```bash
-python python/cli/strategy_runner_cli.py run mvp_backtesting_loadtest_40_scenarios.json
+pytest tests/benchmark/ -v --release-version dev
 ```
 
 ### Step 2: Read the Executive Summary
@@ -287,7 +287,7 @@ Extract the relevant values and add a new entry:
       },
       "baseline": {
         "created": "2026-01-08T00:00:00Z",
-        "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios"",
+        "scenario":  "backtesting/backtesting_loadtest_40_scenarios"",
         "metrics": {
           "ticks_per_second": 72527,
           "tickrun_time_s": 20.6,
@@ -306,7 +306,7 @@ Extract the relevant values and add a new entry:
 Run the benchmark tests:
 
 ```bash
-pytest tests/mvp_benchmark/test_throughput_regression.py -v
+pytest tests/benchmark/test_throughput_regression.py -v
 ```
 
 **Important Notes:**
@@ -320,7 +320,7 @@ pytest tests/mvp_benchmark/test_throughput_regression.py -v
 
 ## Benchmark Report Format
 
-Reports are saved as JSON with full audit trail in `tests/mvp_benchmark/reports/`.
+Reports are saved as JSON with full audit trail in `tests/benchmark/reports/`.
 
 ```json
 {
@@ -334,7 +334,8 @@ Reports are saved as JSON with full audit trail in `tests/mvp_benchmark/reports/
     "ram_total_gb": 30.3,
     "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
   },
-  "scenario":  "backtesting/mvp_backtesting_loadtest_40_scenarios.json",
+  "release_version": "1.2.0",
+  "scenario":  "backtesting/backtesting_loadtest_40_scenarios.json",
   "debug_mode_detected": false,
   "overall_status": "PASSED",
   "metrics": [
@@ -368,6 +369,29 @@ Reports are saved as JSON with full audit trail in `tests/mvp_benchmark/reports/
 ```
 
 **Note:** If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results.
+
+---
+
+## CLI Parameters
+
+### `--release-version`
+
+Optional parameter that controls the `release_version` field in the generated JSON report. Defaults to `"dev"`.
+
+```bash
+# Development runs (default)
+pytest tests/benchmark/ -v --release-version dev
+
+# Release runs
+pytest tests/benchmark/ -v --release-version 1.2.0
+```
+
+| Value | Meaning |
+|-------|---------|
+| `"dev"` | Default. Development/testing run — not a valid release artifact |
+| `"X.Y.Z"` | Release version. Report is a valid release artifact |
+
+Reports with `"release_version": "dev"` are not valid release artifacts. For releases, always specify the actual version number.
 
 ---
 
@@ -433,10 +457,10 @@ This is achieved by:
 
 ```bash
 # Run benchmark and generate report (runs all 40 scenarios)
-pytest tests/mvp_benchmark/test_throughput_regression.py -v
+pytest tests/benchmark/test_throughput_regression.py -v --release-version dev
 
 # Commit the report
-git add tests/mvp_benchmark/reports/
+git add tests/benchmark/reports/
 git commit -m "Update benchmark report"
 ```
 
@@ -444,7 +468,7 @@ git commit -m "Update benchmark report"
 
 ```bash
 # CI only validates the certificate (fast, ~1 second, no benchmark execution)
-pytest tests/mvp_benchmark/test_benchmark_certificate.py -v
+pytest tests/benchmark/test_benchmark_certificate.py -v
 ```
 
 ### Full Local Test Suite
@@ -452,7 +476,7 @@ pytest tests/mvp_benchmark/test_benchmark_certificate.py -v
 ```bash
 # Run everything (certificate + benchmark)
 # Note: Certificate tests may skip if no report exists yet
-pytest tests/mvp_benchmark/ -v
+pytest tests/benchmark/ -v
 ```
 
 ---

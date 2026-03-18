@@ -327,7 +327,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 "      Cross-currency aggregation is not performed to avoid conversion errors.")
             print("      Each currency group shows accurate P&L in its own currency.")
             print(
-                "      For portfolio-level P&L, implement real-time conversion (Post-MVP).")
+                "      For portfolio-level P&L, implement real-time conversion (Post-V1).")
             print()
 
         print("   3. RECOMMENDATION:")

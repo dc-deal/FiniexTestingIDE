@@ -194,7 +194,7 @@ class MockBrokerAdapter(AbstractAdapter):
         **kwargs
     ) -> LimitOrder:
         """
-        Create limit order (not supported in mock MVP).
+        Create limit order (not supported in mock adapter).
 
         Args:
             symbol: Trading symbol
@@ -207,7 +207,7 @@ class MockBrokerAdapter(AbstractAdapter):
             LimitOrder object
         """
         raise NotImplementedError(
-            "MockBrokerAdapter does not support limit orders (MVP)")
+            "MockBrokerAdapter does not support limit orders")
 
     # ============================================
     # Order Validation (required by AbstractAdapter)

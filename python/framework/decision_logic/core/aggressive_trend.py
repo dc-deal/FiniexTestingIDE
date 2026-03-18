@@ -26,10 +26,10 @@ Strategy Rules:
 - Uses OR logic instead of AND (more aggressive)
 
 Trading Rules:
-- Market orders only (MVP)
+- Market orders only (V1)
 - Check free margin before trading (min 1000 EUR)
 - Fixed lot size 0.1
-- No SL/TP for MVP
+- No SL/TP for V1
 - ONE POSITION ONLY: Maximum one position at a time
 
 Position Management:
@@ -152,7 +152,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         """
         Declare required order types for this strategy.
 
-        AggressiveTrend uses only Market orders for MVP.
+        AggressiveTrend uses only Market orders for V1.
         Same as SimpleConsensus - demonstrates standardization.
 
         Returns:

@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - MVP Benchmark Test Fixtures
+FiniexTestingIDE - Benchmark Test Fixtures
 System validation and benchmark execution fixtures
 
 Provides:
@@ -23,7 +23,7 @@ from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 
-from tests.mvp_benchmark.system_fingerprint import (
+from tests.benchmark.system_fingerprint import (
     get_system_fingerprint,
     find_matching_system,
     get_git_commit,
@@ -60,6 +60,20 @@ def is_debugger_attached() -> bool:
 
 BENCHMARK_CONFIG_DIR = Path(__file__).parent / "config"
 BENCHMARK_REPORTS_DIR = Path(__file__).parent / "reports"
+
+
+# =============================================================================
+# CLI OPTIONS
+# =============================================================================
+
+def pytest_addoption(parser):
+    """Register custom CLI options for benchmark tests."""
+    parser.addoption(
+        '--release-version',
+        action='store',
+        default='dev',
+        help='Release version for benchmark report (e.g. 1.2.0). Defaults to "dev" (invalid for releases).'
+    )
 
 
 # =============================================================================
@@ -249,6 +263,7 @@ def benchmark_metrics(
 
 @pytest.fixture(scope="session")
 def benchmark_report(
+    request,
     validated_system: str,
     benchmark_config: Dict[str, Any],
     baseline_metrics: Dict[str, Any],
@@ -264,6 +279,7 @@ def benchmark_report(
     Returns:
         Complete benchmark report dict
     """
+    release_version = request.config.getoption('release_version')
     now = datetime.now(timezone.utc)
     validity_days = benchmark_config["certificate"]["validity_days"]
     valid_until = now + timedelta(days=validity_days)
@@ -334,6 +350,7 @@ def benchmark_report(
         })
 
     report = {
+        "release_version": release_version,
         "timestamp": now.isoformat(),
         "valid_until": valid_until.isoformat(),
         "git_commit": get_git_commit(),

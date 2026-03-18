@@ -119,7 +119,7 @@ class SwapFee(AbstractTradingFee):
     """
     Swap Fee - Overnight interest for holding positions.
 
-    PREPARED - Calculation deferred to Post-MVP.
+    PREPARED - Calculation deferred to Post-V1.
 
     Accumulates daily at broker rollover time (usually 00:00 server time).
     Can be positive (credit) or negative (debit) depending on interest differential.
@@ -180,20 +180,20 @@ class SwapFee(AbstractTradingFee):
         self.metadata = {
             'swap_rate_points': swap_rate_points,
             'days_held': days_held,
-            'implementation_status': 'deferred_post_mvp'
+            'implementation_status': 'deferred_post_v1'
         }
 
     def calculate_cost(self, **kwargs) -> float:
         """
         Calculate swap cost (deferred).
 
-        Post-MVP Implementation:
+        Post-V1 Implementation:
             cost = swap_rate_points * days_held * tick_value * lots
 
         Returns:
-            0.0 (deferred to Post-MVP)
+            0.0 (deferred to Post-V1)
         """
-        # TODO: Implement swap calculation Post-MVP
+        # TODO: Implement swap calculation Post-V1
         # cost = self.swap_rate_points * self.days_held * self.tick_value * self.lots
         return 0.0
 
@@ -203,7 +203,7 @@ class CommissionFee(AbstractTradingFee):
     """
     Commission Fee - Explicit broker commission.
 
-    PREPARED - Calculation deferred to Post-MVP.
+    PREPARED - Calculation deferred to Post-V1.
 
     Common in ECN brokers (e.g., IC Markets charges $7 per lot).
     Can be per-lot or percentage-based.
@@ -270,23 +270,23 @@ class CommissionFee(AbstractTradingFee):
             'mode': commission_mode,
             'rate': commission_rate,
             'side': side,
-            'implementation_status': 'deferred_post_mvp'
+            'implementation_status': 'deferred_post_v1'
         }
 
     def calculate_cost(self, **kwargs) -> float:
         """
         Calculate commission (deferred).
 
-        Post-MVP Implementation:
+        Post-V1 Implementation:
             if mode == "per_lot":
                 cost = commission_rate * lots
             elif mode == "percentage":
                 cost = order_value * (commission_rate / 100)
 
         Returns:
-            0.0 (deferred to Post-MVP)
+            0.0 (deferred to Post-V1)
         """
-        # TODO: Implement commission calculation Post-MVP
+        # TODO: Implement commission calculation Post-V1
         return 0.0
 
 

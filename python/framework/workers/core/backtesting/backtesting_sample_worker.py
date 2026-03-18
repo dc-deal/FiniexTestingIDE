@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Backtesting Sample Worker
-Worker for MVP validation testing
+Worker for validation testing
 
 Responsibilities:
 1. Validate warmup bar counts match configured requirements

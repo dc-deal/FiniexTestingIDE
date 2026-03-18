@@ -57,11 +57,11 @@ Each trade serves a specific validation purpose:
 
 ---
 
-## Architecture: What Changed vs. MVP Baseline
+## Architecture: What Changed vs. Baseline
 
 ### Decision Logic: BacktestingMultiPosition
 
-The MVP baseline uses `BacktestingDeterministic` which has a fundamental limitation: only one position can be open at a time (`len(open_positions) == 0` guard), and FLAT means "close all".
+The baseline uses `BacktestingDeterministic` which has a fundamental limitation: only one position can be open at a time (`len(open_positions) == 0` guard), and FLAT means "close all".
 
 `BacktestingMultiPosition` removes these constraints:
 
@@ -90,11 +90,11 @@ The limitation was entirely in the decision logic layer.
 
 ### Shared Fixtures (`tests/shared/fixture_helpers.py`)
 
-Both the MVP baseline and multi-position suites share the same extraction logic. Suite-specific `conftest.py` files only differ in the config path:
+Both the baseline and multi-position suites share the same extraction logic. Suite-specific `conftest.py` files only differ in the config path:
 
 ```python
-# tests/mvp_baseline/conftest.py
-MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
+# tests/baseline/conftest.py
+BASELINE_CONFIG = "backtesting/backtesting_validation_test.json"
 
 # tests/multi_position/conftest.py
 MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
@@ -220,9 +220,9 @@ Validates BacktestingMetadata tracking from the decision logic.
 
 ---
 
-### Reused Tests from MVP Baseline (37 Tests)
+### Reused Tests from Baseline (37 Tests)
 
-These test files are identical to the MVP baseline suite. They validate generic properties that must hold for ANY scenario — single or multi-position.
+These test files are identical to the baseline suite. They validate generic properties that must hold for ANY scenario — single or multi-position.
 
 | File | Tests | Validates |
 |------|-------|-----------|
@@ -242,8 +242,8 @@ These test files are identical to the MVP baseline suite. They validate generic 
 # Multi-position suite only
 pytest tests/multi_position/ -v
 
-# MVP baseline suite only
-pytest tests/mvp_baseline/ -v
+# baseline suite only
+pytest tests/baseline/ -v
 
 # All test suites
 pytest tests/ -v

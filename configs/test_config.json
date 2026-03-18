@@ -1,5 +1,5 @@
 {
-  "excluded": ["mvp_benchmark"],
+  "excluded": ["benchmark"],
   "ignored": ["shared"],
   "fail_fast": true
 }

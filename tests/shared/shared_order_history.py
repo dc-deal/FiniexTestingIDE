@@ -8,7 +8,7 @@ Validates:
 - every executed entry carries an executed_price
 - every rejected entry carries a valid RejectionReason
 
-Used by: mvp_baseline
+Used by: baseline
 Import this class into suite-specific test_order_history.py files.
 """
 

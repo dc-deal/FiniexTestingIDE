@@ -342,7 +342,7 @@ class AbstractAdapter(ABC):
             symbol: Trading symbol (e.g., "BTCUSD")
             direction: LONG or SHORT
             lots: Order size
-            order_type: Order type (MARKET for MVP)
+            order_type: Order type (MARKET for V1)
             **kwargs: Additional order parameters
 
         Returns:

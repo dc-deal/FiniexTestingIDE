@@ -20,10 +20,10 @@ Strategy Rules:
 - FLAT otherwise (no clear signal)
 
 Trading Rules:
-- Market orders only (MVP)
+- Market orders only (V1)
 - Check free margin before trading (min 1000 EUR)
 - Fixed lot size 0.1
-- No SL/TP for MVP
+- No SL/TP for V1
 - ONE POSITION ONLY: Maximum one position at a time
 
 Position Management:
@@ -178,8 +178,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         Declare required order types for this strategy.
 
-        SimpleConsensus uses only Market orders for MVP.
-        Post-MVP: Could use Limit orders for better entry prices.
+        SimpleConsensus uses only Market orders for V1.
+        Post-V1: Could use Limit orders for better entry prices.
 
         Returns:
             List containing OrderType.MARKET

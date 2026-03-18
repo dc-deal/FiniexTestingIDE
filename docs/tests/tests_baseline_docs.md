@@ -1,10 +1,10 @@
-# MVP Baseline Tests Documentation
+# Baseline Tests Documentation
 
 ## Overview
 
-The MVP baseline test suite validates the core functionality of the FiniexTestingIDE backtesting framework. All tests run against a single scenario execution using a deterministic decision logic that triggers a predefined trade sequence.
+The baseline test suite validates the core functionality of the FiniexTestingIDE backtesting framework. All tests run against a single scenario execution using a deterministic decision logic that triggers a predefined trade sequence.
 
-**Test Configuration:** `backtesting/mvp_backtesting_validation_test.json`
+**Test Configuration:** `backtesting/backtesting_validation_test.json`
 - Symbol: USDJPY
 - Account Currency: JPY (auto-detected)
 - 3 trades: 2 LONG, 1 SHORT
@@ -13,7 +13,7 @@ The MVP baseline test suite validates the core functionality of the FiniexTestin
 
 **Total Tests:** 48
 
-**Location:** `tests/mvp_baseline/`
+**Location:** `tests/baseline/`
 
 ---
 
@@ -30,9 +30,9 @@ tests/
 │   ├── __init__.py
 │   ├── fixture_helpers.py      ← Plain functions (no pytest decorators)
 │   └── shared_batch_health.py  ← TestBatchHealth (included in every suite)
-├── mvp_baseline/
+├── baseline/
 │   ├── __init__.py
-│   ├── conftest.py             ← MVP_CONFIG = "backtesting/mvp_backtesting_validation_test.json"
+│   ├── conftest.py             ← BASELINE_CONFIG = "backtesting/backtesting_validation_test.json"
 │   ├── test_bar_snapshots.py
 │   ├── test_latency_determinism.py
 │   ├── test_order_history.py
@@ -62,13 +62,13 @@ tests/
 
 ## Fixtures (conftest.py)
 
-The MVP baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpers.py`. Each fixture calls the corresponding helper function with the MVP config path.
+The baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpers.py`. Each fixture calls the corresponding helper function with the baseline config path.
 
 ### Execution Fixtures
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `batch_execution_summary` | session | Runs MVP scenario once per session via `run_scenario()` |
+| `batch_execution_summary` | session | Runs baseline scenario once per session via `run_scenario()` |
 | `process_result` | session | First scenario's ProcessResult from the batch |
 | `tick_loop_results` | session | ProcessTickLoopResult containing all execution data |
 | `scenario_config` | session | Raw JSON config loaded via `load_scenario_config()` |
@@ -233,17 +233,17 @@ Validates that warmup data was correctly loaded before tick processing.
 ## Running the Tests
 
 ```bash
-# MVP baseline suite only
-pytest tests/mvp_baseline/ -v
+# Baseline suite only
+pytest tests/baseline/ -v
 
 # All test suites (baseline + multi-position)
 pytest tests/ -v
 
 # Specific test file
-pytest tests/mvp_baseline/test_pnl_calculation.py -v
+pytest tests/baseline/test_pnl_calculation.py -v
 ```
 
-**VS Code:** Use launch configuration `🧪 Pytest (mvp_baseline)`.
+**VS Code:** Use launch configuration `🧪 Pytest (baseline)`.
 
 ---
 

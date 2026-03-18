@@ -2,7 +2,7 @@
 FiniexTestingIDE - Shared Tick Count Tests
 Reusable test classes for tick count validation across test suites.
 
-Used by: mvp_baseline, multi_position, margin_validation
+Used by: baseline, multi_position, margin_validation
 Import these classes into suite-specific test_tick_count.py files.
 """
 
