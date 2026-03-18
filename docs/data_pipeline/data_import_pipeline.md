@@ -287,7 +287,7 @@ data/test/import/
 | `get_data_finished_path()` | Finished directory path |
 | `get_move_processed_files()` | bool |
 | `get_auto_render_bars()` | bool |
-| `get_bar_render_workers()` | int (default: 1) |
+| `get_bar_render_workers()` | int (fallback: 1, see `processing.bar_render_workers` in config) |
 
 ---
 

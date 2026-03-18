@@ -101,7 +101,7 @@ def _render_symbol_worker(
 
         # === 3. RENDER BARS ===
         log_buffer.append(f"  ├─ Rendering bars...")
-        renderer = VectorizedBarRenderer(symbol, broker_type)
+        renderer = VectorizedBarRenderer(symbol, broker_type, log_buffer=log_buffer)
         all_bars = renderer.render_all_timeframes(ticks_df, fill_gaps=True)
 
         # === 4. WRITE BAR FILES ===

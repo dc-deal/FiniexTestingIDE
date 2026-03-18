@@ -13,7 +13,7 @@ Key Features:
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import json
 
 import pandas as pd
@@ -34,22 +34,46 @@ class VectorizedBarRenderer:
     Perfect for pre-rendering bars from tick data.
     """
 
-    def __init__(self, symbol: str, broker_type: str):
+    def __init__(
+        self,
+        symbol: str,
+        broker_type: str,
+        log_buffer: Optional[list[str]] = None
+    ):
         """
         Initialize renderer for a specific symbol.
 
         Args:
             symbol: Trading symbol (e.g., 'EURUSD')
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
+            log_buffer: Optional buffer for log messages (parallel rendering)
         """
         self.symbol = symbol
         self._broker_type = broker_type
+        self._log_buffer = log_buffer
         self._weekend_closure = MarketConfigManager().has_weekend_closure(broker_type)
         # Pandas resample() rules for each timeframe
         self._resample_rules = {
             tf: TimeframeConfig.get_resample_rule(tf)
             for tf in TimeframeConfig.sorted()
         }
+
+    def _log(self, level: str, message: str) -> None:
+        """
+        Route log output to buffer or global logger.
+
+        Args:
+            level: Log level ('info', 'debug', 'warning')
+            message: Log message
+        """
+        if self._log_buffer is not None:
+            self._log_buffer.append(message)
+        elif level == 'debug':
+            vLog.debug(message)
+        elif level == 'warning':
+            vLog.warning(message)
+        else:
+            vLog.info(message)
 
     def render_all_timeframes(
         self,
@@ -73,7 +97,7 @@ class VectorizedBarRenderer:
             >>> bars = renderer.render_all_timeframes(ticks_df)
             >>> m5_bars = bars['M5']  # Get M5 bars
         """
-        vLog.info(
+        self._log('info',
             f"🔧 Rendering bars for {self.symbol} from {len(ticks_df):,} ticks")
 
         # Prepare tick data for resampling
@@ -82,13 +106,13 @@ class VectorizedBarRenderer:
         # Render all timeframes
         all_bars = {}
         for timeframe in self._resample_rules.keys():
-            vLog.debug(f"  ├─ Rendering {timeframe}...")
+            self._log('debug', f"  ├─ Rendering {timeframe}...")
             bars_df = self._render_single_timeframe(
                 prepared_df, timeframe, fill_gaps)
             all_bars[timeframe] = bars_df
-            vLog.info(f"  ├─ {timeframe}: {len(bars_df):,} bars rendered")
+            self._log('info', f"  ├─ {timeframe}: {len(bars_df):,} bars rendered")
 
-        vLog.info(f"✅ All timeframes rendered for {self.symbol}")
+        self._log('info', f"✅ All timeframes rendered for {self.symbol}")
         return all_bars
 
     def _prepare_ticks_for_resampling(self, ticks_df: pd.DataFrame) -> pd.DataFrame:
@@ -264,19 +288,20 @@ class VectorizedBarRenderer:
         total_bars = len(bars_df)
         gap_percentage = (gap_count / total_bars) * 100
 
-        vLog.info(
+        self._log('info',
             f"    ├─ Gap Analysis: {gap_count:,} gaps found ({gap_percentage:.1f}% of timeline)")
 
         # Find gap ranges (consecutive gaps)
         gap_ranges = self._find_gap_ranges(bars_df, gap_mask)
 
         if gap_ranges:
-            vLog.info(f"    ├─ Gap Ranges ({len(gap_ranges)} periods):")
+            self._log('info', f"    ├─ Gap Ranges ({len(gap_ranges)} periods):")
             for gap_start, gap_end, gap_size in gap_ranges[:5]:  # Show first 5
-                vLog.info(f"    │  └─ {gap_start.strftime('%Y-%m-%d %H:%M')} → "
-                          f"{gap_end.strftime('%Y-%m-%d %H:%M')} ({gap_size} bars)")
+                self._log('info',
+                    f"    │  └─ {gap_start.strftime('%Y-%m-%d %H:%M')} → "
+                    f"{gap_end.strftime('%Y-%m-%d %H:%M')} ({gap_size} bars)")
             if len(gap_ranges) > 5:
-                vLog.info(
+                self._log('info',
                     f"    │     ... and {len(gap_ranges) - 5} more gap ranges")
 
         # === FILL GAPS ===
@@ -310,7 +335,7 @@ class VectorizedBarRenderer:
         synthetic_count = gap_mask.sum()
 
         # === LOGGING: Fill Summary ===
-        vLog.info(
+        self._log('info',
             f"    ├─ Filled {synthetic_count:,} gaps with synthetic bars")
 
         # Reset index and return
@@ -351,7 +376,7 @@ class VectorizedBarRenderer:
 
         excluded_count = len(full_range) - len(filtered)
         if excluded_count > 0:
-            vLog.info(
+            self._log('info',
                 f"    ├─ Market closures: excluded {excluded_count:,} "
                 f"weekend/holiday timestamps from synthetic bar generation"
             )
