@@ -7,7 +7,7 @@ Usage:
     python python/cli/data_index_cli.py tick-data-report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
-Import configuration is driven by configs/import_config.json (with user_config override).
+Import configuration is driven by configs/import_config.json (with user_configs override).
 Offsets are applied automatically per broker_type from the offset registry.
 """
 

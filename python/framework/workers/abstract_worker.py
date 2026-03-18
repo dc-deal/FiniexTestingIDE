@@ -27,8 +27,8 @@ class AbstractWorker(ABC):
     # Type-specific required config fields
     REQUIRED_CONFIG_FIELDS = {
         WorkerType.INDICATOR: ["periods"],
-        WorkerType.API: ["endpoints"],      # Post-MVP
-        WorkerType.EVENT: ["subscriptions"]  # Post-MVP
+        WorkerType.API: ["endpoints"],      # Post-V1
+        WorkerType.EVENT: ["subscriptions"]  # Post-V1
     }
 
     def __init__(

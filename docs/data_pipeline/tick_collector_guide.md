@@ -606,7 +606,7 @@ FiniexTestingIDE
 
 ### Import Configuration
 
-UTC offsets are defined in `configs/import_config.json` (offset registry per broker_type). No CLI parameters needed — the config is leading. User overrides via `user_config/import_config.json`.
+UTC offsets are defined in `configs/import_config.json` (offset registry per broker_type). No CLI parameters needed — the config is leading. User overrides via `user_configs/import_config.json`.
 
 See [Data Import Pipeline](data_import_pipeline.md) for full configuration details.
 

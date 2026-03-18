@@ -3,7 +3,7 @@ FiniexTestingIDE - Multi-Position Test Suite (#114)
 Validates overlapping position management, hedging, and selective close.
 
 These tests are SPECIFIC to multi-position behavior.
-Generic P&L/fee/tick tests are reused from mvp_baseline/ (same fixture names).
+Generic P&L/fee/tick tests are reused from baseline/ (same fixture names).
 
 Test Groups:
 - TestConcurrentPositions: Multiple positions open simultaneously

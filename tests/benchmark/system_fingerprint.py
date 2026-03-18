@@ -146,7 +146,7 @@ def find_matching_system(
         f"\nRejection reasons:\n" + "\n".join(rejection_reasons) +
         f"\n\nTo register this system:\n"
         f"1. Run the benchmark scenario manually\n"
-        f"2. Add your system to tests/mvp_benchmark/config/reference_systems.json\n"
+        f"2. Add your system to tests/benchmark/config/reference_systems.json\n"
         f"3. Include your hardware specs and measured baseline values"
     )
 

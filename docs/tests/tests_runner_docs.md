@@ -17,7 +17,7 @@ Also available as VS Code launch config: **Pytest: Run All Core Tests**
 
 ```json
 {
-  "excluded": ["mvp_benchmark"],
+  "excluded": ["benchmark"],
   "ignored": ["shared"],
   "fail_fast": true
 }

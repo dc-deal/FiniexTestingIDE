@@ -5,13 +5,13 @@ Public interface for Decision Logic to interact with trading environment
 This is the ONLY way Decision Logics should interact with the trade executor.
 Framework code (BatchOrchestrator, Reporting) retains full executor access.
 
-MVP Design:
+V1 Design:
 - Market + Limit orders only
 - Account info queries
 - Position management
 - Order-type validation BEFORE scenario start
 
-Post-MVP:
+Post-V1:
 - Order history access
 - EventBus integration
 
@@ -22,7 +22,7 @@ ARCHITECTURE NOTE:
   the executor handles "execution details"
 
 FUTURE NOTES:
-- Tick→MS Migration: Currently delays are tick-based. Post-MVP will use millisecond-based
+- Tick→MS Migration: Currently delays are tick-based. Post-V1 will use millisecond-based
   timing with tick timestamp mapping for more realistic execution simulation.
 - FiniexAutoTrader Integration: This API serves as the interface layer for both simulated
   and live trading. When integrating FiniexAutoTrader, Decision Logics remain unchanged.
@@ -483,8 +483,8 @@ class DecisionTradingApi:
         """
         Get historical orders (executed + rejected).
 
-        Post-MVP: Will provide full order history for analysis.
-        MVP: Not implemented.
+        Post-V1: Will provide full order history for analysis.
+        V1: Not implemented.
 
         Args:
             symbol: Filter by symbol (None = all orders)
@@ -493,6 +493,6 @@ class DecisionTradingApi:
             List of OrderResult objects
         """
         raise NotImplementedError(
-            "Order history is Post-MVP feature. "
-            "Use get_open_positions() for MVP."
+            "Order history is Post-V1 feature. "
+            "Use get_open_positions() for V1."
         )

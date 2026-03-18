@@ -221,7 +221,7 @@ class AggressiveTrend(AbstractDecisionLogic):
     
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
-        return [OrderType.MARKET]  # Only market orders for MVP
+        return [OrderType.MARKET]  # Only market orders for this example
     
     def get_required_worker_instances(self) -> Dict[str, str]:
         """Declare which workers this logic needs"""

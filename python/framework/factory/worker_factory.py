@@ -410,17 +410,17 @@ class WorkerFactory:
             Worker class
 
         Raises:
-            NotImplementedError: If BLACKBOX namespace (Post-MVP feature)
+            NotImplementedError: If BLACKBOX namespace (Post-V1 feature)
             ValueError: If worker cannot be loaded
         """
         namespace, worker_name = worker_type.split("/", 1)
 
         # ============================================
-        # BLACKBOX: Post-MVP Feature Gate
+        # BLACKBOX: Post-V1 Feature Gate
         # ============================================
         if namespace == "BLACKBOX":
             raise NotImplementedError(
-                f"BlackBox workers are a Post-MVP feature.\n"
+                f"BlackBox workers are a Post-V1 feature.\n"
                 f"'{worker_type}' cannot be loaded yet.\n"
                 f"BlackBox loading will support encrypted/compiled workers "
                 f"in future releases.\n"

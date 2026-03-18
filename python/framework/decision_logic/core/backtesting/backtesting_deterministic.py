@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Backtesting Deterministic Decision Logic
-Decision logic for MVP validation testing with deterministic trade sequences
+Decision logic for validation testing with deterministic trade sequences
 
 Responsibilities:
 1. Execute deterministic trade sequence based on tick count

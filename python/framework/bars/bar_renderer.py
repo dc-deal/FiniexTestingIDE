@@ -36,7 +36,7 @@ class BarRenderer:
         - Prevents unbounded memory growth in long backtests
         - deque(maxlen) auto-trims with O(1) performance
 
-        Post-MVP: Calculate dynamically from worker requirements.
+        Post-V1: Calculate dynamically from worker requirements.
         """
         self.max_history = max_history
 

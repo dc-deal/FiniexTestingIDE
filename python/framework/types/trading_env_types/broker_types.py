@@ -54,7 +54,7 @@ class BrokerType(Enum):
     MT5_CFD = "mt5_cfd"
     MT5_CRYPTO = "mt5_crypto"
     KRAKEN_SPOT = "kraken_spot"
-    BINANCE_FUTURES = "binance_futures"  # Post-MVP
+    BINANCE_FUTURES = "binance_futures"  # Post-V1
 
 
 @dataclass(frozen=True)

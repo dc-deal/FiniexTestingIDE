@@ -1,5 +1,4 @@
 {
-    "version": "1.0",
     "description": "Registered systems with performance baselines",
     "systems": {
         "ryzen_7_8845hs_16core": {
@@ -10,12 +9,12 @@
                 "ram_minimum_gb": 28.0
             },
             "baseline": {
-                "created": "2026-01-07T07:12:34Z",
-                "scenario": "backtesting/mvp_backtesting_loadtest_40_scenarios",
+                "created": "2026-03-18T09:00:00Z",
+                "scenario": "backtesting/backtesting_loadtest_40_scenarios",
                 "metrics": {
-                    "ticks_per_second": 49133,
-                    "tickrun_time_s": 24.9,
-                    "warmup_time_s": 15.46,
+                    "ticks_per_second": 90000,
+                    "tickrun_time_s": 17.0,
+                    "warmup_time_s": 18.0,
                     "total_ticks": 1496267,
                     "scenarios_count": 40
                 }

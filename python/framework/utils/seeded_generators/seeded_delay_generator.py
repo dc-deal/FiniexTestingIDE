@@ -20,12 +20,12 @@ class SeededDelayGenerator:
     Every run with same seed produces identical delay sequence.
 
     NOTE: Currently tick-based (ticks to wait).
-    Post-MVP: Will be MS-based with tick→timestamp mapping.
+    Post-V1: Will be MS-based with tick→timestamp mapping.
 
     Args:
         seed: Random seed for reproducibility
-        min_delay: Minimum delay in ticks (MVP) / ms (Post-MVP)
-        max_delay: Maximum delay in ticks (MVP) / ms (Post-MVP)
+        min_delay: Minimum delay in ticks (V1) / ms (Post-V1)
+        max_delay: Maximum delay in ticks (V1) / ms (Post-V1)
     """
 
     def __init__(self, seed: int, min_delay: int, max_delay: int):

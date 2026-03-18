@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "scenario_set_name": "mvp_backtesting_validation_test",
+  "scenario_set_name": "backtesting_validation_test",
   "created": "2025-12-16T00:00:00.000000",
-  "description": "MVP Validation Testing - First run to verify components work",
+  "description": "Validation Testing - First run to verify components work",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {

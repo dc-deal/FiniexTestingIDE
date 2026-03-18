@@ -512,7 +512,7 @@ class AbstractTradeExecutor(ABC):
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
-                exit_fee=None,  # MVP: No exit commission
+                exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason
             )
             self.logger.debug(
@@ -525,7 +525,7 @@ class AbstractTradeExecutor(ABC):
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
-                exit_fee=None,  # MVP: No exit commission
+                exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason
             )
             self.logger.debug(
@@ -868,7 +868,7 @@ class AbstractTradeExecutor(ABC):
         Calculation Logic:
         - If Account Currency == Quote Currency: tick_value = 1.0 (no conversion)
         - If Account Currency == Base Currency: tick_value = 1.0 / current_price
-        - Cross Currency: Not supported in MVP (raises NotImplementedError)
+        - Cross Currency: Not supported in V1 (raises NotImplementedError)
         """
         if self.account_currency == symbol_spec.quote_currency:
             return 1.0
@@ -882,14 +882,14 @@ class AbstractTradeExecutor(ABC):
 
         else:
             raise NotImplementedError(
-                f"Cross-currency conversion not supported (MVP restriction): "
+                f"Cross-currency conversion not supported (V1 restriction): "
                 f"Account Currency: '{self.account_currency}', "
                 f"Symbol: {symbol_spec.symbol} "
                 f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})\n"
                 f"Supported configurations:\n"
                 f"  - Account Currency == Quote Currency (e.g., GBPUSD with USD account)\n"
                 f"  - Account Currency == Base Currency (e.g., GBPUSD with GBP account)\n"
-                f"For cross-currency, external exchange rates would be required (Post-MVP)."
+                f"For cross-currency, external exchange rates would be required (Post-V1)."
             )
 
     def _create_entry_fee(

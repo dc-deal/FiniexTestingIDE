@@ -41,7 +41,7 @@ def run_scenario(config_filename: str) -> BatchExecutionSummary:
 
     Args:
         config_filename: Config file relative to scenario_sets/ dir
-                         e.g. "mvp_backtesting_validation_test.json"
+                         e.g. "backtesting_validation_test.json"
                          or   "backtesting/multi_position_test.json"
 
     Returns:

@@ -27,7 +27,7 @@ Real brokers have two delay stages:
 We simulate both with seeded random generators to create realistic yet
 reproducible order execution patterns.
 
-Post-MVP Extensions:
+Post-V1 Extensions:
 - MS-based delays with tick timestamp mapping
 - Seeded error injection (rejections, timeouts) for stress testing
 - Partial fills with OrderBook integration

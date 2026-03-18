@@ -537,7 +537,7 @@
             "justMyCode": false
         },
         // ====================================================
-        // 🧩 PYTEST MVP VALIDATION
+        // 🧩 PYTEST VALIDATION
         // ====================================================
         {
             "name": "🧪 Run (BACKTESTING Scenario)",
@@ -546,7 +546,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "backtesting/mvp_backtesting_validation_test.json"
+                "backtesting/backtesting_validation_test.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -618,7 +618,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "mvp_backtesting_loadtest_40_scenarios.json"
+                "backtesting_loadtest_40_scenarios.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -650,12 +650,12 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: MVP Baseline (All)",
+            "name": "🧩 Pytest: Baseline (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/mvp_baseline/",
+                "tests/baseline/",
                 "-v",
                 "--tb=short"
             ],
@@ -807,14 +807,15 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: MVP Benchmark (All)",
+            "name": "🧩 Pytest: Benchmark (All)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/mvp_benchmark/",
+                "tests/benchmark/",
                 "-v",
-                "--tb=short"
+                "--tb=short",
+                "--release-version", "dev"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
