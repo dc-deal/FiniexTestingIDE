@@ -1,8 +1,8 @@
 """
-Market Analysis Types
-=====================
-Type definitions for market analysis results: volatility regimes,
-trading sessions, period analysis, and symbol-level analysis summaries.
+Market Volatility Profile Types
+================================
+Type definitions for volatility profile results: volatility regimes,
+trading sessions, volatility periods, and symbol-level profile summaries.
 """
 
 from dataclasses import dataclass
@@ -43,13 +43,13 @@ class TradingSession(Enum):
 
 
 # =============================================================================
-# ANALYSIS RESULTS
+# VOLATILITY PROFILE RESULTS
 # =============================================================================
 
 @dataclass
-class PeriodAnalysis:
+class VolatilityPeriod:
     """
-    Analysis results for a single time period.
+    Volatility profile for a single time period.
 
     Represents one hour of market data with volatility and activity metrics.
     """
@@ -107,9 +107,9 @@ class SessionSummary:
 
 
 @dataclass
-class SymbolAnalysis:
+class SymbolVolatilityProfile:
     """
-    Complete market analysis for a symbol.
+    Complete volatility profile for a symbol.
     """
     symbol: str
     timeframe: str
@@ -148,5 +148,5 @@ class SymbolAnalysis:
     # Session summaries
     session_summaries: Dict[TradingSession, SessionSummary]
 
-    # All period analyses
-    periods: List[PeriodAnalysis]
+    # All volatility periods
+    periods: List[VolatilityPeriod]

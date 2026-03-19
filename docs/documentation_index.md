@@ -48,7 +48,7 @@
 | Document | Description |
 |----------|-------------|
 | [Process Execution](process_execution_guide.md) | Subprocess architecture, ProcessPoolExecutor |
-| [Discovery System](discovery_system.md) | Market analysis, extreme moves, data coverage caching |
+| [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
 | [Stress Test System](stress_test.md) | Config-driven fault injection, seeded randomness |
 
 ## Test Suites

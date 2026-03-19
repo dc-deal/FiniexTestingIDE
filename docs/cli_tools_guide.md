@@ -6,7 +6,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  WORKFLOW                                                                   │
 │                                                                             │
-│  TickCollector (MT5) → Import → Analysis → Scenario Generation → Backtest  │
+│  TickCollector (MT5) → Import → Profiling → Scenario Generation → Backtest │
 │        ↓                 ↓         ↓              ↓                  ↓      │
 │    JSON Files      Parquet+Bars  Gaps/ATR  blocks/high_vol       Results   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -19,7 +19,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
-| `discoveries_cli.py` | Market Analysis, Discoveries & Data Coverage | analyze, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
+| `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `scenario_cli.py` | Scenarios | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
@@ -245,28 +245,28 @@ Total Symbols: 16
 
 ---
 
-## D) Market Analysis & Discoveries
+## D) Volatility Profiling & Discoveries
 
 > 📖 See [Discovery System](discovery_system.md) for architecture, cache system and details.
 
-### 📊 MARKET ANALYSIS REPORT
+### 📊 VOLATILITY PROFILE
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Disc - Analyze: mt5/GBPUSD` |
-| **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
+| **VS Code** | `🔍 Disc - Profile: mt5/GBPUSD` |
+| **CLI** | `python discoveries_cli.py profile mt5 USDJPY` |
 | **Purpose** | ATR volatility, session activity, cross-instrument ranking |
 
 Results are cached and only recalculated when source data changes.
 
 **Parameters:**
-- `--force` — Ignore cache and re-analyze
+- `--force` — Ignore cache and rebuild profile
 - `--timeframe` — Timeframe override (default: M5, non-M5 bypasses cache)
 
-Analyzes market data for strategic scenario planning:
+Builds volatility profile for strategic scenario planning:
 
 ```
-📊 MARKET ANALYSIS REPORT: GBPUSD
+📊 VOLATILITY PROFILE: GBPUSD
 Data Range:     2025-09-17 → 2026-01-02 (107 days)
 Timeframe:      M5
 
@@ -584,7 +584,7 @@ Useful for understanding the raw data structure:
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Market analysis** | `🔍 Disc - Analyze: mt5/GBPUSD` | `discoveries_cli.py analyze mt5 GBPUSD` |
+| **Volatility profile** | `🔍 Disc - Profile: mt5/GBPUSD` | `discoveries_cli.py profile mt5 GBPUSD` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
@@ -605,7 +605,7 @@ Useful for understanding the raw data structure:
          ↓
 4. Check quality:   🔍 Disc - Data Coverage: Validate All
          ↓
-5. Analyze market:  🔍 Disc - Analyze
+5. Volatility profile: 🔍 Disc - Profile
          ↓
 5b. Extreme Moves:  🔍 Disc - Extreme Moves
          ↓
@@ -626,6 +626,6 @@ The indices are stored in Parquet format (since v1.1):
 | Bar Index | `.parquet_bars_index.parquet` | Auto from `.json` |
 | Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
 | Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
-| Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility/session analysis |
+| Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility profile |
 
 Old JSON indices are automatically migrated and backed up as `.json.bak`.

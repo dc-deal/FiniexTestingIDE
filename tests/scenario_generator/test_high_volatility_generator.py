@@ -11,8 +11,8 @@ import pytest
 from datetime import timedelta
 from typing import List
 
-from python.framework.types.market_types.market_analysis_types import (
-    PeriodAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    VolatilityPeriod,
     TradingSession,
     VolatilityRegime,
 )

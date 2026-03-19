@@ -316,14 +316,14 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
-        // --- Market Analysis ---
+        // --- Volatility Profile ---
         {
-            "name": "🔍 Disc - Analyze: mt5/USDJPY",
+            "name": "🔍 Disc - Profile: mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "analyze",
+                "profile",
                 "mt5",
                 "USDJPY"
             ],
@@ -331,12 +331,12 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Disc - Analyze: kraken_spot/BTCUSD",
+            "name": "🔍 Disc - Profile: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "analyze",
+                "profile",
                 "kraken_spot",
                 "BTCUSD"
             ],

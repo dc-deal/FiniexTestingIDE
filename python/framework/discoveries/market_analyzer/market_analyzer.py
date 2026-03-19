@@ -21,10 +21,10 @@ from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.activity_volume_provider import get_activity_provider
-from python.framework.types.market_types.market_analysis_types import (
-    PeriodAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    VolatilityPeriod,
     SessionSummary,
-    SymbolAnalysis,
+    SymbolVolatilityProfile,
     TradingSession,
     VolatilityRegime,
 )
@@ -140,7 +140,7 @@ class MarketAnalyzer:
 
         # Calculate pips per day using sqrt scaling
         timeframe_minutes = TimeframeConfig.get_minutes(
-            self._config.analysis.timeframe)
+            self._config.volatility_profile.timeframe)
         bars_per_day = (24 * 60) / timeframe_minutes
         daily_atr = avg_absolute_atr * math.sqrt(bars_per_day)
 
@@ -150,14 +150,14 @@ class MarketAnalyzer:
     # MAIN ANALYSIS
     # =========================================================================
 
-    def analyze_symbol(
+    def build_profile(
         self,
         broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None
-    ) -> SymbolAnalysis:
+    ) -> SymbolVolatilityProfile:
         """
-        Perform complete market analysis for a symbol.
+        Build complete volatility profile for a symbol.
 
         Automatically filters out periods without real data (weekends, gaps).
 
@@ -167,9 +167,9 @@ class MarketAnalyzer:
             timeframe: Timeframe to analyze (default from config)
 
         Returns:
-            SymbolAnalysis with all metrics and period classifications
+            SymbolVolatilityProfile with all metrics and period classifications
         """
-        tf = timeframe or self._config.analysis.timeframe
+        tf = timeframe or self._config.volatility_profile.timeframe
 
         # Lazy load broker config for this broker_type only
         self._load_broker_config_for(broker_type)
@@ -242,7 +242,7 @@ class MarketAnalyzer:
         avg_pips_per_day = self._calculate_pips_per_day(
             symbol, avg_absolute_atr)
 
-        return SymbolAnalysis(
+        return SymbolVolatilityProfile(
             symbol=symbol,
             timeframe=tf,
             market_type=market_type,
@@ -274,7 +274,7 @@ class MarketAnalyzer:
         broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None
-    ) -> List[PeriodAnalysis]:
+    ) -> List[VolatilityPeriod]:
         """
         Get gap-filtered periods for scenario generation.
 
@@ -289,9 +289,9 @@ class MarketAnalyzer:
             timeframe: Timeframe (default from config)
 
         Returns:
-            List of PeriodAnalysis with regime classification
+            List of VolatilityPeriod with regime classification
         """
-        tf = timeframe or self._config.analysis.timeframe
+        tf = timeframe or self._config.volatility_profile.timeframe
 
         vLog.debug(f"Extracting periods for {broker_type}/{symbol} {tf}")
 
@@ -317,7 +317,7 @@ class MarketAnalyzer:
         symbol: str,
         timeframe: Optional[str] = None,
         regimes: Optional[List[VolatilityRegime]] = None
-    ) -> List[PeriodAnalysis]:
+    ) -> List[VolatilityPeriod]:
         """
         Get high-volatility periods for scenario generation.
 
@@ -367,7 +367,7 @@ class MarketAnalyzer:
         """
         Load and prepare bar data for analysis.
 
-        Shared helper for analyze_symbol() and get_periods().
+        Shared helper for build_profile() and get_periods().
 
         Args:
             broker_type: Broker type identifier
@@ -440,7 +440,7 @@ class MarketAnalyzer:
         Returns:
             Dataframe with 'atr' column added
         """
-        period = self._config.analysis.atr_period
+        period = self._config.volatility_profile.atr_period
 
         # True Range components
         high_low = df['high'] - df['low']
@@ -463,21 +463,21 @@ class MarketAnalyzer:
         self,
         df: pd.DataFrame,
         market_type: MarketType
-    ) -> List[PeriodAnalysis]:
+    ) -> List[VolatilityPeriod]:
         """
-        Analyze data grouped by time periods.
+        Classify data grouped by time periods into volatility regimes.
 
         Filters out periods without real data (synthetic-only from weekends/gaps).
 
         Args:
             df: Prepared bar dataframe
             symbol: Trading symbol
-            market_type: MarketType enum for activity calculation 
+            market_type: MarketType enum for activity calculation
 
         Returns:
-            List of PeriodAnalysis objects (only valid trading periods)
+            List of VolatilityPeriod objects (only valid trading periods)
         """
-        granularity = self._config.analysis.regime_granularity_hours
+        granularity = self._config.volatility_profile.regime_granularity_hours
 
         activity_column = self._activity_provider.get_metric_name(market_type)
 
@@ -558,7 +558,7 @@ class MarketAnalyzer:
             low = group['low'].min()
             range_pips = (high - low) * 10000  # Assuming 4-digit pairs
 
-            periods.append(PeriodAnalysis(
+            periods.append(VolatilityPeriod(
                 start_time=period_start.to_pydatetime(),
                 end_time=period_end.to_pydatetime(),
                 session=session,
@@ -604,7 +604,7 @@ class MarketAnalyzer:
         """
 
         # Relative thresholds
-        thresholds = self._config.analysis.regime_thresholds
+        thresholds = self._config.volatility_profile.regime_thresholds
 
         if ratio < thresholds[0]:
             return VolatilityRegime.VERY_LOW
@@ -623,7 +623,7 @@ class MarketAnalyzer:
 
     def _calculate_regime_distribution(
         self,
-        periods: List[PeriodAnalysis]
+        periods: List[VolatilityPeriod]
     ) -> Dict[VolatilityRegime, int]:
         """
         Calculate distribution of volatility regimes.
@@ -643,7 +643,7 @@ class MarketAnalyzer:
 
     def _calculate_session_summaries(
         self,
-        periods: List[PeriodAnalysis]
+        periods: List[VolatilityPeriod]
     ) -> Dict[TradingSession, SessionSummary]:
         """
         Calculate summary statistics per trading session.

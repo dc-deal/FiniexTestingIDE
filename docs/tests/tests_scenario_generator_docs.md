@@ -26,7 +26,7 @@ Both generators create their data dependencies internally. Tests use `unittest.m
 
 - `generator_config` — `GeneratorConfig` with short durations (2h warmup, 4h blocks) for fast tests
 - `make_gap(start, end, category)` — Creates `Gap` test objects
-- `make_period(start, regime, session, ...)` — Creates `PeriodAnalysis` test objects
+- `make_period(start, regime, session, ...)` — Creates `VolatilityPeriod` test objects
 - `make_continuous_periods(start, hours, ...)` — Creates N consecutive hourly periods
 - `mock_coverage_report(start, end, gaps)` — Configured mock `DataCoverageReport`
 - `mock_analyzer(high_vol_periods, all_periods)` — Configured mock `MarketAnalyzer`

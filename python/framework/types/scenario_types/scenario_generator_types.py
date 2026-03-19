@@ -1,7 +1,7 @@
 """
 Scenario Generator Types
 ========================
-Type definitions for market analysis and scenario generation.
+Type definitions for volatility profiling and scenario generation.
 """
 
 from dataclasses import dataclass, field
@@ -52,13 +52,13 @@ class GenerationStrategy(Enum):
 
 
 # =============================================================================
-# ANALYSIS RESULTS
+# VOLATILITY PROFILE RESULTS
 # =============================================================================
 
 @dataclass
-class PeriodAnalysis:
+class VolatilityPeriod:
     """
-    Analysis results for a single time period.
+    Volatility profile for a single time period.
 
     Represents one hour of market data with volatility and activity metrics.
     """
@@ -116,9 +116,9 @@ class SessionSummary:
 
 
 @dataclass
-class SymbolAnalysis:
+class SymbolVolatilityProfile:
     """
-    Complete market analysis for a symbol.
+    Complete volatility profile for a symbol.
     """
     symbol: str
     timeframe: str
@@ -157,8 +157,8 @@ class SymbolAnalysis:
     # Session summaries
     session_summaries: Dict[TradingSession, SessionSummary]
 
-    # All period analyses
-    periods: List[PeriodAnalysis]
+    # All volatility periods
+    periods: List[VolatilityPeriod]
 
 
 # =============================================================================
@@ -166,11 +166,11 @@ class SymbolAnalysis:
 # =============================================================================
 
 @dataclass
-class AnalysisConfig:
+class VolatilityProfileConfig:
     """
-    Configuration for market analysis.
+    Configuration for volatility profiling.
     """
-    # Analysis parameters
+    # Volatility profile parameters
     timeframe: str = "M5"
     atr_period: int = 14
     regime_granularity_hours: int = 1
@@ -213,9 +213,9 @@ class GeneratorConfig:
     """
     Complete generator configuration.
 
-    Combines analysis config with strategy-specific settings.
+    Combines volatility profile config with strategy-specific settings.
     """
-    analysis: AnalysisConfig
+    volatility_profile: VolatilityProfileConfig
     blocks: BlocksStrategyConfig
     high_volatility: HighVolatilityStrategyConfig
     cross_instrument_ranking: CrossInstrumentRankingConfig
@@ -231,19 +231,19 @@ class GeneratorConfig:
         Returns:
             GeneratorConfig instance
         """
-        analysis_data = data.get('analysis', {})
+        profile_data = data.get('volatility_profile', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
         high_vol_data = data.get('strategies', {}).get('high_volatility', {})
         ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
-            analysis=AnalysisConfig(
-                timeframe=analysis_data.get('timeframe', 'M5'),
-                atr_period=analysis_data.get('atr_period', 14),
-                regime_granularity_hours=analysis_data.get(
+            volatility_profile=VolatilityProfileConfig(
+                timeframe=profile_data.get('timeframe', 'M5'),
+                atr_period=profile_data.get('atr_period', 14),
+                regime_granularity_hours=profile_data.get(
                     'regime_granularity_hours', 1
                 ),
-                regime_thresholds=analysis_data.get(
+                regime_thresholds=profile_data.get(
                     'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
                 ),
             ),

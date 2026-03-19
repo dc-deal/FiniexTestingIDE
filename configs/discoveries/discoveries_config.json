@@ -7,7 +7,7 @@
             "moderate": 4.0
         }
     },
-    "analysis": {
+    "volatility_profile": {
         "timeframe": "M5",
         "atr_period": 14,
         "regime_granularity_hours": 1,

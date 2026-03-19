@@ -12,13 +12,13 @@ from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
 from python.framework.types.coverage_report_types import Gap, GapCategory
-from python.framework.types.market_types.market_analysis_types import (
-    PeriodAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    VolatilityPeriod,
     TradingSession,
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
-    AnalysisConfig,
+    VolatilityProfileConfig,
     BlocksStrategyConfig,
     CrossInstrumentRankingConfig,
     GeneratorConfig,
@@ -72,9 +72,9 @@ def make_period(
     tick_count: int = 1000,
     bar_count: int = 12,
     real_bar_count: int = 12
-) -> PeriodAnalysis:
+) -> VolatilityPeriod:
     """
-    Create a PeriodAnalysis object for testing. Periods are 1h blocks.
+    Create a VolatilityPeriod object for testing. Periods are 1h blocks.
 
     Args:
         start: Period start time
@@ -85,9 +85,9 @@ def make_period(
         real_bar_count: Real (non-synthetic) bar count
 
     Returns:
-        PeriodAnalysis instance
+        VolatilityPeriod instance
     """
-    return PeriodAnalysis(
+    return VolatilityPeriod(
         start_time=start,
         end_time=start + timedelta(hours=1),
         session=session,
@@ -114,7 +114,7 @@ def make_continuous_periods(
     tick_count: int = 1000,
     bar_count: int = 12,
     real_bar_count: int = 12
-) -> List[PeriodAnalysis]:
+) -> List[VolatilityPeriod]:
     """
     Create a list of continuous hourly periods.
 
@@ -128,7 +128,7 @@ def make_continuous_periods(
         real_bar_count: Real bars per period
 
     Returns:
-        List of continuous PeriodAnalysis
+        List of continuous VolatilityPeriod
     """
     return [
         make_period(
@@ -177,8 +177,8 @@ def mock_coverage_report(
 
 
 def mock_analyzer(
-    high_vol_periods: List[PeriodAnalysis],
-    all_periods: List[PeriodAnalysis]
+    high_vol_periods: List[VolatilityPeriod],
+    all_periods: List[VolatilityPeriod]
 ) -> MagicMock:
     """
     Create a mock MarketAnalyzer.
@@ -204,7 +204,7 @@ def mock_analyzer(
 def generator_config() -> GeneratorConfig:
     """Generator config with short durations for fast tests."""
     return GeneratorConfig(
-        analysis=AnalysisConfig(),
+        volatility_profile=VolatilityProfileConfig(),
         blocks=BlocksStrategyConfig(
             default_block_hours=4,
             warmup_hours=2,

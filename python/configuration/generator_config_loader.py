@@ -2,7 +2,7 @@
 Generator Configuration Loader
 Loader for generator_config.json (strategy configurations for scenario generation).
 
-Merges strategy configs from generator_config.json with analysis params
+Merges strategy configs from generator_config.json with volatility profile params
 from discoveries_config.json to build the complete GeneratorConfig.
 """
 
@@ -22,8 +22,8 @@ class GeneratorConfigLoader:
     Loader for generator configuration.
 
     Loads strategy configs from configs/generator/generator_config.json
-    and merges with analysis params from discoveries_config.json to produce
-    a complete GeneratorConfig.
+    and merges with volatility profile params from discoveries_config.json
+    to produce a complete GeneratorConfig.
     """
 
     def __init__(
@@ -45,7 +45,7 @@ class GeneratorConfigLoader:
         """
         Load and return GeneratorConfig.
 
-        Merges analysis params from discoveries_config.json with
+        Merges volatility profile params from discoveries_config.json with
         strategy configs from generator_config.json.
 
         Returns:
@@ -54,13 +54,13 @@ class GeneratorConfigLoader:
         # Load strategy configs
         generator_data = self._load()
 
-        # Load analysis params (analysis, cross_instrument_ranking)
-        analysis_data = DiscoveriesConfigLoader().get_config_raw()
+        # Load volatility profile params (volatility_profile, cross_instrument_ranking)
+        profile_data = DiscoveriesConfigLoader().get_config_raw()
 
-        # Merge: analysis params + strategy configs
+        # Merge: volatility profile params + strategy configs
         merged = {
-            'analysis': analysis_data.get('analysis', {}),
-            'cross_instrument_ranking': analysis_data.get(
+            'volatility_profile': profile_data.get('volatility_profile', {}),
+            'cross_instrument_ranking': profile_data.get(
                 'cross_instrument_ranking', {}
             ),
             'strategies': generator_data.get('strategies', {}),

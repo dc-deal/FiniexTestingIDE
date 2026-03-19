@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
 from python.framework.types.market_types.market_config_types import MarketType
-from python.framework.types.market_types.market_analysis_types import (
+from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
 )
@@ -84,15 +84,15 @@ class ScenarioGenerator:
 
         symbol = symbols[0]
 
-        # Analyze the symbol (for metadata)
-        analysis = self._analyzer.analyze_symbol(broker_type, symbol)
+        # Build volatility profile (for metadata)
+        profile = self._analyzer.build_profile(broker_type, symbol)
 
         # Warn: session filter on non-forex markets (no real sessions, time-of-day only)
-        if sessions_filter and analysis.market_type != MarketType.FOREX:
+        if sessions_filter and profile.market_type != MarketType.FOREX:
             vLog.warning(
                 f"⚠️ Session filter {sessions_filter} used with "
-                f"{analysis.market_type.value} market. "
-                f"{analysis.market_type.value.capitalize()} has no defined trading sessions — "
+                f"{profile.market_type.value} market. "
+                f"{profile.market_type.value.capitalize()} has no defined trading sessions — "
                 f"filter acts as time-of-day separation only."
             )
 

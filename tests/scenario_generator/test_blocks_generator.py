@@ -12,7 +12,7 @@ from datetime import timedelta
 from unittest.mock import patch, MagicMock
 
 from python.framework.types.coverage_report_types import GapCategory
-from python.framework.types.market_types.market_analysis_types import (
+from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
 )

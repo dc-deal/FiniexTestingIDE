@@ -15,8 +15,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
-from python.framework.types.market_types.market_analysis_types import (
-    PeriodAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    VolatilityPeriod,
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
@@ -192,8 +192,8 @@ class HighVolatilityGenerator:
         self,
         broker_type: str,
         symbol: str,
-        high_vol_period: PeriodAnalysis,
-        all_periods: List[PeriodAnalysis],
+        high_vol_period: VolatilityPeriod,
+        all_periods: List[VolatilityPeriod],
         block_hours: int,
         warmup_hours: int,
         min_real_bar_ratio: float,
@@ -308,7 +308,7 @@ class HighVolatilityGenerator:
         self,
         window_start: datetime,
         window_end: datetime,
-        periods: List[PeriodAnalysis]
+        periods: List[VolatilityPeriod]
     ) -> Optional[str]:
         """
         Check if time window has gaps (missing periods).
