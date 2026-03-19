@@ -1,5 +1,5 @@
 {
-    "gap_detection": {
+    "data_coverage": {
         "enabled": true,
         "granularity": "M1",
         "thresholds": {

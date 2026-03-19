@@ -73,11 +73,11 @@ class DataCoverageReport:
         Detects both file-to-file gaps and intra-file gaps (via bars).
 
         Args:
-            config: Optional gap detection config with:
-                - gap_detection.enabled (bool)
-                - gap_detection.granularity (str, default 'M5')
-                - gap_detection.thresholds.short (float, default 0.5)
-                - gap_detection.thresholds.moderate (float, default 4.0)
+            config: Optional data coverage config with:
+                - data_coverage.enabled (bool)
+                - data_coverage.granularity (str, default 'M5')
+                - data_coverage.thresholds.short (float, default 0.5)
+                - data_coverage.thresholds.moderate (float, default 4.0)
         """
         # Detect intra-file gaps if data_dir and config provided
         intra_gaps = self._detect_gaps_from_bars()
@@ -106,7 +106,7 @@ class DataCoverageReport:
         config = alysis_config.get_config_raw()
 
         # Get configuration
-        gap_config = config.get('gap_detection', {})
+        gap_config = config.get('data_coverage', {})
         granularity = gap_config.get('granularity', 'M5')
         thresholds = gap_config.get(
             'thresholds', {'short': 0.5, 'moderate': 4.0})

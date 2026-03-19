@@ -439,7 +439,7 @@ The market closure behavior is controlled by `market_config.json` → `market_ru
 
 ### Gap Detection
 
-Gap detection (`DataCoverageReport`) uses timestamp jumps between consecutive bars at the configured granularity (`discoveries_config.json` → `gap_detection.granularity`, default: M1). Gaps are classified via `MarketCalendar`:
+Gap detection (`DataCoverageReport`) uses timestamp jumps between consecutive bars at the configured granularity (`discoveries_config.json` → `data_coverage.granularity`, default: M1). Gaps are classified via `MarketCalendar`:
 
 - **WEEKEND / HOLIDAY** — expected market closure, allowed by default
 - **SHORT** (< 30 min) — minor interruption, allowed by default
