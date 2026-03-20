@@ -146,7 +146,7 @@ JSON files in `configs/generator_profiles/`. Human-readable but must not be manu
 | **continuous** | Single block, full time range per symbol | P&L correctness, no splitting artifacts |
 | **volatility_split** | Splits at ATR minima (low-volatility points) | Parallelism within symbol, minimal split cost |
 
-The generator **consumes** `MarketAnalyzer` output (volatility profiles, ATR data from `discoveries_config.json`) — it does NOT compute volatility itself.
+The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profiles, ATR data from `discoveries_config.json`) — it does NOT compute volatility itself.
 
 ### Discovery Fingerprints
 

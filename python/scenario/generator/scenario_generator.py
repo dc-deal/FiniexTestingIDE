@@ -7,7 +7,8 @@ Coordinates analysis and dispatches to strategy-specific generators.
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
+from python.configuration.generator_config_loader import GeneratorConfigLoader
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
 from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
@@ -33,9 +34,9 @@ class ScenarioGenerator:
     """
 
     def __init__(self):
-        """Initialize scenario generator with market analyzer and strategy generators."""
-        self._analyzer = MarketAnalyzer()
-        self._config = self._analyzer.get_config()
+        """Initialize scenario generator with volatility profile analyzer and strategy generators."""
+        self._analyzer = VolatilityProfileAnalyzer()
+        self._config = GeneratorConfigLoader().get_generator_config()
 
         # Initialize strategy generator
         self._blocks_gen = BlocksGenerator(self._config)

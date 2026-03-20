@@ -18,9 +18,7 @@ from python.framework.types.market_types.market_volatility_profile_types import 
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
-    VolatilityProfileConfig,
     BlocksStrategyConfig,
-    CrossInstrumentRankingConfig,
     GeneratorConfig,
 )
 
@@ -183,12 +181,10 @@ def mock_coverage_report(
 def generator_config() -> GeneratorConfig:
     """Generator config with short durations for fast tests."""
     return GeneratorConfig(
-        volatility_profile=VolatilityProfileConfig(),
         blocks=BlocksStrategyConfig(
             default_block_hours=4,
             min_block_hours=1,
             extend_blocks_beyond_session=True,
             min_real_bar_ratio=0.5
         ),
-        cross_instrument_ranking=CrossInstrumentRankingConfig()
     )

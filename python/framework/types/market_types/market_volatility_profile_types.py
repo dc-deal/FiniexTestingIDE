@@ -1,11 +1,11 @@
 """
 Market Volatility Profile Types
 ================================
-Type definitions for volatility profile results: volatility regimes,
+Type definitions for volatility profiling: configuration, volatility regimes,
 trading sessions, volatility periods, and symbol-level profile summaries.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
@@ -29,6 +29,11 @@ class VolatilityRegime(Enum):
         """String representation returns the enum value"""
         return self.value
 
+    @property
+    def short_label(self) -> str:
+        """Short label for compact display (VL, L, M, H, VH)."""
+        return _REGIME_SHORT_LABELS[self]
+
 
 class TradingSession(Enum):
     """Trading session identifiers."""
@@ -40,6 +45,53 @@ class TradingSession(Enum):
     def __str__(self) -> str:
         """String representation returns the enum value"""
         return self.value
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable session name."""
+        return _SESSION_DISPLAY_NAMES[self]
+
+
+_REGIME_SHORT_LABELS = {
+    VolatilityRegime.VERY_LOW: 'VL',
+    VolatilityRegime.LOW: 'L',
+    VolatilityRegime.MEDIUM: 'M',
+    VolatilityRegime.HIGH: 'H',
+    VolatilityRegime.VERY_HIGH: 'VH',
+}
+
+_SESSION_DISPLAY_NAMES = {
+    TradingSession.SYDNEY_TOKYO: 'Asian (Sydney/Tokyo)',
+    TradingSession.LONDON: 'London',
+    TradingSession.NEW_YORK: 'New York',
+    TradingSession.TRANSITION: 'Transition',
+}
+
+
+# =============================================================================
+# VOLATILITY PROFILE CONFIG
+# =============================================================================
+
+@dataclass
+class VolatilityProfileConfig:
+    """
+    Configuration for volatility profiling.
+    """
+    # Volatility profile parameters
+    timeframe: str = "M5"
+    atr_period: int = 14
+    regime_granularity_hours: int = 1
+
+    # Regime thresholds (percentiles)
+    regime_thresholds: List[int] = field(
+        default_factory=lambda: [20, 40, 60, 80]
+    )
+
+
+@dataclass
+class CrossInstrumentRankingConfig:
+    """Configuration for cross-instrument comparison ranking."""
+    top_count: int = 3
 
 
 # =============================================================================

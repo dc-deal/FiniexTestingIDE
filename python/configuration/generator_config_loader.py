@@ -1,16 +1,12 @@
 """
 Generator Configuration Loader
 Loader for generator_config.json (strategy configurations for scenario generation).
-
-Merges strategy configs from generator_config.json with volatility profile params
-from discoveries_config.json to build the complete GeneratorConfig.
 """
 
 import json
 from pathlib import Path
 from typing import Any, Dict
 
-from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
 
@@ -21,9 +17,7 @@ class GeneratorConfigLoader:
     """
     Loader for generator configuration.
 
-    Loads strategy configs from configs/generator/generator_config.json
-    and merges with volatility profile params from discoveries_config.json
-    to produce a complete GeneratorConfig.
+    Loads strategy configs from configs/generator/generator_config.json.
     """
 
     def __init__(
@@ -45,28 +39,11 @@ class GeneratorConfigLoader:
         """
         Load and return GeneratorConfig.
 
-        Merges volatility profile params from discoveries_config.json with
-        strategy configs from generator_config.json.
-
         Returns:
             GeneratorConfig instance
         """
-        # Load strategy configs
         generator_data = self._load()
-
-        # Load volatility profile params (volatility_profile, cross_instrument_ranking)
-        profile_data = DiscoveriesConfigLoader().get_config_raw()
-
-        # Merge: volatility profile params + strategy configs
-        merged = {
-            'volatility_profile': profile_data.get('volatility_profile', {}),
-            'cross_instrument_ranking': profile_data.get(
-                'cross_instrument_ranking', {}
-            ),
-            'strategies': generator_data.get('strategies', {}),
-        }
-
-        return GeneratorConfig.from_dict(merged)
+        return GeneratorConfig.from_dict(generator_data)
 
     def _load(self) -> Dict[str, Any]:
         """

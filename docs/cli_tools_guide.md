@@ -253,8 +253,8 @@ Total Symbols: 16
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Disc - Profile: mt5/GBPUSD` |
-| **CLI** | `python discoveries_cli.py profile mt5 USDJPY` |
+| **VS Code** | `🔍 Disc - Volatility Profile: mt5/USDJPY` |
+| **CLI** | `python discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Purpose** | ATR volatility, session activity, cross-instrument ranking |
 
 Results are cached and only recalculated when source data changes.
@@ -560,7 +560,7 @@ Useful for understanding the raw data structure:
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Volatility profile** | `🔍 Disc - Profile: mt5/GBPUSD` | `discoveries_cli.py profile mt5 GBPUSD` |
+| **Volatility profile** | `🔍 Disc - Volatility Profile: mt5/USDJPY` | `discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
@@ -601,6 +601,6 @@ The indices are stored in Parquet format (since v1.1):
 | Bar Index | `.parquet_bars_index.parquet` | Auto from `.json` |
 | Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
 | Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
-| Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility profile |
+| Volatility Profile Cache | `.discovery_caches/volatility_profile_cache/*.parquet` | Volatility profile |
 
 Old JSON indices are automatically migrated and backed up as `.json.bak`.

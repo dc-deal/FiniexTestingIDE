@@ -1,11 +1,10 @@
 """
-Market Report
-=============
+Volatility Profile Report
+===========================
 Single symbol volatility profile report generator.
 """
 
-from typing import Dict
-
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
     SymbolVolatilityProfile,
@@ -23,6 +22,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
         profile: SymbolVolatilityProfile results
     """
     activity_provider = get_activity_provider()
+    market_rules = MarketConfigManager().get_market_rules(profile.market_type)
 
     # Header
     print("\n" + "=" * 60)
@@ -35,6 +35,10 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
     print(f"Timeframe:      {profile.timeframe}")
     print(f"Market Type:    {profile.market_type.value}")
     print(f"Data Source:    {profile.data_source}")
+    if market_rules.has_trading_sessions:
+        print(f"Sessions:       Yes")
+    else:
+        print(f"Sessions:       No (time-of-day separation only)")
 
     # Divider
     print("\n" + "─" * 60)
@@ -80,28 +84,15 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
 
     # Session statistics with regime distribution
     print("\n" + "─" * 60)
-    print("📊 SESSION ACTIVITY")
+    if market_rules.has_trading_sessions:
+        print("📊 SESSION ACTIVITY")
+    else:
+        print("📊 TIME-OF-DAY ACTIVITY")
     print("─" * 60)
 
     activity_label = activity_provider.get_metric_label(
         profile.market_type
     ).lower()
-
-    session_names = {
-        TradingSession.SYDNEY_TOKYO: "Asian (Sydney/Tokyo)",
-        TradingSession.LONDON: "London",
-        TradingSession.NEW_YORK: "New York",
-        TradingSession.TRANSITION: "Transition",
-    }
-
-    # Short regime labels for compact display
-    regime_short = {
-        VolatilityRegime.VERY_LOW: "VL",
-        VolatilityRegime.LOW: "L",
-        VolatilityRegime.MEDIUM: "M",
-        VolatilityRegime.HIGH: "H",
-        VolatilityRegime.VERY_HIGH: "VH",
-    }
 
     for session in TradingSession:
         if session not in profile.session_summaries:
@@ -115,7 +106,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
         session_rem_hours = session_hours % 24
 
         print(
-            f"\n   {session_names[session]} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
+            f"\n   {session.display_name} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
         print(f"      Total ticks:    {summary.total_ticks:,}")
 
         # Show volume for crypto markets
@@ -134,7 +125,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
                 regime_count = summary.regime_distribution.get(regime, 0)
                 regime_pct = (regime_count / summary.period_count) * 100
                 regime_parts.append(
-                    f"{regime_short[regime]}: {regime_pct:.0f}%")
+                    f"{regime.short_label}: {regime_pct:.0f}%")
             print(f"      Regimes:        {' | '.join(regime_parts)}")
 
     # Data quality

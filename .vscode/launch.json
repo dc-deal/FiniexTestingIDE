@@ -318,12 +318,12 @@
         },
         // --- Volatility Profile ---
         {
-            "name": "🔍 Disc - Profile: mt5/USDJPY",
+            "name": "🔍 Disc - Volatility Profile: mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "profile",
+                "volatility-profile",
                 "mt5",
                 "USDJPY"
             ],
@@ -331,12 +331,12 @@
             "justMyCode": false
         },
         {
-            "name": "🔍 Disc - Profile: kraken_spot/BTCUSD",
+            "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "profile",
+                "volatility-profile",
                 "kraken_spot",
                 "BTCUSD"
             ],
@@ -456,9 +456,7 @@
                 "--block-size",
                 "12",
                 "--count",
-                "40",
-                "--sessions",
-                "new_york"
+                "40"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -475,9 +473,7 @@
                 "--block-size",
                 "16",
                 "--count",
-                "8",
-                "--sessions",
-                "new_york"
+                "8"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

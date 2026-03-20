@@ -1,20 +1,18 @@
 """
-Market Analyzer
-===============
+Volatility Profile Analyzer
+=============================
 Analyzes bar data for volatility regimes, tick density, and session patterns.
-Used by scenario generator to select optimal time periods.
+Used by scenario generator and discovery system for market profiling.
 """
 
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import json
+from typing import Dict, List, Optional
 import math
 
 import numpy as np
 import pandas as pd
 
-from python.configuration.generator_config_loader import GeneratorConfigLoader
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
@@ -23,12 +21,12 @@ from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.market_types.market_volatility_profile_types import (
     VolatilityPeriod,
+    VolatilityProfileConfig,
     SessionSummary,
     SymbolVolatilityProfile,
     TradingSession,
     VolatilityRegime,
 )
-from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
@@ -36,9 +34,9 @@ from python.framework.utils.market_session_utils import get_session_from_utc_hou
 vLog = get_global_logger()
 
 
-class MarketAnalyzer:
+class VolatilityProfileAnalyzer:
     """
-    Analyzes market data for scenario generation.
+    Analyzes market data for volatility profiling.
 
     Performs on-the-fly analysis of bar data to classify time periods
     by volatility regime, tick density, and trading session.
@@ -46,17 +44,9 @@ class MarketAnalyzer:
     Filters out synthetic-only periods (weekends, gaps) automatically.
     """
 
-    def __init__(
-        self,
-        data_dir: str = "./data/processed"
-    ):
-        """
-        Initialize market analyzer.
-
-        Args:
-            data_dir: Path to processed data directory
-        """
-        self._config = GeneratorConfigLoader().get_generator_config()
+    def __init__(self):
+        """Initialize volatility profile analyzer."""
+        self._config = DiscoveriesConfigLoader().get_volatility_profile_config()
         self._activity_provider = get_activity_provider()
 
         # Initialize bar index
@@ -70,8 +60,8 @@ class MarketAnalyzer:
         # MarketConfigManager for broker paths
         self._market_config = MarketConfigManager()
 
-    def get_config(self) -> GeneratorConfig:
-        """Get current configuration."""
+    def get_volatility_profile_config(self) -> VolatilityProfileConfig:
+        """Get current volatility profile configuration."""
         return self._config
 
     def _load_broker_config_for(self, broker_type: str) -> None:
@@ -140,7 +130,7 @@ class MarketAnalyzer:
 
         # Calculate pips per day using sqrt scaling
         timeframe_minutes = TimeframeConfig.get_minutes(
-            self._config.volatility_profile.timeframe)
+            self._config.timeframe)
         bars_per_day = (24 * 60) / timeframe_minutes
         daily_atr = avg_absolute_atr * math.sqrt(bars_per_day)
 
@@ -169,7 +159,7 @@ class MarketAnalyzer:
         Returns:
             SymbolVolatilityProfile with all metrics and period classifications
         """
-        tf = timeframe or self._config.volatility_profile.timeframe
+        tf = timeframe or self._config.timeframe
 
         # Lazy load broker config for this broker_type only
         self._load_broker_config_for(broker_type)
@@ -291,7 +281,7 @@ class MarketAnalyzer:
         Returns:
             List of VolatilityPeriod with regime classification
         """
-        tf = timeframe or self._config.volatility_profile.timeframe
+        tf = timeframe or self._config.timeframe
 
         vLog.debug(f"Extracting periods for {broker_type}/{symbol} {tf}")
 
@@ -440,7 +430,7 @@ class MarketAnalyzer:
         Returns:
             Dataframe with 'atr' column added
         """
-        period = self._config.volatility_profile.atr_period
+        period = self._config.atr_period
 
         # True Range components
         high_low = df['high'] - df['low']
@@ -477,7 +467,7 @@ class MarketAnalyzer:
         Returns:
             List of VolatilityPeriod objects (only valid trading periods)
         """
-        granularity = self._config.volatility_profile.regime_granularity_hours
+        granularity = self._config.regime_granularity_hours
 
         activity_column = self._activity_provider.get_metric_name(market_type)
 
@@ -604,7 +594,7 @@ class MarketAnalyzer:
         """
 
         # Relative thresholds
-        thresholds = self._config.volatility_profile.regime_thresholds
+        thresholds = self._config.regime_thresholds
 
         if ratio < thresholds[0]:
             return VolatilityRegime.VERY_LOW

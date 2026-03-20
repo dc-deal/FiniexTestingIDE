@@ -1,12 +1,17 @@
 """
 Discoveries Configuration Loader
-Simple loader for discoveries_config.json
+Simple loader for discoveries_config.json with typed accessors.
 """
 
 import json
 from pathlib import Path
 from typing import Any, Dict
+
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.market_types.market_volatility_profile_types import (
+    CrossInstrumentRankingConfig,
+    VolatilityProfileConfig,
+)
 
 vLog = get_global_logger()
 
@@ -38,6 +43,35 @@ class DiscoveriesConfigLoader:
         Load Config
         """
         return self._load()
+
+    def get_volatility_profile_config(self) -> VolatilityProfileConfig:
+        """
+        Get typed volatility profile configuration.
+
+        Returns:
+            VolatilityProfileConfig instance
+        """
+        data = self.config.get('volatility_profile', {})
+        return VolatilityProfileConfig(
+            timeframe=data.get('timeframe', 'M5'),
+            atr_period=data.get('atr_period', 14),
+            regime_granularity_hours=data.get('regime_granularity_hours', 1),
+            regime_thresholds=data.get(
+                'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
+            ),
+        )
+
+    def get_cross_instrument_ranking_config(self) -> CrossInstrumentRankingConfig:
+        """
+        Get typed cross-instrument ranking configuration.
+
+        Returns:
+            CrossInstrumentRankingConfig instance
+        """
+        data = self.config.get('cross_instrument_ranking', {})
+        return CrossInstrumentRankingConfig(
+            top_count=data.get('top_count', 3)
+        )
 
     def _load(self) -> Dict[str, Any]:
         """
