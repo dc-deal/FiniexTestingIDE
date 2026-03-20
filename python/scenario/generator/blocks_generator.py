@@ -169,15 +169,17 @@ class BlocksGenerator:
                 f"({(s.end_time - s.start_time).total_seconds()/3600:.1f}h) [{s.session.value}]"
             )
 
+        # Track total before truncation
+        total_generated = len(scenarios)
+
         # Apply count_max limit if specified
-        if count_max and len(scenarios) > count_max:
-            total_generated = len(scenarios)
+        if count_max and total_generated > count_max:
             scenarios = scenarios[:count_max]
             vLog.info(
                 f"Limited to {count_max} blocks (from {total_generated})")
-        elif count_max and len(scenarios) < count_max:
+        elif count_max and total_generated < count_max:
             vLog.warning(
-                f"⚠️ Requested {count_max} blocks, generated {len(scenarios)}. "
+                f"⚠️ Requested {count_max} blocks, generated {total_generated}. "
                 f"Insufficient data coverage for session filter / block size."
             )
 
@@ -188,7 +190,7 @@ class BlocksGenerator:
         # Generation summary
         self._print_generation_summary(
             symbol, broker_type, block_hours, continuous_regions, scenarios,
-            generation_warnings
+            generation_warnings, total_generated
         )
 
         return scenarios
@@ -251,8 +253,8 @@ class BlocksGenerator:
             if remaining_hours < min_block_hours:
                 local_counter += 1
                 gap_info = self._get_gap_info(region)
-                vLog.warning(
-                    f"⚠️ Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
+                vLog.debug(
+                    f"Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
                     f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {region_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
                     f"   Reason: Below minimum block duration{gap_info}"
                 )
@@ -264,8 +266,8 @@ class BlocksGenerator:
                 # Last block - shorter than target
                 block_end = region_end
                 gap_info = self._get_gap_info(region)
-                vLog.warning(
-                    f"⚠️ Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
+                vLog.debug(
+                    f"Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
                     f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {block_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
                     f"   Reason: End of continuous data region{gap_info}"
                 )
@@ -336,8 +338,8 @@ class BlocksGenerator:
                 if remaining_hours < min_block_hours:
                     local_counter += 1
                     gap_info = self._get_gap_info(region)
-                    vLog.warning(
-                        f"⚠️ Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
+                    vLog.debug(
+                        f"Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
                         f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {region_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
                         f"   Reason: Below minimum block duration{gap_info}"
                     )
@@ -348,8 +350,8 @@ class BlocksGenerator:
                 if remaining_hours < block_hours:
                     block_end = region_end
                     gap_info = self._get_gap_info(region)
-                    vLog.warning(
-                        f"⚠️ Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
+                    vLog.debug(
+                        f"Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
                         f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {block_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
                         f"   Reason: End of continuous data region{gap_info}"
                     )
@@ -726,7 +728,8 @@ class BlocksGenerator:
         block_hours: int,
         regions: List[Dict],
         scenarios: List[ScenarioCandidate],
-        warnings: List[str]
+        warnings: List[str],
+        total_generated: int
     ) -> None:
         """
         Print structured generation summary with all warnings.
@@ -738,6 +741,7 @@ class BlocksGenerator:
             regions: Continuous data regions
             scenarios: Generated scenarios
             warnings: Collected generation warnings
+            total_generated: Total blocks before count_max truncation
         """
         interrupting_count = sum(
             1 for r in regions if r.get('preceding_gap') is not None
@@ -750,7 +754,10 @@ class BlocksGenerator:
         print(f"  Broker:      {broker_type}")
         print(f"  Block size:  {block_hours}h")
         print(f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
-        print(f"  Blocks:      {len(scenarios)}")
+        if total_generated > len(scenarios):
+            print(f"  Blocks:      {len(scenarios)} (of {total_generated} available)")
+        else:
+            print(f"  Blocks:      {len(scenarios)}")
 
         if scenarios:
             first_start = min(s.start_time for s in scenarios)
