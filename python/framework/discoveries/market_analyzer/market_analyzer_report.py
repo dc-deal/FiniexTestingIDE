@@ -152,9 +152,8 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
     print("\n" + "─" * 60)
     print("💡 GENERATION RECOMMENDATIONS")
     print("─" * 60)
-    print(f"   • Chronological:    --strategy blocks --block-size 6")
-    print(f"   • High volatility:  --strategy high_volatility --count 5")
+    print(f"   • Chronological:    --block-size 6")
     print(
-        f"\n   Run: python scenario_cli.py generate {profile.symbol} --help")
+        f"\n   Run: python python/cli/generator_cli.py generate {profile.symbol} --help")
 
     print("=" * 60 + "\n")

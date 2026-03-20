@@ -1,9 +1,10 @@
 """
-Scenario CLI
-Command-line interface for scenario generation.
+Generator CLI
+==============
+Command-line interface for block generation.
 
 Commands:
-- generate: Generate scenario configs based on analysis
+- generate: Generate scenario configs based on data coverage analysis
 """
 
 import argparse
@@ -24,9 +25,9 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-class ScenarioCli:
+class GeneratorCli:
     """
-    CLI handler for scenario generation.
+    CLI handler for block generation.
     """
 
     def __init__(self):
@@ -41,11 +42,9 @@ class ScenarioCli:
         self,
         broker_type: str,
         symbols: List[str],
-        strategy: str = 'blocks',
         count: Optional[int] = None,
         block_size: Optional[int] = None,
-        session: Optional[str] = None,
-        sessions: Optional[str] = None,  # Comma-separated sessions
+        sessions: Optional[str] = None,
         start: Optional[str] = None,
         end: Optional[str] = None,
         output: Optional[str] = None,
@@ -57,28 +56,18 @@ class ScenarioCli:
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbols: List of symbols
-            strategy: Generation strategy (blocks, high_volatility)
-            count: Number of scenarios
-            block_size: Block size in hours (for blocks strategy)
-            session: Single session filter
+            count: Number of blocks (max limit, None=all)
+            block_size: Block size in hours
             sessions: Comma-separated session filters
             start: Start date filter (ISO format)
             end: End date filter (ISO format)
             output: Output filename
             max_ticks: Max ticks per scenario
         """
-        try:
-            gen_strategy = GenerationStrategy(strategy)
-        except ValueError:
-            print(f"❌ Invalid strategy: {strategy}")
-            return
-
         # Parse session filters
         sessions_list: Optional[List[str]] = None
         if sessions:
             sessions_list = [s.strip() for s in sessions.split(',')]
-        elif session:
-            sessions_list = [session]
 
         # Parse date filters
         start_dt: Optional[datetime] = None
@@ -93,10 +82,9 @@ class ScenarioCli:
             result = generator.generate(
                 broker_type=broker_type,
                 symbols=symbols,
-                strategy=gen_strategy,
+                strategy=GenerationStrategy.BLOCKS,
                 count=count,
                 block_hours=block_size,
-                session_filter=session,
                 sessions_filter=sessions_list,
                 start_filter=start_dt,
                 end_filter=end_dt,
@@ -104,9 +92,7 @@ class ScenarioCli:
             )
 
             # Save config
-            output_file = output or self._generate_output_name(
-                symbols, gen_strategy
-            )
+            output_file = output or self._generate_output_name(symbols)
 
             saver = ScenarioGeneratorConfigSaver()
             config_path = saver.save_config(result, output_file)
@@ -119,17 +105,12 @@ class ScenarioCli:
             vLog.error(f"Generation failed: {e}")
             raise
 
-    def _generate_output_name(
-        self,
-        symbols: List[str],
-        strategy: GenerationStrategy
-    ) -> str:
+    def _generate_output_name(self, symbols: List[str]) -> str:
         """
-        Generate output filename from symbols and strategy.
+        Generate output filename from symbols.
 
         Args:
             symbols: List of symbols
-            strategy: Generation strategy
 
         Returns:
             Filename string
@@ -139,8 +120,8 @@ class ScenarioCli:
         else:
             symbol_part = f"multi_{len(symbols)}"
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
-        return f"{symbol_part}_{strategy.value}_{timestamp}.json"
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
+        return f"{symbol_part}_blocks_{timestamp}.json"
 
     def _print_generation_summary(self, result: GenerationResult, config_path: Path) -> None:
         """
@@ -150,43 +131,33 @@ class ScenarioCli:
             result: GenerationResult
             config_path: Path to saved config
         """
-        print("\n" + "=" * 60)
-        print(
-            f"✅ Generated {len(result.scenarios)} {'blocks' if result.strategy == GenerationStrategy.BLOCKS else 'scenarios'}")
-        print("=" * 60)
+        print('\n' + '=' * 60)
+        print(f"✅ Generated {len(result.scenarios)} blocks")
+        print('=' * 60)
 
         print(f"\nSymbol:     {result.symbol}")
         print(f"Strategy:   {result.strategy.value}")
 
-        if result.strategy == GenerationStrategy.BLOCKS:
-            if result.scenarios:
-                first_start = min(s.start_time for s in result.scenarios)
-                last_end = max(s.end_time for s in result.scenarios)
-                total_hours = sum(
-                    (s.end_time - s.start_time).total_seconds() / 3600
-                    for s in result.scenarios
-                )
-                avg_hours = total_hours / len(result.scenarios)
+        if result.scenarios:
+            first_start = min(s.start_time for s in result.scenarios)
+            last_end = max(s.end_time for s in result.scenarios)
+            total_hours = sum(
+                (s.end_time - s.start_time).total_seconds() / 3600
+                for s in result.scenarios
+            )
+            avg_hours = total_hours / len(result.scenarios)
 
-                print(
-                    f"Time range: {first_start.strftime('%Y-%m-%d')} → {last_end.strftime('%Y-%m-%d')}")
-                print(
-                    f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
-        else:
-            print(f"Total ticks: {result.total_estimated_ticks:,}")
-            print(f"Avg/scenario: {result.avg_ticks_per_scenario:,.0f}")
-
-            print("\nRegime coverage:")
-            for regime, count in result.regime_coverage.items():
-                if count > 0:
-                    print(f"   {regime.value}: {count}")
+            print(
+                f"Time range: {first_start.strftime('%Y-%m-%d')} → {last_end.strftime('%Y-%m-%d')}")
+            print(
+                f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
 
         print(f"\n📂 Config saved to: {config_path}")
 
         print("\nℹ️  Next steps:")
         print(f"   • View config: cat {config_path}")
         print(f"   • Run test:    python strategy_runner.py")
-        print("=" * 60 + "\n")
+        print('=' * 60 + '\n')
 
 
 # =============================================================================
@@ -196,7 +167,7 @@ class ScenarioCli:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Scenario generation CLI",
+        description='Generator CLI — block generation for backtesting scenarios',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -207,7 +178,7 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     generate_parser = subparsers.add_parser(
         'generate',
-        help='Generate scenario configurations'
+        help='Generate block-based scenario configurations'
     )
     generate_parser.add_argument(
         'broker_type',
@@ -219,36 +190,22 @@ def main():
         help='Symbols for scenarios (e.g., EURUSD GBPUSD)'
     )
     generate_parser.add_argument(
-        '--strategy',
-        type=str,
-        default='blocks',
-        choices=['blocks', 'high_volatility'],
-        help='Generation strategy (default: blocks)'
-    )
-    generate_parser.add_argument(
         '--count',
         type=int,
         default=None,
-        help='Number of scenarios. For blocks: max limit (None=all blocks)'
+        help='Max number of blocks to generate (None=all blocks)'
     )
     generate_parser.add_argument(
         '--block-size',
         type=int,
         default=None,
-        help='Max block size in hours (for blocks strategy, default: 6, min: 1)'
-    )
-    generate_parser.add_argument(
-        '--session',
-        type=str,
-        default=None,
-        choices=['sydney_tokyo', 'london', 'new_york'],
-        help='Filter by trading session'
+        help='Max block size in hours (default: 6, min: 1)'
     )
     generate_parser.add_argument(
         '--sessions',
         type=str,
         default=None,
-        help='Comma-separated sessions for blocks (e.g., sydney_tokyo,london)'
+        help='Comma-separated sessions (e.g., sydney_tokyo,london,new_york)'
     )
     generate_parser.add_argument(
         '--start',
@@ -284,16 +241,14 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    cli = ScenarioCli()
+    cli = GeneratorCli()
 
     if args.command == 'generate':
         cli.cmd_generate(
             broker_type=args.broker_type,
             symbols=args.symbols,
-            strategy=args.strategy,
             count=args.count,
             block_size=args.block_size,
-            session=args.session,
             sessions=args.sessions,
             start=args.start,
             end=args.end,

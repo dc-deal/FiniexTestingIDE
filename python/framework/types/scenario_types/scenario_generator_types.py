@@ -43,8 +43,7 @@ class TradingSession(Enum):
 
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
-    BLOCKS = "blocks"
-    HIGH_VOLATILITY = "high_volatility"
+    BLOCKS = 'blocks'
 
     def __str__(self) -> str:
         """String representation returns the enum value"""
@@ -191,21 +190,10 @@ class CrossInstrumentRankingConfig:
 class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
-    warmup_hours: int = 13  # Warmup period after interrupting gaps
     min_block_hours: int = 1  # Minimum block duration to generate
     # Allow blocks to extend past session boundaries
     extend_blocks_beyond_session: bool = True
     min_real_bar_ratio: float = 0.5
-
-
-@dataclass
-class HighVolatilityStrategyConfig:
-    """High-volatility scenario generation strategy configuration."""
-    scenario_hours: int = 6
-    warmup_hours: int = 13
-    min_real_bar_ratio: float = 0.5
-    volatility_percentile: float = 0.90
-    activity_percentile: float = 0.90
 
 
 @dataclass
@@ -217,7 +205,6 @@ class GeneratorConfig:
     """
     volatility_profile: VolatilityProfileConfig
     blocks: BlocksStrategyConfig
-    high_volatility: HighVolatilityStrategyConfig
     cross_instrument_ranking: CrossInstrumentRankingConfig
 
     @classmethod
@@ -233,7 +220,6 @@ class GeneratorConfig:
         """
         profile_data = data.get('volatility_profile', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
-        high_vol_data = data.get('strategies', {}).get('high_volatility', {})
         ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
@@ -249,21 +235,10 @@ class GeneratorConfig:
             ),
             blocks=BlocksStrategyConfig(
                 default_block_hours=blocks_data.get('default_block_hours', 6),
-                warmup_hours=blocks_data.get('warmup_hours', 13),
                 min_block_hours=blocks_data.get('min_block_hours', 1),
                 extend_blocks_beyond_session=blocks_data.get(
                     'extend_blocks_beyond_session', True),
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
-            ),
-            high_volatility=HighVolatilityStrategyConfig(
-                scenario_hours=high_vol_data.get(
-                    'scenario_hours', 6),
-                warmup_hours=high_vol_data.get('warmup_hours', 13),
-                min_real_bar_ratio=high_vol_data.get('min_real_bar_ratio', 0.5),
-                volatility_percentile=high_vol_data.get(
-                    'volatility_percentile', 0.90),
-                activity_percentile=high_vol_data.get(
-                    'activity_percentile', 0.90)
             ),
             cross_instrument_ranking=CrossInstrumentRankingConfig(
                 top_count=ranking_data.get('top_count', 3)

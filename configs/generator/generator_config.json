@@ -2,17 +2,9 @@
     "strategies": {
         "blocks": {
             "default_block_hours": 6,
-            "warmup_hours": 13,
             "min_block_hours": 1,
             "extend_blocks_beyond_session": true,
             "min_real_bar_ratio": 0.5
-        },
-        "high_volatility": {
-            "scenario_hours": 6,
-            "warmup_hours": 13,
-            "min_real_bar_ratio": 0.5,
-            "volatility_percentile": 0.90,
-            "activity_percentile": 0.90
         }
     }
 }

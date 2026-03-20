@@ -445,16 +445,14 @@
         // ⚡ SCENARIO GENERATION
         // ====================================================
         {
-            "name": "⚡ Scenario Gen. - 40 Blocks mt5/USDJPY",
+            "name": "⚡ Generator - 40 Blocks mt5/USDJPY",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
             "args": [
                 "generate",
                 "mt5",
                 "USDJPY",
-                "--strategy",
-                "blocks",
                 "--block-size",
                 "12",
                 "--count",
@@ -466,39 +464,20 @@
             "justMyCode": false
         },
         {
-            "name": "⚡ Scenario Gen. - 8 Blocks kraken_spot/BTCUSD",
+            "name": "⚡ Generator - 8 Blocks kraken_spot/BTCUSD",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
             "args": [
                 "generate",
                 "kraken_spot",
                 "BTCUSD",
-                "--strategy",
-                "blocks",
                 "--block-size",
                 "16",
                 "--count",
                 "8",
                 "--sessions",
                 "new_york"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "⚡ Scenario Gen. - 6 High Volatility - mt5/USDJPY",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/scenario_cli.py",
-            "args": [
-                "generate",
-                "mt5",
-                "USDJPY",
-                "--strategy",
-                "high_volatility",
-                "--count",
-                "6"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

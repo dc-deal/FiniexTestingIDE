@@ -22,7 +22,6 @@ from python.framework.types.scenario_types.scenario_generator_types import (
     BlocksStrategyConfig,
     CrossInstrumentRankingConfig,
     GeneratorConfig,
-    HighVolatilityStrategyConfig,
 )
 
 
@@ -176,26 +175,6 @@ def mock_coverage_report(
     return report
 
 
-def mock_analyzer(
-    high_vol_periods: List[VolatilityPeriod],
-    all_periods: List[VolatilityPeriod]
-) -> MagicMock:
-    """
-    Create a mock MarketAnalyzer.
-
-    Args:
-        high_vol_periods: Periods returned by get_high_volatility_periods()
-        all_periods: Periods returned by get_periods()
-
-    Returns:
-        Configured MagicMock
-    """
-    analyzer = MagicMock()
-    analyzer.get_high_volatility_periods.return_value = high_vol_periods
-    analyzer.get_periods.return_value = all_periods
-    return analyzer
-
-
 # =============================================================================
 # CONFIG FIXTURES
 # =============================================================================
@@ -207,17 +186,9 @@ def generator_config() -> GeneratorConfig:
         volatility_profile=VolatilityProfileConfig(),
         blocks=BlocksStrategyConfig(
             default_block_hours=4,
-            warmup_hours=2,
             min_block_hours=1,
             extend_blocks_beyond_session=True,
             min_real_bar_ratio=0.5
-        ),
-        high_volatility=HighVolatilityStrategyConfig(
-            scenario_hours=4,
-            warmup_hours=2,
-            min_real_bar_ratio=0.5,
-            volatility_percentile=0.90,
-            activity_percentile=0.90
         ),
         cross_instrument_ranking=CrossInstrumentRankingConfig()
     )

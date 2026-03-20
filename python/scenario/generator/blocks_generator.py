@@ -1,10 +1,10 @@
 """
 Blocks Strategy Generator
 ==========================
-Generates chronological time blocks with gap-aware warmup handling.
+Generates chronological time blocks with gap-aware region splitting.
 
 Features:
-- Warmup period after interrupting gaps
+- Data-start and post-gap warnings
 - Session extension support
 - Detailed gap-aware warnings with color coding
 """
@@ -37,7 +37,7 @@ class BlocksGenerator:
 
     Generates time-based blocks with intelligent handling of:
     - Data gaps (weekend, moderate, large)
-    - Worker warmup periods
+    - Data quality warnings (data-start, post-gap)
     - Session filtering with optional extension
     """
 
@@ -60,10 +60,7 @@ class BlocksGenerator:
         sessions_filter: Optional[List[str]] = None
     ) -> List[ScenarioCandidate]:
         """
-        Generate chronological blocks with warmup handling after gaps.
-
-        After interrupting gaps (MODERATE/LARGE/WEEKEND), skips warmup_hours
-        before starting scenarios. Subsequent blocks use previous blocks as warmup.
+        Generate chronological blocks from continuous data regions.
 
         If extend_blocks_beyond_session=true: Session filter defines START points only,
         blocks run full duration. If false: Blocks constrained to session windows.
@@ -99,9 +96,9 @@ class BlocksGenerator:
         # Log gap filtering info
         self._log_coverage_info(continuous_regions, data_coverage_report)
 
-        # Generate blocks from continuous regions with warmup handling
+        # Generate blocks from continuous regions
         scenarios = []
-        warmup_duration = timedelta(hours=self._config.blocks.warmup_hours)
+        generation_warnings = []
         min_block_hours = self._config.blocks.min_block_hours
         block_duration = timedelta(hours=block_hours)
         extend_beyond_session = self._config.blocks.extend_blocks_beyond_session
@@ -111,25 +108,15 @@ class BlocksGenerator:
         for region in continuous_regions:
             region_start = region['start']
             region_end = region['end']
+            scenario_start = region_start
 
-            # Skip warmup period after gap
-            scenario_start = region_start + warmup_duration
             region_duration = region_end - region_start
-            usable_duration = region_end - scenario_start
 
             vLog.debug(
                 f"Region {region_start.strftime('%Y-%m-%d %H:%M')} → "
                 f"{region_end.strftime('%Y-%m-%d %H:%M')} "
-                f"({region_duration.total_seconds()/3600:.1f}h total, "
-                f"{usable_duration.total_seconds()/3600:.1f}h after warmup)"
+                f"({region_duration.total_seconds()/3600:.1f}h)"
             )
-
-            # Check if region is too short after warmup
-            if scenario_start >= region_end:
-                vLog.warning(
-                    f"⚠️ Region too short for {self._config.blocks.warmup_hours}h warmup, skipping"
-                )
-                continue
 
             # Generate blocks based on extend_blocks_beyond_session setting
             if extend_beyond_session and allowed_sessions:
@@ -142,6 +129,34 @@ class BlocksGenerator:
                     symbol, broker_type, region, scenario_start, allowed_sessions,
                     block_duration, min_block_hours, block_hours, block_counter
                 )
+
+            # Data-start warning: first block starts at data begin
+            if (region['preceding_gap'] is None
+                    and region['start'] == data_coverage_report.start_time
+                    and scenarios_from_region):
+                first = scenarios_from_region[0]
+                msg = (
+                    f"Block #{block_counter + 1:02d} starts at data begin "
+                    f"({first.start_time.strftime('%Y-%m-%d %H:%M')} UTC) — "
+                    f"indicator warmup may be incomplete. "
+                    f"Consider --start with a later date."
+                )
+                generation_warnings.append(msg)
+                vLog.warning(f"⚠️ {msg}")
+
+            # Post-gap warning: block follows an interrupting gap
+            if region['preceding_gap'] is not None and scenarios_from_region:
+                gap = region['preceding_gap']
+                gap_name = gap.category.value.upper()
+                msg = (
+                    f"Block #{block_counter + 1:02d} follows a {gap_name} gap "
+                    f"({gap.gap_hours:.1f}h, "
+                    f"{gap.gap_start.strftime('%Y-%m-%d %H:%M')} → "
+                    f"{gap.gap_end.strftime('%Y-%m-%d %H:%M')} UTC) — "
+                    f"warmup data originates from before the gap."
+                )
+                generation_warnings.append(msg)
+                vLog.warning(f"⚠️ {msg}")
 
             scenarios.extend(scenarios_from_region)
             block_counter += len(scenarios_from_region)
@@ -170,6 +185,12 @@ class BlocksGenerator:
         if scenarios:
             self._check_final_block(scenarios, block_hours)
 
+        # Generation summary
+        self._print_generation_summary(
+            symbol, broker_type, block_hours, continuous_regions, scenarios,
+            generation_warnings
+        )
+
         return scenarios
 
     # =========================================================================
@@ -196,7 +217,7 @@ class BlocksGenerator:
         Args:
             symbol: Trading symbol
             region: Region dict with start/end/following_gap
-            scenario_start: Start time after warmup
+            scenario_start: Start time for block generation
             allowed_sessions: Set of allowed TradingSession enums
             block_duration: Target block duration
             min_block_hours: Minimum block duration
@@ -290,7 +311,7 @@ class BlocksGenerator:
         Args:
             symbol: Trading symbol
             region: Region dict with start/end/following_gap
-            scenario_start: Start time after warmup
+            scenario_start: Start time for block generation
             allowed_sessions: Set of allowed TradingSession enums (or None for all)
             block_duration: Target block duration
             min_block_hours: Minimum block duration
@@ -422,7 +443,7 @@ class BlocksGenerator:
             data_coverage_report: Coverage report with gap analysis
 
         Returns:
-            List of region dicts with 'start', 'end', 'following_gap'
+            List of region dicts with 'start', 'end', 'following_gap', 'preceding_gap'
         """
         regions = []
 
@@ -444,7 +465,8 @@ class BlocksGenerator:
             return [{
                 'start': data_coverage_report.start_time,
                 'end': data_coverage_report.end_time,
-                'following_gap': None
+                'following_gap': None,
+                'preceding_gap': None
             }]
 
         # Sort gaps by start time
@@ -453,11 +475,13 @@ class BlocksGenerator:
 
         # Build regions between gaps
         current_start = data_coverage_report.start_time
+        preceding_gap = None
 
         for gap in interrupting_gaps:
             if gap.gap_start <= current_start:
                 # Gap before or at current position
                 current_start = gap.gap_end
+                preceding_gap = gap
                 continue
 
             # End current region at gap start
@@ -467,10 +491,12 @@ class BlocksGenerator:
                 regions.append({
                     'start': current_start,
                     'end': region_end,
-                    'following_gap': gap  # Store gap info for warnings
+                    'following_gap': gap,  # Store gap info for warnings
+                    'preceding_gap': preceding_gap
                 })
 
             # Start new region after gap
+            preceding_gap = gap
             current_start = gap.gap_end
 
         # Add final region (no following gap)
@@ -479,7 +505,8 @@ class BlocksGenerator:
             regions.append({
                 'start': current_start,
                 'end': final_end,
-                'following_gap': None
+                'following_gap': None,
+                'preceding_gap': preceding_gap
             })
 
         return regions
@@ -691,3 +718,58 @@ class BlocksGenerator:
                 f"   Time: {last_block.start_time.strftime('%Y-%m-%d %H:%M')} → {last_block.end_time.strftime('%Y-%m-%d %H:%M')} UTC ({last_block.start_time.strftime('%a')})\n"
                 f"   Reason: End of available data"
             )
+
+    def _print_generation_summary(
+        self,
+        symbol: str,
+        broker_type: str,
+        block_hours: int,
+        regions: List[Dict],
+        scenarios: List[ScenarioCandidate],
+        warnings: List[str]
+    ) -> None:
+        """
+        Print structured generation summary with all warnings.
+
+        Args:
+            symbol: Trading symbol
+            broker_type: Broker type identifier
+            block_hours: Target block size
+            regions: Continuous data regions
+            scenarios: Generated scenarios
+            warnings: Collected generation warnings
+        """
+        interrupting_count = sum(
+            1 for r in regions if r.get('preceding_gap') is not None
+        )
+
+        print('\n' + '=' * 60)
+        print('  Generation Summary')
+        print('=' * 60)
+        print(f"  Symbol:      {symbol}")
+        print(f"  Broker:      {broker_type}")
+        print(f"  Block size:  {block_hours}h")
+        print(f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
+        print(f"  Blocks:      {len(scenarios)}")
+
+        if scenarios:
+            first_start = min(s.start_time for s in scenarios)
+            last_end = max(s.end_time for s in scenarios)
+            total_hours = sum(
+                (s.end_time - s.start_time).total_seconds() / 3600
+                for s in scenarios
+            )
+            print(
+                f"  Time range:  {first_start.strftime('%Y-%m-%d')} → "
+                f"{last_end.strftime('%Y-%m-%d')}"
+            )
+            print(f"  Total:       {total_hours:.0f}h")
+
+        if warnings:
+            print(f"\n  Warnings ({len(warnings)}):")
+            for w in warnings:
+                print(f"   ⚠️ {w}")
+        else:
+            print('\n  Warnings:    (none)')
+
+        print('=' * 60 + '\n')
