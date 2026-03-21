@@ -21,13 +21,14 @@ class MarketRules:
 
     Args:
         weekend_closure: True if market closes on weekends
-        has_trading_sessions: True if market has distinct trading sessions
+        session_bucketing: True if market has native trading sessions, False for
+                          24/7 markets where time-of-day bucketing applies instead
         primary_activity_metric: Primary activity metric ('tick_count' or 'volume')
         inter_tick_gap_threshold_s: Intervals longer than this (seconds) are excluded
                                     from inter-tick profiling stats (session/weekend gaps)
     """
     weekend_closure: bool
-    has_trading_sessions: bool
+    session_bucketing: bool
     primary_activity_metric: str
     inter_tick_gap_threshold_s: float = 300.0
 

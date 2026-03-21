@@ -33,6 +33,7 @@
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |
+| [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 
 ## Data Pipeline
 
@@ -48,7 +49,7 @@
 | Document | Description |
 |----------|-------------|
 | [Process Execution](process_execution_guide.md) | Subprocess architecture, ProcessPoolExecutor |
-| [Discovery System](discovery_system.md) | Market analysis, extreme moves, data coverage caching |
+| [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
 | [Stress Test System](stress_test.md) | Config-driven fault injection, seeded randomness |
 
 ## Test Suites
@@ -68,7 +69,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Worker Tests](tests/tests_worker_docs.md) | Worker framework validation |
 | [Import Pipeline](tests/tests_import_pipeline_docs.md) | Tick/bar import pipeline |
 | [Data Integration](tests/tests_data_integration_docs.md) | Data chain integration |
-| [Scenario Generator](tests/tests_scenario_generator_docs.md) | Scenario generation |
+| [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Active Order Display](tests/tests_active_order_display_docs.md) | Unresolved order reporting |
 | [USER Namespace](tests/tests_user_namespace_docs.md) | USER worker/logic discovery |
 | [Inter-Tick Interval](tests/inter_tick_interval_tests.md) | Market-side interval measurement |

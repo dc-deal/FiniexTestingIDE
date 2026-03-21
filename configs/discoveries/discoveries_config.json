@@ -1,5 +1,5 @@
 {
-    "gap_detection": {
+    "data_coverage": {
         "enabled": true,
         "granularity": "M1",
         "thresholds": {
@@ -7,7 +7,7 @@
             "moderate": 4.0
         }
     },
-    "analysis": {
+    "volatility_profile": {
         "timeframe": "M5",
         "atr_period": 14,
         "regime_granularity_hours": 1,
@@ -16,9 +16,6 @@
             0.8,
             1.2,
             1.8
-        ],
-        "broker_config_paths": [
-            "./configs/brokers/mt5/ic_markets_demo.json"
         ]
     },
     "cross_instrument_ranking": {

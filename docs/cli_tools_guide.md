@@ -6,9 +6,9 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  WORKFLOW                                                                   │
 │                                                                             │
-│  TickCollector (MT5) → Import → Analysis → Scenario Generation → Backtest  │
+│  TickCollector (MT5) → Import → Profiling → Scenario Generation → Backtest │
 │        ↓                 ↓         ↓              ↓                  ↓      │
-│    JSON Files      Parquet+Bars  Gaps/ATR  blocks/high_vol       Results   │
+│    JSON Files      Parquet+Bars  Gaps/ATR      blocks             Results   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -19,8 +19,8 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
-| `discoveries_cli.py` | Market Analysis, Discoveries & Data Coverage | analyze, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
-| `scenario_cli.py` | Scenarios | generate |
+| `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
+| `generator_cli.py` | Block Generation | generate |
 | `strategy_runner_cli.py` | Backtesting | run, list |
 
 ---
@@ -245,28 +245,28 @@ Total Symbols: 16
 
 ---
 
-## D) Market Analysis & Discoveries
+## D) Volatility Profiling & Discoveries
 
 > 📖 See [Discovery System](discovery_system.md) for architecture, cache system and details.
 
-### 📊 MARKET ANALYSIS REPORT
+### 📊 VOLATILITY PROFILE
 
 | | |
 |---|---|
-| **VS Code** | `🔍 Disc - Analyze: mt5/GBPUSD` |
-| **CLI** | `python discoveries_cli.py analyze mt5 USDJPY` |
+| **VS Code** | `🔍 Disc - Volatility Profile: mt5/USDJPY` |
+| **CLI** | `python discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Purpose** | ATR volatility, session activity, cross-instrument ranking |
 
 Results are cached and only recalculated when source data changes.
 
 **Parameters:**
-- `--force` — Ignore cache and re-analyze
+- `--force` — Ignore cache and rebuild profile
 - `--timeframe` — Timeframe override (default: M5, non-M5 bypasses cache)
 
-Analyzes market data for strategic scenario planning:
+Builds volatility profile for strategic scenario planning:
 
 ```
-📊 MARKET ANALYSIS REPORT: GBPUSD
+📊 VOLATILITY PROFILE: GBPUSD
 Data Range:     2025-09-17 → 2026-01-02 (107 days)
 Timeframe:      M5
 
@@ -355,15 +355,15 @@ LONG Extreme Moves (top 10)
 
 ## E) Scenario Generation
 
-### 📊 Scenario Generator - Blocks
+### 📊 Generator - Blocks
 
 | | |
 |---|---|
-| **VS Code** | `📊 Scenario Generator - Generate Blocks` |
-| **CLI** | `python scenario_cli.py generate USDJPY --strategy blocks --block-size 12 --count 40 --sessions new_york` |
+| **VS Code** | `⚡ Generator - 40 Blocks mt5/USDJPY` |
+| **CLI** | `python generator_cli.py generate mt5 USDJPY --block-size 12 --count 40 --sessions new_york` |
 | **Purpose** | Chronological time blocks for systematic testing |
 
-Generates consecutive time windows with configurable length. Automatically detects gaps and shortens blocks accordingly.
+Generates consecutive time windows with configurable length. Automatically detects gaps, splits regions, and warns about data-start and post-gap blocks.
 
 ```
 Filtering blocks to sessions: ['new_york']
@@ -373,62 +373,38 @@ Coverage: 1752.7h usable, 818.3h gaps filtered (20 gaps: 15 weekend, 2 holiday, 
    Time: 2025-09-26 16:00 → 2025-09-26 21:00 UTC (Fri)
    Reason: End of continuous data region - Weekend gap follows (48.0h) 🟢
 
-✅ Generated 40 blocks
-Symbol:     USDJPY
-Time range: 2025-09-18 → 2025-11-18
-Total:      415h (10.4h avg/block)
+============================================================
+  Generation Summary
+============================================================
+  Symbol:      USDJPY
+  Broker:      mt5
+  Block size:  12h
+  Regions:     4 (3 interrupting gaps)
+  Blocks:      40
 
-📂 Config saved to: configs/scenario_sets/USDJPY_blocks_20260109_0742.json
+  Warnings (2):
+   ⚠️ Block #01 starts at data begin (2025-09-18 00:00 UTC)
+   ⚠️ Block #12 follows a LARGE gap (18.3h)
+
+  Errors:      (none)
+============================================================
 ```
 
 **Parameters:**
-- `--block-size` - Target block size in hours (default: 12)
-- `--count` - Number of blocks
-- `--sessions` - Filter: `new_york`, `london`, `sydney_tokyo`
-
-### 📊 Scenario Generator - High Volatility
-
-| | |
-|---|---|
-| **VS Code** | `⚡ Scenario Gen. - 6 High Volatility - mt5/USDJPY` |
-| **CLI** | `python scenario_cli.py generate mt5 EURGBP --strategy high_volatility --count 5` |
-| **Purpose** | High-volatility periods for scenario generation |
-
-Automatically finds the most volatile market phases (HIGH/VERY_HIGH ATR) and creates scenarios around these time points.
-
-```
-Found 530 high-volatility periods (HIGH/VERY_HIGH) from 1704 total
-Generating 5 high-volatility scenarios from 530 high-volatility periods
-
-Checking period: 2025-11-26 11:00 (11,653 ticks)
-  Volatility center: 11:30
-  Warmup: 2025-11-25 19:00 → 2025-11-26 08:00 (13h)
-  Scenario: 2025-11-26 08:00 → 2025-11-26 14:00 (6h)
-  ✓ VALID: All checks passed
-✓ High-Vol #01: 2025-11-26 11:00 (very_high, 11,653 ticks)
-
-Checking period: 2025-11-26 12:00 (11,546 ticks)
-  ✗ SKIP: Overlaps with existing scenario
-
-============================================================
-HIGH-VOLATILITY GENERATION SUMMARY
-Total candidates: 530
-Scenarios generated: 5
-Skip reasons: Overlap: 10 (1.9%)
-
-Regime coverage:
-   high: 2
-   very_high: 3
-```
+- `--block-size` — Target block size in hours (default: 6)
+- `--count` — Max number of blocks (None=all)
+- `--sessions` — Filter: `new_york`, `london`, `sydney_tokyo`
+- `--start` / `--end` — Date filters (ISO format)
+- `--max-ticks` — Max ticks per scenario
 
 ### Output: Scenario Set JSON
 
-Both generators produce a JSON configuration:
+The generator produces a JSON configuration:
 
 ```json
 {
   "version": "1.0",
-  "scenario_set_name": "EURGBP_high_volatility_20260109_0743",
+  "scenario_set_name": "USDJPY_blocks_20260109_0742",
   "global": {
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
@@ -444,10 +420,10 @@ Both generators produce a JSON configuration:
   },
   "scenarios": [
     {
-      "name": "EURGBP_high_volatility_01",
-      "symbol": "EURGBP",
-      "start_date": "2025-11-26T08:00:00+00:00",
-      "end_date": "2025-11-26T14:00:00+00:00",
+      "name": "USDJPY_blocks_01",
+      "symbol": "USDJPY",
+      "start_date": "2025-09-18T16:00:00+00:00",
+      "end_date": "2025-09-19T04:00:00+00:00",
       "enabled": true
     }
   ]
@@ -584,12 +560,11 @@ Useful for understanding the raw data structure:
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
-| **Market analysis** | `🔍 Disc - Analyze: mt5/GBPUSD` | `discoveries_cli.py analyze mt5 GBPUSD` |
+| **Volatility profile** | `🔍 Disc - Volatility Profile: mt5/USDJPY` | `discoveries_cli.py volatility-profile mt5 USDJPY` |
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
-| **Scenarios: Blocks** | `📊 Scenario Generator - Generate Blocks` | `scenario_cli.py generate USDJPY --strategy blocks` |
-| **Scenarios: High Volatility** | `⚡ Scenario Gen. - High Volatility` | `scenario_cli.py generate mt5 EURGBP --strategy high_volatility` |
+| **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate mt5 USDJPY --block-size 12 --count 40` |
 | **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
 
 ---
@@ -605,11 +580,11 @@ Useful for understanding the raw data structure:
          ↓
 4. Check quality:   🔍 Disc - Data Coverage: Validate All
          ↓
-5. Analyze market:  🔍 Disc - Analyze
+5. Volatility profile: 🔍 Disc - Profile
          ↓
 5b. Extreme Moves:  🔍 Disc - Extreme Moves
          ↓
-6. Create scenarios: 📊 Generate Blocks/Stress
+6. Create scenarios: ⚡ Generator - Blocks
          ↓
 7. Backtest:        🔬 Run Scenario
 ```
@@ -626,6 +601,6 @@ The indices are stored in Parquet format (since v1.1):
 | Bar Index | `.parquet_bars_index.parquet` | Auto from `.json` |
 | Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
 | Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
-| Market Analyzer Cache | `.discovery_caches/market_analyzer_cache/*.parquet` | Volatility/session analysis |
+| Volatility Profile Cache | `.discovery_caches/volatility_profile_cache/*.parquet` | Volatility profile |
 
 Old JSON indices are automatically migrated and backed up as `.json.bak`.

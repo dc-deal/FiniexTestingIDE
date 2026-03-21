@@ -62,7 +62,7 @@ class DataCoverageReportCache:
 
         # Read granularity from discoveries config (consistent with DataCoverageReport)
         discoveries_config = DiscoveriesConfigLoader().get_config_raw()
-        gap_config = discoveries_config.get('gap_detection', {})
+        gap_config = discoveries_config.get('data_coverage', {})
         self._granularity = gap_config.get('granularity', 'M5')
 
         # Ensure cache directory exists

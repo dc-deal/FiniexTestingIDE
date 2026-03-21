@@ -360,7 +360,7 @@ class ScenarioDataValidator:
         requirements_map: RequirementsMap
     ) -> Tuple[List[str], List[str]]:
         """
-        Validate warmup bar quality based on warmup_quality_mode.
+        Validate warmup bar quality: synthetic bar check and bar count sufficiency.
 
         Args:
             scenario: Scenario to validate
@@ -372,10 +372,7 @@ class ScenarioDataValidator:
         """
         errors = []
         warnings = []
-
-        # Only validate in standard mode (permissive just warns)
-        if self._warmup_quality_mode == "permissive":
-            return errors, warnings
+        is_standard = self._warmup_quality_mode == 'standard'
 
         # Get bar requirements for this scenario
         for bar_req in requirements_map.bar_requirements:
@@ -398,11 +395,27 @@ class ScenarioDataValidator:
             if synthetic_count > 0:
                 total_bars = len(bar_data)
                 synthetic_pct = (synthetic_count / total_bars) * 100
-
-                errors.append(
+                msg = (
                     f"Warmup for {bar_req.timeframe} contains {synthetic_count}/{total_bars} "
-                    f"synthetic bars ({synthetic_pct:.1f}%) - not allowed in standard mode. "
+                    f"synthetic bars ({synthetic_pct:.1f}%). "
                     f"Adjust start_date to avoid gaps in warmup period."
                 )
+                if is_standard:
+                    errors.append(msg)
+                else:
+                    warnings.append(msg)
+
+            # Check bar count sufficiency
+            actual_count = len(bar_data)
+            if actual_count < bar_req.warmup_count:
+                pct = (actual_count / bar_req.warmup_count * 100) if bar_req.warmup_count > 0 else 0
+                msg = (
+                    f"Warmup for {bar_req.timeframe} has {actual_count}/{bar_req.warmup_count} bars "
+                    f"({pct:.0f}%) — insufficient for indicator stabilization."
+                )
+                if is_standard:
+                    errors.append(msg)
+                else:
+                    warnings.append(msg)
 
         return errors, warnings

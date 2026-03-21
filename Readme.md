@@ -52,7 +52,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Parquet Storage** - Compressed, indexed tick data with quality metrics
 - **Multi-Timeframe Bars** - Auto-rendered M1, M5, M15, M30, H1, H4, D1
 - **Gap Detection** - Weekend, holiday, and data quality analysis
-- **Discovery Caching** - Unified cache system for all analyses (gap reports, market analysis, extreme moves)
+- **Discovery Caching** - Unified cache system for all discoveries (gap reports, volatility profiles, extreme moves)
 
 ### Backtesting Engine
 - **Parallel Execution** - ProcessPoolExecutor for multi-scenario runs

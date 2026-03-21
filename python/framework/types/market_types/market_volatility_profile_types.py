@@ -1,11 +1,11 @@
 """
-Market Analysis Types
-=====================
-Type definitions for market analysis results: volatility regimes,
-trading sessions, period analysis, and symbol-level analysis summaries.
+Market Volatility Profile Types
+================================
+Type definitions for volatility profiling: configuration, volatility regimes,
+trading sessions, volatility periods, and symbol-level profile summaries.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
@@ -29,6 +29,11 @@ class VolatilityRegime(Enum):
         """String representation returns the enum value"""
         return self.value
 
+    @property
+    def short_label(self) -> str:
+        """Short label for compact display (VL, L, M, H, VH)."""
+        return _REGIME_SHORT_LABELS[self]
+
 
 class TradingSession(Enum):
     """Trading session identifiers."""
@@ -41,15 +46,62 @@ class TradingSession(Enum):
         """String representation returns the enum value"""
         return self.value
 
+    @property
+    def display_name(self) -> str:
+        """Human-readable session name."""
+        return _SESSION_DISPLAY_NAMES[self]
+
+
+_REGIME_SHORT_LABELS = {
+    VolatilityRegime.VERY_LOW: 'VL',
+    VolatilityRegime.LOW: 'L',
+    VolatilityRegime.MEDIUM: 'M',
+    VolatilityRegime.HIGH: 'H',
+    VolatilityRegime.VERY_HIGH: 'VH',
+}
+
+_SESSION_DISPLAY_NAMES = {
+    TradingSession.SYDNEY_TOKYO: 'Asian (Sydney/Tokyo)',
+    TradingSession.LONDON: 'London',
+    TradingSession.NEW_YORK: 'New York',
+    TradingSession.TRANSITION: 'Transition',
+}
+
 
 # =============================================================================
-# ANALYSIS RESULTS
+# VOLATILITY PROFILE CONFIG
 # =============================================================================
 
 @dataclass
-class PeriodAnalysis:
+class VolatilityProfileConfig:
     """
-    Analysis results for a single time period.
+    Configuration for volatility profiling.
+    """
+    # Volatility profile parameters
+    timeframe: str = "M5"
+    atr_period: int = 14
+    regime_granularity_hours: int = 1
+
+    # Regime thresholds (percentiles)
+    regime_thresholds: List[int] = field(
+        default_factory=lambda: [20, 40, 60, 80]
+    )
+
+
+@dataclass
+class CrossInstrumentRankingConfig:
+    """Configuration for cross-instrument comparison ranking."""
+    top_count: int = 3
+
+
+# =============================================================================
+# VOLATILITY PROFILE RESULTS
+# =============================================================================
+
+@dataclass
+class VolatilityPeriod:
+    """
+    Volatility profile for a single time period.
 
     Represents one hour of market data with volatility and activity metrics.
     """
@@ -107,9 +159,9 @@ class SessionSummary:
 
 
 @dataclass
-class SymbolAnalysis:
+class SymbolVolatilityProfile:
     """
-    Complete market analysis for a symbol.
+    Complete volatility profile for a symbol.
     """
     symbol: str
     timeframe: str
@@ -148,5 +200,5 @@ class SymbolAnalysis:
     # Session summaries
     session_summaries: Dict[TradingSession, SessionSummary]
 
-    # All period analyses
-    periods: List[PeriodAnalysis]
+    # All volatility periods
+    periods: List[VolatilityPeriod]

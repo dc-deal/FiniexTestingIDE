@@ -71,11 +71,8 @@ class ScenarioGeneratorConfigSaver:
         config['scenarios'] = []
         for i, candidate in enumerate(scenarios, 1):
             name = f"{result.symbol}_{result.strategy.value}_{i:02d}"
-            # Blocks/HighVolatility strategy: max_ticks = None (time-based only)
-            use_max_ticks = None if result.strategy in [
-                GenerationStrategy.BLOCKS,
-                GenerationStrategy.HIGH_VOLATILITY
-            ] else candidate.estimated_ticks
+            # Blocks strategy: max_ticks = None (time-based only)
+            use_max_ticks = None if result.strategy == GenerationStrategy.BLOCKS else candidate.estimated_ticks
             scenario_dict = candidate.to_scenario_dict(name, use_max_ticks)
             config['scenarios'].append(scenario_dict)
 

@@ -1,40 +1,44 @@
 """
-Market Report
-=============
-Single symbol market analysis report generator.
+Volatility Profile Report
+===========================
+Single symbol volatility profile report generator.
 """
 
-from typing import Dict
-
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.market_types.market_config_types import MarketType
-from python.framework.types.market_types.market_analysis_types import (
-    SymbolAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    SymbolVolatilityProfile,
     TradingSession,
     VolatilityRegime,
 )
 from python.framework.utils.activity_volume_provider import get_activity_provider
 
 
-def print_analysis_report(analysis: SymbolAnalysis) -> None:
+def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
     """
-    Print formatted analysis report for a single symbol.
+    Print formatted volatility profile report for a single symbol.
 
     Args:
-        analysis: SymbolAnalysis results
+        profile: SymbolVolatilityProfile results
     """
     activity_provider = get_activity_provider()
+    market_rules = MarketConfigManager().get_market_rules(profile.market_type)
 
     # Header
     print("\n" + "=" * 60)
-    print(f"📊 MARKET ANALYSIS REPORT: {analysis.symbol}")
+    print(f"📊 VOLATILITY PROFILE: {profile.symbol}")
     print("=" * 60)
 
     # Overview
-    print(f"Data Range:     {analysis.start_time.strftime('%Y-%m-%d')} → "
-          f"{analysis.end_time.strftime('%Y-%m-%d')} ({analysis.total_days} days)")
-    print(f"Timeframe:      {analysis.timeframe}")
-    print(f"Market Type:    {analysis.market_type.value}")
-    print(f"Data Source:    {analysis.data_source}")
+    print(f"Data Range:     {profile.start_time.strftime('%Y-%m-%d')} → "
+          f"{profile.end_time.strftime('%Y-%m-%d')} ({profile.total_days} days)")
+    print(f"Timeframe:      {profile.timeframe}")
+    print(f"Market Type:    {profile.market_type.value}")
+    print(f"Data Source:    {profile.data_source}")
+    if market_rules.session_bucketing:
+        print(f"Sessions:       Yes")
+    else:
+        print(f"Sessions:       No (time-of-day bucketing only)")
 
     # Divider
     print("\n" + "─" * 60)
@@ -42,7 +46,7 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
     print("─" * 60)
 
     # Total coverage time
-    total_periods = len(analysis.periods)
+    total_periods = len(profile.periods)
     granularity_hours = 1  # From config - regime_granularity_hours
     total_hours = total_periods * granularity_hours
     total_days = total_hours // 24
@@ -60,8 +64,8 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
     }
 
     for regime in VolatilityRegime:
-        count = analysis.regime_distribution.get(regime, 0)
-        pct = analysis.regime_percentages.get(regime, 0)
+        count = profile.regime_distribution.get(regime, 0)
+        pct = profile.regime_percentages.get(regime, 0)
         bar_len = round(pct / 10)
         bar = "█" * bar_len + "░" * (10 - bar_len)
 
@@ -75,39 +79,26 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
             f"   {regime_names[regime]}:  {count:4d} periods  {bar}  {pct:5.1f}%  → {duration_str}")
 
     # ATR stats
-    print(f"\n   ATR Relative: {analysis.atr_min:.5f} - {analysis.atr_max:.5f} "
-          f"(avg: {analysis.atr_avg:.5f})")
+    print(f"\n   ATR Relative: {profile.atr_min:.5f} - {profile.atr_max:.5f} "
+          f"(avg: {profile.atr_avg:.5f})")
 
     # Session statistics with regime distribution
     print("\n" + "─" * 60)
-    print("📊 SESSION ACTIVITY")
+    if market_rules.session_bucketing:
+        print("📊 SESSION ACTIVITY")
+    else:
+        print("📊 TIME-OF-DAY ACTIVITY")
     print("─" * 60)
 
     activity_label = activity_provider.get_metric_label(
-        analysis.market_type
+        profile.market_type
     ).lower()
 
-    session_names = {
-        TradingSession.SYDNEY_TOKYO: "Asian (Sydney/Tokyo)",
-        TradingSession.LONDON: "London",
-        TradingSession.NEW_YORK: "New York",
-        TradingSession.TRANSITION: "Transition",
-    }
-
-    # Short regime labels for compact display
-    regime_short = {
-        VolatilityRegime.VERY_LOW: "VL",
-        VolatilityRegime.LOW: "L",
-        VolatilityRegime.MEDIUM: "M",
-        VolatilityRegime.HIGH: "H",
-        VolatilityRegime.VERY_HIGH: "VH",
-    }
-
     for session in TradingSession:
-        if session not in analysis.session_summaries:
+        if session not in profile.session_summaries:
             continue
 
-        summary = analysis.session_summaries[session]
+        summary = profile.session_summaries[session]
 
         # Calculate session duration
         session_hours = summary.period_count * granularity_hours
@@ -115,11 +106,11 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
         session_rem_hours = session_hours % 24
 
         print(
-            f"\n   {session_names[session]} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
+            f"\n   {session.display_name} ({summary.period_count} periods, {session_days}d {session_rem_hours}h):")
         print(f"      Total ticks:    {summary.total_ticks:,}")
 
         # Show volume for crypto markets
-        if analysis.market_type == MarketType.CRYPTO:
+        if profile.market_type == MarketType.CRYPTO:
             print(f"      Total volume:   {summary.total_activity:,.2f}")
         # For forex: total_activity equals total_ticks, no duplication needed
         print(
@@ -134,27 +125,26 @@ def print_analysis_report(analysis: SymbolAnalysis) -> None:
                 regime_count = summary.regime_distribution.get(regime, 0)
                 regime_pct = (regime_count / summary.period_count) * 100
                 regime_parts.append(
-                    f"{regime_short[regime]}: {regime_pct:.0f}%")
+                    f"{regime.short_label}: {regime_pct:.0f}%")
             print(f"      Regimes:        {' | '.join(regime_parts)}")
 
     # Data quality
     print("\n" + "─" * 60)
     print("📦 DATA QUALITY")
     print("─" * 60)
-    print(f"   Total bars:      {analysis.total_bars:,}")
-    print(f"   Total {activity_label}:    {analysis.total_ticks:,}")
-    print(f"   Real bar ratio:  {analysis.real_bar_ratio * 100:.1f}%")
+    print(f"   Total bars:      {profile.total_bars:,}")
+    print(f"   Total {activity_label}:    {profile.total_ticks:,}")
+    print(f"   Real bar ratio:  {profile.real_bar_ratio * 100:.1f}%")
 
     # Show total volume for crypto
-    if analysis.market_type == MarketType.CRYPTO:
-        print(f"   Total volume:    {analysis.total_activity:,.2f}")
+    if profile.market_type == MarketType.CRYPTO:
+        print(f"   Total volume:    {profile.total_activity:,.2f}")
     # Recommendations
     print("\n" + "─" * 60)
     print("💡 GENERATION RECOMMENDATIONS")
     print("─" * 60)
-    print(f"   • Chronological:    --strategy blocks --block-size 6")
-    print(f"   • High volatility:  --strategy high_volatility --count 5")
+    print(f"   • Chronological:    --block-size 6")
     print(
-        f"\n   Run: python scenario_cli.py generate {analysis.symbol} --help")
+        f"\n   Run: python python/cli/generator_cli.py generate {profile.symbol} --help")
 
     print("=" * 60 + "\n")

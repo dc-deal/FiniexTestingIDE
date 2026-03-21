@@ -1,164 +1,31 @@
 """
 Scenario Generator Types
 ========================
-Type definitions for market analysis and scenario generation.
+Type definitions for scenario generation strategies and results.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from enum import Enum
 
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_volatility_profile_types import (
+    TradingSession,
+    VolatilityRegime,
+)
 
 
 # =============================================================================
 # ENUMS
 # =============================================================================
 
-class VolatilityRegime(Enum):
-    """Volatility regime classification."""
-    VERY_LOW = "very_low"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    VERY_HIGH = "very_high"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
-
-
-class TradingSession(Enum):
-    """Trading session identifiers."""
-    SYDNEY_TOKYO = "sydney_tokyo"
-    LONDON = "london"
-    NEW_YORK = "new_york"
-    TRANSITION = "transition"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
-
-
 class GenerationStrategy(Enum):
     """Scenario generation strategies."""
-    BLOCKS = "blocks"
-    HIGH_VOLATILITY = "high_volatility"
+    BLOCKS = 'blocks'
 
     def __str__(self) -> str:
         """String representation returns the enum value"""
         return self.value
-
-
-# =============================================================================
-# ANALYSIS RESULTS
-# =============================================================================
-
-@dataclass
-class PeriodAnalysis:
-    """
-    Analysis results for a single time period.
-
-    Represents one hour of market data with volatility and activity metrics.
-    """
-    start_time: datetime
-    end_time: datetime
-    session: TradingSession
-
-    # Volatility metrics
-    atr: float
-    atr_percentile: float
-    regime: VolatilityRegime
-
-    # Activity metrics
-    tick_count: int
-    tick_density: float  # ticks per hour
-
-    # Unified activity metric (tick_count for forex, volume for crypto)
-    activity: float
-
-    # Bar statistics
-    bar_count: int
-    real_bar_count: int
-    synthetic_bar_count: int
-
-    # Price range
-    high: float
-    low: float
-    range_pips: float
-
-
-@dataclass
-class SessionSummary:
-    """
-    Aggregated statistics for a trading session.
-    """
-    session: TradingSession
-    period_count: int
-
-    # Volatility
-    avg_atr: float
-    min_atr: float
-    max_atr: float
-
-    # Activity
-    total_ticks: int
-    avg_tick_density: float
-    min_tick_density: float
-    max_tick_density: float
-
-    # Unified activity metric (sum of activity for all periods)
-    total_activity: float
-
-    # Regime distribution
-    regime_distribution: Dict[VolatilityRegime, int]
-
-
-@dataclass
-class SymbolAnalysis:
-    """
-    Complete market analysis for a symbol.
-    """
-    symbol: str
-    timeframe: str
-    market_type: MarketType
-    data_source: str
-
-    # Time range
-    start_time: datetime
-    end_time: datetime
-    total_days: int
-
-    # Overall statistics
-    total_bars: int
-    total_ticks: int
-    real_bar_ratio: float
-
-    # ATR statistics
-    atr_min: float
-    atr_max: float
-    atr_avg: float
-    atr_std: float
-
-    # Cross-instrument comparison (ATR as percentage of price)
-    atr_percent: float
-
-    # Unified activity metric (tick_count for forex, volume for crypto)
-    total_activity: float
-
-    # Average pips per day (None if symbol spec not available)
-    avg_pips_per_day: Optional[float]
-
-    # Regime distribution
-    regime_distribution: Dict[VolatilityRegime, int]
-    regime_percentages: Dict[VolatilityRegime, float]
-
-    # Session summaries
-    session_summaries: Dict[TradingSession, SessionSummary]
-
-    # All period analyses
-    periods: List[PeriodAnalysis]
 
 
 # =============================================================================
@@ -166,32 +33,9 @@ class SymbolAnalysis:
 # =============================================================================
 
 @dataclass
-class AnalysisConfig:
-    """
-    Configuration for market analysis.
-    """
-    # Analysis parameters
-    timeframe: str = "M5"
-    atr_period: int = 14
-    regime_granularity_hours: int = 1
-
-    # Regime thresholds (percentiles)
-    regime_thresholds: List[int] = field(
-        default_factory=lambda: [20, 40, 60, 80]
-    )
-
-
-@dataclass
-class CrossInstrumentRankingConfig:
-    """Configuration for cross-instrument comparison ranking."""
-    top_count: int = 3
-
-
-@dataclass
 class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
-    warmup_hours: int = 13  # Warmup period after interrupting gaps
     min_block_hours: int = 1  # Minimum block duration to generate
     # Allow blocks to extend past session boundaries
     extend_blocks_beyond_session: bool = True
@@ -199,26 +43,13 @@ class BlocksStrategyConfig:
 
 
 @dataclass
-class HighVolatilityStrategyConfig:
-    """High-volatility scenario generation strategy configuration."""
-    scenario_hours: int = 6
-    warmup_hours: int = 13
-    min_real_bar_ratio: float = 0.5
-    volatility_percentile: float = 0.90
-    activity_percentile: float = 0.90
-
-
-@dataclass
 class GeneratorConfig:
     """
-    Complete generator configuration.
+    Generator configuration.
 
-    Combines analysis config with strategy-specific settings.
+    Contains strategy-specific settings for block generation.
     """
-    analysis: AnalysisConfig
     blocks: BlocksStrategyConfig
-    high_volatility: HighVolatilityStrategyConfig
-    cross_instrument_ranking: CrossInstrumentRankingConfig
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'GeneratorConfig':
@@ -231,43 +62,16 @@ class GeneratorConfig:
         Returns:
             GeneratorConfig instance
         """
-        analysis_data = data.get('analysis', {})
         blocks_data = data.get('strategies', {}).get('blocks', {})
-        high_vol_data = data.get('strategies', {}).get('high_volatility', {})
-        ranking_data = data.get('cross_instrument_ranking', {})
 
         return cls(
-            analysis=AnalysisConfig(
-                timeframe=analysis_data.get('timeframe', 'M5'),
-                atr_period=analysis_data.get('atr_period', 14),
-                regime_granularity_hours=analysis_data.get(
-                    'regime_granularity_hours', 1
-                ),
-                regime_thresholds=analysis_data.get(
-                    'regime_thresholds', [0.5, 0.8, 1.2, 1.8]
-                ),
-            ),
             blocks=BlocksStrategyConfig(
                 default_block_hours=blocks_data.get('default_block_hours', 6),
-                warmup_hours=blocks_data.get('warmup_hours', 13),
                 min_block_hours=blocks_data.get('min_block_hours', 1),
                 extend_blocks_beyond_session=blocks_data.get(
                     'extend_blocks_beyond_session', True),
                 min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
-            high_volatility=HighVolatilityStrategyConfig(
-                scenario_hours=high_vol_data.get(
-                    'scenario_hours', 6),
-                warmup_hours=high_vol_data.get('warmup_hours', 13),
-                min_real_bar_ratio=high_vol_data.get('min_real_bar_ratio', 0.5),
-                volatility_percentile=high_vol_data.get(
-                    'volatility_percentile', 0.90),
-                activity_percentile=high_vol_data.get(
-                    'activity_percentile', 0.90)
-            ),
-            cross_instrument_ranking=CrossInstrumentRankingConfig(
-                top_count=ranking_data.get('top_count', 3)
-            )
         )
 
 

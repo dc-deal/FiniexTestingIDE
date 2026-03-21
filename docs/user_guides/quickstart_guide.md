@@ -520,7 +520,7 @@ Current limitations:
 
 ## Next Steps
 
-1. **Analyze your data** - `📊 MARKET ANALYSIS REPORT`
+1. **Profile your data** - `📊 VOLATILITY PROFILE`
 2. **Generate scenarios** - `📊 Scenario Generator - Generate Blocks`
 3. **Run backtests** - `🔬 Run Scenario`
 4. **Review results** - Check trade history and P&L

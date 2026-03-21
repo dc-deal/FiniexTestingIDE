@@ -4,7 +4,7 @@ BlocksGenerator Tests
 Unit tests for chronological block generation.
 
 Tests cover: region extraction, constrained/extended block generation,
-session filtering, warmup handling, and count limiting.
+session filtering, data quality warnings, and count limiting.
 """
 
 import pytest
@@ -12,13 +12,12 @@ from datetime import timedelta
 from unittest.mock import patch, MagicMock
 
 from python.framework.types.coverage_report_types import GapCategory
-from python.framework.types.market_types.market_analysis_types import (
+from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
     GeneratorConfig,
-    ScenarioCandidate,
 )
 from python.scenario.generator.blocks_generator import BlocksGenerator
 
@@ -45,6 +44,7 @@ class TestExtractContinuousRegions:
         assert regions[0]['start'] == start
         assert regions[0]['end'] == end
         assert regions[0]['following_gap'] is None
+        assert regions[0]['preceding_gap'] is None
 
     def test_small_gaps_ignored(self, generator_config: GeneratorConfig):
         """SMALL gaps don't split regions."""
@@ -93,7 +93,9 @@ class TestExtractContinuousRegions:
 
         assert len(regions) == 2
         assert regions[0]['end'] == utc(2025, 10, 1, 20)
+        assert regions[0]['preceding_gap'] is None
         assert regions[1]['start'] == utc(2025, 10, 2, 4)
+        assert regions[1]['preceding_gap'] == mod_gap
 
     def test_large_gap_splits_region(self, generator_config: GeneratorConfig):
         """LARGE gap splits data."""
@@ -138,6 +140,7 @@ class TestExtractContinuousRegions:
 
         assert len(regions) == 1
         assert regions[0]['start'] == utc(2025, 10, 2)
+        assert regions[0]['preceding_gap'] == gap
 
 
 # =============================================================================
@@ -154,9 +157,9 @@ class TestConstrainedBlocksNoSessions:
     ):
         """Generates correct number of full blocks from continuous data."""
         gen = BlocksGenerator(generator_config)
-        # 2h warmup + 12h data = 3 blocks of 4h
+        # 12h data = 3 full blocks of 4h
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 14)  # 14h total
+        end = utc(2025, 10, 1, 12)  # 12h total
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -178,9 +181,9 @@ class TestConstrainedBlocksNoSessions:
     ):
         """Last block shorter than target but ≥ min_block_hours → generated."""
         gen = BlocksGenerator(generator_config)
-        # 2h warmup + 6h data = 1 full block (4h) + 2h remainder (≥ 1h min)
+        # 6h data = 1 full block (4h) + 2h remainder (≥ 1h min)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 8)
+        end = utc(2025, 10, 1, 6)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -198,9 +201,9 @@ class TestConstrainedBlocksNoSessions:
     ):
         """Remainder < min_block_hours → skipped, not generated."""
         gen = BlocksGenerator(generator_config)
-        # 2h warmup + 4.5h data = 1 full block (4h) + 0.5h remainder (< 1h min)
+        # 4.5h data = 1 full block (4h) + 0.5h remainder (< 1h min)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 6) + timedelta(minutes=30)
+        end = utc(2025, 10, 1, 4) + timedelta(minutes=30)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -211,14 +214,14 @@ class TestConstrainedBlocksNoSessions:
 
     @patch('python.scenario.generator.blocks_generator.TickIndexManager')
     @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
-    def test_region_too_short_for_warmup(
+    def test_region_below_minimum_block_hours(
         self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
     ):
-        """Region shorter than warmup → no blocks generated."""
+        """Region shorter than min_block_hours → no blocks generated."""
         gen = BlocksGenerator(generator_config)
-        # Only 1h of data, warmup needs 2h
+        # 0.5h data < 1h min_block_hours → no blocks
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 1)
+        end = utc(2025, 10, 1) + timedelta(minutes=30)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -235,7 +238,7 @@ class TestConstrainedBlocksNoSessions:
         """Blocks follow each other without gaps."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 14)  # 2h warmup + 12h = 3 blocks
+        end = utc(2025, 10, 1, 12)  # 12h = 3 blocks of 4h
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -293,7 +296,7 @@ class TestExtendedBlocksWithSessions:
         """Extended blocks start at session transition points."""
         generator_config.blocks.extend_blocks_beyond_session = True
         gen = BlocksGenerator(generator_config)
-        # 48h of data, warmup=2h, new_york starts at hour 16
+        # 48h of data, new_york starts at hour 16
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 3)
         report = mock_coverage_report(start, end)
@@ -344,8 +347,8 @@ class TestExtendedBlocksWithSessions:
         """No session start found in usable region → no blocks."""
         generator_config.blocks.extend_blocks_beyond_session = True
         gen = BlocksGenerator(generator_config)
-        # Region is only 3h within london session (8-11), warmup=2h,
-        # so usable part is 10-11, no new_york start there
+        # Region is only 3h within london session (8-11),
+        # no new_york start there
         start = utc(2025, 10, 1, 8)
         end = utc(2025, 10, 1, 11)
         report = mock_coverage_report(start, end)
@@ -375,7 +378,7 @@ class TestCountLimiting:
         """count_max < generated blocks → truncates to count_max."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 14)  # 3 blocks possible
+        end = utc(2025, 10, 1, 12)  # 3 blocks possible (12h / 4h)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -392,7 +395,7 @@ class TestCountLimiting:
         """count_max > generated blocks → all blocks returned."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 14)  # 3 blocks possible
+        end = utc(2025, 10, 1, 12)  # 3 blocks possible (12h / 4h)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
@@ -403,42 +406,48 @@ class TestCountLimiting:
 
 
 # =============================================================================
-# WARMUP HANDLING
+# DATA QUALITY WARNINGS
 # =============================================================================
 
-class TestWarmupHandling:
-    """Tests for warmup behavior after gaps."""
+class TestDataQualityWarnings:
+    """Tests for data-start and post-gap warnings."""
 
+    @patch('python.scenario.generator.blocks_generator.vLog')
     @patch('python.scenario.generator.blocks_generator.TickIndexManager')
     @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
-    def test_warmup_applied_at_region_start(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+    def test_data_start_warning(
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
     ):
-        """First block starts after warmup period."""
+        """First block at data begin → data-start warning logged."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 1, 10)
+        end = utc(2025, 10, 1, 8)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
         scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
 
-        # First block should start at warmup (2h) offset
-        assert scenarios[0].start_time == start + timedelta(hours=2)
+        assert len(scenarios) == 2
+        # First block starts at data begin
+        assert scenarios[0].start_time == start
+        # Warning about data-start was logged
+        warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
+        assert any('data begin' in w for w in warning_calls)
 
+    @patch('python.scenario.generator.blocks_generator.vLog')
     @patch('python.scenario.generator.blocks_generator.TickIndexManager')
     @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
-    def test_warmup_applied_after_gap(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+    def test_post_gap_warning(
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
     ):
-        """Warmup reapplied in each region after a gap."""
+        """Block after MODERATE gap → post-gap warning logged."""
         gen = BlocksGenerator(generator_config)
         start = utc(2025, 10, 1)
-        end = utc(2025, 10, 3)
-        # Weekend gap splits into two regions
+        end = utc(2025, 10, 2, 12)
+        # MODERATE gap splits into two regions
         gap = make_gap(
-            utc(2025, 10, 1, 12), utc(2025, 10, 2), GapCategory.WEEKEND
+            utc(2025, 10, 1, 12), utc(2025, 10, 1, 20), GapCategory.MODERATE
         )
         report = mock_coverage_report(start, end, gaps=[gap])
         mock_dcr_cls.return_value = report
@@ -446,10 +455,34 @@ class TestWarmupHandling:
 
         scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
 
-        # Find blocks from second region — first block should start 2h after gap end
-        region2_blocks = [s for s in scenarios if s.start_time >= utc(2025, 10, 2)]
-        if region2_blocks:
-            assert region2_blocks[0].start_time == utc(2025, 10, 2, 2)
+        # Should have blocks from both regions
+        assert len(scenarios) > 0
+        # Post-gap warning for second region was logged
+        warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
+        assert any('MODERATE' in w and 'gap' in w for w in warning_calls)
+
+    @patch('python.scenario.generator.blocks_generator.vLog')
+    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
+    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    def test_no_warning_mid_region(
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
+    ):
+        """Blocks within continuous region (not first, no preceding gap) → no data quality warnings."""
+        gen = BlocksGenerator(generator_config)
+        # Data starts before our start_filter, so first region has preceding data
+        start = utc(2025, 10, 1)
+        end = utc(2025, 10, 1, 12)
+        report = mock_coverage_report(start, end)
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+
+        assert len(scenarios) == 3
+        # Data-start warning IS expected here (single region, start == data start)
+        # but NO post-gap warning (no preceding gap)
+        warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
+        assert not any('follows a' in w and 'gap' in w for w in warning_calls)
 
 
 # =============================================================================

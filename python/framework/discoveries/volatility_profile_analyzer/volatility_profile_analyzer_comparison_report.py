@@ -6,11 +6,11 @@ Cross-instrument volatility and liquidity ranking report.
 
 from typing import List, Optional
 
-from python.framework.types.market_types.market_analysis_types import SymbolAnalysis
+from python.framework.types.market_types.market_volatility_profile_types import SymbolVolatilityProfile
 
 
 def print_cross_instrument_ranking(
-    analyses: List[SymbolAnalysis],
+    profiles: List[SymbolVolatilityProfile],
     current_symbol: str,
     top_count: int = 3
 ) -> None:
@@ -21,12 +21,12 @@ def print_cross_instrument_ranking(
     Highest = 100%, Lowest = 0%.
 
     Args:
-        analyses: List of SymbolAnalysis for all symbols
-        current_symbol: The symbol being analyzed (to mark in output)
+        profiles: List of SymbolVolatilityProfile for all symbols
+        current_symbol: The symbol being profiled (to mark in output)
         top_count: Number of top instruments to display
     """
-    if not analyses:
-        print("❌ No analysis data available for comparison.")
+    if not profiles:
+        print("❌ No volatility profile data available for comparison.")
         return
 
     # Header
@@ -35,19 +35,19 @@ def print_cross_instrument_ranking(
     print("═" * 60)
 
     # Volatility ranking
-    _print_volatility_ranking(analyses, current_symbol, top_count)
+    _print_volatility_ranking(profiles, current_symbol, top_count)
 
     # Liquidity ranking
-    _print_liquidity_ranking(analyses, current_symbol, top_count)
+    _print_liquidity_ranking(profiles, current_symbol, top_count)
 
     # Combined score
-    _print_combined_ranking(analyses, current_symbol, top_count)
+    _print_combined_ranking(profiles, current_symbol, top_count)
 
     print("═" * 60 + "\n")
 
 
 def _print_volatility_ranking(
-    analyses: List[SymbolAnalysis],
+    profiles: List[SymbolVolatilityProfile],
     current_symbol: str,
     top_count: int
 ) -> None:
@@ -55,20 +55,20 @@ def _print_volatility_ranking(
     Print volatility ranking with percentage scale and actual values.
 
     Args:
-        analyses: List of SymbolAnalysis
+        profiles: List of SymbolVolatilityProfile
         current_symbol: Symbol to mark as current
         top_count: Max items to display
     """
     # Sort by ATR% descending
-    sorted_analyses = sorted(
-        analyses,
+    sorted_profiles = sorted(
+        profiles,
         key=lambda a: a.atr_percent,
         reverse=True
     )
 
     # Get min/max for scaling
-    max_val = sorted_analyses[0].atr_percent if sorted_analyses else 1.0
-    min_val = sorted_analyses[-1].atr_percent if sorted_analyses else 0.0
+    max_val = sorted_profiles[0].atr_percent if sorted_profiles else 1.0
+    min_val = sorted_profiles[-1].atr_percent if sorted_profiles else 0.0
     value_range = max_val - min_val if max_val != min_val else 1.0
 
     print("\n📈 Volatility Ranking (ATR-based):")
@@ -76,7 +76,7 @@ def _print_volatility_ranking(
     # Build display list
     items_to_show = []
 
-    for i, analysis in enumerate(sorted_analyses):
+    for i, analysis in enumerate(sorted_profiles):
         rank = i + 1
         pct = (analysis.atr_percent - min_val) / value_range * 100
 
@@ -84,7 +84,7 @@ def _print_volatility_ranking(
         marker = ""
         if rank == 1:
             marker = " ← Highest"
-        elif rank == len(sorted_analyses):
+        elif rank == len(sorted_profiles):
             marker = " ← Lowest"
         if analysis.symbol == current_symbol:
             marker = " ← Current" if not marker else marker.replace(
@@ -94,7 +94,7 @@ def _print_volatility_ranking(
         show = (
             rank <= top_count or
             analysis.symbol == current_symbol or
-            rank == len(sorted_analyses)
+            rank == len(sorted_profiles)
         )
 
         if show:
@@ -131,7 +131,7 @@ def _print_volatility_ranking(
 
 
 def _print_liquidity_ranking(
-    analyses: List[SymbolAnalysis],
+    profiles: List[SymbolVolatilityProfile],
     current_symbol: str,
     top_count: int
 ) -> None:
@@ -139,13 +139,13 @@ def _print_liquidity_ranking(
     Print liquidity ranking with percentage scale.
 
     Args:
-        analyses: List of SymbolAnalysis
+        profiles: List of SymbolVolatilityProfile
         current_symbol: Symbol to mark as current
         top_count: Max items to display
     """
     # Calculate ticks per hour for each
     tph_data = [
-        (a, _calculate_avg_ticks_per_hour(a)) for a in analyses
+        (a, _calculate_avg_ticks_per_hour(a)) for a in profiles
     ]
 
     # Sort by ticks/hour descending
@@ -202,33 +202,33 @@ def _print_liquidity_ranking(
 
 
 def _print_combined_ranking(
-    analyses: List[SymbolAnalysis],
+    profiles: List[SymbolVolatilityProfile],
     current_symbol: str,
     top_count: int
 ) -> None:
     """
-    Print combined score ranking (volatility × liquidity).
+    Print combined score ranking (volatility x liquidity).
 
     Args:
-        analyses: List of SymbolAnalysis
+        profiles: List of SymbolVolatilityProfile
         current_symbol: Symbol to mark as current
         top_count: Max items to display
     """
     # Get volatility min/max
-    vol_values = [a.atr_percent for a in analyses]
+    vol_values = [a.atr_percent for a in profiles]
     vol_max = max(vol_values) if vol_values else 1.0
     vol_min = min(vol_values) if vol_values else 0.0
     vol_range = vol_max - vol_min if vol_max != vol_min else 1.0
 
     # Get liquidity min/max
-    liq_values = [_calculate_avg_ticks_per_hour(a) for a in analyses]
+    liq_values = [_calculate_avg_ticks_per_hour(a) for a in profiles]
     liq_max = max(liq_values) if liq_values else 1.0
     liq_min = min(liq_values) if liq_values else 0.0
     liq_range = liq_max - liq_min if liq_max != liq_min else 1.0
 
     # Calculate combined scores
     scored = []
-    for analysis in analyses:
+    for analysis in profiles:
         vol_norm = (analysis.atr_percent - vol_min) / vol_range
         tph = _calculate_avg_ticks_per_hour(analysis)
         liq_norm = (tph - liq_min) / liq_range
@@ -288,7 +288,7 @@ def _print_combined_ranking(
 
 
 def _print_ranking_items(
-    sorted_analyses: List[SymbolAnalysis],
+    sorted_profiles: List[SymbolVolatilityProfile],
     current_symbol: str,
     top_count: int,
     value_fn,
@@ -301,16 +301,16 @@ def _print_ranking_items(
     Shows: top_count items + current symbol + lowest item.
 
     Args:
-        sorted_analyses: Sorted list of analyses
+        sorted_profiles: Sorted list of profiles
         current_symbol: Symbol to mark as current
         top_count: Max top items to show
-        value_fn: Function to get raw value from analysis
-        pct_fn: Function to get percentage from analysis
+        value_fn: Function to get raw value from profile
+        pct_fn: Function to get percentage from profile
         format_fn: Function to format value for display
     """
     items_to_show = []
 
-    for i, analysis in enumerate(sorted_analyses):
+    for i, analysis in enumerate(sorted_profiles):
         rank = i + 1
         pct = pct_fn(analysis)
 
@@ -318,7 +318,7 @@ def _print_ranking_items(
         marker = ""
         if rank == 1:
             marker = " ← Highest"
-        elif rank == len(sorted_analyses):
+        elif rank == len(sorted_profiles):
             marker = " ← Lowest"
         if analysis.symbol == current_symbol:
             marker = " ← Current" if not marker else marker.replace(
@@ -328,7 +328,7 @@ def _print_ranking_items(
         show = (
             rank <= top_count or
             analysis.symbol == current_symbol or
-            rank == len(sorted_analyses)
+            rank == len(sorted_profiles)
         )
 
         if show:
@@ -351,20 +351,20 @@ def _print_ranking_items(
             print(f"   {rank}. {symbol:<8} {formatted}  {bar}{marker}")
 
 
-def _calculate_avg_ticks_per_hour(analysis: SymbolAnalysis) -> float:
+def _calculate_avg_ticks_per_hour(profile: SymbolVolatilityProfile) -> float:
     """
     Calculate average ticks per hour for a symbol.
 
     Args:
-        analysis: SymbolAnalysis data
+        profile: SymbolVolatilityProfile data
 
     Returns:
         Average ticks per hour
     """
-    if not analysis.periods:
+    if not profile.periods:
         return 0.0
 
-    total_ticks = sum(p.tick_count for p in analysis.periods)
-    total_hours = len(analysis.periods)  # Each period is 1 hour
+    total_ticks = sum(p.tick_count for p in profile.periods)
+    total_hours = len(profile.periods)  # Each period is 1 hour
 
     return total_ticks / total_hours if total_hours > 0 else 0.0

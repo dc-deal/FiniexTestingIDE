@@ -7,9 +7,10 @@ Coordinates analysis and dispatches to strategy-specific generators.
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
+from python.configuration.generator_config_loader import GeneratorConfigLoader
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
 from python.framework.types.market_types.market_config_types import MarketType
-from python.framework.types.market_types.market_analysis_types import (
+from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
 )
@@ -21,7 +22,6 @@ from python.framework.types.scenario_types.scenario_generator_types import (
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 from .blocks_generator import BlocksGenerator
-from .high_volatility_generator import HighVolatilityGenerator
 
 vLog = get_global_logger()
 
@@ -34,13 +34,12 @@ class ScenarioGenerator:
     """
 
     def __init__(self):
-        """Initialize scenario generator with market analyzer and strategy generators."""
-        self._analyzer = MarketAnalyzer()
-        self._config = self._analyzer.get_config()
+        """Initialize scenario generator with volatility profile analyzer and strategy generators."""
+        self._analyzer = VolatilityProfileAnalyzer()
+        self._config = GeneratorConfigLoader().get_generator_config()
 
-        # Initialize strategy generators
+        # Initialize strategy generator
         self._blocks_gen = BlocksGenerator(self._config)
-        self._high_volatility_gen = HighVolatilityGenerator(self._config, self._analyzer)
 
     # =========================================================================
     # MAIN GENERATION
@@ -67,7 +66,7 @@ class ScenarioGenerator:
             symbols: List of symbols to generate for
             strategy: Generation strategy
             count: Number of scenarios
-            block_hours: Block size for blocks/high_volatility strategy
+            block_hours: Block size in hours
             session_filter: Filter by session name (deprecated)
             sessions_filter: Filter by multiple session names
             start_filter: Start date filter
@@ -84,42 +83,28 @@ class ScenarioGenerator:
 
         symbol = symbols[0]
 
-        # Analyze the symbol (for metadata)
-        analysis = self._analyzer.analyze_symbol(broker_type, symbol)
+        # Build volatility profile (for metadata)
+        profile = self._analyzer.build_profile(broker_type, symbol)
 
         # Warn: session filter on non-forex markets (no real sessions, time-of-day only)
-        if sessions_filter and analysis.market_type != MarketType.FOREX:
+        if sessions_filter and profile.market_type != MarketType.FOREX:
             vLog.warning(
                 f"⚠️ Session filter {sessions_filter} used with "
-                f"{analysis.market_type.value} market. "
-                f"{analysis.market_type.value.capitalize()} has no defined trading sessions — "
+                f"{profile.market_type.value} market. "
+                f"{profile.market_type.value.capitalize()} has no defined trading sessions — "
                 f"filter acts as time-of-day separation only."
             )
 
-        # Note: Blocks and HighVolatility generators handle their own data access
+        # Note: Blocks generator handles its own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")
 
-        # Dispatch to strategy-specific generator
-        if strategy == GenerationStrategy.BLOCKS:
-            hours = block_hours or self._config.blocks.default_block_hours
-            scenarios = self._blocks_gen.generate(
-                broker_type, symbol, hours, count, sessions_filter
-            )
-            session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
-            vLog.info(
-                f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
-
-        elif strategy == GenerationStrategy.HIGH_VOLATILITY:
-            hours = block_hours or self._config.high_volatility.scenario_hours
-            effective_count = count or 5
-            vLog.info(
-                f"Generating {effective_count} {strategy.value} scenarios")
-            scenarios = self._high_volatility_gen.generate(
-                broker_type, symbol, hours, effective_count, max_ticks
-            )
-
-        else:
-            raise ValueError(f"Unknown strategy: {strategy}")
+        hours = block_hours or self._config.blocks.default_block_hours
+        scenarios = self._blocks_gen.generate(
+            broker_type, symbol, hours, count, sessions_filter
+        )
+        session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
+        vLog.info(
+            f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
 
         return self._build_result(symbol, strategy, scenarios)
 

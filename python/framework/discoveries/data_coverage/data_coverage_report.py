@@ -73,11 +73,11 @@ class DataCoverageReport:
         Detects both file-to-file gaps and intra-file gaps (via bars).
 
         Args:
-            config: Optional gap detection config with:
-                - gap_detection.enabled (bool)
-                - gap_detection.granularity (str, default 'M5')
-                - gap_detection.thresholds.short (float, default 0.5)
-                - gap_detection.thresholds.moderate (float, default 4.0)
+            config: Optional data coverage config with:
+                - data_coverage.enabled (bool)
+                - data_coverage.granularity (str, default 'M5')
+                - data_coverage.thresholds.short (float, default 0.5)
+                - data_coverage.thresholds.moderate (float, default 4.0)
         """
         # Detect intra-file gaps if data_dir and config provided
         intra_gaps = self._detect_gaps_from_bars()
@@ -106,7 +106,7 @@ class DataCoverageReport:
         config = alysis_config.get_config_raw()
 
         # Get configuration
-        gap_config = config.get('gap_detection', {})
+        gap_config = config.get('data_coverage', {})
         granularity = gap_config.get('granularity', 'M5')
         thresholds = gap_config.get(
             'thresholds', {'short': 0.5, 'moderate': 4.0})
@@ -231,6 +231,10 @@ class DataCoverageReport:
             f"📊 DATA COVERAGE REPORT: {self.broker_type}/{self.symbol}")
         report.append(f"{'='*60}")
 
+        market_config = MarketConfigManager()
+        market_type = market_config.get_market_type(self.broker_type)
+        report.append(
+            f"Market Type:  {market_type.value}")
         report.append(
             f"Time Range:   {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         report.append(
@@ -248,10 +252,16 @@ class DataCoverageReport:
         report.append(f"{'─'*60}")
         report.append(
             f"✅ Seamless:     {self.gap_counts['seamless']} transitions")
-        report.append(
-            f"✅ Weekend:      {self.gap_counts['weekend']} gaps (expected)")
-        report.append(
-            f"✅ Holiday:      {self.gap_counts['holiday']} gaps (expected)")
+        if self._weekend_closure:
+            report.append(
+                f"✅ Weekend:      {self.gap_counts['weekend']} gaps (expected)")
+            report.append(
+                f"✅ Holiday:      {self.gap_counts['holiday']} gaps (expected)")
+        else:
+            report.append(
+                f"   Weekend:      n/a (24/7 market)")
+            report.append(
+                f"   Holiday:      n/a (24/7 market)")
         report.append(
             f"⚠️  Short:        {self.gap_counts['short']} gaps (< 30 min)")
         report.append(
@@ -259,70 +269,31 @@ class DataCoverageReport:
         report.append(
             f"🔴 Large:        {self.gap_counts['large']} gaps (> 4h)")
 
-        # === SECTION 3: Weekend Gaps ===
+        # === SECTION 3: Weekend Gaps (compact summary) ===
         weekend_gaps = [
             g for g in self.gaps if g.category == GapCategory.WEEKEND]
 
         if weekend_gaps:
+            total_hours = sum(g.gap_hours for g in weekend_gaps)
+            first_start = weekend_gaps[0].gap_start.strftime('%Y-%m-%d')
+            last_end = weekend_gaps[-1].gap_end.strftime('%Y-%m-%d')
             report.append(f"\n{'─'*60}")
-            report.append("✅ WEEKEND GAPS (Expected Market Closures):")
-            report.append(f"{'─'*60}")
-            report.append("ℹ️  Expected Market Closure Window:")
+            report.append(
+                f"✅ WEEKEND GAPS: {len(weekend_gaps)} closures, "
+                f"{total_hours:.0f}h total ({first_start} → {last_end})"
+            )
 
-            # Get closure window description from MarketCalendar
-            closure_desc = MarketCalendar.get_weekend_closure_description()
-            for line in closure_desc.split('\n'):
-                report.append(f"   {line}")
-
-            # Add timezone validation info
-            report.append("")
-            report.append("ℹ️  Timezone Validation Settings:")
-            report.append(f"   • Validation Timezone: {VALIDATION_TIMEZONE}")
-
-            report.append(f"{'─'*60}")
-
-            gap_counter = 1
-            for gap in weekend_gaps:
-                # Intra-file gap: use gap_start/gap_end
-                utc_start = gap.gap_start.strftime('%Y-%m-%d %H:%M')
-                utc_end = gap.gap_end.strftime('%Y-%m-%d %H:%M')
-
-                report.append(
-                    f"📅 Weekend Gap #{gap_counter} (intra-file):")
-                report.append(f"   Start:  {utc_start} UTC")
-                report.append(f"   End:    {utc_end} UTC")
-                report.append(f"   Gap:    {gap.gap_hours:.1f} hours")
-                report.append(f"   Note:   {gap.reason}")
-                report.append("")
-                gap_counter += 1
-                continue
-
-        # === SECTION 3b: Holiday Gaps ===
+        # === SECTION 3b: Holiday Gaps (compact summary) ===
         holiday_gaps = [
             g for g in self.gaps if g.category == GapCategory.HOLIDAY]
 
         if holiday_gaps:
-            report.append(f"\n{'─'*60}")
-            report.append("✅ HOLIDAY GAPS (Expected Market Closures):")
-            report.append(f"{'─'*60}")
-            report.append("ℹ️  Known Market Holidays:")
-            report.append("   • December 25 (Christmas)")
-            report.append("   • January 1 (New Year)")
-            report.append(f"{'─'*60}")
-
-            gap_counter = 1
-            for gap in holiday_gaps:
-                utc_start = gap.gap_start.strftime('%Y-%m-%d %H:%M')
-                utc_end = gap.gap_end.strftime('%Y-%m-%d %H:%M')
-
-                report.append(
-                    f"🎄 Holiday Gap #{gap_counter} (intra-file):")
-                report.append(f"   Start:  {utc_start} UTC")
-                report.append(f"   End:    {utc_end} UTC")
-                report.append(f"   Gap:    {gap.gap_hours:.1f} hours")
-                report.append(f"   Note:   {gap.reason}")
-                report.append("")
-                gap_counter += 1
+            holiday_dates = [
+                g.gap_start.strftime('%Y-%m-%d') for g in holiday_gaps]
+            report.append(
+                f"✅ HOLIDAY GAPS: {len(holiday_gaps)} closures "
+                f"({', '.join(holiday_dates)})"
+            )
 
         # === SECTION 4: Detailed Gap List ===
         problematic_gaps = [g for g in self.gaps if g.category in [

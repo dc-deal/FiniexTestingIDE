@@ -1,7 +1,7 @@
 """
-Market Analyzer Cache
-=====================
-Parquet-based caching for MarketAnalyzer results (SymbolAnalysis).
+Volatility Profile Analyzer Cache
+===================================
+Parquet-based caching for VolatilityProfileAnalyzer results (SymbolVolatilityProfile).
 
 Follows DiscoveryCache / DataCoverageReportCache pattern:
 - Parquet storage with Arrow metadata
@@ -9,13 +9,13 @@ Follows DiscoveryCache / DataCoverageReportCache pattern:
 - Lazy bar index loading
 
 Cache Structure:
-    .discovery_caches/market_analyzer_cache/
-        mt5_EURUSD_analysis.parquet
-        mt5_USDJPY_analysis.parquet
-        kraken_spot_BTCUSD_analysis.parquet
+    .discovery_caches/volatility_profile_cache/
+        mt5_EURUSD_volatility_profile.parquet
+        mt5_USDJPY_volatility_profile.parquet
+        kraken_spot_BTCUSD_volatility_profile.parquet
 
 Serialization:
-    - PeriodAnalysis list -> Parquet rows (enums as strings)
+    - VolatilityPeriod list -> Parquet rows (enums as strings)
     - Scalar fields, regime dicts, session summaries -> Arrow metadata (JSON)
 """
 
@@ -31,21 +31,21 @@ import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.market_types.market_config_types import MarketType
-from python.framework.types.market_types.market_analysis_types import (
-    PeriodAnalysis,
+from python.framework.types.market_types.market_volatility_profile_types import (
+    VolatilityPeriod,
     SessionSummary,
-    SymbolAnalysis,
+    SymbolVolatilityProfile,
     TradingSession,
     VolatilityRegime,
 )
 
 vLog = get_global_logger()
 
-# Parquet column schema for PeriodAnalysis rows
+# Parquet column schema for VolatilityPeriod rows
 _PERIOD_COLUMNS = [
     'start_time', 'end_time', 'session', 'atr', 'atr_percentile', 'regime',
     'tick_count', 'tick_density', 'activity', 'bar_count', 'real_bar_count',
@@ -53,16 +53,16 @@ _PERIOD_COLUMNS = [
 ]
 
 
-class MarketAnalyzerCache:
+class VolatilityProfileAnalyzerCache:
     """
-    Parquet-based cache for MarketAnalyzer SymbolAnalysis results.
+    Parquet-based cache for VolatilityProfileAnalyzer results.
 
     Auto-invalidates when source bar files change (mtime comparison).
     Only caches default M5 timeframe; custom timeframes bypass cache.
     """
 
     CACHE_PARENT_DIR = ".discovery_caches"
-    CACHE_SUB_DIR = "market_analyzer_cache"
+    CACHE_SUB_DIR = "volatility_profile_cache"
     GRANULARITY = "M5"
 
     def __init__(self, logger: AbstractLogger = vLog):
@@ -88,7 +88,7 @@ class MarketAnalyzerCache:
 
     def _get_cache_path(self, broker_type: str, symbol: str) -> Path:
         """Get cache file path for broker_type/symbol."""
-        return self.cache_dir / f"{broker_type}_{symbol}_analysis.parquet"
+        return self.cache_dir / f"{broker_type}_{symbol}_volatility_profile.parquet"
 
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
         """Get modification time of source M5 bar file."""
@@ -134,16 +134,16 @@ class MarketAnalyzerCache:
     # MAIN ENTRY POINT
     # =========================================================================
 
-    def get_analysis(
+    def get_profile(
         self,
         broker_type: str,
         symbol: str,
         timeframe: Optional[str] = None,
         force_rebuild: bool = False,
-        analyzer: Optional[MarketAnalyzer] = None
-    ) -> Optional[SymbolAnalysis]:
+        analyzer: Optional[VolatilityProfileAnalyzer] = None
+    ) -> Optional[SymbolVolatilityProfile]:
         """
-        Get SymbolAnalysis, using cache if valid.
+        Get SymbolVolatilityProfile, using cache if valid.
 
         Custom timeframes bypass cache (only M5 is cached).
 
@@ -151,79 +151,79 @@ class MarketAnalyzerCache:
             broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe override (non-M5 bypasses cache)
-            force_rebuild: Force reanalysis, ignore cache
-            analyzer: Optional pre-initialized MarketAnalyzer (for build_all)
+            force_rebuild: Force rebuild, ignore cache
+            analyzer: Optional pre-initialized VolatilityProfileAnalyzer (for build_all)
 
         Returns:
-            SymbolAnalysis or None if data unavailable
+            SymbolVolatilityProfile or None if data unavailable
         """
         # Custom timeframe bypasses cache
         if timeframe and timeframe != self.GRANULARITY:
             self._logger.debug(
                 f"Custom timeframe {timeframe}, bypassing cache: "
                 f"{broker_type}/{symbol}")
-            return self._run_analysis(
+            return self._build_profile(
                 broker_type, symbol, timeframe, analyzer)
 
         # Check cache
         if not force_rebuild and self.is_cache_valid(broker_type, symbol):
-            result = self._load_analysis(broker_type, symbol)
+            result = self._load_profile(broker_type, symbol)
             if result:
                 self._logger.debug(
-                    f"Cache hit: {broker_type}/{symbol} analysis")
+                    f"Cache hit: {broker_type}/{symbol} volatility profile")
                 return result
 
-        # Generate fresh analysis
-        self._logger.debug(f"Analyzing: {broker_type}/{symbol}")
-        result = self._run_analysis(
+        # Generate fresh volatility profile
+        self._logger.debug(f"Profiling: {broker_type}/{symbol}")
+        result = self._build_profile(
             broker_type, symbol, timeframe, analyzer)
         if result:
-            self._save_analysis(broker_type, symbol, result)
+            self._save_profile(broker_type, symbol, result)
         return result
 
-    def _run_analysis(
+    def _build_profile(
         self,
         broker_type: str,
         symbol: str,
         timeframe: Optional[str],
-        analyzer: Optional[MarketAnalyzer]
-    ) -> Optional[SymbolAnalysis]:
+        analyzer: Optional[VolatilityProfileAnalyzer]
+    ) -> Optional[SymbolVolatilityProfile]:
         """
-        Run MarketAnalyzer.analyze_symbol with error handling.
+        Run VolatilityProfileAnalyzer.build_profile with error handling.
 
         Args:
             broker_type: Broker type identifier
             symbol: Trading symbol
             timeframe: Timeframe override
-            analyzer: Optional pre-initialized MarketAnalyzer
+            analyzer: Optional pre-initialized VolatilityProfileAnalyzer
 
         Returns:
-            SymbolAnalysis or None on failure
+            SymbolVolatilityProfile or None on failure
         """
         try:
             if analyzer is None:
-                analyzer = MarketAnalyzer()
-            return analyzer.analyze_symbol(broker_type, symbol, timeframe)
+                analyzer = VolatilityProfileAnalyzer()
+            return analyzer.build_profile(broker_type, symbol, timeframe)
         except Exception as e:
             self._logger.warning(
-                f"Analysis failed for {broker_type}/{symbol}: {e}")
+                f"Volatility profiling failed for {broker_type}/{symbol}: {e}")
             return None
 
     # =========================================================================
     # SERIALIZATION
     # =========================================================================
 
-    def _save_analysis(
+    def _save_profile(
         self,
         broker_type: str,
         symbol: str,
-        analysis: SymbolAnalysis
+        analysis: SymbolVolatilityProfile
     ) -> None:
-        """Save SymbolAnalysis to Parquet cache."""
+        """Save SymbolVolatilityProfile to Parquet cache."""
         cache_path = self._get_cache_path(broker_type, symbol)
 
         try:
-            # Convert PeriodAnalysis list to DataFrame rows
+            # Convert VolatilityPeriod list to DataFrame rows
             rows = []
             for p in analysis.periods:
                 rows.append({
@@ -295,18 +295,18 @@ class MarketAnalyzerCache:
             })
 
             pq.write_table(table, cache_path)
-            self._logger.debug(f"Cached: {broker_type}/{symbol} analysis")
+            self._logger.debug(f"Cached: {broker_type}/{symbol} volatility profile")
 
         except Exception as e:
             self._logger.warning(
-                f"Failed to cache {broker_type}/{symbol} analysis: {e}")
+                f"Failed to cache {broker_type}/{symbol} volatility profile: {e}")
 
-    def _load_analysis(
+    def _load_profile(
         self,
         broker_type: str,
         symbol: str
-    ) -> Optional[SymbolAnalysis]:
-        """Load SymbolAnalysis from Parquet cache."""
+    ) -> Optional[SymbolVolatilityProfile]:
+        """Load SymbolVolatilityProfile from Parquet cache."""
         cache_path = self._get_cache_path(broker_type, symbol)
 
         try:
@@ -314,10 +314,10 @@ class MarketAnalyzerCache:
             metadata = pq_file.schema_arrow.metadata or {}
             df = pd.read_parquet(cache_path)
 
-            # Reconstruct PeriodAnalysis list from DataFrame rows
-            periods: List[PeriodAnalysis] = []
+            # Reconstruct VolatilityPeriod list from DataFrame rows
+            periods: List[VolatilityPeriod] = []
             for _, row in df.iterrows():
-                periods.append(PeriodAnalysis(
+                periods.append(VolatilityPeriod(
                     start_time=row['start_time'].to_pydatetime(),
                     end_time=row['end_time'].to_pydatetime(),
                     session=TradingSession(row['session']),
@@ -360,7 +360,7 @@ class MarketAnalyzerCache:
             pips_str = metadata.get(b'avg_pips_per_day', b'').decode()
             avg_pips_per_day = float(pips_str) if pips_str else None
 
-            return SymbolAnalysis(
+            return SymbolVolatilityProfile(
                 symbol=metadata.get(b'symbol', b'').decode(),
                 timeframe=metadata.get(b'timeframe', b'M5').decode(),
                 market_type=MarketType(
@@ -414,7 +414,7 @@ class MarketAnalyzerCache:
         start_time = time.time()
 
         # Single analyzer instance for all symbols (expensive init)
-        analyzer = MarketAnalyzer()
+        analyzer = VolatilityProfileAnalyzer()
 
         for broker_type in bar_index.list_broker_types():
             for symbol in bar_index.list_symbols(broker_type):
@@ -425,7 +425,7 @@ class MarketAnalyzerCache:
                         stats['skipped'] += 1
                         continue
 
-                    result = self.get_analysis(
+                    result = self.get_profile(
                         broker_type, symbol,
                         force_rebuild=True, analyzer=analyzer)
                     if result:
@@ -442,7 +442,7 @@ class MarketAnalyzerCache:
         elapsed = time.time() - start_time
         total = stats['generated'] + stats['skipped'] + stats['failed']
         self._logger.info(
-            f"Market analyzer cache built: {stats['generated']} generated, "
+            f"Volatility profile cache built: {stats['generated']} generated, "
             f"{stats['skipped']} skipped, {stats['failed']} failed "
             f"({total} total) in {elapsed:.2f}s"
         )
@@ -451,7 +451,7 @@ class MarketAnalyzerCache:
 
     def clear_cache(self) -> int:
         """
-        Clear all cached analysis results.
+        Clear all cached volatility profile results.
 
         Returns:
             Number of files deleted
@@ -460,7 +460,7 @@ class MarketAnalyzerCache:
         for cache_file in cache_files:
             cache_file.unlink()
         self._logger.info(
-            f"Cleared {len(cache_files)} market analyzer cache files")
+            f"Cleared {len(cache_files)} volatility profile cache files")
         return len(cache_files)
 
     def get_cache_status(self) -> Dict:

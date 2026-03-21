@@ -1,12 +1,12 @@
 """
 Discoveries CLI
-Command-line interface for market discoveries, data analysis,
+Command-line interface for market discoveries, volatility profiling,
 and unified cache management.
 
 Commands:
-- analyze: Analyze market data and show volatility/activity report
+- volatility-profile: Build volatility profile and show report
 - extreme-moves: Scan for extreme directional price movements
-- coverage: Gap analysis and coverage report management
+- data-coverage: Gap analysis and coverage report management
 - cache: Unified discovery cache operations
 """
 
@@ -14,15 +14,16 @@ import argparse
 import sys
 from typing import List, Optional
 
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
-from python.framework.discoveries.market_analyzer.market_analyzer import MarketAnalyzer
-from python.framework.discoveries.market_analyzer.market_analyzer_cache import MarketAnalyzerCache
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import VolatilityProfileAnalyzerCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
-from python.framework.types.market_types.market_analysis_types import SymbolAnalysis
-from python.framework.discoveries.market_analyzer.market_analyzer_report import print_analysis_report
-from python.framework.discoveries.market_analyzer.market_analyzer_comparison_report import print_cross_instrument_ranking
+from python.framework.types.market_types.market_volatility_profile_types import SymbolVolatilityProfile
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_report import print_volatility_profile
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_comparison_report import print_cross_instrument_ranking
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.data_management.index.bars_index_manager import BarsIndexManager
 
@@ -31,17 +32,17 @@ vLog = get_global_logger()
 
 class DiscoveriesCli:
     """
-    CLI handler for market discoveries and analysis.
+    CLI handler for market discoveries and volatility profiling.
     """
 
     def __init__(self):
-        self._analyzer = MarketAnalyzer()
+        self._analyzer = VolatilityProfileAnalyzer()
 
     # =========================================================================
-    # ANALYZE COMMAND
+    # VOLATILITY PROFILE COMMAND
     # =========================================================================
 
-    def cmd_analyze(
+    def cmd_volatility_profile(
         self,
         broker_type: str,
         symbol: str,
@@ -49,42 +50,41 @@ class DiscoveriesCli:
         force: bool = False
     ) -> None:
         """
-        Analyze market data and print report with cross-instrument comparison.
-        Uses cache by default, reanalyzes only when source bar data changes.
+        Build volatility profile and print report with cross-instrument comparison.
+        Uses cache by default, rebuilds only when source bar data changes.
 
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
-            symbol: Symbol to analyze
+            symbol: Symbol to profile
             timeframe: Timeframe override
-            force: Force reanalysis ignoring cache
+            force: Force rebuild ignoring cache
         """
-        cache = MarketAnalyzerCache()
+        cache = VolatilityProfileAnalyzerCache()
 
-        analysis = cache.get_analysis(
+        profile = cache.get_profile(
             broker_type, symbol, timeframe, force_rebuild=force)
-        if not analysis:
-            print(f"Failed to analyze {symbol}")
+        if not profile:
+            print(f"Failed to build volatility profile for {symbol}")
             return
 
-        print_analysis_report(analysis)
+        print_volatility_profile(profile)
 
         all_symbols = self._analyzer.list_symbols(broker_type)
-        all_analyses: List[SymbolAnalysis] = [analysis]
+        all_profiles: List[SymbolVolatilityProfile] = [profile]
 
         for sym in all_symbols:
             if sym == symbol:
                 continue
-            sym_analysis = cache.get_analysis(
+            sym_profile = cache.get_profile(
                 broker_type, sym, timeframe, force_rebuild=force)
-            if sym_analysis:
-                all_analyses.append(sym_analysis)
+            if sym_profile:
+                all_profiles.append(sym_profile)
             else:
-                vLog.warning(f"Could not analyze {sym} for comparison")
+                vLog.warning(f"Could not profile {sym} for comparison")
 
-        if len(all_analyses) > 1:
-            config = self._analyzer.get_config()
-            top_count = config.cross_instrument_ranking.top_count
-            print_cross_instrument_ranking(all_analyses, symbol, top_count)
+        if len(all_profiles) > 1:
+            ranking_config = DiscoveriesConfigLoader().get_cross_instrument_ranking_config()
+            print_cross_instrument_ranking(all_profiles, symbol, ranking_config.top_count)
 
     # =========================================================================
     # EXTREME MOVES COMMAND
@@ -292,38 +292,38 @@ class DiscoveriesCli:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Market discoveries, analysis, and cache management CLI",
+        description="Market discoveries, volatility profiling, and cache management CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # ─────────────────────────────────────────────────────────────────────────
-    # ANALYZE command
+    # VOLATILITY-PROFILE command
     # ─────────────────────────────────────────────────────────────────────────
-    analyze_parser = subparsers.add_parser(
-        'analyze',
-        help='Analyze market data for volatility and activity'
+    profile_parser = subparsers.add_parser(
+        'volatility-profile',
+        help='Build volatility profile for a symbol'
     )
-    analyze_parser.add_argument(
+    profile_parser.add_argument(
         'broker_type',
         help='Broker type (e.g., mt5, kraken_spot)'
     )
-    analyze_parser.add_argument(
+    profile_parser.add_argument(
         'symbol',
-        help='Symbol to analyze (e.g., EURUSD, BTCUSD)'
+        help='Symbol to profile (e.g., EURUSD, BTCUSD)'
     )
-    analyze_parser.add_argument(
+    profile_parser.add_argument(
         '--timeframe',
         type=str,
         default=None,
         help='Timeframe to analyze (default: M5)'
     )
-    analyze_parser.add_argument(
+    profile_parser.add_argument(
         '--force',
         action='store_true',
         default=False,
-        help='Force reanalysis ignoring cache'
+        help='Force rebuild ignoring cache'
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -432,8 +432,8 @@ def main():
 
     cli = DiscoveriesCli()
 
-    if args.command == 'analyze':
-        cli.cmd_analyze(
+    if args.command == 'volatility-profile':
+        cli.cmd_volatility_profile(
             broker_type=args.broker_type,
             symbol=args.symbol,
             timeframe=args.timeframe,
