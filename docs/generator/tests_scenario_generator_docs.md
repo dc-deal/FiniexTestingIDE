@@ -48,14 +48,6 @@ The generator creates its data dependencies internally. Tests use `unittest.mock
 - Region below min_block_hours → no blocks
 - Blocks are consecutive (end == next start)
 
-### Constrained Blocks (with sessions, extend=false)
-- Only generates blocks within allowed session windows
-
-### Extended Blocks (with sessions, extend=true)
-- Blocks start at session transition points
-- Blocks run full duration past session boundary
-- No session start in region → no blocks
-
 ### Count Limiting
 - count_max truncates excess blocks
 - count_max above generated → all returned
@@ -65,10 +57,21 @@ The generator creates its data dependencies internally. Tests use `unittest.mock
 - Post-gap warning: block after MODERATE gap → warning logged
 - No post-gap warning within continuous region
 
-### Session Utilities
-- Session window extraction (allowed/mixed/no match)
-- Session start point detection (transition/no transition)
-
 ### Edge Cases
 - Gap covering all data → ValueError
 - Candidate field values (symbol, broker_type, estimated_ticks=0)
+
+---
+
+## test_config_fingerprint_utils.py
+
+**Location:** `tests/test_config_fingerprint_utils.py`
+
+Tests for SHA256-based config fingerprinting used by discovery caches and profile freshness validation.
+
+- Deterministic output for same input
+- Different input → different fingerprint
+- Key ordering irrelevant (sorted internally)
+- Empty dict → valid 64-char hex
+- Nested dicts → order-independent
+- Returns valid hex string of correct length

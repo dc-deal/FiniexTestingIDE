@@ -7,6 +7,7 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
+from python.scenario.generator.profile_loader import ProfileLoader
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
@@ -61,6 +62,52 @@ def run_strategy_test(scenario_set_json: str):
     except Exception as e:
         vLog.hard_error(
             f"Unexpected error during startup",
+            exception=e
+        )
+
+
+def run_profile_test(scenario_set_json: str, profile_path: str):
+    """
+    Run a Profile Run — loads profile blocks as scenarios.
+
+    Args:
+        scenario_set_json: Scenario set config (for global strategy/execution config)
+        profile_path: Path to GeneratorProfile JSON file
+    """
+    try:
+        vLog.info("🚀 Starting [BatchOrchestrator] Profile Run")
+
+        app_config_loader = AppConfigManager()
+
+        # Load profile
+        loader = ProfileLoader()
+        profile = loader.load_profile(profile_path)
+
+        # Validate fingerprints
+        fingerprint_warnings = loader.validate_fingerprints(profile)
+        if fingerprint_warnings:
+            vLog.warning(
+                f"⚠️ Profile has {len(fingerprint_warnings)} fingerprint warning(s) — "
+                f"discovery configs may have changed since generation"
+            )
+
+        # Create scenarios from profile + global config
+        scenario_config_loader = ScenarioConfigLoader()
+        scenario_config_data = scenario_config_loader.load_from_profile(
+            profile, scenario_set_json
+        )
+
+        vLog.info(
+            f"📂 Profile Run: {profile.profile_meta.symbol} "
+            f"({profile.profile_meta.block_count} blocks, "
+            f"{profile.profile_meta.generator_mode} mode)"
+        )
+
+        initialize_batch_and_run(scenario_config_data, app_config_loader)
+
+    except Exception as e:
+        vLog.hard_error(
+            f"Unexpected error during Profile Run startup",
             exception=e
         )
 

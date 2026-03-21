@@ -5,12 +5,10 @@ Generates chronological time blocks with gap-aware region splitting.
 
 Features:
 - Data-start and post-gap warnings
-- Session extension support
 - Detailed gap-aware warnings with color coding
 """
 
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -38,7 +36,6 @@ class BlocksGenerator:
     Generates time-based blocks with intelligent handling of:
     - Data gaps (weekend, moderate, large)
     - Data quality warnings (data-start, post-gap)
-    - Session filtering with optional extension
     """
 
     def __init__(self, config: GeneratorConfig):
@@ -56,21 +53,16 @@ class BlocksGenerator:
         broker_type: str,
         symbol: str,
         block_hours: int,
-        count_max: Optional[int],
-        sessions_filter: Optional[List[str]] = None
+        count_max: Optional[int]
     ) -> List[ScenarioCandidate]:
         """
         Generate chronological blocks from continuous data regions.
-
-        If extend_blocks_beyond_session=true: Session filter defines START points only,
-        blocks run full duration. If false: Blocks constrained to session windows.
 
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
             block_hours: Target hours per block
             count_max: Optional limit on number of blocks
-            sessions_filter: Optional list of session names to include
 
         Returns:
             List of scenario candidates with max_ticks=None
@@ -90,9 +82,6 @@ class BlocksGenerator:
             raise ValueError(
                 f"No continuous data regions found for {broker_type}/{symbol}")
 
-        # Convert sessions_filter to TradingSession enums
-        allowed_sessions = self._parse_sessions_filter(sessions_filter)
-
         # Log gap filtering info
         self._log_coverage_info(continuous_regions, data_coverage_report)
 
@@ -101,7 +90,6 @@ class BlocksGenerator:
         generation_warnings = []
         min_block_hours = self._config.blocks.min_block_hours
         block_duration = timedelta(hours=block_hours)
-        extend_beyond_session = self._config.blocks.extend_blocks_beyond_session
 
         block_counter = 0
 
@@ -118,17 +106,10 @@ class BlocksGenerator:
                 f"({region_duration.total_seconds()/3600:.1f}h)"
             )
 
-            # Generate blocks based on extend_blocks_beyond_session setting
-            if extend_beyond_session and allowed_sessions:
-                scenarios_from_region = self._generate_extended_blocks(
-                    symbol, broker_type, region, scenario_start, allowed_sessions,
-                    block_duration, min_block_hours, block_hours, block_counter
-                )
-            else:
-                scenarios_from_region = self._generate_constrained_blocks(
-                    symbol, broker_type, region, scenario_start, allowed_sessions,
-                    block_duration, min_block_hours, block_hours, block_counter
-                )
+            scenarios_from_region = self._generate_blocks(
+                symbol, broker_type, region, scenario_start,
+                block_duration, min_block_hours, block_hours, block_counter
+            )
 
             # Data-start warning: first block starts at data begin
             if (region['preceding_gap'] is None
@@ -196,31 +177,28 @@ class BlocksGenerator:
         return scenarios
 
     # =========================================================================
-    # BLOCK GENERATION STRATEGIES
+    # BLOCK GENERATION
     # =========================================================================
 
-    def _generate_extended_blocks(
+    def _generate_blocks(
         self,
         symbol: str,
         broker_type: str,
         region: Dict,
         scenario_start: datetime,
-        allowed_sessions: set,
         block_duration: timedelta,
         min_block_hours: int,
         block_hours: int,
         block_counter: int
     ) -> List[ScenarioCandidate]:
         """
-        Generate blocks with session extension enabled.
-
-        Session filter defines START points, blocks run full duration.
+        Generate continuous chronological blocks within a data region.
 
         Args:
             symbol: Trading symbol
+            broker_type: Broker type identifier
             region: Region dict with start/end/following_gap
             scenario_start: Start time for block generation
-            allowed_sessions: Set of allowed TradingSession enums
             block_duration: Target block duration
             min_block_hours: Minimum block duration
             block_hours: Target hours per block
@@ -231,22 +209,10 @@ class BlocksGenerator:
         """
         scenarios = []
         region_end = region['end']
-
-        session_start_points = self._extract_session_start_points(
-            scenario_start, region_end, allowed_sessions
-        )
-
         current_start = scenario_start
         local_counter = block_counter
 
-        for start_point in session_start_points:
-            if current_start >= region_end:
-                break
-
-            # Align to session start if we haven't passed it
-            if start_point >= current_start:
-                current_start = start_point
-
+        while current_start < region_end:
             remaining_hours = (
                 region_end - current_start).total_seconds() / 3600
 
@@ -263,7 +229,6 @@ class BlocksGenerator:
             local_counter += 1
 
             if remaining_hours < block_hours:
-                # Last block - shorter than target
                 block_end = region_end
                 gap_info = self._get_gap_info(region)
                 vLog.debug(
@@ -274,7 +239,6 @@ class BlocksGenerator:
             else:
                 block_end = current_start + block_duration
 
-            # Get session at start
             start_hour = current_start.hour
             session = TradingSession(get_session_from_utc_hour(start_hour))
 
@@ -283,146 +247,15 @@ class BlocksGenerator:
                 start_time=current_start,
                 end_time=block_end,
                 broker_type=broker_type,
-                regime=VolatilityRegime.MEDIUM,  # Default for blocks
+                regime=VolatilityRegime.MEDIUM,
                 session=session,
-                estimated_ticks=0,  # Time-based, no tick limit
+                estimated_ticks=0,
                 atr=0.0,
                 tick_density=0.0,
                 real_bar_ratio=1.0
             ))
 
             current_start = block_end
-
-        return scenarios
-
-    def _generate_constrained_blocks(
-        self,
-        symbol: str,
-        broker_type: str,
-        region: Dict,
-        scenario_start: datetime,
-        allowed_sessions: Optional[set],
-        block_duration: timedelta,
-        min_block_hours: int,
-        block_hours: int,
-        block_counter: int
-    ) -> List[ScenarioCandidate]:
-        """
-        Generate blocks constrained to session windows.
-
-        Args:
-            symbol: Trading symbol
-            region: Region dict with start/end/following_gap
-            scenario_start: Start time for block generation
-            allowed_sessions: Set of allowed TradingSession enums (or None for all)
-            block_duration: Target block duration
-            min_block_hours: Minimum block duration
-            block_hours: Target hours per block
-            block_counter: Current block counter
-
-        Returns:
-            List of scenario candidates
-        """
-        scenarios = []
-        region_end = region['end']
-
-        # If no session filter, generate continuous blocks
-        if not allowed_sessions:
-            current_start = scenario_start
-            local_counter = block_counter
-
-            while current_start < region_end:
-                remaining_hours = (
-                    region_end - current_start).total_seconds() / 3600
-
-                if remaining_hours < min_block_hours:
-                    local_counter += 1
-                    gap_info = self._get_gap_info(region)
-                    vLog.debug(
-                        f"Block #{local_counter:02d}: Skipping remainder {remaining_hours:.1f}h < {min_block_hours}h\n"
-                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {region_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
-                        f"   Reason: Below minimum block duration{gap_info}"
-                    )
-                    break
-
-                local_counter += 1
-
-                if remaining_hours < block_hours:
-                    block_end = region_end
-                    gap_info = self._get_gap_info(region)
-                    vLog.debug(
-                        f"Block #{local_counter:02d}: Short block {remaining_hours:.1f}h < {block_hours}h target\n"
-                        f"   Time: {current_start.strftime('%Y-%m-%d %H:%M')} → {block_end.strftime('%Y-%m-%d %H:%M')} UTC ({current_start.strftime('%a')})\n"
-                        f"   Reason: End of continuous data region{gap_info}"
-                    )
-                else:
-                    block_end = current_start + block_duration
-
-                start_hour = current_start.hour
-                session = TradingSession(get_session_from_utc_hour(start_hour))
-
-                scenarios.append(ScenarioCandidate(
-                    symbol=symbol,
-                    start_time=current_start,
-                    end_time=block_end,
-                    broker_type=broker_type,
-                    regime=VolatilityRegime.MEDIUM,
-                    session=session,
-                    estimated_ticks=0,
-                    atr=0.0,
-                    tick_density=0.0,
-                    real_bar_ratio=1.0
-                ))
-
-                current_start = block_end
-
-            return scenarios
-
-        # Session-constrained blocks
-        session_windows = self._extract_session_windows(
-            scenario_start, region_end, allowed_sessions
-        )
-
-        local_counter = block_counter
-
-        for window in session_windows:
-            window_start = window['start']
-            window_end = window['end']
-            current_start = window_start
-
-            while current_start < window_end:
-                remaining_hours = (
-                    window_end - current_start).total_seconds() / 3600
-
-                if remaining_hours < min_block_hours:
-                    break
-
-                local_counter += 1
-
-                if remaining_hours < block_hours:
-                    block_end = window_end
-                else:
-                    block_end = current_start + block_duration
-                    if block_end > window_end:
-                        block_end = window_end
-
-                start_hour = current_start.hour
-                session = TradingSession(get_session_from_utc_hour(start_hour))
-
-                scenarios.append(ScenarioCandidate(
-                    symbol=symbol,
-                    start_time=current_start,
-                    end_time=block_end,
-                    broker_type=broker_type,
-                    regime=VolatilityRegime.MEDIUM,
-                    session=session,
-                    estimated_ticks=0,
-                    atr=0.0,
-                    tick_density=0.0,
-                    real_bar_ratio=1.0
-                ))
-
-                current_start = block_end
 
         return scenarios
 
@@ -513,124 +346,9 @@ class BlocksGenerator:
 
         return regions
 
-    def _extract_session_start_points(
-        self,
-        start: datetime,
-        end: datetime,
-        allowed_sessions: set
-    ) -> List[datetime]:
-        """
-        Extract session start points within time range.
-
-        Used when extend_blocks_beyond_session=true to find valid block start times.
-
-        Args:
-            start: Region start time
-            end: Region end time
-            allowed_sessions: Set of TradingSession enums to include
-
-        Returns:
-            List of datetime objects marking session starts
-        """
-        start_points = []
-        current_hour = start.replace(minute=0, second=0, microsecond=0)
-        prev_session = None
-
-        while current_hour < end:
-            hour_session = get_session_from_utc_hour(current_hour.hour)
-
-            # Detect session start (transition from non-allowed to allowed)
-            if hour_session in allowed_sessions and prev_session != hour_session:
-                actual_start = max(current_hour, start)
-                if actual_start < end:
-                    start_points.append(actual_start)
-
-            prev_session = hour_session
-            current_hour += timedelta(hours=1)
-
-        return start_points
-
-    def _extract_session_windows(
-        self,
-        start: datetime,
-        end: datetime,
-        allowed_sessions: set
-    ) -> List[Dict[str, datetime]]:
-        """
-        Extract time windows within allowed trading sessions.
-
-        Args:
-            start: Region start time
-            end: Region end time
-            allowed_sessions: Set of TradingSession enums to include
-
-        Returns:
-            List of dicts with 'start' and 'end' datetime keys
-        """
-        windows = []
-        current_window_start = None
-        current_hour = start.replace(minute=0, second=0, microsecond=0)
-
-        while current_hour < end:
-            hour_session = get_session_from_utc_hour(current_hour.hour)
-
-            if hour_session in allowed_sessions:
-                if current_window_start is None:
-                    current_window_start = max(current_hour, start)
-            else:
-                if current_window_start is not None:
-                    window_end = min(current_hour, end)
-                    if window_end > current_window_start:
-                        windows.append({
-                            'start': current_window_start,
-                            'end': window_end
-                        })
-                    current_window_start = None
-
-            current_hour += timedelta(hours=1)
-
-        # Close final window if open
-        if current_window_start is not None:
-            windows.append({
-                'start': current_window_start,
-                'end': end
-            })
-
-        return windows
-
     # =========================================================================
     # HELPER METHODS
     # =========================================================================
-
-    def _parse_sessions_filter(
-        self,
-        sessions_filter: Optional[List[str]]
-    ) -> Optional[set]:
-        """
-        Parse sessions filter strings to TradingSession enums.
-
-        Args:
-            sessions_filter: Optional list of session name strings
-
-        Returns:
-            Set of TradingSession enums or None
-        """
-        if not sessions_filter:
-            return None
-
-        allowed_sessions = set()
-        for s in sessions_filter:
-            try:
-                allowed_sessions.add(TradingSession(s))
-            except ValueError:
-                vLog.warning(f"Unknown session '{s}', ignoring")
-
-        if allowed_sessions:
-            vLog.info(
-                f"Filtering blocks to sessions: {[s.value for s in allowed_sessions]}")
-            return allowed_sessions
-
-        return None
 
     def _log_coverage_info(
         self,

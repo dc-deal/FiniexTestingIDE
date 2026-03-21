@@ -104,40 +104,62 @@ JSON files in `configs/generator_profiles/`. Human-readable but must not be manu
     "symbol": "EURUSD",
     "broker_type": "mt5",
     "generator_mode": "volatility_split",
+    "generated_at": "2026-03-19T14:00:00+00:00",
     "total_coverage_hours": 4320,
     "block_count": 12,
-    "generation_timestamp": "2026-03-19T14:00:00Z",
     "discovery_fingerprints": {
-      "volatility_profile": "sha256:a3f2b1...",
-      "data_coverage": "sha256:c7d4e9..."
+      "volatility_profile": "a3f2b1c4...",
+      "data_coverage": "c7d4e982...",
+      "extreme_moves": "b8e1f9a3..."
+    },
+    "split_config": {
+      "min_block_hours": 2,
+      "max_block_hours": 24,
+      "atr_percentile_threshold": 10,
+      "split_algorithm": "atr_minima"
     }
   },
   "blocks": [
     {
-      "start_time": "2025-10-06T08:00:00Z",
-      "end_time": "2025-10-10T21:00:00Z",
+      "block_index": 0,
+      "start_time": "2025-10-06T08:00:00+00:00",
+      "end_time": "2025-10-10T21:00:00+00:00",
       "block_duration_hours": 109,
-      "split_reason": "volatility_minimum",
-      "atr_at_split_point": 0.00032,
-      "volatility_regime_at_split": "LOW",
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.00032,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 54200,
       "distance_to_next_block_hours": 63
     }
   ]
 }
 ```
 
-### Scenario Set Integration
+### CLI Usage
 
-```json
-{
-  "generator_profile": "configs/generator_profiles/eurusd_vol_2026Q1.json",
-  "use_generator_profile": true,
-  "scenarios": [...]
-}
+```bash
+# Generate a profile with ATR-minima splitting
+python python/cli/generator_cli.py generate-profile mt5 EURUSD \
+  --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
+  --mode volatility_split
+
+# Generate a continuous profile (one block per region)
+python python/cli/generator_cli.py generate-profile mt5 EURUSD \
+  --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
+  --mode continuous
+
+# Run with a profile
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321_1400.json
 ```
 
-- `use_generator_profile: true` → Profile Run
-- `use_generator_profile: false` or absent → Free Run (backward-compatible)
+### Scenario Set Integration
+
+Profile Run is activated via the `--generator-profile` CLI flag on the `run` command. The profile blocks replace the `scenarios[]` array from the scenario set JSON. Global config (strategy, execution, trade_simulator) is still loaded from the scenario set.
+
+- `--generator-profile <path>` → Profile Run
+- No flag → Free Run (backward-compatible)
 
 ### Generator Modes
 

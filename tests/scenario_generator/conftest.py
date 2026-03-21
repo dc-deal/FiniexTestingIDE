@@ -184,7 +184,6 @@ def generator_config() -> GeneratorConfig:
         blocks=BlocksStrategyConfig(
             default_block_hours=4,
             min_block_hours=1,
-            extend_blocks_beyond_session=True,
             min_real_bar_ratio=0.5
         ),
     )

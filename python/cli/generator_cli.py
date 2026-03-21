@@ -13,7 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from python.configuration.generator_config_loader import GeneratorConfigLoader
 from python.framework.utils.time_utils import ensure_utc_aware
+from python.scenario.generator.profile_generator import ProfileGenerator
+from python.scenario.generator.profile_saver import ProfileSaver
 from python.scenario.generator.scenario_generator import ScenarioGenerator
 from python.scenario.generator.scenario_generator_config_saver import ScenarioGeneratorConfigSaver
 from python.framework.types.scenario_types.scenario_generator_types import (
@@ -44,7 +47,6 @@ class GeneratorCli:
         symbols: List[str],
         count: Optional[int] = None,
         block_size: Optional[int] = None,
-        sessions: Optional[str] = None,
         start: Optional[str] = None,
         end: Optional[str] = None,
         output: Optional[str] = None,
@@ -58,17 +60,11 @@ class GeneratorCli:
             symbols: List of symbols
             count: Number of blocks (max limit, None=all)
             block_size: Block size in hours
-            sessions: Comma-separated session filters
             start: Start date filter (ISO format)
             end: End date filter (ISO format)
             output: Output filename
             max_ticks: Max ticks per scenario
         """
-        # Parse session filters
-        sessions_list: Optional[List[str]] = None
-        if sessions:
-            sessions_list = [s.strip() for s in sessions.split(',')]
-
         # Parse date filters
         start_dt: Optional[datetime] = None
         end_dt: Optional[datetime] = None
@@ -85,7 +81,6 @@ class GeneratorCli:
                 strategy=GenerationStrategy.BLOCKS,
                 count=count,
                 block_hours=block_size,
-                sessions_filter=sessions_list,
                 start_filter=start_dt,
                 end_filter=end_dt,
                 max_ticks=max_ticks
@@ -104,6 +99,98 @@ class GeneratorCli:
             print(f"❌ Generation failed: {e}")
             vLog.error(f"Generation failed: {e}")
             raise
+
+    # =========================================================================
+    # GENERATE-PROFILE COMMAND
+    # =========================================================================
+
+    def cmd_generate_profile(
+        self,
+        broker_type: str,
+        symbol: str,
+        start: str,
+        end: str,
+        mode: str = 'volatility_split',
+        output: Optional[str] = None
+    ) -> None:
+        """
+        Generate a profile artifact with ATR-minima splitting.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol (single)
+            start: Start date (ISO format, required)
+            end: End date (ISO format, required)
+            mode: Generation mode ('volatility_split' or 'continuous')
+            output: Output filename (auto-generated if None)
+        """
+        start_dt = ensure_utc_aware(datetime.fromisoformat(start))
+        end_dt = ensure_utc_aware(datetime.fromisoformat(end))
+
+        try:
+            # Load profile config
+            gen_config = GeneratorConfigLoader().get_generator_config()
+            if gen_config.profile is None:
+                raise ValueError(
+                    'No "profile" section found in generator_config.json. '
+                    'Add profile configuration before generating profiles.'
+                )
+
+            generator = ProfileGenerator(
+                config=gen_config.profile
+            )
+
+            profile = generator.generate(
+                broker_type=broker_type,
+                symbol=symbol,
+                start_time=start_dt,
+                end_time=end_dt,
+                mode=mode,
+            )
+
+            # Save profile
+            output_file = output or self._generate_profile_output_name(
+                broker_type, symbol, mode
+            )
+            saver = ProfileSaver()
+            profile_path = saver.save_profile(profile, output_file)
+
+            print(f"\n📂 Profile saved to: {profile_path}")
+            print(f"\nℹ️  Next steps:")
+            print(f"   • View profile: cat {profile_path}")
+            print(f"   • Run with profile:")
+            print(f"     python python/cli/strategy_runner_cli.py run <scenario_set>.json "
+                  f"--generator-profile {profile_path}")
+
+        except Exception as e:
+            print(f"❌ Profile generation failed: {e}")
+            vLog.error(f"Profile generation failed: {e}")
+            raise
+
+    def _generate_profile_output_name(
+        self,
+        broker_type: str,
+        symbol: str,
+        mode: str
+    ) -> str:
+        """
+        Generate output filename for profile.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+            mode: Generation mode
+
+        Returns:
+            Filename string
+        """
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
+        mode_short = 'vol' if mode == 'volatility_split' else 'cont'
+        return f"{broker_type}_{symbol}_profile_{mode_short}_{timestamp}.json"
+
+    # =========================================================================
+    # HELPERS
+    # =========================================================================
 
     def _generate_output_name(self, symbols: List[str]) -> str:
         """
@@ -202,12 +289,6 @@ def main():
         help='Max block size in hours (default: 6, min: 1)'
     )
     generate_parser.add_argument(
-        '--sessions',
-        type=str,
-        default=None,
-        help='Comma-separated sessions (e.g., sydney_tokyo,london,new_york)'
-    )
-    generate_parser.add_argument(
         '--start',
         type=str,
         default=None,
@@ -233,6 +314,47 @@ def main():
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # GENERATE-PROFILE command
+    # ─────────────────────────────────────────────────────────────────────────
+    profile_parser = subparsers.add_parser(
+        'generate-profile',
+        help='Generate a profile artifact with ATR-minima splitting'
+    )
+    profile_parser.add_argument(
+        'broker_type',
+        help='Broker type (e.g., mt5, kraken_spot)'
+    )
+    profile_parser.add_argument(
+        'symbol',
+        help='Trading symbol (single, e.g., EURUSD)'
+    )
+    profile_parser.add_argument(
+        '--start',
+        type=str,
+        required=True,
+        help='Start date (ISO format, required)'
+    )
+    profile_parser.add_argument(
+        '--end',
+        type=str,
+        required=True,
+        help='End date (ISO format, required)'
+    )
+    profile_parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['volatility_split', 'continuous'],
+        default='volatility_split',
+        help='Generation mode (default: volatility_split)'
+    )
+    profile_parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Output filename'
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
     # ─────────────────────────────────────────────────────────────────────────
     args = parser.parse_args()
@@ -249,11 +371,19 @@ def main():
             symbols=args.symbols,
             count=args.count,
             block_size=args.block_size,
-            sessions=args.sessions,
             start=args.start,
             end=args.end,
             output=args.output,
             max_ticks=args.max_ticks
+        )
+    elif args.command == 'generate-profile':
+        cli.cmd_generate_profile(
+            broker_type=args.broker_type,
+            symbol=args.symbol,
+            start=args.start,
+            end=args.end,
+            mode=args.mode,
+            output=args.output,
         )
 
 

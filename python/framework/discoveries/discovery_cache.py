@@ -25,7 +25,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, read_fingerprint_from_parquet
 from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
@@ -76,6 +78,26 @@ class DiscoveryCache:
         if bar_file and bar_file.exists():
             return bar_file.stat().st_mtime
         return None
+
+    def _get_current_config_fingerprint(self) -> str:
+        """Get SHA256 fingerprint of current extreme_moves config section."""
+        config = DiscoveriesConfigLoader().get_config_raw()
+        section = config.get('extreme_moves', {})
+        return generate_config_fingerprint(section)
+
+    def get_config_fingerprint(self, broker_type: str, symbol: str) -> Optional[str]:
+        """
+        Get stored config fingerprint from cached extreme moves.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Fingerprint string or None if not cached
+        """
+        cache_path = self._get_cache_path(broker_type, symbol, 'extreme_moves')
+        return read_fingerprint_from_parquet(cache_path)
 
     # =========================================================================
     # CACHE VALIDITY
@@ -261,6 +283,7 @@ class DiscoveryCache:
                 b'scanned_bars': str(result.scanned_bars).encode(),
                 b'source_bar_mtime': str(source_mtime).encode(),
                 b'generated_at': result.generated_at.isoformat().encode(),
+                b'config_fingerprint': self._get_current_config_fingerprint().encode(),
             }
 
             table = pa.Table.from_pandas(df)

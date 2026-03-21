@@ -64,6 +64,9 @@ class SingleScenario:
     # === DATA SOURCE METADATA (populated during data loading) ===
     data_format_versions: List[str] = field(default_factory=list)
 
+    # === PROFILE RUN METADATA (populated from GeneratorProfile) ===
+    is_profile_run: bool = False
+
     def __post_init__(self):
         if self.name is None:
             raise ValueError(

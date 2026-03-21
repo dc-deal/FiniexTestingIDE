@@ -77,6 +77,18 @@ class BatchSummary:
         self._renderer = ConsoleRenderer()
         self._box_renderer = ConsoleBoxRenderer(self._renderer)
 
+    def _detect_profile_run(self) -> bool:
+        """
+        Detect if this batch is a Profile Run.
+
+        Returns:
+            True if first scenario has is_profile_run=True
+        """
+        scenarios = self.batch_execution_summary.single_scenario_list
+        if scenarios and hasattr(scenarios[0], 'is_profile_run'):
+            return scenarios[0].is_profile_run
+        return False
+
     def _calculate_batch_status(self) -> BatchStatus:
         """
         Calculate batch execution status based on process_result results.
@@ -140,7 +152,11 @@ class BatchSummary:
         batch_status = self._calculate_batch_status()
 
         # Header with batch status
-        self._renderer.section_header("🎉 EXECUTION RESULTS")
+        is_profile_run = self._detect_profile_run()
+        if is_profile_run:
+            self._renderer.section_header("🎉 EXECUTION RESULTS — Profile Run")
+        else:
+            self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)
 
         # Scenario details grid

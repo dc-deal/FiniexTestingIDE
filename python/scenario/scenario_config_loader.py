@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
 
+from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -185,4 +186,76 @@ class ScenarioConfigLoader:
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
             config_path=config_path
+        )
+
+    def load_from_profile(
+        self,
+        profile: GeneratorProfile,
+        scenario_set_json: str
+    ) -> LoadedScenarioConfig:
+        """
+        Create LoadedScenarioConfig from a GeneratorProfile.
+
+        Loads global config (strategy, execution, trade_simulator) from
+        the scenario set JSON, then creates one SingleScenario per profile
+        block with is_profile_run=True and profile metadata.
+
+        Args:
+            profile: GeneratorProfile with block definitions
+            scenario_set_json: Scenario set config filename for global config
+
+        Returns:
+            LoadedScenarioConfig with profile-based scenarios
+        """
+        config_path = self.config_path / scenario_set_json
+
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        # Parse global defaults from scenario set
+        global_config = config.get('global', {})
+        global_strategy = global_config.get('strategy_config', {})
+        global_execution = global_config.get('execution_config', {})
+        global_trade_simulator = global_config.get('trade_simulator_config', {})
+        global_stress_test = global_config.get('stress_test_config', {})
+
+        scenario_set_name = config.get('scenario_set_name', 'unknown')
+        meta = profile.profile_meta
+
+        scenarios: List[SingleScenario] = []
+
+        for block in profile.blocks:
+            name = (
+                f"{meta.symbol}_profile_{block.block_index:02d}"
+            )
+
+            scenario = SingleScenario(
+                name=name,
+                scenario_index=block.block_index,
+                symbol=meta.symbol,
+                data_broker_type=meta.broker_type,
+                start_date=block.start_time,
+                end_date=block.end_time,
+                data_mode='realistic',
+                max_ticks=None,
+                strategy_config=copy.deepcopy(global_strategy),
+                execution_config=copy.deepcopy(global_execution),
+                trade_simulator_config=copy.deepcopy(global_trade_simulator) if global_trade_simulator else None,
+                stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
+                is_profile_run=True,
+            )
+            scenarios.append(scenario)
+
+        vLog.info(
+            f"✅ Created {len(scenarios)} scenarios from profile "
+            f"({meta.generator_mode} mode, {meta.symbol})"
+        )
+
+        return LoadedScenarioConfig(
+            scenario_set_name=scenario_set_name,
+            scenarios=scenarios,
+            config_path=config_path,
         )
