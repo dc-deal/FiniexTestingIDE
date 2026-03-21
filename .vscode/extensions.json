@@ -10,8 +10,6 @@
     // MQL5 Support (falls gebraucht)
     "mql5.mql5-vscode",
     // Docker / Dev Containers
-    "ms-vscode-remote.remote-containers",
-    // Jupyter support
-    "ms-toolsai.jupyter"
+    "ms-vscode-remote.remote-containers"
   ]
 }

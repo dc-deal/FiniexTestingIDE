@@ -13,12 +13,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Jupyter installieren
-RUN pip install jupyter notebook
-
-# Port für Jupyter öffnen
-EXPOSE 8888
-
 # Daten-Ordner erstellen
 RUN mkdir -p /app/data/raw /app/data/processed
 
