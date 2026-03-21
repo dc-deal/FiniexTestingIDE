@@ -41,8 +41,8 @@ class MarketConfigManager:
                 market_type = MarketType(market_type_str)
                 self._market_rules[market_type] = MarketRules(
                     weekend_closure=rules_dict.get("weekend_closure", True),
-                    has_trading_sessions=rules_dict.get(
-                        "has_trading_sessions", True),
+                    session_bucketing=rules_dict.get(
+                        "session_bucketing", True),
                     primary_activity_metric=rules_dict.get(
                         "primary_activity_metric", "tick_count"),
                     inter_tick_gap_threshold_s=rules_dict.get(

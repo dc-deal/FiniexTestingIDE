@@ -35,10 +35,10 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
     print(f"Timeframe:      {profile.timeframe}")
     print(f"Market Type:    {profile.market_type.value}")
     print(f"Data Source:    {profile.data_source}")
-    if market_rules.has_trading_sessions:
+    if market_rules.session_bucketing:
         print(f"Sessions:       Yes")
     else:
-        print(f"Sessions:       No (time-of-day separation only)")
+        print(f"Sessions:       No (time-of-day bucketing only)")
 
     # Divider
     print("\n" + "─" * 60)
@@ -84,7 +84,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
 
     # Session statistics with regime distribution
     print("\n" + "─" * 60)
-    if market_rules.has_trading_sessions:
+    if market_rules.session_bucketing:
         print("📊 SESSION ACTIVITY")
     else:
         print("📊 TIME-OF-DAY ACTIVITY")
