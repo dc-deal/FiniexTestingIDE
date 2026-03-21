@@ -7,8 +7,7 @@
         "vscode": {
             "extensions": [
                 "ms-python.python",
-                "ms-python.debugpy",
-                "ms-toolsai.jupyter"
+                "ms-python.debugpy"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
@@ -16,9 +15,7 @@
             }
         }
     },
-    "forwardPorts": [
-        8888
-    ],
+    "forwardPorts": [],
     //"postCreateCommand": "pip install -e .",
     "remoteUser": "root"
 }
