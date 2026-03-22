@@ -62,7 +62,6 @@ class WorkerFactory:
         self._registry: Dict[str, Type[AbstractWorker]] = {}
         self._extra_dirs: List[str] = AppConfigManager().get_user_worker_dirs()
         self._load_core_workers()
-        self._scan_user_namespace()
 
     def _load_core_workers(self):
         """
