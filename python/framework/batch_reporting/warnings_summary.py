@@ -45,6 +45,10 @@ class WarningsSummary(AbstractBatchSummarySection):
         if stress_test_block:
             warning_blocks.append(stress_test_block)
 
+        validation_block = self._build_validation_warning(renderer)
+        if validation_block:
+            warning_blocks.append(validation_block)
+
         data_version_block = self._build_data_version_warning(renderer)
         if data_version_block:
             warning_blocks.append(data_version_block)
@@ -101,6 +105,35 @@ class WarningsSummary(AbstractBatchSummarySection):
                 f"    Scenarios ({len(scenario_names)}): {', '.join(scenario_names)}"))
 
         return '\n'.join(lines)
+
+    def _build_validation_warning(self, renderer: ConsoleRenderer) -> str:
+        """
+        Build validation warning block from scenario validation results.
+
+        Args:
+            renderer: Console renderer for formatting
+
+        Returns:
+            Formatted warning string or empty string
+        """
+        warning_count = 0
+        scenarios_with_warnings = 0
+
+        for scenario in self._batch_summary.single_scenario_list:
+            scenario_warnings = sum(
+                len(r.warnings) for r in scenario.validation_result if r.is_valid
+            )
+            if scenario_warnings > 0:
+                warning_count += scenario_warnings
+                scenarios_with_warnings += 1
+
+        if warning_count == 0:
+            return ''
+
+        return renderer.yellow(
+            f"Validation: {warning_count} warning(s) across "
+            f"{scenarios_with_warnings} scenario(s) — see global log for details"
+        )
 
     def _build_data_version_warning(self, renderer: ConsoleRenderer) -> str:
         """
