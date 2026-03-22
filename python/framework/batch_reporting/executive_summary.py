@@ -11,10 +11,11 @@ Provides comprehensive summary:
 """
 
 import psutil
-from typing import Dict
+from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -35,7 +36,8 @@ class ExecutiveSummary(AbstractBatchSummarySection):
     def __init__(
         self,
         batch_execution_summary: BatchExecutionSummary,
-        app_config: AppConfigManager
+        app_config: AppConfigManager,
+        generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
         Initialize executive summary.
@@ -43,9 +45,11 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Args:
             batch_execution_summary: Batch execution results
             app_config: Application configuration
+            generator_profiles: Generator profiles for Profile Run source info (None for normal runs)
         """
         self._batch_summary = batch_execution_summary
         self._app_config = app_config
+        self._generator_profiles = generator_profiles
 
     def render(self, renderer: ConsoleRenderer):
         """
@@ -126,6 +130,14 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
         print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
               (f" (max {max_workers} workers)" if parallel else ""))
+
+        # Source line (Profile Run vs Scenario Set)
+        if self._generator_profiles:
+            modes = sorted(set(p.profile_meta.generator_mode for p in self._generator_profiles))
+            mode_str = ', '.join(modes)
+            print(f"Source:             Profile Run ({len(self._generator_profiles)} profile(s), {mode_str})")
+        else:
+            print(f"Source:             Scenario Set")
 
     def _render_data_sources(self, renderer: ConsoleRenderer):
         """Render data sources summary section."""

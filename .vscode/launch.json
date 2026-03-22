@@ -441,6 +441,20 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🔍 Disc - Data Coverage: kraken_spot/ADAUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "data-coverage",
+                "show",
+                "kraken_spot",
+                "ADAUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // ⚡ SCENARIO GENERATION
         // ====================================================
@@ -450,7 +464,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
             "args": [
-                "generate",
+                "generate-blocks",
                 "mt5",
                 "USDJPY",
                 "--block-size",
@@ -467,7 +481,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/generator_cli.py",
             "args": [
-                "generate",
+                "generate-blocks",
                 "kraken_spot",
                 "BTCUSD",
                 "--block-size",
@@ -498,6 +512,44 @@
             "justMyCode": false
         },
         {
+            "name": "⚡ Generate Profile: mt5/USDJPY (volatility_split)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "mt5",
+                "USDJPY",
+                "--start",
+                "2025-09-01T00:00:00",
+                "--end",
+                "2025-10-01T00:00:00",
+                "--mode",
+                "volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: mt5/EURUSD (continuous)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "mt5",
+                "EURUSD",
+                "--start",
+                "2025-09-01T00:00:00",
+                "--end",
+                "2025-10-01T00:00:00",
+                "--mode",
+                "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "⚡ Generate Profile: mt5/USDJPY (continuous)",
             "type": "debugpy",
             "request": "launch",
@@ -512,6 +564,153 @@
                 "2025-10-01T00:00:00",
                 "--mode",
                 "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: kraken_spot/BTCUSD (volatility_split)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "kraken_spot",
+                "BTCUSD",
+                "--start",
+                "2026-01-24T00:00:00",
+                "--end",
+                "2026-03-08T00:00:00",
+                "--mode",
+                "volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: kraken_spot/ETHUSD (volatility_split)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "kraken_spot",
+                "ETHUSD",
+                "--start",
+                "2026-01-24T00:00:00",
+                "--end",
+                "2026-03-08T00:00:00",
+                "--mode",
+                "volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: kraken_spot/BTCUSD (continuous)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "kraken_spot",
+                "BTCUSD",
+                "--start",
+                "2026-01-24T00:00:00",
+                "--end",
+                "2026-03-08T00:00:00",
+                "--mode",
+                "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: kraken_spot/ETHUSD (continuous)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "kraken_spot",
+                "ETHUSD",
+                "--start",
+                "2026-01-24T00:00:00",
+                "--end",
+                "2026-03-08T00:00:00",
+                "--mode",
+                "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate All Profiles (volatility_split)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-all-profiles",
+                "--mt5-start",
+                "2025-10-01T00:00:00",
+                "--mt5-end",
+                "2025-10-10T00:00:00",
+                "--kraken-spot-start",
+                "2026-02-01T00:00:00",
+                "--kraken-spot-end",
+                "2026-02-20T00:00:00",
+                "--mode",
+                "volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate All Profiles (continuous)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-all-profiles",
+                "--mt5-start",
+                "2025-10-01T00:00:00",
+                "--mt5-end",
+                "2025-10-10T00:00:00",
+                "--kraken-spot-start",
+                "2026-02-01T00:00:00",
+                "--kraken-spot-end",
+                "2026-02-20T00:00:00",
+                "--mode",
+                "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // --- Profile Runs (multi-profile from directory) ---
+        {
+            "name": "🔬 Profile Run: All volatility_split/ Folder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_sandbox.json",
+                "--generator-profile",
+                "${workspaceFolder}/configs/generator_profiles/volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Profile Run: All continuous/ - Folder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_sandbox.json",
+                "--generator-profile",
+                "${workspaceFolder}/configs/generator_profiles/continuous"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -776,6 +975,19 @@
             "module": "pytest",
             "args": [
                 "tests/worker_tests/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Bar Rendering (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/bar_rendering/",
                 "-v",
                 "--tb=short"
             ],

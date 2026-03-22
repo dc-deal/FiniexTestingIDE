@@ -470,9 +470,11 @@ class BlocksGenerator:
         print(f"  Symbol:      {symbol}")
         print(f"  Broker:      {broker_type}")
         print(f"  Block size:  {block_hours}h")
-        print(f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
+        print(
+            f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
         if total_generated > len(scenarios):
-            print(f"  Blocks:      {len(scenarios)} (of {total_generated} available)")
+            print(
+                f"  Blocks:      {len(scenarios)} (of {total_generated} available)")
         else:
             print(f"  Blocks:      {len(scenarios)}")
 

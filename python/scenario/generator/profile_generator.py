@@ -11,7 +11,7 @@ Supports two modes:
 - continuous: One block per continuous data region (no splitting)
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -97,6 +97,15 @@ class ProfileGenerator:
         regions = self._extract_regions(broker_type, symbol, start_time, end_time)
 
         if not regions:
+            # Provide helpful diagnostics about actual data range
+            report = self._coverage_cache.get_report(broker_type, symbol)
+            if report and report.start_time and report.end_time:
+                raise ValueError(
+                    f"No continuous data regions found for {broker_type}/{symbol} "
+                    f"in [{start_time} → {end_time}]\n"
+                    f"Available data: {report.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                    f"{report.end_time.strftime('%Y-%m-%d %H:%M')} UTC (no overlap with requested range)"
+                )
             raise ValueError(
                 f"No continuous data regions found for {broker_type}/{symbol} "
                 f"in [{start_time} → {end_time}]"
@@ -323,7 +332,13 @@ class ProfileGenerator:
         atr_threshold: float
     ) -> List[datetime]:
         """
-        Find optimal split points using greedy ATR-minima selection.
+        Find optimal split points using window-based ATR-minima selection.
+
+        Walks forward in max_block_hours windows, only splitting when the
+        remaining region exceeds max_block_hours. Within each window, picks
+        the candidate with the lowest ATR. This avoids mini-block
+        proliferation (no unnecessary splits) and guarantees no block
+        exceeds max_block_hours (iterative convergence).
 
         Args:
             region_start: Region start time
@@ -337,122 +352,68 @@ class ProfileGenerator:
         min_hours = self._config.min_block_hours
         max_hours = self._config.max_block_hours
 
-        # Identify candidate periods (ATR <= threshold)
-        candidates = [p for p in periods if p.atr <= atr_threshold]
-
-        # Sort candidates by ATR (prefer lowest ATR for splitting)
-        candidates.sort(key=lambda p: p.atr)
-
-        split_points = []
-        current_block_start = region_start
-
-        # Greedy: iterate chronologically, picking split points
-        # We need to work chronologically, so build a set of candidate times
-        candidate_times = []
-        for c in candidates:
-            # Split at the start of the low-ATR period
-            split_time = c.start_time
-            hours_from_block_start = (split_time - current_block_start).total_seconds() / 3600
-
-            if hours_from_block_start >= min_hours:
-                candidate_times.append((split_time, c.atr, c))
-
-        # Sort by time for greedy selection
-        candidate_times.sort(key=lambda x: x[0])
-
-        current_block_start = region_start
-
-        for split_time, atr, period in candidate_times:
-            hours_from_start = (split_time - current_block_start).total_seconds() / 3600
-            hours_remaining = (region_end - split_time).total_seconds() / 3600
-
-            # Skip if block would be too short
-            if hours_from_start < min_hours:
-                continue
-
-            # Skip if remaining time after split is too short for another block
-            if hours_remaining < min_hours:
-                continue
-
-            split_points.append(split_time)
-            current_block_start = split_time
-
-        # Check for forced splits: if any block exceeds max_block_hours
-        split_points = self._enforce_max_block_hours(
-            region_start, region_end, split_points, periods
+        # ATR-minima candidates sorted chronologically
+        candidates = sorted(
+            [p for p in periods if p.atr <= atr_threshold],
+            key=lambda p: p.start_time
         )
 
-        return sorted(set(split_points))
+        split_points = []
+        current_start = region_start
 
-    def _enforce_max_block_hours(
-        self,
-        region_start: datetime,
-        region_end: datetime,
-        split_points: List[datetime],
-        periods: List[VolatilityPeriod]
-    ) -> List[datetime]:
-        """
-        Ensure no block exceeds max_block_hours by inserting forced splits.
+        while True:
+            remaining_hours = (region_end - current_start).total_seconds() / 3600
 
-        Args:
-            region_start: Region start
-            region_end: Region end
-            split_points: Current split points
-            periods: Available volatility periods
+            # If remaining fits in one block, we're done
+            if remaining_hours <= max_hours:
+                break
 
-        Returns:
-            Updated split points with forced splits where needed
-        """
-        max_hours = self._config.max_block_hours
-        min_hours = self._config.min_block_hours
+            # Search window: [current + min_hours, current + max_hours]
+            window_min = current_start + timedelta(hours=min_hours)
+            window_max = current_start + timedelta(hours=max_hours)
 
-        # Build block boundaries
-        boundaries = [region_start] + sorted(split_points) + [region_end]
-        result_splits = list(split_points)
-
-        for i in range(len(boundaries) - 1):
-            block_start = boundaries[i]
-            block_end = boundaries[i + 1]
-            block_hours = (block_end - block_start).total_seconds() / 3600
-
-            if block_hours <= max_hours:
-                continue
-
-            # Block too long — force split at best available ATR
-            block_periods = [
-                p for p in periods
-                if p.start_time > block_start and p.end_time < block_end
+            # Find ATR-minima candidates within the window
+            valid = [
+                c for c in candidates
+                if window_min <= c.start_time <= window_max
+                and (region_end - c.start_time).total_seconds() / 3600 >= min_hours
             ]
 
-            if not block_periods:
-                continue
-
-            # Find periods that satisfy min_block_hours constraint
-            valid_periods = []
-            for p in block_periods:
-                hours_from_start = (p.start_time - block_start).total_seconds() / 3600
-                hours_to_end = (block_end - p.start_time).total_seconds() / 3600
-                if hours_from_start >= min_hours and hours_to_end >= min_hours:
-                    valid_periods.append(p)
-
-            if valid_periods:
-                # Pick period with lowest ATR
-                best = min(valid_periods, key=lambda p: p.atr)
-                self._logger.warning(
-                    f"⚠️ Forced split at {best.start_time.strftime('%Y-%m-%d %H:%M')} "
-                    f"(ATR={best.atr:.4f}) — block exceeded {max_hours}h"
-                )
-                result_splits.append(best.start_time)
+            if valid:
+                # Pick lowest ATR candidate
+                best = min(valid, key=lambda c: c.atr)
+                split_points.append(best.start_time)
+                current_start = best.start_time
             else:
-                # Last resort: split at midpoint
-                midpoint = block_start + (block_end - block_start) / 2
-                self._logger.warning(
-                    f"⚠️ Forced split at midpoint {midpoint.strftime('%Y-%m-%d %H:%M')} "
-                    f"— no valid ATR candidate within {max_hours}h block"
-                )
-                result_splits.append(midpoint)
+                # No ATR-minima candidate — try any period with lowest ATR
+                forced = [
+                    p for p in periods
+                    if window_min <= p.start_time <= window_max
+                    and (region_end - p.start_time).total_seconds() / 3600 >= min_hours
+                ]
 
-        return result_splits
+                if forced:
+                    best = min(forced, key=lambda p: p.atr)
+                    self._logger.warning(
+                        f"⚠️ Forced split at {best.start_time.strftime('%Y-%m-%d %H:%M')} "
+                        f"(ATR={best.atr:.4f}) — no ATR-minima within {max_hours}h"
+                    )
+                    split_points.append(best.start_time)
+                    current_start = best.start_time
+                else:
+                    # No periods in window — likely a gap (weekend/holiday).
+                    # Skip forward to the next available period instead of
+                    # inserting artificial splits into empty time ranges.
+                    next_periods = [
+                        p for p in periods
+                        if p.start_time > window_max
+                    ]
+                    if next_periods:
+                        current_start = next_periods[0].start_time
+                    else:
+                        break
+
+        return sorted(set(split_points))
 
     def _build_blocks_from_splits(
         self,
@@ -571,8 +532,9 @@ class ProfileGenerator:
         """
         Extract continuous data regions within the requested time range.
 
-        Reuses BlocksGenerator._extract_continuous_regions() pattern
-        via DataCoverageReportCache.
+        Uses the same gap policy as BlocksGenerator — weekends, holidays,
+        seamless and short gaps are all treated as continuous. Blocks span
+        across them. Only moderate/large gaps cause region splits.
 
         Args:
             broker_type: Broker type identifier
@@ -587,7 +549,7 @@ class ProfileGenerator:
         if report is None:
             return []
 
-        # Reuse BlocksGenerator region extraction
+        # Reuse BlocksGenerator region extraction (same gap policy)
         from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
         dummy_config = GeneratorConfig(blocks=None)
         extractor = BlocksGenerator(config=dummy_config)

@@ -20,7 +20,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
-| `generator_cli.py` | Block & Profile Generation | generate, generate-profile |
+| `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
 
 ---
@@ -360,7 +360,7 @@ LONG Extreme Moves (top 10)
 | | |
 |---|---|
 | **VS Code** | `⚡ Generator - 40 Blocks mt5/USDJPY` |
-| **CLI** | `python generator_cli.py generate mt5 USDJPY --block-size 12 --count 40` |
+| **CLI** | `python generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |
 | **Purpose** | Chronological time blocks for systematic testing |
 
 Generates consecutive time windows with configurable length. Automatically detects gaps, splits regions, and warns about data-start and post-gap blocks.
@@ -410,13 +410,45 @@ Generates a profile artifact (JSON) with blocks split at ATR minima — the quie
 - `--mode` — `volatility_split` (default) or `continuous`
 - `--output` — Custom output filename
 
-**Profile Run:**
+**Profile Run (single file):**
 ```bash
 python python/cli/strategy_runner_cli.py run my_set.json \
-  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321.json
+  --generator-profile configs/generator_profiles/volatility_split/mt5_EURUSD_profile_vol_20260322_1219.json
 ```
 
+**Multi-Profile Run (multiple files or directory):**
+```bash
+# Pass multiple profile files
+python python/cli/strategy_runner_cli.py run my_set.json \
+  --generator-profile profiles/mt5_EURUSD_profile_vol.json profiles/mt5_GBPUSD_profile_vol.json
+
+# Pass a directory — all *.json files inside are auto-discovered
+python python/cli/strategy_runner_cli.py run my_set.json \
+  --generator-profile configs/generator_profiles/volatility_split
+```
+
+Multiple profiles are merged into a single batch with globally unique scenario indices. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count for profile runs.
+
 Profile blocks replace the scenario set's `scenarios[]` array. Global config (strategy, execution) is still loaded from the scenario set.
+
+**Profile config resolution:** The profile generator uses market-specific defaults from `market_config.json` (`generator_profile_defaults` per market type), falling back to `generator_config.json`. This means Forex and Crypto automatically get different block size limits and ATR thresholds.
+
+### 📊 Generator - All Profiles (Batch)
+
+| | |
+|---|---|
+| **VS Code** | `⚡ Generate All Profiles (volatility_split)` |
+| **CLI** | `python generator_cli.py generate-all-profiles --mt5-start ... --mt5-end ... --kraken-spot-start ... --kraken-spot-end ... --mode volatility_split` |
+| **Purpose** | Generate profiles for all symbols across all configured brokers in one pass |
+
+Iterates over all broker types and all symbols from the bar index. Start/end times are specified per broker type (different data collection periods).
+
+**Parameters:**
+- `--mt5-start` / `--mt5-end` — Time range for mt5 symbols (required)
+- `--kraken-spot-start` / `--kraken-spot-end` — Time range for kraken_spot symbols (required)
+- `--mode` — `volatility_split` (default) or `continuous`
+
+Each symbol gets its market-specific profile config (e.g., Forex: `max_block_hours=24`, Crypto: `max_block_hours=72`).
 
 ### Output: Scenario Set JSON
 
@@ -436,7 +468,7 @@ The generator produces a JSON configuration:
     },
     "trade_simulator_config": {
       "initial_balance": 10000,
-      "currency": "EUR"
+      "account_currency": "EUR"
     }
   },
   "scenarios": [
@@ -585,10 +617,12 @@ Useful for understanding the raw data structure:
 | **Extreme Moves** | `🔍 Disc - Extreme Moves: mt5/USDJPY` | `discoveries_cli.py extreme-moves mt5 USDJPY` |
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
-| **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate mt5 USDJPY --block-size 12 --count 40` |
+| **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |
 | **Generate Profile** | `⚡ Generate Profile: mt5/EURUSD` | `generator_cli.py generate-profile mt5 EURUSD --start ... --end ...` |
+| **Generate All Profiles** | `⚡ Generate All Profiles (volatility_split)` | `generator_cli.py generate-all-profiles --mt5-start ... --kraken-spot-start ...` |
 | **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
-| **Profile Run** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
+| **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
+| **Profile Run (directory)** | `🔬 Profile Run: All volatility_split` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
 
 ---
 

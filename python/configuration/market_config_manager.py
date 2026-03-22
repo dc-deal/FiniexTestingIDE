@@ -3,13 +3,14 @@ Market Configuration Manager
 Provides lookup methods for market types and broker mappings
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.market_types.market_config_types import (
     MarketType,
     MarketRules,
+    ProfileDefaults,
     BrokerEntry,
 )
 
@@ -39,6 +40,16 @@ class MarketConfigManager:
         for market_type_str, rules_dict in rules_config.items():
             try:
                 market_type = MarketType(market_type_str)
+                # Parse profile defaults if present
+                profile_defaults = None
+                profile_dict = rules_dict.get("generator_profile_defaults")
+                if profile_dict:
+                    profile_defaults = ProfileDefaults(
+                        min_block_hours=profile_dict.get("min_block_hours", 2),
+                        max_block_hours=profile_dict.get("max_block_hours", 24),
+                        atr_percentile_threshold=profile_dict.get("atr_percentile_threshold", 10),
+                    )
+
                 self._market_rules[market_type] = MarketRules(
                     weekend_closure=rules_dict.get("weekend_closure", True),
                     session_bucketing=rules_dict.get(
@@ -46,7 +57,8 @@ class MarketConfigManager:
                     primary_activity_metric=rules_dict.get(
                         "primary_activity_metric", "tick_count"),
                     inter_tick_gap_threshold_s=rules_dict.get(
-                        "inter_tick_gap_threshold_s", 300.0)
+                        "inter_tick_gap_threshold_s", 300.0),
+                    generator_profile_defaults=profile_defaults,
                 )
             except ValueError:
                 raise ValueError(
@@ -225,3 +237,16 @@ class MarketConfigManager:
         """
         market_type = self.get_market_type(broker_type)
         return self.get_primary_activity_metric(market_type)
+
+    def get_generator_profile_defaults_for_broker(self, broker_type: str) -> Optional[ProfileDefaults]:
+        """
+        Get generator profile defaults for a broker type.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            ProfileDefaults or None if not configured
+        """
+        rules = self.get_market_rules_for_broker(broker_type)
+        return rules.generator_profile_defaults

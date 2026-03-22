@@ -366,6 +366,29 @@ class TickRangeStats:
 
 
 @dataclass
+class BlockBoundaryReport:
+    """
+    Block boundary statistics for Profile Run disposition calculation.
+
+    Captures what happened at block end: force-closed trades, their P&L impact,
+    and discarded pending orders. Built from existing trade_history and pending_stats
+    after close_all_remaining_orders().
+
+    Args:
+        force_closed_trades: Trades closed with CloseReason.SCENARIO_END
+        force_closed_pnl: Sum of realized P&L from force-closed trades
+        natural_closed_trades: Trades closed during normal operation (SL/TP/MANUAL)
+        natural_closed_pnl: Sum of realized P&L from naturally closed trades
+        discarded_pending_orders: Pending orders force-closed at scenario end
+    """
+    force_closed_trades: int = 0
+    force_closed_pnl: float = 0.0
+    natural_closed_trades: int = 0
+    natural_closed_pnl: float = 0.0
+    discarded_pending_orders: int = 0
+
+
+@dataclass
 class ProcessTickLoopResult:
     """
     Result info from Tick Loop, after execution.
@@ -401,6 +424,9 @@ class ProcessTickLoopResult:
     # Profiling data
     profiling_data: ProcessProfileData = None
     tick_range_stats: TickRangeStats = None
+
+    # Block boundary report (Profile Runs only, None for normal runs)
+    block_boundary_report: Optional[BlockBoundaryReport] = None
 
     # Error handling
     tick_loop_error: Optional[Exception] = None

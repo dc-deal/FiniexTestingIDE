@@ -59,7 +59,8 @@ class BatchReportCoordinator:
         # Create summary renderer
         summary = BatchSummary(
             batch_execution_summary=self._batch_execution_summary,
-            app_config=self._app_config
+            app_config=self._app_config,
+            generator_profiles=self._scenario_set.get_generator_profiles()
         )
 
         summary_detail = self._app_config.get_summary_detail()

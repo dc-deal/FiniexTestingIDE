@@ -11,12 +11,14 @@ Usage:
 import argparse
 import sys
 import traceback
+from pathlib import Path
+from typing import List
 
 from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.framework.utils.time_utils import format_duration
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.scenario.scenario_strategy_runner import run_profile_test, run_strategy_test
+from python.scenario.scenario_strategy_runner import run_profile_batch, run_scenario_batch
 vLog = get_global_logger()
 
 
@@ -31,23 +33,27 @@ class StrategyRunnerCli:
         """Initialize CLI"""
         self._finder = ScenarioSetFinder()
 
-    def cmd_run(self, scenario_set_json: str, generator_profile: str = None):
+    def cmd_run(self, scenario_set_json: str, generator_profiles: List[str] = None):
         """
-        Run strategy test with specified scenario set.
+        Run batch execution with specified scenario set.
 
         Args:
             scenario_set_json: Config filename (e.g., 'eurusd_3_windows.json')
-            generator_profile: Optional path to GeneratorProfile JSON for Profile Run
+            generator_profiles: Optional profile paths/directories for Profile Run
         """
-        if generator_profile:
+        if generator_profiles:
+            profile_paths = self._resolve_profile_paths(generator_profiles)
+
             print("\n" + "="*80)
             print("🔬 Strategy Runner — Profile Run")
             print("="*80)
             print(f"Scenario Set: {scenario_set_json}")
-            print(f"Profile:      {generator_profile}")
+            print(f"Profiles:     {len(profile_paths)} file(s)")
+            for p in profile_paths:
+                print(f"  • {Path(p).name}")
             print("="*80 + "\n")
 
-            run_profile_test(scenario_set_json, generator_profile)
+            run_profile_batch(scenario_set_json, profile_paths)
         else:
             print("\n" + "="*80)
             print("🔬 Strategy Runner")
@@ -55,7 +61,33 @@ class StrategyRunnerCli:
             print(f"Scenario Set: {scenario_set_json}")
             print("="*80 + "\n")
 
-            run_strategy_test(scenario_set_json)
+            run_scenario_batch(scenario_set_json)
+
+    def _resolve_profile_paths(self, inputs: List[str]) -> List[str]:
+        """
+        Resolve profile inputs to file paths. Accepts files and directories.
+
+        Args:
+            inputs: List of file paths or directory paths
+
+        Returns:
+            Sorted list of resolved profile JSON file paths
+        """
+        resolved = []
+        for entry in inputs:
+            path = Path(entry)
+            if path.is_dir():
+                json_files = sorted(path.glob('*.json'))
+                if not json_files:
+                    raise FileNotFoundError(
+                        f"No JSON profile files found in directory: {path}"
+                    )
+                resolved.extend(str(f) for f in json_files)
+            elif path.is_file():
+                resolved.append(str(path))
+            else:
+                raise FileNotFoundError(f"Profile path not found: {path}")
+        return resolved
 
     def cmd_list(self, full_details: bool = False):
         """
@@ -172,8 +204,9 @@ def main():
     run_parser.add_argument(
         '--generator-profile',
         type=str,
+        nargs='+',
         default=None,
-        help='Path to GeneratorProfile JSON for Profile Run'
+        help='Profile JSON file(s) or directory path(s) for Profile Run'
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -198,7 +231,7 @@ def main():
 
     try:
         if args.command == 'run':
-            cli.cmd_run(args.scenario_set, generator_profile=args.generator_profile)
+            cli.cmd_run(args.scenario_set, generator_profiles=args.generator_profile)
 
         elif args.command == 'list':
             cli.cmd_list(full_details=args.full_details)

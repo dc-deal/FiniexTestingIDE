@@ -74,3 +74,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [USER Namespace](tests/tests_user_namespace_docs.md) | USER worker/logic discovery |
 | [Inter-Tick Interval](tests/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
+| [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |

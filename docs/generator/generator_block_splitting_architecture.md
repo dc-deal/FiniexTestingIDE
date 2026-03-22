@@ -96,7 +96,7 @@ The system operates in two strictly separated modes — **never mixed**:
 
 ### Profile Format
 
-JSON files in `configs/generator_profiles/`. Human-readable but must not be manually edited (documented convention, not enforced via hash).
+JSON files in `configs/generator_profiles/`, organized by mode into subdirectories (`volatility_split/`, `continuous/`). Human-readable but must not be manually edited (documented convention, not enforced via hash).
 
 ```json
 {
@@ -139,7 +139,7 @@ JSON files in `configs/generator_profiles/`. Human-readable but must not be manu
 ### CLI Usage
 
 ```bash
-# Generate a profile with ATR-minima splitting
+# Generate a profile with ATR-minima splitting (single symbol)
 python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode volatility_split
@@ -149,17 +149,52 @@ python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode continuous
 
-# Run with a profile
+# Batch: generate profiles for ALL symbols across ALL brokers
+python python/cli/generator_cli.py generate-all-profiles \
+  --mt5-start 2025-09-01T00:00:00 --mt5-end 2025-10-01T00:00:00 \
+  --kraken-spot-start 2026-01-24T00:00:00 --kraken-spot-end 2026-03-08T00:00:00 \
+  --mode volatility_split
+
+# Run with a single profile
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
-  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321_1400.json
+  --generator-profile configs/generator_profiles/volatility_split/mt5_EURUSD_profile_vol_20260322_1219.json
+
+# Run with multiple profiles (merged into one batch)
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile profiles/mt5_EURUSD_profile_vol.json profiles/mt5_GBPUSD_profile_vol.json
+
+# Run all profiles in a directory (auto-discovers *.json files)
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile configs/generator_profiles/volatility_split
 ```
+
+### Profile Config Resolution
+
+Profile generation parameters are resolved per market type:
+
+1. `market_config.json` → `market_rules.<type>.generator_profile_defaults` (market-specific)
+2. `generator_config.json` → `profile` section (global fallback)
+
+| Parameter | Forex | Crypto | Why |
+|---|---|---|---|
+| `max_block_hours` | 24 | 72 | 24/7 markets have fewer volatility minima |
+| `min_block_hours` | 2 | 4 | Crypto blocks below 4h are too small |
+| `atr_percentile_threshold` | P10 | P15 | Higher threshold finds more split candidates in flatter ATR distributions |
+
+The `split_algorithm` (always `atr_minima`) remains global in `generator_config.json`.
 
 ### Scenario Set Integration
 
 Profile Run is activated via the `--generator-profile` CLI flag on the `run` command. The profile blocks replace the `scenarios[]` array from the scenario set JSON. Global config (strategy, execution, trade_simulator) is still loaded from the scenario set.
 
-- `--generator-profile <path>` → Profile Run
+- `--generator-profile <path> [<path> ...]` → Profile Run (accepts files and/or directories)
 - No flag → Free Run (backward-compatible)
+
+**Multi-Profile Runs:** Multiple profile files or directories can be passed. If a directory is given, all `*.json` files inside are auto-discovered. All profiles are merged into a single batch with globally unique `scenario_index` values. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count.
+
+**Profile directories:**
+- `configs/generator_profiles/volatility_split/` — ATR-minima split profiles
+- `configs/generator_profiles/continuous/` — continuous (one block per region) profiles
 
 ### Generator Modes
 
@@ -169,6 +204,18 @@ Profile Run is activated via the `--generator-profile` CLI flag on the `run` com
 | **volatility_split** | Splits at ATR minima (low-volatility points) | Parallelism within symbol, minimal split cost |
 
 The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profiles, ATR data from `discoveries_config.json`) — it does NOT compute volatility itself.
+
+### Gap Handling
+
+Both generators (BlocksGenerator and ProfileGenerator) treat all gap types the same way for block construction: **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
+
+Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
+
+The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the **Data Coverage Report** to distinguish expected market closures from actual data problems. For block generation and P&L calculation, there is no difference between a weekend gap and any other pause — no ticks arrive, the algorithm waits, the next tick continues processing.
+
+**Gap boundary splitting (forex only):** When a raw gap exceeds the maximum expected weekend duration (80h), the Data Coverage Report splits it at market boundaries (Friday 20:00 UTC close, Sunday 22:00 UTC open). Each sub-gap is classified independently. This prevents data loss spanning multiple weeks from being masked as a single "weekend" closure. Gaps ≤ 80h pass through unchanged — the existing weekend pattern matching handles normal closures correctly. This splitting only affects classification in the Coverage Report; block generation and P&L calculation are not impacted.
+
+The ProfileGenerator's ATR-minima algorithm skips over gap periods (no volatility data available) when searching for split points, rather than inserting artificial forced splits into empty time ranges.
 
 ### Discovery Fingerprints
 
@@ -202,6 +249,33 @@ After a tick run with block splitting, the **Block Splitting Disposition** quant
 | 3% – 10% | ⚠️ MODERATE | Consider larger blocks |
 | 10% – 25% | 🟡 HIGH | Results significantly distorted |
 | > 25% | ❌ UNRELIABLE | Switch to continuous mode |
+
+### Improving a Poor Disposition
+
+When the disposition is MODERATE or worse, the root cause is almost always **too many block boundaries relative to trade frequency**. Concrete actions:
+
+| Action | Effect | When to use |
+|---|---|---|
+| **Switch to continuous mode** | Eliminates force-closes entirely | Low-frequency strategies (< 5 trades/block), swing trading |
+| **Increase `max_block_hours`** | Fewer blocks = fewer boundaries | Moderate-frequency strategies where some parallelism is still useful |
+| **Reduce time range** | Fewer blocks generated | When only a specific market period is relevant |
+| **Accept the result** | Use continuous as ground truth, volatility_split for parallelism | When you need speed and know the distortion range |
+
+**Key insight:** The disposition measures the fit between **block size** and **trade frequency**. A strategy averaging 3 trades per block will always show high disposition because nearly every block ends with an open trade. The same strategy on continuous mode (1 block) may show ~0%.
+
+The disposition does NOT indicate a bad strategy — it indicates that the chosen splitting is too aggressive for the strategy's trading pace.
+
+**Example — tuning via `market_config.json`:**
+
+```json
+"generator_profile_defaults": {
+    "min_block_hours": 2,
+    "max_block_hours": 24,    ← increase this (e.g. 48 or 72)
+    "atr_percentile_threshold": 10
+}
+```
+
+A Forex strategy with ~3 trades per 24h block showed 82% UNRELIABLE (9/25 force-closed). Increasing `max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and `atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the primary lever for disposition improvement.
 
 ### Empirical Feedback Loop
 

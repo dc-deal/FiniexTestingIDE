@@ -133,7 +133,7 @@ This system enables:
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 10000,
-      "currency": "EUR"
+      "account_currency": "EUR"
     }
   }
 }
@@ -390,7 +390,7 @@ Trading simulator settings cascade individually, enabling testing across differe
 "trade_simulator_config": {
   "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
   "initial_balance": 10000,
-  "currency": "EUR"
+  "account_currency": "EUR"
 }
 ```
 
@@ -406,7 +406,7 @@ Trading simulator settings cascade individually, enabling testing across differe
 "trade_simulator_config": {
   "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json", // ← FROM GLOBAL
   "initial_balance": 5000, // ← FROM SCENARIO
-  "currency": "EUR"        // ← FROM GLOBAL
+  "account_currency": "EUR"        // ← FROM GLOBAL
 }
 ```
 
@@ -723,7 +723,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 10000,
-      "currency": "EUR"
+      "account_currency": "EUR"
     }
   },
   "scenarios": [

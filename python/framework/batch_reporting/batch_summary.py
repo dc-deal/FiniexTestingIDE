@@ -8,7 +8,8 @@ Architecture:
 - Uses ConsoleRenderer for unified output
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from python.framework.batch_reporting.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
 from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
@@ -23,6 +24,7 @@ from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData
 
 
@@ -35,17 +37,20 @@ class BatchSummary:
     def __init__(
         self,
         batch_execution_summary: BatchExecutionSummary,
-        app_config: AppConfigManager
+        app_config: AppConfigManager,
+        generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
         Initialize batch summary.
 
         Args:
-            performance_log_coordinator: Performance statistics container (includes portfolio stats)
+            batch_execution_summary: Batch execution results
             app_config: AppConfigManager instance
+            generator_profiles: Generator profiles for Profile Run disposition (None for normal runs)
         """
         self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config
+        self._generator_profiles = generator_profiles
 
         # Initialize sub-summaries
         self.portfolio_summary = PortfolioSummary(batch_execution_summary)
@@ -154,7 +159,10 @@ class BatchSummary:
         # Header with batch status
         is_profile_run = self._detect_profile_run()
         if is_profile_run:
-            self._renderer.section_header("🎉 EXECUTION RESULTS — Profile Run")
+            scenarios = self.batch_execution_summary.single_scenario_list
+            symbols = sorted(set(s.symbol for s in scenarios))
+            profile_info = f"{len(scenarios)} blocks, {len(symbols)} symbol(s)"
+            self._renderer.section_header(f"🎉 EXECUTION RESULTS — Profile Run ({profile_info})")
         else:
             self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)
@@ -217,9 +225,18 @@ class BatchSummary:
         # Warnings & Notices (always rendered, before executive summary)
         self.warnings_summary.render(self._renderer)
 
+        # Block Splitting Disposition (Profile Runs only, always rendered)
+        if self._generator_profiles:
+            disposition = BlockSplittingDisposition(
+                self.batch_execution_summary, self._generator_profiles
+            )
+            disposition.render(self._renderer)
+
         # Executive Summary
         executive = ExecutiveSummary(
-            self.batch_execution_summary, self.app_config)
+            self.batch_execution_summary, self.app_config,
+            generator_profiles=self._generator_profiles
+        )
         executive.render(self._renderer)
 
         # Footer

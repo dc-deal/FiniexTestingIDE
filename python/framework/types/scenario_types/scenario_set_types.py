@@ -7,15 +7,18 @@ PERFORMANCE OPTIMIZED:
 - Eliminates 20,000+ pd.to_datetime() calls in bar rendering
 """
 
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.validation_types import ValidationResult
+from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
@@ -129,6 +132,8 @@ class LoadedScenarioConfig:
     scenario_set_name: str
     scenarios: List[SingleScenario]
     config_path: Path
+    generator_profiles: Optional[List[GeneratorProfile]] = None
+    generator_profile_paths: Optional[List[Path]] = None
 
 
 class ScenarioSet:
@@ -140,6 +145,8 @@ class ScenarioSet:
         self._scenarios = scenario_config.scenarios
         self.config_path = scenario_config.config_path
         self.app_config = app_config
+        self._generator_profiles = scenario_config.generator_profiles
+        self._generator_profile_paths = scenario_config.generator_profile_paths
 
         # ScenarioSet erstellt SEINE EIGENEN Logger
         self._run_timestamp = datetime.now(
@@ -173,6 +180,23 @@ class ScenarioSet:
         )
         scenario_set_utils.copy_config_snapshot()
 
+        # Copy generator profile files for Profile Runs
+        if self._generator_profile_paths:
+            self._copy_generator_profiles()
+
+    def _copy_generator_profiles(self) -> None:
+        """Copy generator profile JSON files to scenario_run_configs/ in log directory."""
+        log_dir = self.logger.get_log_dir()
+        run_configs_dir = log_dir / 'scenario_run_configs'
+        run_configs_dir.mkdir(exist_ok=True)
+
+        for profile_path in self._generator_profile_paths:
+            try:
+                shutil.copy2(profile_path, run_configs_dir / profile_path.name)
+            except Exception as e:
+                vLog = get_global_logger()
+                vLog.warning(f"⚠️ Failed to copy profile {profile_path.name}: {e}")
+
     def write_scenario_system_info_log(self):
         """
         Write System Information for Performance Tracking
@@ -198,6 +222,15 @@ class ScenarioSet:
     def get_all_scenarios(self) -> List[SingleScenario]:
         """Get all scenarios that passed validation."""
         return self._scenarios
+
+    def get_generator_profiles(self) -> Optional[List[GeneratorProfile]]:
+        """
+        Get generator profiles for Profile Runs.
+
+        Returns:
+            List of GeneratorProfile objects, or None for normal runs
+        """
+        return self._generator_profiles
 
 
 @dataclass

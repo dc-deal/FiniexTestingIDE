@@ -209,6 +209,8 @@ class ScenarioDataValidator:
                 # Log warnings if any
                 for warning in result.warnings:
                     self._logger.warning(f"⚠️  {scenario.name}: {warning}")
+                if result.warnings:
+                    scenario.validation_result.append(result)
             else:
                 # Log errors
                 for error in result.errors:
@@ -249,9 +251,10 @@ class ScenarioDataValidator:
             )
 
         # === VALIDATION 1: start_date not in gap ===
-        start_date_errors = self._validate_start_date_not_in_gap(
+        start_date_errors, start_date_warnings = self._validate_start_date_not_in_gap(
             scenario, report)
         errors.extend(start_date_errors)
+        warnings.extend(start_date_warnings)
 
         # === VALIDATION 2: Tick stretch gaps ===
         stretch_errors = self._validate_tick_stretch(
@@ -276,18 +279,22 @@ class ScenarioDataValidator:
         self,
         scenario: SingleScenario,
         report: DataCoverageReport
-    ) -> List[str]:
+    ) -> Tuple[List[str], List[str]]:
         """
         Validate that start_date is not inside a gap.
+
+        For short gaps, auto-corrects start_date to gap_end and emits
+        a warning instead of an error. Moderate/large gaps remain errors.
 
         Args:
             scenario: Scenario to validate
             report: Coverage report for symbol
 
         Returns:
-            List of error messages (empty if valid)
+            Tuple of (error messages, warning messages)
         """
         errors = []
+        warnings = []
         start_date = scenario.start_date
 
         for gap in report.gaps:
@@ -296,15 +303,25 @@ class ScenarioDataValidator:
             gap_end = ensure_utc_aware(gap.gap_end)
 
             if gap_start < start_date < gap_end:
-                errors.append(
-                    f"start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC is inside "
-                    f"{gap.category.value} gap ({gap_start.strftime('%Y-%m-%d %H:%M:%S')} → "
-                    f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')}). "
-                    f"No ticks available! Next valid start: {gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-                )
+                if gap.category == GapCategory.SHORT:
+                    # Auto-correct: shift start_date past the short gap
+                    scenario.start_date = gap_end
+                    gap_minutes = (gap_end - start_date).total_seconds() / 60
+                    warnings.append(
+                        f"start_date shifted {start_date.strftime('%Y-%m-%d %H:%M:%S')} → "
+                        f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC "
+                        f"(inside short gap, +{gap_minutes:.0f}min)"
+                    )
+                else:
+                    errors.append(
+                        f"start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC is inside "
+                        f"{gap.category.value} gap ({gap_start.strftime('%Y-%m-%d %H:%M:%S')} → "
+                        f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')}). "
+                        f"No ticks available! Next valid start: {gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+                    )
                 break
 
-        return errors
+        return errors, warnings
 
     def _validate_tick_stretch(
         self,
