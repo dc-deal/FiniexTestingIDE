@@ -41,13 +41,13 @@ class MarketRules:
         primary_activity_metric: Primary activity metric ('tick_count' or 'volume')
         inter_tick_gap_threshold_s: Intervals longer than this (seconds) are excluded
                                     from inter-tick profiling stats (session/weekend gaps)
-        profile_defaults: Default profile generation parameters for this market type
+        generator_profile_defaults: Default profile generation parameters for this market type
     """
     weekend_closure: bool
     session_bucketing: bool
     primary_activity_metric: str
     inter_tick_gap_threshold_s: float = 300.0
-    profile_defaults: Optional[ProfileDefaults] = None
+    generator_profile_defaults: Optional[ProfileDefaults] = None
 
 
 @dataclass

@@ -7,7 +7,7 @@
             "session_bucketing": true,
             "primary_activity_metric": "tick_count",
             "inter_tick_gap_threshold_s": 300,
-            "profile_defaults": {
+            "generator_profile_defaults": {
                 "min_block_hours": 2,
                 "max_block_hours": 24,
                 "atr_percentile_threshold": 10
@@ -18,7 +18,7 @@
             "session_bucketing": false,
             "primary_activity_metric": "volume",
             "inter_tick_gap_threshold_s": 600,
-            "profile_defaults": {
+            "generator_profile_defaults": {
                 "min_block_hours": 4,
                 "max_block_hours": 72,
                 "atr_percentile_threshold": 15

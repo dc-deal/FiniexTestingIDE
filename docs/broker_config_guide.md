@@ -190,23 +190,23 @@ MarketType controls:
 - Weekend closure behavior (Forex: yes, Crypto: no)
 - Activity metric (Forex: tick_count, Crypto: trade_volume)
 - Gap detection rules
-- Profile generation defaults (`profile_defaults`): block size limits and ATR thresholds per market type
+- Generator profile defaults (`generator_profile_defaults`): block size limits and ATR thresholds per market type
 
-### Profile Defaults
+### Generator Profile Defaults
 
 Each market type defines default parameters for the Generator Profile System:
 
 ```json
 "market_rules": {
     "forex": {
-        "profile_defaults": {
+        "generator_profile_defaults": {
             "min_block_hours": 2,
             "max_block_hours": 24,
             "atr_percentile_threshold": 10
         }
     },
     "crypto": {
-        "profile_defaults": {
+        "generator_profile_defaults": {
             "min_block_hours": 4,
             "max_block_hours": 72,
             "atr_percentile_threshold": 15

@@ -431,7 +431,7 @@ Multiple profiles are merged into a single batch with globally unique scenario i
 
 Profile blocks replace the scenario set's `scenarios[]` array. Global config (strategy, execution) is still loaded from the scenario set.
 
-**Profile config resolution:** The profile generator uses market-specific defaults from `market_config.json` (`profile_defaults` per market type), falling back to `generator_config.json`. This means Forex and Crypto automatically get different block size limits and ATR thresholds.
+**Profile config resolution:** The profile generator uses market-specific defaults from `market_config.json` (`generator_profile_defaults` per market type), falling back to `generator_config.json`. This means Forex and Crypto automatically get different block size limits and ATR thresholds.
 
 ### 📊 Generator - All Profiles (Batch)
 

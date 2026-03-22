@@ -172,7 +172,7 @@ python python/cli/strategy_runner_cli.py run my_scenario_set.json \
 
 Profile generation parameters are resolved per market type:
 
-1. `market_config.json` → `market_rules.<type>.profile_defaults` (market-specific)
+1. `market_config.json` → `market_rules.<type>.generator_profile_defaults` (market-specific)
 2. `generator_config.json` → `profile` section (global fallback)
 
 | Parameter | Forex | Crypto | Why |

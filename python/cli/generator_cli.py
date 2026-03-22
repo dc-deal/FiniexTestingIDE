@@ -284,7 +284,7 @@ class GeneratorCli:
 
     def _resolve_profile_config(self, broker_type: str) -> ProfileStrategyConfig:
         """
-        Resolve profile config: market_config profile_defaults → generator_config fallback.
+        Resolve profile config: market_config generator_profile_defaults → generator_config fallback.
 
         Args:
             broker_type: Broker type identifier
@@ -304,7 +304,7 @@ class GeneratorCli:
 
         # Override with market-specific defaults if available
         market_config = MarketConfigManager()
-        profile_defaults = market_config.get_profile_defaults_for_broker(broker_type)
+        profile_defaults = market_config.get_generator_profile_defaults_for_broker(broker_type)
 
         if profile_defaults is not None:
             return ProfileStrategyConfig(

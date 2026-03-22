@@ -42,7 +42,7 @@ class MarketConfigManager:
                 market_type = MarketType(market_type_str)
                 # Parse profile defaults if present
                 profile_defaults = None
-                profile_dict = rules_dict.get("profile_defaults")
+                profile_dict = rules_dict.get("generator_profile_defaults")
                 if profile_dict:
                     profile_defaults = ProfileDefaults(
                         min_block_hours=profile_dict.get("min_block_hours", 2),
@@ -58,7 +58,7 @@ class MarketConfigManager:
                         "primary_activity_metric", "tick_count"),
                     inter_tick_gap_threshold_s=rules_dict.get(
                         "inter_tick_gap_threshold_s", 300.0),
-                    profile_defaults=profile_defaults,
+                    generator_profile_defaults=profile_defaults,
                 )
             except ValueError:
                 raise ValueError(
@@ -238,9 +238,9 @@ class MarketConfigManager:
         market_type = self.get_market_type(broker_type)
         return self.get_primary_activity_metric(market_type)
 
-    def get_profile_defaults_for_broker(self, broker_type: str) -> Optional[ProfileDefaults]:
+    def get_generator_profile_defaults_for_broker(self, broker_type: str) -> Optional[ProfileDefaults]:
         """
-        Get profile generation defaults for a broker type.
+        Get generator profile defaults for a broker type.
 
         Args:
             broker_type: Broker type identifier
@@ -249,4 +249,4 @@ class MarketConfigManager:
             ProfileDefaults or None if not configured
         """
         rules = self.get_market_rules_for_broker(broker_type)
-        return rules.profile_defaults
+        return rules.generator_profile_defaults
