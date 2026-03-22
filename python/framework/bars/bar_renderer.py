@@ -47,6 +47,10 @@ class BarRenderer:
             dict
         )  # {timeframe: {symbol: bar}}
 
+        # Cached datetime of current bar start per timeframe/symbol
+        # Avoids repeated datetime.fromisoformat() parsing in hot loop
+        self._current_bar_starts: Dict[str, Dict[str, datetime]] = defaultdict(dict)
+
         # PERFORMANCE: deque(maxlen) auto-trims - no manual checks needed!
         self.completed_bars: Dict[str, Dict[str, deque]] = defaultdict(
             lambda: defaultdict(lambda: deque(maxlen=self.max_history))
@@ -152,10 +156,9 @@ class BarRenderer:
                 # First bar
                 pass
             else:
-                # Compare bar timestamps directly (both are datetime)
-                current_bar_start = datetime.fromisoformat(
-                    current_bar.timestamp)
-                if current_bar_start != bar_start_time:
+                # Compare cached datetime directly (no string parsing)
+                cached_start = self._current_bar_starts[timeframe].get(symbol)
+                if cached_start != bar_start_time:
                     # Bar period changed - close old bar
                     current_bar.is_complete = True
                     self._archive_completed_bar(symbol, timeframe, current_bar)
@@ -174,6 +177,7 @@ class BarRenderer:
                     volume=0,
                 )
                 self.current_bars[timeframe][symbol] = current_bar
+                self._current_bar_starts[timeframe][symbol] = bar_start_time
 
             # Update bar with tick
             current_bar.update_with_tick(mid_price, volume)
@@ -261,66 +265,3 @@ class BarRenderer:
             f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
         )
 
-    def render_bars_from_ticks(
-        self, ticks: List[TickData], symbol: str, timeframe: str
-    ) -> List[Bar]:
-        """
-        Render a list of bars from a sequence of ticks.
-
-        PERFORMANCE OPTIMIZED:
-        - tick.timestamp is already datetime (no parsing)
-
-        Args:
-            ticks: List of TickData objects to process
-            symbol: The trading symbol
-            timeframe: The timeframe to render (e.g., "M5")
-
-        Returns:
-            List of completed Bar objects
-        """
-        bars = []
-        current_bar = None
-
-        for tick in ticks:
-            timestamp = tick.timestamp  # Already datetime!
-            mid_price = tick.mid
-            volume = tick.volume
-
-            bar_start_time = TimeframeConfig.get_bar_start_time(
-                timestamp, timeframe)
-
-            # Check if we need to start a new bar
-            if current_bar is None:
-                # First bar
-                pass
-            else:
-                current_bar_start = datetime.fromisoformat(
-                    current_bar.timestamp)
-                if current_bar_start != bar_start_time:
-                    # Complete and archive the previous bar
-                    current_bar.is_complete = True
-                    bars.append(current_bar)
-                    current_bar = None
-
-            # Create new bar if needed
-            if current_bar is None:
-                current_bar = Bar(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    timestamp=bar_start_time.isoformat(),
-                    open=0,
-                    high=0,
-                    low=0,
-                    close=0,
-                    volume=0,
-                )
-
-            # Update the current bar with this tick
-            current_bar.update_with_tick(mid_price, volume)
-
-        # Don't forget to add the last bar if it exists
-        if current_bar is not None:
-            current_bar.is_complete = True
-            bars.append(current_bar)
-
-        return bars

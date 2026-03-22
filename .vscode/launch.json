@@ -939,6 +939,19 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Bar Rendering (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/bar_rendering/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: USER Namespace",
             "type": "debugpy",
             "request": "launch",

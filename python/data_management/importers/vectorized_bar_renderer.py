@@ -8,7 +8,7 @@ Renders bars from tick data using pandas vectorized operations.
 Key Features:
 - Pandas resample() for all timeframes in parallel
 - Gaps are skipped (standard broker behavior — no bars for periods without ticks)
-- Optimized data types (float32)
+- Consistent data types (float64, matching BarRenderer)
 """
 
 from typing import Dict, Optional
@@ -198,11 +198,11 @@ class VectorizedBarRenderer:
             'timestamp': real_bars.index,
             'symbol': self.symbol,
             'timeframe': timeframe,
-            'open': real_bars['open'].astype('float32'),
-            'high': real_bars['high'].astype('float32'),
-            'low': real_bars['low'].astype('float32'),
-            'close': real_bars['close'].astype('float32'),
-            'volume': real_bars['volume'].astype('float32'),
+            'open': real_bars['open'].astype('float64'),
+            'high': real_bars['high'].astype('float64'),
+            'low': real_bars['low'].astype('float64'),
+            'close': real_bars['close'].astype('float64'),
+            'volume': real_bars['volume'].astype('float64'),
             'tick_count': real_bars['tick_count'].astype('int32'),
         })
 
