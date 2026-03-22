@@ -107,13 +107,10 @@ class TestCryptoVolume:
                 try:
                     df = bar_file_loader(broker_type, symbol, tf)
 
-                    # Only check real bars (not synthetic)
-                    real_bars = df[df['bar_type'] == 'real']
-
-                    if len(real_bars) == 0:
+                    if len(df) == 0:
                         continue
 
-                    total_volume = real_bars['volume'].sum()
+                    total_volume = df['volume'].sum()
 
                     if total_volume <= 0:
                         errors.append(
@@ -234,13 +231,10 @@ class TestTickCount:
                 try:
                     df = bar_file_loader(broker_type, symbol, tf)
 
-                    # Only check real bars
-                    real_bars = df[df['bar_type'] == 'real']
-
-                    if len(real_bars) == 0:
+                    if len(df) == 0:
                         continue
 
-                    total_ticks = real_bars['tick_count'].sum()
+                    total_ticks = df['tick_count'].sum()
 
                     if total_ticks <= 0:
                         errors.append(

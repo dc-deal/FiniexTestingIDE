@@ -102,13 +102,13 @@ Scans bar data with sliding windows to find extreme directional price movements:
 
 ### Data Coverage Awareness
 
-After deduplication, discovered moves are filtered against the Data Coverage report. Moves whose `start_time` falls within a **weekend**, **holiday**, or **large** data gap are removed. This prevents selecting time windows where tick data is absent or unreliable (e.g. a Sunday start where the bar data exists as synthetic but no real ticks are available for backtesting).
+After deduplication, discovered moves are filtered against the Data Coverage report. Moves whose `start_time` falls within a **weekend**, **holiday**, or **large** data gap are removed. This prevents selecting time windows where tick data is absent or unreliable (e.g. a Sunday start where no real ticks are available for backtesting).
 
 The filter uses `DataCoverageReportCache` to load the gap report for the broker/symbol pair. If no coverage report exists, filtering is skipped with a warning.
 
 ## Data Coverage Details
 
-Detects gaps in M5 bar data by identifying consecutive synthetic bars:
+Detects gaps via timestamp jumps between consecutive bars at the configured granularity (default: M1):
 - **Weekend**: Expected closure (Fri 21:00 - Sun 21:00 UTC)
 - **Holiday**: Dec 25, Jan 1
 - **Short**: < 30min (MT5 restarts)

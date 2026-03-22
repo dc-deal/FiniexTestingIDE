@@ -319,17 +319,22 @@ class DataCoverageReport:
                     f"   Gap:    {gap.duration_human} ({gap.gap_hours:.2f}h)")
                 report.append(f"   Reason: {gap.reason}")
 
-        # Show short gaps if present (compact format)
+        # Show short gaps if present (compact format, capped display)
         short_gaps = [g for g in self.gaps if g.category == GapCategory.SHORT]
         if short_gaps:
+            max_display = 20
             report.append(f"\n{'─'*60}")
-            report.append("ℹ️  SHORT GAPS (< 30 min):")
+            report.append(
+                f"ℹ️  SHORT GAPS (< 30 min): {len(short_gaps)} total")
             report.append(f"{'─'*60}")
-            for gap in short_gaps:
-                # Intra-file gap
+            for gap in short_gaps[:max_display]:
                 report.append(
                     f"   {gap.gap_start.strftime('%Y-%m-%d %H:%M')} → "
                     f"{gap.gap_end.strftime('%H:%M')} ({gap.duration_human}) [intra-file]"
+                )
+            if len(short_gaps) > max_display:
+                report.append(
+                    f"   ... and {len(short_gaps) - max_display} more short gaps"
                 )
 
         # === SECTION 5: Recommendations ===

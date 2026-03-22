@@ -16,7 +16,7 @@ from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.framework.utils.time_utils import format_duration
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.scenario.scenario_strategy_runner import run_strategy_test
+from python.scenario.scenario_strategy_runner import run_profile_test, run_strategy_test
 vLog = get_global_logger()
 
 
@@ -31,20 +31,31 @@ class StrategyRunnerCli:
         """Initialize CLI"""
         self._finder = ScenarioSetFinder()
 
-    def cmd_run(self, scenario_set_json: str):
+    def cmd_run(self, scenario_set_json: str, generator_profile: str = None):
         """
-        Run strategy test with specified scenario set
+        Run strategy test with specified scenario set.
 
         Args:
             scenario_set_json: Config filename (e.g., 'eurusd_3_windows.json')
+            generator_profile: Optional path to GeneratorProfile JSON for Profile Run
         """
-        print("\n" + "="*80)
-        print("🔬 Strategy Runner")
-        print("="*80)
-        print(f"Scenario Set: {scenario_set_json}")
-        print("="*80 + "\n")
+        if generator_profile:
+            print("\n" + "="*80)
+            print("🔬 Strategy Runner — Profile Run")
+            print("="*80)
+            print(f"Scenario Set: {scenario_set_json}")
+            print(f"Profile:      {generator_profile}")
+            print("="*80 + "\n")
 
-        run_strategy_test(scenario_set_json)
+            run_profile_test(scenario_set_json, generator_profile)
+        else:
+            print("\n" + "="*80)
+            print("🔬 Strategy Runner")
+            print("="*80)
+            print(f"Scenario Set: {scenario_set_json}")
+            print("="*80 + "\n")
+
+            run_strategy_test(scenario_set_json)
 
     def cmd_list(self, full_details: bool = False):
         """
@@ -158,6 +169,12 @@ def main():
         'run', help='Run strategy test with specified scenario set')
     run_parser.add_argument(
         'scenario_set', help='Scenario set config filename (e.g., eurusd_3_windows.json)')
+    run_parser.add_argument(
+        '--generator-profile',
+        type=str,
+        default=None,
+        help='Path to GeneratorProfile JSON for Profile Run'
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # LIST command
@@ -181,7 +198,7 @@ def main():
 
     try:
         if args.command == 'run':
-            cli.cmd_run(args.scenario_set)
+            cli.cmd_run(args.scenario_set, generator_profile=args.generator_profile)
 
         elif args.command == 'list':
             cli.cmd_list(full_details=args.full_details)

@@ -123,8 +123,6 @@ class VolatilityPeriod:
 
     # Bar statistics
     bar_count: int
-    real_bar_count: int
-    synthetic_bar_count: int
 
     # Price range
     high: float
@@ -176,7 +174,6 @@ class SymbolVolatilityProfile:
     # Overall statistics
     total_bars: int
     total_ticks: int
-    real_bar_ratio: float
 
     # ATR statistics
     atr_min: float

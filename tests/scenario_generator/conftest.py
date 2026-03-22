@@ -67,8 +67,7 @@ def make_period(
     regime: VolatilityRegime = VolatilityRegime.MEDIUM,
     session: TradingSession = TradingSession.LONDON,
     tick_count: int = 1000,
-    bar_count: int = 12,
-    real_bar_count: int = 12
+    bar_count: int = 12
 ) -> VolatilityPeriod:
     """
     Create a VolatilityPeriod object for testing. Periods are 1h blocks.
@@ -79,7 +78,6 @@ def make_period(
         session: Trading session
         tick_count: Number of ticks
         bar_count: Total bar count
-        real_bar_count: Real (non-synthetic) bar count
 
     Returns:
         VolatilityPeriod instance
@@ -95,8 +93,6 @@ def make_period(
         tick_density=float(tick_count),
         activity=float(tick_count),
         bar_count=bar_count,
-        real_bar_count=real_bar_count,
-        synthetic_bar_count=bar_count - real_bar_count,
         high=1.1,
         low=1.0,
         range_pips=100.0
@@ -109,8 +105,7 @@ def make_continuous_periods(
     regime: VolatilityRegime = VolatilityRegime.MEDIUM,
     session: TradingSession = TradingSession.LONDON,
     tick_count: int = 1000,
-    bar_count: int = 12,
-    real_bar_count: int = 12
+    bar_count: int = 12
 ) -> List[VolatilityPeriod]:
     """
     Create a list of continuous hourly periods.
@@ -122,7 +117,6 @@ def make_continuous_periods(
         session: Trading session for all periods
         tick_count: Ticks per period
         bar_count: Bars per period
-        real_bar_count: Real bars per period
 
     Returns:
         List of continuous VolatilityPeriod
@@ -133,8 +127,7 @@ def make_continuous_periods(
             regime=regime,
             session=session,
             tick_count=tick_count,
-            bar_count=bar_count,
-            real_bar_count=real_bar_count
+            bar_count=bar_count
         )
         for h in range(hours)
     ]
@@ -183,8 +176,6 @@ def generator_config() -> GeneratorConfig:
     return GeneratorConfig(
         blocks=BlocksStrategyConfig(
             default_block_hours=4,
-            min_block_hours=1,
-            extend_blocks_beyond_session=True,
-            min_real_bar_ratio=0.5
+            min_block_hours=1
         ),
     )

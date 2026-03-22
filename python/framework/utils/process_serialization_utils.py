@@ -126,7 +126,7 @@ def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> Tuple[Ba
     Converts Pandas-based bar data to framework Bar objects:
     - Pandas Timestamp → ISO string
     - float tick_count → int
-    - Drops extra fields (bar_type, synthetic_fields, reason)
+    - Picks only OHLCV + metadata fields (ignores any extra columns)
 
     Args:
         symbol: Trading symbol from config (authoritative source)

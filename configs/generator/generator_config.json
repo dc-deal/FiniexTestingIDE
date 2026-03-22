@@ -2,9 +2,13 @@
     "strategies": {
         "blocks": {
             "default_block_hours": 6,
-            "min_block_hours": 1,
-            "extend_blocks_beyond_session": true,
-            "min_real_bar_ratio": 0.5
+            "min_block_hours": 1
         }
+    },
+    "profile": {
+        "min_block_hours": 2,
+        "max_block_hours": 24,
+        "atr_percentile_threshold": 10,
+        "split_algorithm": "atr_minima"
     }
 }

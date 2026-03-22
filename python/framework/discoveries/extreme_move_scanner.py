@@ -171,7 +171,6 @@ class ExtremeMoveScanner:
         avg_atr = float(df['atr'].mean())
         min_atr_multiple = self._config.get('min_atr_multiple', 3.0)
         max_adverse_atr = self._config.get('max_adverse_atr_multiple', 1.5)
-        min_real_bar_ratio = self._config.get('min_real_bar_ratio', 0.5)
         window_sizes = self._config.get('window_sizes', [200, 500, 1000, 2000])
 
         all_longs: List[ExtremeMove] = []
@@ -185,7 +184,6 @@ class ExtremeMoveScanner:
         timestamps = df['timestamp'].values
         atrs = df['atr'].values
         tick_counts = df['tick_count'].values
-        bar_types = df['bar_type'].values if 'bar_type' in df.columns else None
 
         total_bars = len(df)
 
@@ -198,12 +196,6 @@ class ExtremeMoveScanner:
 
             for start_idx in range(0, total_bars - window_size + 1, step):
                 end_idx = start_idx + window_size
-
-                # Check real bar ratio
-                if bar_types is not None:
-                    real_count = np.sum(bar_types[start_idx:end_idx] == 'real')
-                    if real_count / window_size < min_real_bar_ratio:
-                        continue
 
                 window_atr = float(np.mean(atrs[start_idx:end_idx]))
                 if window_atr <= 0:

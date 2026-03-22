@@ -204,9 +204,7 @@ class VolatilityProfileAnalyzer:
 
         atr_values = [p.atr for p in periods if p.atr > 0]
 
-        # Calculate filtered vs total periods for coverage info
         total_bars = len(df)
-        real_bars = len(df[df['bar_type'] == 'real'])
 
         atr_min = min(atr_values) if atr_values else 0.0
         atr_max = max(atr_values) if atr_values else 0.0
@@ -242,7 +240,6 @@ class VolatilityProfileAnalyzer:
             total_days=total_days,
             total_bars=total_bars,
             total_ticks=int(df['tick_count'].sum()),
-            real_bar_ratio=real_bars / total_bars if total_bars > 0 else 0,
             atr_min=atr_min,
             atr_max=atr_max,
             atr_avg=(atr_min + atr_max) / 2,
@@ -484,14 +481,12 @@ class VolatilityProfileAnalyzer:
             if len(group) == 0:
                 continue
 
-            # Filter: skip periods without real data
-            real_bars = len(group[group['bar_type'] == 'real'])
             tick_count = int(group['tick_count'].sum())
             activity = float(group[activity_column].sum(
             )) if activity_column in group.columns else 0.0
 
-            if real_bars == 0 or tick_count == 0:
-                # Skip synthetic-only periods (weekends, gaps)
+            if tick_count == 0:
+                # Skip periods without data
                 continue
 
             avg_atr = group['atr'].mean()
@@ -501,7 +496,7 @@ class VolatilityProfileAnalyzer:
                 'avg_atr': avg_atr,
                 'tick_count': tick_count,
                 'activity': activity,
-                'real_bars': real_bars
+                'bar_count_in_period': len(group)
             })
 
         if not valid_period_data:
@@ -518,7 +513,7 @@ class VolatilityProfileAnalyzer:
             avg_atr = period_data['avg_atr']
             tick_count = period_data['tick_count']
             activity = period_data['activity']
-            real_bars = period_data['real_bars']
+            period_bar_count = period_data['bar_count_in_period']
 
             period_end = period_start + timedelta(hours=granularity)
 
@@ -541,7 +536,6 @@ class VolatilityProfileAnalyzer:
 
             # Bar statistics
             bar_count = len(group)
-            synthetic_bars = len(group[group['bar_type'] == 'synthetic'])
 
             # Price range
             high = group['high'].max()
@@ -559,8 +553,6 @@ class VolatilityProfileAnalyzer:
                 tick_density=tick_density,
                 activity=activity,
                 bar_count=bar_count,
-                real_bar_count=real_bars,
-                synthetic_bar_count=synthetic_bars,
                 high=high,
                 low=low,
                 range_pips=range_pips

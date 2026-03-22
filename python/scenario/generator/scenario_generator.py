@@ -9,7 +9,6 @@ from typing import List, Optional
 
 from python.configuration.generator_config_loader import GeneratorConfigLoader
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
-from python.framework.types.market_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
@@ -52,8 +51,6 @@ class ScenarioGenerator:
         strategy: GenerationStrategy,
         count: Optional[int] = None,
         block_hours: Optional[int] = None,
-        session_filter: Optional[str] = None,
-        sessions_filter: Optional[List[str]] = None,
         start_filter: Optional[datetime] = None,
         end_filter: Optional[datetime] = None,
         max_ticks: Optional[int] = None
@@ -67,8 +64,6 @@ class ScenarioGenerator:
             strategy: Generation strategy
             count: Number of scenarios
             block_hours: Block size in hours
-            session_filter: Filter by session name (deprecated)
-            sessions_filter: Filter by multiple session names
             start_filter: Start date filter
             end_filter: End date filter
             max_ticks: Max ticks per scenario
@@ -84,27 +79,16 @@ class ScenarioGenerator:
         symbol = symbols[0]
 
         # Build volatility profile (for metadata)
-        profile = self._analyzer.build_profile(broker_type, symbol)
-
-        # Warn: session filter on non-forex markets (no real sessions, time-of-day only)
-        if sessions_filter and profile.market_type != MarketType.FOREX:
-            vLog.warning(
-                f"⚠️ Session filter {sessions_filter} used with "
-                f"{profile.market_type.value} market. "
-                f"{profile.market_type.value.capitalize()} has no defined trading sessions — "
-                f"filter acts as time-of-day separation only."
-            )
+        self._analyzer.build_profile(broker_type, symbol)
 
         # Note: Blocks generator handles its own data access
         vLog.info(f"Generating scenarios using {strategy.value} strategy")
 
         hours = block_hours or self._config.blocks.default_block_hours
         scenarios = self._blocks_gen.generate(
-            broker_type, symbol, hours, count, sessions_filter
+            broker_type, symbol, hours, count
         )
-        session_info = f", sessions: {sessions_filter}" if sessions_filter else ""
-        vLog.info(
-            f"Generated {len(scenarios)} blocks (max {hours}h each{session_info})")
+        vLog.info(f"Generated {len(scenarios)} blocks (max {hours}h each)")
 
         return self._build_result(symbol, strategy, scenarios)
 

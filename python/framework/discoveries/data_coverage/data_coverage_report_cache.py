@@ -24,6 +24,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, read_fingerprint_from_parquet
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
@@ -91,6 +92,26 @@ class DataCoverageReportCache:
         if bar_file and bar_file.exists():
             return bar_file.stat().st_mtime
         return None
+
+    def _get_current_config_fingerprint(self) -> str:
+        """Get SHA256 fingerprint of current data_coverage config section."""
+        config = DiscoveriesConfigLoader().get_config_raw()
+        section = config.get('data_coverage', {})
+        return generate_config_fingerprint(section)
+
+    def get_config_fingerprint(self, broker_type: str, symbol: str) -> Optional[str]:
+        """
+        Get stored config fingerprint from cached coverage report.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Fingerprint string or None if not cached
+        """
+        cache_path = self._get_cache_path(broker_type, symbol)
+        return read_fingerprint_from_parquet(cache_path)
 
     def is_cache_valid(self, broker_type: str, symbol: str) -> bool:
         """
@@ -263,6 +284,7 @@ class DataCoverageReportCache:
                 b'gap_counts': json.dumps(report.gap_counts).encode(),
                 b'source_bar_mtime': str(source_mtime).encode(),
                 b'generated_at': datetime.now(timezone.utc).isoformat().encode(),
+                b'config_fingerprint': self._get_current_config_fingerprint().encode(),
                 b'broker_type': broker_type.encode(),
                 b'symbol': symbol.encode(),
                 b'granularity': self._granularity.encode(),

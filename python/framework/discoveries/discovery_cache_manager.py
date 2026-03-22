@@ -12,7 +12,7 @@ Used by:
 - discoveries_cli.py (CLI cache commands)
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
@@ -111,3 +111,20 @@ class DiscoveryCacheManager:
         )
 
         return results
+
+    def get_fingerprints(self, broker_type: str, symbol: str) -> Dict[str, Optional[str]]:
+        """
+        Get config fingerprints from all cached discoveries for a symbol.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Dict mapping cache name to fingerprint (None if not cached)
+        """
+        return {
+            'volatility_profile': self._volatility_profile_cache.get_config_fingerprint(broker_type, symbol),
+            'data_coverage': self._data_coverage_cache.get_config_fingerprint(broker_type, symbol),
+            'extreme_moves': self._discovery_cache.get_config_fingerprint(broker_type, symbol),
+        }

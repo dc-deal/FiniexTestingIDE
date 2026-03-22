@@ -126,7 +126,7 @@ class BarRenderingController:
         """
         Get quality metrics for warmup bars.
 
-        Quality metrics include counts of synthetic/real bars.
+        Quality metrics for warmup bars.
         Used for debugging and validation.
 
         Returns:

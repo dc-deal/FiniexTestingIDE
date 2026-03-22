@@ -20,8 +20,8 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
-| `generator_cli.py` | Block Generation | generate |
-| `strategy_runner_cli.py` | Backtesting | run, list |
+| `generator_cli.py` | Block & Profile Generation | generate, generate-profile |
+| `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
 
 ---
 
@@ -360,13 +360,12 @@ LONG Extreme Moves (top 10)
 | | |
 |---|---|
 | **VS Code** | `⚡ Generator - 40 Blocks mt5/USDJPY` |
-| **CLI** | `python generator_cli.py generate mt5 USDJPY --block-size 12 --count 40 --sessions new_york` |
+| **CLI** | `python generator_cli.py generate mt5 USDJPY --block-size 12 --count 40` |
 | **Purpose** | Chronological time blocks for systematic testing |
 
 Generates consecutive time windows with configurable length. Automatically detects gaps, splits regions, and warns about data-start and post-gap blocks.
 
 ```
-Filtering blocks to sessions: ['new_york']
 Coverage: 1752.7h usable, 818.3h gaps filtered (20 gaps: 15 weekend, 2 holiday, 1 moderate, 2 large)
 
 ⚠️ Block #07: Short block 5.0h < 12h target
@@ -393,9 +392,31 @@ Coverage: 1752.7h usable, 818.3h gaps filtered (20 gaps: 15 weekend, 2 holiday, 
 **Parameters:**
 - `--block-size` — Target block size in hours (default: 6)
 - `--count` — Max number of blocks (None=all)
-- `--sessions` — Filter: `new_york`, `london`, `sydney_tokyo`
 - `--start` / `--end` — Date filters (ISO format)
 - `--max-ticks` — Max ticks per scenario
+
+### 📊 Generator - Profile (ATR-Minima)
+
+| | |
+|---|---|
+| **VS Code** | `⚡ Generate Profile: mt5/EURUSD (volatility_split)` |
+| **CLI** | `python generator_cli.py generate-profile mt5 EURUSD --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 --mode volatility_split` |
+| **Purpose** | Pre-computed, immutable block profile with volatility-based splitting |
+
+Generates a profile artifact (JSON) with blocks split at ATR minima — the quietest volatility periods. Produces metadata per block (regime, ATR, session, split reason) for correctness analysis.
+
+**Parameters:**
+- `--start` / `--end` — Time range (ISO format, required)
+- `--mode` — `volatility_split` (default) or `continuous`
+- `--output` — Custom output filename
+
+**Profile Run:**
+```bash
+python python/cli/strategy_runner_cli.py run my_set.json \
+  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321.json
+```
+
+Profile blocks replace the scenario set's `scenarios[]` array. Global config (strategy, execution) is still loaded from the scenario set.
 
 ### Output: Scenario Set JSON
 
@@ -565,7 +586,9 @@ Useful for understanding the raw data structure:
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate mt5 USDJPY --block-size 12 --count 40` |
+| **Generate Profile** | `⚡ Generate Profile: mt5/EURUSD` | `generator_cli.py generate-profile mt5 EURUSD --start ... --end ...` |
 | **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
+| **Profile Run** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
 
 ---
 

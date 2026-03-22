@@ -201,7 +201,6 @@ class BarIndexReport:
                         "min_ticks_per_bar": entry.get('min_ticks_per_bar', 0),
                         "max_ticks_per_bar": entry.get('max_ticks_per_bar', 0),
                         "real_bar_count": entry.get('real_bar_count', 0),
-                        "synthetic_bar_count": entry.get('synthetic_bar_count', 0),
                     }
 
         return symbol_details

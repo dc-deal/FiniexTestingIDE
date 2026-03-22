@@ -218,6 +218,9 @@ class ProcessScenarioConfig:
     # === INTER-TICK PROFILING ===
     inter_tick_gap_threshold_s: float = 300.0
 
+    # === PROFILE RUN METADATA ===
+    is_profile_run: bool = False
+
     @staticmethod
     def from_scenario(
         scenario: SingleScenario,
@@ -320,7 +323,8 @@ class ProcessScenarioConfig:
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
-            inter_tick_gap_threshold_s=inter_tick_gap_threshold_s
+            inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
+            is_profile_run=scenario.is_profile_run,
         )
 
 

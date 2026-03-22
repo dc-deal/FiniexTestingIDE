@@ -422,18 +422,18 @@ The importer calculates a SHA-256 hash of each JSON file and compares against ex
 
 ---
 
-## Synthetic Bars and Market Closures
+## Gap Handling
 
-The bar renderer distinguishes between **market closures** and **data gaps**:
+It is standard exchange/broker behavior to not render bars for time periods where no tick updates occurred. The bar renderer follows this principle — gaps result in timestamp jumps, not fill bars.
 
 | Situation | Bar Output | Meaning |
 |-----------|-----------|---------|
 | Weekend (Sat/Sun) | No bars (time jump) | Expected market closure — Forex only |
 | Holiday (Christmas, New Year) | No bars (time jump) | Expected market closure — Forex only |
-| Data gap (collector outage) | Synthetic bars (`bar_type='synthetic'`) | Data quality problem |
+| Data gap (collector outage) | No bars (time jump) | Data quality problem detected via gap detection |
 | Crypto weekend | Normal bars | 24/7 market, no closure |
 
-**Consequence:** Every synthetic bar in the bar file indicates a real data collection issue (connection loss, restart, downtime). This makes synthetic bars a direct quality signal for the gap backfiller (#127).
+This behavior is consistent across all three renderers: `VectorizedBarRenderer` (batch import), `BarRenderer` (tick loop / backtesting), and live operation.
 
 The market closure behavior is controlled by `market_config.json` → `market_rules.{market_type}.weekend_closure`. Forex has `weekend_closure: true`, Crypto has `weekend_closure: false`.
 

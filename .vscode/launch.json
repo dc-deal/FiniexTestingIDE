@@ -478,6 +478,44 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "⚡ Generate Profile: mt5/EURUSD (volatility_split)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "mt5",
+                "EURUSD",
+                "--start",
+                "2025-09-01T00:00:00",
+                "--end",
+                "2025-10-01T00:00:00",
+                "--mode",
+                "volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "⚡ Generate Profile: mt5/USDJPY (continuous)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-profile",
+                "mt5",
+                "USDJPY",
+                "--start",
+                "2025-09-01T00:00:00",
+                "--end",
+                "2025-10-01T00:00:00",
+                "--mode",
+                "continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔬 FIELD STUDYS, PoC
         // ====================================================

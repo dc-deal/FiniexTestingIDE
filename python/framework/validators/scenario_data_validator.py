@@ -386,25 +386,6 @@ class ScenarioDataValidator:
             if not bar_data:
                 continue
 
-            # Check for synthetic bars
-            synthetic_count = sum(
-                1 for bar in bar_data
-                if bar.get('bar_type') == 'synthetic'
-            )
-
-            if synthetic_count > 0:
-                total_bars = len(bar_data)
-                synthetic_pct = (synthetic_count / total_bars) * 100
-                msg = (
-                    f"Warmup for {bar_req.timeframe} contains {synthetic_count}/{total_bars} "
-                    f"synthetic bars ({synthetic_pct:.1f}%). "
-                    f"Adjust start_date to avoid gaps in warmup period."
-                )
-                if is_standard:
-                    errors.append(msg)
-                else:
-                    warnings.append(msg)
-
             # Check bar count sufficiency
             actual_count = len(bar_data)
             if actual_count < bar_req.warmup_count:
