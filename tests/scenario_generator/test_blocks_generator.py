@@ -425,4 +425,4 @@ class TestScenarioCandidateProperties:
         assert s.estimated_ticks == 0
         assert s.regime == VolatilityRegime.MEDIUM
         assert s.atr == 0.0
-        assert s.real_bar_ratio == 1.0
+        assert s.tick_density == 0.0

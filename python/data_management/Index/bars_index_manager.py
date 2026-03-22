@@ -192,9 +192,8 @@ class BarsIndexManager:
         min_ticks_per_bar = int(df['tick_count'].min()) if len(df) > 0 else 0
         max_ticks_per_bar = int(df['tick_count'].max()) if len(df) > 0 else 0
 
-        # Bar type distribution
-        real_bar_count = int((df['bar_type'] == 'real').sum())
-        synthetic_bar_count = int((df['bar_type'] == 'synthetic').sum())
+        # Bar count (all bars are real — no synthetic bars generated)
+        real_bar_count = pq_file.metadata.num_rows
 
         # Volume statistics
         if 'volume' in df.columns:
@@ -225,7 +224,6 @@ class BarsIndexManager:
             'min_ticks_per_bar': min_ticks_per_bar,
             'max_ticks_per_bar': max_ticks_per_bar,
             'real_bar_count': real_bar_count,
-            'synthetic_bar_count': synthetic_bar_count,
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
             'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
@@ -321,7 +319,6 @@ class BarsIndexManager:
                         'min_ticks_per_bar': entry.get('min_ticks_per_bar', 0),
                         'max_ticks_per_bar': entry.get('max_ticks_per_bar', 0),
                         'real_bar_count': entry.get('real_bar_count', 0),
-                        'synthetic_bar_count': entry.get('synthetic_bar_count', 0),
                         'source_version_min': entry.get('source_version_min', ''),
                         'source_version_max': entry.get('source_version_max', ''),
                         'total_trade_volume': entry.get('total_trade_volume'),
@@ -335,7 +332,7 @@ class BarsIndexManager:
                 'start_time', 'end_time', 'bar_count', 'file_size_mb',
                 'num_row_groups', 'rendered_at', 'total_tick_count',
                 'avg_ticks_per_bar', 'min_ticks_per_bar', 'max_ticks_per_bar',
-                'real_bar_count', 'synthetic_bar_count', 'source_version_min',
+                'real_bar_count', 'source_version_min',
                 'source_version_max', 'total_trade_volume', 'avg_volume_per_bar'
             ])
         else:
@@ -395,7 +392,6 @@ class BarsIndexManager:
                 'min_ticks_per_bar': int(row['min_ticks_per_bar']) if pd.notna(row.get('min_ticks_per_bar')) else 0,
                 'max_ticks_per_bar': int(row['max_ticks_per_bar']) if pd.notna(row.get('max_ticks_per_bar')) else 0,
                 'real_bar_count': int(row['real_bar_count']) if pd.notna(row.get('real_bar_count')) else 0,
-                'synthetic_bar_count': int(row['synthetic_bar_count']) if pd.notna(row.get('synthetic_bar_count')) else 0,
                 'source_version_min': row.get('source_version_min', ''),
                 'source_version_max': row.get('source_version_max', ''),
                 'broker_type': broker_type,

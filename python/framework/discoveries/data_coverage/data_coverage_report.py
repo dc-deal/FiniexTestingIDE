@@ -136,14 +136,6 @@ class DataCoverageReport:
         if len(bars_df) < 2:
             return gaps
 
-        # Filter out synthetic bars — they fill gaps and would hide
-        # real timestamp discontinuities from the jump-based detection
-        if 'bar_type' in bars_df.columns:
-            bars_df = bars_df[bars_df['bar_type'] != 'synthetic']
-
-        if len(bars_df) < 2:
-            return gaps
-
         # Ensure timestamps are UTC-aware and sorted
         bars_df = bars_df.sort_values('timestamp').reset_index(drop=True)
         timestamps = bars_df['timestamp'].apply(ensure_utc_aware)

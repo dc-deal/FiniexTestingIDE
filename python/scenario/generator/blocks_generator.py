@@ -251,8 +251,7 @@ class BlocksGenerator:
                 session=session,
                 estimated_ticks=0,
                 atr=0.0,
-                tick_density=0.0,
-                real_bar_ratio=1.0
+                tick_density=0.0
             ))
 
             current_start = block_end

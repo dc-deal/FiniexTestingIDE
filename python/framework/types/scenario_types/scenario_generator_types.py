@@ -37,7 +37,6 @@ class BlocksStrategyConfig:
     """Configuration for chronological blocks strategy."""
     default_block_hours: int = 6
     min_block_hours: int = 1  # Minimum block duration to generate
-    min_real_bar_ratio: float = 0.5
 
 
 @dataclass
@@ -95,7 +94,6 @@ class GeneratorConfig:
             blocks=BlocksStrategyConfig(
                 default_block_hours=blocks_data.get('default_block_hours', 6),
                 min_block_hours=blocks_data.get('min_block_hours', 1),
-                min_real_bar_ratio=blocks_data.get('min_real_bar_ratio', 0.5)
             ),
             profile=ProfileStrategyConfig.from_dict(profile_data) if profile_data else None,
         )
@@ -127,7 +125,6 @@ class ScenarioCandidate:
     estimated_ticks: int
     atr: float
     tick_density: float
-    real_bar_ratio: float
 
     # Scoring
     score: float = 0.0

@@ -65,7 +65,7 @@ Validates crypto markets have real trade volume data.
 
 | Test | Description |
 |------|-------------|
-| `test_crypto_has_positive_volume` | For crypto markets: `sum(volume) > 0` for real bars. Skips if no crypto data available. Only checks bars where `bar_type == 'real'` (excludes synthetic gap-fill bars). |
+| `test_crypto_has_positive_volume` | For crypto markets: `sum(volume) > 0`. Skips if no crypto data available. |
 | `test_crypto_volume_per_bar_positive` | No individual bar should have negative volume. Catches data corruption or calculation errors. |
 
 **Skip Condition:** Test skips with message "No crypto data available" if no broker_type maps to market_type 'crypto'.
@@ -90,7 +90,7 @@ Validates tick count is positive for all markets regardless of type.
 
 | Test | Description |
 |------|-------------|
-| `test_all_markets_have_positive_tick_count` | All markets (crypto and forex) must have `sum(tick_count) > 0` for real bars. Tick count represents market activity and should always be positive. |
+| `test_all_markets_have_positive_tick_count` | All markets (crypto and forex) must have `sum(tick_count) > 0`. Tick count represents market activity and should always be positive. |
 
 ---
 
@@ -192,8 +192,8 @@ print(config.get_market_type("mt5"))          # Expected: MarketType.FOREX
 python -m python.cli.data_index_cli bars --rebuild
 ```
 
-### Tick Count Zero for Real Bars
+### Tick Count Zero
 
 **Cause:** Bar renderer not counting ticks correctly.
 
-**Check:** Verify `bar_type` column - only 'real' bars should have tick_count > 0. Synthetic bars may have tick_count = 0.
+**Check:** Verify bar data — all bars should have tick_count > 0 since bars are only rendered for periods with actual tick activity.

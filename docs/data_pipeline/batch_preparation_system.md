@@ -132,7 +132,7 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 **Mode:** Serial (main process)  
 **Key Operations:**
 - Validate tick stretch gaps (only non-allowed gap categories cause rejection)
-- Validate warmup bar quality (no synthetic bars in standard mode — synthetic bars now exclusively indicate real data gaps, not weekend/holiday closures)
+- Validate warmup bar quality (sufficient bar count for indicator warmup)
 - Filter scenarios with quality issues
 
 **Input:** Pre-filtered scenarios (only those that passed Phase 2)  

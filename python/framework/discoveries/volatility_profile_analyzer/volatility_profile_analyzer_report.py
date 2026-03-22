@@ -134,7 +134,6 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
     print("─" * 60)
     print(f"   Total bars:      {profile.total_bars:,}")
     print(f"   Total {activity_label}:    {profile.total_ticks:,}")
-    print(f"   Real bar ratio:  {profile.real_bar_ratio * 100:.1f}%")
 
     # Show total volume for crypto
     if profile.market_type == MarketType.CRYPTO:

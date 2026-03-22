@@ -2,8 +2,7 @@
     "strategies": {
         "blocks": {
             "default_block_hours": 6,
-            "min_block_hours": 1,
-            "min_real_bar_ratio": 0.5
+            "min_block_hours": 1
         }
     },
     "profile": {

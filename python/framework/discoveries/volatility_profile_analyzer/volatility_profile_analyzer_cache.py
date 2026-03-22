@@ -50,8 +50,8 @@ vLog = get_global_logger()
 # Parquet column schema for VolatilityPeriod rows
 _PERIOD_COLUMNS = [
     'start_time', 'end_time', 'session', 'atr', 'atr_percentile', 'regime',
-    'tick_count', 'tick_density', 'activity', 'bar_count', 'real_bar_count',
-    'synthetic_bar_count', 'high', 'low', 'range_pips',
+    'tick_count', 'tick_density', 'activity', 'bar_count',
+    'high', 'low', 'range_pips',
 ]
 
 
@@ -259,8 +259,6 @@ class VolatilityProfileAnalyzerCache:
                     'tick_density': float(p.tick_density),
                     'activity': float(p.activity),
                     'bar_count': int(p.bar_count),
-                    'real_bar_count': int(p.real_bar_count),
-                    'synthetic_bar_count': int(p.synthetic_bar_count),
                     'high': float(p.high),
                     'low': float(p.low),
                     'range_pips': float(p.range_pips),
@@ -286,7 +284,6 @@ class VolatilityProfileAnalyzerCache:
                 b'total_days': str(analysis.total_days).encode(),
                 b'total_bars': str(analysis.total_bars).encode(),
                 b'total_ticks': str(analysis.total_ticks).encode(),
-                b'real_bar_ratio': str(float(analysis.real_bar_ratio)).encode(),
                 b'atr_min': str(float(analysis.atr_min)).encode(),
                 b'atr_max': str(float(analysis.atr_max)).encode(),
                 b'atr_avg': str(float(analysis.atr_avg)).encode(),
@@ -351,8 +348,6 @@ class VolatilityProfileAnalyzerCache:
                     tick_density=float(row['tick_density']),
                     activity=float(row['activity']),
                     bar_count=int(row['bar_count']),
-                    real_bar_count=int(row['real_bar_count']),
-                    synthetic_bar_count=int(row['synthetic_bar_count']),
                     high=float(row['high']),
                     low=float(row['low']),
                     range_pips=float(row['range_pips']),
@@ -396,8 +391,6 @@ class VolatilityProfileAnalyzerCache:
                 total_days=int(metadata.get(b'total_days', b'0').decode()),
                 total_bars=int(metadata.get(b'total_bars', b'0').decode()),
                 total_ticks=int(metadata.get(b'total_ticks', b'0').decode()),
-                real_bar_ratio=float(
-                    metadata.get(b'real_bar_ratio', b'0').decode()),
                 atr_min=float(metadata.get(b'atr_min', b'0').decode()),
                 atr_max=float(metadata.get(b'atr_max', b'0').decode()),
                 atr_avg=float(metadata.get(b'atr_avg', b'0').decode()),
