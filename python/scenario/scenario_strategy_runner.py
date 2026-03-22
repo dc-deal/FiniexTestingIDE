@@ -5,6 +5,7 @@ Compact, colorful logging output
 ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
+from pathlib import Path
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -18,16 +19,16 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
-def run_strategy_test(scenario_set_json: str):
+def run_scenario_batch(scenario_set_json: str):
     """
-    Main strategy testing function with visual output
+    Run a scenario batch from a scenario set config.
 
     Args:
         scenario_set_json: Config filename (e.g., "eurusd_3_windows.json")
     """
 
     try:
-        vLog.info("🚀 Starting [BatchOrchestrator] strategy test")
+        vLog.info("🚀 Starting [BatchOrchestrator] Scenario Run")
 
         # ============================================================
         # Load Application Configuration
@@ -68,7 +69,7 @@ def run_strategy_test(scenario_set_json: str):
         )
 
 
-def run_profile_test(scenario_set_json: str, profile_paths: List[str]):
+def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
     """
     Run a Profile Run — loads profile blocks as scenarios.
 
@@ -106,6 +107,11 @@ def run_profile_test(scenario_set_json: str, profile_paths: List[str]):
         scenario_config_data = scenario_config_loader.load_from_profiles(
             profiles, scenario_set_json
         )
+
+        # Attach profile source paths for log archival
+        scenario_config_data.generator_profile_paths = [
+            Path(p) for p in profile_paths
+        ]
 
         total_blocks = sum(p.profile_meta.block_count for p in profiles)
         symbols = sorted(set(p.profile_meta.symbol for p in profiles))

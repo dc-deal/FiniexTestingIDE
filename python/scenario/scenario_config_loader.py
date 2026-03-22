@@ -267,4 +267,5 @@ class ScenarioConfigLoader:
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
             config_path=config_path,
+            generator_profiles=profiles,
         )

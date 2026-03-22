@@ -673,13 +673,13 @@
             "args": [
                 "generate-all-profiles",
                 "--mt5-start",
-                "2025-09-01T00:00:00",
-                "--mt5-end",
                 "2025-10-01T00:00:00",
+                "--mt5-end",
+                "2025-10-10T00:00:00",
                 "--kraken-spot-start",
-                "2026-01-24T00:00:00",
+                "2026-02-01T00:00:00",
                 "--kraken-spot-end",
-                "2026-03-08T00:00:00",
+                "2026-02-20T00:00:00",
                 "--mode",
                 "continuous"
             ],
@@ -708,7 +708,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "cautious_macd_sandbox.json",
+                "BTCUSD_sandbox.json",
                 "--generator-profile",
                 "${workspaceFolder}/configs/generator_profiles/continuous"
             ],

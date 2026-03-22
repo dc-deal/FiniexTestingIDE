@@ -29,6 +29,7 @@ from python.framework.process.process_live_queue_helper import send_status_updat
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.process.process_block_boundary import build_block_boundary_report
 from python.framework.types.process_data_types import (
     ProcessPreparedDataObjects,
     ProcessProfileData,
@@ -209,6 +210,13 @@ def execute_tick_loop(
         order_history = trade_simulator.get_order_history()
         pending_stats = trade_simulator.get_pending_stats()
 
+        # Build block boundary report for Profile Runs
+        block_boundary_report = None
+        if config.is_profile_run:
+            block_boundary_report = build_block_boundary_report(
+                trade_history, pending_stats
+            )
+
         _print_tick_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
         )
@@ -223,6 +231,7 @@ def execute_tick_loop(
             trade_history=trade_history,
             order_history=order_history,
             pending_stats=pending_stats,
+            block_boundary_report=block_boundary_report,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
                 profile_counts=profile_counts,

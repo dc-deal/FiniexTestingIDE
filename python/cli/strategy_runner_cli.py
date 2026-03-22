@@ -18,7 +18,7 @@ from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.framework.utils.time_utils import format_duration
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.scenario.scenario_strategy_runner import run_profile_test, run_strategy_test
+from python.scenario.scenario_strategy_runner import run_profile_batch, run_scenario_batch
 vLog = get_global_logger()
 
 
@@ -35,7 +35,7 @@ class StrategyRunnerCli:
 
     def cmd_run(self, scenario_set_json: str, generator_profiles: List[str] = None):
         """
-        Run strategy test with specified scenario set.
+        Run batch execution with specified scenario set.
 
         Args:
             scenario_set_json: Config filename (e.g., 'eurusd_3_windows.json')
@@ -53,7 +53,7 @@ class StrategyRunnerCli:
                 print(f"  • {Path(p).name}")
             print("="*80 + "\n")
 
-            run_profile_test(scenario_set_json, profile_paths)
+            run_profile_batch(scenario_set_json, profile_paths)
         else:
             print("\n" + "="*80)
             print("🔬 Strategy Runner")
@@ -61,7 +61,7 @@ class StrategyRunnerCli:
             print(f"Scenario Set: {scenario_set_json}")
             print("="*80 + "\n")
 
-            run_strategy_test(scenario_set_json)
+            run_scenario_batch(scenario_set_json)
 
     def _resolve_profile_paths(self, inputs: List[str]) -> List[str]:
         """

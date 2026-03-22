@@ -250,6 +250,33 @@ After a tick run with block splitting, the **Block Splitting Disposition** quant
 | 10% – 25% | 🟡 HIGH | Results significantly distorted |
 | > 25% | ❌ UNRELIABLE | Switch to continuous mode |
 
+### Improving a Poor Disposition
+
+When the disposition is MODERATE or worse, the root cause is almost always **too many block boundaries relative to trade frequency**. Concrete actions:
+
+| Action | Effect | When to use |
+|---|---|---|
+| **Switch to continuous mode** | Eliminates force-closes entirely | Low-frequency strategies (< 5 trades/block), swing trading |
+| **Increase `max_block_hours`** | Fewer blocks = fewer boundaries | Moderate-frequency strategies where some parallelism is still useful |
+| **Reduce time range** | Fewer blocks generated | When only a specific market period is relevant |
+| **Accept the result** | Use continuous as ground truth, volatility_split for parallelism | When you need speed and know the distortion range |
+
+**Key insight:** The disposition measures the fit between **block size** and **trade frequency**. A strategy averaging 3 trades per block will always show high disposition because nearly every block ends with an open trade. The same strategy on continuous mode (1 block) may show ~0%.
+
+The disposition does NOT indicate a bad strategy — it indicates that the chosen splitting is too aggressive for the strategy's trading pace.
+
+**Example — tuning via `market_config.json`:**
+
+```json
+"generator_profile_defaults": {
+    "min_block_hours": 2,
+    "max_block_hours": 24,    ← increase this (e.g. 48 or 72)
+    "atr_percentile_threshold": 10
+}
+```
+
+A Forex strategy with ~3 trades per 24h block showed 82% UNRELIABLE (9/25 force-closed). Increasing `max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and `atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the primary lever for disposition improvement.
+
 ### Empirical Feedback Loop
 
 The metric enables finding the optimal block size per algorithm:
