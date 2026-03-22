@@ -154,7 +154,10 @@ class BatchSummary:
         # Header with batch status
         is_profile_run = self._detect_profile_run()
         if is_profile_run:
-            self._renderer.section_header("🎉 EXECUTION RESULTS — Profile Run")
+            scenarios = self.batch_execution_summary.single_scenario_list
+            symbols = sorted(set(s.symbol for s in scenarios))
+            profile_info = f"{len(scenarios)} blocks, {len(symbols)} symbol(s)"
+            self._renderer.section_header(f"🎉 EXECUTION RESULTS — Profile Run ({profile_info})")
         else:
             self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)

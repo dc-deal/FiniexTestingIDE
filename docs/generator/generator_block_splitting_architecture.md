@@ -96,7 +96,7 @@ The system operates in two strictly separated modes — **never mixed**:
 
 ### Profile Format
 
-JSON files in `configs/generator_profiles/`. Human-readable but must not be manually edited (documented convention, not enforced via hash).
+JSON files in `configs/generator_profiles/`, organized by mode into subdirectories (`volatility_split/`, `continuous/`). Human-readable but must not be manually edited (documented convention, not enforced via hash).
 
 ```json
 {
@@ -155,9 +155,17 @@ python python/cli/generator_cli.py generate-all-profiles \
   --kraken-spot-start 2026-01-24T00:00:00 --kraken-spot-end 2026-03-08T00:00:00 \
   --mode volatility_split
 
-# Run with a profile
+# Run with a single profile
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
-  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321_1400.json
+  --generator-profile configs/generator_profiles/volatility_split/mt5_EURUSD_profile_vol_20260322_1219.json
+
+# Run with multiple profiles (merged into one batch)
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile profiles/mt5_EURUSD_profile_vol.json profiles/mt5_GBPUSD_profile_vol.json
+
+# Run all profiles in a directory (auto-discovers *.json files)
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile configs/generator_profiles/volatility_split
 ```
 
 ### Profile Config Resolution
@@ -179,8 +187,14 @@ The `split_algorithm` (always `atr_minima`) remains global in `generator_config.
 
 Profile Run is activated via the `--generator-profile` CLI flag on the `run` command. The profile blocks replace the `scenarios[]` array from the scenario set JSON. Global config (strategy, execution, trade_simulator) is still loaded from the scenario set.
 
-- `--generator-profile <path>` → Profile Run
+- `--generator-profile <path> [<path> ...]` → Profile Run (accepts files and/or directories)
 - No flag → Free Run (backward-compatible)
+
+**Multi-Profile Runs:** Multiple profile files or directories can be passed. If a directory is given, all `*.json` files inside are auto-discovered. All profiles are merged into a single batch with globally unique `scenario_index` values. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count.
+
+**Profile directories:**
+- `configs/generator_profiles/volatility_split/` — ATR-minima split profiles
+- `configs/generator_profiles/continuous/` — continuous (one block per region) profiles
 
 ### Generator Modes
 

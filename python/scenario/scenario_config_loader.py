@@ -188,24 +188,25 @@ class ScenarioConfigLoader:
             config_path=config_path
         )
 
-    def load_from_profile(
+    def load_from_profiles(
         self,
-        profile: GeneratorProfile,
+        profiles: List[GeneratorProfile],
         scenario_set_json: str
     ) -> LoadedScenarioConfig:
         """
-        Create LoadedScenarioConfig from a GeneratorProfile.
+        Create LoadedScenarioConfig from one or more GeneratorProfiles.
 
         Loads global config (strategy, execution, trade_simulator) from
         the scenario set JSON, then creates one SingleScenario per profile
-        block with is_profile_run=True and profile metadata.
+        block across all profiles with globally unique scenario indices
+        and unique scenario names.
 
         Args:
-            profile: GeneratorProfile with block definitions
+            profiles: List of GeneratorProfiles with block definitions
             scenario_set_json: Scenario set config filename for global config
 
         Returns:
-            LoadedScenarioConfig with profile-based scenarios
+            LoadedScenarioConfig with merged profile-based scenarios
         """
         config_path = self.config_path / scenario_set_json
 
@@ -223,35 +224,43 @@ class ScenarioConfigLoader:
         global_stress_test = global_config.get('stress_test_config', {})
 
         scenario_set_name = config.get('scenario_set_name', 'unknown')
-        meta = profile.profile_meta
 
         scenarios: List[SingleScenario] = []
+        global_index = 0
 
-        for block in profile.blocks:
-            name = (
-                f"{meta.symbol}_profile_{block.block_index:02d}"
-            )
+        for profile in profiles:
+            meta = profile.profile_meta
+            mode_short = 'vol' if meta.generator_mode == 'volatility_split' else 'cont'
 
-            scenario = SingleScenario(
-                name=name,
-                scenario_index=block.block_index,
-                symbol=meta.symbol,
-                data_broker_type=meta.broker_type,
-                start_date=block.start_time,
-                end_date=block.end_time,
-                data_mode='realistic',
-                max_ticks=None,
-                strategy_config=copy.deepcopy(global_strategy),
-                execution_config=copy.deepcopy(global_execution),
-                trade_simulator_config=copy.deepcopy(global_trade_simulator) if global_trade_simulator else None,
-                stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
-                is_profile_run=True,
+            for block in profile.blocks:
+                name = f"{meta.symbol}_{mode_short}_{block.block_index:02d}"
+
+                scenario = SingleScenario(
+                    name=name,
+                    scenario_index=global_index,
+                    symbol=meta.symbol,
+                    data_broker_type=meta.broker_type,
+                    start_date=block.start_time,
+                    end_date=block.end_time,
+                    data_mode='realistic',
+                    max_ticks=None,
+                    strategy_config=copy.deepcopy(global_strategy),
+                    execution_config=copy.deepcopy(global_execution),
+                    trade_simulator_config=copy.deepcopy(global_trade_simulator) if global_trade_simulator else None,
+                    stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
+                    is_profile_run=True,
+                )
+                scenarios.append(scenario)
+                global_index += 1
+
+            vLog.info(
+                f"✅ Loaded {meta.block_count} blocks from profile "
+                f"({mode_short}, {meta.symbol})"
             )
-            scenarios.append(scenario)
 
         vLog.info(
-            f"✅ Created {len(scenarios)} scenarios from profile "
-            f"({meta.generator_mode} mode, {meta.symbol})"
+            f"✅ Created {len(scenarios)} scenarios from "
+            f"{len(profiles)} profile(s)"
         )
 
         return LoadedScenarioConfig(

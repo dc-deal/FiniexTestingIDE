@@ -410,11 +410,24 @@ Generates a profile artifact (JSON) with blocks split at ATR minima — the quie
 - `--mode` — `volatility_split` (default) or `continuous`
 - `--output` — Custom output filename
 
-**Profile Run:**
+**Profile Run (single file):**
 ```bash
 python python/cli/strategy_runner_cli.py run my_set.json \
-  --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321.json
+  --generator-profile configs/generator_profiles/volatility_split/mt5_EURUSD_profile_vol_20260322_1219.json
 ```
+
+**Multi-Profile Run (multiple files or directory):**
+```bash
+# Pass multiple profile files
+python python/cli/strategy_runner_cli.py run my_set.json \
+  --generator-profile profiles/mt5_EURUSD_profile_vol.json profiles/mt5_GBPUSD_profile_vol.json
+
+# Pass a directory — all *.json files inside are auto-discovered
+python python/cli/strategy_runner_cli.py run my_set.json \
+  --generator-profile configs/generator_profiles/volatility_split
+```
+
+Multiple profiles are merged into a single batch with globally unique scenario indices. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count for profile runs.
 
 Profile blocks replace the scenario set's `scenarios[]` array. Global config (strategy, execution) is still loaded from the scenario set.
 
@@ -608,7 +621,8 @@ Useful for understanding the raw data structure:
 | **Generate Profile** | `⚡ Generate Profile: mt5/EURUSD` | `generator_cli.py generate-profile mt5 EURUSD --start ... --end ...` |
 | **Generate All Profiles** | `⚡ Generate All Profiles (volatility_split)` | `generator_cli.py generate-all-profiles --mt5-start ... --kraken-spot-start ...` |
 | **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
-| **Profile Run** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
+| **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
+| **Profile Run (directory)** | `🔬 Profile Run: All volatility_split` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
 
 ---
 
