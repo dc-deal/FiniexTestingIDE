@@ -7,7 +7,7 @@ ENHANCED  Calendar-based weekend detection for extended gaps
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_types import WeekendClosureWindow
@@ -348,10 +348,6 @@ class MarketCalendar:
             ):
                 return GapCategory.WEEKEND, f'✅ Weekend gap (Sat→Mon, {gap_hours:.1f}h)'
 
-            # Extended weekend detection: Calendar-based fallback
-            if MarketCalendar.gap_contains_weekend(start, end) and gap_hours >= 24:
-                return GapCategory.WEEKEND, f'✅ Weekend gap (extended, {gap_hours:.1f}h)'
-
             # 2b. HOLIDAY CHECK
             if gap_hours >= 20 and MarketCalendar.gap_contains_holiday(start, end):
                 return GapCategory.HOLIDAY, f'✅ Holiday gap ({gap_hours:.1f}h)'
@@ -369,3 +365,151 @@ class MarketCalendar:
 
         # 5. LARGE GAP (> 4h)
         return GapCategory.LARGE, f'🔴 Large gap - check data collection ({gap_hours:.2f}h)'
+
+    # =========================================================================
+    # GAP SPLITTING AT MARKET BOUNDARIES
+    # =========================================================================
+
+    @staticmethod
+    def split_gap_at_market_boundaries(
+        start: datetime,
+        end: datetime
+    ) -> List[Tuple[datetime, datetime]]:
+        """
+        Split a gap into sub-gaps at weekend market boundaries.
+
+        For forex markets, a raw gap spanning multiple weekends gets split
+        at Friday close / Sunday open boundaries. Each sub-gap is then
+        classified independently, preventing data loss from being masked
+        as a weekend closure.
+
+        Only applies to gaps exceeding max_duration_hours (80h). Shorter
+        gaps pass through unchanged — the primary/alternative weekend
+        pattern matching in classify_gap() handles them correctly.
+
+        Args:
+            start: Gap start timestamp
+            end: Gap end timestamp
+
+        Returns:
+            List of (segment_start, segment_end) tuples
+        """
+        closure = MarketCalendar.WEEKEND_CLOSURE
+        gap_hours = (end - start).total_seconds() / 3600
+
+        # Normal weekends (≤ 80h) — classify directly, no splitting needed
+        if gap_hours <= closure.max_duration_hours:
+            return [(start, end)]
+
+        fri_hour = closure.friday_start_hour_utc   # 20
+        sun_hour = closure.sunday_end_hour_utc     # 22
+
+        segments = []
+        current = start
+
+        while current < end:
+            if MarketCalendar._is_in_weekend_closure(current, fri_hour, sun_hour):
+                # Currently in weekend — segment ends at Sunday open
+                weekend_end = MarketCalendar._get_weekend_end(current, sun_hour)
+                seg_end = min(weekend_end, end)
+                segments.append((current, seg_end))
+                current = seg_end
+            else:
+                # Trading time — segment ends at next Friday close
+                next_fri = MarketCalendar._get_next_friday_close(current, fri_hour)
+
+                if next_fri < end:
+                    segments.append((current, next_fri))
+                    current = next_fri
+                else:
+                    segments.append((current, end))
+                    current = end
+
+        return segments
+
+    @staticmethod
+    def _is_in_weekend_closure(
+        timestamp: datetime,
+        fri_hour: int,
+        sun_hour: int
+    ) -> bool:
+        """
+        Check if timestamp falls within weekend closure window.
+
+        Args:
+            timestamp: Datetime to check
+            fri_hour: Friday close hour UTC
+            sun_hour: Sunday open hour UTC
+
+        Returns:
+            True if within Friday close → Sunday open
+        """
+        weekday = timestamp.weekday()
+        hour = timestamp.hour
+
+        # Friday at or after close hour
+        if weekday == 4 and hour >= fri_hour:
+            return True
+        # Saturday (all day)
+        if weekday == 5:
+            return True
+        # Sunday before open hour
+        if weekday == 6 and hour < sun_hour:
+            return True
+
+        return False
+
+    @staticmethod
+    def _get_weekend_end(
+        timestamp: datetime,
+        sun_hour: int
+    ) -> datetime:
+        """
+        Get Sunday open time for the weekend containing timestamp.
+
+        Args:
+            timestamp: Datetime within a weekend closure
+            sun_hour: Sunday open hour UTC
+
+        Returns:
+            Sunday at sun_hour:00 UTC
+        """
+        weekday = timestamp.weekday()
+
+        if weekday == 4:
+            days_to_sunday = 2
+        elif weekday == 5:
+            days_to_sunday = 1
+        else:
+            days_to_sunday = 0
+
+        sunday = timestamp + timedelta(days=days_to_sunday)
+        return sunday.replace(hour=sun_hour, minute=0, second=0, microsecond=0)
+
+    @staticmethod
+    def _get_next_friday_close(
+        timestamp: datetime,
+        fri_hour: int
+    ) -> datetime:
+        """
+        Get next Friday close time at or after timestamp.
+
+        Only called when timestamp is NOT in a weekend closure.
+
+        Args:
+            timestamp: Datetime in trading hours
+            fri_hour: Friday close hour UTC
+
+        Returns:
+            Next Friday at fri_hour:00 UTC
+        """
+        weekday = timestamp.weekday()
+
+        # Friday before close → this Friday
+        if weekday == 4:
+            return timestamp.replace(hour=fri_hour, minute=0, second=0, microsecond=0)
+
+        # Days until Friday (Mon=4, Tue=3, Wed=2, Thu=1, Sun=5)
+        days_ahead = (4 - weekday) % 7
+        next_friday = timestamp + timedelta(days=days_ahead)
+        return next_friday.replace(hour=fri_hour, minute=0, second=0, microsecond=0)

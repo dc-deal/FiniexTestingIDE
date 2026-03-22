@@ -151,24 +151,36 @@ class DataCoverageReport:
             delta_s = (curr_ts - prev_ts).total_seconds()
 
             if delta_s > gap_threshold_s:
-                # Gap detected — classify it
-                category, reason = MarketCalendar.classify_gap(
-                    prev_ts,
-                    curr_ts,
-                    delta_s,
-                    thresholds,
-                    weekend_closure=self._weekend_closure
-                )
+                # Split gap at market boundaries (weekends) to prevent
+                # data loss from being masked as expected closures.
+                # Only affects forex gaps > 80h spanning multiple weekends.
+                if self._weekend_closure:
+                    sub_gaps = MarketCalendar.split_gap_at_market_boundaries(
+                        prev_ts, curr_ts
+                    )
+                else:
+                    sub_gaps = [(prev_ts, curr_ts)]
 
-                gap = Gap(
-                    gap_seconds=delta_s,
-                    category=category,
-                    reason=f"{reason} [detected via {granularity}]",
-                    gap_start=prev_ts,
-                    gap_end=curr_ts
-                )
+                for seg_start, seg_end in sub_gaps:
+                    seg_seconds = (seg_end - seg_start).total_seconds()
 
-                gaps.append(gap)
+                    category, reason = MarketCalendar.classify_gap(
+                        seg_start,
+                        seg_end,
+                        seg_seconds,
+                        thresholds,
+                        weekend_closure=self._weekend_closure
+                    )
+
+                    gap = Gap(
+                        gap_seconds=seg_seconds,
+                        category=category,
+                        reason=f"{reason} [detected via {granularity}]",
+                        gap_start=seg_start,
+                        gap_end=seg_end
+                    )
+
+                    gaps.append(gap)
 
         return gaps
 

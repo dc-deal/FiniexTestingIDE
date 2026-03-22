@@ -5,13 +5,28 @@ Type definitions for market rules and broker mappings
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class MarketType(Enum):
     """Supported market types with distinct trading rules."""
     FOREX = "forex"
     CRYPTO = "crypto"
+
+
+@dataclass
+class ProfileDefaults:
+    """
+    Default profile generation parameters per market type.
+
+    Args:
+        min_block_hours: Minimum block duration in hours
+        max_block_hours: Maximum block duration in hours
+        atr_percentile_threshold: ATR percentile for split point detection
+    """
+    min_block_hours: int = 2
+    max_block_hours: int = 24
+    atr_percentile_threshold: int = 10
 
 
 @dataclass
@@ -26,11 +41,13 @@ class MarketRules:
         primary_activity_metric: Primary activity metric ('tick_count' or 'volume')
         inter_tick_gap_threshold_s: Intervals longer than this (seconds) are excluded
                                     from inter-tick profiling stats (session/weekend gaps)
+        profile_defaults: Default profile generation parameters for this market type
     """
     weekend_closure: bool
     session_bucketing: bool
     primary_activity_metric: str
     inter_tick_gap_threshold_s: float = 300.0
+    profile_defaults: Optional[ProfileDefaults] = None
 
 
 @dataclass

@@ -139,7 +139,7 @@ JSON files in `configs/generator_profiles/`. Human-readable but must not be manu
 ### CLI Usage
 
 ```bash
-# Generate a profile with ATR-minima splitting
+# Generate a profile with ATR-minima splitting (single symbol)
 python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode volatility_split
@@ -149,10 +149,31 @@ python python/cli/generator_cli.py generate-profile mt5 EURUSD \
   --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 \
   --mode continuous
 
+# Batch: generate profiles for ALL symbols across ALL brokers
+python python/cli/generator_cli.py generate-all-profiles \
+  --mt5-start 2025-09-01T00:00:00 --mt5-end 2025-10-01T00:00:00 \
+  --kraken-spot-start 2026-01-24T00:00:00 --kraken-spot-end 2026-03-08T00:00:00 \
+  --mode volatility_split
+
 # Run with a profile
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
   --generator-profile configs/generator_profiles/mt5_EURUSD_profile_vol_20260321_1400.json
 ```
+
+### Profile Config Resolution
+
+Profile generation parameters are resolved per market type:
+
+1. `market_config.json` → `market_rules.<type>.profile_defaults` (market-specific)
+2. `generator_config.json` → `profile` section (global fallback)
+
+| Parameter | Forex | Crypto | Why |
+|---|---|---|---|
+| `max_block_hours` | 24 | 72 | 24/7 markets have fewer volatility minima |
+| `min_block_hours` | 2 | 4 | Crypto blocks below 4h are too small |
+| `atr_percentile_threshold` | P10 | P15 | Higher threshold finds more split candidates in flatter ATR distributions |
+
+The `split_algorithm` (always `atr_minima`) remains global in `generator_config.json`.
 
 ### Scenario Set Integration
 
@@ -169,6 +190,18 @@ Profile Run is activated via the `--generator-profile` CLI flag on the `run` com
 | **volatility_split** | Splits at ATR minima (low-volatility points) | Parallelism within symbol, minimal split cost |
 
 The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profiles, ATR data from `discoveries_config.json`) — it does NOT compute volatility itself.
+
+### Gap Handling
+
+Both generators (BlocksGenerator and ProfileGenerator) treat all gap types the same way for block construction: **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
+
+Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
+
+The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the **Data Coverage Report** to distinguish expected market closures from actual data problems. For block generation and P&L calculation, there is no difference between a weekend gap and any other pause — no ticks arrive, the algorithm waits, the next tick continues processing.
+
+**Gap boundary splitting (forex only):** When a raw gap exceeds the maximum expected weekend duration (80h), the Data Coverage Report splits it at market boundaries (Friday 20:00 UTC close, Sunday 22:00 UTC open). Each sub-gap is classified independently. This prevents data loss spanning multiple weeks from being masked as a single "weekend" closure. Gaps ≤ 80h pass through unchanged — the existing weekend pattern matching handles normal closures correctly. This splitting only affects classification in the Coverage Report; block generation and P&L calculation are not impacted.
+
+The ProfileGenerator's ATR-minima algorithm skips over gap periods (no volatility data available) when searching for split points, rather than inserting artificial forced splits into empty time ranges.
 
 ### Discovery Fingerprints
 

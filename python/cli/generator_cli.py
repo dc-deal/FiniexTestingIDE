@@ -11,18 +11,26 @@ import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from python.configuration.generator_config_loader import GeneratorConfigLoader
-from python.framework.utils.time_utils import ensure_utc_aware
-from python.scenario.generator.profile_generator import ProfileGenerator
-from python.scenario.generator.profile_saver import ProfileSaver
-from python.scenario.generator.scenario_generator import ScenarioGenerator
-from python.scenario.generator.scenario_generator_config_saver import ScenarioGeneratorConfigSaver
+from python.configuration.market_config_manager import MarketConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
+from python.framework.types.market_types.market_volatility_profile_types import (
+    TradingSession,
+    VolatilityRegime,
+)
 from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
+    ProfileStrategyConfig,
 )
+from python.framework.utils.time_utils import ensure_utc_aware
+from python.scenario.generator.blocks_generator import BlocksGenerator
+from python.scenario.generator.profile_generator import ProfileGenerator
+from python.scenario.generator.profile_saver import ProfileSaver
+from python.scenario.generator.scenario_generator_config_saver import ScenarioGeneratorConfigSaver
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
@@ -38,10 +46,10 @@ class GeneratorCli:
         pass
 
     # =========================================================================
-    # GENERATE COMMAND
+    # GENERATE-BLOCKS COMMAND
     # =========================================================================
 
-    def cmd_generate(
+    def cmd_generate_blocks(
         self,
         broker_type: str,
         symbols: List[str],
@@ -73,17 +81,26 @@ class GeneratorCli:
         if end:
             end_dt = ensure_utc_aware(datetime.fromisoformat(end))
         try:
-            generator = ScenarioGenerator()
+            config = GeneratorConfigLoader().get_generator_config()
+            symbol = symbols[0]
+            if len(symbols) > 1:
+                vLog.warning(
+                    'Multi-symbol generation not yet implemented. Using first symbol.')
 
-            result = generator.generate(
-                broker_type=broker_type,
-                symbols=symbols,
-                strategy=GenerationStrategy.BLOCKS,
-                count=count,
-                block_hours=block_size,
-                start_filter=start_dt,
-                end_filter=end_dt,
-                max_ticks=max_ticks
+            # Build volatility profile (for metadata)
+            analyzer = VolatilityProfileAnalyzer()
+            analyzer.build_profile(broker_type, symbol)
+
+            # Generate blocks
+            hours = block_size or config.blocks.default_block_hours
+            vLog.info(f"Generating scenarios using blocks strategy")
+
+            blocks_gen = BlocksGenerator(config)
+            scenarios = blocks_gen.generate(broker_type, symbol, hours, count)
+            vLog.info(f"Generated {len(scenarios)} blocks (max {hours}h each)")
+
+            result = self._build_generation_result(
+                symbol, scenarios, config
             )
 
             # Save config
@@ -128,16 +145,11 @@ class GeneratorCli:
         end_dt = ensure_utc_aware(datetime.fromisoformat(end))
 
         try:
-            # Load profile config
-            gen_config = GeneratorConfigLoader().get_generator_config()
-            if gen_config.profile is None:
-                raise ValueError(
-                    'No "profile" section found in generator_config.json. '
-                    'Add profile configuration before generating profiles.'
-                )
+            # Resolve profile config: market_config overrides → generator_config fallback
+            profile_config = self._resolve_profile_config(broker_type)
 
             generator = ProfileGenerator(
-                config=gen_config.profile
+                config=profile_config
             )
 
             profile = generator.generate(
@@ -189,8 +201,160 @@ class GeneratorCli:
         return f"{broker_type}_{symbol}_profile_{mode_short}_{timestamp}.json"
 
     # =========================================================================
+    # GENERATE-ALL-PROFILES COMMAND
+    # =========================================================================
+
+    def cmd_generate_all_profiles(
+        self,
+        broker_starts: Dict[str, str],
+        broker_ends: Dict[str, str],
+        mode: str = 'volatility_split'
+    ) -> None:
+        """
+        Generate profiles for all symbols across all configured brokers.
+
+        Args:
+            broker_starts: Dict of broker_type → start ISO string
+            broker_ends: Dict of broker_type → end ISO string
+            mode: Generation mode ('volatility_split' or 'continuous')
+        """
+        bar_index = BarsIndexManager()
+        bar_index.build_index()
+        saver = ProfileSaver()
+
+        total_generated = 0
+        total_failed = 0
+        generated_files = []
+
+        for broker_type in sorted(broker_starts.keys()):
+            start_dt = ensure_utc_aware(datetime.fromisoformat(broker_starts[broker_type]))
+            end_dt = ensure_utc_aware(datetime.fromisoformat(broker_ends[broker_type]))
+            symbols = bar_index.list_symbols(broker_type)
+
+            if not symbols:
+                print(f"\n⚠️  No symbols found for {broker_type}, skipping")
+                continue
+
+            profile_config = self._resolve_profile_config(broker_type)
+            print(f"\n{'─' * 60}")
+            print(f"  {broker_type}: {len(symbols)} symbols | "
+                  f"{start_dt.strftime('%Y-%m-%d')} → {end_dt.strftime('%Y-%m-%d')} | "
+                  f"max_block={profile_config.max_block_hours}h")
+            print(f"{'─' * 60}")
+
+            generator = ProfileGenerator(config=profile_config)
+
+            for symbol in symbols:
+                try:
+                    profile = generator.generate(
+                        broker_type=broker_type,
+                        symbol=symbol,
+                        start_time=start_dt,
+                        end_time=end_dt,
+                        mode=mode,
+                    )
+
+                    output_file = self._generate_profile_output_name(
+                        broker_type, symbol, mode
+                    )
+                    profile_path = saver.save_profile(profile, output_file)
+                    generated_files.append(str(profile_path))
+                    total_generated += 1
+
+                except Exception as e:
+                    print(f"  ❌ {symbol}: {e}")
+                    vLog.error(f"Profile generation failed for {broker_type}/{symbol}: {e}")
+                    total_failed += 1
+
+        # Summary
+        print(f"\n{'=' * 60}")
+        print(f"  Batch Profile Generation Complete")
+        print(f"{'=' * 60}")
+        print(f"  Generated: {total_generated} profiles")
+        if total_failed > 0:
+            print(f"  Failed:    {total_failed} profiles")
+        print(f"  Mode:      {mode}")
+        for path in generated_files:
+            print(f"  📂 {path}")
+        print(f"{'=' * 60}\n")
+
+    # =========================================================================
     # HELPERS
     # =========================================================================
+
+    def _resolve_profile_config(self, broker_type: str) -> ProfileStrategyConfig:
+        """
+        Resolve profile config: market_config profile_defaults → generator_config fallback.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            ProfileStrategyConfig with market-specific or fallback values
+        """
+        # Start with generator_config.json as base
+        gen_config = GeneratorConfigLoader().get_generator_config()
+        base = gen_config.profile
+
+        if base is None:
+            raise ValueError(
+                'No "profile" section found in generator_config.json. '
+                'Add profile configuration before generating profiles.'
+            )
+
+        # Override with market-specific defaults if available
+        market_config = MarketConfigManager()
+        profile_defaults = market_config.get_profile_defaults_for_broker(broker_type)
+
+        if profile_defaults is not None:
+            return ProfileStrategyConfig(
+                min_block_hours=profile_defaults.min_block_hours,
+                max_block_hours=profile_defaults.max_block_hours,
+                atr_percentile_threshold=profile_defaults.atr_percentile_threshold,
+                split_algorithm=base.split_algorithm,
+            )
+
+        return base
+
+    def _build_generation_result(
+        self,
+        symbol: str,
+        scenarios: list,
+        config: object
+    ) -> GenerationResult:
+        """
+        Build GenerationResult from generated scenarios.
+
+        Args:
+            symbol: Trading symbol
+            scenarios: Generated ScenarioCandidate list
+            config: GeneratorConfig used
+
+        Returns:
+            GenerationResult
+        """
+        total_ticks = sum(s.estimated_ticks for s in scenarios)
+        avg_ticks = total_ticks / len(scenarios) if scenarios else 0
+
+        regime_coverage = {regime: 0 for regime in VolatilityRegime}
+        for s in scenarios:
+            regime_coverage[s.regime] += 1
+
+        session_coverage = {session: 0 for session in TradingSession}
+        for s in scenarios:
+            session_coverage[s.session] += 1
+
+        return GenerationResult(
+            symbol=symbol,
+            strategy=GenerationStrategy.BLOCKS,
+            scenarios=scenarios,
+            total_estimated_ticks=total_ticks,
+            avg_ticks_per_scenario=avg_ticks,
+            regime_coverage=regime_coverage,
+            session_coverage=session_coverage,
+            generated_at=datetime.now(timezone.utc),
+            config_used=config
+        )
 
     def _generate_output_name(self, symbols: List[str]) -> str:
         """
@@ -264,7 +428,7 @@ def main():
     # GENERATE command
     # ─────────────────────────────────────────────────────────────────────────
     generate_parser = subparsers.add_parser(
-        'generate',
+        'generate-blocks',
         help='Generate block-based scenario configurations'
     )
     generate_parser.add_argument(
@@ -355,6 +519,45 @@ def main():
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # GENERATE-ALL-PROFILES command
+    # ─────────────────────────────────────────────────────────────────────────
+    all_profiles_parser = subparsers.add_parser(
+        'generate-all-profiles',
+        help='Generate profiles for all symbols across all brokers'
+    )
+    all_profiles_parser.add_argument(
+        '--mt5-start',
+        type=str,
+        required=True,
+        help='Start date for mt5 symbols (ISO format)'
+    )
+    all_profiles_parser.add_argument(
+        '--mt5-end',
+        type=str,
+        required=True,
+        help='End date for mt5 symbols (ISO format)'
+    )
+    all_profiles_parser.add_argument(
+        '--kraken-spot-start',
+        type=str,
+        required=True,
+        help='Start date for kraken_spot symbols (ISO format)'
+    )
+    all_profiles_parser.add_argument(
+        '--kraken-spot-end',
+        type=str,
+        required=True,
+        help='End date for kraken_spot symbols (ISO format)'
+    )
+    all_profiles_parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['volatility_split', 'continuous'],
+        default='volatility_split',
+        help='Generation mode (default: volatility_split)'
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
     # ─────────────────────────────────────────────────────────────────────────
     args = parser.parse_args()
@@ -365,8 +568,8 @@ def main():
 
     cli = GeneratorCli()
 
-    if args.command == 'generate':
-        cli.cmd_generate(
+    if args.command == 'generate-blocks':
+        cli.cmd_generate_blocks(
             broker_type=args.broker_type,
             symbols=args.symbols,
             count=args.count,
@@ -384,6 +587,20 @@ def main():
             end=args.end,
             mode=args.mode,
             output=args.output,
+        )
+    elif args.command == 'generate-all-profiles':
+        broker_starts = {
+            'mt5': args.mt5_start,
+            'kraken_spot': args.kraken_spot_start,
+        }
+        broker_ends = {
+            'mt5': args.mt5_end,
+            'kraken_spot': args.kraken_spot_end,
+        }
+        cli.cmd_generate_all_profiles(
+            broker_starts=broker_starts,
+            broker_ends=broker_ends,
+            mode=args.mode,
         )
 
 

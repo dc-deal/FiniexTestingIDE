@@ -1,0 +1,190 @@
+{
+  "profile_meta": {
+    "symbol": "EURUSD",
+    "broker_type": "mt5",
+    "generator_mode": "volatility_split",
+    "generated_at": "2026-03-22T12:19:37.744543+00:00",
+    "total_coverage_hours": 268.03,
+    "block_count": 14,
+    "discovery_fingerprints": {
+      "volatility_profile": "b298b18560eab25b550a62279884865a889e4e2742813650d97f5f9cd1b1dbff",
+      "data_coverage": "c2a3e1311c98e5df7763a3d640881dd66d78a84425d3598e82fa0a83e85a3c55",
+      "extreme_moves": "558c483a2c3d9c325135f533d4e779060ef83983a29e915fb32241eac6c0d561"
+    },
+    "split_config": {
+      "min_block_hours": 2,
+      "max_block_hours": 24,
+      "atr_percentile_threshold": 10,
+      "split_algorithm": "atr_minima"
+    }
+  },
+  "blocks": [
+    {
+      "block_index": 0,
+      "start_time": "2025-09-17T17:58:00+00:00",
+      "end_time": "2025-09-17T22:00:00+00:00",
+      "block_duration_hours": 4.03,
+      "split_reason": "region_start",
+      "atr_at_split": 0.554338,
+      "regime_at_split": "low",
+      "session": "new_york",
+      "estimated_ticks": 30296,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 1,
+      "start_time": "2025-09-17T22:00:00+00:00",
+      "end_time": "2025-09-18T21:00:00+00:00",
+      "block_duration_hours": 23.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.688691,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 81524,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 2,
+      "start_time": "2025-09-18T21:00:00+00:00",
+      "end_time": "2025-09-18T23:00:00+00:00",
+      "block_duration_hours": 2.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.639749,
+      "regime_at_split": "low",
+      "session": "transition",
+      "estimated_ticks": 3145,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 3,
+      "start_time": "2025-09-18T23:00:00+00:00",
+      "end_time": "2025-09-19T19:00:00+00:00",
+      "block_duration_hours": 20.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.512452,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 72336,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 4,
+      "start_time": "2025-09-19T19:00:00+00:00",
+      "end_time": "2025-09-21T23:00:00+00:00",
+      "block_duration_hours": 52.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.601077,
+      "regime_at_split": "low",
+      "session": "new_york",
+      "estimated_ticks": 5842,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 5,
+      "start_time": "2025-09-21T23:00:00+00:00",
+      "end_time": "2025-09-22T23:00:00+00:00",
+      "block_duration_hours": 24.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.496517,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 63651,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 6,
+      "start_time": "2025-09-22T23:00:00+00:00",
+      "end_time": "2025-09-23T23:00:00+00:00",
+      "block_duration_hours": 24.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.359945,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 73610,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 7,
+      "start_time": "2025-09-23T23:00:00+00:00",
+      "end_time": "2025-09-24T21:00:00+00:00",
+      "block_duration_hours": 22.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.417338,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 69928,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 8,
+      "start_time": "2025-09-24T21:00:00+00:00",
+      "end_time": "2025-09-24T23:00:00+00:00",
+      "block_duration_hours": 2.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.385703,
+      "regime_at_split": "very_low",
+      "session": "transition",
+      "estimated_ticks": 1529,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 9,
+      "start_time": "2025-09-24T23:00:00+00:00",
+      "end_time": "2025-09-25T04:00:00+00:00",
+      "block_duration_hours": 5.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.399824,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 10845,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 10,
+      "start_time": "2025-09-25T04:00:00+00:00",
+      "end_time": "2025-09-25T23:00:00+00:00",
+      "block_duration_hours": 19.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.491168,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 70622,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 11,
+      "start_time": "2025-09-25T23:00:00+00:00",
+      "end_time": "2025-09-26T03:00:00+00:00",
+      "block_duration_hours": 4.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.570784,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 9364,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 12,
+      "start_time": "2025-09-26T03:00:00+00:00",
+      "end_time": "2025-09-26T20:00:00+00:00",
+      "block_duration_hours": 17.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.609012,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 54945,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 13,
+      "start_time": "2025-09-26T20:00:00+00:00",
+      "end_time": "2025-09-28T22:00:00+00:00",
+      "block_duration_hours": 50.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.650661,
+      "regime_at_split": "low",
+      "session": "new_york",
+      "estimated_ticks": 1395
+    }
+  ]
+}
