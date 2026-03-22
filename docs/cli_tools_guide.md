@@ -468,7 +468,7 @@ The generator produces a JSON configuration:
     },
     "trade_simulator_config": {
       "initial_balance": 10000,
-      "currency": "EUR"
+      "account_currency": "EUR"
     }
   },
   "scenarios": [

@@ -133,7 +133,7 @@ class DecisionLogicFactory:
             is_external = scan_dir != default_dir
             if not scan_dir.exists():
                 if is_external:
-                    self.logger.warning(
+                    self.logger.debug(
                         f"USER decision logic directory not found: {scan_dir}")
                 return
             if not scan_dir.is_dir():
