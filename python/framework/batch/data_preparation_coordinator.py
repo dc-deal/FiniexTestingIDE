@@ -8,11 +8,11 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
-from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
+from python.framework.types.process_data_types import ClippingStats, ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.logging.abstract_logger import AbstractLogger
-from typing import Dict, List, Optional, Protocol
+from typing import Dict, List, Optional, Protocol, Tuple
 
 
 class StatusBroadcaster(Protocol):
@@ -58,7 +58,7 @@ class DataPreparationCoordinator:
         self,
         requirements_map: RequirementsMap,
         status_broadcaster: Optional[StatusBroadcaster] = None
-    ) -> Dict[int, ProcessDataPackage]:  # Per-scenario packages
+    ) -> Tuple[Dict[int, ProcessDataPackage], Dict[int, ClippingStats]]:
         """
         Prepare scenario-specific data packages.
 
@@ -70,7 +70,9 @@ class DataPreparationCoordinator:
             status_broadcaster: Optional status broadcaster for live updates
 
         Returns:
-            Dict mapping scenario_index → ProcessDataPackage
+            Tuple of:
+            - Dict mapping scenario_index → ProcessDataPackage
+            - Dict mapping scenario_index → ClippingStats
         """
         self._logger.info("📄 Phase 1: Preparing shared data...")
 
@@ -91,7 +93,7 @@ class DataPreparationCoordinator:
                 ScenarioStatus.WARMUP_DATA_TICKS)
 
         # Use prepare_scenario_packages instead of separate prepare_ticks/bars
-        scenario_packages = self._data_preparator.prepare_scenario_packages(
+        scenario_packages, clipping_stats_map = self._data_preparator.prepare_scenario_packages(
             requirements_map=requirements_map,
             scenarios=self._scenarios,
             broker_configs=broker_configs
@@ -103,7 +105,7 @@ class DataPreparationCoordinator:
             f"✅ Data prepared: {total_packages} scenario-specific packages"
         )
 
-        return scenario_packages
+        return scenario_packages, clipping_stats_map
 
     def get_broker_scenario_map(self) -> dict:
         """

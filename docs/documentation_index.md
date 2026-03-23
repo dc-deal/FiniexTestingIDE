@@ -49,6 +49,7 @@
 | Document | Description |
 |----------|-------------|
 | [Process Execution](process_execution_guide.md) | Subprocess architecture, ProcessPoolExecutor |
+| [Tick Processing Budget](tick_processing_budget_guide.md) | Deterministic clipping simulation, virtual clock filtering |
 | [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
 | [Stress Test System](stress_test.md) | Config-driven fault injection, seeded randomness |
 
@@ -73,5 +74,6 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Active Order Display](tests/tests_active_order_display_docs.md) | Unresolved order reporting |
 | [USER Namespace](tests/tests_user_namespace_docs.md) | USER worker/logic discovery |
 | [Inter-Tick Interval](tests/inter_tick_interval_tests.md) | Market-side interval measurement |
+| [Tick Processing Budget](tests/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
 | [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |

@@ -29,9 +29,12 @@
         "min_confidence": 0.6
       }
     },
+    "execution_config": {
+      "tick_processing_budget_ms": 0.296
+    },
     "trade_simulator_config": {
       "initial_balance": 100000,
-      "account_currency": "auto",
+      "account_currency": "USD",
       "seeds": {
         "api_latency_seed": 50,
         "market_execution_seed": 100
@@ -54,7 +57,7 @@
       "end_date": "2025-10-09T23:59:00+00:00",
       "max_ticks": 15000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -80,7 +83,7 @@
       "end_date": "2026-01-27T22:00:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -93,7 +96,7 @@
       "end_date": "2025-09-25T23:00:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -106,7 +109,7 @@
       "end_date": "2025-09-23T23:00:00+00:00",
       "max_ticks": null,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {

@@ -12,7 +12,8 @@
             "worker_parallel_threshold_ms": 1.0,
             "adaptive_parallelization": true,
             "log_performance_stats": true,
-            "strict_parameter_validation": true
+            "strict_parameter_validation": true,
+            "tick_processing_budget_ms": 0.0
         }
     },
     "console_logging": {
