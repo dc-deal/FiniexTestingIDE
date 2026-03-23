@@ -235,6 +235,22 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             f"Total Simulation:   {in_time_stats['total_hours']:.1f} hours ({in_time_stats['total_days']:.1f} days)")
         print(f"Avg per Scenario:   {in_time_stats['avg_hours']:.2f} hours")
         print(f"Ticks Processed:    {total_ticks:,} total")
+
+        # Tick budget one-liner (only when clipping was active)
+        clipping_map = self._batch_summary.clipping_stats_map
+        if clipping_map:
+            total_clipped = sum(c.ticks_clipped for c in clipping_map.values())
+            total_original = sum(c.ticks_total for c in clipping_map.values())
+            budget_values = sorted(set(c.budget_ms for c in clipping_map.values()))
+            budget_str = '/'.join(f'{b}ms' for b in budget_values)
+            if total_clipped > 0:
+                rate = total_clipped / total_original * 100 if total_original > 0 else 0
+                print(
+                    f"Tick Budget:        {budget_str} "
+                    f"({total_clipped:,} clipped = {rate:.1f}%)")
+            else:
+                print(f"Tick Budget:        {budget_str} (no ticks clipped)")
+
         print(
             f"Ticks/Hour:         {in_time_stats['ticks_per_hour']:,.0f} (market density)")
 

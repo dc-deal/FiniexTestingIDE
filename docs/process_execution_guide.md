@@ -212,6 +212,8 @@ profile_counts['trade_simulator'] += 1
 - `order_execution` - Order placement + management
 - `live_update` - Queue export (if enabled)
 
+> **Tick Processing Budget:** A configurable `tick_processing_budget_ms` can pre-filter ticks in the main process before subprocess execution, simulating live clipping behavior. See [Tick Processing Budget Guide](tick_processing_budget_guide.md) for details.
+
 ---
 
 ## ProcessPool vs ThreadPool Architecture

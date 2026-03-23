@@ -17,6 +17,7 @@ import pandas as pd
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.process_data_types import (
+    ClippingStats,
     ProcessDataPackage,
     RequirementsMap,
     TickRequirement,
@@ -79,7 +80,7 @@ class SharedDataPreparator:
         requirements_map: RequirementsMap,
         scenarios: List[SingleScenario],
         broker_configs: Any
-    ) -> Dict[int, ProcessDataPackage]:
+    ) -> Tuple[Dict[int, ProcessDataPackage], Dict[int, ClippingStats]]:
         """
         Prepare scenario-specific data packages (OPTIMIZATION).
 
@@ -89,7 +90,8 @@ class SharedDataPreparator:
         Workflow:
         1. Load ALL data once (memory-efficient, no duplication)
         2. Filter data per scenario (symbol + time range)
-        3. Package with string interning (symbol deduplication)
+        3. Apply tick processing budget (clipping simulation)
+        4. Package with string interning (symbol deduplication)
 
         Args:
             requirements_map: Aggregated requirements from all scenarios
@@ -97,8 +99,10 @@ class SharedDataPreparator:
             broker_configs: Pre-loaded broker configurations
 
         Returns:
-            Dict mapping scenario_index → ProcessDataPackage
-            Invalid scenarios are skipped (no entry in dict)
+            Tuple of:
+            - Dict mapping scenario_index → ProcessDataPackage
+            - Dict mapping scenario_index → ClippingStats (empty if budget disabled)
+            Invalid scenarios are skipped (no entry in dicts)
         """
         self._logger.info(
             "📦 Phase 1: Preparing scenario-specific data packages...")
@@ -113,6 +117,7 @@ class SharedDataPreparator:
 
         # === STEP 2: Create scenario-specific packages ===
         scenario_packages = {}
+        clipping_stats_map = {}
 
         for idx, scenario in enumerate(scenarios):
             scenario_index = scenario.scenario_index
@@ -122,6 +127,23 @@ class SharedDataPreparator:
             )
             if (scenario_ticks is None):
                 continue
+
+            # Apply tick processing budget (clipping simulation)
+            budget_ms = scenario.execution_config.get(
+                'tick_processing_budget_ms', 0.0
+            ) if scenario.execution_config else 0.0
+
+            if budget_ms > 0:
+                scenario_ticks, clipping = self._apply_tick_budget(
+                    scenario_ticks, scenario.symbol, budget_ms
+                )
+                clipping_stats_map[scenario_index] = clipping
+                if clipping.ticks_clipped > 0:
+                    self._logger.info(
+                        f"✂️  Budget {budget_ms}ms → {scenario.name}: "
+                        f"{clipping.ticks_clipped:,}/{clipping.ticks_total:,} "
+                        f"clipped ({clipping.clipping_rate_pct:.1f}%)"
+                    )
 
             # Filter bars for this scenario
             scenario_bars = self._filter_bars_for_scenario(
@@ -156,7 +178,7 @@ class SharedDataPreparator:
             f"✅ Created {len(scenario_packages)} scenario-specific packages"
         )
 
-        return scenario_packages
+        return scenario_packages, clipping_stats_map
 
     def _collect_parquet_versions(
         self,
@@ -256,6 +278,74 @@ class SharedDataPreparator:
             'counts': {scenario.symbol: all_tick_counts[scenario_name]},
             'ranges': {scenario.symbol: all_tick_ranges[scenario_name]}
         }
+
+    def _apply_tick_budget(
+        self,
+        scenario_ticks: Dict[str, Any],
+        symbol: str,
+        budget_ms: float
+    ) -> Tuple[Dict[str, Any], ClippingStats]:
+        """
+        Apply tick processing budget filter (deterministic clipping simulation).
+
+        Virtual clock advances by budget_ms after each processed tick.
+        Ticks arriving before the virtual clock expires are clipped.
+
+        Args:
+            scenario_ticks: Filtered tick data dict from _filter_ticks_for_scenario
+            symbol: Scenario symbol
+            budget_ms: Processing budget in milliseconds
+
+        Returns:
+            Tuple of (filtered scenario_ticks dict, ClippingStats)
+        """
+        ticks_tuple = scenario_ticks['ticks'].get(symbol, ())
+        ticks_total = len(ticks_tuple)
+
+        if ticks_total == 0:
+            return scenario_ticks, ClippingStats(budget_ms=budget_ms)
+
+        # Check if collected_msc is available (V1.3.0+ data)
+        first_tick = ticks_tuple[0]
+        if first_tick.get('collected_msc', 0) == 0:
+            self._logger.warning(
+                f"⚠️  Budget filtering skipped for {symbol}: "
+                f"collected_msc not available (pre-V1.3.0 data)"
+            )
+            return scenario_ticks, ClippingStats(
+                ticks_total=ticks_total,
+                ticks_kept=ticks_total,
+                budget_ms=budget_ms
+            )
+
+        # Virtual clock filtering
+        virtual_clock = 0.0
+        kept_ticks = []
+
+        for tick in ticks_tuple:
+            collected_msc = tick['collected_msc']
+            if collected_msc >= virtual_clock:
+                kept_ticks.append(tick)
+                virtual_clock = collected_msc + budget_ms
+
+        ticks_kept = len(kept_ticks)
+        ticks_clipped = ticks_total - ticks_kept
+        clipping_rate = (ticks_clipped / ticks_total * 100) if ticks_total > 0 else 0.0
+
+        # Rebuild scenario_ticks dict with filtered data
+        filtered_ticks = {
+            'ticks': {symbol: tuple(kept_ticks)},
+            'counts': {symbol: ticks_kept},
+            'ranges': scenario_ticks['ranges']
+        }
+
+        return filtered_ticks, ClippingStats(
+            ticks_total=ticks_total,
+            ticks_kept=ticks_kept,
+            ticks_clipped=ticks_clipped,
+            clipping_rate_pct=round(clipping_rate, 2),
+            budget_ms=budget_ms
+        )
 
     def _filter_bars_for_scenario(
         self,

@@ -358,7 +358,7 @@ class BatchOrchestrator:
         self._logger.info("📦 Phase 4: Loading data...")
 
         # Prepare data only for scenarios in requirements_map
-        scenario_packages = data_coordinator.prepare(
+        scenario_packages, clipping_stats_map = data_coordinator.prepare(
             requirements_map=requirements_map,
             status_broadcaster=self._live_stats_coordinator
         )
@@ -440,6 +440,8 @@ class BatchOrchestrator:
             batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
+            # clipping stats from tick processing budget (main process, not subprocess)
+            clipping_stats_map=clipping_stats_map,
         )
 
         self._logger.verbose(summary.process_result_list)

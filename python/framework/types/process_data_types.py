@@ -218,6 +218,9 @@ class ProcessScenarioConfig:
     # === INTER-TICK PROFILING ===
     inter_tick_gap_threshold_s: float = 300.0
 
+    # === TICK PROCESSING BUDGET ===
+    tick_processing_budget_ms: float = 0.0  # 0 = disabled (no clipping)
+
     # === PROFILE RUN METADATA ===
     is_profile_run: bool = False
 
@@ -289,6 +292,11 @@ class ProcessScenarioConfig:
         market_rules = market_config_manager.get_market_rules(market_type)
         inter_tick_gap_threshold_s = market_rules.inter_tick_gap_threshold_s
 
+        # Tick processing budget (clipping simulation)
+        tick_processing_budget_ms = exec_config.get(
+            'tick_processing_budget_ms', 0.0
+        )
+
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
@@ -324,6 +332,7 @@ class ProcessScenarioConfig:
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
             inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
+            tick_processing_budget_ms=tick_processing_budget_ms,
             is_profile_run=scenario.is_profile_run,
         )
 
@@ -352,6 +361,27 @@ class ProcessProfileData:
     profile_counts: Dict[Any, int] = None
     inter_tick_intervals_ms: Optional[List[float]] = None
     gap_threshold_s: float = 300.0
+
+
+@dataclass
+class ClippingStats:
+    """
+    Tick clipping statistics from budget filtering.
+
+    Computed in SharedDataPreparator (main process), not in subprocess.
+
+    Args:
+        ticks_total: Total ticks before filtering
+        ticks_kept: Ticks that passed the budget filter
+        ticks_clipped: Ticks removed by budget filter
+        clipping_rate_pct: Percentage of ticks clipped
+        budget_ms: The budget value used for filtering
+    """
+    ticks_total: int = 0
+    ticks_kept: int = 0
+    ticks_clipped: int = 0
+    clipping_rate_pct: float = 0.0
+    budget_ms: float = 0.0
 
 
 @dataclass

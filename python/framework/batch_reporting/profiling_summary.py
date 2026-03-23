@@ -13,7 +13,7 @@ from python.framework.types.performance_types.performance_metrics_types import (
     OperationProfile,
     ProfilingMetrics
 )
-from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.process_data_types import ClippingStats, ProcessResult
 
 
 class ProfilingSummary(AbstractBatchSummarySection):
@@ -198,9 +198,21 @@ class ProfilingSummary(AbstractBatchSummarySection):
         """
         # Header
         print(f"{renderer.bold('Scenario:')} {renderer.blue(profile.scenario_name)}")
-        print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,}  |  "
-              f"{renderer.gray('Avg/Tick:')} {profile.avg_time_per_tick_ms:.3f}ms  |  "
-              f"{renderer.gray('Total:')} {profile.total_time_ms:.2f}ms")
+
+        # Tick count line — with clipping info if budget was active
+        clipping = self.batch_execution_summary.clipping_stats_map.get(
+            profile.scenario_index
+        )
+        if clipping and clipping.ticks_clipped > 0:
+            print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,} / {clipping.ticks_total:,} "
+                  f"{renderer.yellow(f'(clipped: {clipping.ticks_clipped:,} = {clipping.clipping_rate_pct:.1f}%)')}  |  "
+                  f"{renderer.gray('Budget:')} {clipping.budget_ms}ms  |  "
+                  f"{renderer.gray('Avg/Tick:')} {profile.avg_time_per_tick_ms:.3f}ms  |  "
+                  f"{renderer.gray('Total:')} {profile.total_time_ms:.2f}ms")
+        else:
+            print(f"{renderer.gray('Ticks:')} {profile.total_ticks:,}  |  "
+                  f"{renderer.gray('Avg/Tick:')} {profile.avg_time_per_tick_ms:.3f}ms  |  "
+                  f"{renderer.gray('Total:')} {profile.total_time_ms:.2f}ms")
         print()
 
         # Operations table
@@ -342,6 +354,118 @@ class ProfilingSummary(AbstractBatchSummarySection):
             print(f"  {renderer.bold('P5 range across scenarios:')} "
                   f"{min_p5:.1f}ms — {max_p5:.1f}ms")
             print()
+
+        has_budget_active = bool(self.batch_execution_summary.clipping_stats_map)
+        has_warnings = bool(warnings)
+
+        # Recommendation only when there's a reason (warning or active budget)
+        if has_warnings or has_budget_active:
+            self._render_budget_recommendation(renderer)
+
+        # Clipping summary (only when budget was active)
+        if has_budget_active:
+            self._render_clipping_summary(renderer)
+
+        # All green — no warnings, no budget active
+        if not has_warnings and not has_budget_active:
+            print(renderer.green(
+                '  ✅ Tick processing within budget — no clipping risk detected'))
+            print()
+
+    def _get_p95_processing_ms(self) -> Optional[float]:
+        """
+        Calculate P95 of avg_time_per_tick across all scenarios.
+
+        Returns:
+            P95 processing time in ms, or None if no data
+        """
+        avg_times = [
+            p.avg_time_per_tick_ms
+            for p in self.profiling_metrics.scenario_profiles
+            if p.avg_time_per_tick_ms > 0
+        ]
+        if not avg_times:
+            return None
+        avg_times_sorted = sorted(avg_times)
+        p95_idx = min(int(len(avg_times_sorted) * 0.95), len(avg_times_sorted) - 1)
+        return avg_times_sorted[p95_idx]
+
+    def _render_budget_recommendation(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render tick processing budget recommendation based on measured P95 processing time.
+
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        p95_processing = self._get_p95_processing_ms()
+        if p95_processing is None:
+            return
+
+        suggested_budget = round(p95_processing * 1.1, 3)  # +10% safety margin
+        has_budget_active = bool(self.batch_execution_summary.clipping_stats_map)
+
+        print(f"  {renderer.bold('💡 Tick Processing Budget Recommendation:')} ")
+        print(f"     P95 processing time: {p95_processing:.3f}ms")
+        print(f"     Suggested budget: {suggested_budget:.3f}ms (P95 + 10% safety margin)")
+        if not has_budget_active:
+            print(renderer.gray(
+                '     Set execution_config.tick_processing_budget_ms in scenario config '
+                'to simulate live clipping behavior.'))
+        print()
+
+    def _render_clipping_summary(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render aggregated clipping summary when budget filtering was active.
+
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        clipping_map = self.batch_execution_summary.clipping_stats_map
+        if not clipping_map:
+            return
+
+        total_ticks = sum(c.ticks_total for c in clipping_map.values())
+        total_clipped = sum(c.ticks_clipped for c in clipping_map.values())
+        total_kept = sum(c.ticks_kept for c in clipping_map.values())
+
+        if total_ticks == 0:
+            return
+
+        budget_values = set(c.budget_ms for c in clipping_map.values())
+        budget_str = ', '.join(f'{b}ms' for b in sorted(budget_values))
+
+        if total_clipped == 0:
+            # Check if budget is below data granularity (< 1.0ms with integer-ms timestamps)
+            max_budget = max(budget_values)
+            if max_budget < 1.0:
+                print(renderer.yellow(
+                    f"  ⚠️  Tick Processing Budget Active ({budget_str}) — "
+                    f"no ticks clipped, but budget < 1.0ms has no effect with integer-ms timestamps"))
+                print(renderer.gray(
+                    '     collected_msc has millisecond granularity — minimum effective budget is 1.0ms'))
+            else:
+                print(renderer.green(
+                    f"  ✅ Tick Processing Budget Active ({budget_str}) — "
+                    f"no ticks clipped ({total_ticks:,} ticks, {len(clipping_map)} scenarios)"))
+            print()
+        else:
+            overall_rate = total_clipped / total_ticks * 100
+            print(f"  {renderer.bold('✂️  Tick Processing Budget Active:')}")
+            print(f"     Budget: {budget_str}  |  "
+                  f"Scenarios: {len(clipping_map)}")
+            print(f"     Total: {total_kept:,} / {total_ticks:,} ticks kept  |  "
+                  f"Clipped: {total_clipped:,} ({overall_rate:.1f}%)")
+            print()
+
+        # Check if budget is too high (> 2× P95 processing time)
+        p95 = self._get_p95_processing_ms()
+        if p95 is not None:
+            max_budget = max(budget_values)
+            if max_budget > p95 * 2:
+                print(renderer.yellow(
+                    f"  ⚠️  Budget ({max_budget}ms) exceeds 2× P95 processing time ({p95:.3f}ms) "
+                    f"— ticks may be clipped unnecessarily, reducing simulation accuracy"))
+                print()
 
     def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):
         """Render average operation times across all scenarios."""

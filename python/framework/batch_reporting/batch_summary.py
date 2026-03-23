@@ -76,7 +76,8 @@ class BatchSummary:
             batch_execution_summary)
 
         # Warnings summary (always rendered)
-        self.warnings_summary = WarningsSummary(batch_execution_summary)
+        self.warnings_summary = WarningsSummary(
+            batch_execution_summary, profiling_data_map=profiling_data_map)
 
         # Renderer for unified console output
         self._renderer = ConsoleRenderer()
