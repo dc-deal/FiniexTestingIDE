@@ -6,18 +6,33 @@
 
 ## 📋 Table of Contents
 
-1. [Overview](#overview)
-2. [Configuration Hierarchy](#configuration-hierarchy)
-3. [The Cascade Chain](#the-cascade-chain)
-4. [Cascading Parameters](#cascading-parameters)
-5. [Non-Cascading Parameters](#non-cascading-parameters)
-6. [Override Detection](#override-detection)
-7. [Examples](#examples)
-8. [Best Practices](#best-practices)
+1. [Quick Reference](#-quick-reference)
+2. [Overview](#-overview)
+3. [Configuration Hierarchy](#-configuration-hierarchy)
+4. [The Cascade Chain](#-the-cascade-chain)
+5. [Cascading Parameters](#-cascading-parameters)
+6. [Non-Cascading Parameters](#-non-cascading-parameters)
+7. [Override Detection](#-override-detection)
+8. [Examples](#-examples)
+9. [Best Practices](#-best-practices)
 
 ---
 
-> **Note:** This document describes the **scenario-level configuration cascade** (app â†' global â†' scenario).
+## ⚡ Quick Reference
+
+| Config Area | Cascade Levels | Chain | Overridable per Scenario |
+|---|---|---|---|
+| `strategy_config.workers` | 2 | global → scenario | Yes (per-parameter) |
+| `strategy_config.decision_logic_config` | 2 | global → scenario | Yes (per-parameter) |
+| `execution_config` | 3 | app_config → global → scenario | Yes (per-parameter) |
+| `trade_simulator_config` | 3 | app_config → global → scenario | Yes (per-parameter) |
+| `strategy_config.decision_logic_type` | 1 | global only | No |
+| `strategy_config.worker_instances` | 1 | global only | No |
+| Top-level properties (name, symbol, dates) | — | scenario only | N/A (scenario-specific) |
+
+---
+
+> **Note:** This document describes the **scenario-level configuration cascade** (app → global → scenario).
 > 
 > For **application-level configuration overrides** (app_config.json, market_config.json), see the `user_configs/` folder system described in the main [README](../Readme.md#configuration).
 > 
@@ -381,9 +396,19 @@ Execution settings cascade individually, allowing performance testing with diffe
 
 ---
 
-### 4. `trade_simulator_config` (Per-Parameter Merge)
+### 4. `trade_simulator_config` (Per-Parameter Merge, 3-Level)
 
-Trading simulator settings cascade individually, enabling testing across different account configurations.
+Trading simulator settings cascade individually (app_config → global → scenario), enabling testing across different account configurations. App-level defaults are defined in `app_config.json::default_trade_simulator_config` and provide latency simulation ranges.
+
+**App Defaults** (`app_config.json`):
+```json
+"default_trade_simulator_config": {
+  "api_latency_min_ms": 20,
+  "api_latency_max_ms": 80,
+  "market_execution_min_ms": 30,
+  "market_execution_max_ms": 150
+}
+```
 
 **Global:**
 ```json

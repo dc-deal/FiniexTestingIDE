@@ -734,7 +734,7 @@ class AbstractTradeExecutor(ABC):
     # ============================================
 
     @abstractmethod
-    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
+    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
         """
         Close all remaining open positions at end of run.
 
@@ -742,7 +742,7 @@ class AbstractTradeExecutor(ABC):
         LiveTradeExecutor: Sends close orders to broker for all open positions
 
         Args:
-            current_tick: Current tick number for pending latency calculation
+            current_msc: Current millisecond timestamp for pending latency calculation
         """
         pass
 

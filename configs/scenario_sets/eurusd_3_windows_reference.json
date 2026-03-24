@@ -29,14 +29,7 @@
         "min_confidence": 0.6
       }
     },
-    "trade_simulator_config": {
-      "initial_balance": 100000,
-      "account_currency": "auto",
-      "seeds": {
-        "api_latency_seed": 42,
-        "market_execution_seed": 123
-      }
-    },
+    "trade_simulator_config": {},
     "execution_config": {
       "strict_parameter_validation": false
     },

@@ -10,9 +10,9 @@ Tests pending order statistics:
 
 Config design:
 - Trade 1: Opens at tick 10, closes at tick 110 (normal happy path)
-- Trade 2: Opens at tick 4990, close signal at tick 4993 (stuck in pipeline at scenario end)
+- Trade 2: Opens at tick 5000 (last tick) — no subsequent tick to fill, force-closed at scenario end
 - Max ticks: 5000
-- Seeds: api_latency=12345, market_execution=67890 (~3-8 tick latency)
+- Seeds: api_latency=12345, market_execution=67890
 """
 
 import pytest

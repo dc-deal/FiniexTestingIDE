@@ -19,7 +19,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [Config Cascade](config_cascade_guide.md) | Two-tier config system + scenario-level parameter overrides |
+| [Config Cascade](config_cascade_guide.md) | Multi-level config cascade (app → global → scenario), parameter overrides |
 | [Broker Config](broker_config_guide.md) | Multi-broker setup (MT5, Kraken), fees, symbol specifications |
 
 ## Architecture

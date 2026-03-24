@@ -414,17 +414,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Returns:
             Formatted latency line (green) or empty string
         """
-        # Tick-based latency (simulation)
-        if pending_stats.min_latency_ticks is not None:
-            avg = pending_stats.avg_latency_ticks
-            min_val = pending_stats.min_latency_ticks
-            max_val = pending_stats.max_latency_ticks
-            line = f"Avg Latency:        {avg:.1f} ticks (min: {min_val} | max: {max_val})"
-            line += ExecutiveSummary._format_anomaly_suffix_full(
-                renderer, pending_stats)
-            return renderer.green(line)
-
-        # Time-based latency (live)
+        # Millisecond-based latency
         if pending_stats.min_latency_ms is not None:
             avg = pending_stats.avg_latency_ms
             min_val = pending_stats.min_latency_ms

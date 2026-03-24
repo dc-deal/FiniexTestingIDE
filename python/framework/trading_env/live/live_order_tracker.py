@@ -323,9 +323,9 @@ class LiveOrderTracker(AbstractPendingOrderManager):
 
     def clear_pending(
         self,
-        current_tick: Optional[int] = None,
+        current_msc: Optional[int] = None,
         reason: str = "scenario_end"
     ) -> None:
         """Clear all pending orders and broker ref index."""
-        super().clear_pending(current_tick=current_tick, reason=reason)
+        super().clear_pending(current_msc=current_msc, reason=reason)
         self._broker_ref_index.clear()

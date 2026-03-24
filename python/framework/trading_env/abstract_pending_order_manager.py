@@ -152,7 +152,6 @@ class AbstractPendingOrderManager(ABC):
         self,
         pending_order: PendingOrder,
         outcome: PendingOrderOutcome,
-        latency_ticks: Optional[int] = None,
         latency_ms: Optional[float] = None,
         reason: Optional[str] = None,
     ) -> None:
@@ -166,8 +165,7 @@ class AbstractPendingOrderManager(ABC):
         Args:
             pending_order: The resolved pending order
             outcome: How the pending phase ended
-            latency_ticks: Pending duration in ticks (simulation)
-            latency_ms: Pending duration in ms (live)
+            latency_ms: Pending duration in ms
             reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
         """
         # Build anomaly record for FORCE_CLOSED / TIMED_OUT
@@ -178,15 +176,13 @@ class AbstractPendingOrderManager(ABC):
                 action=pending_order.order_action,
                 outcome=outcome,
                 reason=reason,
-                latency_ticks=latency_ticks,
                 latency_ms=latency_ms,
-                placed_at_tick=pending_order.placed_at_tick,
+                placed_at_msc=pending_order.placed_at_msc,
                 submitted_at=pending_order.submitted_at,
             )
 
         self._pending_stats.record(
             outcome=outcome,
-            latency_ticks=latency_ticks,
             latency_ms=latency_ms,
             anomaly_record=anomaly_record,
         )
@@ -206,7 +202,7 @@ class AbstractPendingOrderManager(ABC):
 
     def clear_pending(
         self,
-        current_tick: Optional[int] = None,
+        current_msc: Optional[int] = None,
         reason: str = "scenario_end"
     ) -> None:
         """
@@ -219,8 +215,8 @@ class AbstractPendingOrderManager(ABC):
         via create_synthetic_close_order and bypass the pipeline entirely).
 
         Args:
-            current_tick: Current tick number for latency calculation (simulation).
-                          None for live mode (uses wall-clock time).
+            current_msc: Current millisecond timestamp for latency calculation (simulation).
+                         None for live mode (uses wall-clock time).
             reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
         """
         if not self._pending_orders:
@@ -233,12 +229,11 @@ class AbstractPendingOrderManager(ABC):
 
         # Record each remaining order as FORCE_CLOSED
         for pending in self._pending_orders.values():
-            latency_ticks = None
             latency_ms = None
 
-            # Simulation: tick-based latency
-            if pending.placed_at_tick is not None and current_tick is not None:
-                latency_ticks = current_tick - pending.placed_at_tick
+            # Simulation: ms-timestamp-based latency
+            if pending.placed_at_msc is not None and current_msc is not None:
+                latency_ms = current_msc - pending.placed_at_msc
 
             # Live: time-based latency
             if pending.submitted_at is not None:
@@ -248,7 +243,6 @@ class AbstractPendingOrderManager(ABC):
             self.record_outcome(
                 pending_order=pending,
                 outcome=PendingOrderOutcome.FORCE_CLOSED,
-                latency_ticks=latency_ticks,
                 latency_ms=latency_ms,
                 reason=reason,
             )

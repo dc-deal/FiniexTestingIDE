@@ -102,19 +102,19 @@ def seeds_config(scenario_config: Dict[str, Any]) -> Dict[str, int]:
 
 @pytest.fixture(scope="function")
 def api_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:
-    """Fresh API delay generator with config seed."""
+    """Fresh API delay generator with config seed (ms-based)."""
     return SeededDelayGenerator(
         seed=seeds_config['api_latency_seed'],
-        min_delay=1,
-        max_delay=3
+        min_delay=20,
+        max_delay=80
     )
 
 
 @pytest.fixture(scope="function")
 def exec_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:
-    """Fresh execution delay generator with config seed."""
+    """Fresh execution delay generator with config seed (ms-based)."""
     return SeededDelayGenerator(
         seed=seeds_config['market_execution_seed'],
-        min_delay=2,
-        max_delay=5
+        min_delay=30,
+        max_delay=150
     )

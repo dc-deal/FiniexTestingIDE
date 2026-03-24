@@ -74,14 +74,26 @@ class AppConfigManager:
         These defaults are used as the base layer in the 3-level cascade:
             app_config → global → scenario
 
-        Only execution_config has this 3-level cascade. strategy_config
-        and trade_simulator_config use 2-level cascade (global → scenario).
+        execution_config and trade_simulator_config use 3-level cascade.
+        strategy_config and stress_test_config use 2-level cascade (global → scenario).
 
         Returns:
             Default execution config dict for scenarios
         """
         exec_config = self.get_execution_config()
         return exec_config.get("scenario_execution_defaults", {})
+
+    def get_trade_simulator_defaults(self) -> Dict[str, Any]:
+        """
+        Get default trade_simulator_config from app_config.
+
+        These defaults are used as the base layer in the 3-level cascade:
+            app_config → global → scenario
+
+        Returns:
+            Default trade simulator config dict (latency ranges, etc.)
+        """
+        return self._config.get('default_trade_simulator_config', {})
 
     def get_logging_show_scenario_logging(self) -> bool:
         """

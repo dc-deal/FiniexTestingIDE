@@ -141,7 +141,7 @@ The shared `PendingOrder` dataclass has optional fields for each mode. Live sets
 - `broker_ref: str` — Broker's order reference (MT5 ticket, Kraken order ID)
 - `timeout_at: datetime` — When to consider the order timed out
 
-Simulation fields (`placed_at_tick`, `fill_at_tick`) remain None in live mode.
+Simulation fields (`placed_at_msc`, `fill_at_msc`) remain None in live mode.
 
 ---
 

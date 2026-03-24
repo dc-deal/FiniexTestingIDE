@@ -387,7 +387,10 @@ The JSON config connects everything together.
 | `worker_instances` | Map instance names to worker types |
 | `workers` | Parameters for each worker instance |
 | `decision_logic_config` | Parameters for the decision logic |
+| `trade_simulator_config` | Broker, balance, seeds, latency ranges |
 | `scenarios` | Time windows to test |
+
+> **Tip:** `app_config.json → default_trade_simulator_config` provides application-wide defaults (balance, currency, seeds, latency ranges). Scenario sets inherit these automatically — only override what differs. See [Config Cascade Guide](../config_cascade_guide.md) for details.
 
 ---
 

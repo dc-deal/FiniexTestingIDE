@@ -8,7 +8,7 @@ Data structures for pending order tracking across execution modes.
 Used by both simulation (OrderLatencySimulator) and live (LiveTradeExecutor).
 Mode-specific fields are Optional — each mode uses what it needs:
 
-Simulation fields: placed_at_tick, fill_at_tick
+Simulation fields: placed_at_msc, fill_at_msc (millisecond timestamps)
 Live fields:       submitted_at, broker_ref, timeout_at
 """
 
@@ -64,7 +64,7 @@ class PendingOrder:
     to execute the order once the fill is confirmed.
 
     Mode-specific fields:
-        Simulation: placed_at_tick, fill_at_tick (tick-based delay)
+        Simulation: placed_at_msc, fill_at_msc (ms-timestamp-based delay)
         Live:       submitted_at, broker_ref, timeout_at (time-based, broker tracking)
     """
     pending_order_id: str
@@ -73,9 +73,9 @@ class PendingOrder:
     order_action: PendingOrderAction = None  # "open" or "close"
     order_type: Optional[OrderType] = None   # MARKET or LIMIT
 
-    # === Simulation fields (tick-based delay) ===
-    placed_at_tick: Optional[int] = None
-    fill_at_tick: Optional[int] = None
+    # === Simulation fields (ms-timestamp-based delay) ===
+    placed_at_msc: Optional[int] = None
+    fill_at_msc: Optional[int] = None
 
     # === Live fields (broker tracking) ===
     submitted_at: Optional[datetime] = None
@@ -98,8 +98,8 @@ class PendingOrder:
             'pending_order_id': self.pending_order_id,
             'order_action': self.order_action.value if self.order_action else None,
             # Simulation
-            'placed_at_tick': self.placed_at_tick,
-            'fill_at_tick': self.fill_at_tick,
+            'placed_at_msc': self.placed_at_msc,
+            'fill_at_msc': self.fill_at_msc,
             # Live
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
             'broker_ref': self.broker_ref,

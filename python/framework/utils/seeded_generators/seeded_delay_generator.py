@@ -19,13 +19,10 @@ class SeededDelayGenerator:
     Uses Python's random.Random with explicit seed for reproducibility.
     Every run with same seed produces identical delay sequence.
 
-    NOTE: Currently tick-based (ticks to wait).
-    Post-V1: Will be MS-based with tick→timestamp mapping.
-
     Args:
         seed: Random seed for reproducibility
-        min_delay: Minimum delay in ticks (V1) / ms (Post-V1)
-        max_delay: Maximum delay in ticks (V1) / ms (Post-V1)
+        min_delay: Minimum delay in ms
+        max_delay: Maximum delay in ms
     """
 
     def __init__(self, seed: int, min_delay: int, max_delay: int):

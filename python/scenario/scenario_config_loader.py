@@ -102,8 +102,10 @@ class ScenarioConfigLoader:
                 scenario_data.get('execution_config', {})
             )
 
-            # Deep merge trade_simulator_config (2-level: global → scenario)
+            # Deep merge trade_simulator_config (3-level: app → global → scenario)
+            app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
             scenario_trade_simulator = ScenarioCascade.merge_trade_simulator_config(
+                app_trade_simulator_defaults,
                 global_trade_simulator,
                 scenario_data.get('trade_simulator_config', {})
             )
@@ -223,6 +225,17 @@ class ScenarioConfigLoader:
         global_trade_simulator = global_config.get('trade_simulator_config', {})
         global_stress_test = global_config.get('stress_test_config', {})
 
+        # App-level defaults for 3-tier cascade
+        app_config = AppConfigManager()
+        app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
+
+        # Merge trade_simulator_config: app_defaults → global (no per-scenario in profile mode)
+        merged_trade_simulator = ScenarioCascade.merge_trade_simulator_config(
+            app_trade_simulator_defaults,
+            global_trade_simulator,
+            {}  # No per-scenario overrides in profile mode
+        )
+
         scenario_set_name = config.get('scenario_set_name', 'unknown')
 
         scenarios: List[SingleScenario] = []
@@ -246,7 +259,7 @@ class ScenarioConfigLoader:
                     max_ticks=None,
                     strategy_config=copy.deepcopy(global_strategy),
                     execution_config=copy.deepcopy(global_execution),
-                    trade_simulator_config=copy.deepcopy(global_trade_simulator) if global_trade_simulator else None,
+                    trade_simulator_config=copy.deepcopy(merged_trade_simulator) if merged_trade_simulator else None,
                     stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
                     is_profile_run=True,
                 )

@@ -420,19 +420,7 @@ def _format_pending_latency_line(
     if not pending_stats or pending_stats.total_resolved == 0:
         return ""
 
-    # Tick-based latency (simulation)
-    if pending_stats.min_latency_ticks is not None:
-        avg = pending_stats.avg_latency_ticks
-        min_val = pending_stats.min_latency_ticks
-        max_val = pending_stats.max_latency_ticks
-        latency_str = f"Latency: avg {avg:.1f}t ({min_val}-{max_val})"
-
-        # Append anomaly breakdown if any
-        latency_str += _format_anomaly_suffix_compact(renderer, pending_stats)
-
-        return renderer.green(latency_str)
-
-    # Time-based latency (live)
+    # Millisecond-based latency
     if pending_stats.min_latency_ms is not None:
         avg = pending_stats.avg_latency_ms
         min_val = pending_stats.min_latency_ms

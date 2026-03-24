@@ -684,7 +684,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
+    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
         """
         Close all open positions at end of run.
 
@@ -699,7 +699,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
            FORCE_CLOSED with reason="scenario_end".
 
         Args:
-            current_tick: Not used in live mode (latency is time-based)
+            current_msc: Not used in live mode (latency is time-based)
         """
         open_positions = self.get_open_positions()
         if open_positions:

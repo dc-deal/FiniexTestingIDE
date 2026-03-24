@@ -67,6 +67,14 @@ Suites run: 2
 TOTAL: 18 passed, 1 failed
 ```
 
+## Test Config Isolation
+
+Backtesting test scenarios (`configs/scenario_sets/backtesting/`) **must keep explicit values** for all parameters — seeds, balances, latency ranges, etc. They must **not** rely on `app_config.json → default_trade_simulator_config` inheritance.
+
+**Reason:** Tests assert against deterministic outcomes (trade counts, P&L values, latency ranges). If a test config inherits from `app_config.json` and someone changes an app default, all tests break silently with wrong assertions rather than clear errors.
+
+**Rule:** Normal scenario sets can be slimmed down to inherit app defaults. Test scenario sets are pinned — they define their own truth.
+
 ## Files
 
 | File | Purpose |

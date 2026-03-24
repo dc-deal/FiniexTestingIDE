@@ -66,6 +66,10 @@ class TradeSimulator(AbstractTradeExecutor):
         stress_test_config: Optional[StressTestConfig] = None,
         order_history_max: int = 10000,
         trade_history_max: int = 5000,
+        api_latency_min_ms: int = 20,
+        api_latency_max_ms: int = 80,
+        market_execution_min_ms: int = 30,
+        market_execution_max_ms: int = 150,
     ):
         """
         Initialize trade simulator.
@@ -79,6 +83,10 @@ class TradeSimulator(AbstractTradeExecutor):
             stress_test_config: Stress test configuration (config-driven)
             order_history_max: Max order history entries (0=unlimited)
             trade_history_max: Max trade history entries (0=unlimited)
+            api_latency_min_ms: Minimum API latency in ms
+            api_latency_max_ms: Maximum API latency in ms
+            market_execution_min_ms: Minimum market execution time in ms
+            market_execution_max_ms: Maximum market execution time in ms
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
@@ -90,10 +98,14 @@ class TradeSimulator(AbstractTradeExecutor):
             trade_history_max=trade_history_max
         )
 
-        # Order latency simulator with deterministic delays
+        # Order latency simulator with deterministic ms-based delays
         seeds = seeds or {}
         self.latency_simulator = OrderLatencySimulator(
-            seeds, logger
+            seeds, logger,
+            api_latency_min_ms=api_latency_min_ms,
+            api_latency_max_ms=api_latency_max_ms,
+            market_execution_min_ms=market_execution_min_ms,
+            market_execution_max_ms=market_execution_max_ms,
         )
 
         # Stress test: order rejection (config-driven)
@@ -135,20 +147,20 @@ class TradeSimulator(AbstractTradeExecutor):
           - STOP_LIMIT: trigger reached → convert to limit order (→ Phase 2)
         """
         # === Phase 1: Latency queue drain ===
-        filled_orders = self.latency_simulator.process_tick(self._tick_counter)
+        filled_orders = self.latency_simulator.process_tick(self._current_tick)
 
         for pending_order in filled_orders:
-            # Latency = fill_at_tick - placed_at_tick (planned delay)
-            latency_ticks = None
-            if pending_order.fill_at_tick is not None and pending_order.placed_at_tick is not None:
-                latency_ticks = pending_order.fill_at_tick - pending_order.placed_at_tick
+            # Latency = fill_at_msc - placed_at_msc (planned delay in ms)
+            latency_ms = None
+            if pending_order.fill_at_msc is not None and pending_order.placed_at_msc is not None:
+                latency_ms = pending_order.fill_at_msc - pending_order.placed_at_msc
 
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:
                     if self._stress_test_should_reject(pending_order):
                         self.latency_simulator.record_outcome(
                             pending_order, PendingOrderOutcome.REJECTED,
-                            latency_ticks=latency_ticks)
+                            latency_ms=latency_ms)
                         continue
 
                     # Limit orders: check immediate fill or queue for price monitoring
@@ -211,12 +223,12 @@ class TradeSimulator(AbstractTradeExecutor):
 
                     self.latency_simulator.record_outcome(
                         pending_order, PendingOrderOutcome.FILLED,
-                        latency_ticks=latency_ticks)
+                        latency_ms=latency_ms)
                 case PendingOrderAction.CLOSE:
                     self._fill_close_order(pending_order)
                     self.latency_simulator.record_outcome(
                         pending_order, PendingOrderOutcome.FILLED,
-                        latency_ticks=latency_ticks)
+                        latency_ms=latency_ms)
 
         # === Phase 2: Active limit order price monitoring ===
         if self._active_limit_orders and self._current_tick:
@@ -348,7 +360,7 @@ class TradeSimulator(AbstractTradeExecutor):
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
                 request=request,
-                current_tick=self._tick_counter,
+                tick=self._current_tick,
             )
             # Return PENDING status
             result = OrderResult(
@@ -358,7 +370,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     "symbol": request.symbol,
                     "direction": request.direction,
                     "lots": request.lots,
-                    "submitted_at_tick": self._tick_counter
+                    "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
             )
         elif request.order_type == OrderType.LIMIT:
@@ -377,7 +389,7 @@ class TradeSimulator(AbstractTradeExecutor):
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
                 request=request,
-                current_tick=self._tick_counter,
+                tick=self._current_tick,
             )
             # Return PENDING status
             result = OrderResult(
@@ -388,7 +400,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     "direction": request.direction,
                     "lots": request.lots,
                     "limit_price": request.price,
-                    "submitted_at_tick": self._tick_counter
+                    "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
             )
         elif request.order_type == OrderType.STOP:
@@ -407,7 +419,7 @@ class TradeSimulator(AbstractTradeExecutor):
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
                 request=request,
-                current_tick=self._tick_counter,
+                tick=self._current_tick,
             )
             result = OrderResult(
                 order_id=order_id,
@@ -417,7 +429,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     "direction": request.direction,
                     "lots": request.lots,
                     "stop_price": request.stop_price,
-                    "submitted_at_tick": self._tick_counter
+                    "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
             )
         elif request.order_type == OrderType.STOP_LIMIT:
@@ -445,7 +457,7 @@ class TradeSimulator(AbstractTradeExecutor):
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
                 request=request,
-                current_tick=self._tick_counter,
+                tick=self._current_tick,
             )
             result = OrderResult(
                 order_id=order_id,
@@ -456,7 +468,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     "lots": request.lots,
                     "stop_price": request.stop_price,
                     "limit_price": request.price,
-                    "submitted_at_tick": self._tick_counter
+                    "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
             )
         else:
@@ -506,7 +518,7 @@ class TradeSimulator(AbstractTradeExecutor):
         # Submit close order to latency simulator
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,
-            current_tick=self._tick_counter,
+            tick=self._current_tick,
             close_lots=lots
         )
 
@@ -983,7 +995,7 @@ class TradeSimulator(AbstractTradeExecutor):
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self, current_tick: int = 0) -> None:
+    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
         """
         BEFORE collecting statistics — cleanup at scenario end.
 
@@ -998,7 +1010,7 @@ class TradeSimulator(AbstractTradeExecutor):
            and correctly recorded as FORCE_CLOSED with reason="scenario_end".
 
         Args:
-            current_tick: Current tick number for latency calculation
+            current_msc: Current millisecond timestamp for latency calculation
         """
         open_positions = self.get_open_positions()
         if open_positions:
@@ -1029,4 +1041,4 @@ class TradeSimulator(AbstractTradeExecutor):
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(
-            current_tick=current_tick, reason="scenario_end")
+            current_msc=current_msc, reason="scenario_end")

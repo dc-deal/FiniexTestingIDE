@@ -31,12 +31,7 @@
     },
     "execution_config": {},
     "trade_simulator_config": {
-      "initial_balance": 10000,
-      "currency": "auto",
-      "seeds": {
-        "api_latency_seed": 42,
-        "market_execution_seed": 123
-      }
+      "currency": "auto"
     },
     "stress_test_config": {}
   },

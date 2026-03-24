@@ -52,8 +52,9 @@ execute_tick_loop(config, prepared_objects)
 - Ticks are pre-loaded (finite list from historical data)
 - Synchronous: each step completes before the next starts
 - SL/TP triggers checked locally (`_check_sl_tp_triggers`)
-- Pending orders resolved by tick counter (deterministic, seeded delay)
+- Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
 - `compute()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
+- **Known limitation:** When tick processing budget (#198) is active, clipped ticks are removed before the loop. The trade simulator (broker simulation) only sees surviving ticks — but a real broker would process all ticks. This affects pending order fill timing, SL/TP triggers, and limit/stop monitoring on clipped ticks. Planned fix (#222): flag-based approach — all ticks pass through the loop with an `is_clipped` flag; broker path (trade simulator) processes every tick, algo path (workers + decision) skips clipped ticks via `continue`.
 
 ---
 
@@ -109,9 +110,9 @@ FiniexAutoTrader (not yet implemented)
 | **Tick source** | Pre-loaded list (finite) | WebSocket / REST (real-time, infinite) |
 | **Loop type** | `for tick in ticks` | `while running` / event-driven |
 | **Runner** | `execute_tick_loop()` | `FiniexAutoTrader` (not yet built) |
-| **Pending orders** | OrderLatencySimulator (tick-based, seeded delay) | LiveOrderTracker → broker polling |
+| **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveOrderTracker → broker polling |
 | **SL/TP check** | `_check_sl_tp_triggers()` local price check | Broker server-side (no local check) |
-| **Fill detection** | Tick counter reaches `fill_at_tick` | Broker response via `adapter.check_order_status()` |
+| **Fill detection** | Tick timestamp `collected_msc` >= `fill_at_msc` | Broker response via `adapter.check_order_status()` |
 | **Fill price** | Current tick bid/ask at fill time | Broker's actual execution price |
 | **Latency model** | Seeded random (deterministic, reproducible) | Real network latency |
 | **Error source** | Stress test injection (configurable) | Real broker errors / timeouts |
