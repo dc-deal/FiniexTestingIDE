@@ -56,21 +56,21 @@ class TestPendingStatsBaseline:
         )
 
     def test_latency_stats_populated(self, pending_stats: PendingOrderStats):
-        """Tick-based latency stats should be populated."""
-        assert pending_stats.avg_latency_ticks > 0, "avg_latency_ticks not set"
-        assert pending_stats.min_latency_ticks is not None, "min_latency_ticks not set"
-        assert pending_stats.max_latency_ticks is not None, "max_latency_ticks not set"
-        assert pending_stats.min_latency_ticks <= pending_stats.max_latency_ticks, (
-            f"min ({pending_stats.min_latency_ticks}) > max ({pending_stats.max_latency_ticks})"
+        """Millisecond-based latency stats should be populated."""
+        assert pending_stats.avg_latency_ms > 0, "avg_latency_ms not set"
+        assert pending_stats.min_latency_ms is not None, "min_latency_ms not set"
+        assert pending_stats.max_latency_ms is not None, "max_latency_ms not set"
+        assert pending_stats.min_latency_ms <= pending_stats.max_latency_ms, (
+            f"min ({pending_stats.min_latency_ms}) > max ({pending_stats.max_latency_ms})"
         )
 
     def test_latency_avg_in_range(self, pending_stats: PendingOrderStats):
         """Average latency should be between min and max."""
-        assert pending_stats.min_latency_ticks <= pending_stats.avg_latency_ticks, (
-            f"avg ({pending_stats.avg_latency_ticks}) < min ({pending_stats.min_latency_ticks})"
+        assert pending_stats.min_latency_ms <= pending_stats.avg_latency_ms, (
+            f"avg ({pending_stats.avg_latency_ms}) < min ({pending_stats.min_latency_ms})"
         )
-        assert pending_stats.avg_latency_ticks <= pending_stats.max_latency_ticks, (
-            f"avg ({pending_stats.avg_latency_ticks}) > max ({pending_stats.max_latency_ticks})"
+        assert pending_stats.avg_latency_ms <= pending_stats.max_latency_ms, (
+            f"avg ({pending_stats.avg_latency_ms}) > max ({pending_stats.max_latency_ms})"
         )
 
 
@@ -103,11 +103,11 @@ class TestForceClosedDetection:
 
     def test_force_closed_count(self, pending_stats: PendingOrderStats):
         """
-        Should have exactly 1 force-closed order.
+        Should have at least 1 force-closed order.
 
-        Trade 2 opens at tick 4990 with hold_ticks=3 (close signal at 4993).
-        With latency ~5 ticks, the close pending is still in pipeline when
-        scenario ends at tick 5000. This is a genuine stuck-in-pipeline order.
+        Trade 2 opens at tick 5000 (last tick). No subsequent tick exists
+        to fill the order, so it remains pending and is force-closed at
+        scenario end.
         """
         assert pending_stats.total_force_closed >= 1, (
             f"Expected at least 1 force-closed, got {pending_stats.total_force_closed}"
@@ -136,12 +136,12 @@ class TestForceClosedDetection:
                 )
 
     def test_anomaly_record_has_latency(self, pending_stats: PendingOrderStats):
-        """Force-closed records should have latency information."""
+        """Force-closed records should have latency information (>= 0ms)."""
         for record in pending_stats.anomaly_orders:
             if record.outcome == PendingOrderOutcome.FORCE_CLOSED:
-                assert record.latency_ticks is not None, (
-                    f"Force-closed record {record.order_id} has no latency_ticks"
+                assert record.latency_ms is not None, (
+                    f"Force-closed record {record.order_id} has no latency_ms"
                 )
-                assert record.latency_ticks > 0, (
-                    f"Force-closed record {record.order_id} has latency_ticks=0"
+                assert record.latency_ms >= 0, (
+                    f"Force-closed record {record.order_id} has negative latency_ms"
                 )

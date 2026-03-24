@@ -240,15 +240,8 @@ class PortfolioSummary(AbstractBatchSummarySection):
             resolved_line += f" | {renderer.yellow(f'{force_closed} force-closed')}"
         print(resolved_line)
 
-        # Latency stats (tick-based or ms-based)
-        if pending_stats.min_latency_ticks is not None:
-            avg = pending_stats.avg_latency_ticks
-            min_val = pending_stats.min_latency_ticks
-            max_val = pending_stats.max_latency_ticks
-            print(renderer.green(
-                f"      Avg Latency: {avg:.1f} ticks (min: {min_val} | max: {max_val})"))
-
-        elif pending_stats.min_latency_ms is not None:
+        # Latency stats (ms-based)
+        if pending_stats.min_latency_ms is not None:
             avg = pending_stats.avg_latency_ms
             min_val = pending_stats.min_latency_ms
             max_val = pending_stats.max_latency_ms

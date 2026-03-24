@@ -100,10 +100,10 @@ This is the central architectural principle: **Simulation and Live follow the sa
 ```
 1. DecisionLogic calls send_order()
 2. TradeSimulator.open_order()
-   → Creates PendingOrder with fill_at_tick
+   → Creates PendingOrder with fill_at_msc (ms-timestamp)
    → Stores in OrderLatencySimulator (inherited storage)
 3. Each tick: on_tick() → _process_pending_orders()
-   → OrderLatencySimulator.process_tick() checks tick counter
+   → OrderLatencySimulator.process_tick() compares tick msc against fill_at_msc
    → Returns orders whose delay has elapsed
 4. For each filled order:
    → _fill_open_order(pending_order)        ← SHARED (AbstractTradeExecutor)
@@ -167,8 +167,8 @@ Every pending order that leaves the queue (filled, rejected, timed out, or force
 
 **Data flow:**
 
-1. **Executor calls `record_outcome()`** after each pending order resolves — TradeSimulator for tick-based fills, LiveTradeExecutor for broker responses
-2. **`PendingOrderStats`** aggregates running min/max/avg latency using internal counters (`_latency_ticks_sum`, `_latency_count`). No individual fill records stored.
+1. **Executor calls `record_outcome()`** after each pending order resolves — TradeSimulator for ms-timestamp fills, LiveTradeExecutor for broker responses
+2. **`PendingOrderStats`** aggregates running min/max/avg latency in milliseconds using internal counters (`_latency_ms_sum`, `_latency_count`). No individual fill records stored.
 3. **Anomaly detection**: Only `FORCE_CLOSED` and `TIMED_OUT` outcomes produce individual `PendingOrderRecord` entries (stored in `anomaly_orders` list)
 4. **Subprocess bridge**: `pending_stats` collected from `trade_simulator.get_pending_stats()`, serialized as separate field in `ProcessTickLoopResult`
 5. **Aggregation**: `PortfolioAggregator._aggregate_pending_stats()` combines stats across scenarios using weighted averages
@@ -255,17 +255,17 @@ Shared storage and query layer for pending orders. Both execution modes need to 
 - `has_pending_orders()` — Any orders in flight?
 - `is_pending_close(position_id)` — Specific position being closed?
 - `create_synthetic_close_order(position_id)` — Factory for direct-fill close orders that bypass the pipeline (used by `close_all_remaining_orders`)
-- `clear_pending(current_tick, reason)` — Cleanup at scenario end, records remaining as FORCE_CLOSED with reason
-- `record_outcome(pending_order, outcome, latency_ticks, latency_ms, reason)` — Record resolved pending order for statistics
+- `clear_pending(current_msc, reason)` — Cleanup at scenario end, records remaining as FORCE_CLOSED with reason
+- `record_outcome(pending_order, outcome, latency_ms, reason)` — Record resolved pending order for statistics
 - `get_pending_stats()` — Return aggregated `PendingOrderStats`
 
 ### OrderLatencySimulator (extends AbstractPendingOrderManager)
 Simulation-specific pending order manager. Adds tick-based latency modeling with seeded randomness.
 
 **Simulation-specific methods:**
-- `submit_open_order()` — Creates PendingOrder with calculated `fill_at_tick`, stores via inherited `store_order()`
+- `submit_open_order()` — Creates PendingOrder with calculated `fill_at_msc`, stores via inherited `store_order()`
 - `submit_close_order()` — Same pattern for close orders
-- `process_tick(tick_number)` — Returns orders whose `fill_at_tick` has been reached, removes them via inherited `remove_order()`
+- `process_tick(tick)` — Returns orders whose `fill_at_msc` has been reached by the tick's timestamp, removes them via inherited `remove_order()`
 
 Uses `SeededDelayGenerator` (`utils/seeded_generators/`) for deterministic API latency + market execution delays.
 
@@ -329,7 +329,7 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
 
 - **Common fields:** `pending_order_id`, `order_action`, `order_type` (MARKET/LIMIT), `symbol`, `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
-- **Simulation fields:** `placed_at_tick`, `fill_at_tick` (tick-based delay tracking)
+- **Simulation fields:** `placed_at_msc`, `fill_at_msc` (ms-timestamp delay tracking)
 - **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` — see [live_execution_architecture.md](live_execution_architecture.md)
 
 Each mode sets the fields it needs. The other mode's fields remain None.

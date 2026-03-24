@@ -5,18 +5,18 @@
 FiniexTestingIDE - Simulation Latency Manager
 Deterministic order delay simulation with seeded randomness.
 
-Extends AbstractPendingOrderManager with tick-based latency modeling:
-- Seeded random delays for reproducibility
-- PENDING → EXECUTED lifecycle based on tick count
+Extends AbstractPendingOrderManager with ms-timestamp-based latency modeling:
+- Seeded random delays (ms) for reproducibility
+- PENDING → EXECUTED lifecycle based on tick millisecond timestamps
 - Support for OPEN and CLOSE orders with same delay system
 
 Architecture:
     AbstractPendingOrderManager  (storage, query, has_pending, is_pending_close)
         │
         └── OrderLatencySimulator  (this class)
-            - SeededDelayGenerator for deterministic delays
-            - submit_open_order() → store with calculated fill_at_tick
-            - submit_close_order() → store with calculated fill_at_tick
+            - SeededDelayGenerator for deterministic ms delays
+            - submit_open_order() → store with calculated fill_at_msc
+            - submit_close_order() → store with calculated fill_at_msc
             - process_tick() → return orders whose delay has elapsed
 
 Design Philosophy:
@@ -25,22 +25,24 @@ Real brokers have two delay stages:
 2. Execution Time: Time for broker to match order internally
 
 We simulate both with seeded random generators to create realistic yet
-reproducible order execution patterns.
-
-Post-V1 Extensions:
-- MS-based delays with tick timestamp mapping
-- Seeded error injection (rejections, timeouts) for stress testing
-- Partial fills with OrderBook integration
+reproducible order execution patterns. Delays are in milliseconds,
+fill detection uses tick timestamps (collected_msc or time_msc).
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
 from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderDirection, OrderType
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
+
+
+# Module-level flag for one-time fallback warning
+_fallback_warned = False
 
 
 # ============================================
@@ -49,11 +51,11 @@ from python.framework.utils.seeded_generators.seeded_delay_generator import Seed
 
 class OrderLatencySimulator(AbstractPendingOrderManager):
     """
-    Manages order lifecycle with deterministic tick-based delays.
+    Manages order lifecycle with deterministic ms-based delays.
 
     Extends AbstractPendingOrderManager with simulation-specific logic:
-    - Seeded delay generators for API latency + market execution
-    - Tick-based fill detection (process_tick)
+    - Seeded delay generators for API latency + market execution (ms)
+    - Timestamp-based fill detection (process_tick compares tick msc)
 
     Inherited from AbstractPendingOrderManager:
     - Pending order storage (_pending_orders dict)
@@ -65,20 +67,24 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
     def __init__(
         self,
         seeds: Dict[str, int],
-        logger: AbstractLogger
+        logger: AbstractLogger,
+        api_latency_min_ms: int = 20,
+        api_latency_max_ms: int = 80,
+        market_execution_min_ms: int = 30,
+        market_execution_max_ms: int = 150,
     ):
         """
-        Initialize latency simulator with seeds and logger.
+        Initialize latency simulator with seeds, logger, and ms delay ranges.
 
         Args:
             seeds: Dictionary with seed values:
                 - api_latency_seed: Seed for API delay generator
                 - market_execution_seed: Seed for execution delay generator
             logger: Logger instance for tracking order flow
-
-        Default seeds used if not provided:
-            - api_latency_seed: 42
-            - market_execution_seed: 123
+            api_latency_min_ms: Minimum API latency in ms
+            api_latency_max_ms: Maximum API latency in ms
+            market_execution_min_ms: Minimum market execution time in ms
+            market_execution_max_ms: Maximum market execution time in ms
         """
         super().__init__(logger)
 
@@ -104,20 +110,50 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 f"using default: {DEFAULT_MARKET_EXECUTION_SEED}"
             )
 
-        # Create delay generators
-        # API latency: 1-3 ticks (order reaches broker)
+        # Create delay generators (ms-based)
+        # API latency: order reaches broker
         self.api_delay_gen = SeededDelayGenerator(
             seed=api_seed,
-            min_delay=1,
-            max_delay=3
+            min_delay=api_latency_min_ms,
+            max_delay=api_latency_max_ms
         )
 
-        # Market execution: 2-5 ticks (broker matches order)
+        # Market execution: broker matches order
         self.exec_delay_gen = SeededDelayGenerator(
             seed=exec_seed,
-            min_delay=2,
-            max_delay=5
+            min_delay=market_execution_min_ms,
+            max_delay=market_execution_max_ms
         )
+
+    # ============================================
+    # Timestamp Extraction
+    # ============================================
+
+    @staticmethod
+    def _get_tick_msc(tick: TickData) -> int:
+        """
+        Extract millisecond timestamp from tick.
+
+        Prefers collected_msc (device-side, monotonic) over time_msc (broker-side).
+
+        Args:
+            tick: Current tick data
+
+        Returns:
+            Millisecond timestamp
+        """
+        global _fallback_warned
+
+        if tick.collected_msc > 0:
+            return tick.collected_msc
+
+        if not _fallback_warned:
+            logging.getLogger(__name__).warning(
+                f"⚠️ collected_msc=0 — falling back to time_msc for latency timing"
+            )
+            _fallback_warned = True
+
+        return tick.time_msc
 
     # ============================================
     # Simulation-Specific: Submit with Delay
@@ -127,26 +163,29 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self,
         order_id: str,
         request: OpenOrderRequest,
-        current_tick: int,
+        tick: TickData,
     ) -> str:
         """
         Submit OPEN order for execution with delay.
 
         Order enters PENDING state and will be filled after
-        combined API + execution delay.
+        combined API + execution delay (ms).
 
         Args:
             order_id: Unique order identifier
             request: OpenOrderRequest with all order parameters
-            current_tick: Current tick number
+            tick: Current tick data (for timestamp extraction)
 
         Returns:
             order_id: Same as input (for chaining)
         """
-        # Generate delays
+        current_msc = self._get_tick_msc(tick)
+
+        # Generate delays (ms)
         api_delay = self.api_delay_gen.next()
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
+        fill_at_msc = current_msc + total_delay
 
         # Build order_kwargs dict from request
         order_kwargs = {}
@@ -173,8 +212,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Store pending order (inherited storage)
         self.store_order(PendingOrder(
             pending_order_id=order_id,
-            placed_at_tick=current_tick,
-            fill_at_tick=current_tick + total_delay,
+            placed_at_msc=current_msc,
+            fill_at_msc=fill_at_msc,
             order_action=PendingOrderAction.OPEN,
             order_type=request.order_type,
             symbol=request.symbol,
@@ -188,12 +227,12 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Log order reception
         self.logger.info(
             f"📨 Order received: {order_id} ({request.direction.value} {request.lots} lots) "
-            f"- latency: {total_delay} ticks"
+            f"- latency: {total_delay}ms (api:{api_delay}ms + exec:{exec_delay}ms) | tick_msc={current_msc}"
         )
 
         self.logger.debug(
-            f"  API delay: {api_delay} ticks, Exec delay: {exec_delay} ticks, "
-            f"Will fill at tick: {current_tick + total_delay}"
+            f"  placed_at_msc={current_msc}, fill_at_msc={fill_at_msc}, "
+            f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
         )
 
         return order_id
@@ -201,7 +240,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
     def submit_close_order(
         self,
         position_id: str,
-        current_tick: int,
+        tick: TickData,
         close_lots: Optional[float] = None
     ) -> str:
         """
@@ -211,22 +250,25 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         Args:
             position_id: Position to close
-            current_tick: Current tick number
+            tick: Current tick data (for timestamp extraction)
             close_lots: Lots to close (None = close all)
 
         Returns:
             position_id: Same as input (for chaining)
         """
+        current_msc = self._get_tick_msc(tick)
+
         # Generate delays (same system as open orders)
         api_delay = self.api_delay_gen.next()
         exec_delay = self.exec_delay_gen.next()
         total_delay = api_delay + exec_delay
+        fill_at_msc = current_msc + total_delay
 
         # Store pending close order (inherited storage)
         self.store_order(PendingOrder(
             pending_order_id=position_id,
-            placed_at_tick=current_tick,
-            fill_at_tick=current_tick + total_delay,
+            placed_at_msc=current_msc,
+            fill_at_msc=fill_at_msc,
             order_action=PendingOrderAction.CLOSE,
             close_lots=close_lots
         ))
@@ -234,47 +276,50 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Log close order reception
         self.logger.info(
             f"📨 Close order received: {position_id} "
-            f"- latency: {total_delay} ticks"
+            f"- latency: {total_delay}ms (api:{api_delay}ms + exec:{exec_delay}ms) | tick_msc={current_msc}"
         )
 
         self.logger.debug(
-            f"  API delay: {api_delay} ticks, Exec delay: {exec_delay} ticks, "
-            f"Fill at tick: {current_tick + total_delay}"
+            f"  placed_at_msc={current_msc}, fill_at_msc={fill_at_msc}, "
+            f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
         )
 
         return position_id
 
     # ============================================
-    # Simulation-Specific: Tick-Based Fill Detection
+    # Simulation-Specific: Timestamp-Based Fill Detection
     # ============================================
 
-    def process_tick(self, tick_number: int) -> List[PendingOrder]:
+    def process_tick(self, tick: TickData) -> List[PendingOrder]:
         """
         Process current tick and return orders ready to fill.
 
         Checks all pending orders and returns those whose
-        fill_at_tick has been reached or passed.
+        fill_at_msc has been reached or passed by the current tick timestamp.
 
         Args:
-            tick_number: Current tick number
+            tick: Current tick data
 
         Returns:
             List of PendingOrder objects ready to be filled
         """
+        current_msc = self._get_tick_msc(tick)
+
         to_fill = []
         to_remove = []
 
         # Find orders ready to fill
         for order_id, pending in self._pending_orders.items():
-            if pending.fill_at_tick <= tick_number:
+            if pending.fill_at_msc <= current_msc:
                 to_fill.append(pending)
                 to_remove.append(order_id)
 
                 # Log order ready for fill
-                actual_latency = tick_number - pending.placed_at_tick
+                actual_latency = current_msc - pending.placed_at_msc
                 self.logger.debug(
                     f"✅ Order ready: {order_id} ({pending.order_action}) "
-                    f"- actual latency: {actual_latency} ticks"
+                    f"- latency: {actual_latency}ms | current_msc={current_msc}, "
+                    f"placed_at_msc={pending.placed_at_msc}"
                 )
 
         # Remove filled orders from pending

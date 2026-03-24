@@ -43,14 +43,7 @@
     "execution_config": {
       "tick_processing_budget_ms": 1.536
     },
-    "trade_simulator_config": {
-      "initial_balance": 100000,
-      "account_currency": "auto",
-      "seeds": {
-        "api_latency_seed": 42,
-        "market_execution_seed": 996
-      }
-    },
+    "trade_simulator_config": {},
     "stress_test_config": {}
   },
   "scenarios": [

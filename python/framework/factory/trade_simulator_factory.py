@@ -63,7 +63,11 @@ def prepare_trade_executor_for_scenario(
             seeds=config.seeds,
             stress_test_config=config.stress_test_config,
             order_history_max=config.order_history_max,
-            trade_history_max=config.trade_history_max
+            trade_history_max=config.trade_history_max,
+            api_latency_min_ms=config.api_latency_min_ms,
+            api_latency_max_ms=config.api_latency_max_ms,
+            market_execution_min_ms=config.market_execution_min_ms,
+            market_execution_max_ms=config.market_execution_max_ms,
         )
 
     raise ValueError(

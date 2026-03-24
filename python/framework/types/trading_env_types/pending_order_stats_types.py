@@ -8,9 +8,7 @@ Data structures for tracking pending order lifecycle and latency metrics.
 Used by AbstractPendingOrderManager for aggregated statistics,
 and by reporting layer for summary display.
 
-Two measurement units:
-- Simulation: tick-based latency (placed_at_tick → resolved tick)
-- Live: millisecond-based latency (submitted_at → resolved time)
+Measurement unit: millisecond-based latency (placed_at_msc → resolved msc)
 """
 
 from dataclasses import dataclass, field
@@ -61,18 +59,16 @@ class PendingOrderRecord:
         action: OPEN or CLOSE
         outcome: How the pending phase ended
         reason: Why the force-close happened (e.g. "scenario_end", "manual_abort")
-        latency_ticks: Pending duration in ticks (simulation)
-        latency_ms: Pending duration in milliseconds (live)
-        placed_at_tick: Tick when order entered pending (simulation)
+        latency_ms: Pending duration in milliseconds
+        placed_at_msc: Millisecond timestamp when order entered pending
         submitted_at: Time when order entered pending (live)
     """
     order_id: str
     action: PendingOrderAction
     outcome: PendingOrderOutcome
     reason: Optional[str] = None
-    latency_ticks: Optional[int] = None
     latency_ms: Optional[float] = None
-    placed_at_tick: Optional[int] = None
+    placed_at_msc: Optional[int] = None
     submitted_at: Optional[datetime] = None
 
 
@@ -93,10 +89,7 @@ class PendingOrderStats:
         total_rejected: Orders resolved via rejection (stress test, broker)
         total_timed_out: Orders that exceeded timeout (live)
         total_force_closed: Orders forcefully closed at scenario end
-        avg_latency_ticks: Average pending duration in ticks (simulation)
-        min_latency_ticks: Minimum pending duration in ticks
-        max_latency_ticks: Maximum pending duration in ticks
-        avg_latency_ms: Average pending duration in ms (live)
+        avg_latency_ms: Average pending duration in ms
         min_latency_ms: Minimum pending duration in ms
         max_latency_ms: Maximum pending duration in ms
         anomaly_orders: Individual records for FORCE_CLOSED and TIMED_OUT
@@ -107,12 +100,7 @@ class PendingOrderStats:
     total_timed_out: int = 0
     total_force_closed: int = 0
 
-    # Tick-based latency (simulation)
-    avg_latency_ticks: float = 0.0
-    min_latency_ticks: Optional[int] = None
-    max_latency_ticks: Optional[int] = None
-
-    # Time-based latency (live)
+    # Millisecond-based latency
     avg_latency_ms: float = 0.0
     min_latency_ms: Optional[float] = None
     max_latency_ms: Optional[float] = None
@@ -127,14 +115,12 @@ class PendingOrderStats:
     latency_queue_count: int = 0
 
     # Internal: running sum for average calculation (not serialized)
-    _latency_ticks_sum: int = field(default=0, repr=False)
     _latency_ms_sum: float = field(default=0.0, repr=False)
     _latency_count: int = field(default=0, repr=False)
 
     def record(
         self,
         outcome: PendingOrderOutcome,
-        latency_ticks: Optional[int] = None,
         latency_ms: Optional[float] = None,
         anomaly_record: Optional[PendingOrderRecord] = None
     ) -> None:
@@ -146,8 +132,7 @@ class PendingOrderStats:
 
         Args:
             outcome: How the pending phase ended
-            latency_ticks: Pending duration in ticks (simulation)
-            latency_ms: Pending duration in ms (live)
+            latency_ms: Pending duration in ms
             anomaly_record: Individual record for FORCE_CLOSED/TIMED_OUT
         """
         self.total_resolved += 1
@@ -162,17 +147,6 @@ class PendingOrderStats:
                 self.total_timed_out += 1
             case PendingOrderOutcome.FORCE_CLOSED:
                 self.total_force_closed += 1
-
-        # Update tick-based latency stats
-        if latency_ticks is not None:
-            self._latency_ticks_sum += latency_ticks
-            self._latency_count += 1
-            self.avg_latency_ticks = self._latency_ticks_sum / self._latency_count
-
-            if self.min_latency_ticks is None or latency_ticks < self.min_latency_ticks:
-                self.min_latency_ticks = latency_ticks
-            if self.max_latency_ticks is None or latency_ticks > self.max_latency_ticks:
-                self.max_latency_ticks = latency_ticks
 
         # Update ms-based latency stats
         if latency_ms is not None:

@@ -178,7 +178,10 @@ def execute_tick_loop(
             f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
 
         # === CLOSE OPEN TRADES ===
-        trade_simulator.close_all_remaining_orders(current_tick=tick_idx + 1)
+        # Use last tick's msc for latency calculation (same fallback as inter-tick interval)
+        last_msc = (current_tick.collected_msc if current_tick and current_tick.collected_msc > 0
+                     else current_tick.time_msc if current_tick else 0)
+        trade_simulator.close_all_remaining_orders(current_msc=last_msc)
         trade_simulator.check_clean_shutdown()
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(

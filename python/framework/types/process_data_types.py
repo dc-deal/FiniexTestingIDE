@@ -221,6 +221,12 @@ class ProcessScenarioConfig:
     # === TICK PROCESSING BUDGET ===
     tick_processing_budget_ms: float = 0.0  # 0 = disabled (no clipping)
 
+    # === LATENCY SIMULATION CONFIG (ms-based) ===
+    api_latency_min_ms: int = 20
+    api_latency_max_ms: int = 80
+    market_execution_min_ms: int = 30
+    market_execution_max_ms: int = 150
+
     # === PROFILE RUN METADATA ===
     is_profile_run: bool = False
 
@@ -283,6 +289,16 @@ class ProcessScenarioConfig:
         executor_mode = scenario.trade_simulator_config.get(
             'executor_mode', 'simulation')
 
+        # Latency simulation ranges (ms-based)
+        api_latency_min_ms = scenario.trade_simulator_config.get(
+            'api_latency_min_ms', 20)
+        api_latency_max_ms = scenario.trade_simulator_config.get(
+            'api_latency_max_ms', 80)
+        market_execution_min_ms = scenario.trade_simulator_config.get(
+            'market_execution_min_ms', 30)
+        market_execution_max_ms = scenario.trade_simulator_config.get(
+            'market_execution_max_ms', 150)
+
         # Derive market_type from broker_type
         market_config_manager = MarketConfigManager()
         market_type = market_config_manager.get_market_type(
@@ -333,6 +349,10 @@ class ProcessScenarioConfig:
             trade_history_max=app_config_loader.get_trade_history_max(),
             inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
             tick_processing_budget_ms=tick_processing_budget_ms,
+            api_latency_min_ms=api_latency_min_ms,
+            api_latency_max_ms=api_latency_max_ms,
+            market_execution_min_ms=market_execution_min_ms,
+            market_execution_max_ms=market_execution_max_ms,
             is_profile_run=scenario.is_profile_run,
         )
 

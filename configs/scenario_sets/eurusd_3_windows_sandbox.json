@@ -33,12 +33,7 @@
       "tick_processing_budget_ms": 0.296
     },
     "trade_simulator_config": {
-      "initial_balance": 100000,
-      "account_currency": "USD",
-      "seeds": {
-        "api_latency_seed": 50,
-        "market_execution_seed": 100
-      }
+      "account_currency": "USD"
     },
     "stress_test_config": {
       "reject_open_order": {

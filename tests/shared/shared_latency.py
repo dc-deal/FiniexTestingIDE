@@ -17,8 +17,8 @@ class TestLatencyDeterminism:
 
     def test_api_delay_reproducible(self, seeds_config: Dict[str, int]):
         """Same API seed should produce identical delay sequence."""
-        gen1 = SeededDelayGenerator(seeds_config['api_latency_seed'], 1, 3)
-        gen2 = SeededDelayGenerator(seeds_config['api_latency_seed'], 1, 3)
+        gen1 = SeededDelayGenerator(seeds_config['api_latency_seed'], 20, 80)
+        gen2 = SeededDelayGenerator(seeds_config['api_latency_seed'], 20, 80)
 
         sequence1 = [gen1.next() for _ in range(100)]
         sequence2 = [gen2.next() for _ in range(100)]
@@ -28,9 +28,9 @@ class TestLatencyDeterminism:
     def test_exec_delay_reproducible(self, seeds_config: Dict[str, int]):
         """Same execution seed should produce identical delay sequence."""
         gen1 = SeededDelayGenerator(
-            seeds_config['market_execution_seed'], 2, 5)
+            seeds_config['market_execution_seed'], 30, 150)
         gen2 = SeededDelayGenerator(
-            seeds_config['market_execution_seed'], 2, 5)
+            seeds_config['market_execution_seed'], 30, 150)
 
         sequence1 = [gen1.next() for _ in range(100)]
         sequence2 = [gen2.next() for _ in range(100)]
@@ -39,9 +39,9 @@ class TestLatencyDeterminism:
 
     def test_different_seeds_different_sequences(self, seeds_config: Dict[str, int]):
         """Different seeds should produce different sequences."""
-        gen1 = SeededDelayGenerator(seeds_config['api_latency_seed'], 1, 3)
+        gen1 = SeededDelayGenerator(seeds_config['api_latency_seed'], 20, 80)
         gen2 = SeededDelayGenerator(
-            seeds_config['market_execution_seed'], 1, 3)
+            seeds_config['market_execution_seed'], 20, 80)
 
         sequence1 = [gen1.next() for _ in range(100)]
         sequence2 = [gen2.next() for _ in range(100)]
@@ -52,25 +52,25 @@ class TestLatencyDeterminism:
         self,
         api_delay_generator: SeededDelayGenerator
     ):
-        """API delays should be within configured bounds (1-3)."""
+        """API delays should be within configured bounds (20-80ms)."""
         for _ in range(100):
             delay = api_delay_generator.next()
-            assert 1 <= delay <= 3, f"API delay {delay} out of bounds [1,3]"
+            assert 20 <= delay <= 80, f"API delay {delay}ms out of bounds [20,80]"
 
     def test_exec_delay_within_bounds(
         self,
         exec_delay_generator: SeededDelayGenerator
     ):
-        """Execution delays should be within configured bounds (2-5)."""
+        """Execution delays should be within configured bounds (30-150ms)."""
         for _ in range(100):
             delay = exec_delay_generator.next()
-            assert 2 <= delay <= 5, f"Exec delay {delay} out of bounds [2,5]"
+            assert 30 <= delay <= 150, f"Exec delay {delay}ms out of bounds [30,150]"
 
     def test_total_delay_calculation(self, seeds_config: Dict[str, int]):
         """Total delay should be api + exec delay."""
-        api_gen = SeededDelayGenerator(seeds_config['api_latency_seed'], 1, 3)
+        api_gen = SeededDelayGenerator(seeds_config['api_latency_seed'], 20, 80)
         exec_gen = SeededDelayGenerator(
-            seeds_config['market_execution_seed'], 2, 5)
+            seeds_config['market_execution_seed'], 30, 150)
 
         for _ in range(50):
             api_delay = api_gen.next()
@@ -78,29 +78,30 @@ class TestLatencyDeterminism:
             total = api_delay + exec_delay
 
             # Total should be between min_api+min_exec and max_api+max_exec
-            assert 3 <= total <= 8, f"Total delay {total} out of bounds [3,8]"
+            assert 50 <= total <= 230, f"Total delay {total}ms out of bounds [50,230]"
 
-    def test_fill_tick_calculation(
+    def test_fill_msc_calculation(
         self,
         seeds_config: Dict[str, int],
         trade_sequence: list
     ):
-        """Fill tick should be signal_tick + total_delay."""
-        api_gen = SeededDelayGenerator(seeds_config['api_latency_seed'], 1, 3)
+        """fill_at_msc should be placed_at_msc + total_delay (uses tick_number as proxy msc)."""
+        api_gen = SeededDelayGenerator(seeds_config['api_latency_seed'], 20, 80)
         exec_gen = SeededDelayGenerator(
-            seeds_config['market_execution_seed'], 2, 5)
+            seeds_config['market_execution_seed'], 30, 150)
 
         for trade in trade_sequence:
-            signal_tick = trade['tick_number']
+            # Use tick_number as a proxy msc value for determinism validation
+            signal_msc = trade['tick_number']
             api_delay = api_gen.next()
             exec_delay = exec_gen.next()
-            fill_tick = signal_tick + api_delay + exec_delay
+            fill_at_msc = signal_msc + api_delay + exec_delay
 
-            # Fill tick should be after signal tick
-            assert fill_tick > signal_tick, (
-                f"Fill tick {fill_tick} should be > signal tick {signal_tick}"
+            # Fill msc should be after signal msc
+            assert fill_at_msc > signal_msc, (
+                f"fill_at_msc {fill_at_msc} should be > signal msc {signal_msc}"
             )
-            # Fill tick should be within reasonable range
-            assert fill_tick <= signal_tick + 8, (
-                f"Fill tick {fill_tick} too far from signal tick {signal_tick}"
+            # Fill msc should be within reasonable range (max 230ms)
+            assert fill_at_msc <= signal_msc + 230, (
+                f"fill_at_msc {fill_at_msc} too far from signal msc {signal_msc}"
             )

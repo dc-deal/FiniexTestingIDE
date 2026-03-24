@@ -16,7 +16,7 @@ Every order passes through up to three distinct stages ("worlds") before becomin
               │  AbstractPendingOrderManager   │
               │  ._pending_orders              │
               │                                │
-              │  Sim: tick-based delay          │
+              │  Sim: ms-timestamp delay        │
               │  Live: broker polling           │
               └───────────────┬───────────────┘
                               │ delay elapsed
@@ -76,7 +76,7 @@ Every order passes through up to three distinct stages ("worlds") before becomin
 
 **Purpose:** Simulates broker acceptance delay. Every order — regardless of type — passes through this queue first.
 
-**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `fill_at_tick` to each order. On each tick, `process_tick()` returns orders whose delay has elapsed.
+**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `fill_at_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `fill_at_msc` and returns orders whose delay has elapsed.
 
 **Live:** `LiveOrderTracker` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
 

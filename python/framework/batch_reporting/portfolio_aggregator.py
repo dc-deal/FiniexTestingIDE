@@ -299,16 +299,6 @@ class PortfolioAggregator:
             aggregated.total_timed_out += pending.total_timed_out
             aggregated.total_force_closed += pending.total_force_closed
 
-            # Aggregate tick-based latency
-            if pending.min_latency_ticks is not None:
-                aggregated._latency_ticks_sum += pending._latency_ticks_sum
-                aggregated._latency_count += pending._latency_count
-
-                if aggregated.min_latency_ticks is None or pending.min_latency_ticks < aggregated.min_latency_ticks:
-                    aggregated.min_latency_ticks = pending.min_latency_ticks
-                if aggregated.max_latency_ticks is None or pending.max_latency_ticks > aggregated.max_latency_ticks:
-                    aggregated.max_latency_ticks = pending.max_latency_ticks
-
             # Aggregate ms-based latency
             if pending.min_latency_ms is not None:
                 aggregated._latency_ms_sum += pending._latency_ms_sum
@@ -322,9 +312,8 @@ class PortfolioAggregator:
             # Collect anomaly records from all scenarios
             aggregated.anomaly_orders.extend(pending.anomaly_orders)
 
-        # Calculate weighted averages
+        # Calculate weighted average
         if aggregated._latency_count > 0:
-            aggregated.avg_latency_ticks = aggregated._latency_ticks_sum / aggregated._latency_count
             aggregated.avg_latency_ms = aggregated._latency_ms_sum / aggregated._latency_count
 
         return aggregated

@@ -27,7 +27,7 @@
             "lot_size": 0.01
           },
           {
-            "tick_number": 4990,
+            "tick_number": 5000,
             "direction": "SHORT",
             "hold_ticks": 3,
             "lot_size": 0.01
