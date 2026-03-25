@@ -4,26 +4,25 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.2.0
+> **Version:** 1.2.1
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.2.0
+## What's New in 1.2.1
 
-- **USER Namespace** — Custom workers and decision logic outside framework code. Auto-discovery, hot-reload, external directory support via Docker volumes.
-- **Trading Core Completion** — Full order type coverage (Market, Limit, Stop, Stop-Limit), partial close, error handling chain, kwargs cleanup.
-- **Tick Data Trimming** — Cross-process payload reduction for multi-scenario memory efficiency.
-- **Per-Tick Collection Timestamp** — `collected_msc` (device clock, ms precision). Primary source for inter-tick interval profiling. Data Format V1.3.0.
-- **Unified Test Runner** — Sequential execution across all core suites with configurable exclusion and fail-fast.
-- **Summary Verbosity Control** — Configurable detail level for batch reports (`summary_detail` setting).
-- **Unified Discovery Cache** — Centralized cache management and invalidation across all analysis types.
-- **Scenario Generator Refactoring** — Improved block generation, high-volatility selection, full test suite.
-- **WarningsSummary** — Consolidated global warnings in batch reports (stress tests, data version notices).
+- **Millisecond-Based Latency Timing** — Tick-based latency replaced with millisecond-timestamp timing. Fill detection uses `collected_msc` / `time_msc` for realistic broker delay simulation.
+- **Inbound-Only Fill Semantics** — Fill price determined at broker arrival (`broker_fill_msc = placed_at_msc + inbound_delay`). Matches industry standard (QuantConnect, Backtrader, Zipline, MetaTrader). Portfolio updated immediately — no outbound delay queue.
+- **Tick Processing Budget** — Deterministic per-tick processing time simulation with configurable budget and clipping detection.
+- **Filtering Bypass for Broker Simulation** — Flag-based tick loop split ensures filtered ticks still pass through broker simulation (latency drain, active order monitoring).
+- **Generator Profile System** — Volatility-aware block generation with profile-based scenario selection.
+- **Post-Run Block Splitting Correctness Metric** — Quality metric for generator block boundaries in batch reports.
+- **Generator Warmup Removal** — Eliminated redundant warmup time from generator calculations.
 
 ### Previous Releases
 
+- **1.2.0** — USER Namespace, trading core completion (all order types), tick data trimming, unified test runner, discovery cache
 - **1.1.2** — STOP/STOP_LIMIT orders, active order preservation and reporting
 - **1.1.1** — Live Trade Executor, MockBrokerAdapter, margin/multi-position/pending stats test suites
 - **1.1** — Multi-market support (Kraken Spot + MT5), parameter validation, OBV worker
@@ -63,7 +62,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **USER Namespace** - Custom workers and decision logic with auto-discovery and hot-reload
 
 ### Trade Simulation & Live Execution
-- **Realistic Execution** - API latency + market execution delays (seeded)
+- **Realistic Execution** - Inbound latency simulation with ms-timestamp fill detection (seeded)
 - **Live Trade Executor** - Broker adapter communication with pending order tracking
 - **Spread Calculation** - Live bid/ask spread from tick data
 - **Margin Management** - Position sizing with margin checks
