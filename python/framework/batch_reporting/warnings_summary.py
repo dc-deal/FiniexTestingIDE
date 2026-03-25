@@ -210,6 +210,11 @@ class WarningsSummary(AbstractBatchSummarySection):
         Returns:
             Formatted warning string or empty string
         """
+        # When budget is already active, clipping is being simulated — warning is redundant
+        has_budget_active = bool(self._batch_summary.clipping_stats_map)
+        if has_budget_active:
+            return ''
+
         warning_count = 0
 
         for result in self._batch_summary.process_result_list:

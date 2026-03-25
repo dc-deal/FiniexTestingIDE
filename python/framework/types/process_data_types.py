@@ -381,6 +381,8 @@ class ProcessProfileData:
     profile_counts: Dict[Any, int] = None
     inter_tick_intervals_ms: Optional[List[float]] = None
     gap_threshold_s: float = 300.0
+    # Total ticks in loop (including clipped). 0 = no clipping active.
+    ticks_total: int = 0
 
 
 @dataclass

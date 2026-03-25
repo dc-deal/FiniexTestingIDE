@@ -63,6 +63,8 @@ class ProfilingData:
     operations: Dict[str, OperationTiming]
     total_per_tick_ms: float
     interval_stats: Optional[InterTickIntervalStats] = None
+    # Total ticks in loop (including clipped). 0 = no clipping active.
+    ticks_total: int = 0
 
     def get_operation_time(self, operation_name: str) -> float:
         """
@@ -96,7 +98,8 @@ class ProfilingData:
         profile_times: Dict[str, float],
         profile_counts: Dict[str, int],
         inter_tick_intervals_ms: Optional[List[float]] = None,
-        gap_threshold_s: float = 300.0
+        gap_threshold_s: float = 300.0,
+        ticks_total: int = 0
     ) -> 'ProfilingData':
         """
         Build ProfilingData from raw dict data (AFTER loop).
@@ -109,6 +112,7 @@ class ProfilingData:
             profile_counts: Map of operation_name -> call_count
             inter_tick_intervals_ms: Raw inter-tick intervals in milliseconds
             gap_threshold_s: Threshold for filtering session/weekend gaps (seconds)
+            ticks_total: Total ticks in loop including clipped (0 = no clipping)
 
         Returns:
             ProfilingData instance
@@ -135,7 +139,8 @@ class ProfilingData:
         return cls(
             operations=operations,
             total_per_tick_ms=total_per_tick,
-            interval_stats=interval_stats
+            interval_stats=interval_stats,
+            ticks_total=ticks_total
         )
 
     @staticmethod

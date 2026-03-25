@@ -81,7 +81,8 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
                 ask=float(tick_data[TickTransportColumn.ASK]),
                 volume=float(tick_data.get(TickTransportColumn.VOLUME, 0.0)),
                 time_msc=time_msc,
-                collected_msc=int(tick_data.get(TickTransportColumn.COLLECTED_MSC, 0))
+                collected_msc=int(tick_data.get(TickTransportColumn.COLLECTED_MSC, 0)),
+                is_clipped=bool(tick_data.get(TickTransportColumn.IS_CLIPPED, False))
             ))
     return tuple(result)
 

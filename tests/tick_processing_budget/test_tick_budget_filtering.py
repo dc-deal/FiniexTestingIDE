@@ -1,10 +1,14 @@
 """
-Tick Processing Budget — Filtering Tests
-==========================================
+Tick Processing Budget — Flag-Based Filtering Tests
+=====================================================
 Tests for _apply_tick_budget() virtual clock algorithm.
 
+Flag-based: all ticks are returned with is_clipped=True/False flag.
+Broker path sees every tick; algo path skips clipped ticks.
+
 Covers:
-- Basic filtering with known tick sequences
+- Basic flagging with known tick sequences
+- is_clipped flag correctness
 - Determinism (same input = same output)
 - Edge cases (empty, single tick, pre-V1.3.0 data)
 - Sub-millisecond budget (data granularity limitation)
@@ -38,7 +42,7 @@ class TestVirtualClockFiltering:
         - 1003: clip (1003 < 1004)
         - 1005: keep (clock→1007)
         - 1008: keep (clock→1010)
-        Result: 4 kept, 2 clipped
+        Result: 4 kept, 2 clipped — all 6 ticks returned with flags
         """
         scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
@@ -48,9 +52,15 @@ class TestVirtualClockFiltering:
         assert stats.ticks_clipped == 2
         assert stats.budget_ms == 2.0
 
-        kept = filtered['ticks'][SYMBOL]
-        kept_msc = [t['collected_msc'] for t in kept]
-        assert kept_msc == [1000, 1002, 1005, 1008]
+        # All ticks returned (flag-based, not removal-based)
+        all_ticks = filtered['ticks'][SYMBOL]
+        assert len(all_ticks) == 6
+
+        # Verify is_clipped flags
+        algo_msc = [t['collected_msc'] for t in all_ticks if not t['is_clipped']]
+        clipped_msc = [t['collected_msc'] for t in all_ticks if t['is_clipped']]
+        assert algo_msc == [1000, 1002, 1005, 1008]
+        assert clipped_msc == [1001, 1003]
 
     def test_budget_1ms_integer_spacing(self, preparator, regular_ticks):
         """
@@ -58,7 +68,7 @@ class TestVirtualClockFiltering:
 
         Every tick passes: tick[i].collected_msc = 1000+i,
         virtual_clock after tick[i] = 1000+i+1 = tick[i+1].collected_msc.
-        All 10 ticks kept.
+        All 10 ticks kept, none clipped.
         """
         scenario_ticks = make_scenario_ticks(SYMBOL, regular_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 1.0)
@@ -67,18 +77,26 @@ class TestVirtualClockFiltering:
         assert stats.ticks_kept == 10
         assert stats.ticks_clipped == 0
 
+        # All ticks returned, all with is_clipped=False
+        all_ticks = filtered['ticks'][SYMBOL]
+        assert len(all_ticks) == 10
+        assert all(not t['is_clipped'] for t in all_ticks)
+
     def test_large_budget_clips_most(self, preparator, regular_ticks):
-        """Budget 5ms with 1ms spacing — only every 5th tick survives."""
+        """Budget 5ms with 1ms spacing — only every 5th tick survives algo path."""
         scenario_ticks = make_scenario_ticks(SYMBOL, regular_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 5.0)
 
-        # 1000: keep (clock→1005), 1005: keep (clock→1010) — only 2
+        # 1000: keep (clock→1005), 1005: keep (clock→1010) — only 2 algo
         assert stats.ticks_kept == 2
         assert stats.ticks_clipped == 8
 
-        kept = filtered['ticks'][SYMBOL]
-        kept_msc = [t['collected_msc'] for t in kept]
-        assert kept_msc == [1000, 1005]
+        # All 10 ticks returned with flags
+        all_ticks = filtered['ticks'][SYMBOL]
+        assert len(all_ticks) == 10
+
+        algo_msc = [t['collected_msc'] for t in all_ticks if not t['is_clipped']]
+        assert algo_msc == [1000, 1005]
 
     def test_first_tick_always_kept(self, preparator):
         """First tick always passes (virtual_clock starts at 0)."""
@@ -88,6 +106,10 @@ class TestVirtualClockFiltering:
 
         assert stats.ticks_kept == 1
         assert stats.ticks_clipped == 0
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        assert len(all_ticks) == 1
+        assert not all_ticks[0]['is_clipped']
 
     def test_budget_preserves_ranges(self, preparator, sparse_ticks):
         """Filtering must preserve the original 'ranges' dict."""
@@ -99,13 +121,18 @@ class TestVirtualClockFiltering:
 
         assert filtered['ranges'] is ranges
 
-    def test_counts_match_kept_ticks(self, preparator, sparse_ticks):
-        """Filtered counts dict must reflect actual kept tick count."""
+    def test_counts_reflect_total_ticks(self, preparator, sparse_ticks):
+        """Counts dict reflects total tick count (all ticks kept with flags)."""
         scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
 
-        assert filtered['counts'][SYMBOL] == stats.ticks_kept
-        assert len(filtered['ticks'][SYMBOL]) == stats.ticks_kept
+        # counts = total (not just algo ticks)
+        assert filtered['counts'][SYMBOL] == stats.ticks_total
+        # All ticks returned
+        assert len(filtered['ticks'][SYMBOL]) == stats.ticks_total
+        # Algo tick count matches stats
+        algo_count = sum(1 for t in filtered['ticks'][SYMBOL] if not t['is_clipped'])
+        assert algo_count == stats.ticks_kept
 
 
 # =============================================================================
@@ -156,7 +183,7 @@ class TestEdgeCases:
         assert stats.budget_ms == 2.0
 
     def test_pre_v13_data_skips_filtering(self, preparator, pre_v13_ticks):
-        """Pre-V1.3.0 data (collected_msc=0) skips filtering, keeps all ticks."""
+        """Pre-V1.3.0 data (collected_msc=0) skips flagging, returns unchanged."""
         scenario_ticks = make_scenario_ticks(SYMBOL, pre_v13_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
 
@@ -165,7 +192,7 @@ class TestEdgeCases:
         assert stats.ticks_clipped == 0
         assert stats.budget_ms == 2.0
 
-        # All original ticks preserved
+        # All original ticks preserved (no is_clipped flag — data returned unchanged)
         assert len(filtered['ticks'][SYMBOL]) == 3
 
     def test_pre_v13_logs_warning(self, preparator, pre_v13_ticks, mock_logger):
@@ -184,7 +211,7 @@ class TestEdgeCases:
         Ticks spaced 1ms apart, budget 0.3ms:
         virtual_clock after tick[0] = 1000 + 0.3 = 1000.3
         tick[1].collected_msc = 1001 >= 1000.3 → kept
-        All ticks pass.
+        All ticks pass — all flagged is_clipped=False.
         """
         scenario_ticks = make_scenario_ticks(SYMBOL, regular_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 0.3)
@@ -192,6 +219,9 @@ class TestEdgeCases:
         assert stats.ticks_total == 10
         assert stats.ticks_kept == 10
         assert stats.ticks_clipped == 0
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        assert all(not t['is_clipped'] for t in all_ticks)
 
     def test_symbol_not_in_ticks(self, preparator):
         """Unknown symbol returns empty stats."""
@@ -239,3 +269,67 @@ class TestClippingStats:
         _, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 3.14)
 
         assert stats.budget_ms == 3.14
+
+
+# =============================================================================
+# FLAG-BASED TICK SPLIT
+# =============================================================================
+
+class TestFlagBasedSplit:
+    """Tests for is_clipped flag correctness and tick preservation."""
+
+    def test_all_ticks_returned_with_flags(self, preparator, sparse_ticks):
+        """All ticks returned regardless of clipping — flags control algo path."""
+        scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
+        filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        # All 6 original ticks present
+        assert len(all_ticks) == 6
+        # Every tick has is_clipped flag
+        assert all('is_clipped' in t for t in all_ticks)
+
+    def test_flag_values_match_virtual_clock(self, preparator, sparse_ticks):
+        """is_clipped flags exactly match virtual clock algorithm."""
+        scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
+        filtered, _ = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        flags = [t['is_clipped'] for t in all_ticks]
+        # 1000: False, 1001: True, 1002: False, 1003: True, 1005: False, 1008: False
+        assert flags == [False, True, False, True, False, False]
+
+    def test_original_tick_data_preserved(self, preparator, sparse_ticks):
+        """Flagging must not alter original tick fields (bid, ask, time_msc)."""
+        scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
+        filtered, _ = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        for i, tick in enumerate(all_ticks):
+            assert tick['bid'] == sparse_ticks[i]['bid']
+            assert tick['ask'] == sparse_ticks[i]['ask']
+            assert tick['collected_msc'] == sparse_ticks[i]['collected_msc']
+            assert tick['time_msc'] == sparse_ticks[i]['time_msc']
+
+    def test_tick_dicts_are_copies(self, preparator, sparse_ticks):
+        """Flagged ticks must be copies — original dicts must not be mutated."""
+        originals = [dict(t) for t in sparse_ticks]
+        scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
+        preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
+
+        # Original dicts should NOT have is_clipped key
+        for orig in originals:
+            assert 'is_clipped' not in orig
+
+    def test_algo_tick_count_equals_stats_kept(self, preparator, sparse_ticks):
+        """Number of non-clipped ticks must equal stats.ticks_kept."""
+        scenario_ticks = make_scenario_ticks(SYMBOL, sparse_ticks)
+        filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
+
+        all_ticks = filtered['ticks'][SYMBOL]
+        algo_count = sum(1 for t in all_ticks if not t['is_clipped'])
+        clipped_count = sum(1 for t in all_ticks if t['is_clipped'])
+
+        assert algo_count == stats.ticks_kept
+        assert clipped_count == stats.ticks_clipped
+        assert algo_count + clipped_count == stats.ticks_total

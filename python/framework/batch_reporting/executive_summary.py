@@ -216,15 +216,27 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         in_time_stats = self._calculate_in_time_stats()
 
         # Calculate real-time stats using ONLY tick run time
-        total_ticks = sum(
+        # Algo ticks (non-clipped) — what the algo path actually processed
+        algo_ticks = sum(
             r.tick_loop_results.coordination_statistics.ticks_processed
             for r in self._batch_summary.process_result_list
             if r.tick_loop_results and r.tick_loop_results.coordination_statistics
         )
 
+        # Total ticks (including clipped) — what the loop actually iterated
+        ticks_total = sum(
+            r.tick_loop_results.profiling_data.ticks_total
+            for r in self._batch_summary.process_result_list
+            if r.tick_loop_results and r.tick_loop_results.profiling_data
+            and r.tick_loop_results.profiling_data.ticks_total > 0
+        )
+        # Fall back to algo_ticks when no clipping active (ticks_total=0)
+        loop_ticks = ticks_total if ticks_total > 0 else algo_ticks
+        has_clipping = ticks_total > 0 and ticks_total != algo_ticks
+
         # Use tick run time (excludes warmup)
         tickrun_time = self._batch_summary.batch_tickrun_time
-        ticks_per_second = total_ticks / tickrun_time if tickrun_time > 0 else 0
+        ticks_per_second = loop_ticks / tickrun_time if tickrun_time > 0 else 0
         speedup = (in_time_stats['total_hours'] * 3600) / \
             tickrun_time if tickrun_time > 0 else 0
 
@@ -234,7 +246,10 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         print(
             f"Total Simulation:   {in_time_stats['total_hours']:.1f} hours ({in_time_stats['total_days']:.1f} days)")
         print(f"Avg per Scenario:   {in_time_stats['avg_hours']:.2f} hours")
-        print(f"Ticks Processed:    {total_ticks:,} total")
+        if has_clipping:
+            print(f"Ticks Processed:    {loop_ticks:,} total ({algo_ticks:,} algo)")
+        else:
+            print(f"Ticks Processed:    {algo_ticks:,} total")
 
         # Tick budget one-liner (only when clipping was active)
         clipping_map = self._batch_summary.clipping_stats_map
@@ -491,13 +506,21 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         avg_hours = total_hours / scenario_count if scenario_count > 0 else 0
         total_days = total_hours / 24
 
-        # Calculate ticks per hour
-        total_ticks = sum(
-            r.tick_loop_results.coordination_statistics.ticks_processed
+        # Calculate ticks per hour (market density = all ticks including clipped)
+        ticks_total = sum(
+            r.tick_loop_results.profiling_data.ticks_total
             for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and r.tick_loop_results.coordination_statistics
+            if r.tick_loop_results and r.tick_loop_results.profiling_data
+            and r.tick_loop_results.profiling_data.ticks_total > 0
         )
-        ticks_per_hour = total_ticks / total_hours if total_hours > 0 else 0
+        # Fall back to algo ticks when no clipping active
+        if ticks_total == 0:
+            ticks_total = sum(
+                r.tick_loop_results.coordination_statistics.ticks_processed
+                for r in self._batch_summary.process_result_list
+                if r.tick_loop_results and r.tick_loop_results.coordination_statistics
+            )
+        ticks_per_hour = ticks_total / total_hours if total_hours > 0 else 0
 
         return {
             'total_hours': total_hours,

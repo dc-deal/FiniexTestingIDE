@@ -41,7 +41,7 @@
       }
     },
     "execution_config": {
-      "tick_processing_budget_ms": 1.536
+      "tick_processing_budget_ms": 1.3
     },
     "trade_simulator_config": {},
     "stress_test_config": {}

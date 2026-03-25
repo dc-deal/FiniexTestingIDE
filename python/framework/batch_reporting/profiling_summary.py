@@ -332,6 +332,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
         """
         warnings = []
         p5_values = []
+        has_budget_active = bool(self.batch_execution_summary.clipping_stats_map)
 
         for profile in self.profiling_metrics.scenario_profiles:
             if not profile.interval_stats:
@@ -340,7 +341,9 @@ class ProfilingSummary(AbstractBatchSummarySection):
             if profile.avg_time_per_tick_ms > profile.interval_stats.p5_ms:
                 warnings.append(profile)
 
-        if warnings:
+        # Only show per-scenario warnings when NO budget is configured.
+        # When budget is active, clipping is already being simulated — warning is redundant.
+        if warnings and not has_budget_active:
             for profile in warnings:
                 print(renderer.red(
                     f"  ⚠️  BUDGET WARNING: avg tick processing ({profile.avg_time_per_tick_ms:.3f}ms) "
@@ -355,7 +358,6 @@ class ProfilingSummary(AbstractBatchSummarySection):
                   f"{min_p5:.1f}ms — {max_p5:.1f}ms")
             print()
 
-        has_budget_active = bool(self.batch_execution_summary.clipping_stats_map)
         has_warnings = bool(warnings)
 
         # Recommendation only when there's a reason (warning or active budget)
