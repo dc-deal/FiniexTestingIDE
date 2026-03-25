@@ -6,9 +6,9 @@
 
 In live trading, ticks that arrive while the algorithm is still processing the previous tick are **lost** (clipped). The backtesting simulation processes every tick sequentially — optimistically biased because no ticks are ever skipped.
 
-The **Tick Processing Budget** bridges this gap by deterministically filtering ticks before execution, simulating the clipping behavior of live trading. This produces realistic backtesting results that account for hardware-dependent tick loss.
+The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped, simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop — the broker path (`trade_simulator.on_tick()`) sees every tick, while the algo path (workers, decision logic) skips clipped ticks.
 
-**Key property:** Filtering happens in the main process during data preparation (Phase 1), before subprocess serialization. This means fewer ticks cross the pickle boundary — smaller packages, faster transfer, faster execution.
+**Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The `is_clipped` flag on each tick controls whether the algo path processes it. This ensures the broker simulation (pending order fills, SL/TP triggers, limit/stop monitoring) operates on the full market data stream — identical to a real broker.
 
 ---
 
@@ -22,30 +22,31 @@ virtual_clock = 0
 
 for each tick (ordered by collected_msc):
     if tick.collected_msc >= virtual_clock:
-        KEEP tick
+        FLAG tick as is_clipped = False (algo processes it)
         virtual_clock = tick.collected_msc + budget_ms
     else:
-        CLIP tick (arrived during processing)
+        FLAG tick as is_clipped = True (algo skips it, broker still sees it)
 ```
 
 - **O(n) single pass** — no sorting, no lookback
 - Deterministic: same budget + same data = same result every time
 - Uses `collected_msc` (device-side collection timestamp, available since V1.3.0)
+- All ticks returned — flags control processing, not removal
 
 ### Example
 
 Budget = 2.0ms, ticks at: 1000, 1001, 1002, 1003, 1005, 1008
 
 ```
-Tick 1000ms: collected_msc(1000) >= virtual_clock(0)    → KEEP, clock = 1002
-Tick 1001ms: collected_msc(1001) <  virtual_clock(1002)  → CLIP
-Tick 1002ms: collected_msc(1002) >= virtual_clock(1002)  → KEEP, clock = 1004
-Tick 1003ms: collected_msc(1003) <  virtual_clock(1004)  → CLIP
-Tick 1005ms: collected_msc(1005) >= virtual_clock(1004)  → KEEP, clock = 1007
-Tick 1008ms: collected_msc(1008) >= virtual_clock(1007)  → KEEP, clock = 1010
+Tick 1000ms: collected_msc(1000) >= virtual_clock(0)    → is_clipped=False, clock = 1002
+Tick 1001ms: collected_msc(1001) <  virtual_clock(1002)  → is_clipped=True
+Tick 1002ms: collected_msc(1002) >= virtual_clock(1002)  → is_clipped=False, clock = 1004
+Tick 1003ms: collected_msc(1003) <  virtual_clock(1004)  → is_clipped=True
+Tick 1005ms: collected_msc(1005) >= virtual_clock(1004)  → is_clipped=False, clock = 1007
+Tick 1008ms: collected_msc(1008) >= virtual_clock(1007)  → is_clipped=False, clock = 1010
 ```
 
-Result: 4/6 ticks kept, 2 clipped (33.3%)
+Result: 6 ticks total, 4 algo (non-clipped), 2 clipped (33.3%). All 6 ticks enter the tick loop.
 
 ---
 
@@ -86,7 +87,7 @@ The budget is configured via `execution_config.tick_processing_budget_ms` and ca
 
 ### Default: Disabled
 
-`tick_processing_budget_ms: 0.0` (or absent) = no filtering, no clipping stats, no report section.
+`tick_processing_budget_ms: 0.0` (or absent) = no flagging, no clipping stats, no report section. All ticks processed by both broker and algo paths.
 
 ---
 
@@ -165,28 +166,67 @@ The tick processing budget simulates **your target hardware's processing speed**
 SharedDataPreparator (Main Process, Phase 1)
     │
     ├── _filter_ticks_for_scenario()
-    │       └── _apply_tick_budget()  ← filtering happens here
-    │               └── returns (filtered_ticks, ClippingStats)
+    │       └── _apply_tick_budget()  ← flagging happens here
+    │               └── returns (flagged_ticks with is_clipped, ClippingStats)
     │
     └── prepare_scenario_packages()
             └── returns (packages, clipping_stats_map)
                     │
                     ▼
-        DataPreparationCoordinator
+        Subprocess (pickle transport, all ticks)
                     │
                     ▼
-            BatchOrchestrator
+            execute_tick_loop()
+                    │
+                    for tick in ticks:
+                    │   ├── trade_simulator.on_tick(tick)   ← BROKER PATH (all ticks)
+                    │   │
+                    │   ├── if tick.is_clipped: continue    ← CLIPPING GATE
+                    │   │
+                    │   └── bar_rendering, workers,         ← ALGO PATH (non-clipped only)
+                    │       decision, live_export
                     │
                     ▼
-          BatchExecutionSummary.clipping_stats_map
+          BatchExecutionSummary
                     │
-                    ├── ProfilingSummary (per-scenario + aggregated)
-                    └── WarningsSummary (global warnings)
+                    ├── clipping_stats_map → ProfilingSummary, WarningsSummary
+                    └── profiling_data.ticks_total → ExecutiveSummary (dual tick count)
 ```
 
-- Filtering in main process → subprocess receives already-filtered ticks
-- Tick loop unchanged — no runtime overhead in subprocess
-- ClippingStats flows through main process only (same pattern as `broker_scenario_map`)
+- Flagging in main process → all ticks cross pickle boundary (with `is_clipped` flag)
+- Tick loop splits into broker path (all ticks) and algo path (non-clipped only)
+- Broker simulation sees full market data — pending order fills, SL/TP triggers operate correctly
+- ClippingStats flows through main process (same pattern as `broker_scenario_map`)
+
+---
+
+## Tick Loop Split — Log Evidence
+
+When budget is active, the scenario log shows the broker/algo path separation per tick. Example from a USDJPY scenario (budget 1.5ms, LONG trade opened at algo-tick 10):
+
+```
+✅ BROKER+ALGO tick #0   bid=149.78  open_positions=0   ← both paths
+✅ BROKER+ALGO tick #4   bid=149.79  open_positions=0   ← both paths
+🔒 BROKER-ONLY tick #5   bid=149.78  open_positions=0   ← clipped, only broker sees it
+🔒 BROKER-ONLY tick #9   bid=149.78  open_positions=0   ← clipped, only broker sees it
+🎯 Trade signal at tick 10: LONG 0.01 lots               ← algo opens trade
+✅ BROKER+ALGO tick #12  bid=149.78  open_positions=1   ← position open, both paths
+🔒 BROKER-ONLY tick #14  bid=149.79  open_positions=1   ← broker monitors position on clipped tick
+🔒 BROKER-ONLY tick #19  bid=149.79  open_positions=1   ← price update, SL/TP check — algo blind
+🔒 BROKER-ONLY tick #24  bid=149.79  open_positions=1   ← broker still watching
+✅ BROKER+ALGO tick #144 bid=149.78  open_positions=0   ← trade closed
+```
+
+Ticks #14, #19, #24 are clipped — the algo never sees them, but the broker updates bid/ask and checks SL/TP triggers on these ticks. This matches real broker behavior where the broker processes all market data regardless of client processing speed.
+
+Confirmed by profiling call counts:
+
+| Operation | Calls | Meaning |
+|-----------|-------|---------|
+| `trade_simulator` | 5,000 | All ticks (broker path) |
+| `worker_decision` | 3,950 | Algo ticks only (non-clipped) |
+
+Executive summary displays both: `Ticks Processed: 5,000 total (3,950 algo)`
 
 ---
 

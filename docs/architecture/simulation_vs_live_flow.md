@@ -17,10 +17,16 @@ execute_tick_loop(config, prepared_objects)
     │
     for tick in ticks:                              # finite, pre-loaded from data provider
         │
+        │   ═══ BROKER PATH (all ticks) ═══
+        │
         ├── 1. trade_simulator.on_tick(tick)         # AbstractTradeExecutor
         │       ├── Update prices (bid/ask)
         │       ├── _process_pending_orders()         # LatencySimulator: drain tick-based queue
         │       └── _check_sl_tp_triggers(tick)       # Local price check on open positions
+        │
+        ├── if tick.is_clipped: continue             # Clipping gate (budget active only)
+        │
+        │   ═══ ALGO PATH (non-clipped ticks only) ═══
         │
         ├── 2. bar_rendering_controller.process_tick(tick)
         │       └── Aggregate tick into OHLC bars
@@ -54,7 +60,7 @@ execute_tick_loop(config, prepared_objects)
 - SL/TP triggers checked locally (`_check_sl_tp_triggers`)
 - Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
 - `compute()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
-- **Known limitation:** When tick processing budget (#198) is active, clipped ticks are removed before the loop. The trade simulator (broker simulation) only sees surviving ticks — but a real broker would process all ticks. This affects pending order fill timing, SL/TP triggers, and limit/stop monitoring on clipped ticks. Planned fix (#222): flag-based approach — all ticks pass through the loop with an `is_clipped` flag; broker path (trade simulator) processes every tick, algo path (workers + decision) skips clipped ticks via `continue`.
+- **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data preparation. The broker path (step 1) sees every tick — pending order fills, SL/TP triggers, and limit/stop monitoring operate on the full market data stream. The algo path (steps 2-6) skips clipped ticks via `continue`. When budget is disabled (default), `is_clipped` is always `False` and all ticks pass through both paths.
 
 ---
 

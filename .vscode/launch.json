@@ -192,7 +192,7 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Run cautious_macd_SANDBOX",
+            "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -204,7 +204,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run eurusd_3_SANDBOX - aggressive_trend",
+            "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -216,7 +216,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run BTCUSD_SANDBOX - simple_consensus",
+            "name": "🔬 Run BTCUSD_sandbox - algo:simple_consensus",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -228,7 +228,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (eurusd_3 - REFERENCE)",
+            "name": "🔬 Run eurusd_3_windows_reference",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -240,19 +240,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run (USDJPY_blocks_big_*)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "USDJPY_blocks_bigger.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🔬 Run (EURGBP stress_test_config)",
+            "name": "🔬 Run EURGBP_stress_test_config - stress test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -264,7 +252,7 @@
             "justMyCode": false
         },
         {
-            "name": "🔬 Run ETHUSD_user_config (USER namespace)",
+            "name": "🔬 Run ETHUSD_user_config - USER namespace",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",

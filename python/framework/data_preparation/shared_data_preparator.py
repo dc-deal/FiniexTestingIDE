@@ -286,10 +286,12 @@ class SharedDataPreparator:
         budget_ms: float
     ) -> Tuple[Dict[str, Any], ClippingStats]:
         """
-        Apply tick processing budget filter (deterministic clipping simulation).
+        Apply tick processing budget flagging (deterministic clipping simulation).
 
         Virtual clock advances by budget_ms after each processed tick.
-        Ticks arriving before the virtual clock expires are clipped.
+        Ticks arriving before the virtual clock expires are flagged as clipped.
+        All ticks are kept — the flag controls whether the algo path processes them.
+        The broker path (trade_simulator) always sees every tick.
 
         Args:
             scenario_ticks: Filtered tick data dict from _filter_ticks_for_scenario
@@ -297,7 +299,7 @@ class SharedDataPreparator:
             budget_ms: Processing budget in milliseconds
 
         Returns:
-            Tuple of (filtered scenario_ticks dict, ClippingStats)
+            Tuple of (flagged scenario_ticks dict, ClippingStats)
         """
         ticks_tuple = scenario_ticks['ticks'].get(symbol, ())
         ticks_total = len(ticks_tuple)
@@ -318,28 +320,33 @@ class SharedDataPreparator:
                 budget_ms=budget_ms
             )
 
-        # Virtual clock filtering
+        # Virtual clock flagging — all ticks kept, clipped ones flagged
         virtual_clock = 0.0
-        kept_ticks = []
+        flagged_ticks = []
+        ticks_kept = 0
 
         for tick in ticks_tuple:
-            collected_msc = tick['collected_msc']
+            tick_copy = dict(tick)
+            collected_msc = tick_copy['collected_msc']
             if collected_msc >= virtual_clock:
-                kept_ticks.append(tick)
+                tick_copy['is_clipped'] = False
                 virtual_clock = collected_msc + budget_ms
+                ticks_kept += 1
+            else:
+                tick_copy['is_clipped'] = True
+            flagged_ticks.append(tick_copy)
 
-        ticks_kept = len(kept_ticks)
         ticks_clipped = ticks_total - ticks_kept
         clipping_rate = (ticks_clipped / ticks_total * 100) if ticks_total > 0 else 0.0
 
-        # Rebuild scenario_ticks dict with filtered data
-        filtered_ticks = {
-            'ticks': {symbol: tuple(kept_ticks)},
-            'counts': {symbol: ticks_kept},
+        # Return all ticks with is_clipped flags — counts reflect full dataset
+        flagged_result = {
+            'ticks': {symbol: tuple(flagged_ticks)},
+            'counts': {symbol: ticks_total},
             'ranges': scenario_ticks['ranges']
         }
 
-        return filtered_ticks, ClippingStats(
+        return flagged_result, ClippingStats(
             ticks_total=ticks_total,
             ticks_kept=ticks_kept,
             ticks_clipped=ticks_clipped,

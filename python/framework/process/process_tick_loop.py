@@ -90,12 +90,22 @@ def execute_tick_loop(
         current_tick = None
         current_index = 0
 
-        scenario_logger.info(
-            f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
+        # Count algo ticks (non-clipped) for log messages
+        algo_tick_count = sum(1 for t in ticks if not t.is_clipped)
+        has_clipping = algo_tick_count < len(ticks)
+
+        if has_clipping:
+            scenario_logger.info(
+                f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks, "
+                f"{algo_tick_count:,} algo)")
+        else:
+            scenario_logger.info(
+                f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
 
         # === TICK LOOP ===
         # from now on, log shows ticks.
         scenario_logger.set_tick_loop_started(True)
+
         for tick_idx, tick in enumerate(ticks):
             scenario_logger.set_current_tick(
                 tick_idx + 1, tick)
@@ -112,13 +122,23 @@ def execute_tick_loop(
                     inter_tick_intervals.append(float(delta))
             prev_interval_msc = current_msc
 
-            # === 1. Trade Executor ===
-            # Unified tick lifecycle: update prices + process pending orders
+            # === 1. Trade Executor (BROKER PATH — all ticks) ===
+            # Broker sees every tick regardless of algo processing budget.
+            # Pending order fills, SL/TP triggers, limit/stop monitoring
+            # all operate on the full tick stream.
             t1 = time.perf_counter()
             trade_simulator.on_tick(tick)
             t2 = time.perf_counter()
             profile_times['trade_simulator'] += (t2 - t1) * 1000
             profile_counts['trade_simulator'] += 1
+
+            # === CLIPPING GATE ===
+            # Ticks flagged by tick processing budget skip the algo path.
+            # The broker already processed them above.
+            if tick.is_clipped:
+                continue
+
+            # === ALGO PATH (non-clipped ticks only) ===
 
             # === 2. Bar Rendering ===
             t3 = time.perf_counter()
@@ -174,8 +194,13 @@ def execute_tick_loop(
             profile_times['total_per_tick'] += (tick_end - tick_start) * 1000
 
         scenario_logger.set_tick_loop_started(False)
-        scenario_logger.info(
-            f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
+        if has_clipping:
+            scenario_logger.info(
+                f"✅ Tick loop completed: {live_setup.tick_count:,} ticks "
+                f"({algo_tick_count:,} algo)")
+        else:
+            scenario_logger.info(
+                f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
 
         # === CLOSE OPEN TRADES ===
         # Use last tick's msc for latency calculation (same fallback as inter-tick interval)
@@ -239,7 +264,8 @@ def execute_tick_loop(
                 profile_times=profile_times,
                 profile_counts=profile_counts,
                 inter_tick_intervals_ms=inter_tick_intervals,
-                gap_threshold_s=config.inter_tick_gap_threshold_s
+                gap_threshold_s=config.inter_tick_gap_threshold_s,
+                ticks_total=len(ticks)
             ),
             tick_range_stats=tick_range_stats,
             tick_loop_error=tick_loop_error

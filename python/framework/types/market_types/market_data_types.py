@@ -23,6 +23,8 @@ class TickData:
     time_msc: int = 0
     # Local device clock at tick receipt, ms precision (0 = not available)
     collected_msc: int = 0
+    # True if tick was clipped by tick processing budget (broker sees it, algo skips it)
+    is_clipped: bool = False
 
     @property
     def mid(self) -> float:
@@ -125,3 +127,4 @@ class TickTransportColumn(str, Enum):
     BID = 'bid'
     ASK = 'ask'
     VOLUME = 'volume'
+    IS_CLIPPED = 'is_clipped'
