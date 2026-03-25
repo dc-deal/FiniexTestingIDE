@@ -100,10 +100,10 @@ This is the central architectural principle: **Simulation and Live follow the sa
 ```
 1. DecisionLogic calls send_order()
 2. TradeSimulator.open_order()
-   → Creates PendingOrder with fill_at_msc (ms-timestamp)
+   → Creates PendingOrder with broker_fill_msc (ms-timestamp)
    → Stores in OrderLatencySimulator (inherited storage)
 3. Each tick: on_tick() → _process_pending_orders()
-   → OrderLatencySimulator.process_tick() compares tick msc against fill_at_msc
+   → OrderLatencySimulator.process_tick() compares tick msc against broker_fill_msc
    → Returns orders whose delay has elapsed
 4. For each filled order:
    → _fill_open_order(pending_order)        ← SHARED (AbstractTradeExecutor)
@@ -263,11 +263,11 @@ Shared storage and query layer for pending orders. Both execution modes need to 
 Simulation-specific pending order manager. Adds tick-based latency modeling with seeded randomness.
 
 **Simulation-specific methods:**
-- `submit_open_order()` — Creates PendingOrder with calculated `fill_at_msc`, stores via inherited `store_order()`
+- `submit_open_order()` — Creates PendingOrder with calculated `broker_fill_msc`, stores via inherited `store_order()`
 - `submit_close_order()` — Same pattern for close orders
-- `process_tick(tick)` — Returns orders whose `fill_at_msc` has been reached by the tick's timestamp, removes them via inherited `remove_order()`
+- `process_tick(tick)` — Returns orders whose `broker_fill_msc` has been reached by the tick's timestamp, removes them via inherited `remove_order()`
 
-Uses `SeededDelayGenerator` (`utils/seeded_generators/`) for deterministic API latency + market execution delays.
+Uses `SeededDelayGenerator` (`utils/seeded_generators/`) for deterministic inbound latency delays.
 
 ### LiveOrderTracker (extends AbstractPendingOrderManager)
 
@@ -329,7 +329,7 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
 
 - **Common fields:** `pending_order_id`, `order_action`, `order_type` (MARKET/LIMIT), `symbol`, `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
-- **Simulation fields:** `placed_at_msc`, `fill_at_msc` (ms-timestamp delay tracking)
+- **Simulation fields:** `placed_at_msc`, `broker_fill_msc` (ms-timestamp delay tracking)
 - **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` — see [live_execution_architecture.md](live_execution_architecture.md)
 
 Each mode sets the fields it needs. The other mode's fields remain None.

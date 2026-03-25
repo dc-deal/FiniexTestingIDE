@@ -361,8 +361,7 @@ The JSON config connects everything together.
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
       "initial_balance": 100000,
       "seeds": {
-        "api_latency_seed": 42,
-        "market_execution_seed": 123
+        "inbound_latency_seed": 42
       }
     }
   },

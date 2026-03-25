@@ -15,7 +15,7 @@ The margin validation test suite validates margin exhaustion, recovery, order re
 - Symbol: USDJPY
 - Broker: MT5 (Vantage), Leverage 500
 - Account Currency: JPY (auto-detected)
-- Seeds: api_latency=42424, market_execution=98765
+- Seeds: inbound_latency=42424
 
 **Total Tests:** ~42
 
@@ -120,8 +120,7 @@ tests/
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `seeds_config` | session | Seed configuration from trade_simulator_config |
-| `api_delay_generator` | function | Fresh API delay generator per test |
-| `exec_delay_generator` | function | Fresh execution delay generator per test |
+| `inbound_delay_generator` | function | Fresh Inbound delay generator per test |
 
 ---
 

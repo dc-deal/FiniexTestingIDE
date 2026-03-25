@@ -61,8 +61,7 @@
             "initial_balance": 100000,
             "account_currency": "auto",
             "seeds": {
-                "api_latency_seed": 12345,
-                "market_execution_seed": 67890
+                "inbound_latency_seed": 12345
             }
         }
     },

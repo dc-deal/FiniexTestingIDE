@@ -68,8 +68,7 @@
       "execution_config": {},
       "trade_simulator_config": {
         "seeds": {
-          "api_latency_seed": 22,
-          "market_execution_seed": 111
+          "inbound_latency_seed": 22
         }
       }
     },

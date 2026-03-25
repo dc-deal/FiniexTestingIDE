@@ -8,7 +8,7 @@ The baseline test suite validates the core functionality of the FiniexTestingIDE
 - Symbol: USDJPY
 - Account Currency: JPY (auto-detected)
 - 3 trades: 2 LONG, 1 SHORT
-- Seeds: api_latency=12345, market_execution=67890
+- Seeds: inbound_latency=12345
 - Max Ticks: 20,500
 
 **Total Tests:** 48
@@ -93,8 +93,7 @@ The baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpe
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `seeds_config` | session | Seed configuration from trade_simulator_config |
-| `api_delay_generator` | function | Fresh API delay generator per test (seed from config) |
-| `exec_delay_generator` | function | Fresh execution delay generator per test (seed from config) |
+| `inbound_delay_generator` | function | Fresh Inbound delay generator per test (seed from config) |
 
 ---
 
@@ -133,7 +132,7 @@ Tests bar rendering functionality by validating snapshots captured during the ti
 
 ---
 
-### test_latency_determinism.py (7 Tests)
+### test_latency_determinism.py (3 Tests)
 
 Tests that order execution latency is deterministic and reproducible when using the same seeds.
 
@@ -141,13 +140,9 @@ Tests that order execution latency is deterministic and reproducible when using 
 
 | Test | Description |
 |------|-------------|
-| `test_api_delay_reproducible` | Generates API delay sequence twice with same seed, verifies identical results |
-| `test_exec_delay_reproducible` | Generates execution delay sequence twice with same seed, verifies identical results |
-| `test_different_seeds_different_sequences` | Confirms different seeds produce different delay sequences |
-| `test_api_delay_within_bounds` | Validates API delays fall within configured min/max range |
-| `test_exec_delay_within_bounds` | Validates execution delays fall within configured min/max range |
-| `test_total_delay_calculation` | Verifies total delay equals API delay + execution delay |
-| `test_fill_tick_calculation` | Confirms fill tick equals signal tick + total delay |
+| `test_inbound_delay_reproducible` | Generates inbound delay sequence twice with same seed, verifies identical results |
+| `test_inbound_delay_within_bounds` | Validates inbound delays fall within configured min/max range |
+| `test_broker_fill_msc_calculation` | Confirms broker_fill_msc equals placed_at_msc + inbound_delay |
 
 ---
 

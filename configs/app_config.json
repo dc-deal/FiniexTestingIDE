@@ -20,13 +20,10 @@
         "initial_balance": 10000,
         "account_currency": "auto",
         "seeds": {
-            "api_latency_seed": 42,
-            "market_execution_seed": 123
+            "inbound_latency_seed": 42
         },
-        "api_latency_min_ms": 20,
-        "api_latency_max_ms": 80,
-        "market_execution_min_ms": 30,
-        "market_execution_max_ms": 150
+        "inbound_latency_min_ms": 20,
+        "inbound_latency_max_ms": 80
     },
     "console_logging": {
         "enabled": true,

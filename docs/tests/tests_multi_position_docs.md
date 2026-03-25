@@ -11,7 +11,7 @@ This suite proves that the engine's `TradeSimulator`, `PortfolioManager`, and `O
 - Account Currency: JPY (auto-detected)
 - 4 trades: 3 LONG, 1 SHORT (overlapping)
 - Peak concurrent positions: 3
-- Seeds: api_latency=12345, market_execution=67890
+- Seeds: inbound_latency=12345
 - Max Ticks: 20,500
 
 **Total Tests:** 65 (28 multi-position specific + 37 reused from baseline)
@@ -115,8 +115,7 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 | `scenario_config` | session | Raw JSON config for assertion values |
 | `trade_sequence` | session | Configured trade specifications from JSON |
 | `seeds_config` | session | Seed values for deterministic latency |
-| `api_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
-| `exec_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
+| `inbound_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
 
 ---
 

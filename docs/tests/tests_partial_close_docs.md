@@ -11,7 +11,7 @@ This suite proves that `PortfolioManager.partial_close_position()` and the routi
 - Account Currency: JPY (auto-detected)
 - 2 trades: 1 LONG (0.03 lots, partially closed twice), 1 SHORT (0.02 lots, full close only)
 - 2 partial close events at tick 2000 and 4000
-- Seeds: api_latency=12345, market_execution=67890
+- Seeds: inbound_latency=12345
 - Max Ticks: 12,000
 
 **Total Tests:** 39 (23 partial-close specific + 16 reused from baseline)
@@ -106,8 +106,7 @@ PARTIAL_CLOSE_CONFIG = "backtesting/partial_close_test.json"
 | `trade_sequence` | session | Configured trade specifications |
 | `partial_close_sequence` | session | Configured partial close events |
 | `seeds_config` | session | Seed values for deterministic latency |
-| `api_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
-| `exec_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
+| `inbound_delay_generator` | function | Fresh `SeededDelayGenerator` per test (`utils/seeded_generators/`) |
 
 ---
 
