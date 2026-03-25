@@ -12,7 +12,7 @@ Config design:
 - Trade 1: Opens at tick 10, closes at tick 110 (normal happy path)
 - Trade 2: Opens at tick 5000 (last tick) — no subsequent tick to fill, force-closed at scenario end
 - Max ticks: 5000
-- Seeds: api_latency=12345, market_execution=67890
+- Seeds: inbound_latency=12345
 """
 
 import pytest

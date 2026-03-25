@@ -176,20 +176,12 @@ def expected_orders_sent(
 # =============================================================================
 
 @pytest.fixture(scope="function")
-def api_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:
-    """Fresh API delay generator with config seed (ms-based)."""
+def inbound_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:
+    """Fresh Inbound delay generator with config seed (ms-based)."""
     return SeededDelayGenerator(
-        seed=seeds_config['api_latency_seed'],
+        seed=seeds_config['inbound_latency_seed'],
         min_delay=20,
         max_delay=80
     )
 
 
-@pytest.fixture(scope="function")
-def exec_delay_generator(seeds_config: Dict[str, int]) -> SeededDelayGenerator:
-    """Fresh execution delay generator with config seed (ms-based)."""
-    return SeededDelayGenerator(
-        seed=seeds_config['market_execution_seed'],
-        min_delay=30,
-        max_delay=150
-    )

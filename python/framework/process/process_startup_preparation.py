@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.factory.trade_simulator_factory import prepare_trade_simulator_for_scenario
+from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_types import TradingContext
@@ -56,7 +56,7 @@ def process_startup_preparation(
     )
 
     # === PHASE 2: Create Trade Simulator (with requirements) ===
-    trade_simulator = prepare_trade_simulator_for_scenario(
+    trade_simulator = prepare_trade_executor_for_scenario(
         config=config,
         logger=scenario_logger,
         required_order_types=required_order_types,

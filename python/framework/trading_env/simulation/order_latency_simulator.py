@@ -15,18 +15,17 @@ Architecture:
         │
         └── OrderLatencySimulator  (this class)
             - SeededDelayGenerator for deterministic ms delays
-            - submit_open_order() → store with calculated fill_at_msc
-            - submit_close_order() → store with calculated fill_at_msc
+            - submit_open_order() → store with calculated broker_fill_msc
+            - submit_close_order() → store with calculated broker_fill_msc
             - process_tick() → return orders whose delay has elapsed
 
 Design Philosophy:
-Real brokers have two delay stages:
-1. API Latency: Time for order to reach broker (network, API processing)
-2. Execution Time: Time for broker to match order internally
+Fill timing uses inbound latency only (order → broker). The fill price is
+determined at broker_fill_msc = placed_at_msc + inbound_delay. This matches
+the approach of established frameworks (QuantConnect, Backtrader, Zipline).
 
-We simulate both with seeded random generators to create realistic yet
-reproducible order execution patterns. Delays are in milliseconds,
-fill detection uses tick timestamps (collected_msc or time_msc).
+Delays are in milliseconds, fill detection uses tick timestamps
+(collected_msc or time_msc).
 """
 
 import logging
@@ -68,61 +67,40 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self,
         seeds: Dict[str, int],
         logger: AbstractLogger,
-        api_latency_min_ms: int = 20,
-        api_latency_max_ms: int = 80,
-        market_execution_min_ms: int = 30,
-        market_execution_max_ms: int = 150,
+        inbound_latency_min_ms: int = 20,
+        inbound_latency_max_ms: int = 80,
     ):
         """
         Initialize latency simulator with seeds, logger, and ms delay ranges.
 
         Args:
             seeds: Dictionary with seed values:
-                - api_latency_seed: Seed for API delay generator
-                - market_execution_seed: Seed for execution delay generator
+                - inbound_latency_seed: Seed for inbound delay generator
             logger: Logger instance for tracking order flow
-            api_latency_min_ms: Minimum API latency in ms
-            api_latency_max_ms: Maximum API latency in ms
-            market_execution_min_ms: Minimum market execution time in ms
-            market_execution_max_ms: Maximum market execution time in ms
+            inbound_latency_min_ms: Minimum inbound latency in ms (order → broker)
+            inbound_latency_max_ms: Maximum inbound latency in ms (order → broker)
         """
         super().__init__(logger)
 
         # Extract seeds with defaults
-        DEFAULT_API_LATENCY_SEED = 42
-        DEFAULT_MARKET_EXECUTION_SEED = 123
+        DEFAULT_INBOUND_LATENCY_SEED = 42
 
-        api_seed = seeds.get('api_latency_seed')
-        exec_seed = seeds.get('market_execution_seed')
+        inbound_seed = seeds.get('inbound_latency_seed')
 
         # Validate and apply defaults with specific warnings
-        if api_seed is None:
-            api_seed = DEFAULT_API_LATENCY_SEED
+        if inbound_seed is None:
+            inbound_seed = DEFAULT_INBOUND_LATENCY_SEED
             self.logger.warning(
-                f"⚠️ Missing 'api_latency_seed' in config - "
-                f"using default: {DEFAULT_API_LATENCY_SEED}"
+                f"⚠️ Missing 'inbound_latency_seed' in config - "
+                f"using default: {DEFAULT_INBOUND_LATENCY_SEED}"
             )
 
-        if exec_seed is None:
-            exec_seed = DEFAULT_MARKET_EXECUTION_SEED
-            self.logger.warning(
-                f"⚠️ Missing 'market_execution_seed' in config - "
-                f"using default: {DEFAULT_MARKET_EXECUTION_SEED}"
-            )
-
-        # Create delay generators (ms-based)
-        # API latency: order reaches broker
-        self.api_delay_gen = SeededDelayGenerator(
-            seed=api_seed,
-            min_delay=api_latency_min_ms,
-            max_delay=api_latency_max_ms
-        )
-
-        # Market execution: broker matches order
-        self.exec_delay_gen = SeededDelayGenerator(
-            seed=exec_seed,
-            min_delay=market_execution_min_ms,
-            max_delay=market_execution_max_ms
+        # Create delay generator (ms-based)
+        # Inbound latency: order reaches broker
+        self._inbound_delay_gen = SeededDelayGenerator(
+            seed=inbound_seed,
+            min_delay=inbound_latency_min_ms,
+            max_delay=inbound_latency_max_ms
         )
 
     # ============================================
@@ -181,11 +159,9 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         """
         current_msc = self._get_tick_msc(tick)
 
-        # Generate delays (ms)
-        api_delay = self.api_delay_gen.next()
-        exec_delay = self.exec_delay_gen.next()
-        total_delay = api_delay + exec_delay
-        fill_at_msc = current_msc + total_delay
+        # Generate delay (ms)
+        inbound_delay = self._inbound_delay_gen.next()
+        broker_fill_msc = current_msc + inbound_delay
 
         # Build order_kwargs dict from request
         order_kwargs = {}
@@ -213,7 +189,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self.store_order(PendingOrder(
             pending_order_id=order_id,
             placed_at_msc=current_msc,
-            fill_at_msc=fill_at_msc,
+            broker_fill_msc=broker_fill_msc,
             order_action=PendingOrderAction.OPEN,
             order_type=request.order_type,
             symbol=request.symbol,
@@ -227,11 +203,11 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Log order reception
         self.logger.info(
             f"📨 Order received: {order_id} ({request.direction.value} {request.lots} lots) "
-            f"- latency: {total_delay}ms (api:{api_delay}ms + exec:{exec_delay}ms) | tick_msc={current_msc}"
+            f"- inbound: {inbound_delay}ms | tick_msc={current_msc}"
         )
 
         self.logger.debug(
-            f"  placed_at_msc={current_msc}, fill_at_msc={fill_at_msc}, "
+            f"  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, "
             f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
         )
 
@@ -258,17 +234,15 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         """
         current_msc = self._get_tick_msc(tick)
 
-        # Generate delays (same system as open orders)
-        api_delay = self.api_delay_gen.next()
-        exec_delay = self.exec_delay_gen.next()
-        total_delay = api_delay + exec_delay
-        fill_at_msc = current_msc + total_delay
+        # Generate delay (same system as open orders)
+        inbound_delay = self._inbound_delay_gen.next()
+        broker_fill_msc = current_msc + inbound_delay
 
         # Store pending close order (inherited storage)
         self.store_order(PendingOrder(
             pending_order_id=position_id,
             placed_at_msc=current_msc,
-            fill_at_msc=fill_at_msc,
+            broker_fill_msc=broker_fill_msc,
             order_action=PendingOrderAction.CLOSE,
             close_lots=close_lots
         ))
@@ -276,11 +250,11 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Log close order reception
         self.logger.info(
             f"📨 Close order received: {position_id} "
-            f"- latency: {total_delay}ms (api:{api_delay}ms + exec:{exec_delay}ms) | tick_msc={current_msc}"
+            f"- inbound: {inbound_delay}ms | tick_msc={current_msc}"
         )
 
         self.logger.debug(
-            f"  placed_at_msc={current_msc}, fill_at_msc={fill_at_msc}, "
+            f"  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, "
             f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
         )
 
@@ -295,7 +269,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         Process current tick and return orders ready to fill.
 
         Checks all pending orders and returns those whose
-        fill_at_msc has been reached or passed by the current tick timestamp.
+        broker_fill_msc has been reached or passed by the current tick timestamp.
 
         Args:
             tick: Current tick data
@@ -310,7 +284,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         # Find orders ready to fill
         for order_id, pending in self._pending_orders.items():
-            if pending.fill_at_msc <= current_msc:
+            if pending.broker_fill_msc <= current_msc:
                 to_fill.append(pending)
                 to_remove.append(order_id)
 

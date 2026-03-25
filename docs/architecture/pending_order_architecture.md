@@ -76,7 +76,7 @@ Every order passes through up to three distinct stages ("worlds") before becomin
 
 **Purpose:** Simulates broker acceptance delay. Every order — regardless of type — passes through this queue first.
 
-**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `fill_at_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `fill_at_msc` and returns orders whose delay has elapsed.
+**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound latency has elapsed. See [Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
 
 **Live:** `LiveOrderTracker` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
 
@@ -325,3 +325,33 @@ is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
 ```
 
 Maker/taker distinction only affects brokers with maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
+
+---
+
+## Design Decision: Inbound-Only Fill Timing
+
+Fill timing uses **inbound latency only** (`broker_fill_msc = placed_at_msc + inbound_delay`). The fill price is determined at broker_fill_msc, and the portfolio is updated immediately.
+
+**Timeline:**
+```
+placed_at_msc                 broker_fill_msc
+     |--- inbound_delay -------->|
+     |    (20-80ms)              |
+     |                      Fill happens here.
+     |                      Price determined from this tick.
+     |                      Portfolio updated immediately.
+```
+
+**Rationale:** Industry comparison shows established backtesting frameworks use inbound latency only. The real value is correct fill-price timing — the broker fills when it receives the order, not after a round-trip.
+
+| Framework        | Inbound Delay | Fill Timing   | Activation  |
+|------------------|---------------|---------------|-------------|
+| MetaTrader       | 1 tick        | Next tick     | Instant     |
+| Backtrader       | 0 (instant)   | Next bar/tick | Instant     |
+| Zipline          | 0 (instant)   | Next bar      | Instant     |
+| QuantConnect     | Configurable  | After delay   | After delay |
+| FiniexTestingIDE | Configurable  | After delay   | After delay |
+
+**Config parameters:**
+- `inbound_latency_min_ms` / `inbound_latency_max_ms`: Order → broker transit range
+- `inbound_latency_seed`: Seeded generator for reproducibility

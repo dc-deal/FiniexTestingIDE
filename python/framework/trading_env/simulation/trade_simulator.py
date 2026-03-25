@@ -66,10 +66,8 @@ class TradeSimulator(AbstractTradeExecutor):
         stress_test_config: Optional[StressTestConfig] = None,
         order_history_max: int = 10000,
         trade_history_max: int = 5000,
-        api_latency_min_ms: int = 20,
-        api_latency_max_ms: int = 80,
-        market_execution_min_ms: int = 30,
-        market_execution_max_ms: int = 150,
+        inbound_latency_min_ms: int = 20,
+        inbound_latency_max_ms: int = 80,
     ):
         """
         Initialize trade simulator.
@@ -83,10 +81,8 @@ class TradeSimulator(AbstractTradeExecutor):
             stress_test_config: Stress test configuration (config-driven)
             order_history_max: Max order history entries (0=unlimited)
             trade_history_max: Max trade history entries (0=unlimited)
-            api_latency_min_ms: Minimum API latency in ms
-            api_latency_max_ms: Maximum API latency in ms
-            market_execution_min_ms: Minimum market execution time in ms
-            market_execution_max_ms: Maximum market execution time in ms
+            inbound_latency_min_ms: Minimum inbound latency in ms (order → broker)
+            inbound_latency_max_ms: Maximum inbound latency in ms (order → broker)
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
@@ -102,10 +98,8 @@ class TradeSimulator(AbstractTradeExecutor):
         seeds = seeds or {}
         self.latency_simulator = OrderLatencySimulator(
             seeds, logger,
-            api_latency_min_ms=api_latency_min_ms,
-            api_latency_max_ms=api_latency_max_ms,
-            market_execution_min_ms=market_execution_min_ms,
-            market_execution_max_ms=market_execution_max_ms,
+            inbound_latency_min_ms=inbound_latency_min_ms,
+            inbound_latency_max_ms=inbound_latency_max_ms,
         )
 
         # Stress test: order rejection (config-driven)
@@ -150,10 +144,10 @@ class TradeSimulator(AbstractTradeExecutor):
         filled_orders = self.latency_simulator.process_tick(self._current_tick)
 
         for pending_order in filled_orders:
-            # Latency = fill_at_msc - placed_at_msc (planned delay in ms)
+            # Latency = broker_fill_msc - placed_at_msc (planned delay in ms)
             latency_ms = None
-            if pending_order.fill_at_msc is not None and pending_order.placed_at_msc is not None:
-                latency_ms = pending_order.fill_at_msc - pending_order.placed_at_msc
+            if pending_order.broker_fill_msc is not None and pending_order.placed_at_msc is not None:
+                latency_ms = pending_order.broker_fill_msc - pending_order.placed_at_msc
 
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:

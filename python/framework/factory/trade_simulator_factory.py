@@ -64,30 +64,12 @@ def prepare_trade_executor_for_scenario(
             stress_test_config=config.stress_test_config,
             order_history_max=config.order_history_max,
             trade_history_max=config.trade_history_max,
-            api_latency_min_ms=config.api_latency_min_ms,
-            api_latency_max_ms=config.api_latency_max_ms,
-            market_execution_min_ms=config.market_execution_min_ms,
-            market_execution_max_ms=config.market_execution_max_ms,
+            inbound_latency_min_ms=config.inbound_latency_min_ms,
+            inbound_latency_max_ms=config.inbound_latency_max_ms,
         )
 
     raise ValueError(
         f"Unknown executor_mode: '{config.executor_mode}'. "
         f"Supported: 'simulation'. "
         f"Live trading will be available in Horizon 2."
-    )
-
-
-# Backwards compatibility alias
-def prepare_trade_simulator_for_scenario(
-    logger: ScenarioLogger,
-    config: ProcessScenarioConfig,
-    required_order_types: List[OrderType],
-    shared_data: ProcessDataPackage
-) -> AbstractTradeExecutor:
-    """Backwards-compatible alias for prepare_trade_executor_for_scenario."""
-    return prepare_trade_executor_for_scenario(
-        logger=logger,
-        config=config,
-        required_order_types=required_order_types,
-        shared_data=shared_data
     )

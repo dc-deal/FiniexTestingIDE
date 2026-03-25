@@ -403,10 +403,8 @@ Trading simulator settings cascade individually (app_config → global → scena
 **App Defaults** (`app_config.json`):
 ```json
 "default_trade_simulator_config": {
-  "api_latency_min_ms": 20,
-  "api_latency_max_ms": 80,
-  "market_execution_min_ms": 30,
-  "market_execution_max_ms": 150
+  "inbound_latency_min_ms": 20,
+  "inbound_latency_max_ms": 80
 }
 ```
 

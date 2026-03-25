@@ -8,7 +8,7 @@ The pending stats test suite validates the pending order statistics system — l
 - Symbol: USDJPY
 - Account Currency: JPY (auto-detected)
 - 2 trades: 1 normal (happy path), 1 late (force-closed)
-- Seeds: api_latency=12345, market_execution=67890
+- Seeds: inbound_latency=12345
 - Max Ticks: 5,000
 
 **Total Tests:** 12
