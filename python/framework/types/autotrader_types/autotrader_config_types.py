@@ -75,6 +75,7 @@ class AutoTraderConfig:
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         broker_config_path: Path to broker config JSON
         adapter_type: Adapter type ('mock' or 'live')
+        credentials_path: Credentials filename for live API access (cascade: user_configs/credentials/ → configs/credentials/)
         strategy_config: Complete strategy configuration (workers + decision logic)
         account: Account configuration
         tick_source: Tick source configuration
@@ -86,6 +87,7 @@ class AutoTraderConfig:
     broker_type: str = ''
     broker_config_path: str = ''
     adapter_type: str = 'mock'
+    credentials_path: Optional[str] = None
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     account: AccountConfig = field(default_factory=AccountConfig)
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)

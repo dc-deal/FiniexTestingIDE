@@ -291,6 +291,19 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🤖 AutoTrader: BTCUSD Live",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/btcusd_live.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔍 DISCOVERIES
         // ====================================================
@@ -1055,6 +1068,19 @@
             "module": "pytest",
             "args": [
                 "tests/scenario_generator/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: AutoTrader Integration (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader_integration/",
                 "-v",
                 "--tb=short"
             ],

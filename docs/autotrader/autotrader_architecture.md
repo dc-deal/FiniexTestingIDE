@@ -184,6 +184,7 @@ Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT 
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "mock",
+  "credentials_path": "kraken_credentials.json",
   "strategy_config": { ... },
   "account": { "initial_balance": 10000.0, "currency": "USD" },
   "tick_source": { "type": "mock", "parquet_path": "...", "mode": "replay" },
@@ -199,6 +200,7 @@ Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT 
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json` |
 | `broker_config_path` | Broker JSON | Fees, symbol specs, leverage |
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
+| `credentials_path` | Credentials filename | Cascade: `user_configs/credentials/` → `configs/credentials/` |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Balance + currency | Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
@@ -274,8 +276,10 @@ python/framework/autotrader/
     abstract_tick_source.py      AbstractTickSource ABC
     mock_tick_source.py          Parquet replay tick source
 
-python/configuration/
-  autotrader_config_loader.py    JSON → AutoTraderConfig
+python/configuration/autotrader/
+  autotrader_config_loader.py          JSON → AutoTraderConfig
+  abstract_broker_config_fetcher.py    ABC for live config fetchers
+  kraken_config_fetcher.py             Kraken REST API fetch (symbol specs + balance)
 
 python/framework/types/autotrader_types/
   autotrader_config_types.py     AutoTraderConfig, sub-configs
@@ -287,6 +291,10 @@ python/cli/
 
 configs/autotrader_profiles/
   btcusd_mock.json               Default config (BTCUSD mock)
+  btcusd_live.json               Live trading config (BTCUSD, Kraken API)
+
+configs/credentials/
+  kraken_credentials.json        Mock/default credentials (tracked)
 ```
 
 ## Usage
@@ -301,24 +309,83 @@ python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btc
 
 ## Logging
 
-- Logger: `ScenarioLogger` (reused, provides tick-context, custom log root via `log_root_override`)
+Three `ScenarioLogger` instances per session, each with a distinct purpose:
+
+| Logger | File | Purpose | Console |
+|--------|------|---------|---------|
+| Global | `autotrader_global.log` | Startup phases, shutdown, cross-cutting errors | Direct `print()` during startup |
+| Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
+| Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
+
 - Directory: `logs/autotrader/<name>/<session_timestamp>/`
 - Separate from backtesting logs (`logs/scenario_sets/`)
+- Session log **rotates daily** at midnight UTC — prevents unbounded file growth on 24/7 sessions
 
-Output files per session:
+```
+logs/autotrader/btcusd_mock/20260328_105127/
+  autotrader_global.log           Startup, shutdown, errors
+  autotrader_summary.log          Post-session summary
+  session_logs/
+    autotrader_session_20260328.log  Day 1 tick processing
+    autotrader_session_20260329.log  Day 2 (if session spans midnight)
+  autotrader_trades.csv           Completed trades (P&L, fees)
+  autotrader_orders.csv           All order results (fills, rejections)
+```
 
-| File | Format | Content |
-|------|--------|---------|
-| `autotrader_<name>.log` | Text | Full debug/info log (pipeline, bars, decisions) |
-| `trades_<name>.csv` | CSV | Completed trades (entry/exit, P&L, fees) |
-| `orders_<name>.csv` | CSV | All order results (fills, rejections) |
+### Warning/Error Summary
+
+At session end, warning and error counts from the session logger buffer are included in the post-session summary. This gives a quick health indicator without scrolling through session logs.
+
+## Live Broker Config Acquisition (#230)
+
+For `adapter_type='live'`, AutoTrader fetches broker config and account balance from the Kraken REST API at startup instead of relying solely on static JSON.
+
+### Startup Flow (Live Mode)
+
+```
+_create_broker_config(config, logger)
+  → adapter_type='live' detected
+  → KrakenConfigFetcher(credentials_path)
+  → GET /0/public/AssetPairs → symbol specs (tick_size, volume_min/max, digits)
+  → POST /0/private/Balance → account balance (overrides initial_balance)
+  → BrokerConfigFactory.from_serialized_dict(config_dict)
+  → return BrokerConfig with KrakenAdapter
+```
+
+**Fallback**: If the public API call fails, symbol specs fall back to the static JSON (`broker_config_path`). Balance fetch failure is **fatal** — a 0.0 balance in live mode is dangerous.
+
+**Mock mode**: Completely unchanged. No API calls, no credentials needed.
+
+### Credentials Cascade
+
+Credentials follow the project-wide `configs/` → `user_configs/` override pattern:
+
+1. `user_configs/credentials/kraken_credentials.json` — user override (gitignored, real keys)
+2. `configs/credentials/kraken_credentials.json` — tracked default (mock values)
+
+The `credentials_path` in the profile JSON is just the filename (e.g., `"kraken_credentials.json"`). The fetcher resolves the cascade automatically.
+
+```json
+{
+    "api_key": "YOUR_API_KEY",
+    "api_secret": "YOUR_API_SECRET"
+}
+```
+
+### API Authentication
+
+Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512(url_path + SHA256(nonce + post_data), base64_decode(api_secret)))`. The `nonce` is an increasing integer (millisecond timestamp).
+
+### Fee Handling
+
+Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rather than fetched from the API. Kraken fee tiers depend on 30-day rolling trading volume, which changes constantly. Static defaults are safer for risk management.
 
 ## Roadmap
 
 | Step | Issue | Description | Status |
 |------|-------|-------------|--------|
 | 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
-| 1a-β | #230 | Live Broker Config (Kraken API) | Planned |
+| 1a-β | #230 | Live Broker Config (Kraken API) | ✅ |
 | 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | Planned |
 | 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
 | — | #228 | Live Console UI (rich.live) | Planned |
