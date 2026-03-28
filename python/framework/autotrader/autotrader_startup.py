@@ -151,7 +151,7 @@ def setup_pipeline(
         (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor)
     """
     # === Phase 1: Broker Config ===
-    broker_config = _create_broker_config(config)
+    broker_config = _create_broker_config(config, logger)
 
     # === Phase 2: DecisionLogic Requirements ===
     decision_logic_factory = DecisionLogicFactory(logger=logger)
@@ -296,33 +296,98 @@ def setup_tick_source(
     return tick_source, tick_thread
 
 
-def _create_broker_config(config: AutoTraderConfig) -> BrokerConfig:
+def _create_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
     """
     Load broker config and attach appropriate adapter.
 
-    For adapter_type='mock': uses MockBrokerAdapter.
-    For adapter_type='live': loads from broker config JSON (future).
+    For adapter_type='mock': uses static JSON + MockBrokerAdapter.
+    For adapter_type='live': fetches from Kraken API (fallback to static JSON).
 
     Args:
         config: AutoTrader configuration
+        logger: ScenarioLogger for status messages
 
     Returns:
         BrokerConfig with adapter
     """
-    # Load base broker config from JSON
+    if config.adapter_type == 'live':
+        return _create_live_broker_config(config, logger)
+
+    # Mock path: load static JSON, wrap in MockBrokerAdapter
     broker_config = BrokerConfigFactory.build_broker_config(
         config.broker_config_path
     )
+    mock_adapter = MockBrokerAdapter(
+        broker_config=broker_config.adapter.broker_config
+    )
+    return BrokerConfig(
+        broker_type=broker_config.broker_type,
+        adapter=mock_adapter
+    )
 
-    if config.adapter_type == 'mock':
-        # Replace adapter with MockBrokerAdapter (live-capable)
-        mock_adapter = MockBrokerAdapter(
-            broker_config=broker_config.adapter.broker_config
-        )
-        return BrokerConfig(
-            broker_type=broker_config.broker_type,
-            adapter=mock_adapter
+
+def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
+    """
+    Fetch broker config from Kraken API, with fallback to static JSON.
+
+    Also fetches account balance and overrides config.account.initial_balance.
+    Balance fetch failure is fatal — a 0.0 balance in live mode is dangerous.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger for status messages
+
+    Returns:
+        BrokerConfig with KrakenAdapter
+    """
+    # Lazy import to avoid loading requests in mock mode
+    from python.configuration.autotrader.kraken_config_fetcher import KrakenConfigFetcher
+
+    if not config.credentials_path:
+        raise ValueError(
+            "credentials_path required for adapter_type='live'. "
+            "Add 'credentials_path' to profile JSON."
         )
 
-    # Future: adapter_type='live' → use adapter from broker config as-is
-    return broker_config
+    fetcher = KrakenConfigFetcher(
+        credentials_path=config.credentials_path,
+        logger=logger,
+    )
+
+    # === Fetch broker config (symbol specs) ===
+    try:
+        config_dict = fetcher.fetch_broker_config(
+            symbol=config.symbol,
+            broker_type=config.broker_type,
+        )
+        logger.info(f"💱 Live broker config fetched for {config.symbol}")
+    except Exception as e:
+        # Fallback to static JSON for symbol specs (rarely change)
+        logger.warning(
+            f"⚠️  API config fetch failed ({e}), "
+            f"falling back to static: {config.broker_config_path}"
+        )
+        config_dict = BrokerConfigFactory.build_broker_config(
+            config.broker_config_path
+        ).adapter.broker_config
+
+    # === Fetch account balance (no fallback — must succeed for live) ===
+    balance = fetcher.fetch_account_balance(config.account.currency)
+    if balance is None:
+        raise ConnectionError(
+            f"Could not fetch account balance for '{config.account.currency}' from Kraken API. "
+            f"Live trading requires a confirmed balance. "
+            f"Check API credentials and account permissions."
+        )
+
+    logger.info(
+        f"💰 Live balance: {balance} {config.account.currency} "
+        f"(profile default was {config.account.initial_balance})"
+    )
+    config.account.initial_balance = balance
+
+    # Build BrokerConfig from fetched dict
+    return BrokerConfigFactory.from_serialized_dict(
+        broker_type=BrokerType(config.broker_type),
+        config_dict=config_dict,
+    )

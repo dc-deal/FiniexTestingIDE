@@ -232,17 +232,17 @@ class AutotraderMain:
         """
         session_duration = time.monotonic() - self._session_start
 
-        # Collect warning/error counts from session logger before closing
-        warning_count = len(self._session_logger.get_buffer_warnings())
-        error_count = len(self._session_logger.get_buffer_errors())
+        # Collect warning/error counts + messages from session logger before closing
+        warnings = self._session_logger.get_buffer_warnings()
+        errors = self._session_logger.get_buffer_errors()
 
         result = AutoTraderResult(
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
             shutdown_mode=self._shutdown_mode,
-            warning_count=warning_count,
-            error_count=error_count,
+            warning_messages=[line for _, line in warnings],
+            error_messages=[line for _, line in errors],
         )
 
         if self._executor:

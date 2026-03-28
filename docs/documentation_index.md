@@ -83,3 +83,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Tick Processing Budget](tests/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
 | [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |
+| [AutoTrader Integration](tests/autotrader_integration_tests.md) | End-to-end mock session validation |

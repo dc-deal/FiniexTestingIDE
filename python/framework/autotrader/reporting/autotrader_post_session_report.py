@@ -44,7 +44,7 @@ class AutotraderPostSessionReport:
         self._global_logger.info(
             f"📋 Session summary written — "
             f"{result.ticks_processed} ticks, "
-            f"{result.warning_count} warnings, {result.error_count} errors"
+            f"{len(result.warning_messages)} warnings, {len(result.error_messages)} errors"
         )
 
     def _write_summary(self, result: AutoTraderResult) -> None:
@@ -84,23 +84,57 @@ class AutotraderPostSessionReport:
                 f"avg proc: {clipping.avg_processing_ms:.2f}ms)"
             )
 
+    _MAX_DETAIL_LINES = 10
+
     def _write_warnings_errors(self, result: AutoTraderResult) -> None:
         """
-        Write warning/error summary counts.
+        Write warning/error summary with first N messages shown.
 
         Args:
             result: Completed AutoTraderResult
         """
-        if result.warning_count > 0 or result.error_count > 0:
+        if len(result.warning_messages) > 0 or len(result.error_messages) > 0:
             self._summary_logger.info('-' * 60)
-            if result.warning_count > 0:
+
+            if len(result.warning_messages) > 0:
                 self._summary_logger.warning(
-                    f"  Warnings:       {result.warning_count}"
+                    f"  Warnings:       {len(result.warning_messages)}"
                 )
-            if result.error_count > 0:
+                self._write_message_preview(
+                    result.warning_messages, len(result.warning_messages), 'warning'
+                )
+
+            if len(result.error_messages) > 0:
                 self._summary_logger.error(
-                    f"  Errors:         {result.error_count}"
+                    f"  Errors:         {len(result.error_messages)}"
                 )
+                self._write_message_preview(
+                    result.error_messages, len(result.error_messages), 'error'
+                )
+
+    def _write_message_preview(
+        self, messages: list, total: int, level: str
+    ) -> None:
+        """
+        Show first N messages, then '... X more ...' if truncated.
+
+        Args:
+            messages: List of message strings
+            total: Total count (may exceed len(messages))
+            level: 'warning' or 'error' — determines logger method
+        """
+        log_fn = (
+            self._summary_logger.warning if level == 'warning'
+            else self._summary_logger.error
+        )
+        shown = messages[:self._MAX_DETAIL_LINES]
+        for msg in shown:
+            # Strip logger formatting (e.g., '[  0s 324ms] WARNING | message')
+            clean = msg.split(' | ', 1)[-1] if ' | ' in msg else msg
+            log_fn(f"    → {clean}")
+        remaining = total - len(shown)
+        if remaining > 0:
+            log_fn(f"    ... {remaining} more ...")
 
     def _write_output_locations(self, result: AutoTraderResult) -> None:
         """
