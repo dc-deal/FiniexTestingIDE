@@ -25,8 +25,8 @@ FUTURE NOTES:
 - Tick→MS Migration: Currently delays are tick-based. Post-V1 will use millisecond-based
   timing with tick timestamp mapping for more realistic execution simulation.
 - FiniexAutoTrader Integration: This API serves as the interface layer for both simulated
-  and live trading. When integrating FiniexAutoTrader, Decision Logics remain unchanged.
-  The executor is swapped via config: executor_mode = "simulation" | "live_dry_run"
+  and live trading. Decision Logics remain unchanged — only the executor is swapped:
+  Backtesting: TradeSimulator, AutoTrader: LiveTradeExecutor.
   Example: DecisionTradingApi(LiveTradeExecutor(broker_config, ...), required_types)
 """
 

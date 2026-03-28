@@ -148,6 +148,7 @@ data/test/import/finished/*
 
 # Log files
 *.log
+logs/
 
 # OS generated files
 .DS_Store

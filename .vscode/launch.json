@@ -276,6 +276,22 @@
             "justMyCode": false
         },
         // ====================================================
+        // 🤖 AUTOTRADER
+        // ====================================================
+        {
+            "name": "🤖 AutoTrader: BTCUSD Mock (replay)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/btcusd_mock.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
         // 🔍 DISCOVERIES
         // ====================================================
         // --- Cache Management ---
