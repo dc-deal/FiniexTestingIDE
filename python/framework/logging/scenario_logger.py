@@ -17,6 +17,8 @@ Usage:
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
@@ -39,7 +41,9 @@ class ScenarioLogger(AbstractLogger):
     def __init__(self,
                  scenario_set_name: str,
                  scenario_name: str,
-                 run_timestamp: datetime
+                 run_timestamp: datetime,
+                 log_root_override: Optional[Path] = None,
+                 file_name_prefix_override: Optional[str] = None
                  ):
         """
         Initialize scenario logger.
@@ -48,6 +52,8 @@ class ScenarioLogger(AbstractLogger):
             scenario_set_name: Scenario set name
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
             run_timestamp: Run timestamp string
+            log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
+            file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
         """
         super().__init__(name=scenario_name)
 
@@ -63,8 +69,8 @@ class ScenarioLogger(AbstractLogger):
 
         if self._file_logging_config.scenario_enabled:
             # Create scenario run directory
-            log_root = self._file_logging_config.scenario_log_root_path
-            prefix = self._file_logging_config.scenario_file_name_prefix
+            log_root = log_root_override if log_root_override else self._file_logging_config.scenario_log_root_path
+            prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
             self.run_dir = log_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 

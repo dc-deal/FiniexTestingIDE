@@ -22,6 +22,12 @@
 | [Config Cascade](config_cascade_guide.md) | Multi-level config cascade (app → global → scenario), parameter overrides |
 | [Broker Config](broker_config_guide.md) | Multi-broker setup (MT5, Kraken), fees, symbol specifications |
 
+## AutoTrader (Live Trading)
+
+| Document | Description |
+|----------|-------------|
+| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Pipeline, threading model, config, tick sources, clipping monitor |
+
 ## Architecture
 
 | Document | Description |

@@ -204,7 +204,6 @@ class ProcessScenarioConfig:
     initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
     seeds: Dict[str, Any] = field(default_factory=dict)
-    executor_mode: str = 'simulation'  # "simulation" | "live_dry_run"
 
     # === STRESS TEST CONFIG ===
     stress_test_config: StressTestConfig = field(
@@ -284,8 +283,6 @@ class ProcessScenarioConfig:
             'initial_balance')
         seeds = scenario.trade_simulator_config.get(
             'seeds')
-        executor_mode = scenario.trade_simulator_config.get(
-            'executor_mode', 'simulation')
 
         # Latency simulation ranges (ms-based)
         inbound_latency_min_ms = scenario.trade_simulator_config.get(
@@ -336,7 +333,6 @@ class ProcessScenarioConfig:
             initial_balance=initial_balance,
             account_currency=account_currency,
             seeds=seeds,
-            executor_mode=executor_mode,
             stress_test_config=stress_test_config,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),

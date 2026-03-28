@@ -1,0 +1,326 @@
+# AutoTrader Architecture
+
+## Overview
+
+FiniexAutoTrader is the live trading runner — the live equivalent of the backtesting `process_tick_loop`. It connects tick sources through workers and decision logic to the `LiveTradeExecutor`, using the same algorithm classes as backtesting.
+
+**Design constraint:** Workers and DecisionLogic must not know they are running live. Same classes, same interfaces. Only the runner and executor change.
+
+## Threading Model (8.a)
+
+Synchronous algo processing in the main thread. Tick source in a separate thread. Communication via `queue.Queue` (stdlib, thread-safe).
+
+```
+Thread 1 (Tick Source):            Thread 2 (Main — Algo):
+──────────────────────            ────────────────────────
+while running:                    while running:
+  tick = source.next_tick()         tick = queue.get(timeout=1)
+  queue.put(tick)  ──────────→
+                                    timing_start = perf_counter_ns()
+                                    executor.on_tick(tick)
+                                    bars = bar_controller.process_tick(tick)
+                                    bar_history = get_all_bar_history()
+                                    decision = orchestrator.process_tick(...)
+                                    decision_logic.execute_decision(...)
+                                    elapsed = perf_counter_ns() - timing_start
+                                    clipping_monitor.record(elapsed, tick_delta)
+```
+
+**Why sync in main thread?** Workers and DecisionLogic are not async-safe. The queue pattern avoids "async infection" — the tick source handles I/O, the algo loop stays synchronous.
+
+### Queue Performance
+
+`queue.Queue.put()` → `queue.get()` latency: **~1-5 µs**. BTCUSD tick interval: ~5-50 ms. The queue is ~1000x faster than the tick rate — no bottleneck. Both threads sleep efficiently when idle (Lock + Condition, no busy-wait).
+
+### Why Not Async? — "Async Infection"
+
+If the tick source were `async` in the same thread, every downstream caller would need to become `async` too:
+
+```python
+async def run_tick_loop():
+    tick = await websocket.recv()             # async!
+    result = await worker.process_tick(tick)   # Worker must become async!
+    decision = await logic.execute(result)     # Logic must become async!
+    await executor.send_order(decision)        # Executor must become async!
+```
+
+This breaks the design constraint: Workers and DecisionLogic must be **identical** classes in backtesting and live. The queue stops the infection — Thread 1 can use `await websocket.recv()` internally (#232), Thread 2 only sees synchronous `queue.get()`.
+
+## Tick Sources vs Broker Adapters — Separation of Concerns
+
+Tick sources and broker adapters are **intentionally separate abstractions**, even though both connect to the same exchange (e.g., Kraken). This is an explicit design decision, not an accident of file layout.
+
+### Why They Are Separate
+
+| Aspect | Broker Adapter | Tick Source |
+|--------|---------------|------------|
+| **Responsibility** | Order execution, symbol specs, fees, margin | Continuous tick delivery |
+| **Protocol** | REST API (request/response) | WebSocket (continuous stream) |
+| **Threading** | Synchronous, called from main thread | Own daemon thread, pushes to queue |
+| **Lifecycle** | On-demand (called when executor needs it) | Permanent (runs entire session) |
+| **Auth** | Required for orders (API key/secret) | Often public (market data) |
+| **Error handling** | Exception → OrderResult.REJECTED | Reconnect loop with backoff |
+| **Used by** | Backtesting + AutoTrader | AutoTrader only |
+
+### Independent Combinability
+
+Keeping them separate enables mix-and-match testing:
+
+| Tick Source | Adapter | Use Case |
+|---|---|---|
+| `MockTickSource` | `MockBrokerAdapter` | Full pipeline test (no external deps) |
+| `MockTickSource` | `KrakenAdapter` | Test order execution with replay data |
+| `KrakenTickSource` | `MockBrokerAdapter` | Test WebSocket feed without real orders |
+| `KrakenTickSource` | `KrakenAdapter` | Production live trading |
+
+Merging them into one class would lose this combinability.
+
+### Industry Reference
+
+Institutional systems (Bloomberg, Refinitiv, FIX protocol) always separate Market Data Gateway from Order Gateway — different latency requirements, protocols, and failure modes. Retail platforms (MT5, cTrader) bundle them in the UI but separate them internally.
+
+### How They Connect
+
+The config maps each independently, `autotrader_startup.py` wires them together:
+
+```json
+{
+  "broker_type": "kraken_spot",        // → KrakenAdapter (via BrokerConfigFactory)
+  "tick_source": { "type": "kraken" }  // → KrakenTickSource (via setup_tick_source)
+}
+```
+
+`broker_type` is intentionally broader than "adapter" — it selects the full broker configuration (fees, symbol specs, market type, leverage) through `BrokerConfigFactory` and `market_config.json`. The adapter is one part of that. `tick_source.type` maps directly to a `TickSource` class.
+
+### Directory Structure Rationale
+
+```
+python/framework/
+  trading_env/              ← Execution layer (backtesting + live)
+    adapters/               ← Broker ops — used by BOTH contexts
+    live/                   ← LiveTradeExecutor — AutoTrader only
+    simulation/             ← TradeSimulator — backtesting only
+  autotrader/               ← Live runner application
+    reporting/              ← Session reports (console, CSV) — AutoTrader only
+    tick_sources/           ← Data feeds — AutoTrader only
+```
+
+`trading_env/` is the **framework layer** — shared between backtesting and AutoTrader. `autotrader/` is the **application layer** — AutoTrader only. Tick sources live in `autotrader/` because they are exclusively a live concern. Moving them into `trading_env/adapters/` would leak live-only components into the shared framework.
+
+## Pipeline Architecture
+
+```
+    ┌─────────────────────┐
+    │  AutoTraderConfig    │  ← configs/autotrader_profiles/btcusd_mock.json
+    └─────────┬───────────┘
+              │
+    ┌─────────▼───────────┐
+    │ autotrader_startup   │  ← creates all pipeline objects
+    │ setup_pipeline()     │     (mirrors process_startup_preparation)
+    └─────────┬───────────┘
+              │ creates
+              ▼
+    ╔═════════════════════════════════════════════════════════╗
+    ║  RUNTIME                                                ║
+    ║                                                         ║
+    ║  Thread 1              Thread 2 (Main — Algo Loop)      ║
+    ║  ┌────────────┐        ┌─────────────────────────────┐  ║
+    ║  │ TickSource │  queue │ 1. executor.on_tick()       │  ║
+    ║  │ (mock or   │───────►│ 2. bar_controller           │  ║
+    ║  │  websocket)│ Queue  │ 3. workers → decision       │  ║
+    ║  └────────────┘        │ 4. decision_logic → executor│  ║
+    ║                        │ 5. clipping_monitor.record()│  ║
+    ║                        └─────────────────────────────┘  ║
+    ║                          │            │                 ║
+    ║              ┌───────────┘            │                 ║
+    ║              ▼                        ▼                 ║
+    ║  ┌──────────────────┐   ┌──────────────────────┐        ║
+    ║  │ LiveTradeExecutor│   │ ClippingMonitor      │        ║
+    ║  │ + MockAdapter    │   │ (per-tick timing)    │        ║
+    ║  └──────────────────┘   └──────────────────────┘        ║
+    ╚═════════════════════════════════════════════════════════╝
+```
+
+## Session Lifecycle
+
+### Startup
+
+1. Load `AutoTraderConfig` from JSON
+2. `setup_pipeline()` creates all objects (11 phases, mirrors backtesting)
+3. `setup_tick_source()` starts tick source thread
+4. Enter tick loop
+
+### Tick Loop
+
+Each tick follows the same 5-step path as backtesting:
+
+1. **Broker Path** — `executor.on_tick(tick)` — pending order processing, price updates
+2. **Bar Rendering** — `bar_controller.process_tick(tick)` — aggregate ticks into OHLC bars
+3. **Bar History** — `bar_controller.get_all_bar_history()` — retrieve history for workers
+4. **Worker + Decision** — `orchestrator.process_tick()` → decision
+5. **Order Execution** — `decision_logic.execute_decision()` → orders via executor
+
+After each tick: `clipping_monitor.record_tick()` measures processing time.
+
+### Shutdown
+
+Two modes:
+
+| Mode | Trigger | Behavior |
+|------|---------|----------|
+| **Normal** | Tick source exhausted, SIGTERM | Close positions, cancel orders, collect full stats |
+| **Emergency** | SIGINT (Ctrl+C) | Immediate close, best-effort stats |
+
+Signal handling: First Ctrl+C → normal shutdown. Second Ctrl+C within 3s → force exit.
+
+## Configuration
+
+Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT scenario-set based.
+
+```json
+{
+  "name": "btcusd_mock",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
+  "adapter_type": "mock",
+  "strategy_config": { ... },
+  "account": { "initial_balance": 10000.0, "currency": "USD" },
+  "tick_source": { "type": "mock", "parquet_path": "...", "mode": "replay" },
+  "execution": { "parallel_workers": false, "bar_max_history": 1000 },
+  "clipping_monitor": { "report_interval_s": 60.0, "strategy": "queue_all" }
+}
+```
+
+| Section | Purpose | Notes |
+|---------|---------|-------|
+| `name` | Session name | Used for log directory (`logs/autotrader/<name>/`) |
+| `symbol` | Trading pair | Single symbol per session |
+| `broker_type` | Broker identifier | Maps to MarketType via `market_config.json` |
+| `broker_config_path` | Broker JSON | Fees, symbol specs, leverage |
+| `adapter_type` | `mock` or `live` | Mock: no credentials needed |
+| `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
+| `account` | Balance + currency | Live: overridden by API fetch (#230) |
+| `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
+| `execution` | Runtime parameters | Standalone — no cascade from app_config |
+| `clipping_monitor` | Timing config | Strategy: `queue_all` or `drop_stale` |
+
+**No config cascade.** Unlike backtesting (app_config → scenario_set → scenario), AutoTrader uses a flat, standalone config. One session, one config.
+
+## Tick Source Abstraction
+
+`AbstractTickSource` defines the interface. Implementations:
+
+| Source | Status | Description |
+|--------|--------|-------------|
+| `MockTickSource` | ✅ Built | Parquet replay (replay / realtime modes) |
+| `KrakenTickSource` | Planned (#232) | WebSocket v2, auto-reconnect |
+
+MockTickSource modes:
+- **replay** (default): Ticks as fast as possible — functional testing
+- **realtime**: `time.sleep(delta)` between ticks — clipping behavior testing
+
+## Clipping Monitor (#197)
+
+**Core question:** Can the algo process ticks fast enough, or is it falling behind the market?
+
+Clipping occurs when tick processing time exceeds the inter-tick arrival interval — the next tick arrives before the current one is finished.
+
+```
+Tick N arrives        Tick N+1 arrives
+    │                     │
+    ├── processing_ms ────┤
+    │                     │
+    ├── tick_delta_ms ──► │
+    │                     │
+    If processing_ms > tick_delta_ms → CLIPPED (stale by the difference)
+```
+
+### Metrics
+
+| Metric | What it measures | Why it matters |
+|--------|-----------------|----------------|
+| `processing_ms` | Algo time per tick (Workers + Decision + Execution) | Baseline — how fast are we? |
+| `tick_delta_ms` | Market-side interval between consecutive ticks | How much time did we have? |
+| `stale_ms` | Overshoot: `processing_ms - tick_delta_ms` | Severity — 1ms late vs. 500ms late |
+| `queue_depth` | Ticks waiting in queue (`queue.qsize()`) | Growing queue = falling behind permanently |
+| `clipping_ratio` | Fraction of clipped ticks over session | Overall health: 0.1% = fine, 30% = problem |
+
+All metrics are tracked in two scopes: **session totals** (end-of-session summary) and **interval** (periodic report every N seconds, then reset). This shows *when* clipping occurs, not just *if*.
+
+### Phases
+
+| Phase | What | Status |
+|-------|------|--------|
+| 1 | Per-tick processing time (`perf_counter_ns`) | ✅ |
+| 2 | Clipping detection (processing > tick delta) | ✅ |
+| 3 | Counters (ticks_clipped, max_stale_ms, avg) | ✅ |
+| 4 | Periodic reports (configurable interval) | ✅ |
+| 5 | Queue depth monitoring (`queue.qsize()`) | ✅ |
+| 6 | Strategy selection (queue_all / drop_stale) | ✅ Config, drop_stale execution in #232 |
+
+## File Structure
+
+```
+python/framework/autotrader/
+  autotrader_main.py             Runner: run(), shutdown, signal handling
+  autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
+  autotrader_startup.py          Pipeline object creation (11 phases)
+  live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
+  reporting/
+    autotrader_post_session_report.py   Console + file log summary
+    autotrader_csv_file_report.py       Trade/order CSV export
+  tick_sources/
+    abstract_tick_source.py      AbstractTickSource ABC
+    mock_tick_source.py          Parquet replay tick source
+
+python/configuration/
+  autotrader_config_loader.py    JSON → AutoTraderConfig
+
+python/framework/types/autotrader_types/
+  autotrader_config_types.py     AutoTraderConfig, sub-configs
+  autotrader_result_types.py     AutoTraderResult
+  clipping_monitor_types.py      ClippingReport, ClippingSessionSummary
+
+python/cli/
+  autotrader_cli.py              CLI: run --config
+
+configs/autotrader_profiles/
+  btcusd_mock.json               Default config (BTCUSD mock)
+```
+
+## Usage
+
+```bash
+# CLI
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btcusd_mock.json
+
+# VS Code launch.json
+# 🤖 AutoTrader: BTCUSD Mock (replay)
+```
+
+## Logging
+
+- Logger: `ScenarioLogger` (reused, provides tick-context, custom log root via `log_root_override`)
+- Directory: `logs/autotrader/<name>/<session_timestamp>/`
+- Separate from backtesting logs (`logs/scenario_sets/`)
+
+Output files per session:
+
+| File | Format | Content |
+|------|--------|---------|
+| `autotrader_<name>.log` | Text | Full debug/info log (pipeline, bars, decisions) |
+| `trades_<name>.csv` | CSV | Completed trades (entry/exit, P&L, fees) |
+| `orders_<name>.csv` | CSV | All order results (fills, rejections) |
+
+## Roadmap
+
+| Step | Issue | Description | Status |
+|------|-------|-------------|--------|
+| 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
+| 1a-β | #230 | Live Broker Config (Kraken API) | Planned |
+| 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | Planned |
+| 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
+| — | #228 | Live Console UI (rich.live) | Planned |
+| 3 | #133 | KrakenAdapter Tier 3 (execution) | Planned |
+| 4 | #133 | Active Order Lifecycle Lifting | Planned |

@@ -1,7 +1,6 @@
 from typing import List
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
@@ -12,12 +11,12 @@ def prepare_trade_executor_for_scenario(
     config: ProcessScenarioConfig,
     required_order_types: List[OrderType],
     shared_data: ProcessDataPackage
-) -> AbstractTradeExecutor:
+) -> TradeSimulator:
     """
-    Create isolated trade executor for a scenario.
+    Create isolated TradeSimulator for a backtesting scenario.
 
-    Currently only supports "simulation" mode (TradeSimulator).
-    Horizon 2 will add "live" mode (LiveTradeExecutor).
+    This factory is for backtesting only (subprocess context).
+    AutoTrader uses autotrader_startup.py → build_live_executor() directly.
 
     Args:
         logger: ScenarioLogger instance
@@ -26,9 +25,8 @@ def prepare_trade_executor_for_scenario(
         shared_data: Shared data package
 
     Returns:
-        AbstractTradeExecutor instance
+        TradeSimulator instance
     """
-    # Create broker config
     # Re-hydrate broker config from shared data (no file I/O!)
     broker_config = BrokerConfigFactory.from_serialized_dict(
         broker_type=config.broker_type,
@@ -36,13 +34,9 @@ def prepare_trade_executor_for_scenario(
             config.broker_type, None)
     )
 
-    # Determine executor mode from config
-    executor_mode = ExecutorMode(config.executor_mode)
-
     # Log configuration
     logger.info(
         f"💱 Trade Executor Configuration:\n"
-        f"   Mode: {executor_mode.value}\n"
         f"   Symbol: {config.symbol}\n"
         f"   Account Currency: {config.account_currency}\n"
         f"   Initial Balance: {config.initial_balance}"
@@ -54,22 +48,15 @@ def prepare_trade_executor_for_scenario(
             f"⚡ Stress Test Configuration: ACTIVE"
         )
 
-    if executor_mode == ExecutorMode.SIMULATION:
-        return TradeSimulator(
-            broker_config=broker_config,
-            initial_balance=config.initial_balance,
-            account_currency=config.account_currency,
-            logger=logger,
-            seeds=config.seeds,
-            stress_test_config=config.stress_test_config,
-            order_history_max=config.order_history_max,
-            trade_history_max=config.trade_history_max,
-            inbound_latency_min_ms=config.inbound_latency_min_ms,
-            inbound_latency_max_ms=config.inbound_latency_max_ms,
-        )
-
-    raise ValueError(
-        f"Unknown executor_mode: '{config.executor_mode}'. "
-        f"Supported: 'simulation'. "
-        f"Live trading will be available in Horizon 2."
+    return TradeSimulator(
+        broker_config=broker_config,
+        initial_balance=config.initial_balance,
+        account_currency=config.account_currency,
+        logger=logger,
+        seeds=config.seeds,
+        stress_test_config=config.stress_test_config,
+        order_history_max=config.order_history_max,
+        trade_history_max=config.trade_history_max,
+        inbound_latency_min_ms=config.inbound_latency_min_ms,
+        inbound_latency_max_ms=config.inbound_latency_max_ms,
     )
