@@ -224,6 +224,21 @@ class ScenarioLogger(AbstractLogger):
         if self.file_logger:
             self.file_logger.close()
 
+    def swap_file_logger(self, new_file_logger: FileLogger) -> None:
+        """
+        Replace the current file logger with a new one.
+
+        Used by AutoTrader for daily session log rotation:
+        when the date changes, the tick loop creates a new FileLogger
+        pointing to a new day's file and swaps it in.
+
+        Args:
+            new_file_logger: New FileLogger instance (already opened)
+        """
+        if self.file_logger:
+            self.file_logger.close()
+        self.file_logger = new_file_logger
+
     def get_elapsed_time_seconds(self) -> float:
         """
         Get elapsed time since scenario start in seconds.

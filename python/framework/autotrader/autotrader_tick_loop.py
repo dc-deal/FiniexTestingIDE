@@ -4,11 +4,17 @@ Main tick processing loop for live trading (Threading model 8.a).
 
 Runs in the main thread, pulls ticks from queue, processes through:
 executor.on_tick → bar_controller → workers → decision_logic.
+
+Session log rotates daily: session_logs/autotrader_session_YYYYMMDD.log
 """
 
 import queue
 import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
 
+from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -23,6 +29,9 @@ class AutotraderTickLoop:
     processes each tick through the full algo pipeline:
     on_tick → bars → workers → decision → clipping monitor.
 
+    Session log rotates at midnight UTC — each day gets its own file
+    in session_logs/ to prevent unbounded log growth on 24/7 sessions.
+
     Args:
         config: AutoTrader configuration
         tick_queue: Thread-safe queue receiving ticks from tick source
@@ -32,7 +41,8 @@ class AutotraderTickLoop:
         worker_orchestrator: WorkerOrchestrator instance
         decision_logic: DecisionLogic instance
         clipping_monitor: LiveClippingMonitor instance
-        logger: ScenarioLogger instance
+        logger: ScenarioLogger instance (session logger)
+        run_dir: Session run directory (for log rotation)
     """
 
     def __init__(
@@ -46,6 +56,7 @@ class AutotraderTickLoop:
         decision_logic,
         clipping_monitor: LiveClippingMonitor,
         logger: ScenarioLogger,
+        run_dir: Optional[Path] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -56,7 +67,15 @@ class AutotraderTickLoop:
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
         self._logger = logger
+        self._run_dir = run_dir
         self._running = False
+
+        # Daily rotation state
+        self._current_log_date: Optional[str] = None
+        # Track placeholder file for cleanup on first tick
+        self._initial_placeholder_path: Optional[Path] = None
+        if self._logger.file_logger:
+            self._initial_placeholder_path = self._logger.file_logger.log_file_path
 
     def stop(self) -> None:
         """Signal the tick loop to stop. Thread-safe."""
@@ -81,6 +100,11 @@ class AutotraderTickLoop:
         ticks_clipped = 0
         prev_msc: int = 0
 
+        # Daily rotation: date initialized from first tick (not wall clock)
+        # This prevents spurious rotation in mock/replay mode where tick
+        # timestamps differ from current date.
+        self._current_log_date = None
+
         while self._running:
             try:
                 tick = self._tick_queue.get(timeout=1.0)
@@ -95,6 +119,9 @@ class AutotraderTickLoop:
             if tick is None:
                 self._logger.info('📭 Tick source signaled end — ending session')
                 break
+
+            # === DAILY LOG ROTATION ===
+            self._check_daily_rotation(tick)
 
             # === TIMING START ===
             tick_start_ns = time.perf_counter_ns()
@@ -153,3 +180,50 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _check_daily_rotation(self, tick) -> None:
+        """
+        Check if the tick date differs from the current log file date.
+
+        On first tick: set initial date and rotate to tick-date-based file
+        (startup creates a file from wall clock, which may differ in replay mode).
+        On subsequent ticks: rotate when midnight UTC is crossed.
+
+        Args:
+            tick: Current tick data
+        """
+        if not self._run_dir:
+            return
+
+        # Derive date from tick timestamp (milliseconds since epoch)
+        tick_date = datetime.fromtimestamp(
+            tick.time_msc / 1000.0, tz=timezone.utc
+        ).strftime('%Y%m%d')
+
+        if self._current_log_date is None:
+            # First tick — set initial date and ensure file matches tick date
+            log_level = self._logger.file_logger.log_level if self._logger.file_logger else 'INFO'
+            new_file_logger = create_session_file_logger(
+                self._run_dir, tick_date, log_level
+            )
+            self._logger.swap_file_logger(new_file_logger)
+            self._current_log_date = tick_date
+            # Remove placeholder file created during startup
+            if self._initial_placeholder_path and self._initial_placeholder_path.exists():
+                self._initial_placeholder_path.unlink()
+                self._initial_placeholder_path = None
+            return
+
+        if tick_date != self._current_log_date:
+            self._logger.info(
+                f"📅 Date change detected: {self._current_log_date} → {tick_date} — rotating session log"
+            )
+            log_level = self._logger.file_logger.log_level if self._logger.file_logger else 'INFO'
+            new_file_logger = create_session_file_logger(
+                self._run_dir, tick_date, log_level
+            )
+            self._logger.swap_file_logger(new_file_logger)
+            self._current_log_date = tick_date
+            self._logger.info(
+                f"📅 Session log rotated to autotrader_session_{tick_date}.log"
+            )

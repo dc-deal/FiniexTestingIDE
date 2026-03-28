@@ -33,6 +33,8 @@ class AutoTraderResult:
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
         shutdown_mode: How the session ended ('normal' or 'emergency')
+        warning_count: Total warnings logged during session
+        error_count: Total errors logged during session
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -45,3 +47,5 @@ class AutoTraderResult:
     decision_statistics: DecisionLogicStats = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     shutdown_mode: str = 'normal'
+    warning_count: int = 0
+    error_count: int = 0

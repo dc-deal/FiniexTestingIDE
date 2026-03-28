@@ -7,7 +7,6 @@ import csv
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -18,17 +17,15 @@ class AutotraderCsvFileReport:
     Writes trade and order CSV logs to the session log directory.
 
     Creates two files per session:
-    - trades_<session_name>.csv — completed trade records (P&L, fees, entry/exit)
-    - orders_<session_name>.csv — all order results (fills, rejections)
+    - autotrader_trades.csv — completed trade records (P&L, fees, entry/exit)
+    - autotrader_orders.csv — all order results (fills, rejections)
 
     Args:
-        logger: ScenarioLogger instance (for run_dir and log messages)
-        session_name: Config name used in file names (e.g., 'btcusd_mock')
+        run_dir: Session run directory (e.g., logs/autotrader/btcusd_mock/<timestamp>/)
     """
 
-    def __init__(self, logger: ScenarioLogger, session_name: str):
-        self._logger = logger
-        self._session_name = session_name
+    def __init__(self, run_dir: Optional[Path]):
+        self._run_dir = run_dir
 
     def write(self, result: AutoTraderResult) -> None:
         """
@@ -37,19 +34,18 @@ class AutotraderCsvFileReport:
         Args:
             result: Completed AutoTraderResult
         """
-        run_dir: Optional[Path] = self._logger.get_log_dir()
-        if run_dir is None:
+        if self._run_dir is None:
             return
 
         if result.trade_history:
             self._write_trades_csv(
-                run_dir / f'trades_{self._session_name}.csv',
+                self._run_dir / 'autotrader_trades.csv',
                 result.trade_history
             )
 
         if result.order_history:
             self._write_orders_csv(
-                run_dir / f'orders_{self._session_name}.csv',
+                self._run_dir / 'autotrader_orders.csv',
                 result.order_history
             )
 
@@ -99,9 +95,8 @@ class AutotraderCsvFileReport:
                         t.account_currency,
                         t.comment,
                     ])
-            self._logger.info(f"📄 Trade log written: {path} ({len(trades)} trades)")
         except Exception as e:
-            self._logger.error(f"Failed to write trade CSV: {e}")
+            print(f"Warning: Failed to write trade CSV: {e}")
 
     def _write_orders_csv(self, path: Path, orders: List[OrderResult]) -> None:
         """
@@ -134,6 +129,5 @@ class AutotraderCsvFileReport:
                         o.rejection_message,
                         o.broker_order_id or '',
                     ])
-            self._logger.info(f"📄 Order log written: {path} ({len(orders)} orders)")
         except Exception as e:
-            self._logger.error(f"Failed to write order CSV: {e}")
+            print(f"Warning: Failed to write order CSV: {e}")

@@ -7,7 +7,9 @@ Mirrors process_startup_preparation.py for backtesting.
 
 import queue
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
@@ -17,6 +19,7 @@ from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.testing.mock_adapter import MockBrokerAdapter
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
@@ -28,30 +31,97 @@ from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-def create_autotrader_logger(
+def create_autotrader_loggers(
     config: AutoTraderConfig,
-    run_timestamp: 'datetime'
-) -> ScenarioLogger:
+    run_timestamp: datetime
+) -> Tuple[ScenarioLogger, ScenarioLogger, ScenarioLogger, Path]:
     """
-    Create logger for AutoTrader session.
+    Create all loggers for an AutoTrader session.
 
-    Uses ScenarioLogger with custom log root: logs/autotrader/<name>/<timestamp>/
-    Separate from backtesting log tree (logs/scenario_sets/).
+    Three separate loggers with distinct purposes:
+    - global: Startup phases, shutdown, errors (file + direct console print)
+    - session: Per-tick processing, daily rotated in session_logs/ subdir
+    - summary: Post-session summary (file + console flush)
+
+    Log directory layout:
+        logs/autotrader/<name>/<timestamp>/
+            autotrader_global.log
+            autotrader_summary.log
+            session_logs/
+                autotrader_session_YYYYMMDD.log
+            autotrader_trades.csv
+            autotrader_orders.csv
 
     Args:
         config: AutoTrader configuration
-        run_timestamp: Session start timestamp
+        run_timestamp: Session start timestamp (UTC)
 
     Returns:
-        ScenarioLogger instance
+        (global_logger, session_logger, summary_logger, run_dir)
     """
     session_name = config.name or f'{config.symbol}_{config.adapter_type}'
-    return ScenarioLogger(
+    log_root = Path('logs/autotrader')
+
+    # Global logger — startup/shutdown/errors
+    global_logger = ScenarioLogger(
         scenario_set_name=session_name,
-        scenario_name=session_name,
+        scenario_name='global',
         run_timestamp=run_timestamp,
-        log_root_override=Path('logs/autotrader'),
+        log_root_override=log_root,
         file_name_prefix_override='autotrader'
+    )
+
+    run_dir = global_logger.get_log_dir()
+
+    # Summary logger — post-session report (shares run_dir with global)
+    summary_logger = ScenarioLogger(
+        scenario_set_name=session_name,
+        scenario_name='summary',
+        run_timestamp=run_timestamp,
+        log_root_override=log_root,
+        file_name_prefix_override='autotrader'
+    )
+
+    # Session logger — tick loop, daily rotated in session_logs/ subdir
+    # Initial file logger is a placeholder — the tick loop swaps it on
+    # the first tick to match the tick's date (avoids wallclock vs replay mismatch).
+    session_logger = ScenarioLogger(
+        scenario_set_name=session_name,
+        scenario_name='session',
+        run_timestamp=run_timestamp,
+        log_root_override=log_root,
+        file_name_prefix_override='autotrader'
+    )
+
+    # Create session_logs/ subdir (tick loop will create files there)
+    if run_dir:
+        session_logs_dir = run_dir / 'session_logs'
+        session_logs_dir.mkdir(parents=True, exist_ok=True)
+
+    return global_logger, session_logger, summary_logger, run_dir
+
+
+def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> FileLogger:
+    """
+    Create a new FileLogger for a specific day's session log.
+
+    Used for daily rotation: when the tick date changes, the tick loop
+    calls this to get a fresh FileLogger for the new day.
+
+    Args:
+        run_dir: Session run directory (contains session_logs/ subdir)
+        date_suffix: Date string for filename (YYYYMMDD)
+        log_level: Log level for the file logger
+
+    Returns:
+        FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
+    """
+    session_logs_dir = run_dir / 'session_logs'
+    session_logs_dir.mkdir(parents=True, exist_ok=True)
+    return FileLogger(
+        log_filename=f'autotrader_session_{date_suffix}.log',
+        file_path=session_logs_dir,
+        log_level=log_level
     )
 
 

@@ -274,7 +274,7 @@ python/framework/autotrader/
     abstract_tick_source.py      AbstractTickSource ABC
     mock_tick_source.py          Parquet replay tick source
 
-python/configuration/
+python/configuration/autotrader/
   autotrader_config_loader.py    JSON → AutoTraderConfig
 
 python/framework/types/autotrader_types/
@@ -301,17 +301,32 @@ python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btc
 
 ## Logging
 
-- Logger: `ScenarioLogger` (reused, provides tick-context, custom log root via `log_root_override`)
+Three `ScenarioLogger` instances per session, each with a distinct purpose:
+
+| Logger | File | Purpose | Console |
+|--------|------|---------|---------|
+| Global | `autotrader_global.log` | Startup phases, shutdown, cross-cutting errors | Direct `print()` during startup |
+| Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
+| Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
+
 - Directory: `logs/autotrader/<name>/<session_timestamp>/`
 - Separate from backtesting logs (`logs/scenario_sets/`)
+- Session log **rotates daily** at midnight UTC — prevents unbounded file growth on 24/7 sessions
 
-Output files per session:
+```
+logs/autotrader/btcusd_mock/20260328_105127/
+  autotrader_global.log           Startup, shutdown, errors
+  autotrader_summary.log          Post-session summary
+  session_logs/
+    autotrader_session_20260328.log  Day 1 tick processing
+    autotrader_session_20260329.log  Day 2 (if session spans midnight)
+  autotrader_trades.csv           Completed trades (P&L, fees)
+  autotrader_orders.csv           All order results (fills, rejections)
+```
 
-| File | Format | Content |
-|------|--------|---------|
-| `autotrader_<name>.log` | Text | Full debug/info log (pipeline, bars, decisions) |
-| `trades_<name>.csv` | CSV | Completed trades (entry/exit, P&L, fees) |
-| `orders_<name>.csv` | CSV | All order results (fills, rejections) |
+### Warning/Error Summary
+
+At session end, warning and error counts from the session logger buffer are included in the post-session summary. This gives a quick health indicator without scrolling through session logs.
 
 ## Roadmap
 
