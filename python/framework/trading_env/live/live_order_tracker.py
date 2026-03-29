@@ -208,8 +208,9 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             )
             return None
 
+        price_str = f"{fill_price:.5f}" if fill_price is not None else 'N/A'
         self.logger.info(
-            f"Order filled: {order_id} at {fill_price:.5f} "
+            f"Order filled: {order_id} at {price_str} "
             f"({filled_lots} lots, broker_ref={broker_ref})"
         )
 
@@ -277,6 +278,41 @@ class LiveOrderTracker(AbstractPendingOrderManager):
                 timed_out.append(pending)
 
         return timed_out
+
+    # ============================================
+    # Broker Reference Update
+    # ============================================
+
+    def update_broker_ref(self, old_ref: str, new_ref: str) -> bool:
+        """
+        Update broker_ref after broker-side order replacement (e.g., Kraken EditOrder returns new txid).
+
+        Args:
+            old_ref: Previous broker reference (now invalid)
+            new_ref: New broker reference from broker
+
+        Returns:
+            True if old_ref was found and updated, False otherwise
+        """
+        order_id = self._broker_ref_index.pop(old_ref, None)
+        if order_id is None:
+            self.logger.warning(
+                f"update_broker_ref: old_ref={old_ref} not found in index"
+            )
+            return False
+
+        # Update index with new ref
+        self._broker_ref_index[new_ref] = order_id
+
+        # Update the PendingOrder itself
+        pending = self._pending_orders.get(order_id)
+        if pending is not None:
+            pending.broker_ref = new_ref
+
+        self.logger.info(
+            f"Broker ref updated: {order_id} ({old_ref} → {new_ref})"
+        )
+        return True
 
     # ============================================
     # Broker Reference Lookup

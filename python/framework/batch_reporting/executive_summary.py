@@ -403,6 +403,9 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             if latency_line:
                 print(latency_line)
 
+        # Order pipeline status (always visible)
+        self._render_order_pipeline(renderer, pending_stats)
+
         print("")
         print(
             f"Max Drawdown:       {format_currency_simple(abs(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
@@ -435,39 +438,43 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             min_val = pending_stats.min_latency_ms
             max_val = pending_stats.max_latency_ms
             line = f"Avg Latency:        {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"
-            line += ExecutiveSummary._format_anomaly_suffix_full(
-                renderer, pending_stats)
+            # Anomaly suffix (force-closed, timed out)
+            anomaly_parts = []
+            if pending_stats.total_force_closed > 0:
+                anomaly_parts.append(
+                    f"{pending_stats.total_force_closed} force-closed")
+            if pending_stats.total_timed_out > 0:
+                anomaly_parts.append(
+                    f"{pending_stats.total_timed_out} timed out")
+            if anomaly_parts:
+                line += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
             return renderer.green(line)
 
         return ""
 
     @staticmethod
-    def _format_anomaly_suffix_full(
+    def _render_order_pipeline(
         renderer: ConsoleRenderer,
         pending_stats: PendingOrderStats
-    ) -> str:
-        """Format full anomaly + active order suffix for executive summary."""
-        result = ""
-        # Anomalies (yellow)
-        anomaly_parts = []
-        if pending_stats.total_force_closed > 0:
-            anomaly_parts.append(
-                f"{pending_stats.total_force_closed} force-closed")
-        if pending_stats.total_timed_out > 0:
-            anomaly_parts.append(f"{pending_stats.total_timed_out} timed out")
-        if anomaly_parts:
-            result += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
-        # Active orders at scenario end (cyan)
-        active_parts = []
-        if pending_stats.active_limit_orders:
-            active_parts.append(
-                f"{len(pending_stats.active_limit_orders)} limits")
-        if pending_stats.active_stop_orders:
-            active_parts.append(
-                f"{len(pending_stats.active_stop_orders)} stops")
-        if active_parts:
-            result += f" | {renderer.cyan(' | '.join(active_parts))}"
-        return result
+    ) -> None:
+        """
+        Render order pipeline status line (always visible).
+
+        Shows all three waiting categories:
+        - pending: orders in latency queue (waiting for broker response)
+        - active limits: past latency, waiting for limit price trigger
+        - active stops: past latency, waiting for stop price trigger
+
+        Args:
+            renderer: Console renderer for color formatting
+            pending_stats: PendingOrderStats (may be None)
+        """
+        pending = pending_stats.latency_queue_count if pending_stats else 0
+        limits = len(pending_stats.active_limit_orders) if pending_stats else 0
+        stops = len(pending_stats.active_stop_orders) if pending_stats else 0
+
+        line = f"Order Pipeline:     {pending} pending | {limits} active limits | {stops} active stops"
+        print(renderer.cyan(line))
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""

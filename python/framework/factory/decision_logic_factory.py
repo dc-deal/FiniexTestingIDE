@@ -38,8 +38,8 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ValidatedParameters
-from python.framework.validators.parameter_validator import apply_defaults
+from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
+from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
 
 
 class DecisionLogicFactory:
@@ -290,17 +290,29 @@ class DecisionLogicFactory:
         # Step 1: Resolve logic class
         logic_class = self._resolve_logic_class(logic_type)
 
-        # Step 2: Validate parameters against schema
-        warnings = logic_class.validate_parameter_schema(
-            logic_config, strict=self._strict_validation
+        # Step 2: Get schema and inject broker constraints from TradingContext
+        schema = logic_class.get_parameter_schema()
+        if trading_context and trading_context.volume_min > 0 and 'lot_size' in schema:
+            lot_def = schema['lot_size']
+            schema = dict(schema)  # mutable copy
+            schema['lot_size'] = ParameterDef(
+                param_type=lot_def.param_type,
+                default=lot_def.default,
+                min_val=trading_context.volume_min,
+                max_val=lot_def.max_val,
+                description=lot_def.description,
+            )
+
+        # Step 2b: Validate parameters against (broker-aware) schema
+        warnings = validate_parameters(
+            logic_config, schema, self._strict_validation,
+            context_name=logic_class.__name__
         )
         for warning in warnings:
             self.logger.warning(f"⚠️ {warning}")
 
         # Step 3: Apply schema defaults to config
-        logic_config = apply_defaults(
-            logic_config, logic_class.get_parameter_schema()
-        )
+        logic_config = apply_defaults(logic_config, schema)
 
         # Step 3.5: Inject decision_logic_type for performance tracking
         logic_config['decision_logic_type'] = logic_type

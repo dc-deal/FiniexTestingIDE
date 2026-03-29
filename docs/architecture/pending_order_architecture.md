@@ -223,6 +223,8 @@ class ActiveOrderSnapshot:
     lots: float
     entry_price: float                  # Limit price or stop trigger price
     limit_price: Optional[float]        # Only for STOP_LIMIT (fill price after trigger)
+    stop_loss: Optional[float]          # SL price from order_kwargs
+    take_profit: Optional[float]        # TP price from order_kwargs
 ```
 
 ### PendingOrderStats fields for active orders

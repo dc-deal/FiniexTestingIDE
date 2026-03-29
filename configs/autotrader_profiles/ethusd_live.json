@@ -1,17 +1,16 @@
 {
-  "name": "btcusd_live",
-  "symbol": "BTCUSD",
+  "name": "ethusd_live",
+  "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "live",
-  "credentials_path": "kraken_credentials.json",
+  "broker_settings": "kraken_spot.json",
 
   "strategy_config": {
-    "decision_logic_type": "CORE/simple_consensus",
+    "decision_logic_type": "CORE/aggressive_trend",
     "worker_instances": {
       "rsi_fast": "CORE/rsi",
-      "envelope_main": "CORE/envelope",
-      "obv_volume": "CORE/obv"
+      "envelope_main": "CORE/envelope"
     },
     "workers": {
       "rsi_fast": {
@@ -24,30 +23,21 @@
           "M30": 20
         },
         "deviation": 2
-      },
-      "obv_volume": {
-        "periods": {
-          "M5": 20
-        }
       }
     },
     "decision_logic_config": {
-      "rsi_oversold": 30,
-      "rsi_overbought": 70,
-      "envelope_lower_threshold": 0.3,
-      "envelope_upper_threshold": 0.7,
-      "min_confidence": 0.5,
-      "lot_size": 0.1,
-      "min_free_margin": 1000,
-      "obv_filter_enabled": true,
-      "obv_block_opposite_trend": true,
-      "obv_confidence_boost": 0.1
+      "rsi_buy_threshold": 35,
+      "rsi_sell_threshold": 65,
+      "envelope_extremes": 0.25,
+      "min_confidence": 0.6,
+      "lot_size": 0.001,
+      "min_free_margin": 0.001
     }
   },
 
   "account": {
     "initial_balance": 0.0,
-    "currency": "USD"
+    "currency": "ETH"
   },
 
   "tick_source": {

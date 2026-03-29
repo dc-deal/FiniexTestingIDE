@@ -49,7 +49,8 @@ class BarRenderer:
 
         # Cached datetime of current bar start per timeframe/symbol
         # Avoids repeated datetime.fromisoformat() parsing in hot loop
-        self._current_bar_starts: Dict[str, Dict[str, datetime]] = defaultdict(dict)
+        self._current_bar_starts: Dict[str,
+                                       Dict[str, datetime]] = defaultdict(dict)
 
         # PERFORMANCE: deque(maxlen) auto-trims - no manual checks needed!
         self.completed_bars: Dict[str, Dict[str, deque]] = defaultdict(
@@ -199,10 +200,10 @@ class BarRenderer:
         PERFORMANCE: No manual limit check needed!
         deque(maxlen) automatically discards oldest when full (O(1)).
         """
-        self.logger.debug(
+        self.logger.verbose(
             f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
 
-        self.logger.debug(
+        self.logger.verbose(
             f"📊 {bar.symbol} {bar.timeframe} archived | "
             f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
         )
@@ -264,4 +265,3 @@ class BarRenderer:
         self.logger.debug(
             f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
         )
-

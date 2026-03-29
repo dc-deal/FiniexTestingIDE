@@ -127,3 +127,4 @@ class TradingContext:
     broker_type: str  # BrokerType as string for serialization
     market_type: MarketType
     symbol: str
+    volume_min: float = 0.0  # Broker minimum lot size from SymbolSpecification

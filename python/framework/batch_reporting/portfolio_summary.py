@@ -5,13 +5,13 @@ Trading and portfolio statistics rendering
 Rendered in BOX format matching scenario details.
 """
 
-from typing import Dict
+from typing import Dict, List
 
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats, CostBreakdown
 from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
 from python.framework.utils.math_utils import force_negative, force_positive
@@ -47,6 +47,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
             columns=3,      # 3 boxes per row
             box_width=38    # Same width as scenario boxes
         )
+
+        # Active order detail tables (per scenario with active orders)
+        self._render_active_order_details(renderer)
 
     def render_aggregated(self,
                           renderer: ConsoleRenderer,
@@ -222,23 +225,28 @@ class PortfolioSummary(AbstractBatchSummarySection):
             renderer: Console renderer for formatting
             pending_stats: Aggregated pending order statistics
         """
-        if not pending_stats or pending_stats.total_resolved == 0:
+        if not pending_stats:
+            return
+        has_resolved = pending_stats.total_resolved > 0
+        has_active = pending_stats.active_limit_orders or pending_stats.active_stop_orders
+        if not has_resolved and not has_active:
             return
 
-        # Pending resolved breakdown
-        filled = pending_stats.total_filled
-        rejected = pending_stats.total_rejected
-        force_closed = pending_stats.total_force_closed
-        timed_out = pending_stats.total_timed_out
+        # Pending resolved breakdown (only if orders were resolved)
+        if has_resolved:
+            filled = pending_stats.total_filled
+            rejected = pending_stats.total_rejected
+            force_closed = pending_stats.total_force_closed
+            timed_out = pending_stats.total_timed_out
 
-        resolved_line = f"      Pending Resolved: {renderer.green(f'{filled} filled')}"
-        if rejected > 0:
-            resolved_line += f" | {rejected} rejected"
-        if timed_out > 0:
-            resolved_line += f" | {renderer.yellow(f'{timed_out} timed out')}"
-        if force_closed > 0:
-            resolved_line += f" | {renderer.yellow(f'{force_closed} force-closed')}"
-        print(resolved_line)
+            resolved_line = f"      Pending Resolved: {renderer.green(f'{filled} filled')}"
+            if rejected > 0:
+                resolved_line += f" | {rejected} rejected"
+            if timed_out > 0:
+                resolved_line += f" | {renderer.yellow(f'{timed_out} timed out')}"
+            if force_closed > 0:
+                resolved_line += f" | {renderer.yellow(f'{force_closed} force-closed')}"
+            print(resolved_line)
 
         # Latency stats (ms-based)
         if pending_stats.min_latency_ms is not None:
@@ -259,6 +267,60 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if active_parts:
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))
+
+    def _render_active_order_details(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render active order detail tables for each scenario that has active orders.
+
+        Shows individual order details (ID, type, direction, trigger, limit, lots, SL/TP)
+        for all untriggered limit/stop orders at scenario end.
+        """
+        for result in self.batch_execution_summary.process_result_list:
+            if not result.tick_loop_results or not result.tick_loop_results.pending_stats:
+                continue
+            pending = result.tick_loop_results.pending_stats
+            all_active = pending.active_limit_orders + pending.active_stop_orders
+            if not all_active:
+                continue
+            print()
+            print(renderer.cyan(
+                f"   ┌─ Active Orders at Scenario End: {result.scenario_name} "
+                f"({len(all_active)} order{'s' if len(all_active) > 1 else ''}) ─┐"))
+            self._render_active_order_table(renderer, all_active)
+
+    @staticmethod
+    def _render_active_order_table(
+        renderer: ConsoleRenderer,
+        orders: List[ActiveOrderSnapshot]
+    ) -> None:
+        """
+        Render formatted table of active order snapshots.
+
+        Args:
+            renderer: Console renderer for formatting
+            orders: List of active order snapshots to display
+        """
+        # Header
+        header = (
+            f"   {'ID':<16} {'Type':<12} {'Dir':<6} "
+            f"{'Trigger':>12} {'Limit':>12} {'Lots':>10} {'SL/TP'}"
+        )
+        print(renderer.cyan(header))
+        print(renderer.cyan(f"   {'─' * 80}"))
+
+        for order in orders:
+            limit_str = f"{order.limit_price:.2f}" if order.limit_price else '—'
+            sl_str = f"{order.stop_loss:.2f}" if order.stop_loss else '—'
+            tp_str = f"{order.take_profit:.2f}" if order.take_profit else '—'
+            sltp_str = f"{sl_str}/{tp_str}"
+
+            line = (
+                f"   {order.order_id:<16} {order.order_type.value.upper():<12} "
+                f"{order.direction.value.upper():<6} "
+                f"{order.entry_price:>12.2f} {limit_str:>12} "
+                f"{order.lots:>10g} {sltp_str}"
+            )
+            print(renderer.cyan(line))
 
     def _has_any_time_divergence(
         self,

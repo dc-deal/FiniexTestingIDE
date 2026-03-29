@@ -227,7 +227,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
             'lot_size': ParameterDef(
                 param_type=float,
                 default=1.0,
-                min_val=0.001,
+                min_val=0.0,
                 max_val=200.0,
                 description="Default lot size"
             ),

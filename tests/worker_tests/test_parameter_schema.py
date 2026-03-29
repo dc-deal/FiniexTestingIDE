@@ -239,8 +239,12 @@ class TestDecisionLogicSpecificSchemas:
         assert schema['trade_sequence'].param_type == list
 
     def test_all_logics_have_lot_size(self):
-        """All non-backtesting decision logics should have lot_size parameter."""
+        """All non-backtesting decision logics should have lot_size parameter.
+
+        Schema min_val is 0.0 — the real broker minimum is injected
+        from TradingContext.volume_min at factory time.
+        """
         for cls in (SimpleConsensus, AggressiveTrend):
             schema = cls.get_parameter_schema()
             assert 'lot_size' in schema, f"{cls.__name__} missing lot_size"
-            assert schema['lot_size'].min_val > 0, f"{cls.__name__} lot_size min must be > 0"
+            assert schema['lot_size'].min_val >= 0, f"{cls.__name__} lot_size min must be >= 0"

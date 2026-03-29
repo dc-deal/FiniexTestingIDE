@@ -50,6 +50,20 @@ class TestActiveLimitOrdersReported:
             f"Expected entry_price=0.5000, got {order.entry_price}"
         )
 
+    def test_active_limit_order_stop_loss(self, pending_stats_limit: PendingOrderStats):
+        """Active limit order stop_loss must match configured value (0.4900)."""
+        order = pending_stats_limit.active_limit_orders[0]
+        assert order.stop_loss == 0.4900, (
+            f"Expected stop_loss=0.4900, got {order.stop_loss}"
+        )
+
+    def test_active_limit_order_take_profit(self, pending_stats_limit: PendingOrderStats):
+        """Active limit order take_profit must match configured value (0.5200)."""
+        order = pending_stats_limit.active_limit_orders[0]
+        assert order.take_profit == 0.5200, (
+            f"Expected take_profit=0.5200, got {order.take_profit}"
+        )
+
     def test_active_stop_orders_empty(self, pending_stats_limit: PendingOrderStats):
         """active_stop_orders must be empty in the limit scenario."""
         assert len(pending_stats_limit.active_stop_orders) == 0, (
@@ -92,6 +106,20 @@ class TestActiveStopOrdersReported:
         order = pending_stats_stop.active_stop_orders[0]
         assert order.entry_price == 5.0000, (
             f"Expected entry_price=5.0000, got {order.entry_price}"
+        )
+
+    def test_active_stop_order_stop_loss(self, pending_stats_stop: PendingOrderStats):
+        """Active stop order stop_loss must match configured value (4.9500)."""
+        order = pending_stats_stop.active_stop_orders[0]
+        assert order.stop_loss == 4.9500, (
+            f"Expected stop_loss=4.9500, got {order.stop_loss}"
+        )
+
+    def test_active_stop_order_take_profit(self, pending_stats_stop: PendingOrderStats):
+        """Active stop order take_profit must match configured value (5.1000)."""
+        order = pending_stats_stop.active_stop_orders[0]
+        assert order.take_profit == 5.1000, (
+            f"Expected take_profit=5.1000, got {order.take_profit}"
         )
 
     def test_active_limit_orders_empty(self, pending_stats_stop: PendingOrderStats):

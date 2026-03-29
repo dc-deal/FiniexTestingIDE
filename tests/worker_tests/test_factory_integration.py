@@ -15,6 +15,8 @@ from unittest.mock import MagicMock
 
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_types import TradingContext
 
 
 # ============================================
@@ -290,13 +292,20 @@ class TestDecisionLogicFactoryBoundaryStrict:
                 logic_config={"rsi_oversold": 60},
             )
 
-    def test_consensus_lot_size_zero(self, strict_logic_factory, mock_logger):
-        """lot_size=0.0 below min_val=0.01 must be rejected."""
+    def test_consensus_lot_size_below_broker_min(self, strict_logic_factory, mock_logger):
+        """lot_size below broker volume_min (from TradingContext) must be rejected."""
+        context = TradingContext(
+            broker_type='kraken_spot',
+            market_type=MarketType.CRYPTO,
+            symbol='BTCUSD',
+            volume_min=0.00005,
+        )
         with pytest.raises(ValueError, match="below minimum"):
             strict_logic_factory.create_logic(
                 logic_type="CORE/simple_consensus",
                 logger=mock_logger,
-                logic_config={"lot_size": 0.0},
+                logic_config={"lot_size": 0.00001},
+                trading_context=context,
             )
 
     def test_consensus_min_confidence_above_one(self, strict_logic_factory, mock_logger):

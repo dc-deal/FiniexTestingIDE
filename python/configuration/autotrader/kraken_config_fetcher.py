@@ -62,8 +62,10 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self,
         credentials_path: str,
         logger: Optional[ScenarioLogger] = None,
+        api_base_url: Optional[str] = None,
     ):
         self._logger = logger
+        self._api_base_url = api_base_url or self.API_BASE
         self._api_key, self._api_secret = self._load_credentials(credentials_path)
 
     def fetch_broker_config(self, symbol: str, broker_type: str) -> Dict[str, Any]:
@@ -144,7 +146,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Returns:
             API result dict
         """
-        url = f"{self.API_BASE}{endpoint}"
+        url = f"{self._api_base_url}{endpoint}"
         response = requests.get(url, params=params, timeout=self.REQUEST_TIMEOUT_S)
         response.raise_for_status()
 
@@ -170,7 +172,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             data = {}
 
         headers = self._sign_request(endpoint, data)
-        url = f"{self.API_BASE}{endpoint}"
+        url = f"{self._api_base_url}{endpoint}"
 
         response = requests.post(
             url,
@@ -249,7 +251,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             api_base = self.KRAKEN_TO_STANDARD.get(api_base, api_base)
 
             if api_base == target_base and api_quote == target_quote:
-                return self._build_symbol_config(target_symbol, pair_info)
+                return self._build_symbol_config(target_symbol, pair_info, _pair_name)
 
         return None
 
@@ -257,6 +259,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self,
         symbol: str,
         pair_info: Dict[str, Any],
+        kraken_pair_name: str = '',
     ) -> Dict[str, Any]:
         """
         Build symbol config entry from API pair info.
@@ -264,6 +267,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
             pair_info: Raw API pair data
+            kraken_pair_name: Kraken internal pair name (e.g., 'XXBTZUSD') for order API calls
 
         Returns:
             Symbol config dict matching static JSON structure
@@ -292,6 +296,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             'spread_float': False,
             'stops_level': 0,
             'freeze_level': 0,
+            'kraken_pair_name': kraken_pair_name,
         }
 
     def _build_full_config(

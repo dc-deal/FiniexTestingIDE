@@ -49,6 +49,8 @@
               "direction": "LONG",
               "order_type": "LIMIT",
               "price": 0.5000,
+              "stop_loss": 0.4900,
+              "take_profit": 0.5200,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }
@@ -77,6 +79,8 @@
               "direction": "LONG",
               "order_type": "STOP",
               "stop_price": 5.0000,
+              "stop_loss": 4.9500,
+              "take_profit": 5.1000,
               "hold_ticks": 999999,
               "lot_size": 0.01
             }

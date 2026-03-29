@@ -44,7 +44,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         broker_type=raw.get('broker_type', ''),
         broker_config_path=raw.get('broker_config_path', ''),
         adapter_type=raw.get('adapter_type', 'mock'),
-        credentials_path=raw.get('credentials_path', None),
+        broker_settings=raw.get('broker_settings', ''),
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             initial_balance=account_raw.get('initial_balance', 10000.0),
@@ -63,4 +63,5 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             report_interval_s=clipping_raw.get('report_interval_s', 60.0),
             strategy=clipping_raw.get('strategy', 'queue_all'),
         ),
+        config_path=path,
     )
