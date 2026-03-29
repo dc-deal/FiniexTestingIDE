@@ -257,7 +257,7 @@ class CautiousMacd(AbstractDecisionLogic):
         rsi_value = rsi_result.value
 
         _prev = f"{self._prev_histogram:.4f}" if self._prev_histogram is not None else "None"
-        self.logger.debug(
+        self.logger.verbose(
             f"[compute] MACD={macd_line:.4f} sig={signal_line:.4f} "
             f"hist={histogram:.4f} (prev={_prev}) RSI={rsi_value:.1f}"
         )
@@ -381,7 +381,7 @@ class CautiousMacd(AbstractDecisionLogic):
         in_pipeline = self.trading_api.has_pipeline_orders()
         has_active_stop = active_counts.get("active_stops", 0) > 0
 
-        self.logger.debug(
+        self.logger.verbose(
             f"[state] positions={len(open_positions)} in_pipeline={in_pipeline} "
             f"active_stops={active_counts.get('active_stops', 0)} "
             f"decision={decision.action.value}"

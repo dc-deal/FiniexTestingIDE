@@ -26,8 +26,8 @@
         }
       },
       "decision_logic_config": {
-        "rsi_filter_buy": 60,
-        "rsi_filter_sell": 40,
+        "rsi_filter_buy": 85,
+        "rsi_filter_sell": 25,
         "use_stop_limit": true,
         "stop_limit_offset_pips": 2,
         "pip_size": 1.0,
