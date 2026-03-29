@@ -292,7 +292,7 @@ python/cli/
   autotrader_cli.py              CLI: run --config
 
 configs/autotrader_profiles/
-  btcusd_live.json               Live trading config (BTCUSD, Kraken API)
+  ethusd_live.json               Live trading config (ETHUSD, Kraken API)
   backtesting/
     btcusd_mock.json             Default mock config (BTCUSD parquet replay)
 
@@ -369,7 +369,7 @@ _create_broker_config(config, logger)
 Broker-specific live settings are separated from algorithm config (AutoTrader profile) and credentials:
 
 ```
-Profile (btcusd_live.json)          ← Algorithm config (strategy, workers, symbol)
+Profile (ethusd_live.json)          ← Algorithm config (strategy, workers, symbol)
   "broker_settings": "kraken_spot.json"
         |
 Broker Settings (kraken_spot.json)  ← Broker-specific live config

@@ -208,8 +208,9 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             )
             return None
 
+        price_str = f"{fill_price:.5f}" if fill_price is not None else 'N/A'
         self.logger.info(
-            f"Order filled: {order_id} at {fill_price:.5f} "
+            f"Order filled: {order_id} at {price_str} "
             f"({filled_lots} lots, broker_ref={broker_ref})"
         )
 

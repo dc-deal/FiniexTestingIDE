@@ -563,7 +563,7 @@ class KrakenAdapter(AbstractAdapter):
             return BrokerResponse(
                 broker_ref=f"DRYRUN-{self._dry_run_counter:06d}",
                 status=BrokerOrderStatus.FILLED,
-                fill_price=kwargs.get('price') or kwargs.get('expected_price'),
+                fill_price=kwargs.get('price') or kwargs.get('expected_price') or 0.0,
                 filled_lots=lots,
                 timestamp=now,
                 raw_response=result,

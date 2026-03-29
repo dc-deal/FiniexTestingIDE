@@ -82,18 +82,18 @@ This is Kraken's native validation parameter — not a local simulation. It catc
 
 ## 4. AutoTrader Profile
 
-Point your profile to the broker settings file. Example `configs/autotrader_profiles/btcusd_live.json`:
+Point your profile to the broker settings file. Example `configs/autotrader_profiles/ethusd_live.json`:
 
 ```json
 {
-  "name": "btcusd_live",
-  "symbol": "BTCUSD",
+  "name": "ethusd_live",
+  "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "live",
   "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
-  "account": { "initial_balance": 0.0, "currency": "USD" },
+  "account": { "initial_balance": 0.0, "currency": "ETH" },
   ...
 }
 ```
@@ -103,7 +103,7 @@ Point your profile to the broker settings file. Example `configs/autotrader_prof
 ## Config File Relationship
 
 ```
-AutoTrader Profile (btcusd_live.json)
+AutoTrader Profile (ethusd_live.json)
   "broker_settings": "kraken_spot.json"
         |
         v
@@ -125,14 +125,14 @@ Credentials (user_configs/credentials/kraken_credentials.json)
 ## 5. First Run (Dry-Run)
 
 ```bash
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btcusd_live.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/ethusd_live.json
 ```
 
 Expected startup output:
 ```
 Broker settings loaded: kraken_spot.json (dry_run=True)
-Live broker config fetched for BTCUSD
-Live balance: 1234.56 USD (profile default was 0.0)
+Live broker config fetched for ETHUSD
+Live balance: 0.006 ETH (profile default was 0.0)
 Mode: DRY RUN (validate only)
 ```
 

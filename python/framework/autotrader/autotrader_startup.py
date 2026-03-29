@@ -371,6 +371,7 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
         f"🔧 Broker settings loaded: {config.broker_settings} "
         f"(dry_run={dry_run})"
     )
+    print(f"  ▸ Broker settings: {config.broker_settings} (dry_run={dry_run})")
 
     fetcher = KrakenConfigFetcher(
         credentials_path=credentials_file,
@@ -408,6 +409,7 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
         f"💰 Live balance: {balance} {config.account.currency} "
         f"(profile default was {config.account.initial_balance})"
     )
+    print(f"  ▸ Live balance: {balance} {config.account.currency}")
     config.account.initial_balance = balance
 
     # Build BrokerConfig from fetched dict
@@ -420,6 +422,7 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
     broker_config.adapter.enable_live(broker_settings)
     mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
     logger.info(f"🚀 Mode: {mode_label}")
+    print(f"  ▸ Mode: {mode_label}")
 
     return broker_config
 

@@ -292,14 +292,14 @@
             "justMyCode": false
         },
         {
-            "name": "🤖 AutoTrader: BTCUSD Live",
+            "name": "🤖 AutoTrader: ETHUSD Live",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/btcusd_live.json"
+                "configs/autotrader_profiles/ethusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
