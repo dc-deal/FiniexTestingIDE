@@ -286,7 +286,7 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/btcusd_mock.json"
+                "configs/autotrader_profiles/backtesting/btcusd_mock.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

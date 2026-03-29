@@ -20,7 +20,7 @@
           "periods": {
             "M30": 20
           },
-          "deviation": 0.02
+          "deviation": 2
         }
       },
       "decision_logic_config": {
@@ -30,9 +30,7 @@
       }
     },
     "trade_simulator_config": {},
-    "execution_config": {
-      "strict_parameter_validation": false
-    },
+    "execution_config": {},
     "stress_test_config": {
       "reject_open_order": {
         "enabled": false,

@@ -12,7 +12,7 @@ import requests
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar
-from python.framework.utils.timeframe_config_utils import TimeframeRegistry
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class KrakenOhlcBarFetcher:
@@ -81,7 +81,7 @@ class KrakenOhlcBarFetcher:
         pair = self.SYMBOL_TO_KRAKEN_PAIR.get(symbol, symbol)
 
         # Request slightly more bars than needed to handle gaps
-        interval_minutes = TimeframeRegistry.get_minutes(timeframe)
+        interval_minutes = TimeframeConfig.get_minutes(timeframe)
         since_ts = int(
             (datetime.now(timezone.utc).timestamp())
             - (count + 10) * interval_minutes * 60

@@ -27,6 +27,7 @@
 | Document | Description |
 |----------|-------------|
 | [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Pipeline, threading model, config, tick sources, clipping monitor |
+| [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry-run, first live run |
 
 ## Architecture
 

@@ -111,7 +111,7 @@ python/framework/
 
 ```
     ┌─────────────────────┐
-    │  AutoTraderConfig    │  ← configs/autotrader_profiles/btcusd_mock.json
+    │  AutoTraderConfig    │  ← configs/autotrader_profiles/backtesting/btcusd_mock.json
     └─────────┬───────────┘
               │
     ┌─────────▼───────────┐
@@ -175,7 +175,7 @@ Signal handling: First Ctrl+C → normal shutdown. Second Ctrl+C within 3s → f
 
 ## Configuration
 
-Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT scenario-set based.
+Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own format, NOT scenario-set based.
 
 ```json
 {
@@ -184,7 +184,7 @@ Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT 
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "mock",
-  "credentials_path": "kraken_credentials.json",
+  "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
   "account": { "initial_balance": 10000.0, "currency": "USD" },
   "tick_source": { "type": "mock", "parquet_path": "...", "mode": "replay" },
@@ -200,7 +200,7 @@ Config file: `configs/autotrader_profiles/btcusd_mock.json` — own format, NOT 
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json` |
 | `broker_config_path` | Broker JSON | Fees, symbol specs, leverage |
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
-| `credentials_path` | Credentials filename | Cascade: `user_configs/credentials/` → `configs/credentials/` |
+| `broker_settings` | Broker settings filename | Cascade: `user_configs/broker_settings/` → `configs/broker_settings/` |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Balance + currency | Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
@@ -292,8 +292,12 @@ python/cli/
   autotrader_cli.py              CLI: run --config
 
 configs/autotrader_profiles/
-  btcusd_mock.json               Default config (BTCUSD mock)
   btcusd_live.json               Live trading config (BTCUSD, Kraken API)
+  backtesting/
+    btcusd_mock.json             Default mock config (BTCUSD parquet replay)
+
+configs/broker_settings/
+  kraken_spot.json               Tracked defaults (dry_run, API URL, credentials ref)
 
 configs/credentials/
   kraken_credentials.json        Mock/default credentials (tracked)
@@ -303,7 +307,7 @@ configs/credentials/
 
 ```bash
 # CLI
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btcusd_mock.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/btcusd_mock.json
 
 # VS Code launch.json
 # 🤖 AutoTrader: BTCUSD Mock (replay)
@@ -347,16 +351,34 @@ For `adapter_type='live'`, AutoTrader fetches broker config and account balance 
 ```
 _create_broker_config(config, logger)
   → adapter_type='live' detected
-  → KrakenConfigFetcher(credentials_path)
+  → _load_broker_settings('kraken_spot.json')  ← cascade: user_configs/ → configs/
+  → KrakenConfigFetcher(credentials_file, api_base_url)
   → GET /0/public/AssetPairs → symbol specs (tick_size, volume_min/max, digits)
   → POST /0/private/Balance → account balance (overrides initial_balance)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
-  → return BrokerConfig with KrakenAdapter
+  → adapter.enable_live(broker_settings)  ← Tier 3 activation
+  → return BrokerConfig with live-enabled KrakenAdapter
 ```
 
 **Fallback**: If the public API call fails, symbol specs fall back to the static JSON (`broker_config_path`). Balance fetch failure is **fatal** — a 0.0 balance in live mode is dangerous.
 
-**Mock mode**: Completely unchanged. No API calls, no credentials needed.
+**Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
+
+### Broker Settings Layer
+
+Broker-specific live settings are separated from algorithm config (AutoTrader profile) and credentials:
+
+```
+Profile (btcusd_live.json)          ← Algorithm config (strategy, workers, symbol)
+  "broker_settings": "kraken_spot.json"
+        |
+Broker Settings (kraken_spot.json)  ← Broker-specific live config
+  "credentials_file", "dry_run", "api_base_url", "rate_limit_interval_s"
+        |
+Credentials (kraken_credentials.json) ← Only API keys
+```
+
+**Cascade:** `user_configs/broker_settings/` → `configs/broker_settings/` (same pattern as credentials). See [Kraken Adapter Setup Guide](../user_guides/adapter/setup_kraken_adapter.md) for full configuration details.
 
 ### Credentials Cascade
 
@@ -365,14 +387,7 @@ Credentials follow the project-wide `configs/` → `user_configs/` override patt
 1. `user_configs/credentials/kraken_credentials.json` — user override (gitignored, real keys)
 2. `configs/credentials/kraken_credentials.json` — tracked default (mock values)
 
-The `credentials_path` in the profile JSON is just the filename (e.g., `"kraken_credentials.json"`). The fetcher resolves the cascade automatically.
-
-```json
-{
-    "api_key": "YOUR_API_KEY",
-    "api_secret": "YOUR_API_SECRET"
-}
-```
+The `credentials_file` in broker settings is just the filename (e.g., `"kraken_credentials.json"`). The cascade is resolved automatically.
 
 ### API Authentication
 
@@ -381,6 +396,51 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 ### Fee Handling
 
 Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rather than fetched from the API. Kraken fee tiers depend on 30-day rolling trading volume, which changes constantly. Static defaults are safer for risk management.
+
+## KrakenAdapter Tier 3 — Live Order Execution (#133 Step 3)
+
+Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(broker_settings)` — without it, the adapter works in Tier 1+2 mode (backtesting only).
+
+### Adapter Tiers
+
+| Tier | Scope | Requires Credentials | Used By |
+|------|-------|---------------------|---------|
+| 1 | Config validation, broker/symbol specs | No | Backtesting + AutoTrader |
+| 2 | Order creation (MarketOrder, LimitOrder, etc.) | No | Backtesting + AutoTrader |
+| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, EditOrder) | Yes | AutoTrader (live mode) |
+
+### Tier 3 API Mapping
+
+| Method | Kraken Endpoint | Key Parameters |
+|--------|----------------|----------------|
+| `execute_order()` | `POST /0/private/AddOrder` | pair, type, ordertype, volume, price, validate |
+| `check_order_status()` | `POST /0/private/QueryOrders` | txid |
+| `cancel_order()` | `POST /0/private/CancelOrder` | txid |
+| `modify_order()` | `POST /0/private/EditOrder` | txid, price |
+
+### Dry-Run Mode
+
+Kraken Spot has no testnet/sandbox. Dry-run uses Kraken's native `validate=true` parameter on AddOrder — Kraken validates the order (pair, volume, balance, permissions) but **does not execute it**.
+
+Controlled by `dry_run` in broker settings (default: `true` — safe by default). Console shows `Mode: DRY RUN (validate only)` or `Mode: LIVE TRADING` at startup.
+
+Dry-run behavior:
+- `execute_order()`: sends `validate=true`, returns synthetic `DRYRUN-NNNNNN` broker_ref
+- `check_order_status()` / `cancel_order()` / `modify_order()`: return synthetic responses (order doesn't exist at broker)
+
+### EditOrder and Broker Reference Swap
+
+Kraken's EditOrder replaces the order entirely — the old txid becomes invalid and a **new txid** is returned. `LiveOrderTracker.update_broker_ref()` swaps the reference in the tracking index. `LiveTradeExecutor.modify_limit_order()` triggers this automatically when the returned broker_ref differs from the original.
+
+### Rate Limiting
+
+Configurable via `rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
+
+### Symbol Mapping
+
+Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XXBTZUSD`) for order API calls. Two resolution paths:
+1. `kraken_pair_name` from live-fetched config (set by `KrakenConfigFetcher`)
+2. Static `SYMBOL_TO_KRAKEN_PAIR` fallback dict (for backtesting with static JSON)
 
 ## Live Warmup (#231)
 
@@ -437,7 +497,7 @@ Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1)
 | 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
 | 1a-β | #230 | Live Broker Config (Kraken API) | ✅ |
 | 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | ✅ |
+| 3 | #133 | KrakenAdapter Tier 3 (execution, dry-run, broker settings) | ✅ |
 | 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
 | — | #228 | Live Console UI (rich.live) | Planned |
-| 3 | #133 | KrakenAdapter Tier 3 (execution) | Planned |
 | 4 | #133 | Active Order Lifecycle Lifting | Planned |

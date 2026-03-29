@@ -3,7 +3,7 @@ FiniexTestingIDE - AutoTrader CLI
 Command-line interface for FiniexAutoTrader live trading sessions.
 
 Usage:
-    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/btcusd_mock.json
+    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/btcusd_mock.json
 """
 
 import argparse
@@ -30,7 +30,7 @@ def main():
         'run', help='Start an AutoTrader live session')
     run_parser.add_argument(
         '--config', required=True,
-        help='Path to autotrader config JSON (e.g., configs/autotrader_profiles/btcusd_mock.json)')
+        help='Path to autotrader config JSON (e.g., configs/autotrader_profiles/backtesting/btcusd_mock.json)')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute

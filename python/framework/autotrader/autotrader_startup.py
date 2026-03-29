@@ -5,11 +5,12 @@ Pipeline object creation for live AutoTrader sessions.
 Mirrors process_startup_preparation.py for backtesting.
 """
 
+import json
 import queue
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
@@ -337,28 +338,40 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
     """
     Fetch broker config from Kraken API, with fallback to static JSON.
 
-    Also fetches account balance and overrides config.account.initial_balance.
-    Balance fetch failure is fatal — a 0.0 balance in live mode is dangerous.
+    Loads broker settings via cascade, fetches symbol specs and account balance,
+    then enables live execution on the adapter.
 
     Args:
         config: AutoTrader configuration
         logger: ScenarioLogger for status messages
 
     Returns:
-        BrokerConfig with KrakenAdapter
+        BrokerConfig with live-enabled KrakenAdapter
     """
     # Lazy import to avoid loading requests in mock mode
     from python.configuration.autotrader.kraken_config_fetcher import KrakenConfigFetcher
 
-    if not config.credentials_path:
+    # === Load broker settings via cascade ===
+    if not config.broker_settings:
         raise ValueError(
-            "credentials_path required for adapter_type='live'. "
-            "Add 'credentials_path' to profile JSON."
+            "broker_settings required for adapter_type='live'. "
+            "Add 'broker_settings' to profile JSON."
         )
 
+    broker_settings = _load_broker_settings(config.broker_settings)
+    credentials_file = broker_settings.get('credentials_file', 'kraken_credentials.json')
+    api_base_url = broker_settings.get('api_base_url')
+    dry_run = broker_settings.get('dry_run', True)
+
+    logger.info(
+        f"🔧 Broker settings loaded: {config.broker_settings} "
+        f"(dry_run={dry_run})"
+    )
+
     fetcher = KrakenConfigFetcher(
-        credentials_path=config.credentials_path,
+        credentials_path=credentials_file,
         logger=logger,
+        api_base_url=api_base_url,
     )
 
     # === Fetch broker config (symbol specs) ===
@@ -394,7 +407,42 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
     config.account.initial_balance = balance
 
     # Build BrokerConfig from fetched dict
-    return BrokerConfigFactory.from_serialized_dict(
+    broker_config = BrokerConfigFactory.from_serialized_dict(
         broker_type=BrokerType(config.broker_type),
         config_dict=config_dict,
     )
+
+    # === Enable live execution on adapter ===
+    broker_config.adapter.enable_live(broker_settings)
+    mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
+    logger.info(f"🚀 Mode: {mode_label}")
+
+    return broker_config
+
+
+def _load_broker_settings(settings_filename: str) -> Dict[str, Any]:
+    """
+    Load broker settings via cascade: user_configs/broker_settings/ → configs/broker_settings/.
+
+    Args:
+        settings_filename: Broker settings filename (e.g., 'kraken_spot.json')
+
+    Returns:
+        Parsed broker settings dict
+    """
+    user_path = Path('user_configs/broker_settings') / settings_filename
+    default_path = Path('configs/broker_settings') / settings_filename
+
+    if user_path.exists():
+        settings_path = user_path
+    elif default_path.exists():
+        settings_path = default_path
+    else:
+        raise FileNotFoundError(
+            f"Broker settings file not found. Expected at:\n"
+            f"  {user_path} (user override)\n"
+            f"  {default_path} (default)"
+        )
+
+    with open(settings_path, 'r') as f:
+        return json.load(f)

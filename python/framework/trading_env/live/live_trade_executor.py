@@ -576,9 +576,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 success=False,
                 rejection_reason=ModificationRejectionReason.INVALID_PRICE)
 
+        # Update broker ref if broker returned a new one (Kraken EditOrder returns new txid)
+        if response.broker_ref and response.broker_ref != broker_ref:
+            self._order_tracker.update_broker_ref(broker_ref, response.broker_ref)
+
         self.logger.info(
             f"✏️ Limit order {order_id} modified at broker "
-            f"(broker_ref={broker_ref})"
+            f"(broker_ref={response.broker_ref or broker_ref})"
         )
 
         return ModificationResult(success=True)

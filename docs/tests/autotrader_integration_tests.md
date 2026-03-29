@@ -13,7 +13,7 @@ End-to-end validation of the AutoTrader mock pipeline. Runs a complete session w
 
 ## Data Dependency
 
-Uses `configs/autotrader_profiles/btcusd_mock.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`. Same data as the backtesting baseline tests.
+Uses `configs/autotrader_profiles/backtesting/btcusd_mock.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`. Same data as the backtesting baseline tests.
 
 ## Runtime
 

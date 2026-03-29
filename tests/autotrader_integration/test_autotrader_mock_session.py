@@ -15,7 +15,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
 
-MOCK_PROFILE = 'configs/autotrader_profiles/btcusd_mock.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock.json'
 
 
 @pytest.fixture

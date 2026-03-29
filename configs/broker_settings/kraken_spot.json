@@ -1,0 +1,18 @@
+{
+  "credentials_file": "kraken_credentials.json",
+  "api_base_url": "https://api.kraken.com",
+  "dry_run": true,
+  "rate_limit_interval_s": 1.0,
+  "request_timeout_s": 15,
+  "symbol_to_kraken_pair": {
+    "BTCUSD": "XBTUSD",
+    "BTCEUR": "XBTEUR",
+    "ETHUSD": "ETHUSD",
+    "ETHEUR": "ETHEUR",
+    "SOLUSD": "SOLUSD",
+    "ADAUSD": "ADAUSD",
+    "XRPUSD": "XRPUSD",
+    "LTCUSD": "LTCUSD",
+    "DASHUSD": "DASHUSD"
+  }
+}

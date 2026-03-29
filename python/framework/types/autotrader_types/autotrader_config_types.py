@@ -4,7 +4,7 @@ Typed configuration for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 @dataclass
@@ -75,7 +75,7 @@ class AutoTraderConfig:
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         broker_config_path: Path to broker config JSON
         adapter_type: Adapter type ('mock' or 'live')
-        credentials_path: Credentials filename for live API access (cascade: user_configs/credentials/ → configs/credentials/)
+        broker_settings: Broker settings filename (cascade: user_configs/broker_settings/ → configs/broker_settings/)
         strategy_config: Complete strategy configuration (workers + decision logic)
         account: Account configuration
         tick_source: Tick source configuration
@@ -87,7 +87,7 @@ class AutoTraderConfig:
     broker_type: str = ''
     broker_config_path: str = ''
     adapter_type: str = 'mock'
-    credentials_path: Optional[str] = None
+    broker_settings: str = ''
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     account: AccountConfig = field(default_factory=AccountConfig)
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
