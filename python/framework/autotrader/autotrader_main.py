@@ -27,6 +27,7 @@ from python.framework.autotrader.reporting.autotrader_post_session_report import
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
 class AutotraderMain:
@@ -105,6 +106,14 @@ class AutotraderMain:
             f"🚀 AutotraderMain starting: {self._config.symbol} "
             f"({self._config.broker_type}, adapter={self._config.adapter_type})"
         )
+
+        # Copy profile config snapshot to log directory (mirrors scenario_set.copy_config_snapshot)
+        if self._config.config_path and self._run_dir:
+            ScenarioSetUtils(
+                config_snapshot_path=self._config.config_path,
+                scenario_log_path=self._run_dir,
+                file_name_prefix='autotrader',
+            ).copy_config_snapshot()
 
         try:
             self._setup_signal_handlers()

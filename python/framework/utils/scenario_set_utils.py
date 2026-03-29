@@ -2,6 +2,7 @@
 
 from logging import config
 from pathlib import Path
+from typing import Optional
 import shutil
 
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -13,7 +14,12 @@ vLog = get_global_logger()
 
 class ScenarioSetUtils:
 
-    def __init__(self, config_snapshot_path: Path, scenario_log_path: Path):
+    def __init__(
+        self,
+        config_snapshot_path: Path,
+        scenario_log_path: Path,
+        file_name_prefix: Optional[str] = None,
+    ):
         app_config = AppConfigManager()
         file_logger_config: FileLoggingConfig = app_config.get_file_logging_config_object()
         self.file_logging_enabled = file_logger_config.is_file_logging_enabled()
@@ -21,7 +27,7 @@ class ScenarioSetUtils:
         self.scenario_log_path = scenario_log_path
         self.config_snapshot_path = config_snapshot_path
         self.config_copied = False
-        prefix = file_logger_config.scenario_file_name_prefix
+        prefix = file_name_prefix if file_name_prefix else file_logger_config.scenario_file_name_prefix
         self._file_name = f"{prefix}_config.json"
 
     def copy_config_snapshot(self):

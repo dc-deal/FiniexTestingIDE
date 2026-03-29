@@ -63,4 +63,5 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             report_interval_s=clipping_raw.get('report_interval_s', 60.0),
             strategy=clipping_raw.get('strategy', 'queue_all'),
         ),
+        config_path=path,
     )

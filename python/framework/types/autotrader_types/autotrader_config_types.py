@@ -4,7 +4,8 @@ Typed configuration for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -93,3 +94,4 @@ class AutoTraderConfig:
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     clipping_monitor: ClippingMonitorConfig = field(default_factory=ClippingMonitorConfig)
+    config_path: Optional[Path] = None
