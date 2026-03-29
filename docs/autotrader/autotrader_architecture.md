@@ -268,6 +268,8 @@ python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
   autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
   autotrader_startup.py          Pipeline object creation (11 phases)
+  autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live: API)
+  kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
   reporting/
     autotrader_post_session_report.py   Console + file log summary
@@ -380,13 +382,61 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 
 Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rather than fetched from the API. Kraken fee tiers depend on 30-day rolling trading volume, which changes constantly. Static defaults are safer for risk management.
 
+## Live Warmup (#231)
+
+Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup.
+
+### Two Paths
+
+| Aspect | Mock (parquet) | Live (API) |
+|--------|----------------|------------|
+| **Source** | Pre-rendered bar parquet via `BarsIndexManager` | Kraken `GET /0/public/OHLC` |
+| **Reference time** | First tick timestamp from parquet file | `datetime.now(UTC)` |
+| **Network** | No | Yes (public, no auth) |
+| **Extensibility** | Static data | ABC pattern → MT5 (#209) |
+
+### Flow
+
+```
+Phase 9 in setup_pipeline():
+
+  1. calculate_scenario_requirements(workers)
+     → warmup_by_timeframe = {"M5": 20, "M30": 20}
+
+  2. Reference timestamp:
+     Mock: first tick from parquet → 2026-01-24T14:19:46Z
+     Live: now()
+
+  3. Load bars:
+     Mock: BarsIndexManager → parquet → filter before ref_ts → tail(count)
+     Live: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
+
+  4. Validate: warn if fewer bars than required
+
+  5. bar_renderer.initialize_historical_bars() per timeframe
+     → Workers have full history from tick 1
+```
+
+### Direct Injection
+
+AutoTrader is single-process. Backtesting uses `inject_warmup_bars()` with bar dicts for subprocess transport (pickle, CoW). AutoTrader bypasses this — creates `Bar` objects directly and calls `bar_renderer.initialize_historical_bars()`. No serialization round-trip.
+
+### Kraken OHLC API
+
+```
+GET /0/public/OHLC?pair=XBTUSD&interval=5&since=<unix_ts>
+→ [[time, open, high, low, close, vwap, volume, count], ...]
+```
+
+Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1), 240 (H4), 1440 (D1). Returns up to 720 bars. Last bar is in-progress (dropped).
+
 ## Roadmap
 
 | Step | Issue | Description | Status |
 |------|-------|-------------|--------|
 | 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
 | 1a-β | #230 | Live Broker Config (Kraken API) | ✅ |
-| 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | Planned |
+| 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | ✅ |
 | 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
 | — | #228 | Live Console UI (rich.live) | Planned |
 | 3 | #133 | KrakenAdapter Tier 3 (execution) | Planned |
