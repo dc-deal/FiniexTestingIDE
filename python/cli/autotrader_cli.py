@@ -43,7 +43,7 @@ def main():
 
     try:
         if args.command == 'run':
-            print('\n' + '=' * 60)
+            print('\n' + '=' * 606)
             print('🤖 FiniexAutoTrader')
             print('=' * 60)
             print(f'Config: {args.config}')

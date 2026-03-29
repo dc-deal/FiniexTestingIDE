@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -141,7 +142,8 @@ def setup_pipeline(
     6. Create DecisionLogic
     7. Create WorkerOrchestrator + wire DecisionTradingApi
     8. Create BarRenderingController
-    9. Create LiveClippingMonitor
+    9. Warmup bar injection (mock: parquet, live: API)
+    10. Create LiveClippingMonitor
 
     Args:
         config: AutoTrader configuration
@@ -234,8 +236,13 @@ def setup_pipeline(
     bar_controller.register_workers(workers)
     logger.debug('✅ BarRenderingController created')
 
-    # === Phase 9: Warmup — SKIPPED (Step 1b adds this) ===
-    logger.debug('⏭️  Warmup skipped (Step 1b)')
+    # === Phase 9: Warmup ===
+    warmup_preparator = AutotraderWarmupPreparator(logger=logger)
+    warmup_preparator.prepare_and_inject(
+        config=config,
+        workers=workers,
+        bar_controller=bar_controller,
+    )
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
