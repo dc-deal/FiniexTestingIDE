@@ -185,10 +185,14 @@ def setup_pipeline(
     market_type = market_config_manager.get_market_type(
         config.broker_type
     )
+    volume_min = broker_config.adapter.get_symbol_specification(
+        config.symbol
+    ).volume_min
     trading_context = TradingContext(
         broker_type=BrokerType(config.broker_type),
         market_type=market_type,
-        symbol=config.symbol
+        symbol=config.symbol,
+        volume_min=volume_min,
     )
 
     # === Phase 5: Workers ===

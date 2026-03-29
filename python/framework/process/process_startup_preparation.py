@@ -64,10 +64,14 @@ def process_startup_preparation(
     )
 
     # === PHASE 3: Create Trading Context ===
+    volume_min = trade_simulator.broker.adapter.get_symbol_specification(
+        config.symbol
+    ).volume_min
     trading_context = TradingContext(
         broker_type=config.broker_type,
         market_type=config.market_type,
-        symbol=config.symbol
+        symbol=config.symbol,
+        volume_min=volume_min,
     )
     scenario_logger.debug(
         f"🌍 Trading context for decision & worker: {trading_context.market_type.value} market"

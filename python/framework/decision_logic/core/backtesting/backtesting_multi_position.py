@@ -183,7 +183,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             'lot_size': ParameterDef(
                 param_type=float,
                 default=0.1,
-                min_val=0.01,
+                min_val=0.0,
                 max_val=100.0,
                 description="Default lot size for trades without explicit lot_size"
             ),

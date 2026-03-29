@@ -168,7 +168,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 description="Minimum confidence score to act on a crossover (0.0 = disabled)"
             ),
             'lot_size': ParameterDef(
-                param_type=float, default=0.1, min_val=0.01, max_val=100.0,
+                param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description="Fixed lot size for STOP orders"
             ),
             'min_free_margin': ParameterDef(
