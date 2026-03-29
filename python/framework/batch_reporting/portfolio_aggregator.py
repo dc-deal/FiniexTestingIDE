@@ -290,7 +290,11 @@ class PortfolioAggregator:
 
         for scenario in scenarios:
             pending = scenario.tick_loop_results.pending_stats
-            if not pending or pending.total_resolved == 0:
+            if not pending:
+                continue
+            has_resolved = pending.total_resolved > 0
+            has_active = pending.active_limit_orders or pending.active_stop_orders
+            if not has_resolved and not has_active:
                 continue
 
             aggregated.total_resolved += pending.total_resolved
@@ -311,6 +315,10 @@ class PortfolioAggregator:
 
             # Collect anomaly records from all scenarios
             aggregated.anomaly_orders.extend(pending.anomaly_orders)
+
+            # Collect active order snapshots from all scenarios
+            aggregated.active_limit_orders.extend(pending.active_limit_orders)
+            aggregated.active_stop_orders.extend(pending.active_stop_orders)
 
         # Calculate weighted average
         if aggregated._latency_count > 0:

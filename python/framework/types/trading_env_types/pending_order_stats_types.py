@@ -36,6 +36,8 @@ class ActiveOrderSnapshot:
         lots: Position size
         entry_price: Limit price (LIMIT) or stop trigger price (STOP/STOP_LIMIT)
         limit_price: Limit fill price (only for STOP_LIMIT, None otherwise)
+        stop_loss: Stop loss price (from order_kwargs, None if not set)
+        take_profit: Take profit price (from order_kwargs, None if not set)
     """
     order_id: str
     order_type: OrderType
@@ -44,6 +46,8 @@ class ActiveOrderSnapshot:
     lots: float
     entry_price: float
     limit_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
 
 
 @dataclass

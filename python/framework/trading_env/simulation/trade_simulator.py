@@ -966,7 +966,11 @@ class TradeSimulator(AbstractTradeExecutor):
                 lots=p.lots,
                 entry_price=p.entry_price,
                 limit_price=p.order_kwargs.get(
-                    "limit_price") if p.order_kwargs else None,
+                    'limit_price') if p.order_kwargs else None,
+                stop_loss=p.order_kwargs.get(
+                    'stop_loss') if p.order_kwargs else None,
+                take_profit=p.order_kwargs.get(
+                    'take_profit') if p.order_kwargs else None,
             )
             for p in self._active_limit_orders
         ]
@@ -979,7 +983,11 @@ class TradeSimulator(AbstractTradeExecutor):
                 lots=p.lots,
                 entry_price=p.entry_price,
                 limit_price=p.order_kwargs.get(
-                    "limit_price") if p.order_kwargs else None,
+                    'limit_price') if p.order_kwargs else None,
+                stop_loss=p.order_kwargs.get(
+                    'stop_loss') if p.order_kwargs else None,
+                take_profit=p.order_kwargs.get(
+                    'take_profit') if p.order_kwargs else None,
             )
             for p in self._active_stop_orders
         ]
