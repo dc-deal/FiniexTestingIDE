@@ -496,8 +496,8 @@ Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1)
 |------|-------|-------------|--------|
 | 1a-α | #229 | Skeleton + Mock Pipeline | ✅ |
 | 1a-β | #230 | Live Broker Config (Kraken API) | ✅ |
-| 1b | #231 | Live Warmup (BrokerHistoricalDataAPI) | ✅ |
+| 1b | #231 | Live Warmup (KrakenOhlcBarFetcher) | ✅ |
 | 3 | #133 | KrakenAdapter Tier 3 (execution, dry-run, broker settings) | ✅ |
+| 4 | #133 | Active Order Lifecycle Lifting | ✅ |
 | 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
 | — | #228 | Live Console UI (rich.live) | Planned |
-| 4 | #133 | Active Order Lifecycle Lifting | Planned |
