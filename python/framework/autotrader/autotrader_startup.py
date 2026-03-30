@@ -24,6 +24,7 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.testing.mock_adapter import MockBrokerAdapter
+from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
@@ -288,10 +289,23 @@ def setup_tick_source(
             tick_queue=tick_queue,
             mode=config.tick_source.mode,
         )
+    elif config.tick_source.type == 'kraken':
+        ws_pair = _resolve_ws_pair(config.symbol, config.broker_settings, logger)
+        tick_source = KrakenTickSource(
+            symbol=config.symbol,
+            ws_pair=ws_pair,
+            tick_queue=tick_queue,
+            ws_url=config.tick_source.ws_url,
+            reconnect_initial_delay_s=config.tick_source.reconnect_initial_delay_s,
+            reconnect_max_delay_s=config.tick_source.reconnect_max_delay_s,
+            heartbeat_interval_s=config.tick_source.heartbeat_interval_s,
+            heartbeat_dead_s=config.tick_source.heartbeat_dead_s,
+            logger=logger,
+        )
     else:
         raise ValueError(
             f"Unknown tick source type: '{config.tick_source.type}'. "
-            f"Supported: 'mock'. WebSocket tick source: #232."
+            f"Supported: 'mock', 'kraken'."
         )
 
     tick_thread = threading.Thread(
@@ -300,10 +314,16 @@ def setup_tick_source(
         daemon=True,
     )
     tick_thread.start()
-    logger.info(
-        f"📡 Tick source started: {config.tick_source.type} "
-        f"(mode={config.tick_source.mode})"
-    )
+    if config.tick_source.type == 'mock':
+        logger.info(
+            f"📡 Tick source started: {config.tick_source.type} "
+            f"(mode={config.tick_source.mode})"
+        )
+    else:
+        logger.info(
+            f"📡 Tick source started: {config.tick_source.type} "
+            f"({config.symbol})"
+        )
 
     return tick_source, tick_thread
 
@@ -453,3 +473,49 @@ def _load_broker_settings(settings_filename: str) -> Dict[str, Any]:
 
     with open(settings_path, 'r') as f:
         return json.load(f)
+
+
+def _resolve_ws_pair(
+    symbol: str,
+    broker_settings_filename: str,
+    logger: ScenarioLogger
+) -> str:
+    """
+    Resolve internal symbol to Kraken WS pair format.
+
+    Lookup chain: symbol_to_ws_pair in broker settings -> fallback slash-insert at position 3.
+
+    Args:
+        symbol: Internal symbol (e.g., 'BTCUSD')
+        broker_settings_filename: Broker settings filename (e.g., 'kraken_spot.json')
+        logger: ScenarioLogger for warnings
+
+    Returns:
+        Kraken WS pair (e.g., 'BTC/USD')
+    """
+    if not broker_settings_filename:
+        raise ValueError(
+            "broker_settings required for tick_source type='kraken'. "
+            "Add 'broker_settings' to the AutoTrader profile JSON."
+        )
+
+    settings = _load_broker_settings(broker_settings_filename)
+    ws_pair_map = settings.get('symbol_to_ws_pair', {})
+
+    if symbol in ws_pair_map:
+        return ws_pair_map[symbol]
+
+    # Fallback: insert slash at position 3 (e.g., BTCUSD -> BTC/USD)
+    if len(symbol) >= 4:
+        ws_pair = f'{symbol[:3]}/{symbol[3:]}'
+        logger.warning(
+            f"📡 Symbol '{symbol}' not in symbol_to_ws_pair mapping, "
+            f"using fallback: '{ws_pair}'. "
+            f"Add to broker_settings for explicit control."
+        )
+        return ws_pair
+
+    raise ValueError(
+        f"Cannot resolve WS pair for symbol '{symbol}'. "
+        f"Add it to 'symbol_to_ws_pair' in broker settings ({broker_settings_filename})."
+    )

@@ -14,5 +14,16 @@
     "XRPUSD": "XRPUSD",
     "LTCUSD": "LTCUSD",
     "DASHUSD": "DASHUSD"
+  },
+  "symbol_to_ws_pair": {
+    "BTCUSD": "BTC/USD",
+    "BTCEUR": "BTC/EUR",
+    "ETHUSD": "ETH/USD",
+    "ETHEUR": "ETH/EUR",
+    "SOLUSD": "SOL/USD",
+    "ADAUSD": "ADA/USD",
+    "XRPUSD": "XRP/USD",
+    "LTCUSD": "LTC/USD",
+    "DASHUSD": "DASH/USD"
   }
 }
