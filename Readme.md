@@ -231,3 +231,13 @@ For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vi
 MIT License - see [LICENSE](LICENSE)
 
 **Trademarks:** Finiex™ is property of Frank Krätzig - see [TRADEMARK.md](TRADEMARK.md)
+
+## Author
+
+**Frank Krätzig** — Software Developer & Data Engineer, Karlsruhe region
+
+15 years of IT experience focused on data-driven backend solutions,
+ETL pipelines, and performance optimization.
+
+- LinkedIn: https://www.linkedin.com/in/frank-kraetzig
+- GitHub: https://github.com/dc-deal
