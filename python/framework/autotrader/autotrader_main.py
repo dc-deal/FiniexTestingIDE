@@ -327,6 +327,7 @@ class AutotraderMain:
         self._first_interrupt_time = now
         self._shutdown_mode = 'emergency'
         self._running = False
+        print('\n⚠️  Shutdown initiated — closing positions (Ctrl+C again within 3s to force)')
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()

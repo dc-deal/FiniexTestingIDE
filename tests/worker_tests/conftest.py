@@ -9,7 +9,7 @@ Only mock logger and config dicts.
 import pytest
 from unittest.mock import MagicMock
 
-from python.framework.types.parameter_types import ParameterDef, REQUIRED
+from python.framework.types.parameter_types import InputParamDef, REQUIRED
 from python.framework.validators.parameter_validator import validate_parameters, apply_defaults
 
 # ============================================

@@ -4,6 +4,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
     AbstractWorker
@@ -24,6 +25,29 @@ class RsiWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """RSI output parameters."""
+        return {
+            'rsi_value': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=100.0,
+                description='RSI oscillator value',
+                category='SIGNAL', display=True,
+            ),
+            'avg_gain': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Average gain over period',
+            ),
+            'avg_loss': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Average loss over period',
+            ),
+            'bars_used': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of bars used in calculation',
+            ),
+        }
 
     # ============================================
     # DYNAMIC: Instance methods für Runtime
@@ -46,10 +70,6 @@ class RsiWorker(AbstractWorker):
             List of timeframes - e.g. ["M5", "M30"]
         """
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """RSI ist schnell - 50ms Timeout"""
-        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """RSI recomputes when bar updated"""
@@ -95,18 +115,9 @@ class RsiWorker(AbstractWorker):
             rs = avg_gain / avg_loss
             rsi = 100.0 - (100.0 / (1.0 + rs))
 
-        # Confidence based on bar quality
-        confidence = min(1.0, len(bars) / (period * 2))
-
-        return WorkerResult(
-            worker_name=self.name,
-            value=float(rsi),
-            confidence=confidence,
-            metadata={
-                "period": period,
-                "timeframe": timeframe,
-                "avg_gain": float(avg_gain),
-                "avg_loss": float(avg_loss),
-                "bars_used": len(close_prices),
-            },
-        )
+        return WorkerResult(outputs={
+            'rsi_value': float(rsi),
+            'avg_gain': float(avg_gain),
+            'avg_loss': float(avg_loss),
+            'bars_used': len(close_prices),
+        })

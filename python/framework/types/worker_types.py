@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, TypedDict
 
@@ -35,9 +35,25 @@ class WorkerType(Enum):
 
 @dataclass
 class WorkerResult:
-    """Result from worker computation"""
-    worker_name: str
-    value: Any
-    confidence: float = 1.0
-    computation_time_ms: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    """
+    Typed output container — values keyed by output schema names.
+
+    Workers declare their outputs via get_output_schema(). The compute()
+    method returns WorkerResult(outputs={...}) with keys matching the schema.
+
+    Args:
+        outputs: Dict of output values keyed by schema-declared names
+    """
+    outputs: Dict[str, Any]
+
+    def get_signal(self, name: str) -> Any:
+        """
+        Access an output value by schema-declared name.
+
+        Args:
+            name: Output parameter name (must match get_output_schema() key)
+
+        Returns:
+            Output value
+        """
+        return self.outputs[name]

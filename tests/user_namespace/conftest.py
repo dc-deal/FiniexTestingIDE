@@ -64,19 +64,13 @@ class {class_name}(AbstractWorker):
     def get_required_timeframes(self) -> List[str]:
         return list(self.periods.keys())
 
-    def get_max_computation_time_ms(self) -> float:
-        return 50.0
-
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated
 
     def compute(self, tick, bar_history, current_bars) -> WorkerResult:
-        return WorkerResult(
-            worker_name=self.name,
-            value={marker_value},
-            confidence=1.0,
-            metadata={{}},
-        )
+        return WorkerResult(outputs={{
+            'value': {marker_value},
+        }})
 '''
 
 VALID_LOGIC_CODE = '''

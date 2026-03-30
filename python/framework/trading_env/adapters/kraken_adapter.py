@@ -558,6 +558,8 @@ class KrakenAdapter(AbstractAdapter):
             )
 
         # Dry-run: synthetic response (Kraken returns no txid in validate mode)
+        # fill_price falls back to 0.0 for market orders — Kraken validate mode
+        # returns no execution data. Fix in #151 (dry-run pending lifecycle).
         if self._dry_run:
             self._dry_run_counter += 1
             return BrokerResponse(

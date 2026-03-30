@@ -2,10 +2,11 @@
 FiniexTestingIDE - Parameter Type Definitions
 Type-safe parameter schema for Workers and Decision Logics
 
-Provides ParameterDef for declaring configurable parameters with
-type, default, range, and description metadata.
+Provides InputParamDef for declaring configurable input parameters and
+OutputParamDef for declaring typed output parameters with type, range,
+category, and display metadata.
 
-Future: UX layer can consume these definitions for sliders, dropdowns, etc.
+Both derive from AbstractParamDef which holds shared fields.
 """
 
 from dataclasses import dataclass
@@ -29,17 +30,31 @@ class _RequiredSentinel:
         return False
 
 
-# Public sentinel - use as ParameterDef(default=REQUIRED)
+# Public sentinel - use as InputParamDef(default=REQUIRED)
 REQUIRED = _RequiredSentinel()
 
 
 @dataclass(frozen=True)
-class ParameterDef:
+class AbstractParamDef:
     """
-    Definition of a configurable parameter.
+    Base for input and output parameter definitions.
 
-    Used by Workers and Decision Logics to declare parameters
-    with type safety, validation ranges, and defaults.
+    Args:
+        param_type: Python type (float, int, bool, str)
+        min_val: Minimum value inclusive (numeric types only)
+        max_val: Maximum value inclusive (numeric types only)
+        description: Functional description (not UX - like a docstring)
+    """
+    param_type: type
+    min_val: Any = None
+    max_val: Any = None
+    description: str = ''
+
+
+@dataclass(frozen=True)
+class InputParamDef(AbstractParamDef):
+    """
+    Input parameter — configurable by user.
 
     Args:
         param_type: Python type (float, int, bool, str)
@@ -52,17 +67,35 @@ class ParameterDef:
     Returns:
         Immutable parameter definition
     """
-    param_type: type
     default: Any = REQUIRED
-    min_val: Any = None
-    max_val: Any = None
     choices: Optional[tuple] = None
-    description: str = ""
 
     @property
     def is_required(self) -> bool:
         """True if parameter must be provided (no default)."""
         return isinstance(self.default, _RequiredSentinel)
+
+
+@dataclass(frozen=True)
+class OutputParamDef(AbstractParamDef):
+    """
+    Output parameter — declared by worker, consumed by decision logic and display.
+
+    Args:
+        param_type: Python type (float, int, bool, str)
+        min_val: Minimum value inclusive (numeric types only)
+        max_val: Maximum value inclusive (numeric types only)
+        description: Functional description
+        category: 'SIGNAL' for decision-relevant, 'INFO' for diagnostic/transparency
+        display: True to show in live dashboard (#228)
+        choices: Allowed values for categorical outputs (tuple for immutability)
+
+    Returns:
+        Immutable output parameter definition
+    """
+    category: str = 'INFO'
+    display: bool = False
+    choices: Optional[tuple] = None
 
 
 class ValidatedParameters:
@@ -109,9 +142,6 @@ class ValidatedParameters:
 
         Returns:
             Parameter value
-
-        Raises:
-            KeyError: With actionable message if key not found
         """
         if key not in self._data:
             raise KeyError(

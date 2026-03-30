@@ -36,7 +36,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -128,58 +128,58 @@ class CautiousMacd(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """CautiousMacd decision logic parameters."""
         return {
-            'rsi_filter_buy': ParameterDef(
+            'rsi_filter_buy': InputParamDef(
                 param_type=float, default=60, min_val=1, max_val=99,
                 description="RSI max for BUY entry (skip if RSI is overbought)"
             ),
-            'rsi_filter_sell': ParameterDef(
+            'rsi_filter_sell': InputParamDef(
                 param_type=float, default=40, min_val=1, max_val=99,
                 description="RSI min for SELL entry (skip if RSI is oversold)"
             ),
-            'stop_distance_pips': ParameterDef(
+            'stop_distance_pips': InputParamDef(
                 param_type=float, default=15, min_val=1, max_val=500,
                 description="STOP trigger distance from current price in pips"
             ),
-            'sl_pips': ParameterDef(
+            'sl_pips': InputParamDef(
                 param_type=float, default=20, min_val=1, max_val=1000,
                 description="Stop loss distance from estimated entry in pips"
             ),
-            'tp_pips': ParameterDef(
+            'tp_pips': InputParamDef(
                 param_type=float, default=40, min_val=1, max_val=2000,
                 description="Take profit distance from estimated entry in pips"
             ),
-            'pip_size': ParameterDef(
+            'pip_size': InputParamDef(
                 param_type=float, default=0.0001, min_val=0.000001, max_val=1.0,
                 description="Pip size for the traded instrument (0.01 for JPY pairs)"
             ),
-            'break_even_trigger_pips': ParameterDef(
+            'break_even_trigger_pips': InputParamDef(
                 param_type=float, default=15, min_val=0, max_val=1000,
                 description="Move SL to entry after X pips profit (0 = disabled)"
             ),
-            'min_histogram': ParameterDef(
+            'min_histogram': InputParamDef(
                 param_type=float, default=0.00005, min_val=0, max_val=100000,
                 description="Minimum |histogram| value for a valid crossover (noise filter)"
             ),
-            'min_confidence': ParameterDef(
+            'min_confidence': InputParamDef(
                 param_type=float, default=0.0, min_val=0.0, max_val=1.0,
                 description="Minimum confidence score to act on a crossover (0.0 = disabled)"
             ),
-            'lot_size': ParameterDef(
+            'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description="Fixed lot size for STOP orders"
             ),
-            'min_free_margin': ParameterDef(
+            'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
                 description="Minimum free margin before opening new position"
             ),
-            'use_stop_limit': ParameterDef(
+            'use_stop_limit': InputParamDef(
                 param_type=bool, default=False,
                 description="Use STOP_LIMIT instead of STOP (required for Kraken)"
             ),
-            'stop_limit_offset_pips': ParameterDef(
+            'stop_limit_offset_pips': InputParamDef(
                 param_type=float, default=2, min_val=0, max_val=100,
                 description="Limit price offset beyond stop_price for STOP_LIMIT orders (in pips)"
             ),
@@ -251,10 +251,10 @@ class CautiousMacd(AbstractDecisionLogic):
                 timestamp=tick.timestamp.isoformat(),
             )
 
-        histogram = macd_result.value.get("histogram", 0.0)
-        macd_line = macd_result.value.get("macd", 0.0)
-        signal_line = macd_result.value.get("signal", 0.0)
-        rsi_value = rsi_result.value
+        histogram = macd_result.get_signal('histogram')
+        macd_line = macd_result.get_signal('macd')
+        signal_line = macd_result.get_signal('signal')
+        rsi_value = rsi_result.get_signal('rsi_value')
 
         _prev = f"{self._prev_histogram:.4f}" if self._prev_histogram is not None else "None"
         self.logger.verbose(

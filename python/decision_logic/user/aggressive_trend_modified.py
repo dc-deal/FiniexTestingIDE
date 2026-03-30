@@ -12,7 +12,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -78,30 +78,30 @@ class AggressiveTrendModified(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """AggressiveTrendModified decision logic parameters with validation ranges."""
         return {
-            'rsi_buy_threshold': ParameterDef(
+            'rsi_buy_threshold': InputParamDef(
                 param_type=float, default=35, min_val=1, max_val=49,
                 description="RSI threshold for buy signal (aggressive, higher than consensus)"
             ),
-            'rsi_sell_threshold': ParameterDef(
+            'rsi_sell_threshold': InputParamDef(
                 param_type=float, default=65, min_val=51, max_val=99,
                 description="RSI threshold for sell signal (aggressive, lower than consensus)"
             ),
-            'envelope_extremes': ParameterDef(
+            'envelope_extremes': InputParamDef(
                 param_type=float, default=0.25, min_val=0.01, max_val=0.5,
                 description="Envelope distance from center to trigger signal"
             ),
-            'min_confidence': ParameterDef(
+            'min_confidence': InputParamDef(
                 param_type=float, default=0.4, min_val=0.0, max_val=1.0,
                 description="Minimum confidence to generate trading signal"
             ),
-            'min_free_margin': ParameterDef(
+            'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
                 description="Minimum free margin required before opening trade"
             ),
-            'lot_size': ParameterDef(
+            'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.01, max_val=100.0,
                 description="Fixed lot size for market orders"
             ),
@@ -276,9 +276,8 @@ class AggressiveTrendModified(AbstractDecisionLogic):
             )
 
         # Extract indicator values
-        rsi_value = rsi_result.value
-        envelope_data = envelope_result.value
-        envelope_position = envelope_data.get("position", 0.5)
+        rsi_value = rsi_result.get_signal('rsi_value')
+        envelope_position = envelope_result.get_signal('position')
 
         # Check for BUY signal (OR logic - either indicator is enough)
         buy_signal_rsi = rsi_value < self.rsi_buy

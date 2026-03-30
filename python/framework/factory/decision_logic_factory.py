@@ -38,7 +38,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
+from python.framework.types.parameter_types import InputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
 
 
@@ -295,7 +295,7 @@ class DecisionLogicFactory:
         if trading_context and trading_context.volume_min > 0 and 'lot_size' in schema:
             lot_def = schema['lot_size']
             schema = dict(schema)  # mutable copy
-            schema['lot_size'] = ParameterDef(
+            schema['lot_size'] = InputParamDef(
                 param_type=lot_def.param_type,
                 default=lot_def.default,
                 min_val=trading_context.volume_min,

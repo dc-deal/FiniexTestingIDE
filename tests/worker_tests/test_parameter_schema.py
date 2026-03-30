@@ -4,7 +4,7 @@ Validates that all Workers and Decision Logics declare correct parameter schemas
 
 Tests (parametrized over all CORE components):
 - Schema returns dict
-- ParameterDef instances are valid
+- InputParamDef instances are valid
 - Types are supported Python types
 - Numeric bounds are consistent (min < max)
 - Defaults are within declared bounds
@@ -13,7 +13,7 @@ Tests (parametrized over all CORE components):
 
 import pytest
 
-from python.framework.types.parameter_types import ParameterDef, REQUIRED, _RequiredSentinel
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef, REQUIRED, _RequiredSentinel
 from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.envelope_worker import EnvelopeWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -49,11 +49,11 @@ class TestSchemaStructure:
 
     @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_schema_values_are_parameter_defs(self, cls):
-        """All schema values must be ParameterDef instances."""
+        """All schema values must be InputParamDef instances."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
-            assert isinstance(param_def, ParameterDef), (
-                f"{cls.__name__}.{param_name}: expected ParameterDef, "
+            assert isinstance(param_def, InputParamDef), (
+                f"{cls.__name__}.{param_name}: expected InputParamDef, "
                 f"got {type(param_def).__name__}"
             )
 
@@ -69,11 +69,11 @@ class TestSchemaStructure:
 
 
 # ============================================
-# ParameterDef Validity Tests
+# InputParamDef Validity Tests
 # ============================================
 
-class TestParameterDefValidity:
-    """Validate each ParameterDef is internally consistent."""
+class TestInputParamDefValidity:
+    """Validate each InputParamDef is internally consistent."""
 
     SUPPORTED_TYPES = (float, int, bool, str, list)
 
@@ -248,3 +248,103 @@ class TestDecisionLogicSpecificSchemas:
             schema = cls.get_parameter_schema()
             assert 'lot_size' in schema, f"{cls.__name__} missing lot_size"
             assert schema['lot_size'].min_val >= 0, f"{cls.__name__} lot_size min must be >= 0"
+
+
+# ============================================
+# Output Schema Structure Tests
+# ============================================
+
+class TestOutputSchemaStructure:
+    """Validate output schema declaration format for all workers."""
+
+    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    def test_output_schema_returns_dict(self, cls):
+        """get_output_schema() must return a dict."""
+        schema = cls.get_output_schema()
+        assert isinstance(schema, dict), (
+            f"{cls.__name__}.get_output_schema() returned "
+            f"{type(schema).__name__}, expected dict"
+        )
+
+    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    def test_output_schema_values_are_output_param_defs(self, cls):
+        """All output schema values must be OutputParamDef instances."""
+        schema = cls.get_output_schema()
+        for param_name, param_def in schema.items():
+            assert isinstance(param_def, OutputParamDef), (
+                f"{cls.__name__}.{param_name}: expected OutputParamDef, "
+                f"got {type(param_def).__name__}"
+            )
+
+    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    def test_output_schema_keys_are_strings(self, cls):
+        """All output schema keys must be non-empty strings."""
+        schema = cls.get_output_schema()
+        for param_name in schema.keys():
+            assert isinstance(param_name, str) and len(param_name) > 0, (
+                f"{cls.__name__}: output schema key must be non-empty string, "
+                f"got {repr(param_name)}"
+            )
+
+    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    def test_output_category_is_valid(self, cls):
+        """Output category must be 'SIGNAL' or 'INFO'."""
+        schema = cls.get_output_schema()
+        for param_name, param_def in schema.items():
+            assert param_def.category in ('SIGNAL', 'INFO'), (
+                f"{cls.__name__}.{param_name}: category={param_def.category}, "
+                f"must be 'SIGNAL' or 'INFO'"
+            )
+
+    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    def test_output_min_less_than_max(self, cls):
+        """If both min_val and max_val are set, min must be < max."""
+        schema = cls.get_output_schema()
+        for param_name, param_def in schema.items():
+            if param_def.min_val is not None and param_def.max_val is not None:
+                assert param_def.min_val < param_def.max_val, (
+                    f"{cls.__name__}.{param_name}: min_val={param_def.min_val} "
+                    f">= max_val={param_def.max_val}"
+                )
+
+
+# ============================================
+# Worker-Specific Output Schema Tests
+# ============================================
+
+class TestWorkerSpecificOutputSchemas:
+    """Validate specific known output schemas for CORE workers."""
+
+    def test_rsi_output_schema(self):
+        """RSI must declare rsi_value as SIGNAL with 0-100 range."""
+        schema = RsiWorker.get_output_schema()
+        assert 'rsi_value' in schema
+        rsi = schema['rsi_value']
+        assert rsi.param_type == float
+        assert rsi.min_val == 0.0
+        assert rsi.max_val == 100.0
+        assert rsi.category == 'SIGNAL'
+        assert rsi.display is True
+
+    def test_envelope_output_schema(self):
+        """Envelope must declare upper, lower, position as SIGNAL."""
+        schema = EnvelopeWorker.get_output_schema()
+        for key in ('upper', 'lower', 'position'):
+            assert key in schema, f"Missing output: {key}"
+            assert schema[key].category == 'SIGNAL'
+
+    def test_macd_output_schema(self):
+        """MACD must declare macd, signal, histogram as SIGNAL."""
+        schema = MacdWorker.get_output_schema()
+        for key in ('macd', 'signal', 'histogram'):
+            assert key in schema, f"Missing output: {key}"
+            assert schema[key].category == 'SIGNAL'
+            assert schema[key].display is True
+
+    def test_obv_output_schema(self):
+        """OBV must declare obv_value as SIGNAL, trend with choices."""
+        schema = ObvWorker.get_output_schema()
+        assert 'obv_value' in schema
+        assert schema['obv_value'].category == 'SIGNAL'
+        assert 'trend' in schema
+        assert schema['trend'].choices == ('bullish', 'bearish', 'neutral')

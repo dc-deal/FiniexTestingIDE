@@ -9,7 +9,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.parameter_types import REQUIRED, ParameterDef
+from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -52,29 +52,62 @@ class MacdWorker(AbstractWorker):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """MACD algorithm parameters - all three periods required."""
         return {
-            'fast_period': ParameterDef(
+            'fast_period': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=1,
                 max_val=200,
                 description="Fast EMA period (e.g. 12)"
             ),
-            'slow_period': ParameterDef(
+            'slow_period': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=2,
                 max_val=500,
                 description="Slow EMA period (e.g. 26), must be > fast_period"
             ),
-            'signal_period': ParameterDef(
+            'signal_period': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=1,
                 max_val=200,
                 description="Signal line EMA period (e.g. 9)"
+            ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """MACD output parameters."""
+        return {
+            'macd': OutputParamDef(
+                param_type=float,
+                description='MACD line (fast EMA - slow EMA)',
+                category='SIGNAL', display=True,
+            ),
+            'signal': OutputParamDef(
+                param_type=float,
+                description='Signal line (EMA of MACD line)',
+                category='SIGNAL', display=True,
+            ),
+            'histogram': OutputParamDef(
+                param_type=float,
+                description='MACD histogram (MACD - signal)',
+                category='SIGNAL', display=True,
+            ),
+            'fast_ema': OutputParamDef(
+                param_type=float,
+                description='Fast EMA value',
+            ),
+            'slow_ema': OutputParamDef(
+                param_type=float,
+                description='Slow EMA value',
+            ),
+            'bars_used': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of bars used in calculation',
             ),
         }
 
@@ -130,10 +163,6 @@ class MacdWorker(AbstractWorker):
             List of timeframes - e.g. ["M5"]
         """
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """MACD is moderately fast - 75ms timeout"""
-        return 75.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """MACD recomputes when bar updated"""
@@ -206,29 +235,14 @@ class MacdWorker(AbstractWorker):
         # Calculate histogram
         histogram = macd_line - signal_line
 
-        # Confidence based on bar quality
-        required_bars = max(
-            self.fast_period, self.slow_period) + self.signal_period
-        confidence = min(1.0, len(bars) / (required_bars * 1.5))
-
-        return WorkerResult(
-            worker_name=self.name,
-            value={
-                "macd": float(macd_line),
-                "signal": float(signal_line),
-                "histogram": float(histogram),
-                "fast_ema": float(fast_ema),
-                "slow_ema": float(slow_ema),
-            },
-            confidence=confidence,
-            metadata={
-                "fast_period": self.fast_period,
-                "slow_period": self.slow_period,
-                "signal_period": self.signal_period,
-                "timeframe": timeframe,
-                "bars_used": len(close_prices),
-            },
-        )
+        return WorkerResult(outputs={
+            'macd': float(macd_line),
+            'signal': float(signal_line),
+            'histogram': float(histogram),
+            'fast_ema': float(fast_ema),
+            'slow_ema': float(slow_ema),
+            'bars_used': float(len(close_prices)),
+        })
 
     def _calculate_ema(self, prices: np.ndarray, period: int) -> float:
         """

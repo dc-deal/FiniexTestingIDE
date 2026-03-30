@@ -118,7 +118,7 @@ class CoordinatorTickLogger:
         return {
             "tick": tick.to_dict(),
             "worker_results": {
-                name: asdict(result)
+                name: result.outputs
                 for name, result in worker_results.items()
             },
             "current_bars": {

@@ -18,7 +18,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
@@ -41,10 +41,10 @@ class TEMPLATELogic(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Define your configurable parameters with validation ranges."""
         return {
-            # 'lot_size': ParameterDef(
+            # 'lot_size': InputParamDef(
             #     param_type=float, default=0.1, min_val=0.01, max_val=100.0,
             #     description="Fixed lot size for orders"
             # ),

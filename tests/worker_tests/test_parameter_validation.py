@@ -8,7 +8,7 @@ No Worker/Logic instances needed.
 
 import pytest
 
-from python.framework.types.parameter_types import ParameterDef, REQUIRED
+from python.framework.types.parameter_types import InputParamDef, REQUIRED
 from python.framework.validators.parameter_validator import validate_parameters
 
 
@@ -20,16 +20,16 @@ from python.framework.validators.parameter_validator import validate_parameters
 def sample_schema():
     """Schema with mixed required/optional, bounded/unbounded params."""
     return {
-        'fast_period': ParameterDef(
+        'fast_period': InputParamDef(
             param_type=int, default=REQUIRED, min_val=1, max_val=200
         ),
-        'deviation': ParameterDef(
+        'deviation': InputParamDef(
             param_type=float, default=2.0, min_val=0.5, max_val=5.0
         ),
-        'enabled': ParameterDef(
+        'enabled': InputParamDef(
             param_type=bool, default=True
         ),
-        'mode': ParameterDef(
+        'mode': InputParamDef(
             param_type=str, default="normal", choices=("normal", "aggressive", "conservative")
         ),
     }

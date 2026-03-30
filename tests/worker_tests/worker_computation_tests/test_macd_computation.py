@@ -12,7 +12,7 @@ Key implementation details (verified from source):
 - MACD line = fast_ema - slow_ema
 - Signal line = EMA of historical MACD values (complex loop)
 - Histogram = MACD - Signal
-- Returns WorkerResult.value = dict {macd, signal, histogram, fast_ema, slow_ema}
+- Returns WorkerResult with outputs dict {macd, signal, histogram, fast_ema, slow_ema, bars_used}
 """
 
 import numpy as np
@@ -132,10 +132,9 @@ class TestMACDStructure:
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
         assert isinstance(result, WorkerResult)
-        assert result.worker_name == "test_macd"
 
-    def test_macd_value_keys(self, mock_logger):
-        """Result value dict must contain: macd, signal, histogram, fast_ema, slow_ema."""
+    def test_macd_output_keys(self, mock_logger):
+        """Result outputs dict must contain schema-declared keys."""
         worker = MacdWorker(
             name="test_macd",
             parameters={
@@ -152,8 +151,8 @@ class TestMACDStructure:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        expected_keys = {"macd", "signal", "histogram", "fast_ema", "slow_ema"}
-        assert set(result.value.keys()) == expected_keys
+        expected_keys = {'macd', 'signal', 'histogram', 'fast_ema', 'slow_ema', 'bars_used'}
+        assert set(result.outputs.keys()) == expected_keys
 
     def test_macd_values_are_float(self, mock_logger):
         """All MACD values must be Python floats (not numpy)."""
@@ -173,13 +172,13 @@ class TestMACDStructure:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        for key, value in result.value.items():
+        for key, value in result.outputs.items():
             assert isinstance(value, float), (
                 f"MACD value '{key}' is {type(value).__name__}, expected float"
             )
 
-    def test_macd_metadata_fields(self, mock_logger):
-        """Metadata must contain fast_period, slow_period, signal_period, timeframe, bars_used."""
+    def test_macd_bars_used_output(self, mock_logger):
+        """bars_used output must match input bar count."""
         worker = MacdWorker(
             name="test_macd",
             parameters={
@@ -196,11 +195,7 @@ class TestMACDStructure:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.metadata["fast_period"] == 3
-        assert result.metadata["slow_period"] == 5
-        assert result.metadata["signal_period"] == 2
-        assert result.metadata["timeframe"] == "M5"
-        assert result.metadata["bars_used"] == 10
+        assert result.outputs['bars_used'] == 10
 
 
 class TestMACDDirection:
@@ -230,10 +225,10 @@ class TestMACDDirection:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["macd"] > 0, (
-            f"Rising prices should produce positive MACD, got {result.value['macd']}"
+        assert result.outputs["macd"] > 0, (
+            f"Rising prices should produce positive MACD, got {result.outputs['macd']}"
         )
-        assert result.value["fast_ema"] > result.value["slow_ema"]
+        assert result.outputs["fast_ema"] > result.outputs["slow_ema"]
 
     def test_macd_falling_prices_negative(self, mock_logger):
         """
@@ -259,10 +254,10 @@ class TestMACDDirection:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["macd"] < 0, (
-            f"Falling prices should produce negative MACD, got {result.value['macd']}"
+        assert result.outputs["macd"] < 0, (
+            f"Falling prices should produce negative MACD, got {result.outputs['macd']}"
         )
-        assert result.value["fast_ema"] < result.value["slow_ema"]
+        assert result.outputs["fast_ema"] < result.outputs["slow_ema"]
 
     def test_macd_histogram_equals_macd_minus_signal(self, mock_logger):
         """Histogram must always equal MACD line minus Signal line."""
@@ -283,5 +278,5 @@ class TestMACDDirection:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        expected_histogram = result.value["macd"] - result.value["signal"]
-        assert result.value["histogram"] == pytest.approx(expected_histogram, abs=0.0001)
+        expected_histogram = result.outputs["macd"] - result.outputs["signal"]
+        assert result.outputs["histogram"] == pytest.approx(expected_histogram, abs=0.0001)

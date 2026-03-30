@@ -10,7 +10,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
     AbstractWorker
@@ -34,15 +34,30 @@ class HeavyRsiWorker(AbstractWorker):
         self.artificial_load_ms = self.params.get('artificial_load_ms')
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Heavy RSI algorithm parameters with artificial load config."""
         return {
-            'artificial_load_ms': ParameterDef(
+            'artificial_load_ms': InputParamDef(
                 param_type=float,
                 default=5.0,
                 min_val=0.0,
                 max_val=1000.0,
                 description="Artificial CPU load in milliseconds for parallel testing"
+            ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Heavy RSI output parameters (mirrors RSI with load info)."""
+        return {
+            'rsi_value': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=100.0,
+                description='RSI oscillator value',
+                category='SIGNAL', display=True,
+            ),
+            'artificial_load_ms': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Configured artificial load in milliseconds',
             ),
         }
 
@@ -57,9 +72,6 @@ class HeavyRsiWorker(AbstractWorker):
     def get_required_timeframes(self) -> List[str]:
         """Heavy RSI required timeframes from config 'periods'"""
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        return self.artificial_load_ms + 10.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         return bar_updated
@@ -103,18 +115,10 @@ class HeavyRsiWorker(AbstractWorker):
             rs = avg_gain / avg_loss
             rsi = 100.0 - (100.0 / (1.0 + rs))
 
-        confidence = min(1.0, len(bars) / (period * 2))
-
-        return WorkerResult(
-            worker_name=self.name,
-            value=float(rsi),
-            confidence=confidence,
-            metadata={
-                "artificial_load_ms": self.artificial_load_ms,
-                "period": period,
-                "timeframe": timeframe,
-            },
-        )
+        return WorkerResult(outputs={
+            'rsi_value': float(rsi),
+            'artificial_load_ms': self.artificial_load_ms,
+        })
 
     def _simulate_heavy_computation(self):
         """Simulates CPU-intensive calculations (matrix ops)"""
