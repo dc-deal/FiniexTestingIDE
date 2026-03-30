@@ -208,10 +208,8 @@ class AutotraderTickLoop:
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = tick_date
-            # Remove placeholder file created during startup
-            if self._initial_placeholder_path and self._initial_placeholder_path.exists():
-                self._initial_placeholder_path.unlink()
-                self._initial_placeholder_path = None
+            # Keep placeholder file — it contains pre-tick logs (warmup bars, pipeline setup)
+            self._initial_placeholder_path = None
             return
 
         if tick_date != self._current_log_date:

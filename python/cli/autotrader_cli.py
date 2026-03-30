@@ -53,8 +53,8 @@ def main():
             trader = AutotraderMain(config)
             result = trader.run()
 
-            # Exit code: 0 for normal, 1 for emergency
-            sys.exit(0 if result.shutdown_mode == 'normal' else 1)
+            # Both normal (SIGTERM) and emergency (Ctrl+C) are valid shutdown paths
+            return
 
     except KeyboardInterrupt:
         print('\n\n👋 Interrupted by user')

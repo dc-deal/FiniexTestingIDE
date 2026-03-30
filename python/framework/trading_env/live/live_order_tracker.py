@@ -214,6 +214,15 @@ class LiveOrderTracker(AbstractPendingOrderManager):
             f"({filled_lots} lots, broker_ref={broker_ref})"
         )
 
+        # Dry-run market orders have no fill price — Kraken validate mode
+        # returns no execution data. Real fill price requires #151 reconciliation.
+        if fill_price is not None and fill_price == 0.0:
+            self.logger.warning(
+                f"⚠️  Fill price is 0.00000 for {order_id} — "
+                f"dry-run mode cannot determine market fill price. "
+                f"P&L calculations will be inaccurate. (#151)"
+            )
+
         return pending
 
     def mark_rejected(

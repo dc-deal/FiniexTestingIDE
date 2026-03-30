@@ -95,6 +95,17 @@ class AutotraderWarmupPreparator:
             f"({', '.join(f'{tf}:{len(bars)}' for tf, bars in bars_by_tf.items())})"
         )
 
+        # Log last warmup bar per timeframe — verifies continuity with first live tick
+        for timeframe, bars in bars_by_tf.items():
+            if bars:
+                last = bars[-1]
+                self._logger.verbose(
+                    f"📊 Warmup tail {timeframe}: {last.timestamp} | "
+                    f"O={last.open:.5f} H={last.high:.5f} "
+                    f"L={last.low:.5f} C={last.close:.5f} | "
+                    f"Ticks={last.tick_count}"
+                )
+
     # =========================================================================
     # MOCK PATH — Parquet bar loading
     # =========================================================================
