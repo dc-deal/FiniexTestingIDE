@@ -36,7 +36,7 @@ from typing import Any, Dict, List
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -92,13 +92,31 @@ class BacktestingSampleWorker(AbstractWorker):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Backtesting sample worker parameters."""
         return {
-            'bar_snapshot_checks': ParameterDef(
+            'bar_snapshot_checks': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of bar snapshot capture configs (timeframe, bar_index, check_at_tick)"
+            ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Backtesting sample worker output parameters."""
+        return {
+            'warmup_status': OutputParamDef(
+                param_type=dict,
+                description='Warmup validation status per timeframe',
+            ),
+            'bar_snapshots': OutputParamDef(
+                param_type=dict,
+                description='Captured bar snapshots at configured ticks',
+            ),
+            'tick_count': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Current tick count',
             ),
         }
 
@@ -131,12 +149,6 @@ class BacktestingSampleWorker(AbstractWorker):
             List of timeframe strings - e.g. ["M5", "M30"]
         """
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """
-        This worker is fast - just validation and dict operations.
-        """
-        return 10.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """
@@ -203,16 +215,11 @@ class BacktestingSampleWorker(AbstractWorker):
         # ============================================
         # Return Result with Metadata
         # ============================================
-        return WorkerResult(
-            worker_name=self.name,
-            value=None,  # No computation value - validation only
-            confidence=1.0,  # Always confident in validation data
-            metadata={
-                'warmup_status': self.warmup_status,
-                'bar_snapshots': self.snapshots,
-                'tick_count': self.tick_count
-            }
-        )
+        return WorkerResult(outputs={
+            'warmup_status': self.warmup_status,
+            'bar_snapshots': self.snapshots,
+            'tick_count': self.tick_count,
+        })
 
     def _validate_warmup(self, bar_history: Dict[str, List[Bar]]) -> Dict[str, Dict]:
         """

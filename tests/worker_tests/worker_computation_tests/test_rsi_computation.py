@@ -7,7 +7,7 @@ Key implementation details (verified from source):
 - SMA-based RSI (NOT Wilder's Exponential Smoothing)
 - Uses np.mean(gains) and np.mean(losses) over ALL deltas
 - Takes bars[-(period + 1):] → needs period + 1 bars minimum
-- Returns WorkerResult with value = float(rsi)
+- Returns WorkerResult with outputs['rsi_value'] = float(rsi)
 
 Reference formula:
     deltas = np.diff(close_prices)
@@ -56,7 +56,7 @@ class TestRSIBasicComputation:
         )
 
         assert isinstance(result, WorkerResult)
-        assert result.value == pytest.approx(83.333, abs=0.01)
+        assert result.get_signal('rsi_value') == pytest.approx(83.333, abs=0.01)
 
     def test_rsi_all_gains(self, mock_logger):
         """
@@ -83,7 +83,7 @@ class TestRSIBasicComputation:
             current_bars={},
         )
 
-        assert result.value == 100.0
+        assert result.get_signal('rsi_value') == 100.0
 
     def test_rsi_all_losses(self, mock_logger):
         """
@@ -111,7 +111,7 @@ class TestRSIBasicComputation:
             current_bars={},
         )
 
-        assert result.value == pytest.approx(0.0, abs=0.01)
+        assert result.get_signal('rsi_value') == pytest.approx(0.0, abs=0.01)
 
     def test_rsi_equal_gains_losses(self, mock_logger):
         """
@@ -139,49 +139,15 @@ class TestRSIBasicComputation:
             current_bars={},
         )
 
-        assert result.value == pytest.approx(50.0, abs=0.01)
+        assert result.get_signal('rsi_value') == pytest.approx(50.0, abs=0.01)
 
 
-class TestRSIMetadataAndConfidence:
-    """Test RSI metadata fields and confidence calculation."""
+class TestRSIOutputFields:
+    """Test RSI output fields via get_signal()."""
 
-    def test_rsi_worker_name(self, mock_logger):
-        """WorkerResult.worker_name must match the worker instance name."""
-        worker = RsiWorker(
-            name="my_rsi_instance",
-            parameters={"periods": {"M5": 4}},
-            logger=mock_logger,
-        )
-
-        bars = make_bars([100, 101, 102, 103, 104])
-        tick = make_tick(bid=104.0)
-
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
-
-        assert result.worker_name == "my_rsi_instance"
-
-    def test_rsi_metadata_fields(self, mock_logger):
-        """Metadata must contain period, timeframe, avg_gain, avg_loss, bars_used."""
-        worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
-            logger=mock_logger,
-        )
-
-        bars = make_bars([100, 102, 101, 103, 104])
-        tick = make_tick(bid=104.0)
-
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
-
-        assert result.metadata["period"] == 4
-        assert result.metadata["timeframe"] == "M5"
-        assert result.metadata["bars_used"] == 5
-        assert "avg_gain" in result.metadata
-        assert "avg_loss" in result.metadata
-
-    def test_rsi_metadata_gain_loss_values(self, mock_logger):
+    def test_rsi_output_avg_gain_loss(self, mock_logger):
         """
-        Verify avg_gain and avg_loss in metadata match hand calculation.
+        Verify avg_gain and avg_loss outputs match hand calculation.
 
         closes = [100, 102, 101, 103, 104]
         avg_gain = 5/4 = 1.25
@@ -198,15 +164,11 @@ class TestRSIMetadataAndConfidence:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.metadata["avg_gain"] == pytest.approx(1.25, abs=0.001)
-        assert result.metadata["avg_loss"] == pytest.approx(0.25, abs=0.001)
+        assert result.get_signal('avg_gain') == pytest.approx(1.25, abs=0.001)
+        assert result.get_signal('avg_loss') == pytest.approx(0.25, abs=0.001)
 
-    def test_rsi_confidence_partial_data(self, mock_logger):
-        """
-        Confidence formula: min(1.0, len(bars) / (period * 2))
-
-        5 bars, period=4: confidence = min(1.0, 5/8) = 0.625
-        """
+    def test_rsi_output_bars_used(self, mock_logger):
+        """bars_used output must match number of close prices used."""
         worker = RsiWorker(
             name="test_rsi",
             parameters={"periods": {"M5": 4}},
@@ -218,27 +180,7 @@ class TestRSIMetadataAndConfidence:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.confidence == pytest.approx(0.625, abs=0.001)
-
-    def test_rsi_confidence_saturates_at_one(self, mock_logger):
-        """
-        With enough bars, confidence caps at 1.0.
-
-        10 bars, period=4: min(1.0, 10/8) = 1.0
-        """
-        worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
-            logger=mock_logger,
-        )
-
-        closes = [100 + i for i in range(10)]
-        bars = make_bars(closes)
-        tick = make_tick(bid=109.0)
-
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
-
-        assert result.confidence == 1.0
+        assert result.get_signal('bars_used') == 5
 
 
 class TestRSIBoundaryAndRange:
@@ -258,7 +200,7 @@ class TestRSIBoundaryAndRange:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert 0.0 <= result.value <= 100.0
+        assert 0.0 <= result.get_signal('rsi_value') <= 100.0
 
     def test_rsi_with_large_period(self, mock_logger):
         """RSI with period=14 (standard) and enough data."""
@@ -280,6 +222,6 @@ class TestRSIBoundaryAndRange:
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
         # Must return a valid RSI in range
-        assert 0.0 <= result.value <= 100.0
+        assert 0.0 <= result.get_signal('rsi_value') <= 100.0
         # This upward-biased series should be above 50
-        assert result.value > 50.0
+        assert result.get_signal('rsi_value') > 50.0

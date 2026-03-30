@@ -10,29 +10,29 @@ The worker test suite validates the parameter validation system, schema integrit
 - 6 Workers: RsiWorker, EnvelopeWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
-**Total Tests:** 202
+**Total Tests:** 231
 
 ---
 
 ## Test Files
 
-### test_parameter_schema.py (90 Tests)
+### test_parameter_schema.py (~124 Tests)
 
-Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `ParameterDef` declarations. All schema tests are parametrized across all 9 components.
+Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 9 components.
 
 #### TestSchemaStructure (27 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
 | `test_schema_returns_dict` | ×9 | `get_parameter_schema()` returns a `dict` |
-| `test_schema_values_are_parameter_defs` | ×9 | All values are `ParameterDef` instances |
+| `test_schema_values_are_parameter_defs` | ×9 | All values are `InputParamDef` instances |
 | `test_schema_keys_are_strings` | ×9 | All keys are strings |
 
-#### TestParameterDefValidity (54 Tests)
+#### TestInputParamDefValidity (54 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
-| `test_param_types_are_supported` | ×9 | `param_type` is one of `int`, `float`, `bool`, `str` |
+| `test_param_types_are_supported` | ×9 | `param_type` is one of `int`, `float`, `bool`, `str`, `list` |
 | `test_min_less_than_max` | ×9 | `min_val < max_val` when both are set |
 | `test_defaults_within_bounds` | ×9 | Non-REQUIRED defaults fall within `[min_val, max_val]` |
 | `test_defaults_match_declared_type` | ×9 | Default value matches declared `param_type` |
@@ -56,7 +56,26 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_simple_consensus_has_rsi_thresholds` | SimpleConsensus has `rsi_oversold`, `rsi_overbought` with defaults |
 | `test_aggressive_trend_has_rsi_thresholds` | AggressiveTrend has `rsi_buy_threshold`, `rsi_sell_threshold` |
 | `test_backtesting_deterministic_has_trade_sequence` | BacktestingDeterministic has `trade_sequence` parameter |
-| `test_all_logics_have_lot_size` | All 3 decision logics declare `lot_size` |
+| `test_all_logics_have_lot_size` | All non-backtesting decision logics declare `lot_size` |
+
+#### TestOutputSchemaStructure (30 Tests)
+
+| Test | Parametrized | Description |
+|------|-------------|-------------|
+| `test_output_schema_returns_dict` | ×6 | `get_output_schema()` returns a `dict` |
+| `test_output_schema_values_are_output_param_defs` | ×6 | All values are `OutputParamDef` instances |
+| `test_output_schema_keys_are_strings` | ×6 | All keys are non-empty strings |
+| `test_output_category_is_valid` | ×6 | Output category is `'SIGNAL'` or `'INFO'` |
+| `test_output_min_less_than_max` | ×6 | `min_val < max_val` when both are set |
+
+#### TestWorkerSpecificOutputSchemas (4 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_rsi_output_schema` | RSI declares `rsi_value` as SIGNAL with 0–100 range |
+| `test_envelope_output_schema` | Envelope declares `upper`, `lower`, `position` as SIGNAL |
+| `test_macd_output_schema` | MACD declares `macd`, `signal`, `histogram` as SIGNAL with display |
+| `test_obv_output_schema` | OBV declares `obv_value` as SIGNAL, `trend` with choices |
 
 ---
 
@@ -219,13 +238,13 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 ---
 
-### worker_computation_tests/ (43 Tests)
+### worker_computation_tests/ (38 Tests)
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.
 
 ---
 
-#### test_rsi_computation.py (11 Tests)
+#### test_rsi_computation.py (8 Tests)
 
 ##### TestRSIBasicComputation (4 Tests)
 
@@ -236,26 +255,23 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_rsi_all_losses` | Monotonically falling prices produce RSI = 0 |
 | `test_rsi_equal_gains_losses` | Equal gains and losses produce RSI ≈ 50 |
 
-##### TestRSIMetadataAndConfidence (5 Tests)
+##### TestRSIOutputFields (2 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_rsi_worker_name` | WorkerResult contains correct worker name |
-| `test_rsi_metadata_fields` | Metadata includes `period`, `timeframe`, `avg_gain`, `avg_loss` |
-| `test_rsi_metadata_gain_loss_values` | `avg_gain` and `avg_loss` are non-negative |
-| `test_rsi_confidence_partial_data` | Confidence < 1.0 when fewer bars than period available |
-| `test_rsi_confidence_saturates_at_one` | Confidence = 1.0 when sufficient bars available |
+| `test_rsi_output_avg_gain_loss` | `avg_gain` and `avg_loss` via `get_signal()` match hand calculation |
+| `test_rsi_output_bars_used` | `bars_used` output matches number of close prices used |
 
 ##### TestRSIBoundaryAndRange (2 Tests)
 
 | Test | Description |
 |------|-------------|
 | `test_rsi_always_between_0_and_100` | RSI value is always in [0, 100] range |
-| `test_rsi_with_large_period` | RSI works correctly with large period (50+) |
+| `test_rsi_with_large_period` | RSI works correctly with large period (14) |
 
 ---
 
-#### test_envelope_computation.py (10 Tests)
+#### test_envelope_computation.py (9 Tests)
 
 ##### TestEnvelopeBasicComputation (3 Tests)
 
@@ -263,29 +279,28 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 |------|-------------|
 | `test_envelope_bands_default_deviation` | Bands computed with default deviation (2.0) |
 | `test_envelope_bands_custom_deviation` | Bands computed with custom deviation value |
-| `test_envelope_value_keys` | WorkerResult value contains `sma`, `upper_band`, `lower_band`, `position` |
+| `test_envelope_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `std_dev`, `bars_used` |
 
 ##### TestEnvelopePosition (3 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_position_at_middle` | Price at SMA produces position ≈ 0.5 |
+| `test_position_at_middle` | Price at middle produces position ≈ 0.5 |
 | `test_position_above_upper_clamped` | Price above upper band produces position clamped to 1.0 |
 | `test_position_below_lower_clamped` | Price below lower band produces position clamped to 0.0 |
 
-##### TestEnvelopeMetadataAndConfidence (2 Tests)
+##### TestEnvelopeOutputFields (1 Test)
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_metadata_fields` | Metadata includes `period`, `timeframe`, `deviation` |
-| `test_envelope_confidence_partial_data` | Confidence < 1.0 when fewer bars than period available |
+| `test_envelope_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
 
 ##### TestEnvelopeRegression (2 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_band_width_sanity_check` | Upper band > SMA > Lower band (non-degenerate bands) |
-| `test_constant_prices_zero_std` | Constant prices produce zero-width bands (upper = lower = SMA) |
+| `test_band_width_sanity_check` | Band width matches expected value, regression guard against deviation bug |
+| `test_constant_prices_zero_std` | Constant prices produce zero-width bands (upper = lower = middle) |
 
 ---
 
@@ -305,9 +320,9 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | Test | Description |
 |------|-------------|
 | `test_macd_returns_worker_result` | Compute returns a `WorkerResult` |
-| `test_macd_value_keys` | Value dict contains `macd_line`, `signal_line`, `histogram` |
-| `test_macd_values_are_float` | All MACD values are floats |
-| `test_macd_metadata_fields` | Metadata includes `fast_period`, `slow_period`, `signal_period` |
+| `test_macd_output_keys` | Outputs dict contains `macd`, `signal`, `histogram`, `fast_ema`, `slow_ema`, `bars_used` |
+| `test_macd_values_are_float` | All MACD output values are Python floats |
+| `test_macd_bars_used_output` | `bars_used` output matches input bar count |
 
 ##### TestMACDDirection (3 Tests)
 
@@ -319,7 +334,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_obv_computation.py (11 Tests)
+#### test_obv_computation.py (10 Tests)
 
 ##### TestOBVBasicComputation (4 Tests)
 
@@ -338,14 +353,13 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_obv_zero_volume` | Zero volume bars produce OBV = 0 |
 | `test_obv_exactly_two_bars_up` | Minimum case: 2 bars with rising price |
 
-##### TestOBVMetadata (4 Tests)
+##### TestOBVOutputFields (3 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_obv_metadata_fields` | Metadata includes `bars_used`, `has_volume`, `timeframe` |
+| `test_obv_output_fields` | Outputs contain `obv_value`, `bars_used`, `total_volume`, `trend`, `has_volume` |
 | `test_obv_has_volume_false_when_zero` | `has_volume=False` when all volumes are zero (Forex) |
 | `test_obv_forex_warning` | Forex `TradingContext` triggers volume warning in logger |
-| `test_obv_worker_name` | WorkerResult contains correct worker name |
 
 ---
 
@@ -355,7 +369,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 The worker test suite uses a **layered validation** approach:
 
-1. **Schema layer** (`test_parameter_schema.py`): Every component's `ParameterDef` declarations are internally consistent — types match, bounds are valid, defaults are within range.
+1. **Schema layer** (`test_parameter_schema.py`): Every component's `InputParamDef` declarations are internally consistent — types match, bounds are valid, defaults are within range. Worker `OutputParamDef` declarations are validated for structure, categories, and bounds.
 
 2. **Validation layer** (`test_parameter_validation.py`): The `validate_parameters()` function correctly enforces all constraints — missing required, type mismatches, boundary violations, strict vs non-strict modes.
 
@@ -363,16 +377,16 @@ The worker test suite uses a **layered validation** approach:
 
 4. **Factory layer** (`test_factory_integration.py`): End-to-end creation through `WorkerFactory` and `DecisionLogicFactory` — valid configs produce working instances, invalid configs are rejected with clear errors.
 
-5. **Computation layer** (`worker_computation_tests/`): Indicator math is correct — known inputs produce known outputs, edge cases are handled, metadata is populated.
+5. **Computation layer** (`worker_computation_tests/`): Indicator math is correct — known inputs produce known outputs, edge cases are handled, output fields are populated correctly.
 
 ### Key Data Flow
 
 ```
-ParameterDef (schema declaration)
-  └→ validate_parameters() (constraint enforcement)
-       └→ apply_defaults() (fill missing optionals)
-            └→ WorkerFactory / DecisionLogicFactory (instantiation)
-                 └→ Worker.compute() / DecisionLogic.compute() (runtime)
+InputParamDef (input schema)    OutputParamDef (output schema)
+  └→ validate_parameters()         └→ get_output_schema()
+       └→ apply_defaults()              └→ WorkerResult(outputs={...})
+            └→ WorkerFactory                  └→ result.get_signal('key')
+                 └→ Worker.compute()
 ```
 
 ### Parametrized Components

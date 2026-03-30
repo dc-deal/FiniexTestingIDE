@@ -13,7 +13,7 @@ import pytest
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
-from python.framework.types.parameter_types import ParameterDef, REQUIRED
+from python.framework.types.parameter_types import InputParamDef, REQUIRED
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from conftest import ALL_WORKERS, ALL_DECISION_LOGICS
@@ -30,10 +30,10 @@ from python.framework.workers.core.macd_worker import MacdWorker
 def mixed_schema():
     """Schema with both required and optional params."""
     return {
-        'fast_period': ParameterDef(param_type=int, default=REQUIRED, min_val=1, max_val=200),
-        'deviation': ParameterDef(param_type=float, default=2.0, min_val=0.5, max_val=5.0),
-        'enabled': ParameterDef(param_type=bool, default=True),
-        'label': ParameterDef(param_type=str, default="default_label"),
+        'fast_period': InputParamDef(param_type=int, default=REQUIRED, min_val=1, max_val=200),
+        'deviation': InputParamDef(param_type=float, default=2.0, min_val=0.5, max_val=5.0),
+        'enabled': InputParamDef(param_type=bool, default=True),
+        'label': InputParamDef(param_type=str, default="default_label"),
     }
 
 

@@ -10,7 +10,7 @@ import numpy as np
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import \
     AbstractWorker
@@ -43,15 +43,49 @@ class EnvelopeModifiedWorker(AbstractWorker):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Envelope algorithm parameters with validation ranges."""
         return {
-            'deviation': ParameterDef(
+            'deviation': InputParamDef(
                 param_type=float,
                 default=2.0,
                 min_val=0.5,
                 max_val=5.0,
                 description="Standard deviation multiplier for Bollinger bands"
+            ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Envelope output parameters (USER modified)."""
+        return {
+            'upper': OutputParamDef(
+                param_type=float,
+                description='Upper band value',
+                category='SIGNAL', display=True,
+            ),
+            'middle': OutputParamDef(
+                param_type=float,
+                description='Middle band (SMA)',
+                category='SIGNAL',
+            ),
+            'lower': OutputParamDef(
+                param_type=float,
+                description='Lower band value',
+                category='SIGNAL', display=True,
+            ),
+            'position': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=1.0,
+                description='Price position within bands (0=lower, 1=upper)',
+                category='SIGNAL', display=True,
+            ),
+            'std_dev': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Standard deviation used for band width',
+            ),
+            'bars_used': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of bars used in calculation',
             ),
         }
 
@@ -80,10 +114,6 @@ class EnvelopeModifiedWorker(AbstractWorker):
             List of timeframes - e.g. ["M5", "M30"]
         """
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """Envelope ist schnell - 50ms Timeout"""
-        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """Envelope recomputes when bar updated"""
@@ -137,25 +167,11 @@ class EnvelopeModifiedWorker(AbstractWorker):
             position = (current_price - lower) / (upper - lower)
             position = max(0.0, min(1.0, position))  # Clamp 0-1
 
-        # Confidence based on bar quality
-        confidence = min(1.0, len(bars) / (period * 2))
-
-        return WorkerResult(
-            worker_name=self.name,
-            value={
-                "upper": float(upper),
-                "middle": float(middle),
-                "lower": float(lower),
-                "position": float(position),
-            },
-            confidence=confidence,
-            metadata={
-                "source": "USER",
-                "period": period,
-                "timeframe": timeframe,
-                "deviation": self.deviation,
-                "std_dev": float(std_dev),
-                "bars_used": len(close_prices),
-                "current_price": current_price,
-            },
-        )
+        return WorkerResult(outputs={
+            'upper': float(upper),
+            'middle': float(middle),
+            'lower': float(lower),
+            'position': float(position),
+            'std_dev': float(std_dev),
+            'bars_used': len(close_prices),
+        })

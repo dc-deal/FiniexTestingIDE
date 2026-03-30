@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -37,15 +37,26 @@ class TEMPLATEWorker(AbstractWorker):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Define your configurable parameters with validation ranges."""
         return {
-            # 'my_param': ParameterDef(
+            # 'my_param': InputParamDef(
             #     param_type=float,
             #     default=14.0,
             #     min_val=1.0,
             #     max_val=200.0,
             #     description="Example parameter"
+            # ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Define your output parameters with type and category metadata."""
+        return {
+            # 'my_output': OutputParamDef(
+            #     param_type=float, min_val=0.0, max_val=100.0,
+            #     description="Example output value",
+            #     category='SIGNAL', display=True,
             # ),
         }
 
@@ -64,10 +75,6 @@ class TEMPLATEWorker(AbstractWorker):
     def get_required_timeframes(self) -> List[str]:
         """Which timeframes this worker needs."""
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """Maximum allowed computation time in ms."""
-        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """When to recompute: on every tick or only when a bar closes."""
@@ -88,12 +95,9 @@ class TEMPLATEWorker(AbstractWorker):
             current_bars: Current (incomplete) bars per timeframe
 
         Returns:
-            WorkerResult with computed value
+            WorkerResult with outputs dict matching get_output_schema() keys
         """
-        # Example: return a placeholder value
-        return WorkerResult(
-            worker_name=self.name,
-            value=0.0,
-            confidence=0.0,
-            metadata={'status': 'template_not_implemented'},
-        )
+        # Example: return outputs matching your schema
+        return WorkerResult(outputs={
+            # 'my_output': 0.0,
+        })

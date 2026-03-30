@@ -90,10 +90,12 @@ class RsiWorker(AbstractWorker):
             rsi = 100.0 - (100.0 / (1.0 + rs))
         
         return WorkerResult(
-            worker_name=self.name,
-            value=float(rsi),          # The computed value
-            confidence=1.0,
-            metadata={"period": period, "timeframe": timeframe}
+            outputs={
+                'rsi_value': float(rsi),
+                'avg_gain': float(avg_gain),
+                'avg_loss': float(avg_loss),
+                'bars_used': float(len(close_prices)),
+            }
         )
 ```
 
@@ -104,28 +106,29 @@ class RsiWorker(AbstractWorker):
 | `get_worker_type()` | Return `WorkerType.INDICATOR` |
 | `get_warmup_requirements()` | Bars needed before trading: `{"M5": 14}` |
 | `compute()` | Calculate indicator, return `WorkerResult` |
+| `get_output_schema()` | Declare typed output fields (optional) |
 
 ---
 
-### Parameter Schema
+### Parameter Schema (Input)
 
 Workers declare their configurable parameters with type, range, and defaults via `get_parameter_schema()`.
 This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2.0`).
 
 ```python
-from python.framework.types.parameter_types import ParameterDef, REQUIRED
+from python.framework.types.parameter_types import InputParamDef, REQUIRED
 
 class EnvelopeWorker(AbstractWorker):
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         return {
-            'deviation': ParameterDef(
+            'deviation': InputParamDef(
                 param_type=float,
                 default=2.0,
                 min_val=0.5,
                 max_val=5.0,
-                description="Band deviation percentage"
+                description='Band deviation percentage'
             ),
         }
 ```
@@ -135,8 +138,40 @@ class EnvelopeWorker(AbstractWorker):
 | `param_type` | Python type (`float`, `int`, `bool`, `str`) |
 | `default` | Default value. Use `REQUIRED` when parameter must be provided |
 | `min_val` / `max_val` | Numeric bounds (inclusive) |
-| `choices` | Allowed values for enum parameters (future) |
+| `choices` | Allowed values for enum-style parameters |
 | `description` | Functional description |
+
+### Output Schema
+
+Workers declare their output fields via `get_output_schema()`. This enables the UI and decision logics to understand worker outputs without hardcoded assumptions.
+
+```python
+from python.framework.types.parameter_types import OutputParamDef
+
+class RsiWorker(AbstractWorker):
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        return {
+            'rsi_value': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=100.0,
+                description='RSI value', category='SIGNAL', display=True,
+            ),
+            'avg_gain': OutputParamDef(param_type=float, description='Average gain'),
+            'avg_loss': OutputParamDef(param_type=float, description='Average loss'),
+            'bars_used': OutputParamDef(param_type=float, description='Number of bars used'),
+        }
+```
+
+| Field | Purpose |
+|-------|---------|
+| `category` | `'SIGNAL'` (trading-relevant) or `'INFO'` (diagnostic, default) |
+| `display` | `True` to show in Live Console UI (default `False`) |
+| `choices` | Allowed values for enum-style outputs (e.g., trend direction) |
+
+Workers return results via `WorkerResult(outputs={...})`. Decision Logics access values with `result.get_signal('key')`.
+
+---
 
 **Validation behavior** is controlled by `strict_parameter_validation` in `execution_config`:
 - `true` (default): Abort on boundary violations
@@ -240,8 +275,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         rsi_result = worker_results.get("rsi_fast")
         envelope_result = worker_results.get("envelope_main")
         
-        rsi_value = rsi_result.value
-        envelope_position = envelope_result.value.get("position", 0.5)
+        rsi_value = rsi_result.get_signal('rsi_value')
+        envelope_position = envelope_result.get_signal('position')
         
         # BUY signal
         if rsi_value < self.rsi_buy or envelope_position < 0.25:
@@ -541,17 +576,17 @@ class SMAWorker(AbstractWorker):
         bars = bar_history.get("M5", [])
         closes = [b.close for b in bars[-self.period:]]
         sma = np.mean(closes)
-        return WorkerResult(worker_name=self.name, value=sma, confidence=1.0)
+        return WorkerResult(outputs={'sma_value': float(sma)})
 
 # 2. Decision: Crossover
 
 class SMACrossover(AbstractDecisionLogic):
     def get_required_worker_instances(self):
         return {"sma_fast": "CORE/sma", "sma_slow": "CORE/sma"}
-    
+
     def compute(self, tick, worker_results):
-        fast = worker_results["sma_fast"].value
-        slow = worker_results["sma_slow"].value
+        fast = worker_results["sma_fast"].get_signal('sma_value')
+        slow = worker_results["sma_slow"].get_signal('sma_value')
         
         if fast > slow:
             return Decision(action=DecisionLogicAction.BUY, ...)

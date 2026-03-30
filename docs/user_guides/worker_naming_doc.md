@@ -166,16 +166,16 @@ class MyIndicatorWorker(AbstractBlackboxWorker):
         self.my_param = self.params.get('my_param')
     
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Declare parameters with type safety and validation ranges."""
-        from python.framework.types.parameter_types import ParameterDef, REQUIRED
+        from python.framework.types.parameter_types import InputParamDef, REQUIRED
         return {
-            'my_param': ParameterDef(
+            'my_param': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=1,
                 max_val=200,
-                description="My custom parameter"
+                description='My custom parameter'
             ),
         }
 
@@ -192,7 +192,7 @@ class MyIndicatorWorker(AbstractBlackboxWorker):
 - Class name convention: `MyIndicatorWorker` for `my_indicator` (camelCase class name, snake_case type name)
 - The worker becomes available immediately - no manual registration needed
 
-The parameter schema system is key here: by declaring `get_parameter_schema()` with `ParameterDef` entries, you tell the factory what configuration your worker needs — including types, ranges, and defaults. The factory validates this statically in Phase 3 and again at instantiation in Phase 6, so configuration errors are caught before any data is loaded or any tick is processed.
+The parameter schema system is key here: by declaring `get_parameter_schema()` with `InputParamDef` entries, you tell the factory what configuration your worker needs — including types, ranges, and defaults. The factory validates this statically in Phase 3 and again at instantiation in Phase 6, so configuration errors are caught before any data is loaded or any tick is processed.
 
 Once your worker is created, you can use it in any DecisionLogic by referencing it as `USER/my_indicator` in the `get_required_worker_instances()` method.
 

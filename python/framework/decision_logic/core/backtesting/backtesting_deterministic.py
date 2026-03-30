@@ -92,7 +92,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -194,42 +194,42 @@ class BacktestingDeterministic(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """Backtesting deterministic decision logic parameters."""
         return {
-            'trade_sequence': ParameterDef(
+            'trade_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of trade specs: tick_number, direction, hold_ticks, lot_size"
             ),
-            'lot_size': ParameterDef(
+            'lot_size': InputParamDef(
                 param_type=float,
                 default=0.1,
                 min_val=0.0,
                 max_val=100.0,
                 description="Default lot size for trades without explicit lot_size"
             ),
-            'modify_sequence': ParameterDef(
+            'modify_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of SL/TP modification specs: tick_number, stop_loss, take_profit"
             ),
-            'modify_limit_sequence': ParameterDef(
+            'modify_limit_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of pending limit order modification specs: tick_number, price, stop_loss, take_profit"
             ),
-            'modify_stop_sequence': ParameterDef(
+            'modify_stop_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of pending stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit"
             ),
-            'cancel_limit_sequence': ParameterDef(
+            'cancel_limit_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of limit order cancellation specs: tick_number"
             ),
-            'cancel_stop_sequence': ParameterDef(
+            'cancel_stop_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of stop order cancellation specs: tick_number"
@@ -689,7 +689,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             return
 
         # Extract warmup status
-        warmup_status = worker_result.metadata.get('warmup_status', {})
+        warmup_status = worker_result.get_signal('warmup_status')
 
         for timeframe, status in warmup_status.items():
             if not status.get('valid', True):
@@ -702,7 +702,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 )
 
         # Extract bar snapshots (already serialized dicts from worker)
-        self.bar_snapshots = worker_result.metadata.get('bar_snapshots', {})
+        self.bar_snapshots = worker_result.get_signal('bar_snapshots')
 
         if self.bar_snapshots:
             self.logger.debug(

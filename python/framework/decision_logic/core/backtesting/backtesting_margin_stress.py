@@ -99,7 +99,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -202,29 +202,29 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         return {
-            'trade_sequence': ParameterDef(
+            'trade_sequence': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of trade specs with optional expect_rejection flag"
             ),
-            'close_events': ParameterDef(
+            'close_events': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of explicit close commands by sequence_index"
             ),
-            'retry_events': ParameterDef(
+            'retry_events': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of retry orders after margin recovery"
             ),
-            'edge_case_orders': ParameterDef(
+            'edge_case_orders': InputParamDef(
                 param_type=list,
                 default=[],
                 description="List of edge-case orders for rejection testing"
             ),
-            'lot_size': ParameterDef(
+            'lot_size': InputParamDef(
                 param_type=float,
                 default=1.0,
                 min_val=0.0,
@@ -633,14 +633,14 @@ class BacktestingMarginStress(AbstractDecisionLogic):
             self.warmup_errors.append("Worker result not found")
             return
 
-        warmup_status = worker_result.metadata.get('warmup_status', {})
+        warmup_status = worker_result.get_signal('warmup_status')
 
         for timeframe, status in warmup_status.items():
             if not status.get('valid', True):
                 error_msg = f"{timeframe}: {status.get('error', 'Unknown error')}"
                 self.warmup_errors.append(error_msg)
 
-        self.bar_snapshots = worker_result.metadata.get('bar_snapshots', {})
+        self.bar_snapshots = worker_result.get_signal('bar_snapshots')
 
     # ============================================
     # Statistics Override

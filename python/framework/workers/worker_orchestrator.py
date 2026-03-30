@@ -344,7 +344,6 @@ class WorkerOrchestrator:
                     computation_time_ms = (
                         time.perf_counter() - start_time
                     ) * 1000
-                    result.computation_time_ms = computation_time_ms
 
                     self._worker_results[name] = result
                     worker.set_state(WorkerState.READY)
@@ -468,7 +467,6 @@ class WorkerOrchestrator:
         try:
             result = worker.compute(tick, bar_history, current_bars)
             computation_time_ms = (time.perf_counter() - start_time) * 1000
-            result.computation_time_ms = computation_time_ms
 
             return result, computation_time_ms
 

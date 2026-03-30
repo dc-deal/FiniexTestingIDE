@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Parameter Validator
-Validates config values against ParameterDef schemas
+Validates config values against InputParamDef schemas
 
 Stateless utility functions for parameter validation and default injection.
 Used by both Factories (Phase 6) and static validation (Phase 0).
@@ -8,12 +8,12 @@ Used by both Factories (Phase 6) and static validation (Phase 0).
 
 from typing import Any, Dict, List
 
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 
 
 def validate_parameters(
     config: Dict[str, Any],
-    schema: Dict[str, ParameterDef],
+    schema: Dict[str, InputParamDef],
     strict: bool = True,
     context_name: str = ""
 ) -> List[str]:
@@ -97,7 +97,7 @@ def validate_parameters(
 
 def apply_defaults(
     config: Dict[str, Any],
-    schema: Dict[str, ParameterDef],
+    schema: Dict[str, InputParamDef],
 ) -> Dict[str, Any]:
     """
     Merge config with defaults from parameter schema.

@@ -53,7 +53,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult
 )
-from python.framework.types.parameter_types import ParameterDef
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.worker_types import WorkerResult
 
 
@@ -128,46 +128,46 @@ class SimpleConsensus(AbstractDecisionLogic):
     # ============================================
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """SimpleConsensus decision logic parameters with validation ranges."""
         return {
-            'rsi_oversold': ParameterDef(
+            'rsi_oversold': InputParamDef(
                 param_type=float, default=30, min_val=1, max_val=49,
                 description="RSI oversold threshold (buy signal)"
             ),
-            'rsi_overbought': ParameterDef(
+            'rsi_overbought': InputParamDef(
                 param_type=float, default=70, min_val=51, max_val=99,
                 description="RSI overbought threshold (sell signal)"
             ),
-            'envelope_lower_threshold': ParameterDef(
+            'envelope_lower_threshold': InputParamDef(
                 param_type=float, default=0.3, min_val=0.0, max_val=1.0,
                 description="Envelope position threshold for buy signal"
             ),
-            'envelope_upper_threshold': ParameterDef(
+            'envelope_upper_threshold': InputParamDef(
                 param_type=float, default=0.7, min_val=0.0, max_val=1.0,
                 description="Envelope position threshold for sell signal"
             ),
-            'min_confidence': ParameterDef(
+            'min_confidence': InputParamDef(
                 param_type=float, default=0.5, min_val=0.0, max_val=1.0,
                 description="Minimum confidence to generate trading signal"
             ),
-            'min_free_margin': ParameterDef(
+            'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
                 description="Minimum free margin required before opening trade"
             ),
-            'lot_size': ParameterDef(
+            'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description="Fixed lot size for market orders"
             ),
-            'obv_filter_enabled': ParameterDef(
+            'obv_filter_enabled': InputParamDef(
                 param_type=bool, default=True,
                 description="Enable OBV volume confirmation filter"
             ),
-            'obv_block_opposite_trend': ParameterDef(
+            'obv_block_opposite_trend': InputParamDef(
                 param_type=bool, default=True,
                 description="Block trades when OBV trend opposes signal direction"
             ),
-            'obv_confidence_boost': ParameterDef(
+            'obv_confidence_boost': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=1.0,
                 description="Confidence bonus when OBV confirms trade direction"
             ),
@@ -353,18 +353,15 @@ class SimpleConsensus(AbstractDecisionLogic):
             )
 
         # Extract indicator values
-        rsi_value = rsi_result.value
-        envelope_data = envelope_result.value
-
-        # Envelope provides position (0.0 = lower band, 1.0 = upper band)
-        envelope_position = envelope_data.get("position", 0.5)
+        rsi_value = rsi_result.get_signal('rsi_value')
+        envelope_position = envelope_result.get_signal('position')
 
         # Extract OBV trend
-        obv_trend = "neutral"
+        obv_trend = 'neutral'
         obv_has_volume = False
-        if obv_result and obv_result.metadata:
-            obv_trend = obv_result.metadata.get("trend", "neutral")
-            obv_has_volume = obv_result.metadata.get("has_volume", False)
+        if obv_result:
+            obv_trend = obv_result.get_signal('trend')
+            obv_has_volume = obv_result.get_signal('has_volume')
 
         self.logger.verbose(
             f"📊 Indicators: RSI={rsi_value:.1f}, Envelope={envelope_position:.2f}, "

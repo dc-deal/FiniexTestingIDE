@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import ParameterDef, ValidatedParameters
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_types.market_data_types import Bar, TickData
@@ -107,18 +107,6 @@ class AbstractWorker(ABC):
         """
         pass
 
-    def get_max_computation_time_ms(self) -> float:
-        """
-        Get max computation time for this worker instance.
-
-        Optional - for monitoring/timeouts.
-        Default: 100ms
-
-        Returns:
-            Max computation time in milliseconds
-        """
-        return 100.0
-
     @abstractmethod
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """
@@ -149,7 +137,7 @@ class AbstractWorker(ABC):
             current_bars: Current bars per timeframe
 
         Returns:
-            WorkerResult with computed value
+            WorkerResult with outputs dict matching get_output_schema() keys
         """
         pass
 
@@ -188,7 +176,7 @@ class AbstractWorker(ABC):
         pass
 
     @classmethod
-    def get_parameter_schema(cls) -> Dict[str, ParameterDef]:
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """
         Declare parameter schema for validation and UX.
 
@@ -197,7 +185,20 @@ class AbstractWorker(ABC):
         Does NOT include 'periods' (handled by validate_config).
 
         Returns:
-            Dict[param_name, ParameterDef]
+            Dict[param_name, InputParamDef]
+        """
+        return {}
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """
+        Declare output parameter schema for typed access and display.
+
+        Override in subclass to define output parameters
+        with type, range, category, and display hints.
+
+        Returns:
+            Dict[output_name, OutputParamDef]
         """
         return {}
 

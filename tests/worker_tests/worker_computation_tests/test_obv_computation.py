@@ -8,9 +8,9 @@ Key implementation details (verified from source):
     close[i] > close[i-1] → OBV += volume[i]
     close[i] < close[i-1] → OBV -= volume[i]
     close[i] == close[i-1] → OBV unchanged
-- Returns WorkerResult with value = float (NOT dict!)
+- Returns WorkerResult with outputs dict {obv_value, trend, has_volume, ...}
 - Constructor accepts trading_context (optional, for Forex warning)
-- Needs at least 2 bars, otherwise returns value=0.0, confidence=0.0
+- Needs at least 2 bars, otherwise returns obv_value=0.0
 
 Volume matters here! Other workers use make_bars() with constant volume.
 OBV tests use make_bars_with_volume() for explicit volume control.
@@ -64,8 +64,7 @@ class TestOBVBasicComputation:
                                 "M5": bars}, current_bars={})
 
         assert isinstance(result, WorkerResult)
-        assert isinstance(result.value, float)
-        assert result.value == pytest.approx(1200.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(1200.0, abs=0.01)
 
     def test_obv_all_up(self, mock_logger):
         """
@@ -87,7 +86,7 @@ class TestOBVBasicComputation:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == pytest.approx(1000.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(1000.0, abs=0.01)
 
     def test_obv_all_down(self, mock_logger):
         """
@@ -109,7 +108,7 @@ class TestOBVBasicComputation:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == pytest.approx(-1000.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(-1000.0, abs=0.01)
 
     def test_obv_flat_price(self, mock_logger):
         """
@@ -131,7 +130,7 @@ class TestOBVBasicComputation:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == pytest.approx(0.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(0.0, abs=0.01)
 
 
 class TestOBVEdgeCases:
@@ -139,7 +138,7 @@ class TestOBVEdgeCases:
 
     def test_obv_insufficient_bars(self, mock_logger):
         """
-        Less than 2 bars → returns 0.0 with confidence=0.0.
+        Less than 2 bars → returns obv_value=0.0, trend='neutral'.
 
         This is an explicit early-return in the code.
         """
@@ -151,9 +150,9 @@ class TestOBVEdgeCases:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == 0.0
-        assert result.confidence == 0.0
-        assert result.metadata.get("error") == "insufficient_bars"
+        assert result.get_signal('obv_value') == 0.0
+        assert result.get_signal('trend') == 'neutral'
+        assert result.get_signal('has_volume') is False
 
     def test_obv_zero_volume(self, mock_logger):
         """
@@ -175,7 +174,7 @@ class TestOBVEdgeCases:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == pytest.approx(0.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(0.0, abs=0.01)
 
     def test_obv_exactly_two_bars_up(self, mock_logger):
         """
@@ -197,14 +196,14 @@ class TestOBVEdgeCases:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.value == pytest.approx(500.0, abs=0.01)
+        assert result.get_signal('obv_value') == pytest.approx(500.0, abs=0.01)
 
 
-class TestOBVMetadata:
-    """Test OBV metadata fields and Forex market warning."""
+class TestOBVOutputFields:
+    """Test OBV output fields and Forex market warning."""
 
-    def test_obv_metadata_fields(self, mock_logger):
-        """Metadata must contain period, timeframe, bars_used, total_volume, trend."""
+    def test_obv_output_fields(self, mock_logger):
+        """Output must contain obv_value, bars_used, total_volume, trend, has_volume."""
         worker = _make_obv_worker(mock_logger, period=20)
 
         bars = make_bars_with_volume(
@@ -216,13 +215,11 @@ class TestOBVMetadata:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.metadata["period"] == 20
-        assert result.metadata["timeframe"] == "M5"
-        assert result.metadata["bars_used"] == 5
-        assert result.metadata["total_volume"] == pytest.approx(
+        assert result.get_signal('bars_used') == 5
+        assert result.get_signal('total_volume') == pytest.approx(
             3800.0, abs=0.01)
-        assert result.metadata["has_volume"] is True
-        assert result.metadata["trend"] in ("bullish", "bearish", "neutral")
+        assert result.get_signal('has_volume') is True
+        assert result.get_signal('trend') in ('bullish', 'bearish', 'neutral')
 
     def test_obv_has_volume_false_when_zero(self, mock_logger):
         """When all volumes are 0, has_volume must be False."""
@@ -237,7 +234,7 @@ class TestOBVMetadata:
         result = worker.compute(tick=tick, bar_history={
                                 "M5": bars}, current_bars={})
 
-        assert result.metadata["has_volume"] is False
+        assert result.get_signal('has_volume') is False
 
     def test_obv_forex_warning(self, mock_logger):
         """
@@ -255,23 +252,3 @@ class TestOBVMetadata:
         mock_logger.warning.assert_called()
         warning_text = mock_logger.warning.call_args[0][0]
         assert "OBV" in warning_text or "volume" in warning_text.lower()
-
-    def test_obv_worker_name(self, mock_logger):
-        """WorkerResult.worker_name must match the worker instance name."""
-        worker = ObvWorker(
-            name="my_obv_instance",
-            parameters={"periods": {"M5": 20}},
-            logger=mock_logger,
-            trading_context=None,
-        )
-
-        bars = make_bars_with_volume(
-            closes=[100, 102, 101],
-            volumes=[0, 500, 300],
-        )
-        tick = make_tick(bid=101.0)
-
-        result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
-
-        assert result.worker_name == "my_obv_instance"

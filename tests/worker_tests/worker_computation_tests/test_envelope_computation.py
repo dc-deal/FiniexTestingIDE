@@ -9,7 +9,7 @@ Key implementation details (verified from source):
 - upper = middle + std_dev * deviation
 - lower = middle - std_dev * deviation
 - position = (tick.mid - lower) / (upper - lower), clamped [0, 1]
-- Returns WorkerResult with value = dict {upper, middle, lower, position}
+- Returns WorkerResult with outputs dict {upper, middle, lower, position, std_dev, bars_used}
 
 Reference formula for std_dev (population):
     std = sqrt(sum((x - mean)²) / N)   (NOT N-1!)
@@ -66,14 +66,14 @@ class TestEnvelopeBasicComputation:
         )
 
         assert isinstance(result, WorkerResult)
-        assert isinstance(result.value, dict)
+        assert isinstance(result.outputs, dict)
 
         expected_upper = EXPECTED_MIDDLE + EXPECTED_STD * 2.0
         expected_lower = EXPECTED_MIDDLE - EXPECTED_STD * 2.0
 
-        assert result.value["middle"] == pytest.approx(EXPECTED_MIDDLE, abs=0.001)
-        assert result.value["upper"] == pytest.approx(expected_upper, abs=0.001)
-        assert result.value["lower"] == pytest.approx(expected_lower, abs=0.001)
+        assert result.get_signal('middle') == pytest.approx(EXPECTED_MIDDLE, abs=0.001)
+        assert result.get_signal('upper') == pytest.approx(expected_upper, abs=0.001)
+        assert result.get_signal('lower') == pytest.approx(expected_lower, abs=0.001)
 
     def test_envelope_bands_custom_deviation(self, mock_logger):
         """
@@ -96,11 +96,11 @@ class TestEnvelopeBasicComputation:
         expected_upper = EXPECTED_MIDDLE + EXPECTED_STD * 1.0
         expected_lower = EXPECTED_MIDDLE - EXPECTED_STD * 1.0
 
-        assert result.value["upper"] == pytest.approx(expected_upper, abs=0.001)
-        assert result.value["lower"] == pytest.approx(expected_lower, abs=0.001)
+        assert result.get_signal('upper') == pytest.approx(expected_upper, abs=0.001)
+        assert result.get_signal('lower') == pytest.approx(expected_lower, abs=0.001)
 
-    def test_envelope_value_keys(self, mock_logger):
-        """Result value dict must contain exactly: upper, middle, lower, position."""
+    def test_envelope_output_keys(self, mock_logger):
+        """Result outputs must contain schema-declared keys."""
         worker = EnvelopeWorker(
             name="test_envelope",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
@@ -112,8 +112,8 @@ class TestEnvelopeBasicComputation:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        expected_keys = {"upper", "middle", "lower", "position"}
-        assert set(result.value.keys()) == expected_keys
+        expected_keys = {'upper', 'middle', 'lower', 'position', 'std_dev', 'bars_used'}
+        assert set(result.outputs.keys()) == expected_keys
 
 
 class TestEnvelopePosition:
@@ -138,7 +138,7 @@ class TestEnvelopePosition:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["position"] == pytest.approx(0.5, abs=0.01)
+        assert result.get_signal('position') == pytest.approx(0.5, abs=0.01)
 
     def test_position_above_upper_clamped(self, mock_logger):
         """
@@ -157,7 +157,7 @@ class TestEnvelopePosition:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["position"] == 1.0
+        assert result.get_signal('position') == 1.0
 
     def test_position_below_lower_clamped(self, mock_logger):
         """
@@ -176,14 +176,14 @@ class TestEnvelopePosition:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["position"] == 0.0
+        assert result.get_signal('position') == 0.0
 
 
-class TestEnvelopeMetadataAndConfidence:
-    """Test metadata and confidence for envelope worker."""
+class TestEnvelopeOutputFields:
+    """Test envelope output fields via get_signal()."""
 
-    def test_envelope_metadata_fields(self, mock_logger):
-        """Metadata must contain period, timeframe, deviation, std_dev, bars_used."""
+    def test_envelope_std_dev_output(self, mock_logger):
+        """std_dev output must match hand-calculated population std dev."""
         worker = EnvelopeWorker(
             name="test_envelope",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
@@ -195,30 +195,8 @@ class TestEnvelopeMetadataAndConfidence:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.metadata["period"] == 5
-        assert result.metadata["timeframe"] == "M5"
-        assert result.metadata["deviation"] == 2.0
-        assert result.metadata["bars_used"] == 5
-        assert result.metadata["std_dev"] == pytest.approx(EXPECTED_STD, abs=0.001)
-
-    def test_envelope_confidence_partial_data(self, mock_logger):
-        """
-        Confidence formula: min(1.0, len(bars) / (period * 2))
-
-        5 bars, period=5: confidence = min(1.0, 5/10) = 0.5
-        """
-        worker = EnvelopeWorker(
-            name="test_envelope",
-            parameters={"periods": {"M5": 5}, "deviation": 2.0},
-            logger=mock_logger,
-        )
-
-        bars = make_bars(STANDARD_CLOSES)
-        tick = make_tick(bid=102.0)
-
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
-
-        assert result.confidence == pytest.approx(0.5, abs=0.001)
+        assert result.get_signal('std_dev') == pytest.approx(EXPECTED_STD, abs=0.001)
+        assert result.get_signal('bars_used') == 5
 
 
 class TestEnvelopeRegression:
@@ -248,7 +226,7 @@ class TestEnvelopeRegression:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        band_width = result.value["upper"] - result.value["lower"]
+        band_width = result.get_signal('upper') - result.get_signal('lower')
         expected_width = 2 * EXPECTED_STD * 2.0  # ≈ 5.656
 
         assert band_width == pytest.approx(expected_width, abs=0.01)
@@ -274,8 +252,8 @@ class TestEnvelopeRegression:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        assert result.value["middle"] == pytest.approx(100.0, abs=0.001)
-        assert result.value["upper"] == pytest.approx(100.0, abs=0.001)
-        assert result.value["lower"] == pytest.approx(100.0, abs=0.001)
+        assert result.get_signal('middle') == pytest.approx(100.0, abs=0.001)
+        assert result.get_signal('upper') == pytest.approx(100.0, abs=0.001)
+        assert result.get_signal('lower') == pytest.approx(100.0, abs=0.001)
         # When upper == lower, position = 0.5 (default)
-        assert result.value["position"] == pytest.approx(0.5, abs=0.01)
+        assert result.get_signal('position') == pytest.approx(0.5, abs=0.01)

@@ -20,6 +20,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -56,6 +57,39 @@ class ObvWorker(AbstractWorker):
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
 
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """OBV output parameters."""
+        return {
+            'obv_value': OutputParamDef(
+                param_type=float,
+                description='On-Balance Volume cumulative value',
+                category='SIGNAL', display=True,
+            ),
+            'trend': OutputParamDef(
+                param_type=str,
+                description='OBV trend direction',
+                choices=('bullish', 'bearish', 'neutral'),
+            ),
+            'has_volume': OutputParamDef(
+                param_type=bool,
+                description='Whether volume data is available',
+            ),
+            'total_volume': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Total volume over period',
+            ),
+            'bars_used': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of bars used in calculation',
+            ),
+            'market_type': OutputParamDef(
+                param_type=str,
+                description='Market type (crypto, forex)',
+                choices=('crypto', 'forex'),
+            ),
+        }
+
     # ============================================
     # Instance Methods
     # ============================================
@@ -77,10 +111,6 @@ class ObvWorker(AbstractWorker):
             List of timeframes
         """
         return list(self.periods.keys())
-
-    def get_max_computation_time_ms(self) -> float:
-        """OBV is fast - 50ms timeout"""
-        return 50.0
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """OBV recomputes when bar updated (new close price)"""
@@ -120,17 +150,14 @@ class ObvWorker(AbstractWorker):
 
         # Need at least 2 bars for OBV calculation
         if len(bars) < 2:
-            return WorkerResult(
-                worker_name=self.name,
-                value=0.0,
-                confidence=0.0,
-                metadata={
-                    "period": period,
-                    "timeframe": timeframe,
-                    "bars_used": len(bars),
-                    "error": "insufficient_bars"
-                }
-            )
+            return WorkerResult(outputs={
+                'obv_value': 0.0,
+                'trend': 'neutral',
+                'has_volume': False,
+                'total_volume': 0.0,
+                'bars_used': len(bars),
+                'market_type': self._market_type.value if self._market_type else None,
+            })
 
         # Use last N bars based on period
         bars_to_use = bars[-(period + 1):] if len(bars) > period else bars
@@ -146,26 +173,17 @@ class ObvWorker(AbstractWorker):
         trend = self._calculate_trend(
             closes, volumes, min(5, len(bars_to_use) - 1))
 
-        # Confidence based on data quality
         total_volume = float(np.sum(volumes))
         has_volume = total_volume > 0
-        confidence = min(1.0, len(bars_to_use) / (period * 2)
-                         ) if has_volume else 0.1
 
-        return WorkerResult(
-            worker_name=self.name,
-            value=float(obv),
-            confidence=confidence,
-            metadata={
-                "period": period,
-                "timeframe": timeframe,
-                "bars_used": len(bars_to_use),
-                "total_volume": total_volume,
-                "has_volume": has_volume,
-                "trend": trend,  # "bullish", "bearish", "neutral"
-                "market_type": self._market_type.value if self._market_type else None
-            }
-        )
+        return WorkerResult(outputs={
+            'obv_value': float(obv),
+            'trend': trend,
+            'has_volume': has_volume,
+            'total_volume': total_volume,
+            'bars_used': len(bars_to_use),
+            'market_type': self._market_type.value if self._market_type else None,
+        })
 
     def _calculate_obv(self, closes: np.ndarray, volumes: np.ndarray) -> float:
         """
