@@ -22,7 +22,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
-from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig, StressTestRejectOrderConfig
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
@@ -107,12 +107,6 @@ class TradeSimulator(AbstractTradeExecutor):
         reject_config = stress_test_config.reject_open_order or StressTestRejectOrderConfig()
         self._stress_test_rejection = StressTestRejection(
             reject_config, logger)
-
-        # Active limit orders waiting for price trigger (post-latency)
-        self._active_limit_orders: List[PendingOrder] = []
-
-        # Active stop orders waiting for trigger price (post-latency)
-        self._active_stop_orders: List[PendingOrder] = []
 
     # ============================================
     # Pending Order Processing (simulation-specific)
@@ -914,36 +908,17 @@ class TradeSimulator(AbstractTradeExecutor):
     # Pending Order Awareness
     # ============================================
 
-    def has_pending_orders(self) -> bool:
-        """Check if any orders are in the latency queue, active limit or stop orders."""
-        return (self.latency_simulator.has_pending_orders()
-                or len(self._active_limit_orders) > 0
-                or len(self._active_stop_orders) > 0)
-
     def has_pipeline_orders(self) -> bool:
         """Check latency queue only — active limit/stop are intentionally preserved."""
         return self.latency_simulator.has_pending_orders()
-
-    def _has_pipeline_orders(self) -> bool:
-        """Internal alias for check_clean_shutdown() compatibility."""
-        return self.has_pipeline_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
         return self.latency_simulator.is_pending_close(position_id)
 
-    def get_active_order_counts(self) -> Dict[str, int]:
-        """
-        Get counts of active orders by world (latency, limit, stop).
-
-        Returns:
-            Dict with keys "latency_queue", "active_limits", "active_stops"
-        """
-        return {
-            "latency_queue": self.latency_simulator.get_pending_count(),
-            "active_limits": len(self._active_limit_orders),
-            "active_stops": len(self._active_stop_orders),
-        }
+    def _get_pipeline_count(self) -> int:
+        """Get number of orders in the latency queue."""
+        return self.latency_simulator.get_pending_count()
 
     def get_pending_stats(self) -> PendingOrderStats:
         """
@@ -957,40 +932,7 @@ class TradeSimulator(AbstractTradeExecutor):
         """
         stats = self.latency_simulator.get_pending_stats()
         stats.latency_queue_count = self.latency_simulator.get_pending_count()
-        stats.active_limit_orders = [
-            ActiveOrderSnapshot(
-                order_id=p.pending_order_id,
-                order_type=p.order_type,
-                symbol=p.symbol,
-                direction=p.direction,
-                lots=p.lots,
-                entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get(
-                    'limit_price') if p.order_kwargs else None,
-                stop_loss=p.order_kwargs.get(
-                    'stop_loss') if p.order_kwargs else None,
-                take_profit=p.order_kwargs.get(
-                    'take_profit') if p.order_kwargs else None,
-            )
-            for p in self._active_limit_orders
-        ]
-        stats.active_stop_orders = [
-            ActiveOrderSnapshot(
-                order_id=p.pending_order_id,
-                order_type=p.order_type,
-                symbol=p.symbol,
-                direction=p.direction,
-                lots=p.lots,
-                entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get(
-                    'limit_price') if p.order_kwargs else None,
-                stop_loss=p.order_kwargs.get(
-                    'stop_loss') if p.order_kwargs else None,
-                take_profit=p.order_kwargs.get(
-                    'take_profit') if p.order_kwargs else None,
-            )
-            for p in self._active_stop_orders
-        ]
+        self._populate_active_order_snapshots(stats)
         return stats
 
     # ============================================
@@ -1026,20 +968,19 @@ class TradeSimulator(AbstractTradeExecutor):
                 self._fill_close_order(
                     synthetic, close_reason=CloseReason.SCENARIO_END)
 
-        # Active limit/stop orders are NOT cleared here — they are preserved
-        # so get_pending_stats() can snapshot them as ActiveOrderSnapshot.
-        # This shows the bot's pending "plan" at scenario end in reporting.
+        # Expire active orders → EXPIRED records in _order_history.
+        # Lists are NOT cleared — preserved for get_pending_stats() snapshots.
         if self._active_limit_orders:
             self.logger.info(
                 f"📋 {len(self._active_limit_orders)} unfilled limit orders "
-                f"at scenario end — preserved for reporting"
+                f"at scenario end — expired for reporting"
             )
-
         if self._active_stop_orders:
             self.logger.info(
                 f"📋 {len(self._active_stop_orders)} untriggered stop orders "
-                f"at scenario end — preserved for reporting"
+                f"at scenario end — expired for reporting"
             )
+        self._expire_active_orders()
 
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(

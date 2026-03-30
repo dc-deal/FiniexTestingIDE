@@ -30,13 +30,13 @@ class TestModifyLimitOrderSuccess:
     """Successful modification of pending limit orders via broker."""
 
     def test_modify_pending_order_price(self, mock_delayed, executor_delayed):
-        """modify_limit_order() succeeds for order tracked in LiveOrderTracker."""
+        """modify_limit_order() succeeds for LIMIT order in _active_limit_orders."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        # Submit order — stays PENDING in delayed mode
+        # Submit LIMIT order — stays PENDING in _active_limit_orders
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         assert result.status == OrderStatus.PENDING
         order_id = result.order_id
@@ -49,12 +49,12 @@ class TestModifyLimitOrderSuccess:
         assert mod_result.rejection_reason is None
 
     def test_modify_pending_order_sl_tp(self, mock_delayed, executor_delayed):
-        """modify_limit_order() can modify SL and TP on pending order."""
+        """modify_limit_order() can modify SL and TP on pending LIMIT order."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
 
@@ -70,8 +70,8 @@ class TestModifyLimitOrderSuccess:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
 
@@ -96,20 +96,20 @@ class TestModifyLimitOrderNotFound:
         assert mod_result.rejection_reason == ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND
 
     def test_modify_after_fill_returns_not_found(self, mock_delayed, executor_delayed):
-        """modify_limit_order() fails after order has been filled (removed from tracker)."""
+        """modify_limit_order() fails after order has been filled (removed from active)."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
 
-        # Next tick fills the order (delayed mode fills on first status check)
+        # Next tick: _process_active_orders() polls broker, delayed mode fills
         mock_delayed.feed_tick(executor_delayed, bid=50050.0, ask=50052.0)
         assert not executor_delayed.has_pending_orders()
 
-        # Now try to modify — order is gone from tracker
+        # Now try to modify — order is gone from _active_limit_orders
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0)
 
@@ -122,14 +122,14 @@ class TestModifyLimitOrderBrokerRejection:
 
     def test_broker_rejects_modify(self):
         """modify_limit_order() returns failure when broker rejects."""
-        # Start with delayed mode to get a pending order
+        # Start with delayed mode to get a pending LIMIT order
         mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
         executor = mock.create_executor()
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         result = executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
 
@@ -151,8 +151,8 @@ class TestModifyLimitOrderAdapterException:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
-            direction=OrderDirection.LONG, lots=0.001
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
 

@@ -64,7 +64,7 @@ from python.framework.types.trading_env_types.order_types import (
     create_rejection_result,
 )
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, ExecutionStats
 
 
@@ -135,6 +135,12 @@ class AbstractTradeExecutor(ABC):
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
         self._sl_tp_triggered = 0
+
+        # Active limit orders waiting for price trigger (post-pipeline)
+        self._active_limit_orders: List[PendingOrder] = []
+
+        # Active stop orders waiting for trigger price (post-pipeline)
+        self._active_stop_orders: List[PendingOrder] = []
 
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
@@ -632,6 +638,18 @@ class AbstractTradeExecutor(ABC):
         """
 
     @abstractmethod
+    def cancel_limit_order(self, order_id: str) -> bool:
+        """
+        Cancel an active limit order by order ID.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+
+    @abstractmethod
     def cancel_stop_order(self, order_id: str) -> bool:
         """
         Cancel an active stop order by order ID.
@@ -644,6 +662,15 @@ class AbstractTradeExecutor(ABC):
         """
 
     @abstractmethod
+    def _get_pipeline_count(self) -> int:
+        """
+        Get number of orders in the submission pipeline.
+
+        TradeSimulator: latency queue count
+        LiveTradeExecutor: broker tracker pending count
+        """
+        pass
+
     def get_active_order_counts(self) -> Dict[str, int]:
         """
         Get counts of active orders by world (latency, limit, stop).
@@ -651,6 +678,11 @@ class AbstractTradeExecutor(ABC):
         Returns:
             Dict with keys "latency_queue", "active_limits", "active_stops"
         """
+        return {
+            'latency_queue': self._get_pipeline_count(),
+            'active_limits': len(self._active_limit_orders),
+            'active_stops': len(self._active_stop_orders),
+        }
 
     # ============================================
     # Queries (concrete - same for all executors)
@@ -679,7 +711,6 @@ class AbstractTradeExecutor(ABC):
     # Pending Order Awareness (for Decision Logic via API)
     # ============================================
 
-    @abstractmethod
     def has_pending_orders(self) -> bool:
         """
         Are there any orders in flight (submitted but not yet filled)?
@@ -687,11 +718,10 @@ class AbstractTradeExecutor(ABC):
         Includes ALL pending worlds: latency pipeline, active limit orders,
         active stop orders. Used by single-position strategies that need
         to know about any outstanding order activity.
-
-        TradeSimulator: Latency queue + active limits + active stops
-        LiveTradeExecutor: Broker order status cache
         """
-        pass
+        return (self.has_pipeline_orders()
+                or len(self._active_limit_orders) > 0
+                or len(self._active_stop_orders) > 0)
 
     @abstractmethod
     def has_pipeline_orders(self) -> bool:
@@ -750,10 +780,10 @@ class AbstractTradeExecutor(ABC):
         """
         Check for orders stuck in the latency pipeline after cleanup.
 
-        Override in simulators to scope to the latency queue only,
-        excluding active limit/stop orders which are intentionally preserved.
+        Scoped to pipeline only — excludes active limit/stop orders
+        which are intentionally preserved for reporting snapshots.
         """
-        return self.has_pending_orders()
+        return self.has_pipeline_orders()
 
     def check_clean_shutdown(self) -> bool:
         """
@@ -793,6 +823,90 @@ class AbstractTradeExecutor(ABC):
             PendingOrderStats with latency metrics and anomaly records
         """
         pass
+
+    # ============================================
+    # Active Order Helpers (shared by all modes)
+    # ============================================
+
+    def _populate_active_order_snapshots(self, stats: PendingOrderStats) -> None:
+        """
+        Populate active order snapshots on PendingOrderStats.
+
+        Converts internal PendingOrder lists to ActiveOrderSnapshot DTOs
+        for reporting consumption. Called by subclass get_pending_stats().
+
+        Args:
+            stats: PendingOrderStats to populate with active order snapshots
+        """
+        stats.active_limit_orders = [
+            ActiveOrderSnapshot(
+                order_id=p.pending_order_id,
+                order_type=p.order_type,
+                symbol=p.symbol,
+                direction=p.direction,
+                lots=p.lots,
+                entry_price=p.entry_price,
+                limit_price=p.order_kwargs.get(
+                    'limit_price') if p.order_kwargs else None,
+                stop_loss=p.order_kwargs.get(
+                    'stop_loss') if p.order_kwargs else None,
+                take_profit=p.order_kwargs.get(
+                    'take_profit') if p.order_kwargs else None,
+            )
+            for p in self._active_limit_orders
+        ]
+        stats.active_stop_orders = [
+            ActiveOrderSnapshot(
+                order_id=p.pending_order_id,
+                order_type=p.order_type,
+                symbol=p.symbol,
+                direction=p.direction,
+                lots=p.lots,
+                entry_price=p.entry_price,
+                limit_price=p.order_kwargs.get(
+                    'limit_price') if p.order_kwargs else None,
+                stop_loss=p.order_kwargs.get(
+                    'stop_loss') if p.order_kwargs else None,
+                take_profit=p.order_kwargs.get(
+                    'take_profit') if p.order_kwargs else None,
+            )
+            for p in self._active_stop_orders
+        ]
+
+    def _expire_active_orders(self) -> None:
+        """
+        Record EXPIRED status for never-triggered active orders at session end.
+
+        Creates OrderResult(status=EXPIRED) entries in _order_history for all
+        active limit and stop orders. Lists are NOT cleared — preserved for
+        get_pending_stats() snapshots.
+        """
+        for pending in self._active_limit_orders:
+            result = OrderResult(
+                order_id=pending.pending_order_id,
+                status=OrderStatus.EXPIRED,
+                execution_time=datetime.now(timezone.utc),
+                metadata={
+                    'reason': 'scenario_end',
+                    'order_type': pending.order_type.value if pending.order_type else 'limit',
+                    'entry_price': pending.entry_price,
+                    'symbol': pending.symbol,
+                }
+            )
+            self._order_history.append(result)
+        for pending in self._active_stop_orders:
+            result = OrderResult(
+                order_id=pending.pending_order_id,
+                status=OrderStatus.EXPIRED,
+                execution_time=datetime.now(timezone.utc),
+                metadata={
+                    'reason': 'scenario_end',
+                    'order_type': pending.order_type.value if pending.order_type else 'stop',
+                    'entry_price': pending.entry_price,
+                    'symbol': pending.symbol,
+                }
+            )
+            self._order_history.append(result)
 
     def get_execution_stats(self) -> ExecutionStats:
         """Get order execution statistics."""
@@ -849,6 +963,8 @@ class AbstractTradeExecutor(ABC):
         self._total_commission = 0.0
         self._total_spread_cost = 0.0
         self._sl_tp_triggered = 0
+        self._active_limit_orders.clear()
+        self._active_stop_orders.clear()
 
     # ============================================
     # Shared Calculations (used by subclasses)

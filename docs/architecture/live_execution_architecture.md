@@ -16,10 +16,15 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 **Constructor validation:** Requires `adapter.is_live_capable() == True`. Takes optional `TimeoutConfig` (default: 30s timeout).
 
 **Order flow:**
-1. `open_order()` — Validates, calls `adapter.execute_order()`, handles immediate fill/rejection/pending
-2. `_process_pending_orders()` — Polls broker for each pending order, handles fills/rejections/timeouts
+1. `open_order()` — Validates, calls `adapter.execute_order()`, routes by type:
+   - **MARKET** → `LiveOrderTracker` (short-lived pipeline tracking)
+   - **LIMIT** → `_active_limit_orders` (shadow state, inherited from base)
+2. `_process_pending_orders()` — Two-phase polling:
+   - **Phase 1**: Polls `LiveOrderTracker` for MARKET order fills/rejections/timeouts
+   - **Phase 2**: `_process_active_orders()` — polls broker for active LIMIT order fills
 3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`
 4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
+5. `cancel_limit_order()` — Cancels at broker + removes from `_active_limit_orders`
 
 **Feature gating:** MARKET and LIMIT orders supported. Extended order types (STOP, STOP_LIMIT) are rejected.
 
@@ -169,15 +174,15 @@ Used by `MockOrderExecution` utility (`python/framework/testing/mock_order_execu
 
 ## Live Limit Order Modification
 
-`LiveTradeExecutor.modify_limit_order()` modifies pending limit orders at the broker via `adapter.modify_order()`.
+`LiveTradeExecutor.modify_limit_order()` modifies pending limit orders at the broker via `adapter.modify_order()` and updates the local shadow state.
 
 ### Flow
 
 ```
 modify_limit_order(order_id, new_price, new_sl, new_tp)
     │
-    ├── 1. LiveOrderTracker.get_broker_ref(order_id)
-    │      → None? → LIMIT_ORDER_NOT_FOUND
+    ├── 1. Scan _active_limit_orders for order_id → broker_ref
+    │      → Not found? → LIMIT_ORDER_NOT_FOUND
     │
     ├── 2. UNSET → None translation (adapter uses None=no change)
     │
@@ -187,15 +192,20 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
     ├── 4. BrokerResponse.is_rejected?
     │      → Yes: INVALID_PRICE
     │
-    └── 5. Success → ModificationResult(success=True)
+    ├── 5. Update local shadow state (entry_price, order_kwargs SL/TP)
+    │
+    ├── 6. Update broker_ref if broker returns new ref (Kraken EditOrder)
+    │
+    └── 7. Success → ModificationResult(success=True)
 ```
 
 ### Design Notes
 
 - **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
-- **No local shadow state update** — LiveTradeExecutor has no `_active_limit_orders` queue (that lives in TradeSimulator only). When the order lifecycle is lifted into AbstractTradeExecutor (#133 Step 4), local shadow state updates will be added after successful broker modify.
+- **Local shadow state update** — after successful broker modify, the `PendingOrder` in `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
+- **Broker ref update** — some brokers (Kraken `EditOrder`) return a new `broker_ref` when modifying. The local `PendingOrder.broker_ref` is updated accordingly.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
-- **`get_broker_ref(order_id)`** — Reverse lookup on `LiveOrderTracker._broker_ref_index` (O(n) scan). The forward lookup `get_by_broker_ref(broker_ref)` is O(1) and used in the polling flow.
+- **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveOrderTracker` is no longer involved in LIMIT order tracking.
 
 ### MockBrokerAdapter.modify_order()
 
@@ -214,12 +224,10 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 
 ## Open Issues (Live-Specific)
 
-### Reconciliation Layer for Live Trading
-**Problem:** Local portfolio (shadow state) can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes operational.
-- Affects: LiveTradeExecutor, PortfolioManager
-
-### Live Autotrader Pipeline
-**Next step:** Build FiniexAutoTrader (live runner) that connects tick source → workers → decision logic → LiveTradeExecutor. The execution layer (LiveTradeExecutor, LiveOrderTracker, MockBrokerAdapter) is complete and tested (47 tests). Missing: live runner, Kraken tick source, KrakenAdapter Tier 3.
+### Reconciliation Layer for Live Trading (#151)
+**Problem:** Local portfolio and active order shadow state can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes fully operational.
+- Affects: LiveTradeExecutor, PortfolioManager, `_active_limit_orders` shadow state
+- Shadow state is authoritative-by-assumption until #151 is implemented
 
 ---
 

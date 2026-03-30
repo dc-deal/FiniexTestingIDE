@@ -77,7 +77,7 @@ tests/
 
 ## Test Files
 
-### test_live_order_tracker.py (21 Tests)
+### test_live_order_tracker.py (20 Tests)
 
 Tests the LiveOrderTracker independently from LiveTradeExecutor. Validates pending order storage, broker reference index, fill/rejection marking, timeout detection, and cleanup.
 
@@ -173,8 +173,8 @@ Integration tests for the full execution pipeline: open_order() -> broker respon
 
 | Test | Description |
 |------|-------------|
-| `test_limit_order_rejected` | LIMIT order rejected with ORDER_TYPE_NOT_SUPPORTED |
-| `test_stop_order_rejected` | STOP order rejected |
+| `test_stop_order_rejected` | STOP order rejected with ORDER_TYPE_NOT_SUPPORTED |
+| `test_stop_limit_order_rejected` | STOP_LIMIT order rejected with ORDER_TYPE_NOT_SUPPORTED |
 
 #### TestValidation
 
@@ -198,7 +198,7 @@ Integration tests for the full execution pipeline: open_order() -> broker respon
 
 ---
 
-### test_live_executor_multi_order.py (7 Tests)
+### test_live_executor_multi_order.py (8 Tests)
 
 Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_remaining, stats consistency.
 
@@ -234,14 +234,14 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 ### test_live_executor_modify.py (11 Tests)
 
-Limit order modification via broker adapter: successful modify, non-existent order, broker rejection, adapter exceptions, and `get_broker_ref()` reverse lookup.
+Limit order modification via broker adapter: successful modify, non-existent order, broker rejection, adapter exceptions, and `get_broker_ref()` reverse lookup. All modification tests use `OrderType.LIMIT` with `price=49000.0` to place orders into `_active_limit_orders` (shadow state).
 
 #### TestModifyLimitOrderSuccess
 
 | Test | Description |
 |------|-------------|
-| `test_modify_pending_order_price` | modify_limit_order() succeeds for tracked pending order |
-| `test_modify_pending_order_sl_tp` | Modify SL and TP on pending order |
+| `test_modify_pending_order_price` | modify_limit_order() succeeds for LIMIT order in _active_limit_orders |
+| `test_modify_pending_order_sl_tp` | Modify SL and TP on pending LIMIT order |
 | `test_modify_with_unset_keeps_current` | UNSET parameters translated to None (no change) |
 
 #### TestModifyLimitOrderNotFound
@@ -312,11 +312,14 @@ MockOrderExecution
   |
   +-- LiveTradeExecutor (extends AbstractTradeExecutor)
         +-- open_order() -> OrderResult
+        |     +-- MARKET -> LiveOrderTracker (pipeline)
+        |     +-- LIMIT  -> _active_limit_orders (shadow state, inherited)
         +-- close_position() -> OrderResult
-        +-- modify_limit_order() -> ModificationResult
+        +-- modify_limit_order() -> ModificationResult (broker + local state)
+        +-- cancel_limit_order() -> bool (broker + local removal)
         +-- on_tick() -> _process_pending_orders()
-        |     +-- LiveOrderTracker.get_pending_orders()
-        |     +-- adapter.check_order_status()
+        |     +-- Phase 1: LiveOrderTracker poll (MARKET orders)
+        |     +-- Phase 2: _process_active_orders() (LIMIT orders)
         |     +-- _fill_open_order() / _fill_close_order() (inherited)
         +-- get_order_history() -> List[OrderResult]
         +-- get_execution_stats() -> ExecutionStats

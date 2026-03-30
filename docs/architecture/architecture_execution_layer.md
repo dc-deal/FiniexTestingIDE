@@ -234,14 +234,21 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `get_account_info()` — Balance, equity, margin, free margin
 - All broker queries, symbol specs, statistics collection
 
+**Concrete methods (lifted from subclasses — shared active order lifecycle):**
+- `has_pending_orders()` — Whether any orders are in flight (all worlds: pipeline + active limits + active stops)
+- `get_active_order_counts()` — Quick dict with `latency_queue`, `active_limits`, `active_stops` counts
+- `_populate_active_order_snapshots(stats)` — Builds `ActiveOrderSnapshot` lists for reporting
+- `_expire_active_orders()` — Creates EXPIRED `OrderResult` entries for never-triggered active orders at session end
+
 **Abstract methods (mode-specific):**
 - `_process_pending_orders()` — How pending orders are resolved
 - `open_order()` — How orders are submitted
 - `close_position()` — How close requests are sent
-- `has_pending_orders()` — Whether any orders are in flight (all worlds)
+- `_get_pipeline_count()` — Count of orders in submission pipeline (sim: latency queue, live: order tracker)
+- `cancel_limit_order(order_id)` — Cancel an active limit order by order ID
 - `has_pipeline_orders()` — Whether orders are in latency pipeline only
 - `is_pending_close(position_id)` — Whether a specific position is being closed
-- `close_all_remaining_orders(current_tick)` — End-of-run cleanup: direct-fills open positions via synthetic orders (no pending), then `clear_pending()` for stuck pipeline orders
+- `close_all_remaining_orders(current_tick)` — End-of-run cleanup: expire active orders, direct-fill open positions, then `clear_pending()` for stuck pipeline orders
 - `get_pending_stats()` — Aggregated pending order statistics (latency, outcomes)
 
 ### AbstractPendingOrderManager
@@ -282,13 +289,13 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 **Stress testing:** `_stress_test_should_reject()` intercepts orders between latency completion and fill processing. Controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Rejections are stored in `_order_history` with `BROKER_ERROR` reason — same data path as real broker rejections.
 
-`has_pending_orders()` and `is_pending_close()` delegate directly to `self.latency_simulator` (which inherits these from AbstractPendingOrderManager).
+`is_pending_close()` delegates to `self.latency_simulator` (inherited from AbstractPendingOrderManager). `has_pending_orders()` is inherited from `AbstractTradeExecutor` — combines pipeline count + active limit/stop order counts.
 
 ### LiveTradeExecutor (extends AbstractTradeExecutor)
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
-Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. Delegates pending order management to LiveOrderTracker. MARKET and LIMIT orders supported.
+Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. MARKET orders are tracked via `LiveOrderTracker` (short-lived pipeline). LIMIT orders are tracked as shadow state in inherited `_active_limit_orders` — polled each tick via `_process_active_orders()`. Supports `modify_limit_order()` (broker + local state update) and `cancel_limit_order()` (broker cancel + local removal).
 
 ### AbstractAdapter (Tiered Interface)
 Abstract interface for all broker adapters. Methods are organized in tiers:
@@ -374,7 +381,7 @@ The new design separates concerns completely:
 
 **`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
 
-**`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Covers latency pipeline, active limit orders, and active stop orders. Used by market-only strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
+**`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` + `_active_stop_orders`. Used by market-only strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
 ```
 if self.trading_api.has_pending_orders():
     return None  # Wait for pending orders to resolve
@@ -511,11 +518,19 @@ Each fill carries an `EntryType` (MARKET or LIMIT) that flows through to `TradeR
 
 ### Live Mode
 
-In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()` passes the limit price to the broker adapter via `order_kwargs["price"]`. Fill detection happens through the standard broker polling path — no separate `_active_limit_orders` needed.
+In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()` passes the limit price to the broker adapter. When the broker returns PENDING, the order is added to `_active_limit_orders` as shadow state. Each tick, `_process_active_orders()` polls the broker for status updates:
+- **FILLED** → `_fill_open_order()` with broker's fill price
+- **Terminal** (REJECTED/CANCELLED/EXPIRED) → rejection recorded in `_order_history`
+- **PENDING** → keep polling
+
+`modify_limit_order()` updates both the broker (via `adapter.modify_order()`) and the local shadow state (price, SL, TP). If the broker returns a new `broker_ref` (e.g. Kraken `EditOrder`), the local `PendingOrder.broker_ref` is updated.
 
 ### Cleanup
 
-At scenario end, `close_all_remaining_orders()` discards unfilled limit orders from `_active_limit_orders` with a warning log. These are orders whose price trigger was never reached.
+At scenario end, `close_all_remaining_orders()` expires unfilled active orders:
+1. **Live**: Active limit orders are cancelled at the broker first
+2. **Both modes**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
+3. Lists preserved for `get_pending_stats()` snapshots (reporting)
 
 ---
 
@@ -539,7 +554,7 @@ At scenario end, `close_all_remaining_orders()` discards unfilled limit orders f
 - Affects: Baseline test suite, test fixtures
 
 ### Live-Specific Open Issues
-See [live_execution_architecture.md](live_execution_architecture.md): Reconciliation Layer, Live Autotrader Pipeline.
+See [live_execution_architecture.md](live_execution_architecture.md): Reconciliation Layer.
 
 ---
 
@@ -579,8 +594,8 @@ See [live_execution_architecture.md](live_execution_architecture.md): Reconcilia
 | **OpenOrderRequest** | Internal pipeline dataclass bundling all order parameters (symbol, order_type, direction, lots, price, stop_loss, take_profit, comment, magic_number) |
 | **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
-| **Active Limit Order** | A limit order that passed latency simulation but hasn't triggered yet — sits in `_active_limit_orders` waiting for price |
-| **Active Stop Order** | A stop/stop-limit order that passed latency simulation but hasn't triggered yet — sits in `_active_stop_orders` waiting for trigger price |
+| **Active Limit Order** | A limit order waiting for price trigger — sits in `AbstractTradeExecutor._active_limit_orders`. Sim: passed latency, waiting for local trigger. Live: broker-accepted, tracked as shadow state, polled each tick |
+| **Active Stop Order** | A stop/stop-limit order waiting for trigger — sits in `AbstractTradeExecutor._active_stop_orders`. Currently sim-only (STOP not in live feature gate) |
 | **Pipeline Orders** | Orders in the latency/submission pipeline (not yet broker-accepted). Queried via `has_pipeline_orders()` — excludes active limit/stop orders |
 | **ActiveOrderSnapshot** | Dataclass exposing order_id, type, symbol, direction, lots, prices for active limit/stop orders in stats |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |
