@@ -216,11 +216,54 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 | Source | Status | Description |
 |--------|--------|-------------|
 | `MockTickSource` | ✅ Built | Parquet replay (replay / realtime modes) |
-| `KrakenTickSource` | Planned (#232) | WebSocket v2, auto-reconnect |
+| `KrakenTickSource` | ✅ Built (#232) | Kraken WS v2 trade channel, auto-reconnect |
 
 MockTickSource modes:
 - **replay** (default): Ticks as fast as possible — functional testing
 - **realtime**: `time.sleep(delta)` between ticks — clipping behavior testing
+
+### KrakenTickSource (#232)
+
+Live tick stream from the Kraken WebSocket v2 trade channel. Runs `asyncio.run()` in a daemon thread (Threading model 8.a), pushes `TickData` to `queue.Queue`.
+
+**Key features:**
+- Endless reconnect with exponential backoff (1s → 60s cap)
+- Heartbeat monitoring: checks message silence every 30s, forces reconnect after 90s silence
+- SSL via certifi (cross-platform: Linux Docker + Windows server)
+- Single symbol per session (matches bot architecture)
+- Concurrent asyncio tasks: `_receive_loop` + `_heartbeat_monitor` via `asyncio.wait(FIRST_COMPLETED)`
+
+**Data Consistency Principle:** KrakenTickSource uses the **same trade channel** as DataCollector, ensuring backtesting data matches live data format. `bid=ask=trade_price` (spread=0) — crypto fees are handled by `MakerTakerFee`, not by spread.
+
+```
+DataCollector            AutoTrader (live)
+┌──────────┐            ┌──────────┐
+│ Kraken   │            │ Kraken   │
+│ WS v2    │            │ WS v2    │
+│ trade ch │            │ trade ch │  ← Same channel, same data
+└────┬─────┘            └────┬─────┘
+     │                       │
+     ▼                       ▼
+JSON → Parquet           Queue → Algo
+```
+
+**Symbol mapping:** `symbol_to_ws_pair` in broker settings (`kraken_spot.json`) maps internal symbols to Kraken WS format (e.g., `BTCUSD` → `BTC/USD`). Fallback: slash-insert at position 3.
+
+**Config** (all fields optional, defaults in `TickSourceConfig`):
+```json
+{
+  "tick_source": {
+    "type": "kraken",
+    "ws_url": "wss://ws.kraken.com/v2",
+    "reconnect_initial_delay_s": 1.0,
+    "reconnect_max_delay_s": 60.0,
+    "heartbeat_interval_s": 30.0,
+    "heartbeat_dead_s": 90.0
+  }
+}
+```
+
+Minimal config (all defaults): `{"tick_source": {"type": "kraken"}}`.
 
 ## Clipping Monitor (#197)
 
@@ -277,6 +320,8 @@ python/framework/autotrader/
   tick_sources/
     abstract_tick_source.py      AbstractTickSource ABC
     mock_tick_source.py          Parquet replay tick source
+    kraken_tick_source.py        Kraken WS v2 live tick source (#232)
+    kraken_tick_message_parser.py  WS JSON → TickData parser (#232)
 
 python/configuration/autotrader/
   autotrader_config_loader.py          JSON → AutoTraderConfig
@@ -499,5 +544,5 @@ Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1)
 | 1b | #231 | Live Warmup (KrakenOhlcBarFetcher) | ✅ |
 | 3 | #133 | KrakenAdapter Tier 3 (execution, dry-run, broker settings) | ✅ |
 | 4 | #133 | Active Order Lifecycle Lifting | ✅ |
-| 2 | #232 | Kraken Tick Source (WebSocket v2) | Planned |
+| 2 | #232 | Kraken Tick Source (WebSocket v2) | ✅ |
 | — | #228 | Live Console UI (rich.live) | Planned |
