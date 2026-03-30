@@ -29,7 +29,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Optional, Union
+from typing import List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -37,7 +37,7 @@ from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_order_tracker import LiveOrderTracker
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -48,6 +48,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderStatus,
     OrderResult,
+    FillType,
     RejectionReason,
     ModificationRejectionReason,
     ModificationResult,
@@ -142,30 +143,33 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Poll broker for pending order updates and handle timeouts.
 
+        Phase 1: Poll LiveOrderTracker (MARKET orders in transit)
+        Phase 2: Poll active limit/stop orders for broker fills
+
         For each pending order:
         1. Check adapter for status update (filled/rejected/pending)
         2. On fill: call inherited _fill_open_order() / _fill_close_order()
         3. On rejection: record in _order_history
         4. On timeout: record rejection with BROKER_ERROR reason
         """
-        # Early exit if nothing pending
-        if not self._order_tracker.has_pending_orders():
-            return
+        # === Phase 1: LiveOrderTracker (MARKET orders in transit) ===
+        if self._order_tracker.has_pending_orders():
+            pending_orders = self._order_tracker.get_pending_orders()
+            for pending in pending_orders:
+                if not pending.broker_ref:
+                    continue
 
-        # Poll broker for each pending order
-        pending_orders = self._order_tracker.get_pending_orders()
-        for pending in pending_orders:
-            if not pending.broker_ref:
-                continue
+                response = self.broker.adapter.check_order_status(
+                    pending.broker_ref)
+                self._handle_broker_response(pending, response)
 
-            response = self.broker.adapter.check_order_status(
-                pending.broker_ref)
-            self._handle_broker_response(pending, response)
+            # Check for timeouts (orders that broker never responded to)
+            timed_out = self._order_tracker.check_timeouts()
+            for pending in timed_out:
+                self._handle_timeout(pending)
 
-        # Check for timeouts (orders that broker never responded to)
-        timed_out = self._order_tracker.check_timeouts()
-        for pending in timed_out:
-            self._handle_timeout(pending)
+        # === Phase 2: Active limit/stop orders (broker-side, waiting for trigger) ===
+        self._process_active_orders()
 
     def _handle_broker_response(
         self,
@@ -263,6 +267,58 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f"Order {pending.pending_order_id} timed out "
             f"(broker_ref={pending.broker_ref})"
         )
+
+    # ============================================
+    # Active Order Processing (broker-accepted, waiting for trigger)
+    # ============================================
+
+    def _process_active_orders(self) -> None:
+        """
+        Poll broker for active limit order fills.
+
+        Active limit orders are broker-accepted orders waiting for a price
+        trigger (shadow state). Each tick, we poll the broker to check if
+        the order has been filled, rejected, cancelled, or expired.
+        """
+        if not self._active_limit_orders:
+            return
+
+        remaining: List[PendingOrder] = []
+        for pending in self._active_limit_orders:
+            if not pending.broker_ref:
+                remaining.append(pending)
+                continue
+
+            response = self.broker.adapter.check_order_status(
+                pending.broker_ref)
+
+            if response.status == BrokerOrderStatus.FILLED:
+                self._fill_open_order(
+                    pending, fill_price=response.fill_price,
+                    entry_type=EntryType.LIMIT, fill_type=FillType.LIMIT)
+                self.logger.info(
+                    f"🎯 Active limit order {pending.pending_order_id} "
+                    f"filled at {response.fill_price} "
+                    f"(broker_ref={pending.broker_ref})")
+            elif response.is_terminal:
+                # REJECTED / CANCELLED / EXPIRED by broker
+                self._orders_rejected += 1
+                rejection = create_rejection_result(
+                    order_id=pending.pending_order_id,
+                    reason=RejectionReason.BROKER_ERROR,
+                    message=f"Broker {response.status.value}: "
+                            f"{response.rejection_reason or 'unknown'}",
+                )
+                self._order_history.append(rejection)
+                self.logger.warning(
+                    f"Active limit order {pending.pending_order_id} "
+                    f"{response.status.value} by broker "
+                    f"(broker_ref={pending.broker_ref})")
+            else:
+                # Still PENDING at broker — keep polling
+                remaining.append(pending)
+
+        self._active_limit_orders = remaining
 
     # ============================================
     # Order Submission (live-specific)
@@ -382,15 +438,33 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._order_history.append(result)
             return result
 
-        # Order is pending — track and poll later
-        self._order_tracker.submit_order(
-            order_id=order_id,
-            symbol=request.symbol,
-            direction=request.direction,
-            lots=request.lots,
-            broker_ref=response.broker_ref,
-            order_kwargs=order_kwargs,
-        )
+        # Order is pending — route by order type
+        if request.order_type == OrderType.LIMIT:
+            # LIMIT orders: shadow state in _active_limit_orders (broker-accepted)
+            pending = PendingOrder(
+                pending_order_id=order_id,
+                order_action=PendingOrderAction.OPEN,
+                order_type=OrderType.LIMIT,
+                submitted_at=datetime.now(timezone.utc),
+                broker_ref=response.broker_ref,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
+                entry_price=request.price,
+                entry_time=datetime.now(timezone.utc),
+                order_kwargs=order_kwargs,
+            )
+            self._active_limit_orders.append(pending)
+        else:
+            # MARKET orders: track in LiveOrderTracker (short-lived)
+            self._order_tracker.submit_order(
+                order_id=order_id,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
+                broker_ref=response.broker_ref,
+                order_kwargs=order_kwargs,
+            )
 
         result = OrderResult(
             order_id=order_id,
@@ -516,15 +590,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order via broker adapter.
+        Modify a pending limit order via broker adapter + local shadow state.
 
-        Resolves order_id to broker_ref via LiveOrderTracker, then calls
-        adapter.modify_order() to modify the order at the broker.
-
-        No local SL/TP validation — broker handles that server-side.
-        TODO: When order lifecycle is lifted into AbstractTradeExecutor
-        (#133 Step 4), local active limit/stop tracking will enable
-        local shadow state updates after successful broker modify.
+        Resolves order_id to broker_ref via _active_limit_orders, then calls
+        adapter.modify_order(). On success, updates local shadow state.
 
         Args:
             order_id: Pending limit order ID
@@ -535,8 +604,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             ModificationResult with success status and rejection reason
         """
-        # Resolve order_id → broker_ref via tracker
-        broker_ref = self._order_tracker.get_broker_ref(order_id)
+        # Resolve order_id → broker_ref via active limit orders
+        target_pending = None
+        broker_ref = None
+        for pending in self._active_limit_orders:
+            if pending.pending_order_id == order_id:
+                target_pending = pending
+                broker_ref = pending.broker_ref
+                break
+
         if broker_ref is None:
             return ModificationResult(
                 success=False,
@@ -578,7 +654,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Update broker ref if broker returned a new one (Kraken EditOrder returns new txid)
         if response.broker_ref and response.broker_ref != broker_ref:
-            self._order_tracker.update_broker_ref(broker_ref, response.broker_ref)
+            target_pending.broker_ref = response.broker_ref
+
+        # Update local shadow state
+        if not isinstance(new_price, _UnsetType):
+            target_pending.entry_price = new_price
+        if not isinstance(new_stop_loss, _UnsetType):
+            if target_pending.order_kwargs is None:
+                target_pending.order_kwargs = {}
+            if new_stop_loss is None:
+                target_pending.order_kwargs.pop('stop_loss', None)
+            else:
+                target_pending.order_kwargs['stop_loss'] = new_stop_loss
+        if not isinstance(new_take_profit, _UnsetType):
+            if target_pending.order_kwargs is None:
+                target_pending.order_kwargs = {}
+            if new_take_profit is None:
+                target_pending.order_kwargs.pop('take_profit', None)
+            else:
+                target_pending.order_kwargs['take_profit'] = new_take_profit
 
         self.logger.info(
             f"✏️ Limit order {order_id} modified at broker "
@@ -614,6 +708,30 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             success=False,
             rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
 
+    def cancel_limit_order(self, order_id: str) -> bool:
+        """
+        Cancel an active limit order at broker + remove from local shadow state.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if order was found and cancelled
+        """
+        for i, pending in enumerate(self._active_limit_orders):
+            if pending.pending_order_id == order_id:
+                if pending.broker_ref:
+                    try:
+                        self.broker.adapter.cancel_order(pending.broker_ref)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to cancel limit order {order_id} at broker: {e}")
+                        return False
+                self._active_limit_orders.pop(i)
+                self.logger.info(f"❌ Limit order {order_id} cancelled")
+                return True
+        return False
+
     def cancel_stop_order(self, order_id: str) -> bool:
         """
         Cancel an active stop order (not supported in live).
@@ -626,43 +744,32 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         return False
 
-    def get_active_order_counts(self) -> Dict[str, int]:
-        """
-        Get counts of active orders by world.
-
-        Returns:
-            Dict with pending count from broker tracker
-        """
-        return {
-            "latency_queue": self._order_tracker.get_pending_count(),
-            "active_limits": 0,
-            "active_stops": 0,
-        }
-
     # ============================================
     # Pending Order Awareness
     # ============================================
 
-    def has_pending_orders(self) -> bool:
-        """Check if any orders are pending at broker."""
-        return self._order_tracker.has_pending_orders()
-
     def has_pipeline_orders(self) -> bool:
-        """Check if any orders are pending at broker (same as has_pending_orders for live)."""
+        """Check if any orders are in the broker tracker (MARKET orders in transit)."""
         return self._order_tracker.has_pending_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
         return self._order_tracker.is_pending_close(position_id)
 
+    def _get_pipeline_count(self) -> int:
+        """Get number of orders in the broker tracker."""
+        return self._order_tracker.get_pending_count()
+
     def get_pending_stats(self) -> PendingOrderStats:
         """
         Get aggregated pending order statistics from live order tracker.
 
         Returns:
-            PendingOrderStats with ms-based latency metrics
+            PendingOrderStats with ms-based latency metrics + active order snapshots
         """
-        return self._order_tracker.get_pending_stats()
+        stats = self._order_tracker.get_pending_stats()
+        self._populate_active_order_snapshots(stats)
+        return stats
 
     # ============================================
     # Helpers
@@ -690,14 +797,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def close_all_remaining_orders(self, current_msc: int = 0) -> None:
         """
-        Close all open positions at end of run.
+        Close all open positions and expire active orders at end of run.
 
-        Two-phase cleanup (same pattern as TradeSimulator):
-        1. Direct-fill open positions using synthetic PendingOrders.
+        Three-phase cleanup:
+        1. Cancel active limit orders at broker, expire locally (EXPIRED records).
+        2. Direct-fill open positions using synthetic PendingOrders.
            These bypass the pending order pipeline entirely — no pending
            created, no FORCE_CLOSED in statistics. This is an internal
            cleanup, not an algo-initiated action.
-        2. clear_pending() catches genuine stuck-in-pipeline orders
+        3. clear_pending() catches genuine stuck-in-pipeline orders
            (e.g. broker hasn't confirmed a fill yet when session ends).
            These ARE real anomalies and correctly recorded as
            FORCE_CLOSED with reason="scenario_end".
@@ -705,17 +813,32 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             current_msc: Not used in live mode (latency is time-based)
         """
+        # Phase 1: Cancel active limit orders at broker and expire locally
+        if self._active_limit_orders:
+            self.logger.info(
+                f"📋 {len(self._active_limit_orders)} active limit orders "
+                f"at session end — cancelling at broker")
+            for pending in self._active_limit_orders:
+                if pending.broker_ref:
+                    try:
+                        self.broker.adapter.cancel_order(pending.broker_ref)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to cancel active limit "
+                            f"{pending.pending_order_id}: {e}")
+            self._expire_active_orders()
+
+        # Phase 2: Direct-fill open positions
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
                 f"{len(open_positions)} positions remain open — direct-closing (no pending)"
             )
-            # Direct fill via synthetic PendingOrder — bypasses pending pipeline
             for pos in open_positions:
                 synthetic = self._order_tracker.create_synthetic_close_order(
                     pos.position_id)
                 self._fill_close_order(
                     synthetic, close_reason=CloseReason.SCENARIO_END)
 
-        # Catch genuine stuck-in-pipeline orders (real anomalies)
+        # Phase 3: Catch genuine stuck-in-pipeline orders (real anomalies)
         self._order_tracker.clear_pending(reason="scenario_end")

@@ -39,7 +39,7 @@ Every order passes through up to three distinct stages ("worlds") before becomin
                           │                                             │
               ┌───────────▼──────────────┐              ┌──────────────▼──────────────┐
               │  WORLD 2: Active Limits   │              │  WORLD 3: Active Stops       │
-              │  TradeSimulator           │              │  TradeSimulator               │
+              │  AbstractTradeExecutor    │              │  AbstractTradeExecutor        │
               │  ._active_limit_orders    │              │  ._active_stop_orders         │
               │                           │              │                               │
               │  LIMIT orders             │◄─── convert  │  STOP orders                  │
@@ -98,7 +98,7 @@ Every order passes through up to three distinct stages ("worlds") before becomin
 
 ## World 2: Active Limit Orders
 
-**Storage:** `TradeSimulator._active_limit_orders` (list of `PendingOrder`)
+**Storage:** `AbstractTradeExecutor._active_limit_orders` (list of `PendingOrder`)
 
 **Contains:**
 - Pure LIMIT orders that weren't immediately fillable after latency
@@ -118,13 +118,13 @@ Every order passes through up to three distinct stages ("worlds") before becomin
 **Modification:** `modify_limit_order(order_id, new_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_limit_order(order_id)` — removes from list, returns `True`
 
-**Live mode:** Broker handles limit matching server-side. No `_active_limit_orders` needed — fill detection through standard broker polling.
+**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING), it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 
 ## World 3: Active Stop Orders
 
-**Storage:** `TradeSimulator._active_stop_orders` (list of `PendingOrder`)
+**Storage:** `AbstractTradeExecutor._active_stop_orders` (list of `PendingOrder`)
 
 **Contains:**
 - STOP orders waiting for breakout trigger
@@ -240,11 +240,12 @@ latency_queue_count: int                           # World 1 count (no details �
 Quick query for Decision Logic to check order distribution across worlds:
 
 ```python
+# AbstractTradeExecutor (concrete — shared by both modes)
 def get_active_order_counts(self) -> Dict[str, int]:
     return {
-        "latency_queue": self.latency_simulator.get_pending_count(),
-        "active_limits": len(self._active_limit_orders),
-        "active_stops": len(self._active_stop_orders),
+        'latency_queue': self._get_pipeline_count(),  # abstract: sim=latency queue, live=order tracker
+        'active_limits': len(self._active_limit_orders),
+        'active_stops': len(self._active_stop_orders),
     }
 ```
 
@@ -280,13 +281,13 @@ At scenario end, `close_all_remaining_orders()` handles all three worlds:
 
 1. **Open positions:** Closed via synthetic `PendingOrder` objects that bypass the latency pipeline entirely (no pending stats impact). This is internal cleanup, not an algo action.
 
-2. **Active limit orders** (`_active_limit_orders`): **Preserved** (not cleared). A warning is logged. `get_pending_stats()` is called after cleanup and snapshots them into `PendingOrderStats.active_limit_orders` — capturing the bot's unfilled plan at scenario end.
+2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists are **preserved** (not cleared) — `get_pending_stats()` snapshots them into `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also cancelled at the broker before expiry. A warning is logged.
 
-3. **Active stop orders** (`_active_stop_orders`): **Preserved** (not cleared). A warning is logged. Snapshotted into `PendingOrderStats.active_stop_orders` — capturing untriggered breakout orders.
+3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 
 4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce individual `PendingOrderRecord` entries in `anomaly_orders`.
 
-**Note:** `check_clean_shutdown()` validates only the latency queue (via `_has_pipeline_orders()` override in `TradeSimulator`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
+**Note:** `check_clean_shutdown()` validates only the latency pipeline (via `_has_pipeline_orders()` → `has_pipeline_orders()`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 
 ---
 
