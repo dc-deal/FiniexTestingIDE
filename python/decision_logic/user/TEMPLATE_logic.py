@@ -18,7 +18,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
@@ -47,6 +47,22 @@ class TEMPLATELogic(AbstractDecisionLogic):
             # 'lot_size': InputParamDef(
             #     param_type=float, default=0.1, min_val=0.01, max_val=100.0,
             #     description="Fixed lot size for orders"
+            # ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Define your decision output parameters."""
+        return {
+            # 'confidence': OutputParamDef(
+            #     param_type=float, min_val=0.0, max_val=1.0,
+            #     description='Signal confidence score',
+            #     category='SIGNAL', display=True,
+            # ),
+            # 'reason': OutputParamDef(
+            #     param_type=str,
+            #     description='Human-readable decision explanation',
+            #     category='INFO',
             # ),
         }
 
@@ -84,14 +100,14 @@ class TEMPLATELogic(AbstractDecisionLogic):
             worker_results: Results from your declared workers
 
         Returns:
-            Decision with action (BUY/SELL/FLAT), confidence, reason
+            Decision with action (BUY/SELL/FLAT) and typed outputs
         """
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.0,
-            reason='Template not implemented',
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat(),
+            outputs={
+                'reason': 'Template not implemented',
+                'price': tick.mid,
+            },
         )
 
     def _execute_decision_impl(
@@ -120,6 +136,6 @@ class TEMPLATELogic(AbstractDecisionLogic):
         #     order_type=OrderType.MARKET,
         #     direction=direction,
         #     lots=self.params.get('lot_size'),
-        #     comment=f"MyStrategy: {decision.reason[:50]}"
+        #     comment=f"MyStrategy: {decision.get_signal('reason')[:50]}"
         # )
         return None

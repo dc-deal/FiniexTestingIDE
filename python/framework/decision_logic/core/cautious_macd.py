@@ -36,7 +36,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -186,6 +186,32 @@ class CautiousMacd(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """CautiousMacd decision output parameters."""
+        return {
+            'confidence': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=1.0,
+                description='Signal confidence score',
+                category='SIGNAL', display=True,
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+            'timestamp': OutputParamDef(
+                param_type=str,
+                description='ISO format UTC timestamp at decision time',
+                category='INFO',
+            ),
+        }
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for CautiousMacd.
@@ -245,10 +271,12 @@ class CautiousMacd(AbstractDecisionLogic):
         if not macd_result or not rsi_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
-                confidence=0.0,
-                reason="Missing worker results",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat(),
+                outputs={
+                    'confidence': 0.0,
+                    'reason': 'Missing worker results',
+                    'price': tick.mid,
+                    'timestamp': tick.timestamp.isoformat(),
+                },
             )
 
         histogram = macd_result.get_signal('histogram')
@@ -303,10 +331,12 @@ class CautiousMacd(AbstractDecisionLogic):
             else:
                 return Decision(
                     action=DecisionLogicAction.BUY,
-                    confidence=confidence,
-                    reason=f"MACD cross-up hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': f"MACD cross-up hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         if crossed_up and rsi_value >= self.rsi_filter_buy:
@@ -325,10 +355,12 @@ class CautiousMacd(AbstractDecisionLogic):
             else:
                 return Decision(
                     action=DecisionLogicAction.SELL,
-                    confidence=confidence,
-                    reason=f"MACD cross-down hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': f"MACD cross-down hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         if crossed_down and rsi_value <= self.rsi_filter_sell:
@@ -338,10 +370,12 @@ class CautiousMacd(AbstractDecisionLogic):
 
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.5,
-            reason="No MACD crossover or RSI filter blocked",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat(),
+            outputs={
+                'confidence': 0.5,
+                'reason': 'No MACD crossover or RSI filter blocked',
+                'price': tick.mid,
+                'timestamp': tick.timestamp.isoformat(),
+            },
         )
 
     def _execute_decision_impl(
@@ -507,7 +541,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     price=limit_price,
                     stop_loss=sl_price,
                     take_profit=tp_price,
-                    comment=f"CautiousMacd: {decision.reason[:50]}"
+                    comment=f"CautiousMacd: {decision.get_signal('reason')[:50]}"
                 )
             else:
                 order_result = self.trading_api.send_order(
@@ -518,7 +552,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     stop_price=stop_price,
                     stop_loss=sl_price,
                     take_profit=tp_price,
-                    comment=f"CautiousMacd: {decision.reason[:50]}"
+                    comment=f"CautiousMacd: {decision.get_signal('reason')[:50]}"
                 )
 
             _mode = "STOP_LIMIT" if self.use_stop_limit else "STOP"

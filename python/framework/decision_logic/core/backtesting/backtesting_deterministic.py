@@ -92,7 +92,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -237,6 +237,62 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """BacktestingDeterministic decision output parameters."""
+        return {
+            'lot_size': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Position lot size',
+                category='SIGNAL',
+            ),
+            'stop_loss': OutputParamDef(
+                param_type=float,
+                description='Stop loss price level',
+                category='SIGNAL',
+            ),
+            'take_profit': OutputParamDef(
+                param_type=float,
+                description='Take profit price level',
+                category='SIGNAL',
+            ),
+            'order_type': OutputParamDef(
+                param_type=str,
+                description='Order type: MARKET, LIMIT, STOP, STOP_LIMIT',
+                category='SIGNAL', choices=('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT'),
+            ),
+            'limit_price': OutputParamDef(
+                param_type=float,
+                description='Limit price for LIMIT/STOP_LIMIT orders',
+                category='SIGNAL',
+            ),
+            'stop_price': OutputParamDef(
+                param_type=float,
+                description='Stop trigger price for STOP/STOP_LIMIT orders',
+                category='SIGNAL',
+            ),
+            'signal_tick': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Tick number that triggered this signal',
+                category='INFO',
+            ),
+            'hold_ticks': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of ticks to hold position',
+                category='INFO',
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+        }
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types based on trade_sequence config.
@@ -308,10 +364,10 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             self.active_trade = None
             return Decision(
                 action=DecisionLogicAction.FLAT,
-                confidence=1.0,
-                reason=f"Close trade at tick {self.tick_count}",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat()
+                outputs={
+                    'reason': f"Close trade at tick {self.tick_count}",
+                    'price': tick.mid,
+                },
             )
 
         # ============================================
@@ -366,11 +422,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
                 return Decision(
                     action=action,
-                    confidence=1.0,
-                    reason=f"Open {direction} at tick {self.tick_count}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
-                    metadata={
+                    outputs={
                         'lot_size': lot_size,
                         'signal_tick': self.tick_count,
                         'hold_ticks': hold_ticks,
@@ -379,7 +431,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                         'stop_price': spec.get('stop_price'),
                         'stop_loss': spec.get('stop_loss'),
                         'take_profit': spec.get('take_profit'),
-                    }
+                        'reason': f"Open {direction} at tick {self.tick_count}",
+                        'price': tick.mid,
+                    },
                 )
 
         # ============================================
@@ -387,10 +441,10 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         # ============================================
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.0,
-            reason="Waiting for next trade trigger",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat()
+            outputs={
+                'reason': 'Waiting for next trade trigger',
+                'price': tick.mid,
+            },
         )
 
     def _execute_decision_impl(
@@ -425,13 +479,13 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self._process_cancel_limit_sequence()
         self._process_cancel_stop_sequence()
 
-        # Get parameters from decision metadata or defaults
-        lot_size = decision.metadata.get('lot_size', self.default_lot_size)
-        stop_loss = decision.metadata.get('stop_loss')
-        take_profit = decision.metadata.get('take_profit')
-        order_type = OrderType[decision.metadata.get('order_type', 'MARKET')]
-        limit_price = decision.metadata.get('limit_price')
-        stop_price = decision.metadata.get('stop_price')
+        # Get parameters from decision outputs or defaults
+        lot_size = decision.outputs.get('lot_size', self.default_lot_size)
+        stop_loss = decision.outputs.get('stop_loss')
+        take_profit = decision.outputs.get('take_profit')
+        order_type = OrderType[decision.outputs.get('order_type', 'MARKET')]
+        limit_price = decision.outputs.get('limit_price')
+        stop_price = decision.outputs.get('stop_price')
 
         # Check for pending orders
         if self.trading_api.has_pending_orders():

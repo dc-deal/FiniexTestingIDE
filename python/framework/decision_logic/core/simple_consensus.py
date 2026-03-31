@@ -53,7 +53,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult
 )
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 
 
@@ -174,6 +174,32 @@ class SimpleConsensus(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """SimpleConsensus decision output parameters."""
+        return {
+            'confidence': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=1.0,
+                description='Signal confidence score',
+                category='SIGNAL', display=True,
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+            'timestamp': OutputParamDef(
+                param_type=str,
+                description='ISO format UTC timestamp at decision time',
+                category='INFO',
+            ),
+        }
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types for this strategy.
@@ -276,7 +302,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 order_type=OrderType.MARKET,
                 direction=new_direction,
                 lots=self.lot_size,
-                comment=f"SimpleConsensus: {decision.reason[:50]}"
+                comment=f"SimpleConsensus: {decision.get_signal('reason')[:50]}"
             )
 
             # Log order submission status
@@ -346,10 +372,12 @@ class SimpleConsensus(AbstractDecisionLogic):
         if not rsi_result or not envelope_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
-                confidence=0.0,
-                reason="Missing worker results (RSI/Envelope)",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat(),
+                outputs={
+                    'confidence': 0.0,
+                    'reason': 'Missing worker results (RSI/Envelope)',
+                    'price': tick.mid,
+                    'timestamp': tick.timestamp.isoformat(),
+                },
             )
 
         # Extract indicator values
@@ -386,10 +414,12 @@ class SimpleConsensus(AbstractDecisionLogic):
                 )
                 return Decision(
                     action=DecisionLogicAction.FLAT,
-                    confidence=0.3,
-                    reason=f"BUY signal blocked by OBV (trend={obv_trend})",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': 0.3,
+                        'reason': f"BUY signal blocked by OBV (trend={obv_trend})",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
             confidence = self._calculate_buy_confidence(
@@ -408,10 +438,12 @@ class SimpleConsensus(AbstractDecisionLogic):
             if confidence >= self.min_confidence:
                 return Decision(
                     action=DecisionLogicAction.BUY,
-                    confidence=confidence,
-                    reason=f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         # Check for SELL signal (consensus required)
@@ -432,10 +464,12 @@ class SimpleConsensus(AbstractDecisionLogic):
                 )
                 return Decision(
                     action=DecisionLogicAction.FLAT,
-                    confidence=0.3,
-                    reason=f"SELL signal blocked by OBV (trend={obv_trend})",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': 0.3,
+                        'reason': f"SELL signal blocked by OBV (trend={obv_trend})",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
             confidence = self._calculate_sell_confidence(
@@ -454,19 +488,23 @@ class SimpleConsensus(AbstractDecisionLogic):
             if confidence >= self.min_confidence:
                 return Decision(
                     action=DecisionLogicAction.SELL,
-                    confidence=confidence,
-                    reason=f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         # No clear signal - stay flat
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.5,
-            reason="No consensus signal",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat(),
+            outputs={
+                'confidence': 0.5,
+                'reason': 'No consensus signal',
+                'price': tick.mid,
+                'timestamp': tick.timestamp.isoformat(),
+            },
         )
 
     def _calculate_buy_confidence(

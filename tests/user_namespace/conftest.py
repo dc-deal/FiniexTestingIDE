@@ -99,10 +99,10 @@ class {class_name}(AbstractDecisionLogic):
     def compute(self, tick, worker_results) -> Decision:
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.0,
-            reason='test',
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat(),
+            outputs={{
+                'reason': 'test',
+                'price': tick.mid,
+            }},
         )
 
     def _execute_decision_impl(self, decision, tick) -> Optional[OrderResult]:

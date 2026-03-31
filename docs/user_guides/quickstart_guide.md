@@ -265,86 +265,110 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_main": "CORE/envelope"
         }
     
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """Declare typed decision outputs."""
+        return {
+            'confidence': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=1.0,
+                description='Signal confidence score',
+                category='SIGNAL', display=True,
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+        }
+
     def compute(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """Generate trading decision from worker results"""
-        
+
         rsi_result = worker_results.get("rsi_fast")
         envelope_result = worker_results.get("envelope_main")
-        
+
         rsi_value = rsi_result.get_signal('rsi_value')
         envelope_position = envelope_result.get_signal('position')
-        
+
         # BUY signal
         if rsi_value < self.rsi_buy or envelope_position < 0.25:
             return Decision(
                 action=DecisionLogicAction.BUY,
-                confidence=0.8,
-                reason=f"RSI={rsi_value:.1f}",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat()
+                outputs={
+                    'confidence': 0.8,
+                    'reason': f"RSI={rsi_value:.1f}",
+                    'price': tick.mid,
+                },
             )
-        
+
         # SELL signal
         if rsi_value > self.rsi_sell or envelope_position > 0.75:
             return Decision(
                 action=DecisionLogicAction.SELL,
-                confidence=0.8,
-                reason=f"RSI={rsi_value:.1f}",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat()
+                outputs={
+                    'confidence': 0.8,
+                    'reason': f"RSI={rsi_value:.1f}",
+                    'price': tick.mid,
+                },
             )
-        
+
         # No signal
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.5,
-            reason="No signal",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat()
+            outputs={
+                'confidence': 0.5,
+                'reason': 'No signal',
+                'price': tick.mid,
+            },
         )
-    
+
     def _execute_decision_impl(
         self,
         decision: Decision,
         tick: TickData
     ) -> Optional[OrderResult]:
         """Execute the trading decision"""
-        
+
         if decision.action == DecisionLogicAction.FLAT:
             return None
-        
+
         # Check existing positions (one position only)
         open_positions = self.trading_api.get_open_positions()
-        
+
         if len(open_positions) > 0:
             current = open_positions[0]
-            new_direction = (OrderDirection.LONG 
-                           if decision.action == DecisionLogicAction.BUY 
+            new_direction = (OrderDirection.LONG
+                           if decision.action == DecisionLogicAction.BUY
                            else OrderDirection.SHORT)
-            
+
             # Same direction? Skip
             if current.direction == new_direction:
                 return None
-            
+
             # Opposite direction? Close first
             self.trading_api.close_position(current.position_id)
             return None
-        
+
         # Open new position
-        direction = (OrderDirection.LONG 
-                    if decision.action == DecisionLogicAction.BUY 
+        direction = (OrderDirection.LONG
+                    if decision.action == DecisionLogicAction.BUY
                     else OrderDirection.SHORT)
-        
+
         return self.trading_api.send_order(
             symbol=tick.symbol,
             order_type=OrderType.MARKET,
             direction=direction,
             lots=self.lot_size,
-            comment=f"AggressiveTrend: {decision.reason}"
+            comment=f"AggressiveTrend: {decision.get_signal('reason')}"
         )
 ```
 
@@ -354,7 +378,8 @@ class AggressiveTrend(AbstractDecisionLogic):
 |--------|---------|
 | `get_required_worker_instances()` | Declare workers: `{"rsi_fast": "CORE/rsi"}` |
 | `get_required_order_types()` | Return `[OrderType.MARKET]` |
-| `compute()` | Analyze workers, return `Decision` |
+| `get_output_schema()` | Declare typed output fields (optional) |
+| `compute()` | Analyze workers, return `Decision(action=..., outputs={...})` |
 | `_execute_decision_impl()` | Execute trades via `trading_api` |
 
 ---
@@ -587,12 +612,12 @@ class SMACrossover(AbstractDecisionLogic):
     def compute(self, tick, worker_results):
         fast = worker_results["sma_fast"].get_signal('sma_value')
         slow = worker_results["sma_slow"].get_signal('sma_value')
-        
+
         if fast > slow:
-            return Decision(action=DecisionLogicAction.BUY, ...)
+            return Decision(action=DecisionLogicAction.BUY, outputs={'reason': 'SMA cross-up'})
         elif fast < slow:
-            return Decision(action=DecisionLogicAction.SELL, ...)
-        return Decision(action=DecisionLogicAction.FLAT, ...)
+            return Decision(action=DecisionLogicAction.SELL, outputs={'reason': 'SMA cross-down'})
+        return Decision(action=DecisionLogicAction.FLAT)
 
 # 3. Config
 
