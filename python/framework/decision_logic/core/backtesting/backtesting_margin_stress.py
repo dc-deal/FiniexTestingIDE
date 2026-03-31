@@ -99,7 +99,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -234,6 +234,67 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """BacktestingMarginStress decision output parameters."""
+        return {
+            'event_type': OutputParamDef(
+                param_type=str,
+                description='Event type: trade, retry, edge_case',
+                category='INFO', choices=('trade', 'retry', 'edge_case'),
+            ),
+            'edge_type': OutputParamDef(
+                param_type=str,
+                description='Edge case type identifier',
+                category='INFO',
+            ),
+            'position_id': OutputParamDef(
+                param_type=str,
+                description='Position ID for edge case operations',
+                category='INFO',
+            ),
+            'lot_size': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Position lot size',
+                category='SIGNAL',
+            ),
+            'sequence_index': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Index into trade_sequence config',
+                category='INFO',
+            ),
+            'hold_ticks': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of ticks to hold position',
+                category='INFO',
+            ),
+            'expect_rejection': OutputParamDef(
+                param_type=bool,
+                description='Whether this order is expected to be rejected',
+                category='INFO',
+            ),
+            'retry_index': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Index into retry_events config',
+                category='INFO',
+            ),
+            'edge_index': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Index into edge_case_orders config',
+                category='INFO',
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+        }
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]
 
@@ -282,17 +343,15 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
                 return Decision(
                     action=action,
-                    confidence=1.0,
-                    reason=f"Margin stress open {direction} at tick {self.tick_count}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
-                    metadata={
+                    outputs={
                         'lot_size': lot_size,
                         'sequence_index': idx,
                         'hold_ticks': hold_ticks,
                         'expect_rejection': expect_rejection,
                         'event_type': 'trade_sequence',
-                    }
+                        'reason': f"Margin stress open {direction} at tick {self.tick_count}",
+                        'price': tick.mid,
+                    },
                 )
 
         # Check Retry Events
@@ -316,17 +375,15 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
                 return Decision(
                     action=action,
-                    confidence=1.0,
-                    reason=f"Margin recovery retry at tick {self.tick_count}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
-                    metadata={
+                    outputs={
                         'lot_size': lot_size,
                         'hold_ticks': hold_ticks,
                         'expect_rejection': False,
                         'event_type': 'retry',
                         'retry_index': idx,
-                    }
+                        'reason': f"Margin recovery retry at tick {self.tick_count}",
+                        'price': tick.mid,
+                    },
                 )
 
         # Check Edge Case Orders
@@ -340,16 +397,14 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                     # Special handling: close a fake position
                     return Decision(
                         action=DecisionLogicAction.FLAT,
-                        confidence=0.0,
-                        reason=f"Edge case: close_nonexistent at tick {self.tick_count}",
-                        price=tick.mid,
-                        timestamp=tick.timestamp.isoformat(),
-                        metadata={
+                        outputs={
                             'event_type': 'edge_case',
                             'edge_type': edge_type,
                             'position_id': spec.get('position_id', 'FAKE_POS_999'),
                             'edge_index': idx,
-                        }
+                            'reason': f"Edge case: close_nonexistent at tick {self.tick_count}",
+                            'price': tick.mid,
+                        },
                     )
                 else:
                     # Lot validation edge cases: send order with invalid lots
@@ -368,26 +423,24 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
                     return Decision(
                         action=action,
-                        confidence=1.0,
-                        reason=f"Edge case: {edge_type} at tick {self.tick_count}",
-                        price=tick.mid,
-                        timestamp=tick.timestamp.isoformat(),
-                        metadata={
+                        outputs={
                             'lot_size': lot_size,
                             'event_type': 'edge_case',
                             'edge_type': edge_type,
                             'edge_index': idx,
                             'expect_rejection': True,
-                        }
+                            'reason': f"Edge case: {edge_type} at tick {self.tick_count}",
+                            'price': tick.mid,
+                        },
                     )
 
         # No signal
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.0,
-            reason="No signal",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat()
+            outputs={
+                'reason': 'No signal',
+                'price': tick.mid,
+            },
         )
 
     def _execute_decision_impl(
@@ -413,11 +466,10 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         # ============================================
         # STEP 3: Process Edge Case (close_nonexistent)
         # ============================================
-        event_type = decision.metadata.get(
-            'event_type') if decision.metadata else None
+        event_type = decision.outputs.get('event_type')
 
-        if event_type == 'edge_case' and decision.metadata.get('edge_type') == 'close_nonexistent':
-            position_id = decision.metadata['position_id']
+        if event_type == 'edge_case' and decision.outputs.get('edge_type') == 'close_nonexistent':
+            position_id = decision.get_signal('position_id')
             self.logger.info(
                 f"Edge case: closing non-existent position '{position_id}' "
                 f"at tick {self.tick_count}"
@@ -433,7 +485,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 'rejection_reason': (
                     result.rejection_reason.value if result and result.rejection_reason else None
                 ),
-                'edge_index': decision.metadata.get('edge_index'),
+                'edge_index': decision.outputs.get('edge_index'),
             })
 
             return result
@@ -449,10 +501,10 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 if decision.action == DecisionLogicAction.BUY
                 else OrderDirection.SHORT
             )
-            lot_size = decision.metadata.get('lot_size', self.default_lot_size)
-            seq_idx = decision.metadata.get('sequence_index')
-            hold_ticks = decision.metadata.get('hold_ticks')
-            expect_rejection = decision.metadata.get('expect_rejection', False)
+            lot_size = decision.outputs.get('lot_size', self.default_lot_size)
+            seq_idx = decision.outputs.get('sequence_index')
+            hold_ticks = decision.outputs.get('hold_ticks')
+            expect_rejection = decision.outputs.get('expect_rejection', False)
 
             order_result = self.trading_api.send_order(
                 symbol=tick.symbol,
@@ -497,7 +549,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 if event_type == 'retry':
                     self._retry_results.append({
                         'tick': self.tick_count,
-                        'retry_index': decision.metadata.get('retry_index'),
+                        'retry_index': decision.outputs.get('retry_index'),
                         'success': True,
                         'order_id': order_result.order_id,
                     })
@@ -522,7 +574,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 if event_type == 'retry':
                     self._retry_results.append({
                         'tick': self.tick_count,
-                        'retry_index': decision.metadata.get('retry_index'),
+                        'retry_index': decision.outputs.get('retry_index'),
                         'success': False,
                         'reason': order_result.rejection_reason.value if order_result.rejection_reason else None,
                     })
@@ -530,11 +582,11 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 if event_type == 'edge_case':
                     self._edge_case_results.append({
                         'tick': self.tick_count,
-                        'type': decision.metadata.get('edge_type'),
+                        'type': decision.outputs.get('edge_type'),
                         'lot_size': lot_size,
                         'rejected': True,
                         'rejection_reason': order_result.rejection_reason.value if order_result.rejection_reason else None,
-                        'edge_index': decision.metadata.get('edge_index'),
+                        'edge_index': decision.outputs.get('edge_index'),
                     })
 
                 self.logger.info(

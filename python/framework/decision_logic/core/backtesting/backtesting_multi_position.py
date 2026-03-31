@@ -69,7 +69,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -195,6 +195,37 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         }
 
     @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """BacktestingMultiPosition decision output parameters."""
+        return {
+            'lot_size': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Position lot size',
+                category='SIGNAL',
+            ),
+            'sequence_index': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Index into trade_sequence config',
+                category='INFO',
+            ),
+            'hold_ticks': OutputParamDef(
+                param_type=int, min_val=0,
+                description='Number of ticks to hold position',
+                category='INFO',
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+        }
+
+    @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         """
         Declare required order types.
@@ -278,15 +309,13 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
                 return Decision(
                     action=action,
-                    confidence=1.0,
-                    reason=f"Multi-position open {direction} at tick {self.tick_count}",
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
-                    metadata={
+                    outputs={
                         'lot_size': lot_size,
                         'sequence_index': idx,
                         'hold_ticks': hold_ticks,
-                    }
+                        'reason': f"Multi-position open {direction} at tick {self.tick_count}",
+                        'price': tick.mid,
+                    },
                 )
 
         # ============================================
@@ -294,10 +323,10 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         # ============================================
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.0,
-            reason="No open signal",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat()
+            outputs={
+                'reason': 'No open signal',
+                'price': tick.mid,
+            },
         )
 
     def _execute_decision_impl(
@@ -350,9 +379,9 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                 if decision.action == DecisionLogicAction.BUY
                 else OrderDirection.SHORT
             )
-            lot_size = decision.metadata.get('lot_size', self.default_lot_size)
-            seq_idx = decision.metadata.get('sequence_index')
-            hold_ticks = decision.metadata.get('hold_ticks', 100)
+            lot_size = decision.outputs.get('lot_size', self.default_lot_size)
+            seq_idx = decision.outputs.get('sequence_index')
+            hold_ticks = decision.outputs.get('hold_ticks', 100)
 
             order_result = self.trading_api.send_order(
                 symbol=tick.symbol,

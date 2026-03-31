@@ -17,7 +17,7 @@ from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
-from python.framework.types.parameter_types import InputParamDef, ValidatedParameters
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
@@ -126,6 +126,20 @@ class AbstractDecisionLogic(ABC):
 
         Returns:
             Dict[param_name, InputParamDef]
+        """
+        return {}
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """
+        Declare output schema for typed decision outputs.
+
+        Override in subclass to define what compute() returns
+        in Decision.outputs. Used by #228 Live Console UI
+        to render decision state generically.
+
+        Returns:
+            Dict[output_name, OutputParamDef]
         """
         return {}
 

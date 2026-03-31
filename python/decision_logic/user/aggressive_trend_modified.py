@@ -12,7 +12,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -104,6 +104,32 @@ class AggressiveTrendModified(AbstractDecisionLogic):
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.01, max_val=100.0,
                 description="Fixed lot size for market orders"
+            ),
+        }
+
+    @classmethod
+    def get_output_schema(cls) -> Dict[str, OutputParamDef]:
+        """AggressiveTrendModified decision output parameters."""
+        return {
+            'confidence': OutputParamDef(
+                param_type=float, min_val=0.0, max_val=1.0,
+                description='Signal confidence score',
+                category='SIGNAL', display=True,
+            ),
+            'reason': OutputParamDef(
+                param_type=str,
+                description='Human-readable decision explanation',
+                category='INFO',
+            ),
+            'price': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Price at decision time',
+                category='INFO',
+            ),
+            'timestamp': OutputParamDef(
+                param_type=str,
+                description='ISO format UTC timestamp at decision time',
+                category='INFO',
             ),
         }
 
@@ -204,7 +230,7 @@ class AggressiveTrendModified(AbstractDecisionLogic):
                 order_type=OrderType.MARKET,
                 direction=new_direction,
                 lots=self.lot_size,
-                comment=f"AggressiveTrendModified: {decision.reason[:50]}"
+                comment=f"AggressiveTrendModified: {decision.get_signal('reason')[:50]}"
             )
 
             # Log order submission status
@@ -269,10 +295,12 @@ class AggressiveTrendModified(AbstractDecisionLogic):
         if not rsi_result or not envelope_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
-                confidence=0.0,
-                reason="Missing worker results",
-                price=tick.mid,
-                timestamp=tick.timestamp.isoformat(),
+                outputs={
+                    'confidence': 0.0,
+                    'reason': 'Missing worker results',
+                    'price': tick.mid,
+                    'timestamp': tick.timestamp.isoformat(),
+                },
             )
 
         # Extract indicator values
@@ -295,10 +323,12 @@ class AggressiveTrendModified(AbstractDecisionLogic):
 
                 return Decision(
                     action=DecisionLogicAction.BUY,
-                    confidence=confidence,
-                    reason=reason,
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': reason,
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         # Check for SELL signal (OR logic - either indicator is enough)
@@ -318,19 +348,23 @@ class AggressiveTrendModified(AbstractDecisionLogic):
 
                 return Decision(
                     action=DecisionLogicAction.SELL,
-                    confidence=confidence,
-                    reason=reason,
-                    price=tick.mid,
-                    timestamp=tick.timestamp.isoformat(),
+                    outputs={
+                        'confidence': confidence,
+                        'reason': reason,
+                        'price': tick.mid,
+                        'timestamp': tick.timestamp.isoformat(),
+                    },
                 )
 
         # No signal
         return Decision(
             action=DecisionLogicAction.FLAT,
-            confidence=0.5,
-            reason="No extreme indicator values",
-            price=tick.mid,
-            timestamp=tick.timestamp.isoformat(),
+            outputs={
+                'confidence': 0.5,
+                'reason': 'No extreme indicator values',
+                'price': tick.mid,
+                'timestamp': tick.timestamp.isoformat(),
+            },
         )
 
     def _calculate_buy_confidence(

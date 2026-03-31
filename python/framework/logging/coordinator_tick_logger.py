@@ -125,7 +125,7 @@ class CoordinatorTickLogger:
                 timeframe: asdict(bar)
                 for timeframe, bar in current_bars.items()
             },
-            "decision": decision.to_dict()
+            "decision": {'action': decision.action.value, **decision.outputs}
         }
 
     def _has_bar_history_changed(

@@ -1,12 +1,11 @@
 """
-FiniexTestingIDE - Decision Logic Types (Refactored)
+FiniexTestingIDE - Decision Logic Types
 Type definitions for decision logic layer
 
 All decision logic implementations must use these typed structures.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict
 
@@ -41,27 +40,21 @@ class DecisionLogicAction(Enum):
 @dataclass
 class Decision:
     """
-    Trading decision output from DecisionLogic.
+    Trading decision — action + typed output parameters.
 
-    Structured output that replaces dict-based decision format.
     DecisionLogic.compute() returns this to orchestrator.
-
-    CHANGE: action is now DecisionLogicAction enum instead of str.
+    Output fields are declared via get_output_schema() on the logic.
     """
-    action: DecisionLogicAction       # BUY, SELL, FLAT (enum)
-    confidence: float                 # 0.0 - 1.0
-    reason: str = ""                  # Human-readable explanation
-    price: float = 0.0                # Price at decision time
-    timestamp: str = ""               # ISO format UTC timestamp
-    metadata: Dict[str, Any] = field(default_factory=dict)  # Additional data
+    action: DecisionLogicAction                                # BUY, SELL, FLAT (enum)
+    outputs: Dict[str, Any] = field(default_factory=dict)      # typed via get_output_schema()
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict with enum as string value for JSON serialization"""
-        return {
-            "action": self.action.value,  # Enum -> string
-            "confidence": self.confidence,
-            "reason": self.reason,
-            "price": self.price,
-            "timestamp": self.timestamp,
-            "metadata": self.metadata
-        }
+    def get_signal(self, name: str) -> Any:
+        """Access a decision output value by name.
+
+        Args:
+            name: Output parameter name from get_output_schema()
+
+        Returns:
+            The output value
+        """
+        return self.outputs[name]
