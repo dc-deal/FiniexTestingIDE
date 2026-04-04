@@ -418,6 +418,15 @@ class SharedDataPreparator:
         """
         Prepare tick data for all requirements.
 
+        OPTIMIZATION: Groups requirements by (broker_type, symbol) and loads each
+        symbol's Parquet data once into RAM, then filters per scenario. Replaces
+        the previous per-scenario Parquet read (O(n_scenarios) → O(n_symbols) reads).
+
+        NOTE (#21 — Memory Manager): This is a run-scoped in-memory load. When #21
+        implements a persistent file-level cache (get_or_load), replace the
+        pd.concat([pd.read_parquet(f)...]) block in STEP 3 with cache lookups.
+        The grouping logic (STEP 1+2+4) stays unchanged.
+
         Args:
             requirements: List of tick requirements
 
@@ -429,209 +438,111 @@ class SharedDataPreparator:
         tick_counts = {}
         tick_ranges = {}
 
+        # === STEP 1: Group requirements by (broker_type, symbol) ===
+        # All scenarios for the same symbol share one Parquet load.
+        by_broker_symbol: Dict[Tuple[str, str], List[TickRequirement]] = {}
         for req in requirements:
+            key = (req.broker_type, req.symbol)
+            if key not in by_broker_symbol:
+                by_broker_symbol[key] = []
+            by_broker_symbol[key].append(req)
+
+        # === STEP 2+3: Load each symbol once into RAM, filter per scenario ===
+        for (broker_type, symbol), reqs in by_broker_symbol.items():
             self._logger.info(
-                f"📥 Loading ticks for {req.broker_type}/{req.symbol} "
-                f"(scenario: {req.scenario_name})..."
+                f"📥 Loading ticks for {broker_type}/{symbol} "
+                f"({len(reqs)} scenario(s))..."
             )
 
-            # Determine mode and load
-            if req.max_ticks is not None:
-                # Tick-limited mode
-                result = self._load_ticks_tick_mode(
-                    req.broker_type,
-                    req.symbol,
-                    req.start_time,
-                    req.max_ticks
+            # Validate index entries before doing any IO
+            if broker_type not in self.tick_index_manager.index:
+                self._logger.error(
+                    f"❌ Broker type '{broker_type}' not found in tick index"
                 )
+                continue
+            if symbol not in self.tick_index_manager.index[broker_type]:
+                self._logger.error(
+                    f"❌ Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'"
+                )
+                continue
+
+            # Compute union time range across all requirements for this symbol.
+            # This is the minimal range that covers every scenario — only relevant
+            # Parquet files will be read (tick_index_manager.get_relevant_files).
+            union_start = ensure_utc_aware(min(r.start_time for r in reqs))
+            end_times = [r.end_time for r in reqs if r.end_time is not None]
+            if end_times:
+                # At least one timespan-mode requirement — use max end_time
+                union_end = ensure_utc_aware(max(end_times))
             else:
-                # Timespan mode
-                result = self._load_ticks_timespan_mode(
-                    req.broker_type,
-                    req.symbol,
-                    req.start_time,
-                    req.end_time
+                # All requirements are max_ticks mode (no end_time) —
+                # use the last file's end as conservative upper bound
+                files = self.tick_index_manager.index[broker_type][symbol]
+                union_end = pd.to_datetime(files[-1]['end_time'], utc=True)
+
+            relevant_files = self.tick_index_manager.get_relevant_files(
+                broker_type=broker_type,
+                symbol=symbol,
+                start_date=union_start,
+                end_date=union_end
+            )
+            if not relevant_files:
+                self._logger.error(
+                    f"❌ No tick files found for {broker_type}/{symbol} "
+                    f"in range {union_start} - {union_end}"
                 )
+                continue
 
-            # Handle None (loading failed)
-            if result is None:
-                self._logger.warning(
-                    f"⚠️  Skipping scenario '{req.scenario_name}' - tick loading failed"
-                )
-                continue  # Skip this scenario, don't add to dicts
-
-            # Unpack result
-            ticks, count, time_range = result
-
-            # Store as tuple (immutable, CoW-friendly)
-            ticks_data[req.scenario_name] = tuple(ticks)
-            tick_counts[req.scenario_name] = count
-            tick_ranges[req.scenario_name] = time_range
+            # Load and concat all relevant files into one in-memory DataFrame
+            dfs = []
+            for file_path in relevant_files:
+                df = pd.read_parquet(file_path)
+                if 'timestamp' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                dfs.append(df)
+            full_df = pd.concat(dfs).sort_values('timestamp').reset_index(drop=True)
 
             self._logger.info(
-                f"  ✅ {count:,} ticks loaded ({time_range[0]} → {time_range[1]})")
+                f"  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) "
+                f"({union_start} → {union_end})"
+            )
+
+            # === STEP 4: Filter per requirement from in-memory DataFrame ===
+            for req in reqs:
+                req_start = ensure_utc_aware(req.start_time)
+
+                if req.max_ticks is not None:
+                    # Tick-limited mode: start at req_start, take first max_ticks
+                    filtered_df = full_df[full_df['timestamp'] >= req_start].iloc[:req.max_ticks]
+                else:
+                    # Timespan mode: filter by start + end window
+                    req_end = ensure_utc_aware(req.end_time)
+                    filtered_df = full_df[
+                        (full_df['timestamp'] >= req_start) &
+                        (full_df['timestamp'] <= req_end)
+                    ]
+
+                ticks = serialize_ticks_for_transport(filtered_df)
+
+                if not ticks:
+                    self._logger.warning(
+                        f"⚠️  Skipping scenario '{req.scenario_name}' - no ticks after filtering"
+                    )
+                    continue
+
+                time_range = time_range_from_transport_ticks(ticks)
+
+                # Store as tuple (immutable, CoW-friendly)
+                ticks_data[req.scenario_name] = tuple(ticks)
+                tick_counts[req.scenario_name] = len(ticks)
+                tick_ranges[req.scenario_name] = time_range
+
+                self._logger.info(
+                    f"  ✅ {len(ticks):,} ticks filtered for '{req.scenario_name}' "
+                    f"({time_range[0]} → {time_range[1]})"
+                )
 
         return ticks_data, tick_counts, tick_ranges
-
-    def _load_ticks_tick_mode(
-        self,
-        broker_type: str,
-        symbol: str,
-        start_time: datetime,
-        max_ticks: int
-    ) -> Optional[Tuple[List[Any], int, Tuple[datetime, datetime]]]:
-        """
-        Load ticks in tick-limited mode.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Symbol to load
-            start_time: Start time (UTC-aware)
-            max_ticks: Maximum ticks to load
-
-        Returns:
-            (ticks, count, time_range) or None if loading failed
-        """
-        # Check if broker_type exists in index
-        if broker_type not in self.tick_index_manager.index:
-            self._logger.error(
-                f"❌ Broker type '{broker_type}' not found in tick index"
-            )
-            return None
-
-        # Check if symbol exists for this broker_type
-        if symbol not in self.tick_index_manager.index[broker_type]:
-            self._logger.error(
-                f"❌ Symbol '{symbol}' not found in tick index for broker_type '{broker_type}'"
-            )
-            return None
-
-        files = self.tick_index_manager.index[broker_type][symbol]
-
-        # UTC-FIX: Ensure start_time is UTC-aware
-        start_time = ensure_utc_aware(start_time)
-
-        # Find starting file
-        start_file_idx = None
-        for idx, file_info in enumerate(files):
-            file_start = pd.to_datetime(file_info['start_time'], utc=True)
-            file_end = pd.to_datetime(file_info['end_time'], utc=True)
-
-            if file_start <= start_time <= file_end:
-                start_file_idx = idx
-                break
-
-        if start_file_idx is None:
-            # Log detailed error and return None
-            first_available = pd.to_datetime(files[0]['start_time'], utc=True)
-            last_available = pd.to_datetime(files[-1]['end_time'], utc=True)
-
-            self._logger.error(
-                f"❌ No tick data available for {broker_type}/{symbol} starting at {start_time}. "
-                f"Available data range: {first_available.strftime('%Y-%m-%d %H:%M:%S')} UTC "
-                f"→ {last_available.strftime('%Y-%m-%d %H:%M:%S')} UTC. "
-                f"This indicates Phase 0.5 validation was skipped or failed."
-            )
-            return None
-
-        # Load files until max_ticks reached
-        all_ticks = []
-        for file_info in files[start_file_idx:]:
-            df = pd.read_parquet(file_info['path'])
-
-            # UTC-FIX: Convert timestamps to UTC-aware
-            if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-
-            # Filter to start_time
-            if len(all_ticks) == 0:
-                df = df[df['timestamp'] >= start_time]
-
-            # Convert to transport dicts (trimmed columns)
-            all_ticks.extend(serialize_ticks_for_transport(df))
-
-            # Check if we have enough
-            if len(all_ticks) >= max_ticks:
-                break
-
-        # Slice to exact count
-        all_ticks = all_ticks[:max_ticks]
-
-        if not all_ticks:
-            # Log and return None
-            self._logger.error(
-                f"❌ No ticks loaded for {broker_type}/{symbol} (check start_time: {start_time})"
-            )
-            return None
-
-        # Get time range (derived from time_msc)
-        time_range = time_range_from_transport_ticks(all_ticks)
-
-        return all_ticks, len(all_ticks), time_range
-
-    def _load_ticks_timespan_mode(
-        self,
-        broker_type: str,
-        symbol: str,
-        start_time: datetime,
-        end_time: datetime
-    ) -> Optional[Tuple[List[Any], int, Tuple[datetime, datetime]]]:
-        """
-        Load ticks in timespan mode.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Symbol to load
-            start_time: Start time (UTC-aware)
-            end_time: End time (UTC-aware)
-
-        Returns:
-            (ticks, count, time_range) or None if loading failed
-        """
-        # UTC-FIX: Ensure times are UTC-aware
-        start_time = ensure_utc_aware(start_time)
-        end_time = ensure_utc_aware(end_time)
-
-        # Use manager's API to get relevant files
-        relevant_files = self.tick_index_manager.get_relevant_files(
-            broker_type=broker_type,
-            symbol=symbol,
-            start_date=start_time,
-            end_date=end_time
-        )
-
-        if not relevant_files:
-            self._logger.error(
-                f"❌ No tick data found for {broker_type}/{symbol} in range {start_time} - {end_time}"
-            )
-            return None
-
-        # Load and concatenate files
-        all_ticks = []
-        for file_path in relevant_files:
-            df = pd.read_parquet(file_path)
-
-            # UTC-FIX: Convert timestamps to UTC-aware
-            if 'timestamp' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-
-            # Filter to time range
-            df = df[(df['timestamp'] >= start_time)
-                    & (df['timestamp'] <= end_time)]
-
-            all_ticks.extend(serialize_ticks_for_transport(df))
-
-        if not all_ticks:
-            self._logger.error(
-                f"❌ No ticks found for {broker_type}/{symbol} in range {start_time} - {end_time} "
-                f"(files loaded but empty after filtering)"
-            )
-            return None
-
-        # Get time range (derived from time_msc)
-        time_range = time_range_from_transport_ticks(all_ticks)
-
-        return all_ticks, len(all_ticks), time_range
 
     def prepare_bars(
         self,
