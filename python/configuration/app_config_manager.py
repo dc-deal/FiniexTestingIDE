@@ -347,6 +347,15 @@ class AppConfigManager:
             )
         return path
 
+    def get_user_scenario_sets_path(self) -> str:
+        """
+        Get user override scenario sets path (gitignored, personal configs).
+
+        Returns:
+            Path string for user scenario sets directory
+        """
+        return 'user_configs/scenario_sets'
+
     def get_brokers_path(self) -> str:
         """
         Get brokers config path from config.
