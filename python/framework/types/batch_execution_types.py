@@ -1,9 +1,16 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+
+
+@dataclass
+class WarmupPhaseEntry:
+    """Single warmup phase with name and measured duration."""
+    name: str
+    duration_s: float
 
 
 class BatchExecutionSummary:
@@ -22,7 +29,10 @@ class BatchExecutionSummary:
         process_result_list: List[ProcessResult] | None = None,
         single_scenario_list: List[SingleScenario] | None = None,
         broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo] | None = None,
-        clipping_stats_map: Dict[int, ClippingStats] | None = None
+        clipping_stats_map: Dict[int, ClippingStats] | None = None,
+        warmup_phases: Optional[List[WarmupPhaseEntry]] = None,
+        batch_pickle_time: float = 0.0,
+        batch_pickle_sample_mb: float = 0.0
     ):
         self._batch_execution_time = batch_execution_time
         self._batch_warmup_time = batch_warmup_time
@@ -31,6 +41,9 @@ class BatchExecutionSummary:
         self._single_scenario_list = single_scenario_list or []
         self._broker_scenario_map = broker_scenario_map or {}
         self._clipping_stats_map = clipping_stats_map or {}
+        self._warmup_phases: List[WarmupPhaseEntry] = warmup_phases or []
+        self._batch_pickle_time = batch_pickle_time
+        self._batch_pickle_sample_mb = batch_pickle_sample_mb
 
     @property
     def batch_execution_time(self) -> float:
@@ -59,6 +72,18 @@ class BatchExecutionSummary:
     @property
     def clipping_stats_map(self) -> Dict[int, ClippingStats]:
         return self._clipping_stats_map
+
+    @property
+    def warmup_phases(self) -> List[WarmupPhaseEntry]:
+        return self._warmup_phases
+
+    @property
+    def batch_pickle_time(self) -> float:
+        return self._batch_pickle_time
+
+    @property
+    def batch_pickle_sample_mb(self) -> float:
+        return self._batch_pickle_sample_mb
 
     def get_scenario_by_process_result(self, process_result: ProcessResult) -> SingleScenario:
         """Return the scenario belonging to a given process result."""

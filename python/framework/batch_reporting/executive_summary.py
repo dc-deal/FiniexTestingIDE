@@ -128,6 +128,11 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             # Mounted mode - no warmup
             print(f"Batch Time:         {batch_time:.1f}s")
 
+        # Warmup hotspot one-liner (always shown when warmup phases available)
+        warmup_hotspot = self._format_warmup_hotspot(renderer)
+        if warmup_hotspot:
+            print(f"Warmup Hotspot:     {warmup_hotspot}")
+
         print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
               (f" (max {max_workers} workers)" if parallel else ""))
 
@@ -274,7 +279,17 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         # Render REAL-TIME section (tick processing speed)
         renderer.print_bold("REAL-TIME PERFORMANCE (Tick Processing Speed)")
         renderer.print_separator(width=68)
-        print(f"Tick Run Time:      {tickrun_time:.1f} seconds")
+        pickle_time = self._batch_summary.batch_pickle_time
+        pickle_mb = self._batch_summary.batch_pickle_sample_mb
+        if pickle_time > 0.0:
+            execution_time = tickrun_time - pickle_time
+            mb_str = f" ~{pickle_mb:.1f} MB/scenario" if pickle_mb > 0.0 else ''
+            print(
+                f"Tick Run Time:      {tickrun_time:.1f} seconds "
+                f"(pickle: {pickle_time:.1f}s{mb_str} | execution: {execution_time:.1f}s)"
+            )
+        else:
+            print(f"Tick Run Time:      {tickrun_time:.1f} seconds")
         print(
             f"Ticks/Second:       {ticks_per_second:,.0f} (processing rate)")
         print(
@@ -475,6 +490,77 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
         line = f"Order Pipeline:     {pending} pending | {limits} active limits | {stops} active stops"
         print(renderer.cyan(line))
+
+    def _format_warmup_hotspot(self, renderer: ConsoleRenderer) -> str:
+        """
+        Build warmup hotspot one-liner for executive summary.
+
+        Shows slowest warmup phase + optional slowest scenario deviation.
+
+        Args:
+            renderer: Console renderer for color formatting
+
+        Returns:
+            Formatted one-liner string, or empty string if no data
+        """
+        phases = self._batch_summary.warmup_phases
+        if not phases:
+            return ''
+
+        total_warmup = sum(p.duration_s for p in phases)
+        if total_warmup <= 0:
+            return ''
+
+        slowest = max(phases, key=lambda p: p.duration_s)
+        pct = slowest.duration_s / total_warmup * 100
+        phase_part = renderer.yellow(
+            f"Phase [{slowest.name}]  {slowest.duration_s:.1f}s ({pct:.1f}%)"
+        )
+
+        # Slowest scenario deviation (only when >1 scenario and profiling data present)
+        scenario_part = self._format_slowest_scenario_deviation(renderer)
+        if scenario_part:
+            return f"{phase_part}  |  {scenario_part}"
+        return phase_part
+
+    def _format_slowest_scenario_deviation(self, renderer: ConsoleRenderer) -> str:
+        """
+        Build slowest scenario deviation string vs. average.
+
+        Uses sum of profiling profile_times per scenario as proxy for compute cost.
+        Only shown when deviation > 15% and more than 1 scenario present.
+
+        Args:
+            renderer: Console renderer for color formatting
+
+        Returns:
+            Formatted deviation string, or empty string
+        """
+        results = self._batch_summary.process_result_list
+        if len(results) < 2:
+            return ''
+
+        scenario_times = []
+        for r in results:
+            if not r.tick_loop_results or not r.tick_loop_results.profiling_data:
+                continue
+            total_ms = sum(r.tick_loop_results.profiling_data.profile_times.values())
+            scenario_times.append((r.scenario_name, total_ms))
+
+        if len(scenario_times) < 2:
+            return ''
+
+        avg_ms = sum(t for _, t in scenario_times) / len(scenario_times)
+        if avg_ms <= 0:
+            return ''
+
+        slowest_name, slowest_ms = max(scenario_times, key=lambda x: x[1])
+        deviation_pct = (slowest_ms - avg_ms) / avg_ms * 100
+
+        if deviation_pct < 15.0:
+            return ''
+
+        return renderer.yellow(f"Slowest Scenario: {slowest_name}  +{deviation_pct:.0f}% vs avg")
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""

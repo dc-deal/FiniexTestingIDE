@@ -122,7 +122,7 @@ from python.framework.exceptions.scenario_execution_errors import BatchExecution
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
@@ -276,6 +276,7 @@ class BatchOrchestrator:
         )
 
         start_time = time.time()
+        warmup_phases = []
         self._live_stats_coordinator.broadcast_status(
             ScenarioStatus.INITIALIZED)
 
@@ -287,6 +288,7 @@ class BatchOrchestrator:
         # PHASE 0: CONFIG VALIDATION
         # ========================================================================
         self._logger.info("🔍 Phase 0: Validating configuration...")
+        _phase_t = time.time()
 
         # 1. Validate scenario names (unique, non-empty)
         ScenarioValidator.validate_scenario_names(
@@ -311,11 +313,13 @@ class BatchOrchestrator:
             scenarios=self._scenario_set.get_valid_scenarios(),
             logger=self._logger
         )
+        warmup_phases.append(WarmupPhaseEntry('Config Validation', time.time() - _phase_t))
 
         # ========================================================================
         # PHASE 1: INDEX & COVERAGE SETUP
         # ========================================================================
         self._logger.info("📊 Phase 1: Index & coverage setup...")
+        _phase_t = time.time()
 
         data_coordinator = DataPreparationCoordinator(
             scenarios=self._scenario_set.get_valid_scenarios(),
@@ -332,25 +336,31 @@ class BatchOrchestrator:
             app_config=self._app_config_manager
         )
         coverage_report_manager.generate_reports()
+        warmup_phases.append(WarmupPhaseEntry('Index & Coverage', time.time() - _phase_t))
 
         # ========================================================================
         # PHASE 2: AVAILABILITY VALIDATION
         # ========================================================================
         self._logger.info("🔍 Phase 2: Validating data availability...")
+        _phase_t = time.time()
 
         # Validate that all scenarios have data available
         # IMPORTANT: Initializes validation_result for ALL SingleScenario objects
         coverage_report_manager.validate_availability(
             scenarios=self._scenario_set.get_valid_scenarios()
         )
+        warmup_phases.append(WarmupPhaseEntry('Availability Check', time.time() - _phase_t))
+
         # ========================================================================
         # PHASE 3: REQUIREMENTS COLLECTION
         # ========================================================================
         self._logger.info("📋 Phase 3: Collecting data requirements...")
+        _phase_t = time.time()
 
         # Collect requirements from valid scenarios only
         requirements_map = self._requirements_collector.collect_and_validate(
             self._scenario_set.get_valid_scenarios())
+        warmup_phases.append(WarmupPhaseEntry('Requirements', time.time() - _phase_t))
 
         # ========================================================================
         # PHASE 4: DATA LOADING
@@ -358,15 +368,19 @@ class BatchOrchestrator:
         self._logger.info("📦 Phase 4: Loading data...")
 
         # Prepare data only for scenarios in requirements_map
-        scenario_packages, clipping_stats_map = data_coordinator.prepare(
+        scenario_packages, clipping_stats_map, load_timings = data_coordinator.prepare(
             requirements_map=requirements_map,
             status_broadcaster=self._live_stats_coordinator
         )
+        warmup_phases.append(WarmupPhaseEntry('Data Loading → Ticks (parquet)', load_timings.ticks_s))
+        warmup_phases.append(WarmupPhaseEntry('Data Loading → Bars (parquet)', load_timings.bars_s))
+        warmup_phases.append(WarmupPhaseEntry('Data Loading → Packaging', load_timings.packaging_s))
 
         # ========================================================================
         # PHASE 5: QUALITY VALIDATION
         # ========================================================================
         self._logger.info("🔬 Phase 5: Validating data quality...")
+        _phase_t = time.time()
 
         self._live_stats_coordinator.broadcast_status(
             ScenarioStatus.WARMUP_COVERAGE)
@@ -376,6 +390,7 @@ class BatchOrchestrator:
             scenario_packages=scenario_packages,  # Dict of packages
             requirements_map=requirements_map
         )
+        warmup_phases.append(WarmupPhaseEntry('Quality Validation', time.time() - _phase_t))
 
         # Calculate total invalid scenarios
         total_invalid = len(self._scenario_set.get_failed_scenarios())
@@ -396,14 +411,14 @@ class BatchOrchestrator:
 
         # Execute scenarios
         if self._parallel_scenarios and scenario_count > 1:
-            results = self._execution_coordinator.execute_parallel(
+            results, batch_pickle_time, batch_pickle_sample_mb = self._execution_coordinator.execute_parallel(
                 scenarios=self._scenario_set.get_all_scenarios(),
                 scenario_packages=scenario_packages,  # Dict of packages
                 live_queue=self._live_queue
             )
 
         else:
-            results = self._execution_coordinator.execute_sequential(
+            results, batch_pickle_time, batch_pickle_sample_mb = self._execution_coordinator.execute_sequential(
                 scenarios=self._scenario_set.get_all_scenarios(),
                 scenario_packages=scenario_packages,  # Dict of packages
                 live_queue=self._live_queue
@@ -442,6 +457,11 @@ class BatchOrchestrator:
             broker_scenario_map=data_coordinator.get_broker_scenario_map(),
             # clipping stats from tick processing budget (main process, not subprocess)
             clipping_stats_map=clipping_stats_map,
+            # per-phase warmup timing breakdown
+            warmup_phases=warmup_phases,
+            # main-process serialization time (submit loop) + sample size
+            batch_pickle_time=batch_pickle_time,
+            batch_pickle_sample_mb=batch_pickle_sample_mb,
         )
 
         self._logger.verbose(summary.process_result_list)

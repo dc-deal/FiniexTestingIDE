@@ -72,7 +72,7 @@ class ExecutionCoordinator:
         scenarios: List[SingleScenario],
         scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
-    ) -> List[ProcessResult]:
+    ) -> tuple[List[ProcessResult], float, float]:
         """
         Execute scenarios sequentially.
 
@@ -82,7 +82,8 @@ class ExecutionCoordinator:
             live_queue: Optional queue for live updates
 
         Returns:
-            List of ProcessResult objects
+            Tuple of (List of ProcessResult objects, pickle_time_s, pickle_sample_mb)
+            Both floats are 0.0 for sequential (no subprocess pickling)
         """
         results = [None] * len(scenarios)
 
@@ -133,14 +134,14 @@ class ExecutionCoordinator:
                     f"❌ Scenario {readable_index} failed: {results[idx].error_message}"
                 )
 
-        return results
+        return results, 0.0, 0.0
 
     def execute_parallel(
         self,
         scenarios: List[SingleScenario],
         scenario_packages: Dict[int, ProcessDataPackage],
         live_queue: Optional[Queue]
-    ) -> List[ProcessResult]:
+    ) -> tuple[List[ProcessResult], float, float]:
         """
         Execute scenarios in parallel with auto-detection.
 
@@ -153,7 +154,9 @@ class ExecutionCoordinator:
             live_queue: Optional queue for live updates
 
         Returns:
-            List of ProcessResult objects
+            Tuple of (List of ProcessResult objects, pickle_time_s, pickle_sample_mb)
+            pickle_time_s: duration of submit loop (main-process serialization)
+            pickle_sample_mb: serialized size of scenario 0 package (single sample)
         """
         # Auto-switch based on environment
         if DEBUGGER_ACTIVE or os.getenv('DEBUG_MODE'):
@@ -175,10 +178,13 @@ class ExecutionCoordinator:
         )
 
         results = [None] * len(scenarios)
+        pickle_time_s = 0.0
+        pickle_sample_mb = 0.0
 
         with executor_class(max_workers=max_workers) as executor:
             # Submit all scenarios
             futures = {}
+            _t_submit = time.time()
             for idx, scenario in enumerate(scenarios):
 
                 # === CHECK VALIDATION STATUS ===
@@ -205,13 +211,9 @@ class ExecutionCoordinator:
                         scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
                     continue
 
-                # pickle time measurement: Check how long it takes to shovel the object data via serialization into the sub process...
-                # USE WITH CAUTION!! This is a DEBUG Test which slows down Pickle time (we do it twice - one for the measurement, one later as to fill the subProcess)
-                # pickle_start = time.time()
-                # pickled = pickle.dumps((executor_obj.config, scenario_data))
-                # pickle_time = time.time() - pickle_start
-                # self._logger.info(
-                #     f"⏱️  Pickle time: {pickle_time:.2f}s, Size: {len(pickled)/1024/1024:.1f} MB")
+                # Sample package size once (scenario 0 only) — ~28ms overhead
+                if idx == 0:
+                    pickle_sample_mb = len(pickle.dumps((executor_obj.config, scenario_data))) / 1024 / 1024
 
                 # Submit to executor with scenario-specific data
                 future = executor.submit(
@@ -222,6 +224,8 @@ class ExecutionCoordinator:
                     live_queue
                 )
                 futures[future] = idx
+
+            pickle_time_s = time.time() - _t_submit
 
             # Collect results (unchanged)
             for future in as_completed(futures):
@@ -271,7 +275,7 @@ class ExecutionCoordinator:
             f"🕐 ProcessPoolExecutor shutdown complete! Time: {time.time()}"
         )
 
-        return results
+        return results, pickle_time_s, pickle_sample_mb
 
     def _create_validation_failed_result(
         self,

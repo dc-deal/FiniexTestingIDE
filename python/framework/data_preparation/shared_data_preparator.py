@@ -13,11 +13,13 @@ UTC-FIX:
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import time
 import pandas as pd
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.process_data_types import (
     ClippingStats,
+    DataLoadTimings,
     ProcessDataPackage,
     RequirementsMap,
     TickRequirement,
@@ -85,7 +87,7 @@ class SharedDataPreparator:
         requirements_map: RequirementsMap,
         scenarios: List[SingleScenario],
         broker_configs: Any
-    ) -> Tuple[Dict[int, ProcessDataPackage], Dict[int, ClippingStats]]:
+    ) -> Tuple[Dict[int, ProcessDataPackage], Dict[int, ClippingStats], DataLoadTimings]:
         """
         Prepare scenario-specific data packages (OPTIMIZATION).
 
@@ -107,20 +109,27 @@ class SharedDataPreparator:
             Tuple of:
             - Dict mapping scenario_index → ProcessDataPackage
             - Dict mapping scenario_index → ClippingStats (empty if budget disabled)
+            - DataLoadTimings with per-sub-phase durations
             Invalid scenarios are skipped (no entry in dicts)
         """
         self._logger.info(
             "📦 Phase 1: Preparing scenario-specific data packages...")
 
         # === STEP 1: Load ALL data once (existing methods) ===
+        _t_ticks = time.time()
         all_ticks_dict, all_tick_counts, all_tick_ranges = self.prepare_ticks(
             requirements_map.tick_requirements
         )
+        ticks_s = time.time() - _t_ticks
+
+        _t_bars = time.time()
         all_bars_dict, all_bar_counts = self.prepare_bars(
             requirements_map.bar_requirements
         )
+        bars_s = time.time() - _t_bars
 
         # === STEP 2: Create scenario-specific packages ===
+        _t_packaging = time.time()
         scenario_packages = {}
         clipping_stats_map = {}
 
@@ -179,11 +188,17 @@ class SharedDataPreparator:
                 f"{tick_count:,} ticks, {bar_count} bars"
             )
 
+        packaging_s = time.time() - _t_packaging
+
         self._logger.info(
             f"✅ Created {len(scenario_packages)} scenario-specific packages"
         )
 
-        return scenario_packages, clipping_stats_map
+        return scenario_packages, clipping_stats_map, DataLoadTimings(
+            ticks_s=ticks_s,
+            bars_s=bars_s,
+            packaging_s=packaging_s
+        )
 
     def _collect_parquet_versions(
         self,
