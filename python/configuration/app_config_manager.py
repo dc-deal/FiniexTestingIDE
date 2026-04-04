@@ -113,7 +113,7 @@ class AppConfigManager:
             True if per-scenario details should be displayed
         """
         logging_config = self.get_console_logging_config_object()
-        return logging_config.scenario_summary_detail
+        return logging_config.summary_detail
 
     def get_logging_write_system_info(self) -> bool:
         """

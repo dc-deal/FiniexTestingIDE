@@ -498,4 +498,5 @@ class BatchOrchestrator:
                 )
 
         # global log comes last.
-        self._logger.close(True)
+        show_global_log = self._app_config_manager.get_console_logging_config_object().show_global_log
+        self._logger.close(flush_buffer=show_global_log)

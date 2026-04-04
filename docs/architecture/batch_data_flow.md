@@ -79,7 +79,7 @@ Adding metadata to reports does NOT require threading through subprocesses. The 
 
 ## Report Sections: WarningsSummary
 
-`WarningsSummary` (`python/framework/batch_reporting/warnings_summary.py`) consolidates all global warnings into a single report section. Unlike other report sections, it is **always rendered** regardless of the `summary_detail` flag, but only when at least one warning is active.
+`WarningsSummary` (`python/framework/batch_reporting/warnings_summary.py`) consolidates all global warnings into a single report section. Unlike other report sections, it is **always rendered** regardless of the `summary.detail` flag, but only when at least one warning is active.
 
 Current warnings:
 - **Stress test active** — lists active stress test configs grouped by signature

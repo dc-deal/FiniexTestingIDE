@@ -36,7 +36,8 @@ class ConsoleBoxRenderer:
         batch_summary: BatchExecutionSummary,
         show_status_line: bool = False,
         columns: int = 3,
-        box_width: int = 38
+        box_width: int = 38,
+        scenario_detail_threshold: int = 9
     ):
         """
         Render process_results in grid layout.
@@ -46,13 +47,15 @@ class ConsoleBoxRenderer:
             show_status_line: Whether to show status line in boxes
             columns: Number of columns in grid
             box_width: Width of each box
+            scenario_detail_threshold: Above this count, use compact list instead of grid
         """
         render_grid(
             batch_summary=batch_summary,
             box_creator=create_scenario_box,
             show_status_line=show_status_line,
             columns=columns,
-            box_width=box_width
+            box_width=box_width,
+            scenario_detail_threshold=scenario_detail_threshold
         )
 
     def render_portfolio_grid(

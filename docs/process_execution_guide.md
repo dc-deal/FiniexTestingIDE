@@ -759,7 +759,28 @@ Total:                   ~63ms
 ### 6. Per-Scenario Logger Files
 **Rationale:** Parallel execution with shared logger causes race conditions  
 **Benefit:** Clean logs, no corruption, easy debugging  
-**Trade-off:** More files (acceptable, organized by timestamp)
+**Trade-off:** More files, organized in `scenario_logs/` subdir per run
+
+**Log Directory Structure (Backtesting):**
+```
+logs/scenario_sets/<set_name>/<timestamp>/
+  scenario_summary.log          Batch summary report (all scenarios)
+  scenario_system_info.log      System & version info (if enabled)
+  <set_name>.json               Config snapshot
+  scenario_logs/
+    scenario_01_<name>.log      Per-scenario tick logs (DEBUG level)
+    scenario_02_<name>.log
+    ...
+```
+
+Compare with AutoTrader (`session_logs/` instead of `scenario_logs/`):
+```
+logs/autotrader/<name>/<timestamp>/
+  autotrader_global.log
+  autotrader_summary.log
+  session_logs/
+    autotrader_session_YYYYMMDD.log
+```
 
 ### 7. 6-Step Tick Loop Pipeline
 **Rationale:** Clear separation of concerns, profiling granularity  

@@ -43,7 +43,9 @@ class ScenarioLogger(AbstractLogger):
                  scenario_name: str,
                  run_timestamp: datetime,
                  log_root_override: Optional[Path] = None,
-                 file_name_prefix_override: Optional[str] = None
+                 file_name_prefix_override: Optional[str] = None,
+                 use_global_log_level_for_console: bool = False,
+                 use_scenario_logs_subdir: bool = False
                  ):
         """
         Initialize scenario logger.
@@ -54,6 +56,7 @@ class ScenarioLogger(AbstractLogger):
             run_timestamp: Run timestamp string
             log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
             file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
+            use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
         """
         super().__init__(name=scenario_name)
 
@@ -63,6 +66,7 @@ class ScenarioLogger(AbstractLogger):
         self._tick_loop_started = False
         self._current_tick = None
         self._tick_loop_count = 1
+        self._use_global_log_level_for_console = use_global_log_level_for_console
 
         self.run_dir = None
         self.file_logger = None
@@ -74,9 +78,14 @@ class ScenarioLogger(AbstractLogger):
             self.run_dir = log_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
+            # Per-scenario files go into scenario_logs/ subdir (backtesting only)
+            log_dir = self.run_dir / 'scenario_logs' if use_scenario_logs_subdir else self.run_dir
+            if use_scenario_logs_subdir:
+                log_dir.mkdir(exist_ok=True)
+
             self.file_logger = FileLogger(
                 log_filename=prefix+'_'+scenario_name+".log",
-                file_path=self.run_dir,
+                file_path=log_dir,
                 log_level=self._file_logging_config.scenario_log_level
             )
         else:
@@ -100,8 +109,12 @@ class ScenarioLogger(AbstractLogger):
         """
         check if console log is enabled for logger
         """
-        return LogLevel.should_log(
-            level, self._console_logging_config.scenario_log_level)
+        effective_level = (
+            self._console_logging_config.global_log_level
+            if self._use_global_log_level_for_console
+            else self._console_logging_config.scenario_log_level
+        )
+        return LogLevel.should_log(level, effective_level)
 
     def _should_log_file(self, level: LogLevel) -> str:
         """
@@ -200,10 +213,13 @@ class ScenarioLogger(AbstractLogger):
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
         # Output all buffered logs
+        effective_level = (
+            self._console_logging_config.global_log_level
+            if self._use_global_log_level_for_console
+            else self._console_logging_config.scenario_log_level
+        )
         for level, formatted_line in self.console_buffer:
-            should_log = LogLevel.should_log(
-                level, self._console_logging_config.scenario_log_level)
-            if should_log:
+            if LogLevel.should_log(level, effective_level):
                 print(formatted_line)
 
         # Clear buffer

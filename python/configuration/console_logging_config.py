@@ -86,11 +86,13 @@ class ConsoleLoggingConfig:
                 "logging.scenario.write_system_info is required (must be true/false)")
         self._scenario_write_system_info = scenario_config['write_system_info']
 
-        # Scenario summary_detail (required)
-        if not isinstance(scenario_config['summary_detail'], bool):
-            raise ValueError(
-                "logging.scenario.summary_detail must be true/false")
-        self._scenario_summary_detail = scenario_config['summary_detail']
+        # Summary config
+        summary_config = self._config.get('summary', {})
+        self._validate_summary_config(summary_config)
+
+        self._show_global_log = summary_config.get('show_global_log', True)
+        self._summary_detail = summary_config.get('detail', False)
+        self._scenario_detail_threshold = summary_config.get('scenario_detail_threshold', 9)
 
     def _validate_scenario_config(self, scenario_config: dict):
         """
@@ -108,10 +110,31 @@ class ConsoleLoggingConfig:
                 "Must contain: enabled, log_level, write_system_info"
             )
 
-        required_fields = ['enabled', 'log_level', 'write_system_info', 'summary_detail']
+        required_fields = ['enabled', 'log_level', 'write_system_info']
         for field in required_fields:
             if field not in scenario_config:
                 raise ValueError(f"logging.scenario.{field} is required")
+
+    def _validate_summary_config(self, summary_config: dict):
+        """
+        Validate summary config structure.
+
+        Args:
+            summary_config: Summary config dict
+
+        Raises:
+            ValueError: If required fields missing or invalid
+        """
+        if not summary_config:
+            raise ValueError(
+                "logging.summary config block is required. "
+                "Must contain: show_global_log, detail, scenario_detail_threshold"
+            )
+
+        required_fields = ['show_global_log', 'detail', 'scenario_detail_threshold']
+        for field in required_fields:
+            if field not in summary_config:
+                raise ValueError(f"logging.summary.{field} is required")
 
     # ============================================
     # Public Properties - Console Logging
@@ -151,10 +174,24 @@ class ConsoleLoggingConfig:
         """Write system info for scenarios"""
         return self._scenario_write_system_info
 
+    # ============================================
+    # Public Properties - Summary
+    # ============================================
+
     @property
-    def scenario_summary_detail(self) -> bool:
+    def show_global_log(self) -> bool:
+        """Show global log section in console output after batch run"""
+        return self._show_global_log
+
+    @property
+    def summary_detail(self) -> bool:
         """Show per-scenario detail blocks in console summary"""
-        return self._scenario_summary_detail
+        return self._summary_detail
+
+    @property
+    def scenario_detail_threshold(self) -> int:
+        """Max scenarios to show as grid; above this switches to compact list"""
+        return self._scenario_detail_threshold
 
     # ============================================
     # Utility Methods

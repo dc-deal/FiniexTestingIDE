@@ -83,8 +83,12 @@ This system enables:
     "scenario": {
       "enabled": false,
       "log_level": "WARNING",
-      "write_system_info": true,
-      "summary_detail": false
+      "write_system_info": true
+    },
+    "summary": {
+      "show_global_log": false,
+      "detail": false,
+      "scenario_detail_threshold": 9
     }
   },
   "file_logging": { ... },
@@ -101,7 +105,9 @@ This system enables:
 - ✅ **Loaded at app boot** - Singleton pattern (AppConfigLoader)
 - ✅ **Controls behavior** - Flags like `warn_on_parameter_override`
 - ✅ **Default paths** - Where to find scenario sets, data, etc.
-- ✅ **`summary_detail`** - When `false`, console batch summary shows only aggregated sections (no per-scenario detail blocks). File logging always gets the full summary regardless of this setting. Default: `false`
+- ✅ **`summary.detail`** - When `false`, console batch summary shows only aggregated sections (no per-scenario detail blocks). File logging always gets the full summary regardless of this setting. Default: `false`
+- ✅ **`summary.show_global_log`** - When `false`, the global log buffer is not flushed to console. Default: `false`
+- ✅ **`summary.scenario_detail_threshold`** - Above this scenario count, scenario grid collapses to compact list (failures only), and other lists (broker scenarios, budget warnings, overhead) are truncated. Default: `9`
 
 ---
 

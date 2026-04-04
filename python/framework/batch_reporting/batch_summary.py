@@ -180,14 +180,18 @@ class BatchSummary:
 
         # Pass show_status_line flag
         show_status_line = batch_status != BatchStatus.SUCCESS
+        threshold = self.app_config.get_console_logging_config_object().scenario_detail_threshold
         self._box_renderer.render_scenario_grid(
             self.batch_execution_summary,
-            show_status_line=show_status_line
+            show_status_line=show_status_line,
+            scenario_detail_threshold=threshold
         )
 
         # Summary detail flag (per-scenario vs aggregated only)
         if summary_detail is None:
             summary_detail = self.app_config.get_summary_detail()
+
+        compact = not summary_detail
 
         # Portfolio summaries
         if summary_detail:
@@ -208,7 +212,7 @@ class BatchSummary:
         self.trade_history_summary.render_aggregated(self._renderer)
 
         # Broker configuration
-        self.broker_summary.render(self._renderer)
+        self.broker_summary.render(self._renderer, compact=compact, threshold=threshold)
 
         # Performance summaries
         if summary_detail:
@@ -219,14 +223,14 @@ class BatchSummary:
         # Profiling Analysis
         if summary_detail:
             self.profiling_summary.render_per_scenario(self._renderer)
-        self.profiling_summary.render_aggregated(self._renderer)
+        self.profiling_summary.render_aggregated(self._renderer, compact=compact, threshold=threshold)
         self.profiling_summary.render_bottleneck_analysis(self._renderer)
 
         # Worker Decision Breakdown
         if summary_detail:
             self.worker_decision_breakdown.render_per_scenario(self._renderer)
         self.worker_decision_breakdown.render_aggregated()
-        self.worker_decision_breakdown.render_overhead_analysis(self._renderer)
+        self.worker_decision_breakdown.render_overhead_analysis(self._renderer, compact=compact, threshold=threshold)
 
         # Warmup phase breakdown (summary_detail only)
         if summary_detail:

@@ -559,7 +559,7 @@ class SharedDataPreparator:
                 tick_counts[req.scenario_name] = len(ticks)
                 tick_ranges[req.scenario_name] = time_range
 
-                self._logger.info(
+                self._logger.debug(
                     f"  ✅ {len(ticks):,} ticks filtered for '{req.scenario_name}' "
                     f"({time_range[0]} → {time_range[1]})"
                 )
@@ -660,7 +660,7 @@ class SharedDataPreparator:
                 bars_data[key] = tuple(bars_list)
                 bar_counts[key] = len(bars_list)
 
-                self._logger.info(
+                self._logger.debug(
                     f"  ✅ {len(bars_list)} warmup bars filtered "
                     f"(before {req_start_time})"
                 )

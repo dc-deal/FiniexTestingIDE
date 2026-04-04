@@ -125,7 +125,7 @@ class ExecutionCoordinator:
             results[idx] = executor.run(scenario_data, live_queue)
 
             if results[idx].success:
-                self._logger.info(
+                self._logger.debug(
                     f"✅ Scenario {readable_index} completed in "
                     f"{results[idx].execution_time_ms:.0f}ms"
                 )
@@ -237,7 +237,7 @@ class ExecutionCoordinator:
                     results[idx] = result
 
                     if result.success:
-                        self._logger.info(
+                        self._logger.debug(
                             f"✅ Scenario {readable_index} completed: "
                             f"{result.scenario_name} ({result.execution_time_ms:.0f}ms)"
                         )

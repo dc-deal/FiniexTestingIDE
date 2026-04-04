@@ -44,7 +44,8 @@ def process_main(
             scenario_set_name=config.scenario_set_name,
             scenario_name=file_name_for_scenario(
                 config.scenario_index, config.name),
-            run_timestamp=config.run_timestamp
+            run_timestamp=config.run_timestamp,
+            use_scenario_logs_subdir=True
         )
         scenario_logger.info(f"⏱️  Process started at {start_time}")
 

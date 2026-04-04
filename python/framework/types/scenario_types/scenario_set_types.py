@@ -155,7 +155,8 @@ class ScenarioSet:
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
             scenario_name='global_log',
-            run_timestamp=self._run_timestamp
+            run_timestamp=self._run_timestamp,
+            use_global_log_level_for_console=True
         )
         self.printed_summary_logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,

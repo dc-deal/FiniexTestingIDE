@@ -32,8 +32,12 @@
         "scenario": {
             "enabled": false,
             "log_level": "WARNING",
-            "write_system_info": true,
-            "summary_detail": false
+            "write_system_info": true
+        },
+        "summary": {
+            "show_global_log": false,
+            "detail": false,
+            "scenario_detail_threshold": 9
         }
     },
     "file_logging": {
