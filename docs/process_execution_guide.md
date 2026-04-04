@@ -332,7 +332,7 @@ Display Update (Rich Console)
 **Key Properties:**
 - **Non-blocking:** Never blocks tick loop
 - **Lossy:** Drops updates if queue full (acceptable)
-- **Time-based:** Throttled by update_interval_sec
+- **Time-based:** Throttled by update_interval_ms
 - **Conditional:** Exports only requested data
 
 ### Live Update Lifecycle
@@ -352,7 +352,7 @@ live_setup = process_live_setup(
 current_time = time.perf_counter()
 time_since_last = current_time - live_setup.last_update_time
 
-if time_since_last >= update_interval_sec or is_last_tick:
+if time_since_last >= (update_interval_ms / 1000.0) or is_last_tick:
     # Build and send update
     process_live_export(...)
 ```
@@ -362,7 +362,7 @@ if time_since_last >= update_interval_sec or is_last_tick:
 {
   "live_stats_config": {
     "enabled": true,
-    "update_interval_sec": 0.30,
+    "update_interval_ms": 300,
     "export_portfolio_stats": false,
     "export_performance_stats": false,
     "export_current_bars": false

@@ -32,7 +32,7 @@ def process_live_setup(logger: ScenarioLogger,
         return ProcessLiveSetup(
             live_queue=live_queue,
             last_update_time=time.perf_counter(),
-            update_interval_sec=config.live_stats_config.update_interval_sec,
+            update_interval_ms=config.live_stats_config.update_interval_ms,
             first_tick=ticks[0],
             live_enabled=live_enabled,
             tick_count=tick_count
@@ -66,7 +66,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
     # Check time since last update (from object!)
     time_since_last = current_time - live_setup.last_update_time
 
-    if time_since_last >= live_setup.update_interval_sec or is_last_tick:
+    if time_since_last >= (live_setup.update_interval_ms / 1000.0) or is_last_tick:
         # === BUILD CORE MESSAGE ===
         live_data = {
             "type": "progress",

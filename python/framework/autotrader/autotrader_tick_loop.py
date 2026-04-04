@@ -12,13 +12,20 @@ import queue
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.autotrader_types.autotrader_display_types import (
+    AutoTraderDisplayStats,
+    PositionSnapshot,
+    TradeHistoryEntry,
+)
+from python.framework.types.decision_logic_types import Decision
 
 
 class AutotraderTickLoop:
@@ -57,6 +64,9 @@ class AutotraderTickLoop:
         clipping_monitor: LiveClippingMonitor,
         logger: ScenarioLogger,
         run_dir: Optional[Path] = None,
+        display_queue: Optional[queue.Queue] = None,
+        session_start: Optional[datetime] = None,
+        dry_run: bool = True,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -68,6 +78,9 @@ class AutotraderTickLoop:
         self._clipping_monitor = clipping_monitor
         self._logger = logger
         self._run_dir = run_dir
+        self._display_queue = display_queue
+        self._session_start = session_start or datetime.now(timezone.utc)
+        self._dry_run = dry_run
         self._running = False
 
         # Daily rotation state
@@ -178,8 +191,136 @@ class AutotraderTickLoop:
                 )
                 ticks_clipped += report.interval_clipped
 
+            # === 7. Display Stats ===
+            if self._display_queue is not None:
+                display_stats = self._build_display_stats(decision, ticks_processed, tick)
+                try:
+                    self._display_queue.put_nowait(display_stats)
+                except queue.Full:
+                    pass  # Display will use last known state
+
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
+        """
+        Build display stats snapshot from current pipeline state.
+
+        Reads portfolio dirty-state (attribute reads, zero cost),
+        open positions (0-3 in live), active orders, worker outputs.
+        Called after the algo pipeline — not on the critical path.
+
+        Args:
+            decision: Current tick's decision
+            ticks_processed: Tick counter
+            tick: Current tick (for last_price)
+
+        Returns:
+            AutoTraderDisplayStats snapshot for display queue
+        """
+        portfolio = self._executor.portfolio
+
+        # Open positions → PositionSnapshot
+        open_positions = []
+        for pos in self._executor.get_open_positions():
+            open_positions.append(PositionSnapshot(
+                position_id=pos.position_id,
+                symbol=pos.symbol,
+                direction=pos.direction.value,
+                lots=pos.lots,
+                entry_price=pos.entry_price,
+                unrealized_pnl=pos.unrealized_pnl,
+            ))
+
+        # Active orders (limit + stop) from pending stats
+        pending_stats = self._executor.get_pending_stats()
+        active_orders = list(pending_stats.active_limit_orders) + list(pending_stats.active_stop_orders)
+        pipeline_count = pending_stats.latency_queue_count
+
+        # Trade history — last 10, newest first
+        recent_trades: List[TradeHistoryEntry] = []
+        trade_history = self._executor.get_trade_history()
+        for trade in trade_history[-10:][::-1]:
+            recent_trades.append(TradeHistoryEntry(
+                trade_id=trade.position_id,
+                symbol=trade.symbol,
+                direction=trade.direction.value,
+                lots=trade.lots,
+                entry_price=trade.entry_price,
+                exit_price=trade.exit_price,
+                net_pnl=trade.net_pnl,
+                close_reason=trade.close_reason.value if hasattr(trade.close_reason, 'value') else str(trade.close_reason),
+            ))
+
+        # Clipping — direct attribute reads (avoid get_session_summary() object creation)
+        cm = self._clipping_monitor
+        total_ticks = cm._total_ticks
+        clipping_ratio = cm._ticks_clipped / total_ticks if total_ticks > 0 else 0.0
+        avg_processing = cm._total_processing_ms / total_ticks if total_ticks > 0 else 0.0
+
+        # Worker performance + outputs (display=True only)
+        worker_times: Dict[str, float] = {}
+        worker_outputs: Dict[str, Dict[str, Any]] = {}
+        for name, worker in self._worker_orchestrator.workers.items():
+            # Performance
+            if worker.performance_logger:
+                stats = worker.performance_logger.get_stats()
+                worker_times[name] = stats.worker_avg_time_ms
+
+            # Outputs (display=True from schema)
+            schema = worker.__class__.get_output_schema()
+            result = self._worker_orchestrator._worker_results.get(name)
+            if result and schema:
+                display_outputs = {}
+                for key, param_def in schema.items():
+                    if param_def.display and key in result.outputs:
+                        display_outputs[key] = result.outputs[key]
+                if display_outputs:
+                    worker_outputs[name] = display_outputs
+
+        # Decision outputs (display=True)
+        decision_outputs: Dict[str, Any] = {}
+        decision_schema = self._decision_logic.__class__.get_output_schema()
+        for key, param_def in decision_schema.items():
+            if param_def.display and key in decision.outputs:
+                decision_outputs[key] = decision.outputs[key]
+
+        # Tick rate (session average)
+        uptime_min = max(0.001, (datetime.now(timezone.utc) - self._session_start).total_seconds() / 60.0)
+        ticks_per_min = ticks_processed / uptime_min
+
+        # Last mid price
+        last_price = (tick.bid + tick.ask) / 2.0
+
+        return AutoTraderDisplayStats(
+            session_start=self._session_start,
+            dry_run=self._dry_run,
+            symbol=self._config.symbol,
+            broker_type=self._config.broker_type,
+            ticks_processed=ticks_processed,
+            balance=portfolio.balance,
+            initial_balance=portfolio.initial_balance,
+            total_trades=len(portfolio._trade_history),
+            winning_trades=portfolio._winning_trades,
+            losing_trades=portfolio._losing_trades,
+            open_positions=open_positions,
+            active_orders=active_orders,
+            pipeline_count=pipeline_count,
+            recent_trades=recent_trades,
+            clipping_ratio=clipping_ratio,
+            avg_processing_ms=avg_processing,
+            max_processing_ms=cm._max_processing_ms,
+            queue_depth=self._tick_queue.qsize(),
+            total_ticks_clipped=cm._ticks_clipped,
+            processing_times_ms=list(cm._processing_times_ms),
+            ticks_per_min=ticks_per_min,
+            last_price=last_price,
+            worker_times_ms=worker_times,
+            worker_outputs=worker_outputs,
+            last_decision_action=decision.action.value,
+            decision_outputs=decision_outputs,
+            decision_time_ms=0.0,  # TODO: capture from orchestrator when available
+        )
 
     def _check_daily_rotation(self, tick) -> None:
         """

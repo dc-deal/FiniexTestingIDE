@@ -304,6 +304,32 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🤖 AutoTrader: SOLUSD Live",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/solusd_live.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🤖 AutoTrader: DOTUSD Live (no index data)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/dotusd_live.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
         // ====================================================
         // 🔍 DISCOVERIES
         // ====================================================

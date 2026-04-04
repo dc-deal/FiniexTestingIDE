@@ -1,10 +1,11 @@
 {
-  "name": "ethusd_live",
-  "symbol": "ETHUSD",
+  "name": "dotusd_live",
+  "symbol": "DOTUSD",
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "live",
   "broker_settings": "kraken_spot.json",
+
   "strategy_config": {
     "decision_logic_type": "CORE/aggressive_trend",
     "worker_instances": {
@@ -28,26 +29,31 @@
       "rsi_buy_threshold": 35,
       "rsi_sell_threshold": 65,
       "envelope_extremes": 0.25,
-      "min_confidence": 0.4,
-      "lot_size": 0.001,
-      "min_free_margin": 0.001
+      "min_confidence": 0.6,
+      "lot_size": 3.9,
+      "min_free_margin": 0.01
     }
   },
+
   "account": {
     "initial_balance": 0.0,
-    "currency": "ETH"
+    "currency": "DOT"
   },
+
   "tick_source": {
     "type": "kraken"
   },
+
   "execution": {
     "parallel_workers": false,
     "bar_max_history": 1000
   },
+
   "clipping_monitor": {
     "report_interval_s": 60.0,
     "strategy": "queue_all"
   },
+
   "display": {
     "enabled": true,
     "update_interval_ms": 300

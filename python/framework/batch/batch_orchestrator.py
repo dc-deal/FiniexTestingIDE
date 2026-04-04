@@ -219,7 +219,7 @@ class BatchOrchestrator:
             self._display = LiveProgressDisplay(
                 scenarios=self._scenarios,
                 live_queue=self._live_queue,
-                update_interval=self._live_stats_config.update_interval_sec
+                update_interval=self._live_stats_config.update_interval_ms / 1000.0
             )
         else:
             self._display = None
@@ -229,7 +229,7 @@ class BatchOrchestrator:
             mode = "DETAILED" if self._live_stats_config.detailed_mode else "BASIC"
             self._logger.info(
                 f"📊 Live stats: {mode} mode "
-                f"(update interval: {self._live_stats_config.update_interval_sec:.2f}s)"
+                f"(update interval: {self._live_stats_config.update_interval_ms:.0f}ms)"
             )
             if self._live_stats_config.detailed_mode:
                 self._logger.debug(

@@ -85,6 +85,7 @@ class KrakenTickSource(AbstractTickSource):
         self._ticks_emitted: int = 0
         self._reconnect_count: int = 0
         self._last_message_time: Optional[datetime] = None
+        self._last_tick_time: Optional[datetime] = None
 
     # === AbstractTickSource interface ===
 
@@ -156,6 +157,24 @@ class KrakenTickSource(AbstractTickSource):
             Total reconnect count
         """
         return self._reconnect_count
+
+    def get_last_message_time(self) -> Optional[datetime]:
+        """
+        Last WebSocket message time (GIL-safe read for display thread).
+
+        Returns:
+            Last message datetime (UTC) or None if no messages yet
+        """
+        return self._last_message_time
+
+    def get_last_tick_time(self) -> Optional[datetime]:
+        """
+        Last actual trade tick time (excludes heartbeats). GIL-safe.
+
+        Returns:
+            Last trade tick datetime (UTC) or None if no ticks yet
+        """
+        return self._last_tick_time
 
     # === Async internals ===
 
@@ -309,6 +328,7 @@ class KrakenTickSource(AbstractTickSource):
                 for tick in ticks:
                     self._tick_queue.put(tick)
                     self._ticks_emitted += 1
+                self._last_tick_time = datetime.now(timezone.utc)
 
     async def _heartbeat_monitor(self, ws) -> None:
         """

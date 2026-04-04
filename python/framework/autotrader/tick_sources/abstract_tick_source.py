@@ -4,6 +4,7 @@ Interface for all tick data sources (mock, WebSocket, REST).
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional
 
 from python.framework.types.market_types.market_data_types import TickData
@@ -56,3 +57,51 @@ class AbstractTickSource(ABC):
         Returns:
             True if all ticks have been emitted (mock: end of parquet data)
         """
+
+    # === Display Stats (GIL-safe reads for display thread) ===
+
+    def get_last_message_time(self) -> Optional[datetime]:
+        """
+        Last message time from data source (includes heartbeats).
+
+        Override in subclasses with connection stats (e.g., WebSocket).
+        GIL-safe: display thread reads this directly.
+
+        Returns:
+            Last message datetime (UTC) or None if not available
+        """
+        return None
+
+    def get_last_tick_time(self) -> Optional[datetime]:
+        """
+        Last actual trade tick time (excludes heartbeats/WS-only messages).
+
+        Override in subclasses that distinguish trade ticks from other messages.
+        GIL-safe: display thread reads this directly.
+
+        Returns:
+            Last trade tick datetime (UTC) or None if no ticks received yet
+        """
+        return None
+
+    def get_reconnect_count(self) -> int:
+        """
+        Number of reconnection attempts since session start.
+
+        Override in subclasses with connection recovery logic.
+
+        Returns:
+            Reconnect count (0 for sources without reconnect)
+        """
+        return 0
+
+    def get_ticks_emitted(self) -> int:
+        """
+        Total ticks pushed to the queue since session start.
+
+        Override in subclasses that track emission count.
+
+        Returns:
+            Total ticks emitted (0 if not tracked)
+        """
+        return 0

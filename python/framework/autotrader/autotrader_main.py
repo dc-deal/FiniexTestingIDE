@@ -28,6 +28,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
 
 class AutotraderMain:
@@ -76,6 +77,10 @@ class AutotraderMain:
         self._session_logger: Optional[ScenarioLogger] = None
         self._summary_logger: Optional[ScenarioLogger] = None
         self._run_dir: Optional[Path] = None
+
+        # Display (#228)
+        self._display: Optional[AutoTraderLiveDisplay] = None
+        self._display_queue: Optional[queue.Queue] = None
 
         # Signal handling state
         self._first_interrupt_time: float = 0.0
@@ -136,6 +141,18 @@ class AutotraderMain:
             )
             self._print_startup_phase('Tick source running')
 
+            # === DISPLAY (#228) ===
+            dry_run = self._config.adapter_type == 'mock' or self._is_dry_run()
+            if self._config.display.enabled:
+                self._display_queue = queue.Queue(maxsize=10)
+                self._display = AutoTraderLiveDisplay(
+                    display_queue=self._display_queue,
+                    tick_source=self._tick_source,
+                    config=self._config,
+                )
+                self._display.start()
+                self._global_logger.info('📺 Live display started')
+
             # === TICK LOOP ===
             self._global_logger.info('🔄 Entering tick loop...')
             self._print_startup_phase('Entering tick loop')
@@ -152,6 +169,9 @@ class AutotraderMain:
                 clipping_monitor=self._clipping_monitor,
                 logger=self._session_logger,
                 run_dir=self._run_dir,
+                display_queue=self._display_queue,
+                session_start=run_timestamp,
+                dry_run=dry_run,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
@@ -216,6 +236,11 @@ class AutotraderMain:
             self._tick_source.stop()
         if self._tick_thread and self._tick_thread.is_alive():
             self._tick_thread.join(timeout=5.0)
+
+        # Stop display (before position cleanup prints to console)
+        if self._display:
+            self._display.stop()
+            self._global_logger.info('📺 Live display stopped')
 
         # Close all open positions
         if self._executor:
@@ -343,3 +368,28 @@ class AutotraderMain:
             self._tick_loop.stop()
         if self._global_logger:
             self._global_logger.info('🛑 SIGTERM received — normal shutdown')
+
+    # =========================================================================
+    # HELPERS
+    # =========================================================================
+
+    def _is_dry_run(self) -> bool:
+        """
+        Determine if the session is a dry-run based on broker settings.
+
+        Mock adapter is always dry-run. Live adapter checks
+        broker_settings JSON for the dry_run flag (default: True).
+
+        Returns:
+            True if dry-run mode
+        """
+        if self._config.adapter_type == 'mock':
+            return True
+        if not self._config.broker_settings:
+            return True
+        try:
+            from python.framework.autotrader.autotrader_startup import _load_broker_settings
+            settings = _load_broker_settings(self._config.broker_settings)
+            return settings.get('dry_run', True)
+        except Exception:
+            return True

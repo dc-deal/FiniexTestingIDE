@@ -10,6 +10,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     AccountConfig,
     AutoTraderConfig,
     ClippingMonitorConfig,
+    DisplayConfig,
     ExecutionConfig,
     TickSourceConfig,
 )
@@ -37,6 +38,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     tick_source_raw = raw.get('tick_source', {})
     execution_raw = raw.get('execution', {})
     clipping_raw = raw.get('clipping_monitor', {})
+    display_raw = raw.get('display', {})
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -62,6 +64,10 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         clipping_monitor=ClippingMonitorConfig(
             report_interval_s=clipping_raw.get('report_interval_s', 60.0),
             strategy=clipping_raw.get('strategy', 'queue_all'),
+        ),
+        display=DisplayConfig(
+            enabled=display_raw.get('enabled', True),
+            update_interval_ms=display_raw.get('update_interval_ms', 300),
         ),
         config_path=path,
     )

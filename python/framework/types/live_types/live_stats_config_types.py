@@ -13,7 +13,7 @@ class ProcessLiveSetup:
     """
     live_queue: Optional[Queue] = None
     last_update_time: float = 0
-    update_interval_sec: float = 0
+    update_interval_ms: float = 0
     first_tick: Optional[TickData] = None
     live_enabled: bool = False
     tick_count: int = 0
@@ -70,14 +70,14 @@ class LiveStatsExportConfig:
         export_portfolio_stats: Include full PortfolioStats
         export_performance_stats: Include BatchPerformanceStats
         export_current_bars: Include current M5, M30, etc.
-        update_interval_sec: Time between updates (from tui_refresh_rate_ms)
+        update_interval_ms: Time between updates in milliseconds (from tui_refresh_rate_ms)
     """
     enabled: bool = True
     detailed_mode: bool = False
     export_portfolio_stats: bool = False
     export_performance_stats: bool = False
     export_current_bars: bool = False
-    update_interval_sec: float = 0.3
+    update_interval_ms: float = 300
 
     @classmethod
     def from_app_config(
@@ -106,7 +106,7 @@ class LiveStatsExportConfig:
                 export_portfolio_stats=False,
                 export_performance_stats=False,
                 export_current_bars=False,
-                update_interval_sec=0.0
+                update_interval_ms=0
             )
 
         # Detailed mode with threshold
@@ -126,7 +126,6 @@ class LiveStatsExportConfig:
 
         # Update interval
         update_interval_ms = monitoring.get('tui_refresh_rate_ms', 300)
-        update_interval_sec = update_interval_ms / 1000.0
 
         return cls(
             enabled=True,
@@ -134,5 +133,5 @@ class LiveStatsExportConfig:
             export_portfolio_stats=export_portfolio,
             export_performance_stats=export_performance,
             export_current_bars=export_bars,
-            update_interval_sec=update_interval_sec
+            update_interval_ms=update_interval_ms
         )
