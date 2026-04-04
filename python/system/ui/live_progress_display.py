@@ -305,12 +305,45 @@ class LiveProgressDisplay:
 
         return overhead
 
+    def _get_status_sort_priority(self, status: ScenarioStatus) -> int:
+        """
+        Sort priority for display ordering (lower = shown first).
+
+        Args:
+            status: ScenarioStatus enum value
+
+        Returns:
+            Integer priority (0 = highest)
+        """
+        match status:
+            case ScenarioStatus.RUNNING:
+                return 0
+            case ScenarioStatus.FINISHED_WITH_ERROR:
+                return 1
+            case ScenarioStatus.BARRIER | ScenarioStatus.INIT_PROCESS:
+                return 2
+            case (ScenarioStatus.WARMUP_COVERAGE
+                  | ScenarioStatus.WARMUP_DATA_TICKS
+                  | ScenarioStatus.WARMUP_DATA_BARS
+                  | ScenarioStatus.WARMUP_TRADER):
+                return 3
+            case ScenarioStatus.INITIALIZED:
+                return 4
+            case ScenarioStatus.COMPLETED:
+                return 5
+            case _:
+                return 6
+
     def _build_scenario_table(
         self,
         all_stats: List[LiveScenarioStats]
     ) -> Table:
         """
         Build scenario progress table.
+
+        Sorts and truncates rows when more scenarios exist than the
+        console height can display. Running scenarios appear first,
+        completed scenarios last.
 
         Args:
             all_stats: List of LiveScenarioStats objects
@@ -336,8 +369,28 @@ class LiveProgressDisplay:
             )
             return table
 
+        # Sort + truncate when more scenarios than console can display.
+        # Each row occupies 2 terminal lines (stats_text contains \n).
+        # Panel border (2) + overhead section (3) + divider (1) + buffer (1) = 7.
+        console_height = self.console.size.height
+        max_rows = max(1, (console_height - 7) // 2)
+
+        hidden_count = 0
+        display_stats = all_stats
+        if len(all_stats) > max_rows:
+            display_stats = sorted(
+                all_stats,
+                key=lambda s: self._get_status_sort_priority(s.status)
+            )
+            if len(display_stats) > max_rows:
+                # Reserve 1 slot for the "N more hidden" summary row
+                cutoff = max_rows - 1
+                hidden_stats = display_stats[cutoff:]
+                hidden_count = len(hidden_stats)
+                display_stats = display_stats[:cutoff]
+
         # Add scenario rows
-        for stats in all_stats:
+        for stats in display_stats:
             # detect scenario class
             scenario = self.scenarios[stats.scenario_index]
             account_currency = scenario.account_currency
@@ -396,6 +449,24 @@ class LiveProgressDisplay:
                 f"[{name_color}]{name}[/{name_color}]",
                 progress_text,
                 stats_text
+            )
+
+        if hidden_count > 0:
+            hidden_completed = sum(
+                1 for s in all_stats
+                if s not in display_stats and s.status == ScenarioStatus.COMPLETED
+            )
+            hidden_other = hidden_count - hidden_completed
+            parts = []
+            if hidden_completed:
+                parts.append(f"{hidden_completed} completed")
+            if hidden_other:
+                parts.append(f"{hidden_other} pending")
+            table.add_row(
+                "[dim]…[/dim]",
+                f"[dim]+{hidden_count} more hidden ({', '.join(parts)})[/dim]",
+                "",
+                ""
             )
 
         return table
