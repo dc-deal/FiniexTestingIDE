@@ -1,0 +1,46 @@
+{
+  "profile_meta": {
+    "symbol": "USDCHF",
+    "broker_type": "mt5",
+    "generator_mode": "continuous",
+    "generated_at": "2026-04-04T20:07:48.887358+00:00",
+    "total_coverage_hours": 213.94,
+    "block_count": 2,
+    "discovery_fingerprints": {
+      "volatility_profile": "b298b18560eab25b550a62279884865a889e4e2742813650d97f5f9cd1b1dbff",
+      "data_coverage": "c2a3e1311c98e5df7763a3d640881dd66d78a84425d3598e82fa0a83e85a3c55",
+      "extreme_moves": "558c483a2c3d9c325135f533d4e779060ef83983a29e915fb32241eac6c0d561"
+    },
+    "split_config": {
+      "min_block_hours": 2,
+      "max_block_hours": 24,
+      "atr_percentile_threshold": 10,
+      "split_algorithm": "atr_minima"
+    }
+  },
+  "blocks": [
+    {
+      "block_index": 0,
+      "start_time": "2025-10-13T00:00:00+00:00",
+      "end_time": "2025-10-15T15:37:00+00:00",
+      "block_duration_hours": 63.62,
+      "split_reason": "continuous_region",
+      "atr_at_split": 0.95335,
+      "regime_at_split": "medium",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 160047,
+      "distance_to_next_block_hours": 2.07
+    },
+    {
+      "block_index": 1,
+      "start_time": "2025-10-15T17:41:00+00:00",
+      "end_time": "2025-10-22T00:00:00+00:00",
+      "block_duration_hours": 150.32,
+      "split_reason": "continuous_region",
+      "atr_at_split": 0.997364,
+      "regime_at_split": "medium",
+      "session": "new_york",
+      "estimated_ticks": 251816
+    }
+  ]
+}
