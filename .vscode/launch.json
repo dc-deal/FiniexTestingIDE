@@ -204,6 +204,18 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run User Scenario Set (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "${input:userScenarioSet}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
             "type": "debugpy",
             "request": "launch",
@@ -1128,5 +1140,12 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+    ],
+    "inputs": [
+        {
+            "id": "userScenarioSet",
+            "type": "promptString",
+            "description": "Scenario set filename (e.g. touch_turn_eurusd.json)"
+        }
     ]
 }
