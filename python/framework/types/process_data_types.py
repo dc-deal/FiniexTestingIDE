@@ -395,6 +395,23 @@ class ClippingStats:
 
 
 @dataclass
+class DataLoadTimings:
+    """
+    Per-sub-phase timing breakdown for Phase 4 (Data Loading).
+
+    Measured in SharedDataPreparator.prepare_scenario_packages().
+
+    Args:
+        ticks_s: Duration of prepare_ticks() in seconds
+        bars_s: Duration of prepare_bars() in seconds
+        packaging_s: Duration of per-scenario packaging (STEP 2) in seconds
+    """
+    ticks_s: float = 0.0
+    bars_s: float = 0.0
+    packaging_s: float = 0.0
+
+
+@dataclass
 class TickRangeStats:
     """
         Tick time range (internal tick timestamps)

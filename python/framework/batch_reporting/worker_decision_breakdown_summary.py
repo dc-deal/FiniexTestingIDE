@@ -59,13 +59,20 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
         print()
 
-    def render_overhead_analysis(self, renderer):
-        """Render overhead analysis."""
+    def render_overhead_analysis(self, renderer, compact: bool = False, threshold: int = 9):
+        """
+        Render overhead analysis.
+
+        Args:
+            renderer: ConsoleRenderer instance
+            compact: If True, truncate high-overhead list to threshold entries
+            threshold: Max entries to display before collapsing
+        """
         print()
         renderer.section_separator()
         renderer.print_bold("🔥 OVERHEAD ANALYSIS")
         renderer.section_separator()
-        self._render_overhead_details(renderer)
+        self._render_overhead_details(renderer, compact=compact, threshold=threshold)
         print()
 
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
@@ -177,8 +184,15 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
                 print(f"  {worker_name:<20} {worker_time:>7.2f}ms  {pct:>5.1f}%")
             print()
 
-    def _render_overhead_details(self, renderer):
-        """Render overhead analysis."""
+    def _render_overhead_details(self, renderer, compact: bool = False, threshold: int = 9):
+        """
+        Render overhead analysis.
+
+        Args:
+            renderer: ConsoleRenderer instance
+            compact: If True, truncate list to threshold entries
+            threshold: Max entries to display before collapsing
+        """
         if not self.breakdowns:
             return
 
@@ -197,13 +211,18 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         print(renderer.bold(header))
         print("-" * 55)
 
-        for breakdown in high_overhead:
+        visible = high_overhead[:threshold] if compact and len(high_overhead) > threshold else high_overhead
+        for breakdown in visible:
             name = breakdown.scenario_name[:28]
             overhead = f"{breakdown.coordination_overhead_ms:.2f}ms"
             ratio = f"{breakdown.overhead_ratio:.2f}x"
             status = renderer.red(
                 "Critical") if breakdown.overhead_ratio >= 2.0 else renderer.yellow("High")
             print(f"{name:<30} {overhead:<12} {ratio:<10} {status}")
+
+        if compact and len(high_overhead) > threshold:
+            remaining = len(high_overhead) - threshold
+            print(f"  … +{remaining} more (all High) — see log for full list")
 
     def _create_bar(self, percentage: float, width: int = 12) -> str:
         """Create ASCII bar."""

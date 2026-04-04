@@ -216,6 +216,20 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run User Scenario Set - ALL CONTINUOUS (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "${input:userScenarioSet}",
+                "--generator-profile",
+                "${workspaceFolder}/configs/generator_profiles/continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
             "type": "debugpy",
             "request": "launch",
@@ -381,6 +395,19 @@
                 "volatility-profile",
                 "mt5",
                 "USDJPY"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Volatility Profile: mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "volatility-profile",
+                "mt5",
+                "EURUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -707,9 +734,9 @@
             "args": [
                 "generate-all-profiles",
                 "--mt5-start",
-                "2025-10-01T00:00:00",
+                "2025-10-13T00:00:00",
                 "--mt5-end",
-                "2025-10-10T00:00:00",
+                "2025-10-22T00:00:00",
                 "--kraken-spot-start",
                 "2026-02-01T00:00:00",
                 "--kraken-spot-end",
@@ -728,9 +755,9 @@
             "args": [
                 "generate-all-profiles",
                 "--mt5-start",
-                "2025-10-01T00:00:00",
+                "2025-10-13T00:00:00",
                 "--mt5-end",
-                "2025-10-10T00:00:00",
+                "2025-10-22T00:00:00",
                 "--kraken-spot-start",
                 "2026-02-01T00:00:00",
                 "--kraken-spot-end",

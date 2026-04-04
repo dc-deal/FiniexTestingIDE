@@ -157,7 +157,7 @@ class ScenarioValidator:
                 detected_currency = quote
                 if (base == account_currency):
                     detected_currency = base
-                logger.info(
+                logger.debug(
                     f"💱 Account Currency: {account_currency} (explicit configuration)"
                 )
 

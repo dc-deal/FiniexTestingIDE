@@ -55,12 +55,14 @@ class BrokerSummary(AbstractBatchSummarySection):
                     symbol)
                 self._symbol_specs[broker_key][symbol] = symbol_spec
 
-    def render(self, renderer: ConsoleRenderer):
+    def render(self, renderer: ConsoleRenderer, compact: bool = False, threshold: int = 9):
         """
         Render broker summary section.
 
         Args:
             renderer: Console renderer for formatting
+            compact: If True, collapse scenario lists above threshold to count
+            threshold: Max scenarios to list before collapsing
         """
         self._render_section_header(renderer)
 
@@ -84,6 +86,8 @@ class BrokerSummary(AbstractBatchSummarySection):
                 scenarios=self._broker_scenario_list[broker_key],
                 indent="   ",
                 market_type=market_type,
+                compact=compact,
+                threshold=threshold,
             )
             print(broker_info)
 

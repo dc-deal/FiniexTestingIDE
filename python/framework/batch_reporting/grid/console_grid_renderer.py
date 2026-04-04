@@ -6,6 +6,7 @@ Provides:
 - Generic grid rendering (works with any box builder)
 - Automatic row/column alignment
 - Side-by-side box printing
+- Compact list mode for large scenario counts
 
 DRY Principle: Grid logic implemented once, reused for all box types.
 """
@@ -21,13 +22,15 @@ def render_grid(
     show_status_line: bool,
     columns: int = 3,
     box_width: int = 38,
-    spacing: int = 2
+    spacing: int = 2,
+    scenario_detail_threshold: int = 9
 ) -> None:
     """
     Render items in grid layout using provided box creator.
 
     Generic grid renderer - works with ANY box type (scenario, portfolio, etc.)
     Handles row iteration, alignment, and side-by-side printing.
+    Above scenario_detail_threshold switches to compact list (failures only).
 
     Args:
         items: List of items to render (ProcessResult, AggregatedPortfolio, etc.)
@@ -38,8 +41,14 @@ def render_grid(
         columns: Number of boxes per row
         box_width: Width of each box (including borders)
         spacing: Number of spaces between boxes
+        scenario_detail_threshold: Above this count, use compact list instead of grid
     """
     items = batch_summary.process_result_list
+
+    if len(items) > scenario_detail_threshold:
+        _render_compact_list(batch_summary)
+        return
+
     for i in range(0, len(items), columns):
         row_items = items[i:i+columns]
 
@@ -67,6 +76,32 @@ def render_grid(
             print((" " * spacing).join(line_parts))
 
         print()  # Empty line between rows
+
+
+def _render_compact_list(batch_summary: BatchExecutionSummary) -> None:
+    """
+    Render compact summary for large scenario counts.
+
+    Shows only failed scenarios as a list.
+    If all succeeded, prints a single summary line.
+
+    Args:
+        batch_summary: Batch execution summary
+    """
+    items = batch_summary.process_result_list
+    total = len(items)
+    failed = [r for r in items if not r.success]
+    succeeded = total - len(failed)
+
+    if not failed:
+        print(f"  ✅ All {total} scenarios completed successfully")
+    else:
+        print(f"  ✅ {succeeded}/{total} completed  |  ❌ {len(failed)} failed\n")
+        for result in failed:
+            error = result.error_message or result.error_type or 'unknown error'
+            print(f"  ❌  {result.scenario_name:<40}  {error}")
+
+    print()
 
 
 def render_box(
