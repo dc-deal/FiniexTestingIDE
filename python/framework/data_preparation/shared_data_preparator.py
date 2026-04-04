@@ -58,6 +58,11 @@ class SharedDataPreparator:
         """
         self._logger = logger
 
+        # Cache for pre-converted file timestamps: (broker_type, symbol) →
+        # List[Tuple[Timestamp, Timestamp, str]] (start, end, version)
+        # Avoids repeated pd.to_datetime calls in _collect_parquet_versions (O(n_scenarios×n_files) → O(n_files))
+        self._file_ts_cache: Dict[Tuple[str, str], List[Tuple[Any, Any, str]]] = {}
+
         # Use existing index managers
         self._logger.debug("📚 Initializing index managers...")
 
@@ -205,21 +210,30 @@ class SharedDataPreparator:
         files = self.tick_index_manager.index[broker_type][symbol]
 
         if tick_range is None:
-            return [
-                f.get('data_format_version', 'unknown')
+            return [f.get('data_format_version', 'unknown') for f in files]
+
+        # Pre-convert file timestamps once per (broker_type, symbol).
+        # pd.to_datetime on a single string is ~150-200µs — calling it N_scenarios × N_files
+        # times blows up to 10-20s for large symbol sets. Cache eliminates all repeated calls.
+        cache_key = (broker_type, symbol)
+        if cache_key not in self._file_ts_cache:
+            self._file_ts_cache[cache_key] = [
+                (
+                    pd.to_datetime(f['start_time'], utc=True),
+                    pd.to_datetime(f['end_time'], utc=True),
+                    f.get('data_format_version', 'unknown')
+                )
                 for f in files
             ]
+        file_ranges = self._file_ts_cache[cache_key]
 
-        # Only include files that overlap with the loaded tick range
+        # File overlaps if it starts before range ends AND ends after range starts
         range_start, range_end = tick_range
-        versions = []
-        for f in files:
-            file_start = pd.to_datetime(f['start_time'], utc=True)
-            file_end = pd.to_datetime(f['end_time'], utc=True)
-            # File overlaps if it starts before range ends AND ends after range starts
-            if file_start <= range_end and file_end >= range_start:
-                versions.append(f.get('data_format_version', 'unknown'))
-        return versions
+        return [
+            version
+            for file_start, file_end, version in file_ranges
+            if file_start <= range_end and file_end >= range_start
+        ]
 
     def _filter_ticks_for_scenario(
         self,
@@ -260,19 +274,10 @@ class SharedDataPreparator:
 
         ticks_tuple = all_ticks_dict[scenario_name]
 
-        # === STRING INTERNING OPTIMIZATION ===
-        # All ticks share same symbol reference → reduces pickle size
-        symbol_intern = scenario.symbol
-
-        ticks_list = list(ticks_tuple)
-        for tick in ticks_list:
-            tick['symbol'] = symbol_intern  # Replace with interned string
-
-        # Repackage as tuple (immutable, CoW-friendly)
-        ticks_tuple = tuple(ticks_list)
-
         # Return as dict with single key (scenario symbol)
         # Structure: Dict[str, Tuple] matches ProcessDataPackage.ticks
+        # NOTE: symbol is NOT included in TickTransportColumn — deserialization
+        # takes symbol from scenario_symbol (scenario config), not from dicts.
         return {
             'ticks': {scenario.symbol: ticks_tuple},
             'counts': {scenario.symbol: all_tick_counts[scenario_name]},
@@ -507,20 +512,22 @@ class SharedDataPreparator:
                 f"({union_start} → {union_end})"
             )
 
-            # === STEP 4: Filter per requirement from in-memory DataFrame ===
+            # === STEP 4: Filter per requirement using searchsorted (O(log n)) ===
+            # Pre-extract timestamp Series once — searchsorted avoids O(n) boolean scan
+            timestamps = full_df['timestamp']
+
             for req in reqs:
                 req_start = ensure_utc_aware(req.start_time)
+                start_idx = timestamps.searchsorted(req_start, side='left')
 
                 if req.max_ticks is not None:
-                    # Tick-limited mode: start at req_start, take first max_ticks
-                    filtered_df = full_df[full_df['timestamp'] >= req_start].iloc[:req.max_ticks]
+                    # Tick-limited mode: direct iloc slice — no boolean scan
+                    filtered_df = full_df.iloc[start_idx:start_idx + req.max_ticks]
                 else:
-                    # Timespan mode: filter by start + end window
+                    # Timespan mode: binary search for end boundary too
                     req_end = ensure_utc_aware(req.end_time)
-                    filtered_df = full_df[
-                        (full_df['timestamp'] >= req_start) &
-                        (full_df['timestamp'] <= req_end)
-                    ]
+                    end_idx = timestamps.searchsorted(req_end, side='right')
+                    filtered_df = full_df.iloc[start_idx:end_idx]
 
                 ticks = serialize_ticks_for_transport(filtered_df)
 
