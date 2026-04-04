@@ -5,7 +5,7 @@
     "timestamp": "2026-01-25T12:38:57.351384+00:00",
     "source": "Kraken Public API",
     "exporter_version": "1.01",
-    "symbols_total": 8
+    "symbols_total": 9
   },
   "broker_info": {
     "company": "Kraken",
@@ -127,6 +127,20 @@
       "contract_size": 1,
       "tick_size": 0.01,
       "digits": 2,
+      "stops_level": 0,
+      "freeze_level": 0
+    },
+    "DOTUSD": {
+      "description": "DOT vs USD",
+      "base_currency": "DOT",
+      "quote_currency": "USD",
+      "trade_allowed": true,
+      "volume_min": 3.9,
+      "volume_max": 10000,
+      "volume_step": 1e-8,
+      "contract_size": 1,
+      "tick_size": 0.0001,
+      "digits": 4,
       "stops_level": 0,
       "freeze_level": 0
     },

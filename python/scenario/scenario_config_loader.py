@@ -34,6 +34,23 @@ class ScenarioConfigLoader:
         app_config = AppConfigManager()
         self.config_path = Path(app_config.get_scenario_sets_path())
         self.config_path.mkdir(parents=True, exist_ok=True)
+        self._user_config_path = Path(app_config.get_user_scenario_sets_path())
+        self._user_config_path.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_path(self, filename: str) -> Path:
+        """
+        Resolve scenario set file path — user override takes precedence.
+
+        Args:
+            filename: Config filename (e.g., "eurusd_3_windows.json")
+
+        Returns:
+            Resolved Path (user_configs first, then configs)
+        """
+        user_path = self._user_config_path / filename
+        if user_path.exists():
+            return user_path
+        return self.config_path / filename
 
     def load_config(self, config_file: str) -> LoadedScenarioConfig:
         """
@@ -45,7 +62,7 @@ class ScenarioConfigLoader:
         Returns:
             List of SingleScenario objects
         """
-        config_path = self.config_path / config_file
+        config_path = self._resolve_path(config_file)
 
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -210,7 +227,7 @@ class ScenarioConfigLoader:
         Returns:
             LoadedScenarioConfig with merged profile-based scenarios
         """
-        config_path = self.config_path / scenario_set_json
+        config_path = self._resolve_path(scenario_set_json)
 
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")

@@ -8,22 +8,20 @@ FiniexAutoTrader is the live trading runner — the live equivalent of the backt
 
 ## Threading Model (8.a)
 
-Synchronous algo processing in the main thread. Tick source in a separate thread. Communication via `queue.Queue` (stdlib, thread-safe).
+Synchronous algo processing in the main thread. Tick source in a separate thread. Display in a third thread. Communication via `queue.Queue` (stdlib, thread-safe).
 
 ```
-Thread 1 (Tick Source):            Thread 2 (Main — Algo):
-──────────────────────            ────────────────────────
-while running:                    while running:
-  tick = source.next_tick()         tick = queue.get(timeout=1)
-  queue.put(tick)  ──────────→
-                                    timing_start = perf_counter_ns()
-                                    executor.on_tick(tick)
-                                    bars = bar_controller.process_tick(tick)
-                                    bar_history = get_all_bar_history()
-                                    decision = orchestrator.process_tick(...)
-                                    decision_logic.execute_decision(...)
-                                    elapsed = perf_counter_ns() - timing_start
-                                    clipping_monitor.record(elapsed, tick_delta)
+Thread 1 (Tick Source):       Thread 2 (Main — Algo):          Thread 3 (Display):
+──────────────────────       ────────────────────────          ──────────────────────
+while running:               while running:                    while running:
+  tick = source.next_tick()    tick = queue.get(timeout=1)       stats = display_q.drain()
+  tick_q.put(tick) ────────→                                     layout = render(stats)
+                               executor.on_tick(tick)             live.update(layout)
+                               bars = process_tick(tick)          sleep(0.3s)
+                               decision = orchestrate(...)
+                               execute_decision(...)           Connection stats polled
+                               clipping_monitor.record(...)    directly from tick_source
+                               display_q.put(stats) ──────→   (GIL-safe primitive reads)
 ```
 
 **Why sync in main thread?** Workers and DecisionLogic are not async-safe. The queue pattern avoids "async infection" — the tick source handles I/O, the algo loop stays synchronous.
@@ -206,6 +204,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
 | `execution` | Runtime parameters | Standalone — no cascade from app_config |
 | `clipping_monitor` | Timing config | Strategy: `queue_all` or `drop_stale` |
+| `display` | Dashboard config | `enabled`, `update_interval_ms` (default 300ms) |
 
 **No config cascade.** Unlike backtesting (app_config → scenario_set → scenario), AutoTrader uses a flat, standalone config. One session, one config.
 
@@ -264,6 +263,71 @@ JSON → Parquet           Queue → Algo
 ```
 
 Minimal config (all defaults): `{"tick_source": {"type": "kraken"}}`.
+
+## Live Console UI (#228)
+
+Real-time dashboard rendered via `rich.live` in a dedicated display thread. Receives `AutoTraderDisplayStats` snapshots from the tick loop via `queue.Queue`, drains and renders every `update_interval_ms` (default 300ms).
+
+### Layout — Responsive
+
+Three layouts based on terminal width:
+
+| Width | Layout | Panels shown |
+|-------|--------|-------------|
+| ≥ 160 cols | 3-column | All panels |
+| ≥ 120 cols | 2-column | Session, Portfolio, Algo State, Connection, Positions, Orders, Trade History |
+| < 120 cols | Single-column | Session, Portfolio, Positions, Orders only |
+
+### Panels
+
+| Panel | Section | Content |
+|-------|---------|---------|
+| SESSION | Left | Uptime, status, tick rate (`X.X/min (N total)`), trade count + win rate, mode |
+| CONNECTION | Left | Stream health (WS message age), Last Tick (actual trade tick age), reconnect count, emitted tick rate |
+| WORKER PERFORMANCE | Left | Per-worker avg processing time with bar chart (scale: 50ms = full bar) |
+| PORTFOLIO | Center | Balance with quote equivalent (`≈ X.XX USD`), net P&L, W/L count |
+| TICK PROCESSING | Center | Avg/max processing ms, p50/p95/p99 percentiles, clipping bar + ratio, queue depth |
+| OPEN POSITIONS | Right | Live positions: ID, direction, lots, entry price, unrealized P&L |
+| ORDERS | Right | Active limit/stop orders + pipeline (in-transit) count |
+| TRADE HISTORY | Right | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason |
+| ALGO STATE | Right | Worker `display=True` outputs (e.g., `rsi_value`, `upper`/`lower`), last decision + confidence |
+
+### Connection Panel — Two Distinct Clocks
+
+`Stream` and `Last Tick` measure different things intentionally:
+
+- **Stream** (`● connected / stale / dead`): based on `_last_message_time` — any WS message including Kraken heartbeats. Reflects connection health. Goes stale after 30s silence, dead after 90s.
+- **Last Tick**: based on `_last_tick_time` — only actual trade messages that produced `TickData`. Can be minutes old in quiet markets while `Stream` stays green.
+
+Both are polled directly from `AbstractTickSource` (GIL-safe primitive reads) — no queue transport needed.
+
+### Display Stats Transport
+
+After each tick, `autotrader_tick_loop._build_display_stats()` builds an `AutoTraderDisplayStats` snapshot and pushes it to the display queue (`put_nowait` — dropped if full, display uses last known state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and future JSON serialization.
+
+```
+Tick Loop (Thread 2)                Display Thread (Thread 3)
+────────────────────                ──────────────────────────
+_build_display_stats()              while running:
+  → AutoTraderDisplayStats            drain queue (up to 100)
+  → display_q.put_nowait() ──────→    render(latest_stats)
+                                      live.update(panel)
+                                      sleep(update_interval_ms / 1000)
+```
+
+### Config
+
+```json
+"display": {
+  "enabled": true,
+  "update_interval_ms": 300
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable/disable the dashboard |
+| `update_interval_ms` | `300` | Display refresh interval in milliseconds |
 
 ## Clipping Monitor (#197)
 
@@ -329,15 +393,21 @@ python/configuration/autotrader/
   kraken_config_fetcher.py             Kraken REST API fetch (symbol specs + balance)
 
 python/framework/types/autotrader_types/
-  autotrader_config_types.py     AutoTraderConfig, sub-configs
+  autotrader_config_types.py     AutoTraderConfig, DisplayConfig, sub-configs
   autotrader_result_types.py     AutoTraderResult
+  autotrader_display_types.py    AutoTraderDisplayStats, PositionSnapshot, TradeHistoryEntry (#228)
   clipping_monitor_types.py      ClippingReport, ClippingSessionSummary
+
+python/system/ui/
+  autotrader_live_display.py     Live console dashboard (#228, rich.live, responsive layout)
 
 python/cli/
   autotrader_cli.py              CLI: run --config
 
 configs/autotrader_profiles/
   ethusd_live.json               Live trading config (ETHUSD, Kraken API)
+  solusd_live.json               Live trading config (SOLUSD, Kraken API)
+  dotusd_live.json               Live trading config (DOTUSD — no index data, data-independence proof)
   backtesting/
     btcusd_mock.json             Default mock config (BTCUSD parquet replay)
 
@@ -535,6 +605,16 @@ GET /0/public/OHLC?pair=XBTUSD&interval=5&since=<unix_ts>
 
 Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1), 240 (H4), 1440 (D1). Returns up to 720 bars. Last bar is in-progress (dropped).
 
+### Data Independence
+
+AutoTrader live sessions are **fully decoupled from backtesting data**. The tick/bar index (`BarsIndexManager`, `TickIndexManager`) is never accessed during live operation:
+
+- **Tick data:** Comes from WebSocket (live) or parquet replay (mock) — not from the tick index
+- **Warmup bars:** Fetched from broker REST API (live) or pre-rendered parquet (mock)
+- **Symbol specs:** Loaded from broker config (`configs/brokers/`), not from imported data
+
+This means a broker/symbol can run live **without any backtesting data in the index**. The only requirement is a broker entry in `market_config.json` (for `broker_config_path` resolution) and a matching OHLC bar fetcher for warmup.
+
 ## Roadmap
 
 | Step | Issue | Description | Status |
@@ -545,4 +625,4 @@ Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1)
 | 3 | #133 | KrakenAdapter Tier 3 (execution, dry-run, broker settings) | ✅ |
 | 4 | #133 | Active Order Lifecycle Lifting | ✅ |
 | 2 | #232 | Kraken Tick Source (WebSocket v2) | ✅ |
-| — | #228 | Live Console UI (rich.live) | Planned |
+| — | #228 | Live Console UI (rich.live, responsive layout) | ✅ |

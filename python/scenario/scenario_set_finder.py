@@ -32,20 +32,46 @@ class ScenarioSetFinder:
         """
         app_config = AppConfigManager()
         self._config_path = Path(app_config.get_scenario_sets_path())
+        self._user_config_path = Path(app_config.get_user_scenario_sets_path())
         self._config_loader = ScenarioConfigLoader()
+
+    def _resolve_path(self, filename: str) -> Path:
+        """
+        Resolve scenario set file path — user override takes precedence.
+
+        Args:
+            filename: Config filename (e.g., "eurusd_3_windows.json")
+
+        Returns:
+            Resolved Path (user_configs first, then configs)
+        """
+        user_path = self._user_config_path / filename
+        if user_path.exists():
+            return user_path
+        return self._config_path / filename
 
     def list_available_files(self) -> List[Path]:
         """
-        Fast: List all .json files in config directory
+        Fast: List all .json files from both config directories.
+
+        User configs take precedence — if the same filename exists in both,
+        only the user version is returned.
 
         Returns:
             Sorted list of .json file paths
         """
-        if not self._config_path.exists():
-            vLog.warning(f"Config path does not exist: {self._config_path}")
-            return []
+        files: dict[str, Path] = {}
 
-        return sorted(self._config_path.glob("*.json"))
+        if self._config_path.exists():
+            for p in self._config_path.glob('*.json'):
+                files[p.name] = p
+
+        # User configs override same-named files from shared configs
+        if self._user_config_path.exists():
+            for p in self._user_config_path.glob('*.json'):
+                files[p.name] = p
+
+        return sorted(files.values(), key=lambda p: p.name)
 
     def get_scenario_set_details(self, filename: str) -> ScenarioSetMetadata:
         """
@@ -63,7 +89,7 @@ class ScenarioSetFinder:
             FileNotFoundError: If config file doesn't exist
             Exception: If config is invalid or can't be loaded
         """
-        config_path = self._config_path / filename
+        config_path = self._resolve_path(filename)
 
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")

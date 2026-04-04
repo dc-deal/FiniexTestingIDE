@@ -13,7 +13,8 @@
     "ADAUSD": "ADAUSD",
     "XRPUSD": "XRPUSD",
     "LTCUSD": "LTCUSD",
-    "DASHUSD": "DASHUSD"
+    "DASHUSD": "DASHUSD",
+    "DOTUSD": "DOTUSD"
   },
   "symbol_to_ws_pair": {
     "BTCUSD": "BTC/USD",
@@ -24,6 +25,7 @@
     "ADAUSD": "ADA/USD",
     "XRPUSD": "XRP/USD",
     "LTCUSD": "LTC/USD",
-    "DASHUSD": "DASH/USD"
+    "DASHUSD": "DASH/USD",
+    "DOTUSD": "DOT/USD"
   }
 }

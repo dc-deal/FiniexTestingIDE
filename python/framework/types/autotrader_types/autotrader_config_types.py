@@ -61,6 +61,19 @@ class AccountConfig:
 
 
 @dataclass
+class DisplayConfig:
+    """
+    AutoTrader live console display configuration (#228).
+
+    Args:
+        enabled: Enable live console dashboard
+        update_interval_ms: Display refresh interval in milliseconds
+    """
+    enabled: bool = True
+    update_interval_ms: int = 300
+
+
+@dataclass
 class ExecutionConfig:
     """
     Execution configuration for AutoTrader session.
@@ -105,4 +118,5 @@ class AutoTraderConfig:
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     clipping_monitor: ClippingMonitorConfig = field(default_factory=ClippingMonitorConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     config_path: Optional[Path] = None
