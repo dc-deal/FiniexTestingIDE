@@ -86,6 +86,9 @@ class LiveProgressDisplay:
         self.console = Console()
         self._live: Optional[Live] = None
 
+        # Runtime tracking
+        self._start_time: Optional[float] = None
+
     def _init_stats_cache(self) -> None:
         """Initialize stats cache with INITIALIZED status."""
         for idx, scenario in enumerate(self.scenarios):
@@ -102,6 +105,7 @@ class LiveProgressDisplay:
             if self._running:
                 return
 
+            self._start_time = time.perf_counter()
             self._running = True
             self._thread = threading.Thread(
                 target=self._update_loop,
@@ -266,21 +270,33 @@ class LiveProgressDisplay:
 
     def _build_overhead(self, all_stats: List[LiveScenarioStats]) -> str:
         """
-        Build overhead resource line.
+        Build overhead resource lines (2 lines).
+
+        Line 1: System resources + total runtime
+        Line 2: Scenario status breakdown (warmup / waiting / running / completed)
 
         Args:
             all_stats: List of LiveScenarioStats objects
 
         Returns:
-            Formatted string with system resources
+            Formatted 2-line string
         """
-        # Count scenarios by status
-        running_count = sum(
-            1 for s in all_stats if s.status == ScenarioStatus.RUNNING
+        # Count scenarios by status group
+        warmup_statuses = (
+            ScenarioStatus.WARMUP_COVERAGE,
+            ScenarioStatus.WARMUP_DATA_TICKS,
+            ScenarioStatus.WARMUP_DATA_BARS,
+            ScenarioStatus.WARMUP_TRADER,
         )
-        completed_count = sum(
-            1 for s in all_stats if s.status == ScenarioStatus.COMPLETED
+        waiting_statuses = (
+            ScenarioStatus.INITIALIZED,
+            ScenarioStatus.BARRIER,
+            ScenarioStatus.INIT_PROCESS,
         )
+        warmup_count = sum(1 for s in all_stats if s.status in warmup_statuses)
+        waiting_count = sum(1 for s in all_stats if s.status in waiting_statuses)
+        running_count = sum(1 for s in all_stats if s.status == ScenarioStatus.RUNNING)
+        completed_count = sum(1 for s in all_stats if s.status == ScenarioStatus.COMPLETED)
         total_count = len(self.scenarios)
 
         # System resources
@@ -294,16 +310,28 @@ class LiveProgressDisplay:
             ram_used_gb = 0.0
             ram_total_gb = 0.0
 
-        # Format
-        overhead = (
+        # Total runtime
+        runtime_str = '—'
+        if self._start_time is not None:
+            elapsed = int(time.perf_counter() - self._start_time)
+            h, rem = divmod(elapsed, 3600)
+            m, s = divmod(rem, 60)
+            runtime_str = f"{h:02d}:{m:02d}:{s:02d}"
+
+        line1 = (
             f"[bold yellow]⚡ System Resources[/bold yellow] │ "
             f"[cyan]CPU:[/cyan] {cpu_percent:>5.1f}% │ "
             f"[cyan]RAM:[/cyan] {ram_used_gb:>5.1f}/{ram_total_gb:.1f} GB │ "
-            f"[green]Running:[/green] {running_count}/{total_count} │ "
-            f"[blue]Completed:[/blue] {completed_count}/{total_count}"
+            f"[dim]Runtime:[/dim] {runtime_str}"
+        )
+        line2 = (
+            f"[yellow]⏳ Warmup:[/yellow] {warmup_count:<4} │ "
+            f"[cyan]🚦 Waiting:[/cyan] {waiting_count:<4} │ "
+            f"[green]🔬 Running:[/green] {running_count}/{total_count} │ "
+            f"[blue]✅ Completed:[/blue] {completed_count}/{total_count}"
         )
 
-        return overhead
+        return f"{line1}\n{line2}"
 
     def _get_status_sort_priority(self, status: ScenarioStatus) -> int:
         """
@@ -371,9 +399,10 @@ class LiveProgressDisplay:
 
         # Sort + truncate when more scenarios than console can display.
         # Each row occupies 2 terminal lines (stats_text contains \n).
-        # Panel border (2) + overhead section (3) + divider (1) + buffer (1) = 7.
+        # Panel border (2) + overhead section (3) + divider (1) + buffer (2) = 8.
+        # Overhead is now 2 lines, so buffer accounts for the extra line.
         console_height = self.console.size.height
-        max_rows = max(1, (console_height - 7) // 2)
+        max_rows = max(1, (console_height - 8) // 2)
 
         hidden_count = 0
         display_stats = all_stats
