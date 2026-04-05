@@ -28,7 +28,7 @@
       "rsi_buy_threshold": 35,
       "rsi_sell_threshold": 65,
       "envelope_extremes": 0.25,
-      "min_confidence": 0.6,
+      "min_confidence": 0.4,
       "lot_size": 3.9,
       "min_free_margin": 0.01
     }

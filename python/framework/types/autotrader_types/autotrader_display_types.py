@@ -142,6 +142,9 @@ class AutoTraderDisplayStats:
     # Last market price (mid = (bid+ask)/2 of last tick)
     last_price: float = 0.0
 
+    # Account currency (which side of the pair the account holds)
+    account_currency: str = 'USD'
+
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
 

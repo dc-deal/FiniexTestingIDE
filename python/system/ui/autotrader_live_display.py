@@ -289,21 +289,44 @@ class AutoTraderLiveDisplay:
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Portfolio state: balance, P&L."""
+        """Portfolio state: balance (both currencies), P&L."""
         net_pnl = stats.balance - stats.initial_balance
         pnl_pct = (net_pnl / stats.initial_balance * 100) if stats.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
-        # Quote equivalent (base balance × last mid price)
-        if stats.last_price > 0:
-            quote_val = stats.balance * stats.last_price
-            quote_suffix = f'  [dim]≈ {quote_val:,.2f} {stats.symbol[-3:]}[/dim]'
+        # Derive base/quote from symbol (e.g. SOLUSD → base=SOL, quote=USD)
+        # Convention: last 3 chars = quote, remainder = base
+        quote_currency = stats.symbol[-3:]
+        base_currency = stats.symbol[:-3]
+
+        # Dual-currency balance display
+        # account_currency tells us which side we hold — the other is estimated from price
+        if stats.account_currency == quote_currency:
+            # e.g. USD account trading SOLUSD: show USD, estimate SOL equivalent
+            primary_label = f'[bold]{quote_currency}[/bold] [dim](quote)[/dim]'
+            primary_val = f'{stats.balance:,.6f} {quote_currency}'
+            if stats.last_price > 0:
+                other_val = stats.balance / stats.last_price
+                secondary_line = f'          [dim]≈ {other_val:,.6f} {base_currency} (est.)[/dim]'
+            else:
+                secondary_line = ''
         else:
-            quote_suffix = ''
+            # e.g. SOL account trading SOLUSD: show SOL, estimate USD equivalent
+            primary_label = f'[bold]{base_currency}[/bold] [dim](base)[/dim]'
+            primary_val = f'{stats.balance:,.6f} {base_currency}'
+            if stats.last_price > 0:
+                other_val = stats.balance * stats.last_price
+                secondary_line = f'          [dim]≈ {other_val:,.6f} {quote_currency} (est.)[/dim]'
+            else:
+                secondary_line = ''
 
         lines = [
-            f'Balance:  {stats.balance:,.6f}{quote_suffix}',
+            f'Balance:  {primary_val}  {primary_label}',
+        ]
+        if secondary_line:
+            lines.append(secondary_line)
+        lines += [
             f'Net P&L:  [{pnl_color}]{pnl_sign}{net_pnl:,.6f} ({pnl_sign}{pnl_pct:.2f}%)[/{pnl_color}]',
             f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
         ]

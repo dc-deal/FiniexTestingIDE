@@ -479,6 +479,28 @@ _create_broker_config(config, logger)
 
 **Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
 
+### Account Currency & Balance Semantics
+
+The `account.currency` field in the AutoTrader profile determines which balance is fetched from Kraken and how P&L is denominated internally.
+
+**Rules:**
+- `account.currency` must match either the **base** or **quote** currency of the traded symbol.
+- The AutoTrader fetches only the configured currency — other balances on the account are ignored.
+- `initial_balance` in the profile is a placeholder; it is always overridden by the live API fetch.
+- Cross-currency accounts (e.g., `account.currency: "EUR"` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
+
+**Supported configurations for Spot trading:**
+
+| `account.currency` | Symbol | Meaning |
+|---|---|---|
+| `"USD"` | `SOLUSD` | Buying/selling SOL, P&L in USD — recommended for multi-pair setups |
+| `"SOL"` | `SOLUSD` | Holding SOL as base, P&L in SOL |
+| `"ETH"` | `ETHUSD` | Holding ETH as base, P&L in ETH |
+
+**Recommendation:** Use `"USD"` as account currency for all spot pairs. USD is the quote currency across all Kraken USD pairs — one balance covers all symbols, P&L is always in USD (consistent with backtesting), and no per-symbol currency management is needed.
+
+**What happens after trades:** If a BUY fills, the base asset increases and quote decreases (and vice versa for SELL). The AutoTrader only tracks the configured currency — the other side accumulates silently on the Kraken account. This is expected Spot behavior. The Reconciliation Layer (#151) will address cross-session position awareness.
+
 ### Broker Settings Layer
 
 Broker-specific live settings are separated from algorithm config (AutoTrader profile) and credentials:

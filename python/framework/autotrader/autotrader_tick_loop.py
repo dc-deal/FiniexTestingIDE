@@ -300,6 +300,7 @@ class AutotraderTickLoop:
             ticks_processed=ticks_processed,
             balance=portfolio.balance,
             initial_balance=portfolio.initial_balance,
+            account_currency=self._executor.account_currency,
             total_trades=len(portfolio._trade_history),
             winning_trades=portfolio._winning_trades,
             losing_trades=portfolio._losing_trades,
