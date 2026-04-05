@@ -180,8 +180,8 @@ user_configs/*
 !user_configs/.gitkeep
 
 # User algo workspace — workers, decision logic, scenario configs
-user_algos/*
-!user_algos/.gitkeep
+# Directory is created automatically on first use (no .gitkeep needed)
+user_algos/
 
 # Large model files
 *.model

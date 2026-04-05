@@ -34,6 +34,8 @@ class ScenarioSetFinder:
         self._config_path = Path(app_config.get_scenario_sets_path())
         self._user_config_path = Path(app_config.get_user_scenario_sets_path())
         self._user_algo_dirs = [Path(d) for d in app_config.get_user_algo_dirs()]
+        for algo_dir in self._user_algo_dirs:
+            algo_dir.mkdir(parents=True, exist_ok=True)
         self._config_loader = ScenarioConfigLoader()
 
     def _resolve_path(self, filename: str) -> Path:
