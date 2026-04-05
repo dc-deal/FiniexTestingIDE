@@ -61,6 +61,24 @@ class AccountConfig:
 
 
 @dataclass
+class SafetyConfig:
+    """
+    Circuit breaker configuration for live trading.
+
+    Soft stop: blocks new positions when triggered, existing positions run out normally.
+    Both conditions are OR-combined — either alone triggers the block.
+
+    Args:
+        enabled: Master switch for safety checks
+        min_balance: Block new positions if balance drops below this value (account currency)
+        max_drawdown_pct: Block new positions if session loss exceeds this % of initial balance
+    """
+    enabled: bool = False
+    min_balance: float = 0.0
+    max_drawdown_pct: float = 0.0
+
+
+@dataclass
 class DisplayConfig:
     """
     AutoTrader live console display configuration (#228).
@@ -119,4 +137,5 @@ class AutoTraderConfig:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     clipping_monitor: ClippingMonitorConfig = field(default_factory=ClippingMonitorConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    safety: SafetyConfig = field(default_factory=SafetyConfig)
     config_path: Optional[Path] = None

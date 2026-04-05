@@ -205,6 +205,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 | `execution` | Runtime parameters | Standalone — no cascade from app_config |
 | `clipping_monitor` | Timing config | Strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | `enabled`, `update_interval_ms` (default 300ms) |
+| `safety` | Circuit breaker | Optional. Omit or set `enabled: false` to disable |
 
 **No config cascade.** Unlike backtesting (app_config → scenario_set → scenario), AutoTrader uses a flat, standalone config. One session, one config.
 
@@ -367,6 +368,57 @@ All metrics are tracked in two scopes: **session totals** (end-of-session summar
 | 4 | Periodic reports (configurable interval) | ✅ |
 | 5 | Queue depth monitoring (`queue.qsize()`) | ✅ |
 | 6 | Strategy selection (queue_all / drop_stale) | ✅ Config, drop_stale execution in #232 |
+
+## Safety Circuit Breaker
+
+A soft-stop mechanism that blocks new position entries when configurable risk thresholds are exceeded. Existing open positions continue to run — SL, TP, and signal-based closes are not affected.
+
+### Behavior
+
+```
+Tick rein
+  → executor.on_tick()    ← SL/TP checks run (always, unaffected)
+  → Workers → Decision    ← produces BUY / SELL / FLAT
+  → [SAFETY CHECK]        ← evaluates thresholds against current balance
+  → if blocked: decision.action = FLAT  ← override, no trade opened
+  → execute_decision()
+```
+
+The check runs after every tick. If conditions clear (e.g. balance recovers above `min_balance`), the block is automatically lifted and trading resumes.
+
+### Configuration
+
+```json
+"safety": {
+  "enabled": true,
+  "min_balance": 9.0,
+  "max_drawdown_pct": 20.0
+}
+```
+
+| Field | Description |
+|---|---|
+| `enabled` | Master switch — omit or set `false` to disable entirely |
+| `min_balance` | Block if `current_balance < min_balance` (account currency) |
+| `max_drawdown_pct` | Block if session loss > X% of `initial_balance` |
+
+Both conditions are OR-combined — either alone triggers the block. Set to `0.0` to disable a specific condition while keeping the other active.
+
+### Display
+
+SESSION panel shows safety state:
+
+| Display | Meaning |
+|---|---|
+| `Safety: off` | Not configured (`enabled: false` or block omitted) |
+| `Safety: ● ACTIVE` | Configured and conditions not triggered |
+| `Safety: ⛔ BLOCKED  min_balance (12.29 < 15.00)` | Triggered — reason shown inline |
+
+Trigger and clear events are logged:
+```
+WARNING | ⛔ Safety circuit breaker triggered: min_balance (12.2930 < 15.0000)
+INFO    | ✅ Safety circuit breaker cleared
+```
 
 ## File Structure
 

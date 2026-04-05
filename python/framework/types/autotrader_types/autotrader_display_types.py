@@ -145,6 +145,10 @@ class AutoTraderDisplayStats:
     # Account currency (which side of the pair the account holds)
     account_currency: str = 'USD'
 
+    # Safety / circuit breaker state
+    safety_blocked: bool = False
+    safety_reason: str = ''
+
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
 

@@ -25,7 +25,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
-from python.framework.types.decision_logic_types import Decision
+from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 
 
 class AutotraderTickLoop:
@@ -82,6 +82,10 @@ class AutotraderTickLoop:
         self._session_start = session_start or datetime.now(timezone.utc)
         self._dry_run = dry_run
         self._running = False
+
+        # Safety / circuit breaker state
+        self._safety_blocked = False
+        self._safety_reason = ''
 
         # Daily rotation state
         self._current_log_date: Optional[str] = None
@@ -169,13 +173,18 @@ class AutotraderTickLoop:
                 bar_history=bar_history
             )
 
-            # === 5. Order Execution ===
+            # === 5. Safety Check (circuit breaker) ===
+            self._check_safety(self._executor.get_balance(), self._executor.portfolio.initial_balance)
+
+            # === 6. Order Execution ===
+            if self._safety_blocked:
+                decision.action = DecisionLogicAction.FLAT
             self._decision_logic.execute_decision(decision, tick)
 
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
 
-            # === 6. Clipping Monitor ===
+            # === 7. Clipping Monitor ===
             self._clipping_monitor.record_tick(elapsed_ns, tick_delta_ms)
             self._clipping_monitor.record_queue_depth(self._tick_queue.qsize())
 
@@ -191,7 +200,7 @@ class AutotraderTickLoop:
                 )
                 ticks_clipped += report.interval_clipped
 
-            # === 7. Display Stats ===
+            # === 8. Display Stats ===
             if self._display_queue is not None:
                 display_stats = self._build_display_stats(decision, ticks_processed, tick)
                 try:
@@ -300,7 +309,6 @@ class AutotraderTickLoop:
             ticks_processed=ticks_processed,
             balance=portfolio.balance,
             initial_balance=portfolio.initial_balance,
-            account_currency=self._executor.account_currency,
             total_trades=len(portfolio._trade_history),
             winning_trades=portfolio._winning_trades,
             losing_trades=portfolio._losing_trades,
@@ -321,7 +329,48 @@ class AutotraderTickLoop:
             last_decision_action=decision.action.value,
             decision_outputs=decision_outputs,
             decision_time_ms=0.0,  # TODO: capture from orchestrator when available
+            account_currency=self._executor.account_currency,
+            safety_blocked=self._safety_blocked,
+            safety_reason=self._safety_reason,
         )
+
+    def _check_safety(self, balance: float, initial_balance: float) -> None:
+        """
+        Evaluate circuit breaker conditions and update safety state.
+
+        Soft stop: sets _safety_blocked flag. Existing positions continue,
+        new entries are blocked by overriding decision to FLAT.
+
+        Args:
+            balance: Current account balance
+            initial_balance: Session start balance
+        """
+        safety = self._config.safety
+        if not safety.enabled:
+            return
+
+        # Already blocked — check if conditions cleared (balance recovered)
+        was_blocked = self._safety_blocked
+        self._safety_blocked = False
+        self._safety_reason = ''
+
+        if safety.min_balance > 0 and balance < safety.min_balance:
+            self._safety_blocked = True
+            self._safety_reason = f'min_balance ({balance:.4f} < {safety.min_balance:.4f})'
+
+        if safety.max_drawdown_pct > 0 and initial_balance > 0:
+            drawdown_pct = (initial_balance - balance) / initial_balance * 100.0
+            if drawdown_pct > safety.max_drawdown_pct:
+                self._safety_blocked = True
+                reason = f'max_drawdown ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)'
+                self._safety_reason = (
+                    f'{self._safety_reason} + {reason}' if self._safety_reason else reason
+                )
+
+        if self._safety_blocked and not was_blocked:
+            self._logger.warning(f'⛔ Safety circuit breaker triggered: {self._safety_reason}')
+        elif was_blocked and not self._safety_blocked:
+            self._logger.info('✅ Safety circuit breaker cleared')
 
     def _check_daily_rotation(self, tick) -> None:
         """

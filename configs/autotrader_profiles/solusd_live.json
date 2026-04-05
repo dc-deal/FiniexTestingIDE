@@ -51,5 +51,10 @@
   "display": {
     "enabled": true,
     "update_interval_ms": 300
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 9.0,
+    "max_drawdown_pct": 20.0
   }
 }

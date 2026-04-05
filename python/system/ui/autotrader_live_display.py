@@ -279,12 +279,20 @@ class AutoTraderLiveDisplay:
         mode = '[yellow]DRY RUN[/yellow]' if stats.dry_run else '[green]LIVE[/green]'
         win_rate = (stats.winning_trades / stats.total_trades * 100) if stats.total_trades > 0 else 0.0
 
+        if stats.safety_blocked:
+            safety_str = f'[red bold]⛔ BLOCKED[/red bold]  [dim]{stats.safety_reason}[/dim]'
+        elif self._config.safety.enabled:
+            safety_str = '[green]● ACTIVE[/green]'
+        else:
+            safety_str = '[dim]off[/dim]'
+
         lines = [
             f'Uptime:  {uptime_str}',
             f'Status:  [green]● RUNNING[/green]',
             f'Rate:    {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
             f'Trades:  {stats.total_trades}  (Win: {win_rate:.1f}%)',
             f'Mode:    {mode}',
+            f'Safety:  {safety_str}',
         ]
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
