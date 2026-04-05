@@ -288,6 +288,7 @@ def setup_tick_source(
             symbol=config.symbol,
             tick_queue=tick_queue,
             mode=config.tick_source.mode,
+            max_ticks=config.tick_source.max_ticks,
         )
     elif config.tick_source.type == 'kraken':
         ws_pair = _resolve_ws_pair(config.symbol, config.broker_settings, logger)

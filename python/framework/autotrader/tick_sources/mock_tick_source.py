@@ -38,12 +38,14 @@ class MockTickSource(AbstractTickSource):
         parquet_path: str,
         symbol: str,
         tick_queue: queue.Queue,
-        mode: str = 'replay'
+        mode: str = 'replay',
+        max_ticks: int = 0,
     ):
         self._parquet_path = parquet_path
         self._symbol = symbol
         self._tick_queue = tick_queue
         self._mode = mode
+        self._max_ticks = max_ticks  # 0 = no limit
         self._running = False
         self._exhausted = False
         self._ticks: List[TickData] = []
@@ -63,6 +65,8 @@ class MockTickSource(AbstractTickSource):
 
         for tick in self._ticks:
             if not self._running:
+                break
+            if self._max_ticks > 0 and self._ticks_emitted >= self._max_ticks:
                 break
 
             # Realtime mode: sleep based on inter-tick interval

@@ -58,6 +58,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             type=tick_source_raw.get('type', 'mock'),
             parquet_path=tick_source_raw.get('parquet_path', ''),
             mode=tick_source_raw.get('mode', 'replay'),
+            max_ticks=tick_source_raw.get('max_ticks', 0),
         ),
         execution=ExecutionConfig(
             parallel_workers=execution_raw.get('parallel_workers', False),

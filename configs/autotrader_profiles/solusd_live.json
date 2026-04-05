@@ -54,7 +54,7 @@
   },
   "safety": {
     "enabled": true,
-    "min_balance": 9.0,
+    "min_balance": 8.0,
     "max_drawdown_pct": 20.0
   }
 }
