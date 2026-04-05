@@ -62,10 +62,12 @@ class AutoTraderLiveDisplay:
         display_queue: queue.Queue,
         tick_source: AbstractTickSource,
         config: AutoTraderConfig,
+        dry_run: bool = True,
     ):
         self._display_queue = display_queue
         self._tick_source = tick_source
         self._config = config
+        self._dry_run = dry_run
         self._update_interval = config.display.update_interval_ms / 1000.0
 
         # Stats cache (latest snapshot from queue)
@@ -182,7 +184,7 @@ class AutoTraderLiveDisplay:
         """Build the header title with symbol and mode."""
         symbol = stats.symbol if stats else self._config.symbol
         broker = stats.broker_type if stats else self._config.broker_type
-        dry_run = stats.dry_run if stats else (self._config.adapter_type == 'mock')
+        dry_run = stats.dry_run if stats else self._dry_run
         mode_label = '[yellow]DRY RUN[/yellow]' if dry_run else '[green bold]LIVE TRADING[/green bold]'
         return f'[bold cyan]FiniexAutoTrader[/bold cyan] — {symbol} ({broker}) — {mode_label}'
 
