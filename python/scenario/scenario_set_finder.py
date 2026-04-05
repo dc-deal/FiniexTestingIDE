@@ -33,29 +33,46 @@ class ScenarioSetFinder:
         app_config = AppConfigManager()
         self._config_path = Path(app_config.get_scenario_sets_path())
         self._user_config_path = Path(app_config.get_user_scenario_sets_path())
+        self._user_algo_dirs = [Path(d) for d in app_config.get_user_algo_dirs()]
         self._config_loader = ScenarioConfigLoader()
 
     def _resolve_path(self, filename: str) -> Path:
         """
-        Resolve scenario set file path — user override takes precedence.
+        Resolve scenario set file path.
+
+        If filename is a valid existing path (absolute or project-root-relative),
+        it is used directly. Otherwise searches by filename:
+        user_configs → user_algo_dirs (recursive) → configs.
 
         Args:
-            filename: Config filename (e.g., "eurusd_3_windows.json")
+            filename: Full path or config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
-            Resolved Path (user_configs first, then configs)
+            Resolved Path
         """
+        direct = Path(filename)
+        if direct.exists():
+            return direct
+
         user_path = self._user_config_path / filename
         if user_path.exists():
             return user_path
+
+        for algo_dir in self._user_algo_dirs:
+            if not algo_dir.exists():
+                continue
+            for p in algo_dir.rglob(filename):
+                return p
+
         return self._config_path / filename
 
     def list_available_files(self) -> List[Path]:
         """
-        Fast: List all .json files from both config directories.
+        Fast: List all scenario set .json files from all config directories.
 
-        User configs take precedence — if the same filename exists in both,
-        only the user version is returned.
+        Precedence (highest to lowest): user_configs, user_algo_dirs, configs.
+        If the same filename exists in multiple locations, the higher-precedence
+        version is returned.
 
         Returns:
             Sorted list of .json file paths
@@ -66,7 +83,20 @@ class ScenarioSetFinder:
             for p in self._config_path.glob('*.json'):
                 files[p.name] = p
 
-        # User configs override same-named files from shared configs
+        # Scan user_algo_dirs recursively — only files with scenario_set_name key
+        for algo_dir in self._user_algo_dirs:
+            if not algo_dir.exists():
+                continue
+            for p in sorted(algo_dir.rglob('*.json')):
+                try:
+                    with open(p) as f:
+                        data = json.load(f)
+                    if 'scenario_set_name' in data:
+                        files[p.name] = p
+                except Exception:
+                    pass
+
+        # User configs take final precedence
         if self._user_config_path.exists():
             for p in self._user_config_path.glob('*.json'):
                 files[p.name] = p

@@ -58,8 +58,7 @@
         "generator_template": "configs/generator/template_scenario_set_header.json",
         "generator_output": "configs/scenario_sets",
         "data_processed": "data/processed",
-        "user_worker_dirs": [],
-        "user_decision_logic_dirs": []
+        "user_algo_dirs": ["user_algos/"]
     },
     "monitoring": {
         "enabled": true,

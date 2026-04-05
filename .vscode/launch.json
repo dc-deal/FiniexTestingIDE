@@ -204,7 +204,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run User Scenario Set (prompt)",
+            "name": "🔬🧪 Run User Scenario Set (prompt)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -216,7 +216,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run User Scenario Set - ALL CONTINUOUS (prompt)",
+            "name": "🔬🧪 Run User Scenario Set - ALL CONTINUOUS (prompt)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -225,6 +225,19 @@
                 "${input:userScenarioSet}",
                 "--generator-profile",
                 "${workspaceFolder}/configs/generator_profiles/continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🤖🧪 AutoTrader: User Config (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "${input:userAutotraderConfig}"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -273,18 +286,6 @@
             "args": [
                 "run",
                 "EURGBP_stress_test_config.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "🔬 Run ETHUSD_user_config - USER namespace",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "ETHUSD_user_config.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -1172,7 +1173,12 @@
         {
             "id": "userScenarioSet",
             "type": "promptString",
-            "description": "Scenario set filename (e.g. touch_turn_eurusd.json)"
+            "description": "Scenario set path from project root (e.g. user_algos/my_algo/my_algo_symbol.json)"
+        },
+        {
+            "id": "userAutotraderConfig",
+            "type": "promptString",
+            "description": "AutoTrader config path from project root (e.g. user_algos/my_algo/my_algo_symbol_live.json)"
         }
     ]
 }

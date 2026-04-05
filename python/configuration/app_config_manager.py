@@ -289,25 +289,15 @@ class AppConfigManager:
     # Centralized Path Methods (Validated)
     # ============================================
 
-    def get_user_worker_dirs(self) -> List[str]:
+    def get_user_algo_dirs(self) -> List[str]:
         """
-        Get additional USER worker directories beyond default python/workers/user/.
+        Get user algo directories scanned for scenario configs.
 
         Returns:
-            List of extra directory paths to scan for USER workers
+            List of directory paths (default: ["user_algos/"])
         """
         paths = self.get_paths_config()
-        return paths.get('user_worker_dirs', [])
-
-    def get_user_decision_logic_dirs(self) -> List[str]:
-        """
-        Get additional USER decision logic directories beyond default python/decision_logic/user/.
-
-        Returns:
-            List of extra directory paths to scan for USER decision logics
-        """
-        paths = self.get_paths_config()
-        return paths.get('user_decision_logic_dirs', [])
+        return paths.get('user_algo_dirs', ['user_algos/'])
 
     def get_data_processed_path(self) -> str:
         """

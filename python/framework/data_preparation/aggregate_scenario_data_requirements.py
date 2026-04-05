@@ -103,8 +103,8 @@ class AggregateScenarioDataRequirements:
             worker_factory = WorkerFactory(
                 logger=self._logger, strict_parameter_validation=strict)
 
-            # Resolve worker class (from registry)
-            worker_class = worker_factory._resolve_worker_class(
+            # Resolve worker class (from registry) — unpack (class, source_path) tuple
+            worker_class, _ = worker_factory._resolve_worker_class(
                 worker_type)
 
             # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)

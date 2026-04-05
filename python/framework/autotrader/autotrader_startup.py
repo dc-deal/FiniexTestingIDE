@@ -159,7 +159,7 @@ def setup_pipeline(
 
     # === Phase 2: DecisionLogic Requirements ===
     decision_logic_factory = DecisionLogicFactory(logger=logger)
-    decision_logic_class = decision_logic_factory._resolve_logic_class(
+    decision_logic_class, _ = decision_logic_factory._resolve_logic_class(
         config.strategy_config.get('decision_logic_type', '')
     )
     required_order_types = decision_logic_class.get_required_order_types(
