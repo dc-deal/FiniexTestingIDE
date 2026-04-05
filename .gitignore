@@ -179,6 +179,10 @@ tmp/
 user_configs/*
 !user_configs/.gitkeep
 
+# User algo workspace — workers, decision logic, scenario configs
+user_algos/*
+!user_algos/.gitkeep
+
 # Large model files
 *.model
 *.pkl

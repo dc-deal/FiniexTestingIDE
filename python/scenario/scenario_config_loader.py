@@ -36,20 +36,36 @@ class ScenarioConfigLoader:
         self.config_path.mkdir(parents=True, exist_ok=True)
         self._user_config_path = Path(app_config.get_user_scenario_sets_path())
         self._user_config_path.mkdir(parents=True, exist_ok=True)
+        self._user_algo_dirs = [Path(d) for d in app_config.get_user_algo_dirs()]
 
     def _resolve_path(self, filename: str) -> Path:
         """
-        Resolve scenario set file path — user override takes precedence.
+        Resolve scenario set file path.
+
+        If filename is a valid existing path (absolute or project-root-relative),
+        it is used directly. Otherwise searches by filename:
+        user_configs → user_algo_dirs (recursive) → configs.
 
         Args:
-            filename: Config filename (e.g., "eurusd_3_windows.json")
+            filename: Full path or config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
-            Resolved Path (user_configs first, then configs)
+            Resolved Path
         """
+        direct = Path(filename)
+        if direct.exists():
+            return direct
+
         user_path = self._user_config_path / filename
         if user_path.exists():
             return user_path
+
+        for algo_dir in self._user_algo_dirs:
+            if not algo_dir.exists():
+                continue
+            for p in algo_dir.rglob(filename):
+                return p
+
         return self.config_path / filename
 
     def load_config(self, config_file: str) -> LoadedScenarioConfig:

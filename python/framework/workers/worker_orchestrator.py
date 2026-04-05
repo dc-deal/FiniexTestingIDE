@@ -6,7 +6,8 @@ Coordinates multiple workers and delegates decision-making to DecisionLogic
 import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogger
@@ -161,6 +162,30 @@ class WorkerOrchestrator:
         snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
         return f"CORE/{snake_case}"
 
+    def _normalize_worker_ref(self, type_str: str, base_path: Optional[Path] = None) -> str:
+        """
+        Normalize a worker reference to a canonical string for comparison.
+
+        CORE references are returned as-is. File paths are resolved to
+        absolute strings so project-root-relative and file-relative paths
+        pointing to the same file compare equal.
+
+        Args:
+            type_str: Worker reference (CORE/name or file path)
+            base_path: Base directory for relative paths
+
+        Returns:
+            Canonical string (CORE key or absolute path string)
+        """
+        if type_str.startswith('CORE/'):
+            return type_str
+        p = Path(type_str)
+        if p.is_absolute():
+            return str(p)
+        if base_path:
+            return str((base_path / p).resolve())
+        return str((Path.cwd() / p).resolve())
+
     def _validate_decision_logic_requirements(self):
         """
         Validate that all required worker instances are available with correct types.
@@ -170,7 +195,7 @@ class WorkerOrchestrator:
         2. Get configured worker_instances from config
         3. Validate:
         - All required instance names exist in config
-        - All instance types match exactly (no override allowed)
+        - All instance types resolve to the same file (path-aware comparison)
         - All required instances were successfully created
 
         Raises:
@@ -182,8 +207,12 @@ class WorkerOrchestrator:
         if not required_instances:
             return  # No requirements
 
+        # Base path for resolving relative refs in get_required_worker_instances()
+        dl_source = getattr(self.decision_logic, '_source_path', None)
+        dl_base = dl_source.parent if dl_source else None
+
         # Get configured worker instances
-        config_instances = self.strategy_config.get("worker_instances", {})
+        config_instances = self.strategy_config.get('worker_instances', {})
 
         # Get actually created workers
         available_workers = set(self.workers.keys())
@@ -202,9 +231,11 @@ class WorkerOrchestrator:
                 )
                 continue
 
-            # 2. Does type match exactly?
+            # 2. Does type match? Normalize both to absolute paths before comparing
             config_type = config_instances[instance_name]
-            if config_type != required_type:
+            norm_required = self._normalize_worker_ref(required_type, dl_base)
+            norm_config = self._normalize_worker_ref(config_type, None)
+            if norm_required != norm_config:
                 errors.append(
                     f"Type mismatch for '{instance_name}': "
                     f"DecisionLogic requires '{required_type}', "

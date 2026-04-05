@@ -45,7 +45,7 @@ def process_startup_preparation(
 
     # === PHASE 1: Get Decision Logic Requirements (NO INSTANCE) ===
     decision_logic_factory = DecisionLogicFactory(logger=scenario_logger)
-    decision_logic_class = decision_logic_factory._resolve_logic_class(
+    decision_logic_class, _ = decision_logic_factory._resolve_logic_class(
         config.decision_logic_type
     )
     required_order_types = decision_logic_class.get_required_order_types(

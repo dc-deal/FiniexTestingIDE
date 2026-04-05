@@ -1,4 +1,4 @@
-# Test Suite: USER Namespace Discovery
+# Test Suite: Path-Based Loading
 
 **Location:** `tests/user_namespace/`
 **Run:** `pytest tests/user_namespace/ -v`
@@ -6,45 +6,48 @@
 
 ## Purpose
 
-Validates the USER namespace auto-discovery system: startup scan, hot-reload/rescan, error handling, naming conventions, external directories, and integration with real USER modules.
+Validates path-based worker and decision logic loading: on-demand file loading, introspection-based class detection, CORE namespace integrity, rescan/hot-reload, error handling, and WorkerOrchestrator worker-ref normalization.
 
 ## Test Classes
 
-### TestWorkerScan (8 tests)
-- Empty directory scanned without crash
-- Valid worker file discovered and registered as `USER/{stem}`
-- `TEMPLATE_` prefixed files skipped by scanner
-- Syntax errors → file skipped, warning logged
-- Import errors → file skipped, warning logged
-- Wrong base class (not AbstractWorker) → skipped
-- Multiple workers in one directory all discovered
-- Class naming convention: `my_custom_rsi.py` → `MyCustomRsiWorker`
+### TestPathWorkerLoading (8 tests)
+- Worker loaded by absolute path — class found via introspection
+- Worker loaded by relative path with explicit base_path
+- Missing file → ValueError with clear message
+- Syntax error in file → ValueError
+- File with zero AbstractWorker subclasses → ValueError
+- File with two AbstractWorker subclasses → ValueError
+- File with one worker + helper class → loads correctly (helper ignored)
+- Second call with same path returns cached result
 
-### TestDecisionLogicScan (2 tests)
-- Valid decision logic discovered and registered
-- Naming convention: `my_strategy.py` → `MyStrategy` (no suffix)
+### TestPathDecisionLogicLoading (5 tests)
+- Decision logic loaded by absolute path
+- File with zero AbstractDecisionLogic subclasses → ValueError
+- Missing file → ValueError
+- `create_logic()` injects `_source_path` on the returned instance
+- CORE decision logic has `_source_path = None`
 
-### TestExternalDirectories (3 tests)
-- Worker from external directory registered as `USER/`
-- Non-existent external directory → no crash
-- Name collision between directories → last wins, warning logged
+### TestCoreRegistration (4 tests)
+- All CORE workers present after factory init
+- All CORE decision logics present after factory init
+- Unknown `CORE/` worker → ValueError (not treated as path)
+- Unknown `CORE/` logic → ValueError
 
-### TestRescan (4 tests)
-- `rescan()` removes stale USER entries from registry
-- `rescan()` discovers newly added files
-- `rescan()` clears `python.workers.user.*` from `sys.modules`
+### TestRescan (3 tests)
+- `rescan()` removes path-loaded workers, keeps CORE entries
+- `rescan()` clears `user_loaded.*` from `sys.modules`
 - DecisionLogicFactory `rescan()` works the same way
 
-### TestOnDemandFallback (2 tests)
-- USER worker loads via on-demand fallback
-- USER decision logic loads via on-demand fallback
+### TestWorkerOrchestratorNormalization (5 tests)
+- `CORE/rsi` ref returned unchanged
+- Absolute path returned unchanged
+- Relative ref with base_path resolves correctly
+- Relative ref without base_path resolves against cwd
+- DL-relative ref and config project-root ref normalize to same absolute path
 
-### TestRealUserModules (5 tests)
-- `python/workers/user/envelope_modified.py` auto-discovered as `USER/envelope_modified`
-- `python/decision_logic/user/aggressive_trend_modified.py` auto-discovered as `USER/aggressive_trend_modified`
-- TEMPLATE files not registered in any factory
-- CORE workers still present after USER scan
-- CORE decision logics still present after USER scan
+### TestUserAlgoIntegration (2 tests, skip if `user_algos/` is empty)
+- First decision logic found in `user_algos/` loads and yields one `AbstractDecisionLogic` subclass
+- `get_required_worker_instances()` returns a dict of `str → str` (path or `CORE/` reference)
 
 ## Fixtures
 
@@ -57,15 +60,12 @@ Validates the USER namespace auto-discovery system: startup scan, hot-reload/res
 | Helper | Description |
 |--------|-------------|
 | `write_module(dir, filename, code)` | Write a Python module to a tmp directory |
-| `_scan_dir(factory, dir, is_worker)` | Manually scan a directory via `spec_from_file_location` |
-| `get_user_entries(factory)` | Filter registry for `USER/` entries only |
-| `cleanup_test_modules()` | Remove `test_user.*` from `sys.modules` |
+| `cleanup_user_loaded()` | Remove `user_loaded.*` from `sys.modules` |
 
-## Test Module Templates
+## Test Module Templates (conftest.py)
 
-Pre-defined source code strings in `conftest.py`:
 - `VALID_WORKER_CODE` — parameterized valid AbstractWorker subclass
 - `VALID_LOGIC_CODE` — parameterized valid AbstractDecisionLogic subclass
-- `NOT_A_WORKER_CODE` — class without correct base class
+- `NOT_A_WORKER_CODE` — class without any correct base class
 - `SYNTAX_ERROR_CODE` — intentionally broken Python
 - `IMPORT_ERROR_CODE` — imports a nonexistent module

@@ -455,59 +455,63 @@ The JSON config connects everything together.
 
 ## Step 4: Deploy Your Bot
 
-Place your files in the USER directories — they are **auto-discovered at startup**. No factory registration needed.
+Create a directory under `user_algos/` for your strategy and place your files there.
 
 ### Create a Worker
 
-1. Copy the template: `python/workers/user/TEMPLATE_worker.py` → `python/workers/user/my_indicator.py`
-2. Rename the class: `TEMPLATEWorker` → `MyIndicatorWorker`
+1. Create `user_algos/my_strategy/my_indicator.py`
+2. Define one class inheriting from `AbstractWorker` (any class name)
 3. Implement `compute()`, `get_warmup_requirements()`, `get_parameter_schema()`
+
+See `python/framework/workers/core/rsi_worker.py` as a reference implementation.
 
 ### Create a Decision Logic
 
-1. Copy the template: `python/decision_logic/user/TEMPLATE_logic.py` → `python/decision_logic/user/my_strategy.py`
-2. Rename the class: `TEMPLATELogic` → `MyStrategy`
+1. Create `user_algos/my_strategy/my_decision.py`
+2. Define one class inheriting from `AbstractDecisionLogic` (any class name)
 3. Implement `compute()`, `_execute_decision_impl()`, `get_required_worker_instances()`
 
 ### Reference in Config
 
 ```json
 {
-    "decision_logic_type": "USER/my_strategy",
+    "decision_logic_type": "user_algos/my_strategy/my_decision.py",
     "worker_instances": {
-        "custom_ind": "USER/my_indicator",
+        "custom_ind": "user_algos/my_strategy/my_indicator.py",
         "rsi_filter": "CORE/rsi"
     }
 }
 ```
 
-USER and CORE modules can be freely combined in a single scenario.
+Paths are relative to the project root. CORE workers use the `CORE/name` shorthand.
 
-### External Directories (optional)
+Worker references in `get_required_worker_instances()` are relative to the decision logic file:
 
-Keep your strategies in a separate repo — configure additional scan paths in `app_config.json`:
+```python
+def get_required_worker_instances(self) -> Dict[str, str]:
+    return {
+        'custom_ind': 'my_indicator.py',   # same directory as this file
+        'rsi_filter': 'CORE/rsi',
+    }
+```
+
+### External Algo Directories (optional)
+
+Keep your strategies in a separate repo — add the root to `user_configs/app_config.json`:
 
 ```json
 {
     "paths": {
-        "user_worker_dirs": ["/path/to/my-strategies/workers"],
-        "user_decision_logic_dirs": ["/path/to/my-strategies/decision_logic"]
+        "user_algo_dirs": ["user_algos/", "/path/to/external/algos"]
     }
 }
 ```
 
-Default project directories (`python/workers/user/`, `python/decision_logic/user/`) are always scanned. External directories are scanned additionally.
-
-### Naming Convention
-
-| File | Expected Class | Rule |
-|------|---------------|------|
-| `my_custom_rsi.py` | `MyCustomRsiWorker` | PascalCase + "Worker" suffix |
-| `my_strategy.py` | `MyStrategy` | PascalCase, no suffix (decision logic) |
+Scenario configs inside those directories are discovered automatically. Workers and decision logics are loaded from the explicit paths in those configs.
 
 ### Error Handling
 
-Syntax errors or broken imports → file is skipped with a warning log. Framework continues normally. Fix the file and restart (or `rescan()` in REPL mode).
+File not found, syntax errors, or wrong class count → `ValueError` with a clear message. Fix the file and restart (or `rescan()` in REPL mode).
 
 > See [user_modules_and_hot_reload_mechanics.md](user_modules_and_hot_reload_mechanics.md) for the full technical reference including hot-reload, sys.modules invalidation, and external directory mechanics.
 

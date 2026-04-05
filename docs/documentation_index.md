@@ -6,14 +6,14 @@
 |----------|-------------|
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first trading bot (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
-| [Worker Naming](user_guides/worker_naming_doc.md) | Worker system, naming conventions, requirements contract |
+| [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
 
-## USER Namespace
+## User Algo Workspace
 
 | Document | Description |
 |----------|-------------|
-| [USER Modules & Hot-Reload](user_guides/user_modules_and_hot_reload_mechanics.md) | Custom worker and decision logic development, auto-discovery |
-| [External Workspace Setup](user_guides/external_workspace_setup.md) | Docker volume setup for external worker directories |
+| [User Algo Workspace & Loading](user_guides/user_modules_and_hot_reload_mechanics.md) | user_algos/ layout, on-demand loading, hot-reload mechanics |
+| [External Workspace Setup](user_guides/external_workspace_setup.md) | Docker volume setup for external algo directories |
 
 ## Configuration
 
@@ -79,7 +79,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Data Integration](tests/tests_data_integration_docs.md) | Data chain integration |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Active Order Display](tests/tests_active_order_display_docs.md) | Unresolved order reporting |
-| [USER Namespace](tests/tests_user_namespace_docs.md) | USER worker/logic discovery |
+| [Path-Based Loading](tests/tests_user_namespace_docs.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Inter-Tick Interval](tests/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Tick Processing Budget](tests/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |

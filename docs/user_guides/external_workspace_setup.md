@@ -44,12 +44,12 @@ Create (or edit) `user_configs/app_config.json` to override the external paths. 
 ```json
 {
     "paths": {
-        "user_worker_dirs": ["/ext_algos"]
+        "user_algo_dirs": ["user_algos/", "/ext_algos"]
     }
 }
 ```
 
-The container path (`/ext_algos`) must match the mount target from Step 1. The base `configs/app_config.json` ships with empty arrays — your override adds only what you need.
+The container path (`/ext_algos`) must match the mount target from Step 1. The default value is `["user_algos/"]` — your override adds the external path alongside it so both locations are scanned for scenario configs.
 
 ## Step 3: VSCode Configuration
 

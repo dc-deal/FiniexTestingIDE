@@ -634,7 +634,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 {
   "global": {
     "strategy_config": {
-      "decision_logic_type": "USER/dual_rsi_strategy",
+      "decision_logic_type": "user_algos/dual_rsi/dual_rsi_strategy.py",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
         "rsi_slow": "CORE/rsi",

@@ -8,6 +8,7 @@ on decision-making strategy AND trade execution, not on worker management.
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -70,6 +71,10 @@ class AbstractDecisionLogic(ABC):
 
         self.name = name
         self._trading_context = trading_context
+
+        # Set by DecisionLogicFactory when loaded from a file path
+        # Used by WorkerOrchestrator to resolve relative worker references
+        self._source_path: Optional[Path] = None
 
         # API and loggers
         self.trading_api: Optional[DecisionTradingApi] = None
