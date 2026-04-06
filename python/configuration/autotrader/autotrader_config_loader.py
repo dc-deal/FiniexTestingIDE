@@ -53,6 +53,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         account=AccountConfig(
             initial_balance=account_raw.get('initial_balance', 10000.0),
             currency=account_raw.get('currency', 'USD'),
+            balances=account_raw.get('balances', {}),
         ),
         tick_source=TickSourceConfig(
             type=tick_source_raw.get('type', 'mock'),

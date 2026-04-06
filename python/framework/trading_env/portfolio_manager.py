@@ -53,21 +53,24 @@ class PortfolioManager:
         margin_call_level: float,
         stop_out_level: float,
         trade_history_max: int = 5000,
+        spot_mode: bool = False,
+        initial_balances: Optional[Dict[str, float]] = None,
     ):
         """
         Initialize portfolio manager.
 
         Args:
-            initial_balance: Starting balance
+            initial_balance: Starting balance (margin mode)
             account_currency: Account currency (e.g., "USD", "EUR", "JPY")
             broker_config: Broker configuration (for symbol specifications)
             leverage: Account leverage
             margin_call_level: Margin call threshold percentage
             stop_out_level: Stop out threshold percentage
             trade_history_max: Max trade records to retain (0=unlimited)
+            spot_mode: Enable spot trading mode (asset transfer instead of P&L accumulation)
+            initial_balances: Asset inventory for spot mode (e.g., {'USD': 50.0, 'ETH': 0.0})
         """
         self._logger = logger
-        self.initial_balance = initial_balance
         self.account_currency = account_currency
         self.broker_config = broker_config
         self.leverage = leverage
@@ -75,8 +78,15 @@ class PortfolioManager:
         self.stop_out_level = stop_out_level
         self._last_conversion_rate: Optional[float] = None
 
+        # Unified balance system — always dict, both margin and spot
+        self._spot_mode = spot_mode
+        self._initial_balances: Dict[str, float] = (
+            dict(initial_balances) if initial_balances
+            else {account_currency: initial_balance}
+        )
+        self._balances: Dict[str, float] = dict(self._initial_balances)
+
         # Account state
-        self.balance = initial_balance
         self.realized_pnl = 0.0
 
         # Positions
@@ -103,11 +113,55 @@ class PortfolioManager:
         self._total_profit = 0.0
         self._total_loss = 0.0
         self._max_drawdown = 0.0
-        self._max_equity = initial_balance
+        self._max_equity = self.balance
 
         # Current market state (lazy evaluation)
         self._current_tick: Optional[TickData] = None
         self._current_prices: Dict[str, tuple[float, float]] = {}
+
+    # ============================================
+    # Unified Balance System
+    # ============================================
+
+    @property
+    def balance(self) -> float:
+        """Account balance in account currency. Reads from _balances."""
+        return self._balances.get(self.account_currency, 0.0)
+
+    @balance.setter
+    def balance(self, value: float) -> None:
+        """Set account balance. Writes to _balances."""
+        self._balances[self.account_currency] = value
+
+    @property
+    def initial_balance(self) -> float:
+        """Initial balance in account currency."""
+        return self._initial_balances.get(self.account_currency, 0.0)
+
+    def get_balances(self) -> Dict[str, float]:
+        """
+        Get all currency balances.
+
+        Returns:
+            Copy of current balances dict
+        """
+        return dict(self._balances)
+
+    def get_asset_balance(self, currency: str) -> float:
+        """
+        Get balance for specific currency.
+
+        Args:
+            currency: Currency code (e.g., 'USD', 'ETH')
+
+        Returns:
+            Current balance for the currency (0.0 if not tracked)
+        """
+        return self._balances.get(currency, 0.0)
+
+    def is_spot_mode(self) -> bool:
+        """Check if portfolio operates in spot mode."""
+        return self._spot_mode
 
     # ============================================
     # Position Management
@@ -182,6 +236,23 @@ class PortfolioManager:
         # Add to open positions
         self.open_positions[position_id] = position
 
+        # Spot mode: asset transfer on open
+        if self._spot_mode:
+            spec = self.broker_config.get_symbol_specification(symbol)
+            fee_cost = entry_fee.cost if entry_fee else 0.0
+            if direction == OrderDirection.LONG:
+                # BUY: spend quote currency, receive base currency
+                total_cost = lots * entry_price + fee_cost
+                self._balances[spec.quote_currency] -= total_cost
+                self._balances[spec.base_currency] = (
+                    self._balances.get(spec.base_currency, 0.0) + lots
+                )
+            else:
+                # SELL: spend base currency, receive quote currency
+                revenue = lots * entry_price - fee_cost
+                self._balances[spec.base_currency] -= lots
+                self._balances[spec.quote_currency] += revenue
+
         return position
 
     def close_position_portfolio(
@@ -227,11 +298,28 @@ class PortfolioManager:
 
             self._cost_tracking.total_fees += exit_fee.cost
 
-        # Calculate final P&L (unrealized_pnl already includes fees)
-        realized_pnl = position.unrealized_pnl
+        # Calculate final P&L and update balances
+        if self._spot_mode:
+            spec = self.broker_config.get_symbol_specification(position.symbol)
+            exit_fee_cost = exit_fee.cost if exit_fee else 0.0
+            if position.direction == OrderDirection.LONG:
+                # Close LONG = SELL: spend base, receive quote
+                revenue = position.lots * exit_price - exit_fee_cost
+                self._balances[spec.base_currency] -= position.lots
+                self._balances[spec.quote_currency] += revenue
+            else:
+                # Close SHORT = BUY back: spend quote, receive base
+                cost = position.lots * exit_price + exit_fee_cost
+                self._balances[spec.quote_currency] -= cost
+                self._balances[spec.base_currency] = (
+                    self._balances.get(spec.base_currency, 0.0) + position.lots
+                )
+            realized_pnl = position.unrealized_pnl
+        else:
+            # Margin mode — existing logic
+            realized_pnl = position.unrealized_pnl
+            self.balance += realized_pnl
 
-        # Update balance
-        self.balance += realized_pnl
         self.realized_pnl += realized_pnl
 
         # Mark position as closed
@@ -315,8 +403,26 @@ class PortfolioManager:
 
         closed_net_pnl = closed_gross_pnl - closed_fees
 
-        # --- Update balance ---
-        self.balance += closed_net_pnl
+        # --- Update balances ---
+        if self._spot_mode:
+            spec = self.broker_config.get_symbol_specification(position.symbol)
+            exit_fee_cost = exit_fee.cost if exit_fee else 0.0
+            if position.direction == OrderDirection.LONG:
+                # Partial close LONG = SELL portion: spend base, receive quote
+                revenue = close_lots * exit_price - exit_fee_cost
+                self._balances[spec.base_currency] -= close_lots
+                self._balances[spec.quote_currency] += revenue
+            else:
+                # Partial close SHORT = BUY back portion: spend quote, receive base
+                cost = close_lots * exit_price + exit_fee_cost
+                self._balances[spec.quote_currency] -= cost
+                self._balances[spec.base_currency] = (
+                    self._balances.get(spec.base_currency, 0.0) + close_lots
+                )
+        else:
+            # Margin mode — existing logic
+            self.balance += closed_net_pnl
+
         self.realized_pnl += closed_net_pnl
 
         # --- Create TradeRecord for closed portion (BEFORE mutating position) ---
@@ -831,7 +937,7 @@ class PortfolioManager:
 
     def reset(self) -> None:
         """Reset portfolio to initial state"""
-        self.balance = self.initial_balance
+        self._balances = dict(self._initial_balances)
         self.realized_pnl = 0.0
         self.open_positions.clear()
         self._trade_history.clear()
@@ -849,7 +955,7 @@ class PortfolioManager:
         self._total_profit = 0.0
         self._total_loss = 0.0
         self._max_drawdown = 0.0
-        self._max_equity = self.initial_balance
+        self._max_equity = self.balance
 
     def _log_trade_record(self, record: TradeRecord) -> None:
         """

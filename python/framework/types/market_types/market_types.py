@@ -8,7 +8,7 @@ weekend closure windows, and trading hour configurations.
 from dataclasses import dataclass
 from typing import Tuple
 
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType, TradingModel
 
 
 # Validation timezone for UTC offset verification
@@ -128,3 +128,4 @@ class TradingContext:
     market_type: MarketType
     symbol: str
     volume_min: float = 0.0  # Broker minimum lot size from SymbolSpecification
+    trading_model: TradingModel = TradingModel.MARGIN

@@ -31,6 +31,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 
@@ -220,8 +221,10 @@ class AutoTraderLiveDisplay:
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
         if stats.recent_trades:
-            right_panels.append(Layout(self._build_trade_history_panel(stats), name='trades'))
-        right_panels.append(Layout(self._build_algo_state_panel(stats), name='algo'))
+            right_panels.append(
+                Layout(self._build_trade_history_panel(stats), name='trades'))
+        right_panels.append(
+            Layout(self._build_algo_state_panel(stats), name='algo'))
         layout['right'].split_column(*right_panels)
 
         return layout
@@ -248,7 +251,8 @@ class AutoTraderLiveDisplay:
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
         if width >= self._WIDTH_TRADE_HISTORY and stats.recent_trades:
-            right_panels.append(Layout(self._build_trade_history_panel(stats), name='trades'))
+            right_panels.append(
+                Layout(self._build_trade_history_panel(stats), name='trades'))
         layout['right'].split_column(*right_panels)
 
         return layout
@@ -277,7 +281,8 @@ class AutoTraderLiveDisplay:
         uptime_str = f'{hours}h {minutes:02d}m {seconds:02d}s'
 
         mode = '[yellow]DRY RUN[/yellow]' if stats.dry_run else '[green]LIVE[/green]'
-        win_rate = (stats.winning_trades / stats.total_trades * 100) if stats.total_trades > 0 else 0.0
+        win_rate = (stats.winning_trades / stats.total_trades *
+                    100) if stats.total_trades > 0 else 0.0
 
         if stats.safety_blocked:
             safety_str = f'[red bold]⛔ BLOCKED[/red bold]  [dim]{stats.safety_reason}[/dim]'
@@ -299,7 +304,8 @@ class AutoTraderLiveDisplay:
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Portfolio state: balance (both currencies), P&L."""
         net_pnl = stats.balance - stats.initial_balance
-        pnl_pct = (net_pnl / stats.initial_balance * 100) if stats.initial_balance > 0 else 0.0
+        pnl_pct = (net_pnl / stats.initial_balance *
+                   100) if stats.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
@@ -356,7 +362,7 @@ class AutoTraderLiveDisplay:
         for idx, pos in enumerate(stats.open_positions, 1):
             pnl_color = 'green' if pos.unrealized_pnl >= 0 else 'red'
             pnl_sign = '+' if pos.unrealized_pnl >= 0 else ''
-            dir_color = 'green' if pos.direction == 'LONG' else 'red'
+            dir_color = 'green' if pos.direction == OrderDirection.LONG.value else 'red'
             table.add_row(
                 str(idx),
                 pos.position_id[:16],
@@ -421,7 +427,7 @@ class AutoTraderLiveDisplay:
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
             pnl_sign = '+' if trade.net_pnl >= 0 else ''
-            dir_color = 'green' if trade.direction == 'LONG' else 'red'
+            dir_color = 'green' if trade.direction == OrderDirection.LONG.value else 'red'
             table.add_row(
                 f'[{dir_color}]{trade.direction}[/{dir_color}]',
                 f'{trade.lots:.4f}',
@@ -442,7 +448,8 @@ class AutoTraderLiveDisplay:
 
         # Stream health — based on last WS message (includes heartbeats)
         if last_msg_time:
-            msg_age_s = (datetime.now(timezone.utc) - last_msg_time).total_seconds()
+            msg_age_s = (datetime.now(timezone.utc) -
+                         last_msg_time).total_seconds()
             if msg_age_s > 90:
                 stream_str = '[red]● dead[/red]'
             elif msg_age_s > 30:
@@ -454,7 +461,8 @@ class AutoTraderLiveDisplay:
 
         # Last actual trade tick time
         if last_tick_time:
-            tick_age_s = (datetime.now(timezone.utc) - last_tick_time).total_seconds()
+            tick_age_s = (datetime.now(timezone.utc) -
+                          last_tick_time).total_seconds()
             if tick_age_s > 120:
                 tick_age_str = f'[yellow]{tick_age_s:.0f}s ago[/yellow]'
             else:
@@ -464,13 +472,15 @@ class AutoTraderLiveDisplay:
 
         # Emitted tick rate (session average)
         if stats and emitted > 0:
-            uptime_min = max(0.001, (datetime.now(timezone.utc) - stats.session_start).total_seconds() / 60.0)
+            uptime_min = max(0.001, (datetime.now(
+                timezone.utc) - stats.session_start).total_seconds() / 60.0)
             emit_rate_str = f'{emitted / uptime_min:.1f}/min'
         else:
             emit_rate_str = '[dim]—[/dim]'
 
         reconnect_color = 'yellow' if reconnects > 0 else ''
-        reconnect_str = f'[{reconnect_color}]{reconnects}[/{reconnect_color}]' if reconnect_color else str(reconnects)
+        reconnect_str = f'[{reconnect_color}]{reconnects}[/{reconnect_color}]' if reconnect_color else str(
+            reconnects)
 
         lines = [
             f'Stream:         {stream_str}',
@@ -532,9 +542,12 @@ class AutoTraderLiveDisplay:
         # Decision time
         if stats.decision_time_ms > 0:
             lines.append('─' * 40)
-            d_filled = min(bar_width, int((stats.decision_time_ms / max_scale_ms) * bar_width))
-            d_bar = '█' * max(1, d_filled) + '░' * (bar_width - max(1, d_filled))
-            lines.append(f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms')
+            d_filled = min(bar_width, int(
+                (stats.decision_time_ms / max_scale_ms) * bar_width))
+            d_bar = '█' * max(1, d_filled) + '░' * \
+                (bar_width - max(1, d_filled))
+            lines.append(
+                f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms')
 
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
 
@@ -558,7 +571,8 @@ class AutoTraderLiveDisplay:
             lines.append('─' * 40)
 
         action = stats.last_decision_action
-        action_color = 'green' if action == 'BUY' else ('red' if action == 'SELL' else 'dim')
+        action_color = 'green' if action == 'BUY' else (
+            'red' if action == 'SELL' else 'dim')
         decision_parts = [f'[{action_color}]{action}[/{action_color}]']
         for key, value in stats.decision_outputs.items():
             if isinstance(value, float):

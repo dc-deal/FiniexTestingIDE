@@ -55,11 +55,13 @@ class AccountConfig:
     Account configuration for AutoTrader session.
 
     Args:
-        initial_balance: Starting account balance
-        currency: Account currency code (e.g., 'USD')
+        initial_balance: Starting account balance (margin mode)
+        currency: Account currency code (margin mode, e.g., 'USD')
+        balances: Asset inventory (spot mode, e.g., {'USD': 50.0, 'ETH': 0.0})
     """
     initial_balance: float = 10000.0
     currency: str = 'USD'
+    balances: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

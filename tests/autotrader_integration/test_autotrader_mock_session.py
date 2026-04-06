@@ -64,9 +64,14 @@ class TestAutotraderMockSession:
             f"Expected 0 clipped ticks in replay mode, got {result.ticks_clipped}"
         )
 
-        # === Clean session — no warnings or errors ===
-        assert len(result.warning_messages) == 0, (
-            f"Unexpected warnings: {result.warning_messages[:5]}"
+        # === Clean session — no unexpected warnings or errors ===
+        # Spot mode may leave positions open until scenario_end (no SHORT reversal)
+        unexpected_warnings = [
+            w for w in result.warning_messages
+            if 'positions remain open' not in w
+        ]
+        assert len(unexpected_warnings) == 0, (
+            f"Unexpected warnings: {unexpected_warnings[:5]}"
         )
         assert len(result.error_messages) == 0, (
             f"Unexpected errors: {result.error_messages[:5]}"

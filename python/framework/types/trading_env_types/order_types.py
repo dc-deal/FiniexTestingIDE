@@ -86,6 +86,7 @@ class FillType(Enum):
 class RejectionReason(Enum):
     """Reasons why orders get rejected"""
     INSUFFICIENT_MARGIN = "insufficient_margin"
+    INSUFFICIENT_FUNDS = "insufficient_funds"
     INVALID_LOT_SIZE = "invalid_lot_size"
     SYMBOL_NOT_TRADEABLE = "symbol_not_tradeable"
     MARKET_CLOSED = "market_closed"

@@ -128,13 +128,15 @@ class AutotraderTickLoop:
             except queue.Empty:
                 # No tick within timeout — check if source is exhausted
                 if self._tick_source and self._tick_source.is_exhausted():
-                    self._logger.info('📭 Tick source exhausted — ending session')
+                    self._logger.info(
+                        '📭 Tick source exhausted — ending session')
                     break
                 continue
 
             # Sentinel value: None = tick source finished
             if tick is None:
-                self._logger.info('📭 Tick source signaled end — ending session')
+                self._logger.info(
+                    '📭 Tick source signaled end — ending session')
                 break
 
             # === DAILY LOG ROTATION ===
@@ -174,7 +176,8 @@ class AutotraderTickLoop:
             )
 
             # === 5. Safety Check (circuit breaker) ===
-            self._check_safety(self._executor.get_balance(), self._executor.portfolio.initial_balance)
+            self._check_safety(self._executor.get_balance(),
+                               self._executor.portfolio.initial_balance)
 
             # === 6. Order Execution ===
             if self._safety_blocked:
@@ -202,7 +205,8 @@ class AutotraderTickLoop:
 
             # === 8. Display Stats ===
             if self._display_queue is not None:
-                display_stats = self._build_display_stats(decision, ticks_processed, tick)
+                display_stats = self._build_display_stats(
+                    decision, ticks_processed, tick)
                 try:
                     self._display_queue.put_nowait(display_stats)
                 except queue.Full:
@@ -243,7 +247,8 @@ class AutotraderTickLoop:
 
         # Active orders (limit + stop) from pending stats
         pending_stats = self._executor.get_pending_stats()
-        active_orders = list(pending_stats.active_limit_orders) + list(pending_stats.active_stop_orders)
+        active_orders = list(pending_stats.active_limit_orders) + \
+            list(pending_stats.active_stop_orders)
         pipeline_count = pending_stats.latency_queue_count
 
         # Trade history — last 10, newest first
@@ -258,14 +263,16 @@ class AutotraderTickLoop:
                 entry_price=trade.entry_price,
                 exit_price=trade.exit_price,
                 net_pnl=trade.net_pnl,
-                close_reason=trade.close_reason.value if hasattr(trade.close_reason, 'value') else str(trade.close_reason),
+                close_reason=trade.close_reason.value if hasattr(
+                    trade.close_reason, 'value') else str(trade.close_reason),
             ))
 
         # Clipping — direct attribute reads (avoid get_session_summary() object creation)
         cm = self._clipping_monitor
         total_ticks = cm._total_ticks
         clipping_ratio = cm._ticks_clipped / total_ticks if total_ticks > 0 else 0.0
-        avg_processing = cm._total_processing_ms / total_ticks if total_ticks > 0 else 0.0
+        avg_processing = cm._total_processing_ms / \
+            total_ticks if total_ticks > 0 else 0.0
 
         # Worker performance + outputs (display=True only)
         worker_times: Dict[str, float] = {}
@@ -295,7 +302,8 @@ class AutotraderTickLoop:
                 decision_outputs[key] = decision.outputs[key]
 
         # Tick rate (session average)
-        uptime_min = max(0.001, (datetime.now(timezone.utc) - self._session_start).total_seconds() / 60.0)
+        uptime_min = max(0.001, (datetime.now(timezone.utc) -
+                         self._session_start).total_seconds() / 60.0)
         ticks_per_min = ticks_processed / uptime_min
 
         # Last mid price
@@ -359,7 +367,8 @@ class AutotraderTickLoop:
             self._safety_reason = f'min_balance ({balance:.4f} < {safety.min_balance:.4f})'
 
         if safety.max_drawdown_pct > 0 and initial_balance > 0:
-            drawdown_pct = (initial_balance - balance) / initial_balance * 100.0
+            drawdown_pct = (initial_balance - balance) / \
+                initial_balance * 100.0
             if drawdown_pct > safety.max_drawdown_pct:
                 self._safety_blocked = True
                 reason = f'max_drawdown ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)'
@@ -368,7 +377,8 @@ class AutotraderTickLoop:
                 )
 
         if self._safety_blocked and not was_blocked:
-            self._logger.warning(f'⛔ Safety circuit breaker triggered: {self._safety_reason}')
+            self._logger.warning(
+                f'⛔ Safety circuit breaker triggered: {self._safety_reason}')
         elif was_blocked and not self._safety_blocked:
             self._logger.info('✅ Safety circuit breaker cleared')
 

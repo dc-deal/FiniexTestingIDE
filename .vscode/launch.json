@@ -1154,19 +1154,6 @@
             "justMyCode": false
         },
         {
-            "name": "🧩 Pytest: AutoTrader Trade Lifecycle",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader_integration/test_autotrader_trade_lifecycle.py",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "🧩 Pytest: Benchmark (All)",
             "type": "debugpy",
             "request": "launch",

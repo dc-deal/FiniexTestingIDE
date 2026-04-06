@@ -22,7 +22,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.market_types.market_config_types import MarketType, TradingModel
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
@@ -201,8 +201,10 @@ class ProcessScenarioConfig:
     # === TRADING SIMULATOR CONFIG ===
     broker_type: BrokerType = None
     market_type: MarketType = None
+    trading_model: TradingModel = TradingModel.MARGIN
     initial_balance: float = 0
     account_currency: str = ''  # Changed from 'currency' - supports "auto"
+    spot_balances: Dict[str, float] = field(default_factory=dict)
     seeds: Dict[str, Any] = field(default_factory=dict)
 
     # === STRESS TEST CONFIG ===
@@ -290,10 +292,26 @@ class ProcessScenarioConfig:
         inbound_latency_max_ms = scenario.trade_simulator_config.get(
             'inbound_latency_max_ms', 80)
 
-        # Derive market_type from broker_type
+        # Derive market_type and trading_model from broker_type
         market_config_manager = MarketConfigManager()
         market_type = market_config_manager.get_market_type(
             scenario.broker_type.value)
+        trading_model = market_config_manager.get_trading_model(
+            scenario.broker_type.value)
+
+        # Spot balances from trade_simulator_config (empty for margin scenarios)
+        spot_balances = scenario.trade_simulator_config.get('balances', {})
+
+        # Validate: spot broker requires balances
+        if trading_model == TradingModel.SPOT and not spot_balances:
+            raise ValueError(
+                f"Configuration error: Scenario '{scenario.name}' uses spot broker "
+                f"'{scenario.broker_type.value}' but no 'balances' defined in "
+                f"trade_simulator_config.\n"
+                f"Add to scenario override:\n"
+                f'  "trade_simulator_config": {{ "balances": {{ "USD": 10000.0, '
+                f'"{scenario.symbol[:3]}": 0.0 }} }}'
+            )
 
         # Inter-tick gap threshold from market rules
         market_rules = market_config_manager.get_market_rules(market_type)
@@ -330,8 +348,10 @@ class ProcessScenarioConfig:
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
             market_type=market_type,
+            trading_model=trading_model,
             initial_balance=initial_balance,
             account_currency=account_currency,
+            spot_balances=spot_balances,
             seeds=seeds,
             stress_test_config=stress_test_config,
             bar_max_history=app_config_loader.get_bar_max_history(),

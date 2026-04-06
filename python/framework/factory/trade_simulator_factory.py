@@ -2,6 +2,7 @@ from typing import List
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
 
@@ -48,6 +49,10 @@ def prepare_trade_executor_for_scenario(
             f"⚡ Stress Test Configuration: ACTIVE"
         )
 
+    # Spot mode from trading_model
+    spot_mode = config.trading_model == TradingModel.SPOT
+    initial_balances = config.spot_balances if spot_mode else None
+
     return TradeSimulator(
         broker_config=broker_config,
         initial_balance=config.initial_balance,
@@ -59,4 +64,6 @@ def prepare_trade_executor_for_scenario(
         trade_history_max=config.trade_history_max,
         inbound_latency_min_ms=config.inbound_latency_min_ms,
         inbound_latency_max_ms=config.inbound_latency_max_ms,
+        spot_mode=spot_mode,
+        initial_balances=initial_balances,
     )

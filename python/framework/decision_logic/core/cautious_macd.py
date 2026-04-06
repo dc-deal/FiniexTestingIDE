@@ -35,6 +35,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
@@ -501,6 +502,12 @@ class CautiousMacd(AbstractDecisionLogic):
         new_direction = (OrderDirection.LONG
                          if decision.action == DecisionLogicAction.BUY
                          else OrderDirection.SHORT)
+
+        # Skip SHORT in spot mode — no naked selling on spot exchanges
+        if (new_direction == OrderDirection.SHORT
+                and self._trading_context
+                and self._trading_context.trading_model == TradingModel.SPOT):
+            return None
 
         # Margin check
         account = self.trading_api.get_account_info(new_direction)

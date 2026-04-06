@@ -44,6 +44,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 
@@ -258,6 +259,12 @@ class SimpleConsensus(AbstractDecisionLogic):
         open_positions = self.trading_api.get_open_positions()
 
         new_direction = OrderDirection.LONG if decision.action == DecisionLogicAction.BUY else OrderDirection.SHORT
+
+        # Skip SHORT in spot mode — no naked selling on spot exchanges
+        if (new_direction == OrderDirection.SHORT
+                and self._trading_context
+                and self._trading_context.trading_model == TradingModel.SPOT):
+            return None
 
         # ============================================
         # STEP 1: Check if we already have a position

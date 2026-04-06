@@ -12,6 +12,7 @@ from python.framework.types.market_types.market_config_types import (
     MarketRules,
     ProfileDefaults,
     BrokerEntry,
+    TradingModel,
 )
 
 
@@ -87,10 +88,21 @@ class MarketConfigManager:
                     f"   Valid values: {[mt.value for mt in MarketType]}"
                 )
 
+            # Parse trading_model (default: margin)
+            trading_model_str = broker_dict.get('trading_model', 'margin')
+            try:
+                trading_model = TradingModel(trading_model_str)
+            except ValueError:
+                raise ValueError(
+                    f"❌ Invalid trading_model '{trading_model_str}' for broker '{broker_type}'\n"
+                    f"   Valid values: {[tm.value for tm in TradingModel]}"
+                )
+
             self._broker_lookup[broker_type] = BrokerEntry(
                 broker_type=broker_type,
                 market_type=market_type,
-                broker_config_path=broker_config_path or ""
+                broker_config_path=broker_config_path or "",
+                trading_model=trading_model,
             )
 
     def get_market_type(self, broker_type: BrokerType) -> MarketType:
@@ -189,6 +201,19 @@ class MarketConfigManager:
             )
 
         return entry
+
+    def get_trading_model(self, broker_type: str) -> TradingModel:
+        """
+        Get trading model for a broker type.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            TradingModel enum value (MARGIN or SPOT)
+        """
+        entry = self.get_broker_entry(broker_type)
+        return entry.trading_model
 
     def get_all_broker_types(self) -> List[str]:
         """

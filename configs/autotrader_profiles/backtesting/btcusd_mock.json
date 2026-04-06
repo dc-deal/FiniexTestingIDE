@@ -45,8 +45,7 @@
   },
 
   "account": {
-    "initial_balance": 10000.0,
-    "currency": "USD"
+    "balances": { "USD": 10000.0, "BTC": 0.0 }
   },
 
   "tick_source": {

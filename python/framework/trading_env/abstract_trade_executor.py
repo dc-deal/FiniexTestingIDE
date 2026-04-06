@@ -97,10 +97,13 @@ class AbstractTradeExecutor(ABC):
         logger: AbstractLogger,
         order_history_max: int = 10000,
         trade_history_max: int = 5000,
+        spot_mode: bool = False,
+        initial_balances: Optional[Dict[str, float]] = None,
     ):
         self.broker = broker_config
         self.logger = logger
         self.account_currency = account_currency
+        self._spot_mode = spot_mode
 
         # Create portfolio manager with broker specifications
         broker_spec = self.broker.get_broker_specification()
@@ -112,7 +115,9 @@ class AbstractTradeExecutor(ABC):
             leverage=broker_spec.leverage,
             margin_call_level=broker_spec.margin_call_level,
             stop_out_level=broker_spec.stopout_level,
-            trade_history_max=trade_history_max
+            trade_history_max=trade_history_max,
+            spot_mode=spot_mode,
+            initial_balances=initial_balances,
         )
 
         # Current market prices
@@ -349,9 +354,10 @@ class AbstractTradeExecutor(ABC):
             f"tick_value={tick_value:.5f}"
         )
 
-        # Check margin available (only if leverage trading enabled)
+        # Check margin / balance available
         leverage = self.broker.get_max_leverage()
         if leverage > 1:
+            # Margin mode: check free margin
             margin_required = self.broker.calculate_margin(
                 pending_order.symbol, pending_order.lots,
                 self._current_tick, pending_order.direction)
@@ -372,6 +378,50 @@ class AbstractTradeExecutor(ABC):
                     f"margin {margin_required:.2f} > free {free_margin:.2f}"
                 )
                 return
+        elif self._spot_mode:
+            # Spot mode: check sufficient balance for asset exchange
+            fee_cost = entry_fee.cost if entry_fee else 0.0
+            if pending_order.direction == OrderDirection.LONG:
+                required = pending_order.lots * entry_price + fee_cost
+                available = self.portfolio.get_asset_balance(symbol_spec.quote_currency)
+                if required > available:
+                    self._orders_rejected += 1
+                    rejection = create_rejection_result(
+                        order_id=pending_order.pending_order_id,
+                        reason=RejectionReason.INSUFFICIENT_FUNDS,
+                        message=(
+                            f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
+                            f"available: {available:.6f} {symbol_spec.quote_currency}"
+                        )
+                    )
+                    self._check_order_history_limit()
+                    self._order_history.append(rejection)
+                    self.logger.warning(
+                        f"Order {pending_order.pending_order_id} rejected: "
+                        f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
+                        f"available: {available:.6f} {symbol_spec.quote_currency}"
+                    )
+                    return
+            else:
+                available = self.portfolio.get_asset_balance(symbol_spec.base_currency)
+                if pending_order.lots > available:
+                    self._orders_rejected += 1
+                    rejection = create_rejection_result(
+                        order_id=pending_order.pending_order_id,
+                        reason=RejectionReason.INSUFFICIENT_FUNDS,
+                        message=(
+                            f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
+                            f"available: {available:.6f} {symbol_spec.base_currency}"
+                        )
+                    )
+                    self._check_order_history_limit()
+                    self._order_history.append(rejection)
+                    self.logger.warning(
+                        f"Order {pending_order.pending_order_id} rejected: "
+                        f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
+                        f"available: {available:.6f} {symbol_spec.base_currency}"
+                    )
+                    return
 
         # Open position in portfolio
         position = self.portfolio.open_position(

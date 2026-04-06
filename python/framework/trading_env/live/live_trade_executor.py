@@ -89,6 +89,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         timeout_config: Optional[TimeoutConfig] = None,
         order_history_max: int = 10000,
         trade_history_max: int = 5000,
+        spot_mode: bool = False,
+        initial_balances: Optional[dict[str, float]] = None,
     ):
         """
         Initialize live trade executor.
@@ -101,6 +103,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             timeout_config: Timeout thresholds for order monitoring
             order_history_max: Max order history entries (0=unlimited)
             trade_history_max: Max trade history entries (0=unlimited)
+            spot_mode: Enable spot trading mode
+            initial_balances: Asset inventory for spot mode
         """
         super().__init__(
             broker_config=broker_config,
@@ -109,6 +113,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             logger=logger,
             order_history_max=order_history_max,
             trade_history_max=trade_history_max,
+            spot_mode=spot_mode,
+            initial_balances=initial_balances,
         )
 
         # Validate adapter supports live execution
