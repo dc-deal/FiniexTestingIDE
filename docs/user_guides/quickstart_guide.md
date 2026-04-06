@@ -419,7 +419,7 @@ The JSON config connects everything together.
     },
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-      "initial_balance": 100000,
+      "balances": { "USD": 100000 },
       "seeds": {
         "inbound_latency_seed": 42
       }

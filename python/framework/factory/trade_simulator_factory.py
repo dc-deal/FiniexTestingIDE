@@ -39,8 +39,7 @@ def prepare_trade_executor_for_scenario(
     logger.info(
         f"💱 Trade Executor Configuration:\n"
         f"   Symbol: {config.symbol}\n"
-        f"   Account Currency: {config.account_currency}\n"
-        f"   Initial Balance: {config.initial_balance}"
+        f"   Balances: {config.balances}"
     )
 
     # Log stress test config if any test is enabled
@@ -51,11 +50,12 @@ def prepare_trade_executor_for_scenario(
 
     # Spot mode from trading_model
     spot_mode = config.trading_model == TradingModel.SPOT
-    initial_balances = config.spot_balances if spot_mode else None
+    initial_balances = config.balances if spot_mode else None
+    initial_balance = config.balances.get(config.account_currency, 0.0)
 
     return TradeSimulator(
         broker_config=broker_config,
-        initial_balance=config.initial_balance,
+        initial_balance=initial_balance,
         account_currency=config.account_currency,
         logger=logger,
         seeds=config.seeds,

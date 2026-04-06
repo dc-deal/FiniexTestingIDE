@@ -175,35 +175,36 @@ def setup_pipeline(
     market_type = market_config_manager.get_market_type(config.broker_type)
     trading_model = market_config_manager.get_trading_model(config.broker_type)
     spot_mode = trading_model == TradingModel.SPOT
-    initial_balances = config.account.balances if spot_mode else None
 
-    # Validate: spot broker requires balances
-    if spot_mode and not config.account.balances:
+    # Validate: balances must be configured
+    if not config.account.balances:
         raise ValueError(
-            f"Configuration error: AutoTrader profile '{config.name}' uses spot broker "
-            f"'{config.broker_type}' but no 'balances' defined in account config.\n"
+            f"Configuration error: AutoTrader profile '{config.name}' has no 'balances' "
+            f"defined in account config.\n"
             f"Add to profile:\n"
-            f'  "account": {{ "balances": {{ "USD": 0.0, "{config.symbol[:3]}": 0.0 }} }}'
+            f'  "account": {{ "balances": {{ "USD": 10000.0 }} }}'
         )
+
+    # Derive account_currency from balances + symbol
+    symbol_spec = broker_config.adapter.get_symbol_specification(config.symbol)
+    if symbol_spec.quote_currency in config.account.balances:
+        account_currency = symbol_spec.quote_currency
+    elif symbol_spec.base_currency in config.account.balances:
+        account_currency = symbol_spec.base_currency
+    else:
+        account_currency = list(config.account.balances.keys())[0]
 
     # === Phase 4: LiveTradeExecutor ===
     executor = build_live_executor(
         broker_config=broker_config,
-        initial_balance=config.account.initial_balance,
-        account_currency=config.account.currency,
+        balances=config.account.balances,
+        account_currency=account_currency,
         logger=logger,
         spot_mode=spot_mode,
-        initial_balances=initial_balances,
     )
-    if spot_mode:
-        logger.info(
-            f"💱 LiveTradeExecutor created (SPOT): balances={config.account.balances}"
-        )
-    else:
-        logger.info(
-            f"💱 LiveTradeExecutor created: "
-            f"{config.account.initial_balance} {config.account.currency}"
-        )
+    logger.info(
+        f"💱 LiveTradeExecutor created: balances={config.account.balances}"
+    )
 
     # === Phase 5: TradingContext ===
     volume_min = broker_config.adapter.get_symbol_specification(
@@ -439,20 +440,22 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
         ).adapter.broker_config
 
     # === Fetch account balance (no fallback — must succeed for live) ===
-    balance = fetcher.fetch_account_balance(config.account.currency)
+    # Determine account currency from balances + symbol
+    account_currency = list(config.account.balances.keys())[0] if config.account.balances else 'USD'
+    balance = fetcher.fetch_account_balance(account_currency)
     if balance is None:
         raise ConnectionError(
-            f"Could not fetch account balance for '{config.account.currency}' from Kraken API. "
+            f"Could not fetch account balance for '{account_currency}' from Kraken API. "
             f"Live trading requires a confirmed balance. "
             f"Check API credentials and account permissions."
         )
 
     logger.info(
-        f"💰 Live balance: {balance} {config.account.currency} "
-        f"(profile default was {config.account.initial_balance})"
+        f"💰 Live balance: {balance} {account_currency} "
+        f"(profile default was {config.account.balances.get(account_currency, 0.0)})"
     )
-    print(f"  ▸ Live balance: {balance} {config.account.currency}")
-    config.account.initial_balance = balance
+    print(f"  ▸ Live balance: {balance} {account_currency}")
+    config.account.balances[account_currency] = balance
 
     # Build BrokerConfig from fetched dict
     broker_config = BrokerConfigFactory.from_serialized_dict(

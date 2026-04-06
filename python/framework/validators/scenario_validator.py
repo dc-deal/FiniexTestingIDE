@@ -127,35 +127,38 @@ class ScenarioValidator:
     @staticmethod
     def set_scenario_account_currency(logger: ScenarioLogger, scenarios: List[SingleScenario]):
         """
-        Set Account Currency for all scenarios - will be sent into process.
+        Derive account currency from balances dict for all scenarios.
 
-        Requires explicit account_currency in trade_simulator_config.
+        Reads 'balances' from trade_simulator_config and determines which
+        currency key matches the symbol's base or quote currency.
+        If balances is missing, skips — validate_account_currency() flags it later.
         """
         for scenario in scenarios:
             symbol = scenario.symbol
-            account_currency = scenario.trade_simulator_config.get(
-                'account_currency', '')
+            balances = scenario.trade_simulator_config.get('balances', {})
 
-            # Reject missing or legacy "auto" values
-            if not account_currency or account_currency.lower() == 'auto':
-                raise ValueError(
-                    f"Scenario '{scenario.name}': account_currency must be explicitly configured. "
-                    f"'auto' mode is no longer supported. "
-                    f"Set 'account_currency' to the quote currency of your symbol "
-                    f"(e.g., '{ScenarioValidator.detect_quote_currency(symbol)}' for {symbol})."
-                )
+            if not balances:
+                # validation will flag this later
+                continue
 
-            # Explicit currency provided - match against symbol currencies
+            # Derive account_currency from balances keys + symbol
             quote = ScenarioValidator.detect_quote_currency(symbol)
             base = ScenarioValidator.detect_base_currency(symbol)
-            detected_currency = quote
-            if base == account_currency:
-                detected_currency = base
+            if quote in balances:
+                account_currency = quote
+            elif base in balances:
+                account_currency = base
+            elif len(balances) == 1:
+                account_currency = list(balances.keys())[0]
+            else:
+                # ambiguous — validation will catch this
+                continue
+
             logger.debug(
-                f"💱 Account Currency: {account_currency} (explicit configuration)"
+                f"💱 Account Currency: {account_currency} (derived from balances)"
             )
 
-            scenario.account_currency = detected_currency
+            scenario.account_currency = account_currency
 
     @staticmethod
     def validate_scenario_boundaries(
@@ -258,15 +261,11 @@ class ScenarioValidator:
         logger: AbstractLogger
     ) -> None:
         """
-        Validate account_currency is either base or quote currency of symbol.
+        Validate balances dict contains a currency matching the symbol.
 
         Rules:
-        - account_currency must be explicitly configured (no empty, no "auto")
-        - Must match base OR quote currency of the symbol
-
-        Rationale:
-        - Trade simulator can convert directly if account_currency is base or quote
-        - External conversion rates needed otherwise (not supported)
+        - 'balances' must be present and non-empty in trade_simulator_config
+        - At least one key must match base or quote currency of the symbol
 
         Side Effects:
         - Sets validation_result if invalid
@@ -276,40 +275,35 @@ class ScenarioValidator:
             scenario: Scenario to validate
             logger: Logger for error messages
         """
-        account_currency = scenario.trade_simulator_config.get(
-            'account_currency', '')
+        balances = scenario.trade_simulator_config.get('balances', {})
+        symbol = scenario.symbol
 
-        # Reject missing or legacy "auto" values
-        if not account_currency or account_currency.lower() == 'auto':
-            symbol = scenario.symbol
+        # Reject missing balances
+        if not balances:
             try:
                 suggested = ScenarioValidator.detect_quote_currency(symbol)
             except ValueError:
-                suggested = '???'
+                suggested = 'USD'
             validation_result = ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
                 errors=[
-                    f"account_currency must be explicitly configured. "
-                    f"'auto' mode is no longer supported. "
-                    f"Set 'account_currency' to '{suggested}' for symbol {symbol}."
+                    f"'balances' required in trade_simulator_config. "
+                    f"Example: {{\"balances\": {{\"{suggested}\": 10000}}}}"
                 ],
                 warnings=[]
             )
             scenario.validation_result.append(validation_result)
             logger.error(
-                f"❌ {scenario.name}: account_currency is missing or set to 'auto'"
+                f"❌ {scenario.name}: 'balances' missing in trade_simulator_config"
             )
             return
 
         # Validate symbol format and extract currencies
-        symbol = scenario.symbol
-
         try:
             base_currency = ScenarioValidator.detect_base_currency(symbol)
             quote_currency = ScenarioValidator.detect_quote_currency(symbol)
         except ValueError as e:
-            # Invalid symbol format
             validation_result = ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
@@ -320,24 +314,24 @@ class ScenarioValidator:
             logger.error(f"❌ {scenario.name}: {str(e)}")
             return
 
-        # Check if account_currency matches base OR quote
-        account_currency_upper = account_currency.upper()
-
-        if account_currency_upper not in [base_currency, quote_currency]:
+        # Check at least one balance key matches base or quote
+        balance_currencies = set(balances.keys())
+        symbol_currencies = {base_currency, quote_currency}
+        if not balance_currencies & symbol_currencies:
             validation_result = ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
                 errors=[
-                    f"Account currency '{account_currency}' is neither base nor quote currency of symbol {symbol}. "
-                    f"Symbol {symbol} uses {base_currency} (base) and {quote_currency} (quote). "
-                    f"Account currency must be one of these."
+                    f"No balance currency matches symbol {symbol}. "
+                    f"Symbol uses {base_currency} (base) and {quote_currency} (quote). "
+                    f"Balances contain: {list(balances.keys())}."
                 ],
                 warnings=[]
             )
             scenario.validation_result.append(validation_result)
             logger.error(
-                f"❌ {scenario.name}: Account currency '{account_currency}' "
-                f"not compatible with symbol {symbol} ({base_currency}/{quote_currency})"
+                f"❌ {scenario.name}: Balance currencies {list(balances.keys())} "
+                f"don't match symbol {symbol} ({base_currency}/{quote_currency})"
             )
 
     @staticmethod

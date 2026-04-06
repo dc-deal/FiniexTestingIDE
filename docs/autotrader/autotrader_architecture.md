@@ -521,7 +521,7 @@ _create_broker_config(config, logger)
   → _load_broker_settings('kraken_spot.json')  ← cascade: user_configs/ → configs/
   → KrakenConfigFetcher(credentials_file, api_base_url)
   → GET /0/public/AssetPairs → symbol specs (tick_size, volume_min/max, digits)
-  → POST /0/private/Balance → account balance (overrides initial_balance)
+  → POST /0/private/Balance → account balance (overrides profile balances)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
   → adapter.enable_live(broker_settings)  ← Tier 3 activation
   → return BrokerConfig with live-enabled KrakenAdapter
@@ -533,21 +533,21 @@ _create_broker_config(config, logger)
 
 ### Account Currency & Balance Semantics
 
-The `account.currency` field in the AutoTrader profile determines which balance is fetched from Kraken and how P&L is denominated internally.
+The `account.balances` dict in the AutoTrader profile determines which currency is fetched from Kraken and how P&L is denominated internally. The account currency is derived at startup from the balances keys matched against the symbol's base/quote currencies.
 
 **Rules:**
-- `account.currency` must match either the **base** or **quote** currency of the traded symbol.
-- The AutoTrader fetches only the configured currency — other balances on the account are ignored.
-- `initial_balance` in the profile is a placeholder; it is always overridden by the live API fetch.
-- Cross-currency accounts (e.g., `account.currency: "EUR"` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
+- At least one key in `account.balances` must match either the **base** or **quote** currency of the traded symbol.
+- The AutoTrader fetches only the matched currency — other balances on the account are ignored.
+- The balance value in the profile is a placeholder; it is always overridden by the live API fetch.
+- Cross-currency accounts (e.g., `balances: {"EUR": 100}` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
 
 **Supported configurations for Spot trading:**
 
-| `account.currency` | Symbol | Meaning |
+| `account.balances` | Symbol | Meaning |
 |---|---|---|
-| `"USD"` | `SOLUSD` | Buying/selling SOL, P&L in USD — recommended for multi-pair setups |
-| `"SOL"` | `SOLUSD` | Holding SOL as base, P&L in SOL |
-| `"ETH"` | `ETHUSD` | Holding ETH as base, P&L in ETH |
+| `{"USD": 100}` | `SOLUSD` | Buying/selling SOL, P&L in USD — recommended for multi-pair setups |
+| `{"SOL": 0, "USD": 100}` | `SOLUSD` | Spot dual-balance, P&L in USD (quote currency) |
+| `{"ETH": 0, "USD": 50}` | `ETHUSD` | Spot dual-balance, P&L in USD (quote currency) |
 
 **Recommendation:** Use `"USD"` as account currency for all spot pairs. USD is the quote currency across all Kraken USD pairs — one balance covers all symbols, P&L is always in USD (consistent with backtesting), and no per-symbol currency management is needed.
 

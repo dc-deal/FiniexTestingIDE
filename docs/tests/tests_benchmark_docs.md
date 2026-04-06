@@ -205,8 +205,7 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
       }
     },
     "trade_simulator_config": {
-      "initial_balance": 10000,
-      "account_currency": "EUR"
+      "balances": { "EUR": 10000 }
     }
   },
   "scenarios": [

@@ -33,7 +33,7 @@
       "tick_processing_budget_ms": 0.296
     },
     "trade_simulator_config": {
-      "account_currency": "USD"
+      "balances": { "USD": 10000 }
     },
     "stress_test_config": {
       "reject_open_order": {
@@ -110,7 +110,7 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "account_currency": "JPY"
+        "balances": { "JPY": 10000 }
       }
     },
     {

@@ -31,8 +31,7 @@
     },
     "execution_config": {},
     "trade_simulator_config": {
-      "initial_balance": 10000,
-      "account_currency": "EUR"
+      "balances": { "EUR": 10000 }
     },
     "stress_test_config": {}
   },
