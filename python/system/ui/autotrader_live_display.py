@@ -303,7 +303,10 @@ class AutoTraderLiveDisplay:
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Portfolio state: balance (both currencies), P&L."""
-        net_pnl = stats.balance - stats.initial_balance
+        # Include unrealized P&L from open positions (spot: balance alone
+        # drops when buying assets, the held value must be accounted for)
+        unrealized = sum(p.unrealized_pnl for p in stats.open_positions)
+        net_pnl = stats.balance - stats.initial_balance + unrealized
         pnl_pct = (net_pnl / stats.initial_balance *
                    100) if stats.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'

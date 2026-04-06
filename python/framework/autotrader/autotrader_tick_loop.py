@@ -238,6 +238,9 @@ class AutotraderTickLoop:
         """
         portfolio = self._executor.portfolio
 
+        # Ensure P&L is current before snapshotting (display only, not every tick)
+        portfolio._ensure_positions_updated()
+
         # Open positions → PositionSnapshot
         open_positions = []
         for pos in self._executor.get_open_positions():
