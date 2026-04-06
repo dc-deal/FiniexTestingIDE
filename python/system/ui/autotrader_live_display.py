@@ -31,6 +31,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 
@@ -62,10 +63,12 @@ class AutoTraderLiveDisplay:
         display_queue: queue.Queue,
         tick_source: AbstractTickSource,
         config: AutoTraderConfig,
+        dry_run: bool = True,
     ):
         self._display_queue = display_queue
         self._tick_source = tick_source
         self._config = config
+        self._dry_run = dry_run
         self._update_interval = config.display.update_interval_ms / 1000.0
 
         # Stats cache (latest snapshot from queue)
@@ -182,7 +185,7 @@ class AutoTraderLiveDisplay:
         """Build the header title with symbol and mode."""
         symbol = stats.symbol if stats else self._config.symbol
         broker = stats.broker_type if stats else self._config.broker_type
-        dry_run = stats.dry_run if stats else (self._config.adapter_type == 'mock')
+        dry_run = stats.dry_run if stats else self._dry_run
         mode_label = '[yellow]DRY RUN[/yellow]' if dry_run else '[green bold]LIVE TRADING[/green bold]'
         return f'[bold cyan]FiniexAutoTrader[/bold cyan] — {symbol} ({broker}) — {mode_label}'
 
@@ -218,8 +221,10 @@ class AutoTraderLiveDisplay:
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
         if stats.recent_trades:
-            right_panels.append(Layout(self._build_trade_history_panel(stats), name='trades'))
-        right_panels.append(Layout(self._build_algo_state_panel(stats), name='algo'))
+            right_panels.append(
+                Layout(self._build_trade_history_panel(stats), name='trades'))
+        right_panels.append(
+            Layout(self._build_algo_state_panel(stats), name='algo'))
         layout['right'].split_column(*right_panels)
 
         return layout
@@ -246,7 +251,8 @@ class AutoTraderLiveDisplay:
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
         if width >= self._WIDTH_TRADE_HISTORY and stats.recent_trades:
-            right_panels.append(Layout(self._build_trade_history_panel(stats), name='trades'))
+            right_panels.append(
+                Layout(self._build_trade_history_panel(stats), name='trades'))
         layout['right'].split_column(*right_panels)
 
         return layout
@@ -275,7 +281,15 @@ class AutoTraderLiveDisplay:
         uptime_str = f'{hours}h {minutes:02d}m {seconds:02d}s'
 
         mode = '[yellow]DRY RUN[/yellow]' if stats.dry_run else '[green]LIVE[/green]'
-        win_rate = (stats.winning_trades / stats.total_trades * 100) if stats.total_trades > 0 else 0.0
+        win_rate = (stats.winning_trades / stats.total_trades *
+                    100) if stats.total_trades > 0 else 0.0
+
+        if stats.safety_blocked:
+            safety_str = f'[red bold]⛔ BLOCKED[/red bold]  [dim]{stats.safety_reason}[/dim]'
+        elif self._config.safety.enabled:
+            safety_str = '[green]● ACTIVE[/green]'
+        else:
+            safety_str = '[dim]off[/dim]'
 
         lines = [
             f'Uptime:  {uptime_str}',
@@ -283,25 +297,50 @@ class AutoTraderLiveDisplay:
             f'Rate:    {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
             f'Trades:  {stats.total_trades}  (Win: {win_rate:.1f}%)',
             f'Mode:    {mode}',
+            f'Safety:  {safety_str}',
         ]
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Portfolio state: balance, P&L."""
+        """Portfolio state: balance (both currencies), P&L."""
         net_pnl = stats.balance - stats.initial_balance
-        pnl_pct = (net_pnl / stats.initial_balance * 100) if stats.initial_balance > 0 else 0.0
+        pnl_pct = (net_pnl / stats.initial_balance *
+                   100) if stats.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
-        # Quote equivalent (base balance × last mid price)
-        if stats.last_price > 0:
-            quote_val = stats.balance * stats.last_price
-            quote_suffix = f'  [dim]≈ {quote_val:,.2f} {stats.symbol[-3:]}[/dim]'
+        # Derive base/quote from symbol (e.g. SOLUSD → base=SOL, quote=USD)
+        # Convention: last 3 chars = quote, remainder = base
+        quote_currency = stats.symbol[-3:]
+        base_currency = stats.symbol[:-3]
+
+        # Dual-currency balance display
+        # account_currency tells us which side we hold — the other is estimated from price
+        if stats.account_currency == quote_currency:
+            # e.g. USD account trading SOLUSD: show USD, estimate SOL equivalent
+            primary_label = f'[bold]{quote_currency}[/bold] [dim](quote)[/dim]'
+            primary_val = f'{stats.balance:,.6f} {quote_currency}'
+            if stats.last_price > 0:
+                other_val = stats.balance / stats.last_price
+                secondary_line = f'          [dim]≈ {other_val:,.6f} {base_currency} (est.)[/dim]'
+            else:
+                secondary_line = ''
         else:
-            quote_suffix = ''
+            # e.g. SOL account trading SOLUSD: show SOL, estimate USD equivalent
+            primary_label = f'[bold]{base_currency}[/bold] [dim](base)[/dim]'
+            primary_val = f'{stats.balance:,.6f} {base_currency}'
+            if stats.last_price > 0:
+                other_val = stats.balance * stats.last_price
+                secondary_line = f'          [dim]≈ {other_val:,.6f} {quote_currency} (est.)[/dim]'
+            else:
+                secondary_line = ''
 
         lines = [
-            f'Balance:  {stats.balance:,.6f}{quote_suffix}',
+            f'Balance:  {primary_val}  {primary_label}',
+        ]
+        if secondary_line:
+            lines.append(secondary_line)
+        lines += [
             f'Net P&L:  [{pnl_color}]{pnl_sign}{net_pnl:,.6f} ({pnl_sign}{pnl_pct:.2f}%)[/{pnl_color}]',
             f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
         ]
@@ -323,7 +362,7 @@ class AutoTraderLiveDisplay:
         for idx, pos in enumerate(stats.open_positions, 1):
             pnl_color = 'green' if pos.unrealized_pnl >= 0 else 'red'
             pnl_sign = '+' if pos.unrealized_pnl >= 0 else ''
-            dir_color = 'green' if pos.direction == 'LONG' else 'red'
+            dir_color = 'green' if pos.direction == OrderDirection.LONG.value else 'red'
             table.add_row(
                 str(idx),
                 pos.position_id[:16],
@@ -388,7 +427,7 @@ class AutoTraderLiveDisplay:
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
             pnl_sign = '+' if trade.net_pnl >= 0 else ''
-            dir_color = 'green' if trade.direction == 'LONG' else 'red'
+            dir_color = 'green' if trade.direction == OrderDirection.LONG.value else 'red'
             table.add_row(
                 f'[{dir_color}]{trade.direction}[/{dir_color}]',
                 f'{trade.lots:.4f}',
@@ -409,7 +448,8 @@ class AutoTraderLiveDisplay:
 
         # Stream health — based on last WS message (includes heartbeats)
         if last_msg_time:
-            msg_age_s = (datetime.now(timezone.utc) - last_msg_time).total_seconds()
+            msg_age_s = (datetime.now(timezone.utc) -
+                         last_msg_time).total_seconds()
             if msg_age_s > 90:
                 stream_str = '[red]● dead[/red]'
             elif msg_age_s > 30:
@@ -421,7 +461,8 @@ class AutoTraderLiveDisplay:
 
         # Last actual trade tick time
         if last_tick_time:
-            tick_age_s = (datetime.now(timezone.utc) - last_tick_time).total_seconds()
+            tick_age_s = (datetime.now(timezone.utc) -
+                          last_tick_time).total_seconds()
             if tick_age_s > 120:
                 tick_age_str = f'[yellow]{tick_age_s:.0f}s ago[/yellow]'
             else:
@@ -431,13 +472,15 @@ class AutoTraderLiveDisplay:
 
         # Emitted tick rate (session average)
         if stats and emitted > 0:
-            uptime_min = max(0.001, (datetime.now(timezone.utc) - stats.session_start).total_seconds() / 60.0)
+            uptime_min = max(0.001, (datetime.now(
+                timezone.utc) - stats.session_start).total_seconds() / 60.0)
             emit_rate_str = f'{emitted / uptime_min:.1f}/min'
         else:
             emit_rate_str = '[dim]—[/dim]'
 
         reconnect_color = 'yellow' if reconnects > 0 else ''
-        reconnect_str = f'[{reconnect_color}]{reconnects}[/{reconnect_color}]' if reconnect_color else str(reconnects)
+        reconnect_str = f'[{reconnect_color}]{reconnects}[/{reconnect_color}]' if reconnect_color else str(
+            reconnects)
 
         lines = [
             f'Stream:         {stream_str}',
@@ -499,9 +542,12 @@ class AutoTraderLiveDisplay:
         # Decision time
         if stats.decision_time_ms > 0:
             lines.append('─' * 40)
-            d_filled = min(bar_width, int((stats.decision_time_ms / max_scale_ms) * bar_width))
-            d_bar = '█' * max(1, d_filled) + '░' * (bar_width - max(1, d_filled))
-            lines.append(f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms')
+            d_filled = min(bar_width, int(
+                (stats.decision_time_ms / max_scale_ms) * bar_width))
+            d_bar = '█' * max(1, d_filled) + '░' * \
+                (bar_width - max(1, d_filled))
+            lines.append(
+                f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms')
 
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
 
@@ -525,7 +571,8 @@ class AutoTraderLiveDisplay:
             lines.append('─' * 40)
 
         action = stats.last_decision_action
-        action_color = 'green' if action == 'BUY' else ('red' if action == 'SELL' else 'dim')
+        action_color = 'green' if action == 'BUY' else (
+            'red' if action == 'SELL' else 'dim')
         decision_parts = [f'[{action_color}]{action}[/{action_color}]']
         for key, value in stats.decision_outputs.items():
             if isinstance(value, float):

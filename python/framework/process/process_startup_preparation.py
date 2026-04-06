@@ -72,6 +72,7 @@ def process_startup_preparation(
         market_type=config.market_type,
         symbol=config.symbol,
         volume_min=volume_min,
+        trading_model=config.trading_model,
     )
     scenario_logger.debug(
         f"🌍 Trading context for decision & worker: {trading_context.market_type.value} market"

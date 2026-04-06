@@ -17,7 +17,25 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/btcusd_mock.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
-**Runtime:** ~6 seconds per test (29,780 ticks in replay mode).
+**Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
+
+### test_autotrader_trade_lifecycle.py (15 Tests)
+
+Trade lifecycle validation through the AutoTrader mock pipeline. Uses `btcusd_mock.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
+
+One session is shared across all test classes (`scope='module'`) to avoid running 29780 ticks multiple times.
+
+| Class | Tests | What it validates |
+|-------|-------|-------------------|
+| `TestNormalCycle` | 6 | Normal shutdown, trades produced, orders recorded, no errors, valid entry/exit prices, valid directions |
+| `TestClosePaths` | 3 | All close_reason values are valid enum members, no orphaned positions, finite P&L |
+| `TestPortfolioIntegrity` | 4 | Portfolio stats present, trade count matches history, W+L = total, balance changed after trades |
+| `TestSessionEndWithOpenPosition` | 1 | SCENARIO_END trades have valid exit prices |
+| `TestLogFiles` | 1 | All log files and directories created |
+
+**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/btcusd_mock_fast.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
+
+**Runtime:** ~6 seconds total (session shared across 14 tests via `scope='module'`, LogFiles test runs own session).
 
 ### test_live_clipping_monitor.py (22 Tests)
 
@@ -40,8 +58,12 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 # Full suite
 pytest tests/autotrader_integration/ -v --tb=short
 
+# Trade lifecycle only
+pytest tests/autotrader_integration/test_autotrader_trade_lifecycle.py -v
+
 # Clipping monitor only
 pytest tests/autotrader_integration/test_live_clipping_monitor.py -v
 ```
 
-VS Code: `🧩 Pytest: AutoTrader Integration (All)`
+VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all three files.
+VS Code: `🧩 Pytest: AutoTrader Trade Lifecycle` — trade lifecycle only.

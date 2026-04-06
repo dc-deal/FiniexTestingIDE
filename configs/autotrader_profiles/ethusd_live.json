@@ -34,8 +34,7 @@
     }
   },
   "account": {
-    "initial_balance": 0.0,
-    "currency": "ETH"
+    "balances": { "USD": 0.0, "ETH": 0.0 }
   },
   "tick_source": {
     "type": "kraken"
@@ -51,5 +50,10 @@
   "display": {
     "enabled": true,
     "update_interval_ms": 300
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 9.0,
+    "max_drawdown_pct": 20.0
   }
 }

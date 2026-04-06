@@ -49,6 +49,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
@@ -56,7 +57,8 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     OrderDirection,
-    OrderResult
+    OrderResult,
+    RejectionReason,
 )
 
 
@@ -105,6 +107,9 @@ class AggressiveTrend(AbstractDecisionLogic):
         # Trading configuration
         self.min_free_margin = self.params.get('min_free_margin')
         self.lot_size = self.params.get('lot_size')
+
+        # Rejection state: direction → True if last broker_error rejection blocked it
+        self._broker_rejected: dict[OrderDirection, bool] = {}
 
         self.logger.debug(
             f"AggressiveTrend initialized: "
@@ -219,6 +224,20 @@ class AggressiveTrend(AbstractDecisionLogic):
         if decision.action == DecisionLogicAction.FLAT:
             return None
 
+        new_direction = OrderDirection.LONG if decision.action == DecisionLogicAction.BUY else OrderDirection.SHORT
+
+        # Skip SHORT in spot mode — no naked selling on spot exchanges
+        if (new_direction == OrderDirection.SHORT
+                and self._trading_context
+                and self._trading_context.trading_model == TradingModel.SPOT):
+            return None
+
+        # ============================================
+        # Skip direction if broker previously rejected it (e.g. insufficient funds on spot)
+        # ============================================
+        if self._broker_rejected.get(new_direction, False):
+            return None
+
         # ============================================
         # Check for pending orders (avoid double-ordering)
         # ============================================
@@ -230,8 +249,6 @@ class AggressiveTrend(AbstractDecisionLogic):
         # Get confirmed open positions
         # ============================================
         open_positions = self.trading_api.get_open_positions()
-
-        new_direction = OrderDirection.LONG if decision.action == DecisionLogicAction.BUY else OrderDirection.SHORT
 
         # ============================================
         # STEP 1: Check if we already have a position
@@ -290,6 +307,11 @@ class AggressiveTrend(AbstractDecisionLogic):
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"
                 )
+                if order_result.rejection_reason == RejectionReason.BROKER_ERROR:
+                    self._broker_rejected[new_direction] = True
+                    self.logger.warning(
+                        f"⛔ Direction {new_direction} blocked after broker rejection — will not retry this session"
+                    )
 
             return order_result
 

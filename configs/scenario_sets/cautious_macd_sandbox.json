@@ -58,7 +58,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_02",
@@ -71,7 +73,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_03",
@@ -84,7 +88,9 @@
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_04",
@@ -97,7 +103,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_05",
@@ -110,7 +118,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_06",
@@ -123,7 +133,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_07",
@@ -136,7 +148,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "BTCUSD_blocks_08",
@@ -149,7 +163,9 @@
       "enabled": false,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     }
   ]
 }

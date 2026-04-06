@@ -22,6 +22,8 @@ def build_live_executor(
     account_currency: str,
     logger: AbstractLogger,
     timeout_config: Optional[TimeoutConfig] = None,
+    spot_mode: bool = False,
+    initial_balances: Optional[dict[str, float]] = None,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -34,7 +36,8 @@ def build_live_executor(
         account_currency: Account currency (e.g., "USD")
         logger: Logger instance
         timeout_config: Order timeout thresholds (default: 30s timeout)
-
+        spot_mode: Enable spot trading mode
+        initial_balances: Asset inventory for spot mode
     Returns:
         LiveTradeExecutor ready for live trading
     """
@@ -54,4 +57,6 @@ def build_live_executor(
         account_currency=account_currency,
         logger=logger,
         timeout_config=config,
+        spot_mode=spot_mode,
+        initial_balances=initial_balances,
     )

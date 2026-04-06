@@ -29,6 +29,7 @@ from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSo
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -169,23 +170,42 @@ def setup_pipeline(
         f"📋 Decision logic requires: {[t.value for t in required_order_types]}"
     )
 
-    # === Phase 3: LiveTradeExecutor ===
+    # === Phase 3: Resolve trading model ===
+    market_config_manager = MarketConfigManager()
+    market_type = market_config_manager.get_market_type(config.broker_type)
+    trading_model = market_config_manager.get_trading_model(config.broker_type)
+    spot_mode = trading_model == TradingModel.SPOT
+    initial_balances = config.account.balances if spot_mode else None
+
+    # Validate: spot broker requires balances
+    if spot_mode and not config.account.balances:
+        raise ValueError(
+            f"Configuration error: AutoTrader profile '{config.name}' uses spot broker "
+            f"'{config.broker_type}' but no 'balances' defined in account config.\n"
+            f"Add to profile:\n"
+            f'  "account": {{ "balances": {{ "USD": 0.0, "{config.symbol[:3]}": 0.0 }} }}'
+        )
+
+    # === Phase 4: LiveTradeExecutor ===
     executor = build_live_executor(
         broker_config=broker_config,
         initial_balance=config.account.initial_balance,
         account_currency=config.account.currency,
         logger=logger,
+        spot_mode=spot_mode,
+        initial_balances=initial_balances,
     )
-    logger.info(
-        f"💱 LiveTradeExecutor created: "
-        f"{config.account.initial_balance} {config.account.currency}"
-    )
+    if spot_mode:
+        logger.info(
+            f"💱 LiveTradeExecutor created (SPOT): balances={config.account.balances}"
+        )
+    else:
+        logger.info(
+            f"💱 LiveTradeExecutor created: "
+            f"{config.account.initial_balance} {config.account.currency}"
+        )
 
-    # === Phase 4: TradingContext ===
-    market_config_manager = MarketConfigManager()
-    market_type = market_config_manager.get_market_type(
-        config.broker_type
-    )
+    # === Phase 5: TradingContext ===
     volume_min = broker_config.adapter.get_symbol_specification(
         config.symbol
     ).volume_min
@@ -194,9 +214,10 @@ def setup_pipeline(
         market_type=market_type,
         symbol=config.symbol,
         volume_min=volume_min,
+        trading_model=trading_model,
     )
 
-    # === Phase 5: Workers ===
+    # === Phase 6: Workers ===
     worker_factory = WorkerFactory(logger=logger)
     workers_dict = worker_factory.create_workers_from_config(
         strategy_config=config.strategy_config,
@@ -205,7 +226,7 @@ def setup_pipeline(
     workers = list(workers_dict.values())
     logger.debug(f"✅ Created {len(workers)} workers")
 
-    # === Phase 6: DecisionLogic ===
+    # === Phase 7: DecisionLogic ===
     decision_logic = decision_logic_factory.create_logic(
         logic_type=config.strategy_config.get('decision_logic_type', ''),
         logic_config=config.strategy_config.get('decision_logic_config', {}),
@@ -217,7 +238,7 @@ def setup_pipeline(
         f"{config.strategy_config.get('decision_logic_type', '')}"
     )
 
-    # === Phase 7: WorkerOrchestrator + DecisionTradingApi ===
+    # === Phase 8: WorkerOrchestrator + DecisionTradingApi ===
     worker_orchestrator = WorkerOrchestrator(
         decision_logic=decision_logic,
         strategy_config=config.strategy_config,
@@ -288,6 +309,7 @@ def setup_tick_source(
             symbol=config.symbol,
             tick_queue=tick_queue,
             mode=config.tick_source.mode,
+            max_ticks=config.tick_source.max_ticks,
         )
     elif config.tick_source.type == 'kraken':
         ws_pair = _resolve_ws_pair(config.symbol, config.broker_settings, logger)

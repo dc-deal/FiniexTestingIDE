@@ -205,6 +205,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 | `execution` | Runtime parameters | Standalone — no cascade from app_config |
 | `clipping_monitor` | Timing config | Strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | `enabled`, `update_interval_ms` (default 300ms) |
+| `safety` | Circuit breaker | Optional. Omit or set `enabled: false` to disable |
 
 **No config cascade.** Unlike backtesting (app_config → scenario_set → scenario), AutoTrader uses a flat, standalone config. One session, one config.
 
@@ -368,6 +369,57 @@ All metrics are tracked in two scopes: **session totals** (end-of-session summar
 | 5 | Queue depth monitoring (`queue.qsize()`) | ✅ |
 | 6 | Strategy selection (queue_all / drop_stale) | ✅ Config, drop_stale execution in #232 |
 
+## Safety Circuit Breaker
+
+A soft-stop mechanism that blocks new position entries when configurable risk thresholds are exceeded. Existing open positions continue to run — SL, TP, and signal-based closes are not affected.
+
+### Behavior
+
+```
+Tick rein
+  → executor.on_tick()    ← SL/TP checks run (always, unaffected)
+  → Workers → Decision    ← produces BUY / SELL / FLAT
+  → [SAFETY CHECK]        ← evaluates thresholds against current balance
+  → if blocked: decision.action = FLAT  ← override, no trade opened
+  → execute_decision()
+```
+
+The check runs after every tick. If conditions clear (e.g. balance recovers above `min_balance`), the block is automatically lifted and trading resumes.
+
+### Configuration
+
+```json
+"safety": {
+  "enabled": true,
+  "min_balance": 9.0,
+  "max_drawdown_pct": 20.0
+}
+```
+
+| Field | Description |
+|---|---|
+| `enabled` | Master switch — omit or set `false` to disable entirely |
+| `min_balance` | Block if `current_balance < min_balance` (account currency) |
+| `max_drawdown_pct` | Block if session loss > X% of `initial_balance` |
+
+Both conditions are OR-combined — either alone triggers the block. Set to `0.0` to disable a specific condition while keeping the other active.
+
+### Display
+
+SESSION panel shows safety state:
+
+| Display | Meaning |
+|---|---|
+| `Safety: off` | Not configured (`enabled: false` or block omitted) |
+| `Safety: ● ACTIVE` | Configured and conditions not triggered |
+| `Safety: ⛔ BLOCKED  min_balance (12.29 < 15.00)` | Triggered — reason shown inline |
+
+Trigger and clear events are logged:
+```
+WARNING | ⛔ Safety circuit breaker triggered: min_balance (12.2930 < 15.0000)
+INFO    | ✅ Safety circuit breaker cleared
+```
+
 ## File Structure
 
 ```
@@ -478,6 +530,28 @@ _create_broker_config(config, logger)
 **Fallback**: If the public API call fails, symbol specs fall back to the static JSON (`broker_config_path`). Balance fetch failure is **fatal** — a 0.0 balance in live mode is dangerous.
 
 **Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
+
+### Account Currency & Balance Semantics
+
+The `account.currency` field in the AutoTrader profile determines which balance is fetched from Kraken and how P&L is denominated internally.
+
+**Rules:**
+- `account.currency` must match either the **base** or **quote** currency of the traded symbol.
+- The AutoTrader fetches only the configured currency — other balances on the account are ignored.
+- `initial_balance` in the profile is a placeholder; it is always overridden by the live API fetch.
+- Cross-currency accounts (e.g., `account.currency: "EUR"` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
+
+**Supported configurations for Spot trading:**
+
+| `account.currency` | Symbol | Meaning |
+|---|---|---|
+| `"USD"` | `SOLUSD` | Buying/selling SOL, P&L in USD — recommended for multi-pair setups |
+| `"SOL"` | `SOLUSD` | Holding SOL as base, P&L in SOL |
+| `"ETH"` | `ETHUSD` | Holding ETH as base, P&L in ETH |
+
+**Recommendation:** Use `"USD"` as account currency for all spot pairs. USD is the quote currency across all Kraken USD pairs — one balance covers all symbols, P&L is always in USD (consistent with backtesting), and no per-symbol currency management is needed.
+
+**What happens after trades:** If a BUY fills, the base asset increases and quote decreases (and vice versa for SELL). The AutoTrader only tracks the configured currency — the other side accumulates silently on the Kraken account. This is expected Spot behavior. The Reconciliation Layer (#151) will address cross-session position awareness.
 
 ### Broker Settings Layer
 

@@ -18,14 +18,18 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock.json'
 
 
-@pytest.fixture
-def cleanup_logs():
-    """Remove test session logs after test completes."""
-    created_dirs = []
-    yield created_dirs
-    for d in created_dirs:
-        if d.exists():
-            shutil.rmtree(d)
+@pytest.fixture(scope='module')
+def mock_session():
+    """
+    Run one full mock session shared across all tests in this module.
+    Avoids running 29780 ticks twice.
+    """
+    config = load_autotrader_config(MOCK_PROFILE)
+    trader = AutotraderMain(config)
+    result = trader.run()
+    yield result, trader._run_dir
+    if trader._run_dir and trader._run_dir.exists():
+        shutil.rmtree(trader._run_dir)
 
 
 class TestAutotraderMockSession:
@@ -36,20 +40,14 @@ class TestAutotraderMockSession:
     Validates that the complete pipeline produces correct, deterministic results.
     """
 
-    def test_full_mock_session(self, cleanup_logs):
+    def test_full_mock_session(self, mock_session):
         """
         Run complete mock session and validate result.
 
         Covers: config loading, pipeline creation, tick processing,
         decision logic, order execution, shutdown, and reporting.
         """
-        config = load_autotrader_config(MOCK_PROFILE)
-        trader = AutotraderMain(config)
-        result = trader.run()
-
-        # Track log dir for cleanup
-        if trader._run_dir:
-            cleanup_logs.append(trader._run_dir)
+        result, _ = mock_session
 
         # === Session completed normally ===
         assert result.shutdown_mode == 'normal', (
@@ -66,9 +64,14 @@ class TestAutotraderMockSession:
             f"Expected 0 clipped ticks in replay mode, got {result.ticks_clipped}"
         )
 
-        # === Clean session — no warnings or errors ===
-        assert len(result.warning_messages) == 0, (
-            f"Unexpected warnings: {result.warning_messages[:5]}"
+        # === Clean session — no unexpected warnings or errors ===
+        # Spot mode may leave positions open until scenario_end (no SHORT reversal)
+        unexpected_warnings = [
+            w for w in result.warning_messages
+            if 'positions remain open' not in w
+        ]
+        assert len(unexpected_warnings) == 0, (
+            f"Unexpected warnings: {unexpected_warnings[:5]}"
         )
         assert len(result.error_messages) == 0, (
             f"Unexpected errors: {result.error_messages[:5]}"
@@ -85,14 +88,9 @@ class TestAutotraderMockSession:
         # === Clipping monitor reported ===
         assert result.clipping_summary.total_ticks == 29780
 
-    def test_log_files_created(self, cleanup_logs):
+    def test_log_files_created(self, mock_session):
         """Verify that all expected log files are created."""
-        config = load_autotrader_config(MOCK_PROFILE)
-        trader = AutotraderMain(config)
-        trader.run()
-
-        run_dir = trader._run_dir
-        cleanup_logs.append(run_dir)
+        _, run_dir = mock_session
 
         assert run_dir.exists(), f"Run directory not created: {run_dir}"
         assert (run_dir / 'autotrader_global.log').exists()

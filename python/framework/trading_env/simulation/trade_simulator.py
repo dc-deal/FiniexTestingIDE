@@ -68,6 +68,8 @@ class TradeSimulator(AbstractTradeExecutor):
         trade_history_max: int = 5000,
         inbound_latency_min_ms: int = 20,
         inbound_latency_max_ms: int = 80,
+        spot_mode: bool = False,
+        initial_balances: Optional[Dict[str, float]] = None,
     ):
         """
         Initialize trade simulator.
@@ -83,6 +85,8 @@ class TradeSimulator(AbstractTradeExecutor):
             trade_history_max: Max trade history entries (0=unlimited)
             inbound_latency_min_ms: Minimum inbound latency in ms (order → broker)
             inbound_latency_max_ms: Maximum inbound latency in ms (order → broker)
+            spot_mode: Enable spot trading mode (asset transfer instead of P&L accumulation)
+            initial_balances: Asset inventory for spot mode (e.g., {'USD': 50.0, 'ETH': 0.0})
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
@@ -91,7 +95,9 @@ class TradeSimulator(AbstractTradeExecutor):
             account_currency=account_currency,
             logger=logger,
             order_history_max=order_history_max,
-            trade_history_max=trade_history_max
+            trade_history_max=trade_history_max,
+            spot_mode=spot_mode,
+            initial_balances=initial_balances,
         )
 
         # Order latency simulator with deterministic ms-based delays

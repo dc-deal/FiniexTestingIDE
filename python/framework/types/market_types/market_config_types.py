@@ -14,6 +14,12 @@ class MarketType(Enum):
     CRYPTO = "crypto"
 
 
+class TradingModel(Enum):
+    """Trading model — determines balance tracking and order validation."""
+    MARGIN = 'margin'
+    SPOT = 'spot'
+
+
 @dataclass
 class ProfileDefaults:
     """
@@ -59,10 +65,14 @@ class BrokerEntry:
         broker_type: Unique identifier for data source (e.g., 'mt5', 'kraken_spot')
         market_type: Associated market type for trading rules
         broker_config_path: Path to broker JSON configuration file
+        trading_model: Trading model (margin or spot) — determines balance tracking
     """
     broker_type: str
     market_type: MarketType
     broker_config_path: str
+    # MULTI-SYMBOL TOUCHPOINT
+    # Spot mode changes "margin aggregation" (#257 Phase 2) to "shared currency pool"
+    trading_model: TradingModel = TradingModel.MARGIN
 
 
 @dataclass

@@ -149,6 +149,7 @@ class AutotraderMain:
                     display_queue=self._display_queue,
                     tick_source=self._tick_source,
                     config=self._config,
+                    dry_run=dry_run,
                 )
                 self._display.start()
                 self._global_logger.info('📺 Live display started')

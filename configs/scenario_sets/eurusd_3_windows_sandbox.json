@@ -81,7 +81,9 @@
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "BTC": 0.0}
+      }
     },
     {
       "name": "GBPUSD_window_03",

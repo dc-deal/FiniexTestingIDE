@@ -45,7 +45,9 @@
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "ETH": 0.0}
+      }
     },
     {
       "name": "ETHUSD_blocks_03",
@@ -58,7 +60,9 @@
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
-      "trade_simulator_config": {}
+      "trade_simulator_config": {
+        "balances": {"USD": 10000.0, "ETH": 0.0}
+      }
     }
   ]
 }
