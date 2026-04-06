@@ -6,7 +6,7 @@ The pending stats test suite validates the pending order statistics system — l
 
 **Test Configuration:** `backtesting/pending_stats_validation_test.json`
 - Symbol: USDJPY
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - 2 trades: 1 normal (happy path), 1 late (force-closed)
 - Seeds: inbound_latency=12345
 - Max Ticks: 5,000

@@ -59,7 +59,7 @@
         },
         "trade_simulator_config": {
             "initial_balance": 100000,
-            "account_currency": "auto",
+            "account_currency": "JPY",
             "seeds": {
                 "inbound_latency_seed": 12345
             }

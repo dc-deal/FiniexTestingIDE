@@ -93,12 +93,12 @@ Point your profile to the broker settings file. Example `configs/autotrader_prof
   "adapter_type": "live",
   "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
-  "account": { "initial_balance": 0.0, "currency": "ETH" },
+  "account": { "balances": { "USD": 0.0, "ETH": 0.0 } },
   ...
 }
 ```
 
-`initial_balance: 0.0` is intentional — the startup fetches the real balance from Kraken and overrides this value.
+`balances` with `0.0` values is intentional — the startup fetches real balances from Kraken and overrides these values.
 
 ## Config File Relationship
 

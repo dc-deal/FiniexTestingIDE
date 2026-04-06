@@ -8,7 +8,7 @@ This suite proves that the engine's `TradeSimulator`, `PortfolioManager`, and `O
 
 **Test Configuration:** `backtesting/multi_position_test.json`
 - Symbol: USDJPY
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - 4 trades: 3 LONG, 1 SHORT (overlapping)
 - Peak concurrent positions: 3
 - Seeds: inbound_latency=12345

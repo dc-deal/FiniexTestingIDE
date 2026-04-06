@@ -7,7 +7,7 @@ CORRECTIONS:
 - scenario_set_name: For logger initialization
 - run_timestamp: Shared timestamp across all processes
 - warmup_requirements: REMOVED (validation skipped)
-- account_currency: Changed from 'currency' for clarity (auto-detection support)
+- account_currency: Changed from 'currency' for clarity
 """
 
 from dataclasses import asdict, dataclass, field
@@ -165,7 +165,7 @@ class ProcessScenarioConfig:
     - scenario_set_name: For logger initialization
     - run_timestamp: Shared across all processes
     - warmup_requirements: REMOVED (validation skipped)
-    - account_currency: Changed from 'currency' (supports "auto" detection)
+    - account_currency: Changed from 'currency' (explicitly configured)
     """
     # === IDENTITY ===
     name: str
@@ -203,7 +203,7 @@ class ProcessScenarioConfig:
     market_type: MarketType = None
     trading_model: TradingModel = TradingModel.MARGIN
     initial_balance: float = 0
-    account_currency: str = ''  # Changed from 'currency' - supports "auto"
+    account_currency: str = ''
     spot_balances: Dict[str, float] = field(default_factory=dict)
     seeds: Dict[str, Any] = field(default_factory=dict)
 
@@ -279,7 +279,7 @@ class ProcessScenarioConfig:
             "strict_parameter_validation", True
         )
 
-        # accountt currency is set in scenario_validator after detecting the correct value (see "auto"-mode)
+        # account currency is set in scenario_validator (explicitly configured)
         account_currency = scenario.account_currency
         initial_balance = scenario.trade_simulator_config.get(
             'initial_balance')

@@ -59,7 +59,6 @@ class SingleScenario:
     stress_test_config: Optional[Dict[str, Any]] = None
 
     account_currency: str = ''
-    configured_account_currency: str = ''
 
     # === VALIDATION TRACKING ===
     validation_result: List[ValidationResult] = field(default_factory=list)

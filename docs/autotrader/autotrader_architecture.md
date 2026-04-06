@@ -184,7 +184,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
   "adapter_type": "mock",
   "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
-  "account": { "initial_balance": 10000.0, "currency": "USD" },
+  "account": { "balances": { "USD": 10000.0, "BTC": 0.0 } },
   "tick_source": { "type": "mock", "parquet_path": "...", "mode": "replay" },
   "execution": { "parallel_workers": false, "bar_max_history": 1000 },
   "clipping_monitor": { "report_interval_s": 60.0, "strategy": "queue_all" }
@@ -200,7 +200,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
 | `broker_settings` | Broker settings filename | Cascade: `user_configs/broker_settings/` → `configs/broker_settings/` |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
-| `account` | Balance + currency | Live: overridden by API fetch (#230) |
+| `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
 | `execution` | Runtime parameters | Standalone — no cascade from app_config |
 | `clipping_monitor` | Timing config | Strategy: `queue_all` or `drop_stale` |

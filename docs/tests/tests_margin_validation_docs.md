@@ -14,7 +14,7 @@ The margin validation test suite validates margin exhaustion, recovery, order re
 **Common Settings:**
 - Symbol: USDJPY
 - Broker: MT5 (Vantage), Leverage 500
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - Seeds: inbound_latency=42424
 
 **Total Tests:** ~42

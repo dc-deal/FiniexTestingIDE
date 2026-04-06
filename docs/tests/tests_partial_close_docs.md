@@ -8,7 +8,7 @@ This suite proves that `PortfolioManager.partial_close_position()` and the routi
 
 **Test Configuration:** `backtesting/partial_close_test.json`
 - Symbol: USDJPY
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - 2 trades: 1 LONG (0.03 lots, partially closed twice), 1 SHORT (0.02 lots, full close only)
 - 2 partial close events at tick 2000 and 4000
 - Seeds: inbound_latency=12345

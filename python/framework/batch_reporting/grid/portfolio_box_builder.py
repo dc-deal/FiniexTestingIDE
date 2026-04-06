@@ -139,7 +139,6 @@ def _build_success_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -154,10 +153,7 @@ def _build_success_portfolio_box(
         current_balance_str = renderer.red(f"{current_balance_str}")
 
     # Format currency display
-    if configured_currency == "auto":
-        currency_display = f"{currency} (auto)"
-    else:
-        currency_display = currency
+    currency_display = currency
 
     # Format conversion rate
     if current_conversion_rate is not None:
@@ -289,7 +285,6 @@ def _build_hybrid_portfolio_box(
     # Currency
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
-    configured_currency = scenario.configured_account_currency
     current_conversion_rate = portfolio_stats.current_conversion_rate
     initial_balance = portfolio_stats.initial_balance
     current_balance = portfolio_stats.current_balance
@@ -304,10 +299,7 @@ def _build_hybrid_portfolio_box(
         current_balance_str = renderer.red(f"{current_balance_str}")
 
     # Format currency display
-    if configured_currency == "auto":
-        currency_display = f"{currency} (auto)"
-    else:
-        currency_display = currency
+    currency_display = currency
 
     # Format conversion rate
     if current_conversion_rate is not None:
