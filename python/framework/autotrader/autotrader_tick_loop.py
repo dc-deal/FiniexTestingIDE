@@ -284,12 +284,14 @@ class AutotraderTickLoop:
 
         # Worker performance + outputs (display=True only)
         worker_times: Dict[str, float] = {}
+        worker_max_times: Dict[str, float] = {}
         worker_outputs: Dict[str, Dict[str, Any]] = {}
         for name, worker in self._worker_orchestrator.workers.items():
             # Performance
             if worker.performance_logger:
                 stats = worker.performance_logger.get_stats()
                 worker_times[name] = stats.worker_avg_time_ms
+                worker_max_times[name] = stats.worker_max_time_ms
 
             # Outputs (display=True from schema)
             schema = worker.__class__.get_output_schema()
@@ -341,13 +343,16 @@ class AutotraderTickLoop:
             ticks_per_min=ticks_per_min,
             last_price=last_price,
             worker_times_ms=worker_times,
+            worker_max_times_ms=worker_max_times,
             worker_outputs=worker_outputs,
             last_decision_action=decision.action.value,
             decision_outputs=decision_outputs,
-            decision_time_ms=0.0,  # TODO: capture from orchestrator when available
+            decision_time_ms=self._decision_logic.performance_logger.get_stats().decision_avg_time_ms if self._decision_logic.performance_logger else 0.0,
+            decision_max_time_ms=self._decision_logic.performance_logger.get_stats().decision_max_time_ms if self._decision_logic.performance_logger else 0.0,
             account_currency=self._executor.account_currency,
             base_currency=self._base_currency,
             quote_currency=self._quote_currency,
+            trading_model='spot' if self._executor._spot_mode else 'margin',
             safety_blocked=self._safety_blocked,
             safety_reason=self._safety_reason,
         )
