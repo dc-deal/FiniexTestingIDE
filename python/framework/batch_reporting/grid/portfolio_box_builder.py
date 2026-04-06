@@ -11,8 +11,9 @@ Handles:
 All box types maintain identical line count for grid alignment.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -140,20 +141,15 @@ def _build_success_portfolio_box(
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
     current_conversion_rate = portfolio_stats.current_conversion_rate
-    initial_balance = portfolio_stats.initial_balance
-    current_balance = portfolio_stats.current_balance
 
-    # Format balances
-    initial_balance_str = format_currency_simple(initial_balance, currency)
-    current_balance_str = format_currency_simple(current_balance, currency)
-
-    if current_balance > initial_balance:
-        current_balance_str = renderer.green(current_balance_str)
-    elif current_balance < initial_balance:
-        current_balance_str = renderer.red(f"{current_balance_str}")
+    # Format balance lines (spot-aware)
+    balance_line, init_line, spot_pnl_detail = _format_balance_lines(
+        portfolio_stats, renderer)
 
     # Format currency display
     currency_display = currency
+    if portfolio_stats.spot_mode:
+        currency_display = f"{currency} [SPOT]"
 
     # Format conversion rate
     if current_conversion_rate is not None:
@@ -188,15 +184,25 @@ def _build_success_portfolio_box(
         f"Trades executed: {total_trades} ({winning}W/{losing}L)",
         f"Win Rate: {win_rate:.1%}",
         f"P&L: {renderer.pnl(total_pnl, currency)}{rate_display}",
-        f"Balance: {current_balance_str}",
-        f"Init: {initial_balance_str}",
-        f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)",
-        f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
-        f"Spread: {format_currency_simple(spread_cost, currency)}",
-        orders_line,
-        pending_line,
-        f"Long/Short: {long_trades}/{short_trades}",
+        balance_line,
+        init_line,
     ]
+    if portfolio_stats.spot_mode:
+        # Spot: est. P&L line, then risk metrics, compressed tail
+        lines.append(spot_pnl_detail)
+        lines.append(f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+        lines.append(f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}")
+        lines.append(f"Spread: {format_currency_simple(spread_cost, currency)} | {orders_line}")
+        lines.append(pending_line)
+        lines.append(f"Long/Short: {long_trades}/{short_trades}")
+    else:
+        # Margin: original layout
+        lines.append(f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+        lines.append(f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}")
+        lines.append(f"Spread: {format_currency_simple(spread_cost, currency)}")
+        lines.append(orders_line)
+        lines.append(pending_line)
+        lines.append(f"Long/Short: {long_trades}/{short_trades}")
 
     # Add status line or empty line
     if show_status_line:
@@ -286,20 +292,15 @@ def _build_hybrid_portfolio_box(
     currency = portfolio_stats.currency
     broker_name = portfolio_stats.broker_name
     current_conversion_rate = portfolio_stats.current_conversion_rate
-    initial_balance = portfolio_stats.initial_balance
-    current_balance = portfolio_stats.current_balance
 
-    # Format balances
-    initial_balance_str = format_currency_simple(initial_balance, currency)
-    current_balance_str = format_currency_simple(current_balance, currency)
-
-    if current_balance > initial_balance:
-        current_balance_str = renderer.green(current_balance_str)
-    elif current_balance < initial_balance:
-        current_balance_str = renderer.red(f"{current_balance_str}")
+    # Format balance lines (spot-aware)
+    balance_line, init_line, spot_pnl_detail = _format_balance_lines(
+        portfolio_stats, renderer)
 
     # Format currency display
     currency_display = currency
+    if portfolio_stats.spot_mode:
+        currency_display = f"{currency} [SPOT]"
 
     # Format conversion rate
     if current_conversion_rate is not None:
@@ -324,14 +325,21 @@ def _build_hybrid_portfolio_box(
         f"Trades executed: {total_trades} ({winning}W/{losing}L)",
         f"Win Rate: {win_rate:.1%}",
         f"P&L: {renderer.pnl(total_pnl, currency)}{rate_display}",
-        f"Balance: {current_balance_str}",
-        f"Init: {initial_balance_str}",
-        f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)",
-        f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}",
-        f"Spread: {format_currency_simple(spread_cost, currency)}",
-        f"Orders Ex/Sent: {orders_executed}/{orders_sent}",
-        f"Long/Short: {long_trades}/{short_trades}",
+        balance_line,
+        init_line,
     ]
+    if portfolio_stats.spot_mode:
+        lines.append(spot_pnl_detail)
+        lines.append(f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+        lines.append(f"Spread: {format_currency_simple(spread_cost, currency)}")
+        lines.append(f"Orders Ex/Sent: {orders_executed}/{orders_sent}")
+        lines.append(f"Long/Short: {long_trades}/{short_trades}")
+    else:
+        lines.append(f"Max DD: {renderer.pnl(force_negative(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+        lines.append(f"Max Equity: {renderer.pnl(force_positive(portfolio_stats.max_equity), currency)}")
+        lines.append(f"Spread: {format_currency_simple(spread_cost, currency)}")
+        lines.append(f"Orders Ex/Sent: {orders_executed}/{orders_sent}")
+        lines.append(f"Long/Short: {long_trades}/{short_trades}")
 
     # CRITICAL warning (always shown for hybrid)
     lines.append(renderer.red("⚠️ CRITICAL: Errors detected"))
@@ -387,6 +395,80 @@ def _build_error_portfolio_box(
         lines.append("")
 
     return render_box(lines, renderer, box_width)
+
+
+# ============================================
+# Spot Balance Formatting (shared helper)
+# ============================================
+
+def _format_balance_lines(
+    portfolio_stats: PortfolioStats,
+    renderer: ConsoleRenderer
+) -> Tuple[str, str, str]:
+    """
+    Format balance + init + P&L lines — spot-aware.
+
+    For margin mode: single balance line (unchanged behavior).
+    For spot mode: dual-balance line with estimated portfolio value.
+
+    Args:
+        portfolio_stats: Portfolio statistics (with spot_mode, balances, last_price)
+        renderer: Console renderer for color formatting
+
+    Returns:
+        Tuple of (balance_line, init_line, pnl_detail) strings
+    """
+    currency = portfolio_stats.currency
+    initial_balance = portfolio_stats.initial_balance
+    current_balance = portfolio_stats.current_balance
+
+    if not portfolio_stats.spot_mode:
+        # Margin mode — unchanged
+        initial_str = format_currency_simple(initial_balance, currency)
+        current_str = format_currency_simple(current_balance, currency)
+        if current_balance > initial_balance:
+            current_str = renderer.green(current_str)
+        elif current_balance < initial_balance:
+            current_str = renderer.red(current_str)
+        return (
+            f"Balance: {current_str}",
+            f"Init: {initial_str}",
+            ''
+        )
+
+    # Spot mode — dual balance display
+    symbol = portfolio_stats.symbol
+    quote = symbol[-3:] if len(symbol) >= 6 else currency
+    base = symbol[:-3] if len(symbol) >= 6 else ''
+    balances = portfolio_stats.balances
+    initial_balances = portfolio_stats.initial_balances
+    last_price = portfolio_stats.last_price
+
+    # Format current balances
+    quote_bal = balances.get(quote, 0.0)
+    base_bal = balances.get(base, 0.0)
+    quote_init = initial_balances.get(quote, 0.0)
+    base_init = initial_balances.get(base, 0.0)
+
+    # Determine decimal precision for base asset
+    base_fmt = f'{base_bal:,.4f}' if base_bal < 100 else f'{base_bal:,.2f}'
+    base_init_fmt = f'{base_init:,.4f}' if base_init < 100 else f'{base_init:,.2f}'
+
+    balance_line = f"Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}"
+    init_line = f"Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}"
+
+    # Estimated portfolio value
+    pnl_detail = ''
+    if last_price > 0:
+        est_current = quote_bal + (base_bal * last_price)
+        est_initial = quote_init + (base_init * last_price)
+        est_pnl = est_current - est_initial
+        est_pnl_pct = (est_pnl / est_initial * 100) if est_initial > 0 else 0.0
+        pnl_sign = '+' if est_pnl >= 0 else ''
+        price_str = format_currency_simple(last_price, quote)
+        pnl_detail = f"Est: {pnl_sign}{format_currency_simple(est_pnl, quote)} ({pnl_sign}{est_pnl_pct:.2f}%) @ {base} {price_str}"
+
+    return (balance_line, init_line, pnl_detail)
 
 
 # ============================================

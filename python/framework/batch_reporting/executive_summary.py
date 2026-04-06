@@ -308,22 +308,56 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             print("No portfolio data available")
             return
 
-        # Render each currency
+        # Render each currency — split margin/spot for mixed batches
         for currency, agg_portfolio in aggregated.items():
-            self._render_currency_portfolio(
-                renderer, currency, agg_portfolio)
+            # Check if this group has mixed margin + spot
+            currency_results = [
+                r for r in self._batch_summary.process_result_list
+                if r.tick_loop_results and
+                r.tick_loop_results.portfolio_stats.currency == currency
+            ]
+            margin_results = [r for r in currency_results if not r.tick_loop_results.portfolio_stats.spot_mode]
+            spot_results = [r for r in currency_results if r.tick_loop_results.portfolio_stats.spot_mode]
 
-    def _render_currency_portfolio(self, renderer: ConsoleRenderer, currency: str, agg_portfolio):
+            if margin_results and spot_results:
+                # Mixed: render separately
+                margin_agg = PortfolioAggregator(margin_results).aggregate_by_currency()
+                spot_agg = PortfolioAggregator(spot_results).aggregate_by_currency()
+                if currency in margin_agg:
+                    self._render_currency_portfolio(
+                        renderer, currency, margin_agg[currency], label='Margin')
+                if currency in spot_agg:
+                    self._render_spot_portfolio(
+                        renderer, currency, spot_agg[currency], spot_results)
+            elif spot_results:
+                # Pure spot
+                self._render_spot_portfolio(
+                    renderer, currency, agg_portfolio, spot_results)
+            else:
+                # Pure margin (original path)
+                self._render_currency_portfolio(
+                    renderer, currency, agg_portfolio)
+
+    def _render_currency_portfolio(
+        self, renderer: ConsoleRenderer, currency: str, agg_portfolio,
+        label: str = ''
+    ):
         """
-        Render portfolio metrics for single currency.
+        Render portfolio metrics for single currency (margin mode).
 
         Args:
             renderer: Console renderer
             currency: Currency code (EUR, USD, etc.)
             agg_portfolio: Aggregated portfolio statistics
+            label: Optional label suffix (e.g. 'Margin' for mixed batches)
         """
         # Get all ProcessResults for this currency
         currency_results = [
+            r for r in self._batch_summary.process_result_list
+            if r.tick_loop_results and
+            r.tick_loop_results.portfolio_stats.currency == currency and
+            not r.tick_loop_results.portfolio_stats.spot_mode
+        ] if label else [
             r for r in self._batch_summary.process_result_list
             if r.tick_loop_results and
             r.tick_loop_results.portfolio_stats.currency == currency
@@ -376,7 +410,10 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             total_trades if total_trades > 0 else 0
 
         # Render section
-        renderer.print_bold(f"PORTFOLIO PERFORMANCE ({currency})")
+        section_title = f"PORTFOLIO PERFORMANCE ({currency})"
+        if label:
+            section_title = f"PORTFOLIO PERFORMANCE ({currency} — {label})"
+        renderer.print_bold(section_title)
         renderer.print_separator(width=68)
         print(f"Scenarios:          {scenario_count}")
         print(
@@ -434,6 +471,110 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             f"Commission:         {format_currency_simple(portfolio_stats.total_commission, currency)}")
         print(
             f"Swap:               {format_currency_simple(portfolio_stats.total_swap, currency)}")
+
+    def _render_spot_portfolio(
+        self, renderer: ConsoleRenderer, currency: str,
+        agg_portfolio, spot_results: List
+    ):
+        """
+        Render portfolio metrics for spot scenarios.
+
+        Shows dual balances per scenario, estimated portfolio value, and P&L.
+
+        Args:
+            renderer: Console renderer
+            currency: Quote currency code (USD, etc.)
+            agg_portfolio: Aggregated portfolio statistics for spot scenarios
+            spot_results: List of ProcessResult for spot scenarios
+        """
+        portfolio_stats = agg_portfolio.portfolio_stats
+        scenario_count = agg_portfolio.scenario_count
+
+        renderer.print_bold(f"PORTFOLIO PERFORMANCE ({currency} — Spot)")
+        renderer.print_separator(width=68)
+        print(f"Scenarios:          {scenario_count}")
+
+        # Initial/final totals (quote currency)
+        initial = sum(
+            r.tick_loop_results.portfolio_stats.initial_balance
+            for r in spot_results
+        )
+        final = sum(
+            r.tick_loop_results.portfolio_stats.current_balance
+            for r in spot_results
+        )
+        avg_initial = initial / scenario_count if scenario_count > 0 else 0
+        print(
+            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(avg_initial, currency)}/scenario)")
+
+        # Per-scenario spot balances
+        total_est_current = 0.0
+        total_est_initial = 0.0
+        has_base_holdings = False
+        for r in spot_results:
+            stats = r.tick_loop_results.portfolio_stats
+            symbol = stats.symbol
+            base = symbol[:-3] if len(symbol) >= 6 else ''
+            quote = symbol[-3:] if len(symbol) >= 6 else currency
+
+            quote_bal = stats.balances.get(quote, 0.0)
+            base_bal = stats.balances.get(base, 0.0)
+            quote_init = stats.initial_balances.get(quote, 0.0)
+            base_init = stats.initial_balances.get(base, 0.0)
+            last_price = stats.last_price
+
+            base_fmt = f'{base_bal:,.4f}' if base_bal < 100 else f'{base_bal:,.2f}'
+
+            print(f"  {r.scenario_name}:")
+            print(f"    Balances: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}")
+
+            # Only show estimated value if base holdings are non-zero
+            if last_price > 0 and base_bal != 0.0:
+                has_base_holdings = True
+                est_current = quote_bal + (base_bal * last_price)
+                est_initial = quote_init + (base_init * last_price)
+                total_est_current += est_current
+                total_est_initial += est_initial
+                print(f"    Est. Value: {format_currency_simple(est_current, quote)} @ {base} {format_currency_simple(last_price, quote)}")
+            elif last_price > 0:
+                # No base holdings — portfolio value equals quote balance
+                total_est_current += quote_bal
+                total_est_initial += quote_init
+
+        # Totals
+        print("")
+        if has_base_holdings and total_est_initial > 0:
+            total_pnl = total_est_current - total_est_initial
+            total_pnl_pct = (total_pnl / total_est_initial * 100)
+            print(f"Est. Portfolio:     {format_currency_simple(total_est_current, currency)}")
+            print(f"Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)")
+        else:
+            # Simple P&L when no base holdings (same as margin)
+            pnl = final - initial
+            pnl_pct = (pnl / initial * 100) if initial > 0 else 0
+            print(f"Final Balance:      {format_currency_simple(final, currency)}")
+            print(f"Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)")
+
+        # Trade stats
+        total_trades = portfolio_stats.total_trades
+        if total_trades > 0:
+            winning = portfolio_stats.winning_trades
+            losing = portfolio_stats.losing_trades
+            print("")
+            print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
+            print(f"Win Rate:           {portfolio_stats.win_rate * 100:.1f}%")
+
+        # Order execution
+        exec_stats = agg_portfolio.execution_stats
+        if exec_stats and exec_stats.orders_sent > 0:
+            print(
+                f"Orders:             {exec_stats.orders_executed}/{exec_stats.orders_sent} executed")
+
+        # Costs
+        if portfolio_stats.total_spread_cost != 0:
+            print("")
+            print(
+                f"Spread Cost:        {format_currency_simple(portfolio_stats.total_spread_cost, currency)}")
 
     @staticmethod
     def _format_pending_latency(renderer: ConsoleRenderer, pending_stats) -> str:

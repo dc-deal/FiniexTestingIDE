@@ -232,6 +232,9 @@ def execute_tick_loop(
 
         # collect statistics from Trader section
         portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
+        portfolio_stats.symbol = config.symbol
+        if current_tick:
+            portfolio_stats.last_price = (current_tick.bid + current_tick.ask) / 2
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()

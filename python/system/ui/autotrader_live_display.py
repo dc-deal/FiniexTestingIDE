@@ -309,10 +309,9 @@ class AutoTraderLiveDisplay:
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
-        # Derive base/quote from symbol (e.g. SOLUSD → base=SOL, quote=USD)
-        # Convention: last 3 chars = quote, remainder = base
-        quote_currency = stats.symbol[-3:]
-        base_currency = stats.symbol[:-3]
+        # Use explicit currencies from SymbolSpec (populated by tick loop)
+        quote_currency = stats.quote_currency or stats.symbol[-3:]
+        base_currency = stats.base_currency or stats.symbol[:-3]
 
         # Dual-currency balance display
         # account_currency tells us which side we hold — the other is estimated from price

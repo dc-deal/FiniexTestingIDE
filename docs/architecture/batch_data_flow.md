@@ -77,6 +77,16 @@ Adding metadata to reports does NOT require threading through subprocesses. The 
 
 **Example**: `data_format_versions` (V1.3.0 warning) follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, read by `WarningsSummary._build_data_version_warning()`. Zero subprocess overhead.
 
+## Report Sections: Spot-Aware Reporting
+
+`PortfolioStats` carries spot-mode fields (`spot_mode`, `balances`, `initial_balances`, `last_price`, `symbol`) populated in the tick loop via `PortfolioManager.get_portfolio_statistics()`. These follow pattern 2 (produced during tick execution, returned in `ProcessResult`).
+
+Reporting adapts layout based on `portfolio_stats.spot_mode`:
+- **Margin mode** — single balance line (`Balance: $10,000.00`)
+- **Spot mode** — dual balance lines (`USD 9,800.00 | ETH 0.0500`) with estimated portfolio value at last market price
+
+Mixed batches (margin + spot scenarios in the same currency group) are split into separate subtotals in the executive summary. Portfolio boxes show a `[SPOT]` suffix for spot scenarios.
+
 ## Report Sections: WarningsSummary
 
 `WarningsSummary` (`python/framework/batch_reporting/warnings_summary.py`) consolidates all global warnings into a single report section. Unlike other report sections, it is **always rendered** regardless of the `summary.detail` flag, but only when at least one warning is active.

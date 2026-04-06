@@ -83,6 +83,11 @@ class AutotraderTickLoop:
         self._dry_run = dry_run
         self._running = False
 
+        # Resolve symbol currencies from broker config (avoids string splitting heuristic)
+        symbol_spec = executor.broker.adapter.get_symbol_specification(config.symbol)
+        self._base_currency = symbol_spec.base_currency
+        self._quote_currency = symbol_spec.quote_currency
+
         # Safety / circuit breaker state
         self._safety_blocked = False
         self._safety_reason = ''
@@ -338,6 +343,8 @@ class AutotraderTickLoop:
             decision_outputs=decision_outputs,
             decision_time_ms=0.0,  # TODO: capture from orchestrator when available
             account_currency=self._executor.account_currency,
+            base_currency=self._base_currency,
+            quote_currency=self._quote_currency,
             safety_blocked=self._safety_blocked,
             safety_reason=self._safety_reason,
         )

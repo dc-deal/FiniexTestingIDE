@@ -932,7 +932,10 @@ class PortfolioManager:
             broker_type=self.broker_config.broker_type,
             current_conversion_rate=self._last_conversion_rate,
             current_balance=self.balance,
-            initial_balance=self.initial_balance
+            initial_balance=self.initial_balance,
+            spot_mode=self._spot_mode,
+            balances=self.get_balances(),
+            initial_balances=dict(self._initial_balances),
         )
 
     def reset(self) -> None:
