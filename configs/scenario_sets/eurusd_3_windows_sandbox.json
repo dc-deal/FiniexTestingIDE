@@ -33,7 +33,9 @@
       "tick_processing_budget_ms": 0.296
     },
     "trade_simulator_config": {
-      "balances": { "USD": 10000 }
+      "balances": {
+        "USD": 10000
+      }
     },
     "stress_test_config": {
       "reject_open_order": {
@@ -82,7 +84,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -110,7 +115,9 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": { "JPY": 10000 }
+        "balances": {
+          "JPY": 10000
+        }
       }
     },
     {

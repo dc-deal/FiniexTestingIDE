@@ -145,6 +145,10 @@ class AutoTraderDisplayStats:
     # Account currency (which side of the pair the account holds)
     account_currency: str = 'USD'
 
+    # Symbol currencies (from SymbolSpec — no string splitting heuristic)
+    base_currency: str = ''
+    quote_currency: str = ''
+
     # Safety / circuit breaker state
     safety_blocked: bool = False
     safety_reason: str = ''

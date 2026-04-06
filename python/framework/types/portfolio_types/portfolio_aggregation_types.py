@@ -3,9 +3,8 @@ FiniexTestingIDE - Portfolio Aggregation Types
 Types for currency-grouped portfolio aggregation
 """
 
-from typing import Optional
-from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Optional
+from dataclasses import dataclass, field
 
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -60,9 +59,17 @@ class PortfolioStats(BasePortfolioStats):
     Single scenario portfolio performance statistics.
 
     Adds balance tracking on top of base statistics.
+    Spot mode: includes dual-balance snapshots and last price for P&L valuation.
     """
     current_balance: float
     initial_balance: float
+
+    # Spot mode fields (empty/zero for margin — no display change)
+    spot_mode: bool = False
+    balances: Dict[str, float] = field(default_factory=dict)
+    initial_balances: Dict[str, float] = field(default_factory=dict)
+    last_price: float = 0.0
+    symbol: str = ''
 
 
 @dataclass
