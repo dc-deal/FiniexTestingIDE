@@ -23,7 +23,7 @@ The benchmark test suite validates performance regression against registered sys
 
 **Test Configuration:** `backtesting_loadtest_40_scenarios.json`
 - Symbol: USDJPY
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - Scenarios: 40 parallel blocks (12-hour windows, New York session)
 - Total Ticks: 1,496,267
 - Baseline System: AMD Ryzen 7 8845HS (16 cores, 28+ GB RAM)
@@ -205,8 +205,7 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
       }
     },
     "trade_simulator_config": {
-      "initial_balance": 10000,
-      "account_currency": "EUR"
+      "balances": { "EUR": 10000 }
     }
   },
   "scenarios": [

@@ -96,8 +96,7 @@
             "log_performance_stats": true
         },
         "trade_simulator_config": {
-            "initial_balance": 80000,
-            "account_currency": "auto",
+            "balances": { "JPY": 80000 },
             "seeds": {
                 "inbound_latency_seed": 42424
             }

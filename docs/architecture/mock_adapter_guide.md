@@ -139,15 +139,19 @@ For lower-level control (changing mode mid-test, slippage simulation):
 ```python
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
 adapter.set_slippage(5.0)  # +5 points on every fill
 
 broker_config = BrokerConfig(BrokerType.KRAKEN_SPOT, adapter)
-executor = LiveTradeExecutor(broker_config, initial_balance=10000.0,
-                              account_currency="USD", logger=logger)
+executor = build_live_executor(
+    broker_config=broker_config,
+    balances={'USD': 10000.0},
+    account_currency='USD',
+    logger=logger,
+)
 
 # ... execute orders ...
 

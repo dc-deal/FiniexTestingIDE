@@ -7,7 +7,7 @@ CORRECTIONS:
 - scenario_set_name: For logger initialization
 - run_timestamp: Shared timestamp across all processes
 - warmup_requirements: REMOVED (validation skipped)
-- account_currency: Changed from 'currency' for clarity (auto-detection support)
+- balances: Unified balance dict (replaces initial_balance + account_currency)
 """
 
 from dataclasses import asdict, dataclass, field
@@ -165,7 +165,7 @@ class ProcessScenarioConfig:
     - scenario_set_name: For logger initialization
     - run_timestamp: Shared across all processes
     - warmup_requirements: REMOVED (validation skipped)
-    - account_currency: Changed from 'currency' (supports "auto" detection)
+    - balances: Unified balance dict (replaces initial_balance + account_currency)
     """
     # === IDENTITY ===
     name: str
@@ -202,9 +202,8 @@ class ProcessScenarioConfig:
     broker_type: BrokerType = None
     market_type: MarketType = None
     trading_model: TradingModel = TradingModel.MARGIN
-    initial_balance: float = 0
-    account_currency: str = ''  # Changed from 'currency' - supports "auto"
-    spot_balances: Dict[str, float] = field(default_factory=dict)
+    balances: Dict[str, float] = field(default_factory=dict)
+    account_currency: str = ''  # derived from balances by ScenarioValidator
     seeds: Dict[str, Any] = field(default_factory=dict)
 
     # === STRESS TEST CONFIG ===
@@ -279,10 +278,9 @@ class ProcessScenarioConfig:
             "strict_parameter_validation", True
         )
 
-        # accountt currency is set in scenario_validator after detecting the correct value (see "auto"-mode)
+        # account currency is derived from balances by ScenarioValidator
         account_currency = scenario.account_currency
-        initial_balance = scenario.trade_simulator_config.get(
-            'initial_balance')
+        balances = scenario.trade_simulator_config.get('balances', {})
         seeds = scenario.trade_simulator_config.get(
             'seeds')
 
@@ -298,20 +296,6 @@ class ProcessScenarioConfig:
             scenario.broker_type.value)
         trading_model = market_config_manager.get_trading_model(
             scenario.broker_type.value)
-
-        # Spot balances from trade_simulator_config (empty for margin scenarios)
-        spot_balances = scenario.trade_simulator_config.get('balances', {})
-
-        # Validate: spot broker requires balances
-        if trading_model == TradingModel.SPOT and not spot_balances:
-            raise ValueError(
-                f"Configuration error: Scenario '{scenario.name}' uses spot broker "
-                f"'{scenario.broker_type.value}' but no 'balances' defined in "
-                f"trade_simulator_config.\n"
-                f"Add to scenario override:\n"
-                f'  "trade_simulator_config": {{ "balances": {{ "USD": 10000.0, '
-                f'"{scenario.symbol[:3]}": 0.0 }} }}'
-            )
 
         # Inter-tick gap threshold from market rules
         market_rules = market_config_manager.get_market_rules(market_type)
@@ -349,9 +333,8 @@ class ProcessScenarioConfig:
             broker_type=scenario.broker_type,
             market_type=market_type,
             trading_model=trading_model,
-            initial_balance=initial_balance,
+            balances=balances,
             account_currency=account_currency,
-            spot_balances=spot_balances,
             seeds=seeds,
             stress_test_config=stress_test_config,
             bar_max_history=app_config_loader.get_bar_max_history(),

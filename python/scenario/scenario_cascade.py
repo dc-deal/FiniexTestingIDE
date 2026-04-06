@@ -128,12 +128,18 @@ class ScenarioCascade:
 
         return result
 
+    # Keys that are replaced entirely during merge, never deep-merged.
+    # balances: a scenario's balances dict must replace the parent level,
+    # not accumulate currencies from app_config defaults.
+    ATOMIC_KEYS = {'balances'}
+
     @staticmethod
     def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """
         Recursively merge override dict into base dict.
 
         Nested dicts are merged deeply, not replaced.
+        Keys in ATOMIC_KEYS are always replaced entirely (never deep-merged).
         All other values (including lists) are replaced.
 
         Args:
@@ -146,8 +152,11 @@ class ScenarioCascade:
         result = copy.deepcopy(base)
 
         for key, override_value in override.items():
+            # Atomic keys: replace entirely, never merge
+            if key in ScenarioCascade.ATOMIC_KEYS:
+                result[key] = copy.deepcopy(override_value)
             # If key exists in base and both are dicts → merge recursively
-            if key in result and isinstance(result[key], dict) and isinstance(override_value, dict):
+            elif key in result and isinstance(result[key], dict) and isinstance(override_value, dict):
                 result[key] = ScenarioCascade._deep_merge(
                     result[key], override_value)
             else:

@@ -17,8 +17,7 @@
         }
     },
     "default_trade_simulator_config": {
-        "initial_balance": 10000,
-        "account_currency": "auto",
+        "balances": { "USD": 10000 },
         "seeds": {
             "inbound_latency_seed": 42
         },

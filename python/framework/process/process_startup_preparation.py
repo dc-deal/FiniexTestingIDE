@@ -123,8 +123,7 @@ def process_startup_preparation(
     scenario_logger.debug("✅ DecisionTradingApi injected into Decision Logic")
 
     scenario_logger.debug(
-        f"✅ Created trade simulator: "
-        f"{config.initial_balance} {config.account_currency}"
+        f"✅ Created trade simulator: balances={config.balances}"
     )
 
     log_trade_simulator_config(scenario_logger, config, trade_simulator)

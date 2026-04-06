@@ -153,8 +153,7 @@ This system enables:
     },
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-      "initial_balance": 10000,
-      "account_currency": "EUR"
+      "balances": { "EUR": 10000 }
     }
   }
 }
@@ -418,15 +417,14 @@ Trading simulator settings cascade individually (app_config → global → scena
 ```json
 "trade_simulator_config": {
   "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-  "initial_balance": 10000,
-  "account_currency": "EUR"
+  "balances": { "EUR": 10000 }
 }
 ```
 
 **Scenario Override:**
 ```json
 "trade_simulator_config": {
-  "initial_balance": 5000
+  "balances": { "JPY": 50000 }
 }
 ```
 
@@ -434,15 +432,17 @@ Trading simulator settings cascade individually (app_config → global → scena
 ```json
 "trade_simulator_config": {
   "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json", // ← FROM GLOBAL
-  "initial_balance": 5000, // ← FROM SCENARIO
-  "account_currency": "EUR"        // ← FROM GLOBAL
+  "balances": { "JPY": 50000 }  // ← ATOMIC REPLACE from scenario
 }
 ```
 
+> **Note:** `balances` is an **atomic key** — it is replaced entirely, never deep-merged.
+> A scenario with `{"JPY": 50000}` does NOT inherit the global `{"EUR": 10000}`.
+
 **Override Log:**
 ```
-⚠️  Parameter overrides in scenario 'EURUSD_window_02':
-   └─ trade_simulator_config.initial_balance: 10000 → 5000
+⚠️  Parameter overrides in scenario 'USDJPY_window_02':
+   └─ trade_simulator_config.balances: {'EUR': 10000} → {'JPY': 50000}
 ```
 
 ---
@@ -751,8 +751,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
   "global": {
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
-      "initial_balance": 10000,
-      "account_currency": "EUR"
+      "balances": { "EUR": 10000 }
     }
   },
   "scenarios": [
@@ -762,7 +761,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "trade_simulator_config": {
-        "initial_balance": 1000
+        "balances": { "EUR": 1000 }
       }
     },
     {
@@ -771,7 +770,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "trade_simulator_config": {
-        "initial_balance": 5000
+        "balances": { "EUR": 5000 }
       }
     },
     {
@@ -779,7 +778,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
-      "trade_simulator_config": {}  // Uses global (10000)
+      "trade_simulator_config": {}  // Uses global balances (EUR: 10000)
     },
     {
       "name": "Large_Account_50K",
@@ -787,14 +786,14 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "trade_simulator_config": {
-        "initial_balance": 50000
+        "balances": { "EUR": 50000 }
       }
     }
   ]
 }
 ```
 
-**Result:** Test if strategy scales across account sizes. Broker config and currency are inherited!
+**Result:** Test if strategy scales across account sizes. Broker config is inherited, `balances` is atomically replaced per scenario.
 
 ---
 

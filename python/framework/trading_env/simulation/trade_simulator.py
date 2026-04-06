@@ -52,7 +52,7 @@ class TradeSimulator(AbstractTradeExecutor):
     from the base class — identical logic for simulation and live trading.
 
     CURRENCY HANDLING:
-    - Supports "auto" detection: account_currency = symbol quote currency
+    - account_currency must be explicitly configured
     - Logs currency operations for transparency
     """
 
@@ -77,7 +77,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Args:
             broker_config: Broker configuration with spreads and capabilities
             initial_balance: Starting account balance
-            account_currency: Account currency (or "auto" for symbol-based detection)
+            account_currency: Account currency (e.g., 'USD', 'JPY')
             logger: Logger instance
             seeds: Seeds for order execution delays (from config)
             stress_test_config: Stress test configuration (config-driven)

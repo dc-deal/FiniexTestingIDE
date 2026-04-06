@@ -18,12 +18,11 @@ from python.framework.types.live_types.live_execution_types import TimeoutConfig
 
 def build_live_executor(
     broker_config: BrokerConfig,
-    initial_balance: float,
+    balances: dict[str, float],
     account_currency: str,
     logger: AbstractLogger,
     timeout_config: Optional[TimeoutConfig] = None,
     spot_mode: bool = False,
-    initial_balances: Optional[dict[str, float]] = None,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -32,12 +31,12 @@ def build_live_executor(
 
     Args:
         broker_config: Broker configuration (adapter must be live-capable)
-        initial_balance: Starting account balance
-        account_currency: Account currency (e.g., "USD")
+        balances: Asset balances (e.g., {'USD': 10000} or {'USD': 50.0, 'ETH': 0.0})
+        account_currency: Account currency (e.g., 'USD')
         logger: Logger instance
         timeout_config: Order timeout thresholds (default: 30s timeout)
         spot_mode: Enable spot trading mode
-        initial_balances: Asset inventory for spot mode
+
     Returns:
         LiveTradeExecutor ready for live trading
     """
@@ -50,6 +49,8 @@ def build_live_executor(
         )
 
     config = timeout_config or TimeoutConfig()
+    initial_balance = balances.get(account_currency, 0.0)
+    initial_balances = balances if spot_mode else None
 
     return LiveTradeExecutor(
         broker_config=broker_config,

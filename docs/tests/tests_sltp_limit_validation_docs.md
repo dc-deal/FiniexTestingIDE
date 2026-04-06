@@ -6,7 +6,7 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 
 **Test Configuration:** `backtesting/sltp_limit_validation_test.json`
 - Symbol: USDJPY (mt5)
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - 17 scenarios: 5 SL/TP + 4 limit order + 7 stop order + 1 cancel limit, each opening 1 trade at tick 10
 - Seeds: inbound_latency=12345
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`

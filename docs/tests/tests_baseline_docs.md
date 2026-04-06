@@ -6,7 +6,7 @@ The baseline test suite validates the core functionality of the FiniexTestingIDE
 
 **Test Configuration:** `backtesting/backtesting_validation_test.json`
 - Symbol: USDJPY
-- Account Currency: JPY (auto-detected)
+- Account Currency: JPY
 - 3 trades: 2 LONG, 1 SHORT
 - Seeds: inbound_latency=12345
 - Max Ticks: 20,500

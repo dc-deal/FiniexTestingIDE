@@ -51,8 +51,6 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         broker_settings=raw.get('broker_settings', ''),
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
-            initial_balance=account_raw.get('initial_balance', 10000.0),
-            currency=account_raw.get('currency', 'USD'),
             balances=account_raw.get('balances', {}),
         ),
         tick_source=TickSourceConfig(
