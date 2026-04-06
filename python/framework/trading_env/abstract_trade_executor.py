@@ -1032,19 +1032,23 @@ class AbstractTradeExecutor(ABC):
         in the account currency.
 
         Calculation Logic:
-        - If Account Currency == Quote Currency: tick_value = 1.0 (no conversion)
-        - If Account Currency == Base Currency: tick_value = 1.0 / current_price
+        - base_factor = tick_size * contract_size
+          (Forex: 0.00001 * 100000 = 1.0 | Spot: 0.01 * 1 = 0.01)
+        - If Account Currency == Quote Currency: tick_value = base_factor
+        - If Account Currency == Base Currency: tick_value = base_factor / current_price
         - Cross Currency: Not supported in V1 (raises NotImplementedError)
         """
+        base_factor = symbol_spec.tick_size * symbol_spec.contract_size
+
         if self.account_currency == symbol_spec.quote_currency:
-            return 1.0
+            return base_factor
 
         elif self.account_currency == symbol_spec.base_currency:
             if current_price <= 0:
                 raise ValueError(
                     f"Invalid price for tick_value calculation: {current_price}"
                 )
-            return 1.0 / current_price
+            return base_factor / current_price
 
         else:
             raise NotImplementedError(

@@ -669,6 +669,12 @@ class PortfolioManager:
         """
         Calculate tick_value dynamically.
 
+        tick_value = tick_size * contract_size * conversion_rate
+        This is the monetary value of one point (price_diff * 10^digits).
+
+        For Forex (tick_size=0.00001, contract_size=100000): factor = 1.0
+        For Spot  (tick_size=0.01,    contract_size=1):      factor = 0.01
+
         Args:
             symbol_spec: Static symbol specification
             current_price: Current market price
@@ -676,10 +682,12 @@ class PortfolioManager:
         Returns:
             tick_value for P&L calculations
         """
+        base_factor = symbol_spec.tick_size * symbol_spec.contract_size
+
         # Quote Currency matches Account Currency
         if self.account_currency == symbol_spec.quote_currency:
             self._last_conversion_rate = None
-            return 1.0
+            return base_factor
 
         # Base Currency matches Account Currency
         elif self.account_currency == symbol_spec.base_currency:
@@ -688,7 +696,7 @@ class PortfolioManager:
                     f"Invalid price for tick_value calculation: {current_price}"
                 )
             self._last_conversion_rate = current_price
-            return 1.0 / current_price
+            return base_factor / current_price
 
         # Cross Currency - Not supported
         else:
@@ -737,7 +745,17 @@ class PortfolioManager:
         self._positions_dirty = False
 
     def get_open_positions(self) -> List[Position]:
-        """Get list of all open positions"""
+        """
+        Get all open positions WITHOUT triggering a P&L update.
+
+        Position.unrealized_pnl may be stale (last mark_dirty cycle).
+        Callers that need current P&L must call _ensure_positions_updated()
+        beforehand — this is intentional to keep the hot path (algo tick
+        loop) free of redundant recalculations.
+
+        Returns:
+            Snapshot list of open Position objects
+        """
         return list(self.open_positions.values())
 
     def get_trade_history(self) -> List[TradeRecord]:

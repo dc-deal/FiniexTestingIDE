@@ -6,36 +6,42 @@
   "adapter_type": "live",
   "broker_settings": "kraken_spot.json",
   "strategy_config": {
-    "decision_logic_type": "CORE/aggressive_trend",
+    "decision_logic_type": "CORE/cautious_macd",
     "worker_instances": {
-      "rsi_fast": "CORE/rsi",
-      "envelope_main": "CORE/envelope"
+      "macd_main": "CORE/macd",
+      "rsi_filter": "CORE/rsi"
     },
     "workers": {
-      "rsi_fast": {
+      "macd_main": {
+        "periods": {
+          "M5": 35
+        },
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9
+      },
+      "rsi_filter": {
         "periods": {
           "M5": 14
         }
-      },
-      "envelope_main": {
-        "periods": {
-          "M30": 20
-        },
-        "deviation": 2
       }
     },
     "decision_logic_config": {
-      "rsi_buy_threshold": 35,
-      "rsi_sell_threshold": 65,
-      "envelope_extremes": 0.25,
-      "min_confidence": 0.3,
+      "rsi_filter_buy": 85,
+      "rsi_filter_sell": 25,
+      "use_stop_limit": true,
+      "stop_limit_offset_pips": 2,
+      "pip_size": 1.0,
+      "stop_distance_pips": 50,
+      "sl_pips": 100,
+      "tp_pips": 200,
+      "break_even_trigger_pips": 75,
+      "min_histogram": 10,
       "lot_size": 2.0,
-      "min_free_margin": 0.01
+      "min_free_margin": 1000
     }
   },
-  "account": {
-    "balances": { "USD": 0.0, "SOL": 0.0 }
-  },
+  "account": {},
   "tick_source": {
     "type": "kraken"
   },
