@@ -17,6 +17,7 @@ from python.framework.autotrader.autotrader_warmup_preparator import AutotraderW
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
@@ -26,6 +27,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.testing.mock_adapter import MockBrokerAdapter
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -132,7 +134,7 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
 def setup_pipeline(
     config: AutoTraderConfig,
     logger: ScenarioLogger
-) -> tuple:
+) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor]:
     """
     Create all pipeline objects for AutoTrader session.
 

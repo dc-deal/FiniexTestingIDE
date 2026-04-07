@@ -4,7 +4,7 @@ Result data structures for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerPerformanceStats
@@ -39,12 +39,12 @@ class AutoTraderResult:
     session_duration_s: float = 0.0
     ticks_processed: int = 0
     ticks_clipped: int = 0
-    portfolio_stats: PortfolioStats = None
-    execution_stats: ExecutionStats = None
+    portfolio_stats: Optional[PortfolioStats] = None
+    execution_stats: Optional[ExecutionStats] = None
     trade_history: List[TradeRecord] = field(default_factory=list)
     order_history: List[OrderResult] = field(default_factory=list)
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
-    decision_statistics: DecisionLogicStats = None
+    decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     shutdown_mode: str = 'normal'
     warning_messages: List[str] = field(default_factory=list)

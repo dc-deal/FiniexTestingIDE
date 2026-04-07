@@ -31,6 +31,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
@@ -371,11 +372,11 @@ class AutoTraderLiveDisplay:
         for idx, pos in enumerate(stats.open_positions, 1):
             pnl_color = 'green' if pos.unrealized_pnl >= 0 else 'red'
             pnl_sign = '+' if pos.unrealized_pnl >= 0 else ''
-            dir_color = 'green' if pos.direction == OrderDirection.LONG.value else 'red'
+            dir_color = 'green' if pos.direction == OrderDirection.LONG else 'red'
             table.add_row(
                 str(idx),
                 pos.position_id[:16],
-                f'[{dir_color}]{pos.direction}[/{dir_color}]',
+                f'[{dir_color}]{pos.direction.value}[/{dir_color}]',
                 f'{pos.lots:.4f}',
                 f'{pos.entry_price:.2f}',
                 f'[{pnl_color}]{pnl_sign}{pos.unrealized_pnl:.4f}[/{pnl_color}]',
@@ -441,14 +442,14 @@ class AutoTraderLiveDisplay:
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
             pnl_sign = '+' if trade.net_pnl >= 0 else ''
-            dir_color = 'green' if trade.direction == OrderDirection.LONG.value else 'red'
+            dir_color = 'green' if trade.direction == OrderDirection.LONG else 'red'
             table.add_row(
-                f'[{dir_color}]{trade.direction}[/{dir_color}]',
+                f'[{dir_color}]{trade.direction.value}[/{dir_color}]',
                 f'{trade.lots:.4f}',
                 f'{trade.entry_price:.2f}',
                 f'{trade.exit_price:.2f}',
                 f'[{pnl_color}]{pnl_sign}{trade.net_pnl:.4f}[/{pnl_color}]',
-                trade.close_reason[:8],
+                trade.close_reason.value[:8],
             )
 
         return Panel(table, title='[bold]TRADE HISTORY[/bold]', box=box.ROUNDED)
@@ -573,9 +574,9 @@ class AutoTraderLiveDisplay:
 
         # Decision first (result before details)
         action = stats.last_decision_action
-        action_color = 'green' if action == 'BUY' else (
-            'red' if action == 'SELL' else 'dim')
-        decision_parts = [f'[{action_color}]{action}[/{action_color}]']
+        action_color = 'green' if action == DecisionLogicAction.BUY else (
+            'red' if action == DecisionLogicAction.SELL else 'dim')
+        decision_parts = [f'[{action_color}]{action.value}[/{action_color}]']
         for key, value in stats.decision_outputs.items():
             if isinstance(value, float):
                 decision_parts.append(f'{key}={value:.2f}')

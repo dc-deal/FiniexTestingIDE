@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List
 
+from python.framework.types.decision_logic_types import DecisionLogicAction
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 
@@ -24,14 +27,14 @@ class PositionSnapshot:
     Args:
         position_id: Position identifier
         symbol: Trading symbol
-        direction: 'LONG' or 'SHORT'
+        direction: Order direction (LONG or SHORT)
         lots: Position size
         entry_price: Entry price
         unrealized_pnl: Current unrealized P&L
     """
     position_id: str
     symbol: str
-    direction: str
+    direction: OrderDirection
     lots: float
     entry_price: float
     unrealized_pnl: float
@@ -47,21 +50,21 @@ class TradeHistoryEntry:
     Args:
         trade_id: Position ID of the completed trade
         symbol: Trading symbol
-        direction: 'LONG' or 'SHORT'
+        direction: Order direction (LONG or SHORT)
         lots: Trade size
         entry_price: Entry price
         exit_price: Exit price
         net_pnl: Net P&L after fees
-        close_reason: How the trade was closed (SL, TP, MANUAL, etc.)
+        close_reason: How the trade was closed
     """
     trade_id: str
     symbol: str
-    direction: str
+    direction: OrderDirection
     lots: float
     entry_price: float
     exit_price: float
     net_pnl: float
-    close_reason: str
+    close_reason: CloseReason
 
 
 @dataclass
@@ -100,7 +103,7 @@ class AutoTraderDisplayStats:
         last_price: Mid price of last tick ((bid+ask)/2), 0.0 if no ticks yet
         worker_times_ms: Worker name to average computation time in ms
         worker_outputs: Worker name to display=True output values
-        last_decision_action: Last decision action ('BUY', 'SELL', 'FLAT')
+        last_decision_action: Last decision action (DecisionLogicAction enum)
         decision_outputs: Decision display=True output values
         decision_time_ms: Decision logic computation time in ms
     """
@@ -167,7 +170,7 @@ class AutoTraderDisplayStats:
     worker_outputs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     # Decision State
-    last_decision_action: str = 'FLAT'
+    last_decision_action: DecisionLogicAction = DecisionLogicAction.FLAT
     decision_outputs: Dict[str, Any] = field(default_factory=dict)
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
