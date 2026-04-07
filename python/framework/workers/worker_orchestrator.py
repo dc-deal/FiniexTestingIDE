@@ -517,6 +517,18 @@ class WorkerOrchestrator:
         self._worker_results.clear()
         self.is_initialized = False
 
+    def get_worker_result(self, name: str) -> Optional[WorkerResult]:
+        """
+        Get the last computed result for a worker by name.
+
+        Args:
+            name: Worker name (as registered in workers dict)
+
+        Returns:
+            WorkerResult if available, None otherwise
+        """
+        return self._worker_results.get(name)
+
     def get_worker_statistics(self) -> List[WorkerPerformanceStats]:
         """
         Collect worker statistics from all workers.

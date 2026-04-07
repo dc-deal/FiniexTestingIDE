@@ -837,14 +837,26 @@ class PortfolioManager:
             leverage=self.leverage
         )
 
-    def get_total_trades(self):
+    def get_total_trades(self) -> int:
+        """Get total number of completed trades."""
         return self._total_trades
 
-    def get_winning_trades(self):
+    def get_winning_trades(self) -> int:
+        """Get number of winning trades."""
         return self._winning_trades
 
-    def get_losing_trades(self):
+    def get_losing_trades(self) -> int:
+        """Get number of losing trades."""
         return self._losing_trades
+
+    def ensure_positions_updated(self) -> None:
+        """
+        Ensure unrealized P&L is current before reading position data.
+
+        Public facade for lazy position update. Call before snapshotting
+        positions for display or reporting outside the normal tick cycle.
+        """
+        self._ensure_positions_updated()
 
     def _calculate_equity(self) -> float:
         """Get current equity (balance + unrealized P&L)"""

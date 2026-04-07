@@ -42,7 +42,7 @@ Workers and decision logics are **not pre-scanned at startup**. They are loaded 
 │    "user_algos/my_algo/my_strategy.py"                   │
 │                   │                                      │
 │                   ▼                                      │
-│  DecisionLogicFactory._resolve_logic_class()             │
+│  DecisionLogicFactory.resolve_logic_class()              │
 │    ├── starts with "CORE/" → registry lookup ✓           │
 │    └── otherwise → _load_path_logic(path)                │
 │          ├── resolve path (abs or relative to cwd)       │

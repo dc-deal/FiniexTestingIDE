@@ -250,7 +250,7 @@ class AutotraderTickLoop:
         portfolio = self._executor.portfolio
 
         # Ensure P&L is current before snapshotting (display only, not every tick)
-        portfolio._ensure_positions_updated()
+        portfolio.ensure_positions_updated()
 
         # Open positions → PositionSnapshot
         open_positions = []
@@ -285,12 +285,8 @@ class AutotraderTickLoop:
                 close_reason=trade.close_reason,
             ))
 
-        # Clipping — direct attribute reads (avoid get_session_summary() object creation)
-        cm = self._clipping_monitor
-        total_ticks = cm._total_ticks
-        clipping_ratio = cm._ticks_clipped / total_ticks if total_ticks > 0 else 0.0
-        avg_processing = cm._total_processing_ms / \
-            total_ticks if total_ticks > 0 else 0.0
+        # Clipping — lightweight snapshot (avoids full session summary construction)
+        clipping_stats = self._clipping_monitor.get_display_stats()
 
         # Worker performance + outputs (display=True only)
         worker_times: Dict[str, float] = {}
@@ -305,7 +301,7 @@ class AutotraderTickLoop:
 
             # Outputs (display=True from schema)
             schema = worker.__class__.get_output_schema()
-            result = self._worker_orchestrator._worker_results.get(name)
+            result = self._worker_orchestrator.get_worker_result(name)
             if result and schema:
                 display_outputs = {}
                 for key, param_def in schema.items():
@@ -337,19 +333,19 @@ class AutotraderTickLoop:
             ticks_processed=ticks_processed,
             balance=portfolio.balance,
             initial_balance=portfolio.initial_balance,
-            total_trades=len(portfolio._trade_history),
-            winning_trades=portfolio._winning_trades,
-            losing_trades=portfolio._losing_trades,
+            total_trades=portfolio.get_total_trades(),
+            winning_trades=portfolio.get_winning_trades(),
+            losing_trades=portfolio.get_losing_trades(),
             open_positions=open_positions,
             active_orders=active_orders,
             pipeline_count=pipeline_count,
             recent_trades=recent_trades,
-            clipping_ratio=clipping_ratio,
-            avg_processing_ms=avg_processing,
-            max_processing_ms=cm._max_processing_ms,
+            clipping_ratio=clipping_stats.clipping_ratio,
+            avg_processing_ms=clipping_stats.avg_processing_ms,
+            max_processing_ms=clipping_stats.max_processing_ms,
             queue_depth=self._tick_queue.qsize(),
-            total_ticks_clipped=cm._ticks_clipped,
-            processing_times_ms=list(cm._processing_times_ms),
+            total_ticks_clipped=clipping_stats.ticks_clipped,
+            processing_times_ms=clipping_stats.processing_times_ms,
             ticks_per_min=ticks_per_min,
             last_price=last_price,
             worker_times_ms=worker_times,

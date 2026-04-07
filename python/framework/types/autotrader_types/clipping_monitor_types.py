@@ -33,6 +33,31 @@ class ClippingReport:
 
 
 @dataclass
+class ClippingDisplaySnapshot:
+    """
+    Lightweight clipping stats for live display rendering.
+
+    Subset of ClippingSessionSummary — only the fields needed by
+    AutotraderTickLoop._build_display_stats(). Avoids full summary
+    construction on every tick.
+
+    Args:
+        total_ticks: Total ticks processed so far
+        ticks_clipped: Total clipped ticks
+        clipping_ratio: Fraction clipped (0.0 to 1.0)
+        avg_processing_ms: Average tick processing time
+        max_processing_ms: Maximum tick processing time
+        processing_times_ms: All processing times (for percentile display)
+    """
+    total_ticks: int = 0
+    ticks_clipped: int = 0
+    clipping_ratio: float = 0.0
+    avg_processing_ms: float = 0.0
+    max_processing_ms: float = 0.0
+    processing_times_ms: List[float] = field(default_factory=list)
+
+
+@dataclass
 class ClippingSessionSummary:
     """
     End-of-session clipping summary.

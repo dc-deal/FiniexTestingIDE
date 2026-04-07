@@ -6,7 +6,11 @@ Real-time tick processing measurement and clipping detection (#197).
 import time
 from typing import Optional
 
-from python.framework.types.autotrader_types.clipping_monitor_types import ClippingReport, ClippingSessionSummary
+from python.framework.types.autotrader_types.clipping_monitor_types import (
+    ClippingDisplaySnapshot,
+    ClippingReport,
+    ClippingSessionSummary,
+)
 
 
 class LiveClippingMonitor:
@@ -143,6 +147,26 @@ class LiveClippingMonitor:
         self._last_report_time = now
 
         return report
+
+    def get_display_stats(self) -> ClippingDisplaySnapshot:
+        """
+        Lightweight snapshot for live display rendering.
+
+        Avoids full ClippingSessionSummary construction — only the fields
+        needed by AutotraderTickLoop._build_display_stats().
+
+        Returns:
+            ClippingDisplaySnapshot with current session totals
+        """
+        total_ticks = self._total_ticks
+        return ClippingDisplaySnapshot(
+            total_ticks=total_ticks,
+            ticks_clipped=self._ticks_clipped,
+            clipping_ratio=self._ticks_clipped / total_ticks if total_ticks > 0 else 0.0,
+            avg_processing_ms=self._total_processing_ms / total_ticks if total_ticks > 0 else 0.0,
+            max_processing_ms=self._max_processing_ms,
+            processing_times_ms=list(self._processing_times_ms),
+        )
 
     def get_session_summary(self) -> ClippingSessionSummary:
         """

@@ -150,7 +150,7 @@ class DecisionLogicFactory:
         """
         logic_config = logic_config or {}
 
-        logic_class, source_path = self._resolve_logic_class(logic_type, base_path)
+        logic_class, source_path = self.resolve_logic_class(logic_type, base_path)
 
         schema = logic_class.get_parameter_schema()
         if trading_context and trading_context.volume_min > 0 and 'lot_size' in schema:
@@ -218,7 +218,7 @@ class DecisionLogicFactory:
             return str((base_path / p).resolve())
         return str((Path.cwd() / p).resolve())
 
-    def _resolve_logic_class(
+    def resolve_logic_class(
         self,
         logic_type: str,
         base_path: Optional[Path] = None,
