@@ -24,10 +24,14 @@ from python.framework.autotrader.autotrader_startup import (
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_csv_file_report import AutotraderCsvFileReport
 from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
+from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
 
@@ -66,10 +70,10 @@ class AutotraderMain:
         self._tick_loop: Optional[AutotraderTickLoop] = None
 
         # Pipeline components (created during run())
-        self._executor = None
-        self._bar_controller = None
-        self._worker_orchestrator = None
-        self._decision_logic = None
+        self._executor: Optional[AbstractTradeExecutor] = None
+        self._bar_controller: Optional[BarRenderingController] = None
+        self._worker_orchestrator: Optional[WorkerOrchestrator] = None
+        self._decision_logic: Optional[AbstractDecisionLogic] = None
         self._clipping_monitor: Optional[LiveClippingMonitor] = None
 
         # Loggers (created during run())

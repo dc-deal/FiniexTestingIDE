@@ -12,12 +12,15 @@ import queue
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
+from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
@@ -26,6 +29,8 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TradeHistoryEntry,
 )
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.parameter_types import OutputValue
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 class AutotraderTickLoop:
@@ -57,10 +62,10 @@ class AutotraderTickLoop:
         config: AutoTraderConfig,
         tick_queue: queue.Queue,
         tick_source: AbstractTickSource,
-        executor,
-        bar_controller,
-        worker_orchestrator,
-        decision_logic,
+        executor: AbstractTradeExecutor,
+        bar_controller: BarRenderingController,
+        worker_orchestrator: WorkerOrchestrator,
+        decision_logic: AbstractDecisionLogic,
         clipping_monitor: LiveClippingMonitor,
         logger: ScenarioLogger,
         run_dir: Optional[Path] = None,
@@ -110,7 +115,7 @@ class AutotraderTickLoop:
         """Check if the tick loop is currently running."""
         return self._running
 
-    def run(self) -> tuple:
+    def run(self) -> Tuple[int, int]:
         """
         Execute the tick processing loop.
 
@@ -245,7 +250,7 @@ class AutotraderTickLoop:
         portfolio = self._executor.portfolio
 
         # Ensure P&L is current before snapshotting (display only, not every tick)
-        portfolio._ensure_positions_updated()
+        portfolio.ensure_positions_updated()
 
         # Open positions → PositionSnapshot
         open_positions = []
@@ -253,7 +258,7 @@ class AutotraderTickLoop:
             open_positions.append(PositionSnapshot(
                 position_id=pos.position_id,
                 symbol=pos.symbol,
-                direction=pos.direction.value,
+                direction=pos.direction,
                 lots=pos.lots,
                 entry_price=pos.entry_price,
                 unrealized_pnl=pos.unrealized_pnl,
@@ -272,26 +277,21 @@ class AutotraderTickLoop:
             recent_trades.append(TradeHistoryEntry(
                 trade_id=trade.position_id,
                 symbol=trade.symbol,
-                direction=trade.direction.value,
+                direction=trade.direction,
                 lots=trade.lots,
                 entry_price=trade.entry_price,
                 exit_price=trade.exit_price,
                 net_pnl=trade.net_pnl,
-                close_reason=trade.close_reason.value if hasattr(
-                    trade.close_reason, 'value') else str(trade.close_reason),
+                close_reason=trade.close_reason,
             ))
 
-        # Clipping — direct attribute reads (avoid get_session_summary() object creation)
-        cm = self._clipping_monitor
-        total_ticks = cm._total_ticks
-        clipping_ratio = cm._ticks_clipped / total_ticks if total_ticks > 0 else 0.0
-        avg_processing = cm._total_processing_ms / \
-            total_ticks if total_ticks > 0 else 0.0
+        # Clipping — lightweight snapshot (avoids full session summary construction)
+        clipping_stats = self._clipping_monitor.get_display_stats()
 
         # Worker performance + outputs (display=True only)
         worker_times: Dict[str, float] = {}
         worker_max_times: Dict[str, float] = {}
-        worker_outputs: Dict[str, Dict[str, Any]] = {}
+        worker_outputs: Dict[str, Dict[str, OutputValue]] = {}
         for name, worker in self._worker_orchestrator.workers.items():
             # Performance
             if worker.performance_logger:
@@ -301,7 +301,7 @@ class AutotraderTickLoop:
 
             # Outputs (display=True from schema)
             schema = worker.__class__.get_output_schema()
-            result = self._worker_orchestrator._worker_results.get(name)
+            result = self._worker_orchestrator.get_worker_result(name)
             if result and schema:
                 display_outputs = {}
                 for key, param_def in schema.items():
@@ -311,7 +311,7 @@ class AutotraderTickLoop:
                     worker_outputs[name] = display_outputs
 
         # Decision outputs (display=True)
-        decision_outputs: Dict[str, Any] = {}
+        decision_outputs: Dict[str, OutputValue] = {}
         decision_schema = self._decision_logic.__class__.get_output_schema()
         for key, param_def in decision_schema.items():
             if param_def.display and key in decision.outputs:
@@ -333,25 +333,25 @@ class AutotraderTickLoop:
             ticks_processed=ticks_processed,
             balance=portfolio.balance,
             initial_balance=portfolio.initial_balance,
-            total_trades=len(portfolio._trade_history),
-            winning_trades=portfolio._winning_trades,
-            losing_trades=portfolio._losing_trades,
+            total_trades=portfolio.get_total_trades(),
+            winning_trades=portfolio.get_winning_trades(),
+            losing_trades=portfolio.get_losing_trades(),
             open_positions=open_positions,
             active_orders=active_orders,
             pipeline_count=pipeline_count,
             recent_trades=recent_trades,
-            clipping_ratio=clipping_ratio,
-            avg_processing_ms=avg_processing,
-            max_processing_ms=cm._max_processing_ms,
+            clipping_ratio=clipping_stats.clipping_ratio,
+            avg_processing_ms=clipping_stats.avg_processing_ms,
+            max_processing_ms=clipping_stats.max_processing_ms,
             queue_depth=self._tick_queue.qsize(),
-            total_ticks_clipped=cm._ticks_clipped,
-            processing_times_ms=list(cm._processing_times_ms),
+            total_ticks_clipped=clipping_stats.ticks_clipped,
+            processing_times_ms=clipping_stats.processing_times_ms,
             ticks_per_min=ticks_per_min,
             last_price=last_price,
             worker_times_ms=worker_times,
             worker_max_times_ms=worker_max_times,
             worker_outputs=worker_outputs,
-            last_decision_action=decision.action.value,
+            last_decision_action=decision.action,
             decision_outputs=decision_outputs,
             decision_time_ms=self._decision_logic.performance_logger.get_stats().decision_avg_time_ms if self._decision_logic.performance_logger else 0.0,
             decision_max_time_ms=self._decision_logic.performance_logger.get_stats().decision_max_time_ms if self._decision_logic.performance_logger else 0.0,
@@ -404,7 +404,7 @@ class AutotraderTickLoop:
         elif was_blocked and not self._safety_blocked:
             self._logger.info('✅ Safety circuit breaker cleared')
 
-    def _check_daily_rotation(self, tick) -> None:
+    def _check_daily_rotation(self, tick: TickData) -> None:
         """
         Check if the tick date differs from the current log file date.
 

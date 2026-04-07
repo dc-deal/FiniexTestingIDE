@@ -210,7 +210,7 @@ class TestCoreRegistration:
     def test_unknown_core_logic_raises(self, mock_logger):
         factory = DecisionLogicFactory(logger=mock_logger)
         with pytest.raises(ValueError, match="Unknown CORE decision logic"):
-            factory._resolve_logic_class('CORE/nonexistent_logic')
+            factory.resolve_logic_class('CORE/nonexistent_logic')
 
 
 # ============================================

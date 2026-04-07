@@ -48,7 +48,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
@@ -973,7 +973,7 @@ class AbstractTradeExecutor(ABC):
         """Get complete order history."""
         return list(self._order_history)
 
-    def get_trade_history(self) -> List:
+    def get_trade_history(self) -> List[TradeRecord]:
         """Get all completed trades with full audit trail."""
         return self.portfolio.get_trade_history()
 

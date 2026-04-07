@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, TypedDict
+from typing import Dict, TypedDict
+
+from python.framework.types.parameter_types import OutputValue
 
 
 class IndicatorConfig(TypedDict, total=False):
@@ -44,9 +46,9 @@ class WorkerResult:
     Args:
         outputs: Dict of output values keyed by schema-declared names
     """
-    outputs: Dict[str, Any]
+    outputs: Dict[str, OutputValue]
 
-    def get_signal(self, name: str) -> Any:
+    def get_signal(self, name: str) -> OutputValue:
         """
         Access an output value by schema-declared name.
 

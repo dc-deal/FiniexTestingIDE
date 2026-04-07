@@ -10,7 +10,11 @@ Both derive from AbstractParamDef which holds shared fields.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
+
+# Constrained union of all valid output value types for Workers and Decision Logics.
+# Replaces Any in output Dicts — narrows the contract without touching implementations.
+OutputValue = Union[float, int, str, bool, None]
 
 
 class _RequiredSentinel:

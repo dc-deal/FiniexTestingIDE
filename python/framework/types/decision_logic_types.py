@@ -7,7 +7,9 @@ All decision logic implementations must use these typed structures.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict
+from typing import Dict
+
+from python.framework.types.parameter_types import OutputValue
 
 
 class DecisionLogicAction(Enum):
@@ -46,9 +48,9 @@ class Decision:
     Output fields are declared via get_output_schema() on the logic.
     """
     action: DecisionLogicAction                                # BUY, SELL, FLAT (enum)
-    outputs: Dict[str, Any] = field(default_factory=dict)      # typed via get_output_schema()
+    outputs: Dict[str, OutputValue] = field(default_factory=dict)  # typed via get_output_schema()
 
-    def get_signal(self, name: str) -> Any:
+    def get_signal(self, name: str) -> OutputValue:
         """Access a decision output value by name.
 
         Args:
