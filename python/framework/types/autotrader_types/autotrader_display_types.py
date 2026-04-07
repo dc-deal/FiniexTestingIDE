@@ -8,9 +8,10 @@ Designed for queue transport: all fields are primitives, lists, or dicts.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from python.framework.types.decision_logic_types import DecisionLogicAction
+from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
@@ -167,10 +168,10 @@ class AutoTraderDisplayStats:
     worker_max_times_ms: Dict[str, float] = field(default_factory=dict)
 
     # Worker Outputs (display=True only)
-    worker_outputs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    worker_outputs: Dict[str, Dict[str, OutputValue]] = field(default_factory=dict)
 
     # Decision State
     last_decision_action: DecisionLogicAction = DecisionLogicAction.FLAT
-    decision_outputs: Dict[str, Any] = field(default_factory=dict)
+    decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0

@@ -12,7 +12,7 @@ import queue
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
@@ -29,6 +29,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     TradeHistoryEntry,
 )
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.parameter_types import OutputValue
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -294,7 +295,7 @@ class AutotraderTickLoop:
         # Worker performance + outputs (display=True only)
         worker_times: Dict[str, float] = {}
         worker_max_times: Dict[str, float] = {}
-        worker_outputs: Dict[str, Dict[str, Any]] = {}
+        worker_outputs: Dict[str, Dict[str, OutputValue]] = {}
         for name, worker in self._worker_orchestrator.workers.items():
             # Performance
             if worker.performance_logger:
@@ -314,7 +315,7 @@ class AutotraderTickLoop:
                     worker_outputs[name] = display_outputs
 
         # Decision outputs (display=True)
-        decision_outputs: Dict[str, Any] = {}
+        decision_outputs: Dict[str, OutputValue] = {}
         decision_schema = self._decision_logic.__class__.get_output_schema()
         for key, param_def in decision_schema.items():
             if param_def.display and key in decision.outputs:
