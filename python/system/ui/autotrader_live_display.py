@@ -386,6 +386,11 @@ class AutoTraderLiveDisplay:
     def _build_orders_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Active/pending orders table."""
         if not stats.active_orders and stats.pipeline_count == 0:
+            if stats.last_rejection:
+                return Panel(
+                    f'[yellow]⚠  Last rejection: {stats.last_rejection}[/yellow]',
+                    title='[bold]ORDERS[/bold]', box=box.ROUNDED,
+                )
             return Panel('[dim]No active orders[/dim]', title='[bold]ORDERS[/bold]', box=box.ROUNDED)
 
         table = Table(show_header=True, box=None, padding=(0, 1))

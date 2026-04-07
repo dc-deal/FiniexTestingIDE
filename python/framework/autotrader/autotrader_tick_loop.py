@@ -92,6 +92,9 @@ class AutotraderTickLoop:
         self._safety_blocked = False
         self._safety_reason = ''
 
+        # Last rejection (displayed until overwritten by next rejection)
+        self._last_rejection = ''
+
         # Daily rotation state
         self._current_log_date: Optional[str] = None
         # Track placeholder file for cleanup on first tick
@@ -187,7 +190,10 @@ class AutotraderTickLoop:
             # === 6. Order Execution ===
             if self._safety_blocked:
                 decision.action = DecisionLogicAction.FLAT
-            self._decision_logic.execute_decision(decision, tick)
+            order_result = self._decision_logic.execute_decision(decision, tick)
+            if order_result and order_result.is_rejected:
+                reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
+                self._last_rejection = f'{reason} — {order_result.rejection_message} ({decision.action.value})'
 
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
@@ -355,6 +361,7 @@ class AutotraderTickLoop:
             trading_model='spot' if self._executor._spot_mode else 'margin',
             safety_blocked=self._safety_blocked,
             safety_reason=self._safety_reason,
+            last_rejection=self._last_rejection,
         )
 
     def _check_safety(self, balance: float, initial_balance: float) -> None:

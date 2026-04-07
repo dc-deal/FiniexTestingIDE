@@ -47,9 +47,10 @@
     },
     "trade_simulator_config": {
       "balances": {
-        "USD": 10000.0,
-        "BTC": 0.0
-      }
+        "BTC": 2000.0,
+        "USD": 1000000
+      },
+      "account_currency": "BTC"
     },
     "stress_test_config": {
       "reject_open_order": {
@@ -81,7 +82,7 @@
       "end_date": "2026-01-26T00:00:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -94,7 +95,7 @@
       "end_date": "2026-01-27T00:00:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}
@@ -107,7 +108,7 @@
       "end_date": "2026-01-28T00:00:00+00:00",
       "max_ticks": 1000,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

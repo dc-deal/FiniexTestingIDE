@@ -56,8 +56,11 @@ class AccountConfig:
 
     Args:
         balances: Asset balances (e.g., {'USD': 10000.0} or {'USD': 50.0, 'ETH': 0.0})
+        account_currency: Explicit account currency override. If omitted, derived
+            from balances keys + symbol (quote_currency preferred).
     """
     balances: Dict[str, float] = field(default_factory=dict)
+    account_currency: Optional[str] = None
 
 
 @dataclass

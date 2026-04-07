@@ -141,18 +141,22 @@ class ScenarioValidator:
                 # validation will flag this later
                 continue
 
-            # Derive account_currency from balances keys + symbol
-            quote = ScenarioValidator.detect_quote_currency(symbol)
-            base = ScenarioValidator.detect_base_currency(symbol)
-            if quote in balances:
-                account_currency = quote
-            elif base in balances:
-                account_currency = base
-            elif len(balances) == 1:
-                account_currency = list(balances.keys())[0]
+            # Explicit override or derive from balances keys + symbol
+            explicit = scenario.trade_simulator_config.get('account_currency', '')
+            if explicit:
+                account_currency = explicit
             else:
-                # ambiguous — validation will catch this
-                continue
+                quote = ScenarioValidator.detect_quote_currency(symbol)
+                base = ScenarioValidator.detect_base_currency(symbol)
+                if quote in balances:
+                    account_currency = quote
+                elif base in balances:
+                    account_currency = base
+                elif len(balances) == 1:
+                    account_currency = list(balances.keys())[0]
+                else:
+                    # ambiguous — validation will catch this
+                    continue
 
             logger.debug(
                 f"💱 Account Currency: {account_currency} (derived from balances)"

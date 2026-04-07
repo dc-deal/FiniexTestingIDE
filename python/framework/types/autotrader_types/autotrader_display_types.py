@@ -156,6 +156,9 @@ class AutoTraderDisplayStats:
     safety_blocked: bool = False
     safety_reason: str = ''
 
+    # Last order rejection (persists until session end or next successful trade)
+    last_rejection: str = ''
+
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
     worker_max_times_ms: Dict[str, float] = field(default_factory=dict)
