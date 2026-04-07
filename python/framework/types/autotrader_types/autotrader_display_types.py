@@ -149,12 +149,19 @@ class AutoTraderDisplayStats:
     base_currency: str = ''
     quote_currency: str = ''
 
+    # Trading model ('spot' or 'margin')
+    trading_model: str = 'margin'
+
     # Safety / circuit breaker state
     safety_blocked: bool = False
     safety_reason: str = ''
 
+    # Last order rejection (persists until session end or next successful trade)
+    last_rejection: str = ''
+
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
+    worker_max_times_ms: Dict[str, float] = field(default_factory=dict)
 
     # Worker Outputs (display=True only)
     worker_outputs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -163,3 +170,4 @@ class AutoTraderDisplayStats:
     last_decision_action: str = 'FLAT'
     decision_outputs: Dict[str, Any] = field(default_factory=dict)
     decision_time_ms: float = 0.0
+    decision_max_time_ms: float = 0.0

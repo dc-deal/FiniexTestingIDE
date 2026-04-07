@@ -93,12 +93,12 @@ Point your profile to the broker settings file. Example `configs/autotrader_prof
   "adapter_type": "live",
   "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
-  "account": { "balances": { "USD": 0.0, "ETH": 0.0 } },
+  "account": { "balances": { "USD": 0.0, "ETH": 0.0 }, "account_currency": "USD" },
   ...
 }
 ```
 
-`balances` with `0.0` values is intentional — the startup fetches real balances from Kraken and overrides these values.
+`balances` with `0.0` values is intentional — the startup fetches real balances for all listed currencies from Kraken and overrides these values. `account_currency` is optional — if omitted, the quote currency (USD) is used by default. Set it explicitly to use the base currency (e.g., `"ETH"`) for P&L denomination.
 
 ## Config File Relationship
 

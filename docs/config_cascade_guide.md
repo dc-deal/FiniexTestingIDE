@@ -438,6 +438,8 @@ Trading simulator settings cascade individually (app_config → global → scena
 
 > **Note:** `balances` is an **atomic key** — it is replaced entirely, never deep-merged.
 > A scenario with `{"JPY": 50000}` does NOT inherit the global `{"EUR": 10000}`.
+>
+> **Optional:** `"account_currency": "JPY"` can be added to `trade_simulator_config` to explicitly set the P&L denomination currency. If omitted, derived from balances + symbol (quote currency preferred).
 
 **Override Log:**
 ```

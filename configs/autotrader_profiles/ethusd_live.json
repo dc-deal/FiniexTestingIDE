@@ -34,7 +34,11 @@
     }
   },
   "account": {
-    "balances": { "USD": 0.0, "ETH": 0.0 }
+    "balances": {
+      "USD": 0.0,
+      "ETH": 0.0
+    },
+    "account_currency": "USD"
   },
   "tick_source": {
     "type": "kraken"

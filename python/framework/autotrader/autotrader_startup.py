@@ -185,9 +185,11 @@ def setup_pipeline(
             f'  "account": {{ "balances": {{ "USD": 10000.0 }} }}'
         )
 
-    # Derive account_currency from balances + symbol
+    # Determine account_currency: explicit override or derive from balances + symbol
     symbol_spec = broker_config.adapter.get_symbol_specification(config.symbol)
-    if symbol_spec.quote_currency in config.account.balances:
+    if config.account.account_currency:
+        account_currency = config.account.account_currency
+    elif symbol_spec.quote_currency in config.account.balances:
         account_currency = symbol_spec.quote_currency
     elif symbol_spec.base_currency in config.account.balances:
         account_currency = symbol_spec.base_currency
@@ -439,23 +441,22 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
             config.broker_config_path
         ).adapter.broker_config
 
-    # === Fetch account balance (no fallback — must succeed for live) ===
-    # Determine account currency from balances + symbol
-    account_currency = list(config.account.balances.keys())[0] if config.account.balances else 'USD'
-    balance = fetcher.fetch_account_balance(account_currency)
-    if balance is None:
-        raise ConnectionError(
-            f"Could not fetch account balance for '{account_currency}' from Kraken API. "
-            f"Live trading requires a confirmed balance. "
-            f"Check API credentials and account permissions."
+    # === Fetch account balances (no fallback — must succeed for live) ===
+    # Fetch all currencies listed in profile balances from Kraken
+    for currency in list(config.account.balances.keys()):
+        balance = fetcher.fetch_account_balance(currency)
+        if balance is None:
+            raise ConnectionError(
+                f"Could not fetch account balance for '{currency}' from Kraken API. "
+                f"Live trading requires a confirmed balance. "
+                f"Check API credentials and account permissions."
+            )
+        logger.info(
+            f"💰 Live balance: {balance} {currency} "
+            f"(profile default was {config.account.balances.get(currency, 0.0)})"
         )
-
-    logger.info(
-        f"💰 Live balance: {balance} {account_currency} "
-        f"(profile default was {config.account.balances.get(account_currency, 0.0)})"
-    )
-    print(f"  ▸ Live balance: {balance} {account_currency}")
-    config.account.balances[account_currency] = balance
+        print(f"  ▸ Live balance: {balance} {currency}")
+        config.account.balances[currency] = balance
 
     # Build BrokerConfig from fetched dict
     broker_config = BrokerConfigFactory.from_serialized_dict(

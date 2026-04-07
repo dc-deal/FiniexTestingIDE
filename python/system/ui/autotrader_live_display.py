@@ -302,7 +302,7 @@ class AutoTraderLiveDisplay:
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Portfolio state: balance (both currencies), P&L."""
+        """Portfolio state: account context, balance (both currencies), P&L."""
         # Include unrealized P&L from open positions (spot: balance alone
         # drops when buying assets, the held value must be accounted for)
         unrealized = sum(p.unrealized_pnl for p in stats.open_positions)
@@ -316,12 +316,19 @@ class AutoTraderLiveDisplay:
         quote_currency = stats.quote_currency or stats.symbol[-3:]
         base_currency = stats.base_currency or stats.symbol[:-3]
 
+        # Derive market type from broker_type
+        if stats.broker_type.startswith('kraken'):
+            market_label = 'crypto'
+        elif stats.broker_type == 'mt5':
+            market_label = 'forex'
+        else:
+            market_label = stats.broker_type
+
         # Dual-currency balance display
         # account_currency tells us which side we hold — the other is estimated from price
         if stats.account_currency == quote_currency:
             # e.g. USD account trading SOLUSD: show USD, estimate SOL equivalent
-            primary_label = f'[bold]{quote_currency}[/bold] [dim](quote)[/dim]'
-            primary_val = f'{stats.balance:,.6f} {quote_currency}'
+            balance_line = f'Balance:  {stats.balance:,.6f} {quote_currency}'
             if stats.last_price > 0:
                 other_val = stats.balance / stats.last_price
                 secondary_line = f'          [dim]≈ {other_val:,.6f} {base_currency} (est.)[/dim]'
@@ -329,8 +336,7 @@ class AutoTraderLiveDisplay:
                 secondary_line = ''
         else:
             # e.g. SOL account trading SOLUSD: show SOL, estimate USD equivalent
-            primary_label = f'[bold]{base_currency}[/bold] [dim](base)[/dim]'
-            primary_val = f'{stats.balance:,.6f} {base_currency}'
+            balance_line = f'Balance:  {stats.balance:,.6f} {base_currency}'
             if stats.last_price > 0:
                 other_val = stats.balance * stats.last_price
                 secondary_line = f'          [dim]≈ {other_val:,.6f} {quote_currency} (est.)[/dim]'
@@ -338,7 +344,8 @@ class AutoTraderLiveDisplay:
                 secondary_line = ''
 
         lines = [
-            f'Balance:  {primary_val}  {primary_label}',
+            f'Account:  [bold]{stats.account_currency}[/bold]  [dim]{market_label} | {stats.trading_model} ({stats.broker_type})[/dim]',
+            balance_line,
         ]
         if secondary_line:
             lines.append(secondary_line)
@@ -379,6 +386,11 @@ class AutoTraderLiveDisplay:
     def _build_orders_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Active/pending orders table."""
         if not stats.active_orders and stats.pipeline_count == 0:
+            if stats.last_rejection:
+                return Panel(
+                    f'[yellow]⚠  Last rejection: {stats.last_rejection}[/yellow]',
+                    title='[bold]ORDERS[/bold]', box=box.ROUNDED,
+                )
             return Panel('[dim]No active orders[/dim]', title='[bold]ORDERS[/bold]', box=box.ROUNDED)
 
         table = Table(show_header=True, box=None, padding=(0, 1))
@@ -536,20 +548,22 @@ class AutoTraderLiveDisplay:
         max_scale_ms = 50.0
         bar_width = 16
 
-        for name, avg_ms in stats.worker_times_ms.items():
-            filled = min(bar_width, int((avg_ms / max_scale_ms) * bar_width))
-            bar = '█' * max(1, filled) + '░' * (bar_width - max(1, filled))
-            lines.append(f'{name:<16s} {bar} {avg_ms:.2f}ms')
-
-        # Decision time
+        # Decision first (result before details)
         if stats.decision_time_ms > 0:
-            lines.append('─' * 40)
             d_filled = min(bar_width, int(
                 (stats.decision_time_ms / max_scale_ms) * bar_width))
             d_bar = '█' * max(1, d_filled) + '░' * \
                 (bar_width - max(1, d_filled))
+            d_max = stats.decision_max_time_ms
             lines.append(
-                f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms')
+                f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms  [dim]max {d_max:.2f}ms[/dim]')
+            lines.append('─' * 55)
+
+        for name, avg_ms in stats.worker_times_ms.items():
+            filled = min(bar_width, int((avg_ms / max_scale_ms) * bar_width))
+            bar = '█' * max(1, filled) + '░' * (bar_width - max(1, filled))
+            max_ms = stats.worker_max_times_ms.get(name, 0.0)
+            lines.append(f'{name:<16s} {bar} {avg_ms:.2f}ms  [dim]max {max_ms:.2f}ms[/dim]')
 
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
 
@@ -557,21 +571,7 @@ class AutoTraderLiveDisplay:
         """Worker display=True outputs and last decision."""
         lines = []
 
-        # Worker outputs
-        for worker_name, outputs in stats.worker_outputs.items():
-            parts = []
-            for key, value in outputs.items():
-                if isinstance(value, float):
-                    parts.append(f'{key}={value:.4f}')
-                else:
-                    parts.append(f'{key}={value}')
-            if parts:
-                lines.append(f'{worker_name:<16s} {", ".join(parts)}')
-
-        # Decision
-        if lines:
-            lines.append('─' * 40)
-
+        # Decision first (result before details)
         action = stats.last_decision_action
         action_color = 'green' if action == 'BUY' else (
             'red' if action == 'SELL' else 'dim')
@@ -582,6 +582,21 @@ class AutoTraderLiveDisplay:
             else:
                 decision_parts.append(f'{key}={value}')
         lines.append(f'Decision:  {" ".join(decision_parts)}')
+
+        # Worker outputs (details below decision)
+        worker_lines = []
+        for worker_name, outputs in stats.worker_outputs.items():
+            parts = []
+            for key, value in outputs.items():
+                if isinstance(value, float):
+                    parts.append(f'{key}={value:.4f}')
+                else:
+                    parts.append(f'{key}={value}')
+            if parts:
+                worker_lines.append(f'{worker_name:<16s} {", ".join(parts)}')
+        if worker_lines:
+            lines.append('─' * 40)
+            lines.extend(worker_lines)
 
         if not lines:
             return Panel('[dim]No algo data[/dim]', title='[bold]ALGO STATE[/bold]', box=box.ROUNDED)
