@@ -12,6 +12,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     ClippingMonitorConfig,
     DisplayConfig,
     ExecutionConfig,
+    OrderGuardConfig,
     SafetyConfig,
     TickSourceConfig,
 )
@@ -41,6 +42,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     clipping_raw = raw.get('clipping_monitor', {})
     display_raw = raw.get('display', {})
     safety_raw = raw.get('safety', {})
+    order_guard_raw = raw.get('order_guard', {})
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -75,6 +77,10 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             enabled=safety_raw.get('enabled', False),
             min_balance=safety_raw.get('min_balance', 0.0),
             max_drawdown_pct=safety_raw.get('max_drawdown_pct', 0.0),
+        ),
+        order_guard=OrderGuardConfig(
+            cooldown_seconds=order_guard_raw.get('cooldown_seconds', 60.0),
+            max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
         ),
         config_path=path,
     )

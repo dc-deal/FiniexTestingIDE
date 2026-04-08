@@ -15,24 +15,19 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dateutil import parser
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.market_types.market_config_types import MarketType, TradingModel
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.autotrader_types.autotrader_config_types import OrderGuardConfig
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown, ExecutionStats
-from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 # ============================================================================
@@ -210,6 +205,9 @@ class ProcessScenarioConfig:
     stress_test_config: StressTestConfig = field(
         default_factory=StressTestConfig.disabled)
 
+    # === ORDER GUARD CONFIG ===
+    order_guard_config: OrderGuardConfig = field(default_factory=OrderGuardConfig)
+
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
     order_history_max: int = 10000
@@ -310,6 +308,17 @@ class ProcessScenarioConfig:
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
 
+        # Parse order_guard config from scenario (defaults if None)
+        if scenario.order_guard_config:
+            order_guard_config = OrderGuardConfig(
+                cooldown_seconds=scenario.order_guard_config.get(
+                    'cooldown_seconds', 60.0),
+                max_consecutive_rejections=scenario.order_guard_config.get(
+                    'max_consecutive_rejections', 2),
+            )
+        else:
+            order_guard_config = OrderGuardConfig()
+
         # Default live stats config if not provided
         if live_stats_config is None:
             live_stats_config = LiveStatsExportConfig(enabled=False)
@@ -337,6 +346,7 @@ class ProcessScenarioConfig:
             account_currency=account_currency,
             seeds=seeds,
             stress_test_config=stress_test_config,
+            order_guard_config=order_guard_config,
             bar_max_history=app_config_loader.get_bar_max_history(),
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
@@ -347,19 +357,6 @@ class ProcessScenarioConfig:
             is_profile_run=scenario.is_profile_run,
         )
 
-
-@dataclass
-class ProcessPreparedDataObjects:
-    """
-        Prepared Objects from process_startup_preparation
-        All those must be created in minimum time
-    """
-    worker_coordinator: WorkerOrchestrator = None
-    trade_simulator: AbstractTradeExecutor = None
-    bar_rendering_controller: BarRenderingController = None
-    decision_logic: AbstractDecisionLogic = None
-    scenario_logger: ScenarioLogger = None
-    ticks: Tuple[TickData, ...] = None
 
 
 @dataclass

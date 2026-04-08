@@ -33,15 +33,30 @@ FUTURE NOTES:
 from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
+from .order_guard import OrderGuard
 from .portfolio_manager import UNSET, _UnsetType
+from python.framework.types.autotrader_types.autotrader_config_types import OrderGuardConfig
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
+    OrderStatus,
     OrderResult,
     OrderCapabilities,
     ModificationResult,
     OpenOrderRequest,
+    RejectionReason,
 )
+
+# Rejection reasons that indicate broker/account-side problems worth
+# cooling down on. Local validation rejections (lot size, unsupported type)
+# are decision bugs, not broker spam — they don't arm the cooldown.
+_COOLDOWN_REJECTION_REASONS = frozenset({
+    RejectionReason.INSUFFICIENT_MARGIN,
+    RejectionReason.INSUFFICIENT_FUNDS,
+    RejectionReason.BROKER_ERROR,
+    RejectionReason.MARKET_CLOSED,
+})
 from .portfolio_manager import AccountInfo, Position
 
 
@@ -62,7 +77,9 @@ class DecisionTradingApi:
     def __init__(
         self,
         executor: AbstractTradeExecutor,
-        required_order_types: List[OrderType]
+        required_order_types: List[OrderType],
+        trading_model: TradingModel = TradingModel.MARGIN,
+        order_guard_config: Optional[OrderGuardConfig] = None,
     ):
         """
         Initialize Decision Trading API with order-type validation.
@@ -70,6 +87,8 @@ class DecisionTradingApi:
         Args:
             executor: AbstractTradeExecutor instance (TradeSimulator or LiveTradeExecutor)
             required_order_types: Order types that Decision Logic will use
+            trading_model: SPOT or MARGIN — drives SHORT+SPOT guard behavior
+            order_guard_config: Pre-validation guard configuration (defaults if None)
 
         Raises:
             ValueError: If any required order type is not supported by broker
@@ -79,6 +98,17 @@ class DecisionTradingApi:
 
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
+
+        # Pre-validation guard for SHORT+SPOT and rejection cooldown
+        guard_cfg = order_guard_config or OrderGuardConfig()
+        self._order_guard = OrderGuard(
+            trading_model=trading_model,
+            cooldown_seconds=guard_cfg.cooldown_seconds,
+            max_consecutive_rejections=guard_cfg.max_consecutive_rejections,
+        )
+
+        # Register for async order outcomes (margin rejection at fill time, etc.)
+        self._executor.set_order_outcome_callback(self._on_order_outcome)
 
     # ============================================
     # Order Type Validation
@@ -180,7 +210,55 @@ class DecisionTradingApi:
             take_profit=take_profit,
             comment=comment,
         )
-        return self._executor.open_order(request)
+
+        # Pre-validation guard — SHORT+SPOT and rejection cooldown
+        guard_result = self._order_guard.validate(request)
+        if guard_result is not None:
+            self._executor.record_guard_rejection(guard_result)
+            return guard_result
+
+        result = self._executor.open_order(request)
+
+        # Sync rejections: update guard immediately for direct-return rejections
+        # (lot validation, adapter exception, immediate broker rejection).
+        # Only broker/account rejections feed the cooldown — local validation
+        # rejections (invalid lot size, unsupported order type) are decision
+        # bugs, not spam.
+        # PENDING/SUBMITTED returns are NOT handled here — async outcomes
+        # (margin check at fill time, broker polling) flow through the
+        # _on_order_outcome callback registered in __init__.
+        if result.is_rejected:
+            if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
+                self._order_guard.record_rejection(request.direction)
+
+        return result
+
+    # ============================================
+    # Async Order Outcome Callback
+    # ============================================
+
+    def _on_order_outcome(
+        self,
+        direction: OrderDirection,
+        result: OrderResult
+    ) -> None:
+        """
+        Handle async order outcomes from the executor.
+
+        Called by AbstractTradeExecutor._notify_outcome() when an order
+        reaches a terminal state after the initial PENDING return —
+        e.g. margin rejection at fill time, or successful fill after
+        latency simulation.
+
+        Args:
+            direction: Order direction (LONG/SHORT)
+            result: Terminal OrderResult (EXECUTED or REJECTED)
+        """
+        if result.is_rejected:
+            if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
+                self._order_guard.record_rejection(direction)
+        elif result.status == OrderStatus.EXECUTED:
+            self._order_guard.record_success(direction)
 
     # ============================================
     # Public API: Account Queries

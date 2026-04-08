@@ -135,7 +135,8 @@ class AutotraderMain:
              self._bar_controller,
              self._worker_orchestrator,
              self._decision_logic,
-             self._clipping_monitor) = setup_pipeline(self._config, self._session_logger)
+             self._clipping_monitor,
+             self._trading_model) = setup_pipeline(self._config, self._session_logger)
             self._print_startup_phase('Pipeline created successfully')
 
             # === TICK SOURCE ===
@@ -173,6 +174,7 @@ class AutotraderMain:
                 decision_logic=self._decision_logic,
                 clipping_monitor=self._clipping_monitor,
                 logger=self._session_logger,
+                trading_model=self._trading_model,
                 run_dir=self._run_dir,
                 display_queue=self._display_queue,
                 session_start=run_timestamp,

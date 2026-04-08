@@ -107,6 +107,28 @@ class ScenarioCascade:
         return result
 
     @staticmethod
+    def merge_order_guard_config(
+        global_config: Dict[str, Any],
+        scenario_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        2-level cascade merge for order_guard_config.
+
+        Args:
+            global_config: Global order_guard_config from scenario_set
+            scenario_config: Scenario-specific order_guard_config
+
+        Returns:
+            Merged order_guard_config with scenario taking precedence
+        """
+        result = copy.deepcopy(global_config)
+
+        if scenario_config:
+            result = ScenarioCascade._deep_merge(result, scenario_config)
+
+        return result
+
+    @staticmethod
     def merge_stress_test_config(
         global_config: Dict[str, Any],
         scenario_config: Dict[str, Any]

@@ -230,6 +230,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
             )
             self._order_history.append(rejection)
+            self._notify_outcome(rejected.direction, rejection)
 
         # PENDING / PARTIALLY_FILLED: no action, keep polling
 
@@ -268,6 +269,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             message=f"Order timed out after {self._timeout_config.order_timeout_seconds}s",
         )
         self._order_history.append(rejection)
+        self._notify_outcome(pending.direction, rejection)
 
         self.logger.warning(
             f"Order {pending.pending_order_id} timed out "
@@ -316,6 +318,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                             f"{response.rejection_reason or 'unknown'}",
                 )
                 self._order_history.append(rejection)
+                self._notify_outcome(pending.direction, rejection)
                 self.logger.warning(
                     f"Active limit order {pending.pending_order_id} "
                     f"{response.status.value} by broker "

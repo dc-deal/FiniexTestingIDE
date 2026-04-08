@@ -38,6 +38,8 @@
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
+| [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
+| [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (balance/drawdown thresholds, AutoTrader only) |
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
@@ -85,3 +87,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
 | [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [AutoTrader Integration](tests/autotrader_integration_tests.md) | End-to-end mock session validation |
+| [Order Guard](tests/order_guard_tests.md) | SHORT+SPOT blocking, rejection cooldown, async callback |

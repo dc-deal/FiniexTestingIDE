@@ -4,19 +4,20 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.log_level import LogLevel
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.process_data_types import (
-    ProcessPreparedDataObjects,
     ProcessScenarioConfig,
     TickRangeStats)
 
 
-def get_tick_range_stats(prepared_objects: ProcessPreparedDataObjects) -> TickRangeStats:
-    """ 
-    DEBUG: TICK RANGE INFO 
+def get_tick_range_stats(
+    logger: ScenarioLogger,
+    trade_simulator: AbstractTradeExecutor,
+    ticks: Tuple[TickData, ...]
+) -> TickRangeStats:
     """
-    logger = prepared_objects.scenario_logger
-    trade_simulator = prepared_objects.trade_simulator
-    ticks = prepared_objects.ticks
+    DEBUG: TICK RANGE INFO
+    """
 
     # === DEBUG: TICK RANGE INFO ===
     logger.debug(f"🔍 Tick loop range info")

@@ -134,7 +134,7 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
 def setup_pipeline(
     config: AutoTraderConfig,
     logger: ScenarioLogger
-) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor]:
+) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor, TradingModel]:
     """
     Create all pipeline objects for AutoTrader session.
 
@@ -155,7 +155,7 @@ def setup_pipeline(
         logger: ScenarioLogger instance
 
     Returns:
-        (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor)
+        (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model)
     """
     # === Phase 1: Broker Config ===
     broker_config = _create_broker_config(config, logger)
@@ -255,7 +255,9 @@ def setup_pipeline(
 
     trading_api = DecisionTradingApi(
         executor=executor,
-        required_order_types=required_order_types
+        required_order_types=required_order_types,
+        trading_model=trading_model,
+        order_guard_config=config.order_guard,
     )
     decision_logic.set_trading_api(trading_api)
     logger.debug('✅ DecisionTradingApi injected')
@@ -286,7 +288,7 @@ def setup_pipeline(
         f"report_interval={config.clipping_monitor.report_interval_s}s"
     )
 
-    return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor
+    return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model
 
 
 def setup_tick_source(

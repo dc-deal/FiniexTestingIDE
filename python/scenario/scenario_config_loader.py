@@ -100,6 +100,9 @@ class ScenarioConfigLoader:
         # Parse global stress_test_config
         global_stress_test = global_config.get('stress_test_config', {})
 
+        # Parse global order_guard config
+        global_order_guard = global_config.get('order_guard', {})
+
         # Get warn_on_override flag from app_config
         app_config = AppConfigManager()
         warn_on_override = app_config.should_warn_on_override()
@@ -147,6 +150,12 @@ class ScenarioConfigLoader:
             scenario_stress_test = ScenarioCascade.merge_stress_test_config(
                 global_stress_test,
                 scenario_data.get('stress_test_config', {})
+            )
+
+            # Deep merge order_guard config (2-level: global → scenario)
+            scenario_order_guard = ScenarioCascade.merge_order_guard_config(
+                global_order_guard,
+                scenario_data.get('order_guard', {})
             )
 
             # ============================================
@@ -206,6 +215,8 @@ class ScenarioConfigLoader:
                 trade_simulator_config=scenario_trade_simulator if scenario_trade_simulator else None,
                 # Add stress_test_config to SingleScenario
                 stress_test_config=scenario_stress_test if scenario_stress_test else None,
+                # Add order_guard_config to SingleScenario
+                order_guard_config=scenario_order_guard if scenario_order_guard else None,
             )
             scenarios.append(scenario)
             current_scenario_index += 1
@@ -257,6 +268,7 @@ class ScenarioConfigLoader:
         global_execution = global_config.get('execution_config', {})
         global_trade_simulator = global_config.get('trade_simulator_config', {})
         global_stress_test = global_config.get('stress_test_config', {})
+        global_order_guard = global_config.get('order_guard', {})
 
         # App-level defaults for 3-tier cascade
         app_config = AppConfigManager()
@@ -294,6 +306,7 @@ class ScenarioConfigLoader:
                     execution_config=copy.deepcopy(global_execution),
                     trade_simulator_config=copy.deepcopy(merged_trade_simulator) if merged_trade_simulator else None,
                     stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
+                    order_guard_config=copy.deepcopy(global_order_guard) if global_order_guard else None,
                     is_profile_run=True,
                 )
                 scenarios.append(scenario)

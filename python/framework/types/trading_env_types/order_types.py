@@ -93,6 +93,8 @@ class RejectionReason(Enum):
     INVALID_PRICE = "invalid_price"
     ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"
     BROKER_ERROR = "broker_error"
+    SPOT_SHORT_BLOCKED = "spot_short_blocked"
+    REJECTION_COOLDOWN = "rejection_cooldown"
 
 
 # ============================================

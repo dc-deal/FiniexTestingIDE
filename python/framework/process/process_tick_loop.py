@@ -21,27 +21,36 @@ import time
 import traceback
 from collections import defaultdict
 from multiprocessing import Queue
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
+from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.process_live_queue_helper import send_status_update_process
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.process.process_block_boundary import build_block_boundary_report
 from python.framework.types.process_data_types import (
-    ProcessPreparedDataObjects,
     ProcessProfileData,
     ProcessTickLoopResult,
     ProcessScenarioConfig,
 )
 from python.framework.utils.process_debug_info_utils import get_tick_range_stats
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 def execute_tick_loop(
     config: ProcessScenarioConfig,
-    prepared_objects: ProcessPreparedDataObjects,
+    worker_coordinator: WorkerOrchestrator,
+    trade_simulator: AbstractTradeExecutor,
+    bar_rendering_controller: BarRenderingController,
+    decision_logic: AbstractDecisionLogic,
+    scenario_logger: ScenarioLogger,
+    ticks: Tuple[TickData, ...],
     live_queue: Optional[Queue] = None
 ) -> ProcessTickLoopResult:
     """
@@ -52,24 +61,19 @@ def execute_tick_loop(
 
     Args:
         config: Scenario configuration
-        prepared_objects: Objects from startup_preparation
+        worker_coordinator: Orchestrator for worker execution
+        trade_simulator: Trade execution engine
+        bar_rendering_controller: Bar rendering controller
+        decision_logic: Decision logic instance
+        scenario_logger: Logger for this scenario
+        ticks: Deserialized tick data
         live_queue: Queue for live updates (optional)
-        sync_barrier: Barrier for synchronized start (optional)
 
     Returns:
         ProcessTickLoopResult with loop results
     """
-    scenario_logger = prepared_objects.scenario_logger
     try:
-        worker_coordinator = prepared_objects.worker_coordinator
-        trade_simulator = prepared_objects.trade_simulator
-        bar_rendering_controller = prepared_objects.bar_rendering_controller
-
-        decision_logic = prepared_objects.decision_logic
         portfolio = trade_simulator.portfolio
-
-        # Get ticks from prepared_objects
-        ticks = prepared_objects.ticks
 
         # Performance profiling
         profile_times = defaultdict(float)
@@ -79,7 +83,7 @@ def execute_tick_loop(
         inter_tick_intervals: List[float] = []
         prev_interval_msc: int = 0
 
-        tick_range_stats = get_tick_range_stats(prepared_objects)
+        tick_range_stats = get_tick_range_stats(scenario_logger, trade_simulator, ticks)
 
         live_setup = process_live_setup(
             scenario_logger, config, ticks, live_queue)
