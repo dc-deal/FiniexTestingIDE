@@ -59,5 +59,10 @@
     "enabled": false,
     "min_balance": 5.0,
     "max_drawdown_pct": 30.0
+  },
+  "order_guard": {
+    "_comment": "Pre-validation guard: blocks SHORT in spot mode, arms cooldown after N consecutive broker rejections to prevent retry spam",
+    "cooldown_seconds": 60.0,
+    "max_consecutive_rejections": 2
   }
 }

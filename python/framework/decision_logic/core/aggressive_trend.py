@@ -58,7 +58,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
     OrderResult,
-    RejectionReason,
 )
 
 
@@ -107,9 +106,6 @@ class AggressiveTrend(AbstractDecisionLogic):
         # Trading configuration
         self.min_free_margin = self.params.get('min_free_margin')
         self.lot_size = self.params.get('lot_size')
-
-        # Rejection state: direction → True if last broker_error rejection blocked it
-        self._broker_rejected: dict[OrderDirection, bool] = {}
 
         self.logger.debug(
             f"AggressiveTrend initialized: "
@@ -233,12 +229,6 @@ class AggressiveTrend(AbstractDecisionLogic):
             return None
 
         # ============================================
-        # Skip direction if broker previously rejected it (e.g. insufficient funds on spot)
-        # ============================================
-        if self._broker_rejected.get(new_direction, False):
-            return None
-
-        # ============================================
         # Check for pending orders (avoid double-ordering)
         # ============================================
         if self.trading_api.has_pending_orders():
@@ -307,11 +297,6 @@ class AggressiveTrend(AbstractDecisionLogic):
                     f"✗ Order rejected: {order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
                     f"{order_result.rejection_message}"
                 )
-                if order_result.rejection_reason == RejectionReason.BROKER_ERROR:
-                    self._broker_rejected[new_direction] = True
-                    self.logger.warning(
-                        f"⛔ Direction {new_direction} blocked after broker rejection — will not retry this session"
-                    )
 
             return order_result
 

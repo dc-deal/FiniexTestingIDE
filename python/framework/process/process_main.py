@@ -50,9 +50,13 @@ def process_main(
         scenario_logger.info(f"⏱️  Process started at {start_time}")
 
         # === STARTUP PREPARATION ===
-        prepared_objects = process_startup_preparation(
+        (worker_coordinator,
+         trade_simulator,
+         bar_rendering_controller,
+         decision_logic,
+         scenario_logger,
+         ticks) = process_startup_preparation(
             config, shared_data, scenario_logger)
-        scenario_logger = prepared_objects.scenario_logger
         scenario_logger.debug(
             f"🔄 Process preparation finished")
 
@@ -60,9 +64,10 @@ def process_main(
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
         # === TICK LOOP EXECUTION ===
-        # Extract barrier from shared_data
         tick_loop_results = execute_tick_loop(
-            config, prepared_objects, live_queue)
+            config, worker_coordinator, trade_simulator,
+            bar_rendering_controller, decision_logic,
+            scenario_logger, ticks, live_queue)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 

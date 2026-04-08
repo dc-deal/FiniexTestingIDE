@@ -13,7 +13,7 @@ The backtesting flow processes a finite list of historical ticks synchronously. 
 **Entry point:** `python/framework/process/process_tick_loop.py` → `execute_tick_loop()`
 
 ```
-execute_tick_loop(config, prepared_objects)
+execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
     │
     for tick in ticks:                              # finite, pre-loaded from data provider
         │

@@ -159,7 +159,7 @@ bar_rendering_controller.inject_warmup_bars(
 
 ### 6-Step Processing Pipeline
 
-**Function:** `execute_tick_loop(config, prepared_objects, live_queue)`  
+**Function:** `execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks, live_queue)`  
 **Located:** `python/framework/process/process_tick_loop.py`
 
 **Per-Tick Operations:**
@@ -572,10 +572,18 @@ ProcessResult(
 ```python
 try:
     # Startup preparation
-    prepared_objects = process_startup_preparation(...)
+    (worker_coordinator,
+     trade_simulator,
+     bar_rendering_controller,
+     decision_logic,
+     scenario_logger,
+     ticks) = process_startup_preparation(...)
     
     # Tick loop execution
-    tick_loop_results = execute_tick_loop(...)
+    tick_loop_results = execute_tick_loop(
+        config, worker_coordinator, trade_simulator,
+        bar_rendering_controller, decision_logic,
+        scenario_logger, ticks, live_queue)
     
     # Build success result
     return ProcessResult(success=True, ...)

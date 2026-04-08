@@ -82,6 +82,22 @@ class SafetyConfig:
 
 
 @dataclass
+class OrderGuardConfig:
+    """
+    Order guard configuration — pre-validation layer between DecisionLogic and executor.
+
+    Enforces SHORT+SPOT safety and a rejection cooldown that blocks a direction
+    after N consecutive broker rejections for a configurable period.
+
+    Args:
+        cooldown_seconds: Cooldown duration in seconds after max_consecutive_rejections is hit
+        max_consecutive_rejections: Consecutive rejections per direction before cooldown triggers
+    """
+    cooldown_seconds: float = 60.0
+    max_consecutive_rejections: int = 2
+
+
+@dataclass
 class DisplayConfig:
     """
     AutoTrader live console display configuration (#228).
@@ -141,4 +157,5 @@ class AutoTraderConfig:
     clipping_monitor: ClippingMonitorConfig = field(default_factory=ClippingMonitorConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
+    order_guard: OrderGuardConfig = field(default_factory=OrderGuardConfig)
     config_path: Optional[Path] = None

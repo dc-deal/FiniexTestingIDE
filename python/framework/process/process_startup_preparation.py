@@ -2,14 +2,18 @@
 
 from datetime import timezone
 from typing import Dict, Tuple
-from python.framework.logging.scenario_logger import ScenarioLogger
+
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessPreparedDataObjects, ProcessScenarioConfig
+from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -19,7 +23,7 @@ def process_startup_preparation(
     config: ProcessScenarioConfig,
     shared_data: ProcessDataPackage,
     scenario_logger: ScenarioLogger
-) -> ProcessPreparedDataObjects:
+) -> Tuple[WorkerOrchestrator, AbstractTradeExecutor, BarRenderingController, AbstractDecisionLogic, ScenarioLogger, Tuple[TickData, ...]]:
     """
     Create all objects needed in subprocess.
 
@@ -38,7 +42,7 @@ def process_startup_preparation(
         shared_data: Shared data package
 
     Returns:
-        Dictionary with all prepared objects
+        (worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
     """
 
     scenario_logger.info(f"🚀 Starting scenario: {config.name}")
@@ -117,7 +121,9 @@ def process_startup_preparation(
     # === PHASE 6: Inject DecisionTradingApi (validated against required_order_types) ===
     trading_api = DecisionTradingApi(
         executor=trade_simulator,
-        required_order_types=required_order_types
+        required_order_types=required_order_types,
+        trading_model=config.trading_model,
+        order_guard_config=config.order_guard_config,
     )
     decision_logic.set_trading_api(trading_api)
     scenario_logger.debug("✅ DecisionTradingApi injected into Decision Logic")
@@ -164,14 +170,7 @@ def process_startup_preparation(
     scenario_logger.debug(
         f"🔄 De-Serialization of {len(ticks):,} ticks finished")
 
-    return ProcessPreparedDataObjects(
-        worker_coordinator=worker_coordinator,
-        trade_simulator=trade_simulator,
-        bar_rendering_controller=bar_rendering_controller,
-        decision_logic=decision_logic,
-        scenario_logger=scenario_logger,
-        ticks=ticks
-    )
+    return worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks
 
 
 def _match_and_validate_warmup_bars(

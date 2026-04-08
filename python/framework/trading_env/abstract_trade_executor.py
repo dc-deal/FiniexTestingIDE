@@ -36,7 +36,7 @@ from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
 import json
-from typing import Optional, List, Dict, Tuple, Union
+from typing import Callable, Optional, List, Dict, Tuple, Union
 
 from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
@@ -150,6 +150,11 @@ class AbstractTradeExecutor(ABC):
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
 
+        # Order outcome callback — notifies DecisionTradingApi (or any listener)
+        # of async fill/rejection outcomes (e.g. margin check at fill time).
+        # Signature: (direction: OrderDirection, result: OrderResult) -> None
+        self._order_outcome_callback: Optional[Callable[[OrderDirection, OrderResult], None]] = None
+
     def _check_order_history_limit(self) -> None:
         """Emit one-time warning when order history reaches capacity."""
         if (self._order_history_max > 0
@@ -160,6 +165,45 @@ class AbstractTradeExecutor(ABC):
                 f"⚠️ Order history limit reached ({self._order_history_max}). "
                 f"Oldest entries will be discarded. Full history available in scenario log."
             )
+
+    # ============================================
+    # Order Outcome Callback
+    # ============================================
+
+    def set_order_outcome_callback(
+        self,
+        callback: Callable[[OrderDirection, OrderResult], None]
+    ) -> None:
+        """
+        Register a callback for async order outcomes.
+
+        Called by DecisionTradingApi to receive fill/rejection notifications
+        that happen after the initial open_order() returns PENDING.
+        This bridges the gap between async execution (latency simulation,
+        broker polling) and the synchronous OrderGuard state.
+
+        Args:
+            callback: Function receiving (direction, result) for each outcome
+        """
+        self._order_outcome_callback = callback
+
+    def _notify_outcome(
+        self,
+        direction: OrderDirection,
+        result: OrderResult
+    ) -> None:
+        """
+        Notify the registered callback of an async order outcome.
+
+        Called at every point where an order reaches a terminal state
+        (filled or rejected) after the initial PENDING return.
+
+        Args:
+            direction: Order direction (LONG/SHORT)
+            result: The terminal OrderResult (EXECUTED or REJECTED)
+        """
+        if self._order_outcome_callback is not None:
+            self._order_outcome_callback(direction, result)
 
     # ============================================
     # Tick Lifecycle (called by process_tick_loop)
@@ -373,6 +417,7 @@ class AbstractTradeExecutor(ABC):
                 )
                 self._check_order_history_limit()
                 self._order_history.append(rejection)
+                self._notify_outcome(pending_order.direction, rejection)
                 self.logger.warning(
                     f"Order {pending_order.pending_order_id} rejected: "
                     f"margin {margin_required:.2f} > free {free_margin:.2f}"
@@ -396,6 +441,7 @@ class AbstractTradeExecutor(ABC):
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
+                    self._notify_outcome(pending_order.direction, rejection)
                     self.logger.warning(
                         f"Order {pending_order.pending_order_id} rejected: "
                         f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
@@ -416,6 +462,7 @@ class AbstractTradeExecutor(ABC):
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
+                    self._notify_outcome(pending_order.direction, rejection)
                     self.logger.warning(
                         f"Order {pending_order.pending_order_id} rejected: "
                         f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
@@ -472,6 +519,7 @@ class AbstractTradeExecutor(ABC):
         self._total_spread_cost += entry_fee.cost
         self._check_order_history_limit()
         self._order_history.append(result)
+        self._notify_outcome(pending_order.direction, result)
 
     def _fill_close_order(
         self,
@@ -972,6 +1020,21 @@ class AbstractTradeExecutor(ABC):
     def get_order_history(self) -> List[OrderResult]:
         """Get complete order history."""
         return list(self._order_history)
+
+    def record_guard_rejection(self, result: OrderResult) -> None:
+        """
+        Record a pre-validation (OrderGuard) rejection in the order history.
+
+        Guard rejections never reach the broker but should appear in batch
+        reporting alongside real rejections. Counts towards orders_rejected
+        so execution stats stay consistent with broker-side rejections.
+
+        Args:
+            result: Rejected OrderResult from OrderGuard.validate()
+        """
+        self._orders_rejected += 1
+        self._check_order_history_limit()
+        self._order_history.append(result)
 
     def get_trade_history(self) -> List[TradeRecord]:
         """Get all completed trades with full audit trail."""

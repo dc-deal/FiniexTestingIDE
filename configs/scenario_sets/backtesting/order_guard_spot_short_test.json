@@ -1,0 +1,83 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "order_guard_spot_short_test",
+    "created": "2026-04-08T00:00:00.000000",
+    "description": "OrderGuard SHORT+SPOT — Verifies that SHORT orders are blocked in spot mode by the universal pre-validation guard",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
+            "worker_instances": {
+                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            },
+            "workers": {
+                "backtesting_worker": {
+                    "periods": {
+                        "M5": 14,
+                        "M30": 20
+                    },
+                    "bar_snapshot_checks": []
+                }
+            },
+            "decision_logic_config": {
+                "trade_sequence": [
+                    {
+                        "tick_number": 100,
+                        "direction": "LONG",
+                        "lot_size": 0.001,
+                        "hold_ticks": 2000,
+                        "_comment": "LONG in spot — passes guard, executes normally"
+                    },
+                    {
+                        "tick_number": 300,
+                        "direction": "SHORT",
+                        "lot_size": 0.001,
+                        "expect_rejection": true,
+                        "_comment": "SHORT in spot — blocked by OrderGuard (SPOT_SHORT_BLOCKED)"
+                    },
+                    {
+                        "tick_number": 500,
+                        "direction": "SHORT",
+                        "lot_size": 0.001,
+                        "expect_rejection": true,
+                        "_comment": "Second SHORT — still blocked, guard is stateless for SPOT check"
+                    }
+                ],
+                "close_events": [],
+                "retry_events": [],
+                "edge_case_orders": [],
+                "lot_size": 0.001
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false,
+            "log_performance_stats": true
+        },
+        "trade_simulator_config": {
+            "balances": { "USD": 10000 },
+            "seeds": {
+                "inbound_latency_seed": 42424
+            }
+        },
+        "order_guard": {
+            "_comment": "Explicit guard config — test verifies SPOT_SHORT_BLOCKED regardless of cooldown thresholds",
+            "cooldown_seconds": 60.0,
+            "max_consecutive_rejections": 2
+        }
+    },
+    "scenarios": [
+        {
+            "name": "BTCUSD_order_guard_spot_short",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "start_date": "2026-01-25T00:00:00+00:00",
+            "end_date": "2026-01-26T00:00:00+00:00",
+            "max_ticks": 3000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

@@ -58,6 +58,10 @@ class SingleScenario:
     # Stress test configuration (per scenario, cascaded from global)
     stress_test_config: Optional[Dict[str, Any]] = None
 
+    # OrderGuard configuration (per scenario, cascaded from global)
+    # None = OrderGuardConfig defaults (60s cooldown, 2 rejections)
+    order_guard_config: Optional[Dict[str, Any]] = None
+
     account_currency: str = ''
 
     # === VALIDATION TRACKING ===

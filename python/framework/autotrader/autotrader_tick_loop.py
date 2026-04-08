@@ -22,6 +22,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
@@ -68,6 +69,7 @@ class AutotraderTickLoop:
         decision_logic: AbstractDecisionLogic,
         clipping_monitor: LiveClippingMonitor,
         logger: ScenarioLogger,
+        trading_model: TradingModel,
         run_dir: Optional[Path] = None,
         display_queue: Optional[queue.Queue] = None,
         session_start: Optional[datetime] = None,
@@ -82,6 +84,7 @@ class AutotraderTickLoop:
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
         self._logger = logger
+        self._trading_model = trading_model
         self._run_dir = run_dir
         self._display_queue = display_queue
         self._session_start = session_start or datetime.now(timezone.utc)
@@ -358,7 +361,7 @@ class AutotraderTickLoop:
             account_currency=self._executor.account_currency,
             base_currency=self._base_currency,
             quote_currency=self._quote_currency,
-            trading_model='spot' if self._executor._spot_mode else 'margin',
+            trading_model=self._trading_model.value,
             safety_blocked=self._safety_blocked,
             safety_reason=self._safety_reason,
             last_rejection=self._last_rejection,

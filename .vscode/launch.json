@@ -920,6 +920,30 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run (OrderGuard SPOT+SHORT Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/order_guard_spot_short_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Run (OrderGuard Cooldown Scenario)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/order_guard_cooldown_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 Run (BENCHMARK Scenario)",
             "type": "debugpy",
             "request": "launch",
@@ -1147,6 +1171,19 @@
             "module": "pytest",
             "args": [
                 "tests/autotrader_integration/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Order Guard (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/order_guard/",
                 "-v",
                 "--tb=short"
             ],
