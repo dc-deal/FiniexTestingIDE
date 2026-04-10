@@ -122,7 +122,6 @@ def process_startup_preparation(
     trading_api = DecisionTradingApi(
         executor=trade_simulator,
         required_order_types=required_order_types,
-        trading_model=config.trading_model,
         order_guard_config=config.order_guard_config,
     )
     decision_logic.set_trading_api(trading_api)

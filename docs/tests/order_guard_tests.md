@@ -2,9 +2,7 @@
 
 ## Overview
 
-The order guard test suite validates the OrderGuard pre-validation layer — SHORT+SPOT blocking, rejection cooldown arming, and the async callback mechanism that bridges latency-delayed outcomes back to the guard.
-
-**Total Tests:** 20 (12 unit + 8 scenario integration)
+The order guard test suite validates the OrderGuard spam protection layer — rejection cooldown arming, direction isolation, and the async callback mechanism that bridges latency-delayed outcomes back to the guard.
 
 **Location:** `tests/order_guard/`
 
@@ -20,37 +18,28 @@ tests/order_guard/
 └── test_order_guard_scenarios.py     ← Level 2: Full backtesting scenarios via DecisionTradingApi
 ```
 
-### Level 1 — Unit Tests (12 tests)
+### Level 1 — Unit Tests
 
-Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. Tests use `monkeypatch` to control `datetime.now()` for cooldown expiry verification.
+Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. The guard is clock-agnostic — all time-dependent methods take an explicit `now: datetime` parameter, so tests simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 
-| Class | Tests | What it validates |
-|-------|-------|-------------------|
-| `TestShortSpotBlocking` | 4 | SHORT blocked in SPOT, LONG passes in SPOT, both pass in MARGIN |
-| `TestCooldown` | 6 | Threshold arming, direction isolation, success reset, expiry, counter accumulation |
-| `TestConfigurableThreshold` | 2 | Custom `max_consecutive_rejections`, cooldown duration in message |
+| Class | What it validates |
+|-------|-------------------|
+| `TestCooldown` | Threshold arming, direction isolation, success reset, expiry, counter accumulation, tick-time anchoring (cooldowns measured in simulated time, not wall-clock) |
+| `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 
-### Level 2 — Scenario Integration Tests (8 tests)
+### Level 2 — Scenario Integration Tests
 
 End-to-end tests that run full backtesting scenarios through the DecisionTradingApi + OrderGuard + TradeSimulator pipeline. Uses `backtesting_margin_stress` decision logic with `trade_sequence` support.
 
-| Class | Tests | Scenario Config | What it validates |
-|-------|-------|-----------------|-------------------|
-| `TestSpotShortBlocked` | 4 | `order_guard_spot_short_test.json` | SHORT rejections appear in order history, guard_ prefix, LONG executes, stats counted |
-| `TestRejectionCooldown` | 4 | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted |
+| Class | Scenario Config | What it validates |
+|-------|-----------------|-------------------|
+| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted |
 
 ---
 
 ## Scenario Configs
 
-Both configs are in `configs/scenario_sets/backtesting/`:
-
-### `order_guard_spot_short_test.json`
-
-- **Symbol:** BTCUSD on `kraken_spot` (spot mode)
-- **Balance:** 10,000 USD
-- **Trade sequence:** 1 LONG (passes), 2 SHORTs (blocked as SPOT_SHORT_BLOCKED)
-- **Guard config:** explicit defaults (cooldown=60s, max_rejections=2)
+Located in `configs/scenario_sets/backtesting/`:
 
 ### `order_guard_cooldown_test.json`
 
@@ -58,6 +47,7 @@ Both configs are in `configs/scenario_sets/backtesting/`:
 - **Balance:** 80,000 JPY
 - **Trade sequence:** 2 LONGs (fill, consume margin), 1 LONG (INSUFFICIENT_MARGIN at fill time), 1 LONG (blocked as REJECTION_COOLDOWN)
 - **Guard config:** `max_consecutive_rejections=1` — decouples test from framework default, single rejection arms cooldown
+- **`cooldown_seconds=86400`** (1 day). The cooldown is measured in *simulated tick time*, not wall-clock: the scenario runs 2000 ticks across ~10h of data, so ~1 hour of simulated time elapses between the rejecting trade (#2) and the follow-up trade (#3). The long cooldown ensures Trade #3 still sees the armed cooldown regardless of tick spacing.
 
 ---
 
@@ -77,7 +67,7 @@ This is the critical path that was fixed by the callback mechanism — previousl
 
 ### Guard Rejection Recording (Level 2)
 
-Guard rejections flow through `AbstractTradeExecutor.record_guard_rejection()` into `_order_history`. Both scenario tests verify that:
+Guard rejections flow through `AbstractTradeExecutor.record_guard_rejection()` into `_order_history`. Scenario tests verify that:
 - Guard rejections appear in order history with correct `RejectionReason`
 - All guard rejections carry the `guard_` order ID prefix
 - `execution_stats.orders_rejected` includes guard rejections
@@ -94,9 +84,6 @@ No shared fixtures — each test creates its own `OrderGuard` instance directly.
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `spot_short_tick_loop` | module | Runs `order_guard_spot_short_test` scenario once |
-| `spot_short_order_history` | module | Extracts order history from tick loop results |
-| `spot_short_execution_stats` | module | Extracts ExecutionStats from tick loop results |
 | `cooldown_tick_loop` | module | Runs `order_guard_cooldown_test` scenario once |
 | `cooldown_order_history` | module | Extracts order history from tick loop results |
 | `cooldown_execution_stats` | module | Extracts ExecutionStats from tick loop results |

@@ -322,6 +322,51 @@ The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 - Pending order awareness (`has_pending_orders`, `has_pipeline_orders`, `is_pending_close`)
 - Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
 
+#### OrderSide → OrderDirection Resolution
+
+Decision logics express intent using `OrderSide.BUY` / `OrderSide.SELL` — they describe *what the algo wants to do*, independent of market type. The executor resolves this to an internal `OrderDirection` via `resolve_order_side()`:
+
+| OrderSide | OrderDirection | Margin effect | Spot effect |
+|-----------|---------------|---------------|-------------|
+| `BUY` | `LONG` | Open long position (margin) | Buy base currency with quote |
+| `SELL` | `SHORT` | Open short position (margin) | Sell held base currency for quote |
+
+The resolution is the same for both market types. The difference is in `_fill_open_order()`, which branches on `spot_mode` to apply the correct balance semantics. This means decision logics are market-agnostic — they never need to know whether they run on spot or margin.
+
+#### Balance-Aware Algos (Spot)
+
+On spot, a SELL order only succeeds if the algo actually holds the base currency. The executor still validates this at fill time (INSUFFICIENT_FUNDS) — but reaching that path means a rejection lands in the guard's cooldown counter and fills the logs with warnings, which is noise rather than useful signal.
+
+Algos that trade on spot should therefore pre-check balance before calling `send_order(side=SELL)` and silently skip the signal when no base balance is held. `DecisionTradingApi` exposes three helpers for exactly this case:
+
+| Method | Purpose |
+|---|---|
+| `is_spot_mode()` | Branch between spot (balance-driven) and margin (free-margin-driven) logic |
+| `get_symbol_spec(symbol)` | Retrieve `base_currency`, `quote_currency`, `contract_size`, tick size, etc. |
+| `get_asset_balance(currency)` | Current held balance of an asset (returns 0.0 if not held) |
+
+Canonical pattern inside an algo's SELL path:
+
+```python
+if new_side == OrderSide.SELL and self.trading_api.is_spot_mode():
+    spec = self.trading_api.get_symbol_spec(tick.symbol)
+    required = self.lot_size * spec.contract_size
+    base_balance = self.trading_api.get_asset_balance(spec.base_currency)
+    if base_balance < required:
+        return None  # silent skip — no base to sell
+```
+
+The executor's INSUFFICIENT_FUNDS branch remains in place as a hard safety net for edge cases (race conditions on live broker state, algos that forget the check), but in normal operation the algo decides.
+
+#### Clock / Time Source
+
+`DecisionTradingApi` queries `executor.get_current_time()` for all time-sensitive logic that runs through the API (currently: OrderGuard cooldown windows). Each executor implements its own clock:
+
+- **TradeSimulator:** current tick's simulated timestamp. Cooldowns advance with simulated market time — deterministic, sim-correct, and independent of wall-clock speed.
+- **LiveTradeExecutor:** broker-delivered tick timestamp (effectively wall-clock).
+
+The API layer itself is clock-agnostic and never calls `datetime.now()`.
+
 ### PortfolioManager
 The single source of truth for position state. Manages:
 

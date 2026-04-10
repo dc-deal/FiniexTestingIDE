@@ -42,9 +42,34 @@ class OrderType(Enum):
 
 
 class OrderDirection(Enum):
-    """Order direction (Buy or Sell)"""
+    """
+    Resulting position direction (internal to the executor and portfolio).
+
+    LONG/SHORT describe what the position looks like after an order fills —
+    the mechanic, not the intent. Decision logics should use OrderSide (the
+    algo-facing enum); the executor resolves side → direction based on the
+    broker's trading model.
+    """
     LONG = "long"
     SHORT = "short"
+
+    def __str__(self) -> str:
+        """String representation returns the enum value"""
+        return self.value
+
+
+class OrderSide(Enum):
+    """
+    Algo-facing order intent — what the strategy wants to do.
+
+    BUY/SELL describe the intent, decoupled from the resulting position.
+    The executor resolves OrderSide → OrderDirection based on trading model:
+        Margin: BUY → LONG, SELL → SHORT (opens matching position)
+        Spot:   BUY → LONG, SELL → SHORT (internal marker; spot branch
+                handles base/quote balance movement)
+    """
+    BUY = "buy"
+    SELL = "sell"
 
     def __str__(self) -> str:
         """String representation returns the enum value"""
@@ -93,7 +118,6 @@ class RejectionReason(Enum):
     INVALID_PRICE = "invalid_price"
     ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"
     BROKER_ERROR = "broker_error"
-    SPOT_SHORT_BLOCKED = "spot_short_blocked"
     REJECTION_COOLDOWN = "rejection_cooldown"
 
 

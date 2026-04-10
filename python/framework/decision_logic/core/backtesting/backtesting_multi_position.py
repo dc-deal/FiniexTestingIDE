@@ -71,7 +71,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
@@ -374,11 +374,14 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         order_result = None
 
         if decision.action in (DecisionLogicAction.BUY, DecisionLogicAction.SELL):
-            direction = (
-                OrderDirection.LONG
+            side = (
+                OrderSide.BUY
                 if decision.action == DecisionLogicAction.BUY
-                else OrderDirection.SHORT
+                else OrderSide.SELL
             )
+            # Local side→direction map for local tracking/reporting —
+            # matches AbstractTradeExecutor.resolve_order_side() exactly.
+            direction = OrderDirection.LONG if side == OrderSide.BUY else OrderDirection.SHORT
             lot_size = decision.outputs.get('lot_size', self.default_lot_size)
             seq_idx = decision.outputs.get('sequence_index')
             hold_ticks = decision.outputs.get('hold_ticks', 100)
@@ -386,7 +389,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             order_result = self.trading_api.send_order(
                 symbol=tick.symbol,
                 order_type=OrderType.MARKET,
-                direction=direction,
+                side=side,
                 lots=lot_size,
                 comment=f"MultiPos #{seq_idx} {direction.value}"
             )

@@ -35,7 +35,6 @@ from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
-from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
@@ -43,6 +42,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     OrderDirection,
+    OrderSide,
     OrderResult
 )
 
@@ -509,15 +509,23 @@ class CautiousMacd(AbstractDecisionLogic):
         if decision.action == DecisionLogicAction.FLAT:
             return None
 
+        new_side = (OrderSide.BUY
+                    if decision.action == DecisionLogicAction.BUY
+                    else OrderSide.SELL)
+        # Local side→direction map — matches AbstractTradeExecutor.resolve_order_side()
         new_direction = (OrderDirection.LONG
-                         if decision.action == DecisionLogicAction.BUY
+                         if new_side == OrderSide.BUY
                          else OrderDirection.SHORT)
 
-        # Skip SHORT in spot mode — no naked selling on spot exchanges
-        if (new_direction == OrderDirection.SHORT
-                and self._trading_context
-                and self._trading_context.trading_model == TradingModel.SPOT):
-            return None
+        # Spot SELL: verify base currency balance before submitting.
+        # The algo owns this check — the guard is spam-protection only
+        # and does not know about balances.
+        if new_side == OrderSide.SELL and self.trading_api.is_spot_mode():
+            spec = self.trading_api.get_symbol_spec(tick.symbol)
+            required = self.lot_size * spec.contract_size
+            base_balance = self.trading_api.get_asset_balance(spec.base_currency)
+            if base_balance < required:
+                return None
 
         # Margin check
         account = self.trading_api.get_account_info(new_direction)
@@ -552,7 +560,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 order_result = self.trading_api.send_order(
                     symbol=tick.symbol,
                     order_type=OrderType.STOP_LIMIT,
-                    direction=new_direction,
+                    side=new_side,
                     lots=self.lot_size,
                     stop_price=stop_price,
                     price=limit_price,
@@ -564,7 +572,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 order_result = self.trading_api.send_order(
                     symbol=tick.symbol,
                     order_type=OrderType.STOP,
-                    direction=new_direction,
+                    side=new_side,
                     lots=self.lot_size,
                     stop_price=stop_price,
                     stop_loss=sl_price,

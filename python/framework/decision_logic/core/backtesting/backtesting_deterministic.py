@@ -94,7 +94,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
@@ -503,7 +503,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 order_response = self.trading_api.send_order(
                     symbol=tick.symbol,
                     order_type=order_type,
-                    direction=OrderDirection.LONG,
+                    side=OrderSide.BUY,
                     lots=lot_size,
                     price=limit_price,
                     stop_price=stop_price,
@@ -529,7 +529,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 order_response = self.trading_api.send_order(
                     symbol=tick.symbol,
                     order_type=order_type,
-                    direction=OrderDirection.SHORT,
+                    side=OrderSide.SELL,
                     lots=lot_size,
                     price=limit_price,
                     stop_price=stop_price,

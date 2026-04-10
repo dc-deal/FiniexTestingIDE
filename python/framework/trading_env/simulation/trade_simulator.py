@@ -115,6 +115,25 @@ class TradeSimulator(AbstractTradeExecutor):
             reject_config, logger)
 
     # ============================================
+    # Clock
+    # ============================================
+
+    def get_current_time(self) -> datetime:
+        """
+        Simulated tick time — the timestamp of the tick currently being
+        processed. Keeps downstream timing (guard cooldowns etc.)
+        deterministic and aligned with simulated market time.
+
+        Raises:
+            RuntimeError: If called before the first tick has arrived
+        """
+        if self._current_tick is None:
+            raise RuntimeError(
+                'TradeSimulator.get_current_time() called before first tick'
+            )
+        return self._current_tick.timestamp
+
+    # ============================================
     # Pending Order Processing (simulation-specific)
     # ============================================
 
