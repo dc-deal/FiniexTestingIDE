@@ -228,6 +228,12 @@ class LiveProgressDisplay:
                 stats.portfolio_dirty_flag = update.get(
                     "portfolio_dirty_flag", stats.portfolio_dirty_flag)
 
+                # AwarenessChannel (ephemeral narration)
+                stats.last_awareness_message = update.get(
+                    'last_awareness_message', None)
+                stats.last_awareness_level = update.get(
+                    'last_awareness_level', None)
+
                 # Status
                 status_str = update.get("status", "running")
                 stats.status = ScenarioStatus(status_str)
@@ -466,10 +472,28 @@ class LiveProgressDisplay:
             # Dirty flag indicator
             dirty_flag = " 🏴" if stats.portfolio_dirty_flag else ""
 
+            # AwarenessChannel suffix (truncated to 30 chars)
+            awareness_suffix = ''
+            if stats.last_awareness_message:
+                a_msg = stats.last_awareness_message
+                if len(a_msg) > 30:
+                    a_msg = a_msg[:30] + '…'
+                a_level = stats.last_awareness_level or 'info'
+                if a_level == 'alert':
+                    a_suffix_color = 'bold red'
+                    a_icon = '!!'
+                elif a_level == 'notice':
+                    a_suffix_color = 'yellow'
+                    a_icon = '!'
+                else:
+                    a_suffix_color = 'dim'
+                    a_icon = 'i'
+                awareness_suffix = f" [{a_suffix_color}]· {a_icon} {a_msg}[/{a_suffix_color}]"
+
             stats_text = (
                 f"[{pnl_color}]{format_currency_simple(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] "
                 f"[dim]({pnl_sign}{format_currency_simple(pnl, account_currency)})[/dim] \n"
-                f"[blue]{trades}[/blue]"
+                f"[blue]{trades}[/blue]{awareness_suffix}"
             )
 
             # Add row

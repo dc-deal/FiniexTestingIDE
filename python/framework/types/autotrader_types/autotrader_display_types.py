@@ -8,9 +8,9 @@ Designed for queue transport: all fields are primitives, lists, or dicts.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from python.framework.types.decision_logic_types import DecisionLogicAction
+from python.framework.types.decision_logic_types import DecisionAwareness, DecisionLogicAction
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import OrderDirection
@@ -175,3 +175,6 @@ class AutoTraderDisplayStats:
     decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
+
+    # AwarenessChannel — ephemeral narration from decision logic
+    last_awareness: Optional[DecisionAwareness] = None

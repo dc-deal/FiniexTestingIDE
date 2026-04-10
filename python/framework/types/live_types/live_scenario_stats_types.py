@@ -68,3 +68,7 @@ class LiveScenarioStats:
 
     # Detailed Portfolio Info (optional - two-tier!)
     portfolio_stats: Optional[PortfolioStats] = None
+
+    # AwarenessChannel — ephemeral narration (flat strings for dict transport)
+    last_awareness_message: Optional[str] = None
+    last_awareness_level: Optional[str] = None

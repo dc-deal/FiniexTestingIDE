@@ -107,6 +107,38 @@ All paths in scenario JSON are **relative to the project root** (or absolute).
 
 ---
 
+## AwarenessChannel — Tell the Operator What Your Algo Thinks
+
+Your decision logic can narrate its current reasoning via `notify_awareness()`.
+This appears as a single ephemeral status line in the live display — no logs,
+no batch summary, purely visual. Optional and zero-cost when not used.
+
+```python
+from python.framework.types.decision_logic_types import AwarenessLevel
+
+class MyDecision(AbstractDecisionLogic):
+    def compute(self, tick, worker_results):
+        rsi = worker_results['rsi_fast'].get_signal('rsi_value')
+        if rsi > 40 and rsi < 60:
+            self.notify_awareness(
+                f"RSI neutral ({rsi:.1f}), waiting",
+                AwarenessLevel.INFO,
+                'neutral_zone'
+            )
+        # ... rest of compute logic
+```
+
+**Levels:** `INFO` (dim, normal narration), `NOTICE` (yellow, filter blocks),
+`ALERT` (red, unusual conditions).
+
+**Rules:**
+- Call in `compute()`, not in `_execute_decision_impl()` — execution-layer
+  events (rejections, guard blocks) go through OrderGuard
+- Single slot: only the last call per tick is displayed
+- `reason_key` is optional but helps identify narration patterns
+
+---
+
 ## Common Issues
 
 ### ❌ File not found

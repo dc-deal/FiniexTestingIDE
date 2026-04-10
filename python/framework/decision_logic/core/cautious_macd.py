@@ -34,7 +34,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
@@ -341,6 +341,11 @@ class CautiousMacd(AbstractDecisionLogic):
                 )
 
         if crossed_up and rsi_value >= self.rsi_filter_buy:
+            self.notify_awareness(
+                f"BUY blocked — RSI {rsi_value:.1f} >= {self.rsi_filter_buy}",
+                AwarenessLevel.NOTICE,
+                'rsi_filter_buy'
+            )
             self.logger.info(
                 f"🚫 BUY blocked by RSI: {rsi_value:.1f} >= {self.rsi_filter_buy}"
             )
@@ -365,6 +370,11 @@ class CautiousMacd(AbstractDecisionLogic):
                 )
 
         if crossed_down and rsi_value <= self.rsi_filter_sell:
+            self.notify_awareness(
+                f"SELL blocked — RSI {rsi_value:.1f} <= {self.rsi_filter_sell}",
+                AwarenessLevel.NOTICE,
+                'rsi_filter_sell'
+            )
             self.logger.info(
                 f"🚫 SELL blocked by RSI: {rsi_value:.1f} <= {self.rsi_filter_sell}"
             )

@@ -46,7 +46,7 @@ from python.framework.decision_logic.abstract_decision_logic import \
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -416,6 +416,11 @@ class SimpleConsensus(AbstractDecisionLogic):
             )
 
             if obv_blocks:
+                self.notify_awareness(
+                    f"BUY blocked — OBV trend {obv_trend}",
+                    AwarenessLevel.NOTICE,
+                    'obv_filter'
+                )
                 self.logger.verbose(
                     f"🚫 BUY blocked by OBV: trend={obv_trend} (bearish opposes buy)"
                 )
@@ -504,6 +509,11 @@ class SimpleConsensus(AbstractDecisionLogic):
                 )
 
         # No clear signal - stay flat
+        self.notify_awareness(
+            f"No consensus — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+            AwarenessLevel.INFO,
+            'no_consensus'
+        )
         return Decision(
             action=DecisionLogicAction.FLAT,
             outputs={
