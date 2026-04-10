@@ -299,16 +299,18 @@ class CautiousMacd(AbstractDecisionLogic):
             if (self._prev_histogram <= 0 and histogram > 0
                     and abs(histogram) >= self.min_histogram):
                 crossed_up = True
-                self.logger.info(
-                    f"📈 MACD cross-UP detected: hist {self._prev_histogram:.4f} → {histogram:.4f}, "
-                    f"RSI={rsi_value:.1f} (filter_buy={self.rsi_filter_buy})"
+                self.emit_event(
+                    f"MACD cross-UP: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}",
+                    AwarenessLevel.INFO,
+                    'macd_cross_up',
                 )
             elif (self._prev_histogram >= 0 and histogram < 0
                     and abs(histogram) >= self.min_histogram):
                 crossed_down = True
-                self.logger.info(
-                    f"📉 MACD cross-DOWN detected: hist {self._prev_histogram:.4f} → {histogram:.4f}, "
-                    f"RSI={rsi_value:.1f} (filter_sell={self.rsi_filter_sell})"
+                self.emit_event(
+                    f"MACD cross-DOWN: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}",
+                    AwarenessLevel.INFO,
+                    'macd_cross_down',
                 )
             elif self._prev_histogram != histogram:
                 # Histogram changed but no crossover (same side, or too small)
@@ -464,10 +466,10 @@ class CautiousMacd(AbstractDecisionLogic):
                 self._pending_stop_order_id = None
                 self._pending_direction = None
                 self._break_even_applied = False
-                self.logger.info(
-                    f"🟢 STOP triggered → Position open: "
-                    f"{position.direction} {position.lots} lots "
-                    f"@ {position.entry_price:.5f} (ID: {position.position_id})"
+                self.emit_event(
+                    f"STOP triggered → {position.direction} {position.lots} lots @ {position.entry_price:.5f}",
+                    AwarenessLevel.INFO,
+                    'stop_triggered',
                 )
 
             # Break-even check
@@ -481,9 +483,10 @@ class CautiousMacd(AbstractDecisionLogic):
 
             if (decision.action != DecisionLogicAction.FLAT
                     and position.direction != new_dir):
-                self.logger.info(
-                    f"🔄 MACD counter-signal: closing {position.direction} "
-                    f"position (ID: {position.position_id})"
+                self.emit_event(
+                    f"Counter-signal close: {position.direction} position",
+                    AwarenessLevel.NOTICE,
+                    'counter_signal_close',
                 )
                 self.trading_api.close_position(position.position_id)
                 self._current_position_id = None
@@ -514,9 +517,10 @@ class CautiousMacd(AbstractDecisionLogic):
                         self._pending_stop_order_id
                     )
                     if cancelled:
-                        self.logger.info(
-                            f"❌ STOP order cancelled (counter/flat signal): "
-                            f"{self._pending_stop_order_id}"
+                        self.emit_event(
+                            f"STOP order cancelled (counter/flat signal)",
+                            AwarenessLevel.NOTICE,
+                            'stop_cancelled',
                         )
                     self._pending_stop_order_id = None
                     self._pending_direction = None
@@ -604,10 +608,10 @@ class CautiousMacd(AbstractDecisionLogic):
             if order_result.status == OrderStatus.PENDING:
                 self._pending_stop_order_id = order_result.order_id
                 self._pending_direction = new_direction
-                self.logger.info(
-                    f"⏳ {_mode} order placed: {new_direction} {self.lot_size} lots "
-                    f"trigger={stop_price:.5f} SL={sl_price:.5f} TP={tp_price:.5f} "
-                    f"(ID: {order_result.order_id})"
+                self.emit_event(
+                    f"{_mode} order placed: {new_direction} {self.lot_size} lots trigger={stop_price:.5f}",
+                    AwarenessLevel.INFO,
+                    'stop_order_placed',
                 )
             elif order_result.is_rejected:
                 self.logger.warning(
@@ -653,9 +657,10 @@ class CautiousMacd(AbstractDecisionLogic):
 
         if result.success:
             self._break_even_applied = True
-            self.logger.info(
-                f"🔒 Break-even set: SL → {position.entry_price:.5f} "
-                f"(profit move: {profit_move / self.pip_size:.1f} pips)"
+            self.emit_event(
+                f"Break-even set: SL → {position.entry_price:.5f} ({profit_move / self.pip_size:.1f} pips)",
+                AwarenessLevel.INFO,
+                'break_even_set',
             )
         else:
             self.logger.debug(

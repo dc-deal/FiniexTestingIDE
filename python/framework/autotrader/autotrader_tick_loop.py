@@ -366,6 +366,9 @@ class AutotraderTickLoop:
             safety_reason=self._safety_reason,
             last_rejection=self._last_rejection,
             last_awareness=self._decision_logic.get_last_awareness(),
+            event_history=self._decision_logic.get_event_history(),
+            total_events_emitted=self._decision_logic.get_total_events_emitted(),
+            last_tick_time=self._executor.get_current_time(),
         )
 
     def _check_safety(self, balance: float, initial_balance: float) -> None:

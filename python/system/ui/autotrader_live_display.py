@@ -598,6 +598,26 @@ class AutoTraderLiveDisplay:
                 a_icon = 'i'
             lines.append(f'[{a_color}]  {a_icon} {awareness.message}[/{a_color}]')
 
+        # Event tape — last N strategy moments
+        if stats.event_history:
+            lines.append('')
+            lines.append('Events:')
+            for event in stats.event_history:
+                if event.level == AwarenessLevel.ALERT:
+                    e_color = 'bold red'
+                elif event.level == AwarenessLevel.NOTICE:
+                    e_color = 'yellow'
+                else:
+                    e_color = 'dim'
+                t_str = event.tick_time.strftime('%H:%M:%S') if event.tick_time else '??:??:??'
+                ago = self._format_time_ago(event.tick_time, stats.last_tick_time) if event.tick_time else ''
+                ago_suffix = f' ({ago})' if ago else ''
+                lines.append(f'[{e_color}]  · {t_str}{ago_suffix} {event.message}[/{e_color}]')
+            visible = len(stats.event_history)
+            total = stats.total_events_emitted
+            if total > visible:
+                lines.append(f'[dim]  … (+{total - visible} older events)[/dim]')
+
         # Worker outputs (details below decision)
         worker_lines = []
         for worker_name, outputs in stats.worker_outputs.items():
@@ -617,3 +637,34 @@ class AutoTraderLiveDisplay:
             return Panel('[dim]No algo data[/dim]', title='[bold]ALGO STATE[/bold]', box=box.ROUNDED)
 
         return Panel('\n'.join(lines), title='[bold]ALGO STATE[/bold]', box=box.ROUNDED)
+
+    @staticmethod
+    def _format_time_ago(tick_time: datetime, reference_time: Optional[datetime] = None) -> str:
+        """
+        Human-readable relative time for event tape display.
+
+        Uses reference_time (last tick time) instead of wall-clock so
+        the display is correct in both live trading and mock replay.
+
+        Args:
+            tick_time: Event tick timestamp (timezone-aware)
+            reference_time: Current tick time to measure against (falls back to now())
+
+        Returns:
+            Compact string like 'just now', '2m ago', '1h 15m ago'
+        """
+        now = reference_time or datetime.now(timezone.utc)
+        delta = now - tick_time
+        seconds = int(delta.total_seconds())
+        if seconds < 5:
+            return 'just now'
+        if seconds < 60:
+            return f'{seconds}s ago'
+        minutes = seconds // 60
+        if minutes < 60:
+            return f'{minutes}m ago'
+        hours = minutes // 60
+        remaining_min = minutes % 60
+        if remaining_min == 0:
+            return f'{hours}h ago'
+        return f'{hours}h {remaining_min}m ago'

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from python.framework.types.decision_logic_types import DecisionAwareness, DecisionLogicAction
+from python.framework.types.decision_logic_types import DecisionAwareness, DecisionLogicAction, StrategyEvent
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import OrderDirection
@@ -178,3 +178,8 @@ class AutoTraderDisplayStats:
 
     # AwarenessChannel — ephemeral narration from decision logic
     last_awareness: Optional[DecisionAwareness] = None
+
+    # Event tape — last N strategy moments (ring buffer snapshot)
+    event_history: List[StrategyEvent] = field(default_factory=list)
+    total_events_emitted: int = 0
+    last_tick_time: Optional[datetime] = None

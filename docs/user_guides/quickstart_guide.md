@@ -426,6 +426,51 @@ un-narrated path is taken. Rule of thumb: **every terminal path in
 call `notify_awareness()` at least once before returning.** That
 keeps the display synchronized with the current decision.
 
+### Strategy Event Channel — Surface Interesting Moments
+
+While `notify_awareness()` narrates the algo's *current state* (single slot,
+overwritten every tick), `emit_event()` captures *moments in time* — a MACD
+crossover, an order submission, a break-even trigger. Events linger in a
+bounded ring buffer and are visible in the AutoTrader Live Display until
+pushed out by newer events.
+
+```python
+from python.framework.types.decision_logic_types import AwarenessLevel
+
+# Inside compute() or _execute_decision_impl():
+if crossed_up:
+    self.emit_event(
+        f"MACD cross-UP hist={histogram:.4f}",
+        AwarenessLevel.INFO,
+        'macd_cross_up',
+    )
+```
+
+**Events are elevated logs.** Each `emit_event()` call does two things:
+
+1. Writes an `INFO` log line tagged `[EVENT][<level>]` to the scenario log
+2. Appends a `StrategyEvent` to the in-memory ring buffer (last N events)
+
+The log file is the authoritative event history. The ring buffer is a UI
+cache — it holds the last few events for live display and discards older
+ones silently.
+
+| Concept | `notify_awareness()` | `emit_event()` |
+|---------|---------------------|----------------|
+| Purpose | "What is the algo doing?" | "What just happened?" |
+| Storage | Single slot, last-write-wins | Ring buffer (last N) |
+| Lifetime | Overwritten every tick | Lingers until evicted |
+| Log | No log output | `[EVENT][LEVEL]` at INFO |
+| Sim mode | Displayed (aliveness) | Logged only (no display) |
+
+**Levels:** Same `AwarenessLevel` enum — `INFO` (dim), `NOTICE` (yellow),
+`ALERT` (red bold). The level controls display color, not the log severity
+(which is always `INFO`).
+
+**Ring buffer size:** Configurable via `monitoring.event_tape_size` in
+`configs/app_config.json` (default: 5). When more events have been emitted
+than fit in the buffer, the display shows `… (+N older events)`.
+
 ---
 
 ## Step 3: Create the Config

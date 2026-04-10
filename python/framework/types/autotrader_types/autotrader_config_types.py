@@ -18,6 +18,7 @@ class TickSourceConfig:
         parquet_path: Path to parquet tick data file (mock mode)
         mode: Replay mode ('replay' = fast, 'realtime' = time.sleep between ticks)
         max_ticks: Stop after N ticks (mock mode only). 0 = no limit (full file)
+        tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
         ws_url: WebSocket URL (kraken mode)
         reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
         reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
@@ -28,6 +29,7 @@ class TickSourceConfig:
     parquet_path: str = ''
     mode: str = 'replay'
     max_ticks: int = 0
+    tick_delay_ms: int = 0
     # WebSocket fields (used when type='kraken')
     ws_url: str = 'wss://ws.kraken.com/v2'
     reconnect_initial_delay_s: float = 1.0

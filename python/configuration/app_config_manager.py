@@ -145,6 +145,15 @@ class AppConfigManager:
         config = self._config
         return config.get("monitoring", {})
 
+    def get_event_tape_size(self) -> int:
+        """
+        Get event tape ring buffer size for strategy events.
+
+        Returns:
+            Maximum number of events to retain in the UI ring buffer
+        """
+        return self.get_monitoring_config().get('event_tape_size', 5)
+
     def get_default_parallel_scenarios(self) -> bool:
         """
         Get default parallel scenarios setting.
