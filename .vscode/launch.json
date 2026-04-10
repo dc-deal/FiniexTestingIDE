@@ -192,18 +192,6 @@
         // 🔬 STRATEGY RUNNER
         // ====================================================
         {
-            "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "cautious_macd_sandbox.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
             "name": "🔬🧪 Run User Scenario Set (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -238,6 +226,18 @@
                 "run",
                 "--config",
                 "${input:userAutotraderConfig}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "cautious_macd_sandbox.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false

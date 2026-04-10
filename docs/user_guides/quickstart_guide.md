@@ -418,6 +418,14 @@ no line is rendered and cost is zero. Place calls in `compute()`,
 not in `_execute_decision_impl()` (execution-layer events go through
 OrderGuard, not the awareness channel).
 
+**Single-slot, last-write-wins:** the channel holds exactly one
+narration string. If you only update it on some terminal paths, the
+display will show stale text from an earlier tick whenever an
+un-narrated path is taken. Rule of thumb: **every terminal path in
+`compute()` — BUY, SELL, FLAT, and each blocked-signal branch — should
+call `notify_awareness()` at least once before returning.** That
+keeps the display synchronized with the current decision.
+
 ---
 
 ## Step 3: Create the Config

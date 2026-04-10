@@ -30,6 +30,7 @@ FUTURE NOTES:
   Example: DecisionTradingApi(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
+from datetime import datetime
 from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
@@ -470,6 +471,17 @@ class DecisionTradingApi:
     # ============================================
     # Utility Methods
     # ============================================
+
+    def get_current_time(self) -> datetime:
+        """
+        Canonical clock for decision logic timing (event timestamps, etc.).
+
+        Returns tick timestamp: simulated time in backtests, wall-clock in live.
+
+        Returns:
+            Current tick timestamp (timezone-aware UTC)
+        """
+        return self._executor.get_current_time()
 
     def get_broker_name(self) -> str:
         """Get name of connected broker"""

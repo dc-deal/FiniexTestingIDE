@@ -383,6 +383,11 @@ class AggressiveTrend(AbstractDecisionLogic):
                     rsi_value, envelope_position, buy_signal_rsi, buy_signal_envelope
                 )
 
+                self.notify_awareness(
+                    f"BUY mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+                    AwarenessLevel.INFO,
+                    'buy_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.BUY,
                     outputs={
@@ -414,6 +419,11 @@ class AggressiveTrend(AbstractDecisionLogic):
                     rsi_value, envelope_position, sell_signal_rsi, sell_signal_envelope
                 )
 
+                self.notify_awareness(
+                    f"SELL mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+                    AwarenessLevel.INFO,
+                    'sell_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.SELL,
                     outputs={

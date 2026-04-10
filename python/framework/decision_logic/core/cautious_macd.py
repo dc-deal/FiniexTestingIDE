@@ -326,10 +326,20 @@ class CautiousMacd(AbstractDecisionLogic):
         if crossed_up and rsi_value < self.rsi_filter_buy:
             confidence = self._calculate_confidence(histogram, rsi_value, True)
             if self.min_confidence > 0.0 and confidence < self.min_confidence:
-                self.logger.info(
+                self.notify_awareness(
+                    f"BUY blocked — conf {confidence:.2f} < {self.min_confidence}",
+                    AwarenessLevel.NOTICE,
+                    'low_confidence'
+                )
+                self.logger.verbose(
                     f"🚫 BUY blocked by confidence: {confidence:.2f} < {self.min_confidence}"
                 )
             else:
+                self.notify_awareness(
+                    f"BUY mode — MACD cross-up hist {histogram:.4f}, RSI {rsi_value:.1f}",
+                    AwarenessLevel.INFO,
+                    'buy_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.BUY,
                     outputs={
@@ -346,7 +356,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 AwarenessLevel.NOTICE,
                 'rsi_filter_buy'
             )
-            self.logger.info(
+            self.logger.verbose(
                 f"🚫 BUY blocked by RSI: {rsi_value:.1f} >= {self.rsi_filter_buy}"
             )
 
@@ -355,10 +365,20 @@ class CautiousMacd(AbstractDecisionLogic):
             confidence = self._calculate_confidence(
                 histogram, rsi_value, False)
             if self.min_confidence > 0.0 and confidence < self.min_confidence:
-                self.logger.info(
+                self.notify_awareness(
+                    f"SELL blocked — conf {confidence:.2f} < {self.min_confidence}",
+                    AwarenessLevel.NOTICE,
+                    'low_confidence'
+                )
+                self.logger.verbose(
                     f"🚫 SELL blocked by confidence: {confidence:.2f} < {self.min_confidence}"
                 )
             else:
+                self.notify_awareness(
+                    f"SELL mode — MACD cross-down hist {histogram:.4f}, RSI {rsi_value:.1f}",
+                    AwarenessLevel.INFO,
+                    'sell_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.SELL,
                     outputs={
@@ -375,7 +395,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 AwarenessLevel.NOTICE,
                 'rsi_filter_sell'
             )
-            self.logger.info(
+            self.logger.verbose(
                 f"🚫 SELL blocked by RSI: {rsi_value:.1f} <= {self.rsi_filter_sell}"
             )
 

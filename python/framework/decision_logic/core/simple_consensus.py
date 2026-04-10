@@ -455,6 +455,11 @@ class SimpleConsensus(AbstractDecisionLogic):
             )
 
             if confidence >= self.min_confidence:
+                self.notify_awareness(
+                    f"BUY mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}, OBV {obv_trend}",
+                    AwarenessLevel.INFO,
+                    'buy_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.BUY,
                     outputs={
@@ -478,6 +483,11 @@ class SimpleConsensus(AbstractDecisionLogic):
             )
 
             if obv_blocks:
+                self.notify_awareness(
+                    f"SELL blocked — OBV trend {obv_trend}",
+                    AwarenessLevel.NOTICE,
+                    'obv_filter'
+                )
                 self.logger.verbose(
                     f"🚫 SELL blocked by OBV: trend={obv_trend} (bullish opposes sell)"
                 )
@@ -505,6 +515,11 @@ class SimpleConsensus(AbstractDecisionLogic):
             )
 
             if confidence >= self.min_confidence:
+                self.notify_awareness(
+                    f"SELL mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}, OBV {obv_trend}",
+                    AwarenessLevel.INFO,
+                    'sell_mode'
+                )
                 return Decision(
                     action=DecisionLogicAction.SELL,
                     outputs={
