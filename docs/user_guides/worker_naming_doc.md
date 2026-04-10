@@ -147,6 +147,29 @@ class MyDecision(AbstractDecisionLogic):
   Look at the CORE decision logics (`simple_consensus`, `aggressive_trend`,
   `cautious_macd`) for reference patterns.
 
+### Strategy Events — Surface Interesting Moments
+
+For *moments in time* that should linger in the display (crossovers, order
+submissions, break-even triggers), use `emit_event()` instead of
+`logger.info()`. It writes the same INFO log line *and* pushes the event
+into a ring buffer shown in the AutoTrader live display.
+
+```python
+self.emit_event(
+    f"MACD cross-UP hist={histogram:.4f}",
+    AwarenessLevel.INFO,
+    'macd_cross_up',
+)
+```
+
+**Rules:**
+- Can be called from both `compute()` and `_execute_decision_impl()`
+- Same `AwarenessLevel` enum as `notify_awareness()` — controls display color
+- Log level is always `INFO` regardless of `AwarenessLevel`
+- Ring buffer size is configurable via `monitoring.event_tape_size` (default: 5)
+- In sim mode the buffer is active and events are logged, but NOT rendered
+  in the backtesting display (too fast for human consumption)
+
 ---
 
 ## Common Issues

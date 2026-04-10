@@ -31,6 +31,7 @@ class MockTickSource(AbstractTickSource):
         symbol: Trading symbol (e.g., 'BTCUSD')
         tick_queue: Thread-safe queue for tick delivery to main thread
         mode: 'replay' or 'realtime'
+        tick_delay_ms: Artificial per-tick delay in ms (replay mode only, 0 = full speed)
     """
 
     def __init__(
@@ -40,12 +41,14 @@ class MockTickSource(AbstractTickSource):
         tick_queue: queue.Queue,
         mode: str = 'replay',
         max_ticks: int = 0,
+        tick_delay_ms: int = 0,
     ):
         self._parquet_path = parquet_path
         self._symbol = symbol
         self._tick_queue = tick_queue
         self._mode = mode
         self._max_ticks = max_ticks  # 0 = no limit
+        self._tick_delay_s = tick_delay_ms / 1000.0 if tick_delay_ms > 0 else 0.0
         self._running = False
         self._exhausted = False
         self._ticks: List[TickData] = []
@@ -76,6 +79,10 @@ class MockTickSource(AbstractTickSource):
                     delta_s = (current_msc - prev_msc) / 1000.0
                     # Cap sleep to 5s to avoid extremely long waits on data gaps
                     time.sleep(min(delta_s, 5.0))
+
+            # Throttle for visual debugging (replay mode only)
+            if self._tick_delay_s > 0 and self._mode == 'replay':
+                time.sleep(self._tick_delay_s)
 
             self._tick_queue.put(tick)
             self._ticks_emitted += 1

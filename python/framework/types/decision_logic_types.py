@@ -6,6 +6,7 @@ All decision logic implementations must use these typed structures.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Dict, Optional
 
@@ -38,6 +39,27 @@ class DecisionAwareness:
     """
     message: str
     level: AwarenessLevel = AwarenessLevel.INFO
+    reason_key: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyEvent:
+    """
+    A timestamped strategy moment for the event tape ring buffer.
+
+    Elevated log entry: written to the scenario log at INFO level AND
+    appended to the in-memory ring buffer for live UI display.
+
+    Args:
+        message: Human-readable event description
+        level: Algo-semantic severity (INFO/NOTICE/ALERT) — does NOT
+               change the underlying log level, which is always INFO
+        tick_time: Tick timestamp (sim time in backtests, wall-clock in live)
+        reason_key: Optional machine-readable key for grouping/filtering
+    """
+    message: str
+    level: AwarenessLevel = AwarenessLevel.INFO
+    tick_time: Optional[datetime] = None
     reason_key: Optional[str] = None
 
 

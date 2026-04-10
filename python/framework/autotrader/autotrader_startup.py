@@ -316,9 +316,12 @@ def setup_tick_source(
             tick_queue=tick_queue,
             mode=config.tick_source.mode,
             max_ticks=config.tick_source.max_ticks,
+            tick_delay_ms=config.tick_source.tick_delay_ms,
         )
+
     elif config.tick_source.type == 'kraken':
-        ws_pair = _resolve_ws_pair(config.symbol, config.broker_settings, logger)
+        ws_pair = _resolve_ws_pair(
+            config.symbol, config.broker_settings, logger)
         tick_source = KrakenTickSource(
             symbol=config.symbol,
             ws_pair=ws_pair,
@@ -411,7 +414,8 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
         )
 
     broker_settings = _load_broker_settings(config.broker_settings)
-    credentials_file = broker_settings.get('credentials_file', 'kraken_credentials.json')
+    credentials_file = broker_settings.get(
+        'credentials_file', 'kraken_credentials.json')
     api_base_url = broker_settings.get('api_base_url')
     dry_run = broker_settings.get('dry_run', True)
 

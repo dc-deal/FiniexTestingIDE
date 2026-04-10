@@ -273,8 +273,10 @@ class SimpleConsensus(AbstractDecisionLogic):
                 return None
 
             # Opposite direction? Close old position (signal reversal)
-            self.logger.info(
-                f"🔄 Signal reversal detected: {current_position.direction} → {new_direction}"
+            self.emit_event(
+                f"Signal reversal: {current_position.direction} → {new_direction}",
+                AwarenessLevel.NOTICE,
+                'signal_reversal',
             )
             self.logger.info(
                 f"   Closing {current_position.direction} position "
@@ -321,9 +323,10 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
-                self.logger.info(
-                    f"⏳ Order submitted: {new_side} {self.lot_size} lots "
-                    f"(ID: {order_result.order_id}) - awaiting execution"
+                self.emit_event(
+                    f"Order submitted: {new_side} {self.lot_size} lots",
+                    AwarenessLevel.INFO,
+                    'order_submitted',
                 )
             elif order_result.is_rejected:
                 self.logger.warning(

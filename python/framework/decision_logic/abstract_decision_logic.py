@@ -8,13 +8,15 @@ on decision-making strategy AND trade execution, not on worker management.
 """
 
 from abc import ABC, abstractmethod
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness
+from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness, StrategyEvent
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
@@ -93,6 +95,11 @@ class AbstractDecisionLogic(ABC):
 
         # AwarenessChannel — ephemeral narration slot (single slot, last write wins)
         self._last_awareness: Optional[DecisionAwareness] = None
+
+        # Event tape — bounded ring buffer for strategy moments (UI cache)
+        tape_size = AppConfigManager().get_event_tape_size()
+        self._event_history: deque[StrategyEvent] = deque(maxlen=tape_size)
+        self._total_events_emitted: int = 0
 
     # ============================================
     # abstractmethods
@@ -319,6 +326,62 @@ class AbstractDecisionLogic(ABC):
             DecisionAwareness or None if never set
         """
         return self._last_awareness
+
+    # ============================================
+    # Event Tape — elevated log entries for live UI
+    # ============================================
+
+    def emit_event(
+        self,
+        message: str,
+        level: AwarenessLevel = AwarenessLevel.INFO,
+        reason_key: Optional[str] = None,
+    ) -> None:
+        """
+        Surface a strategy moment as an elevated log entry.
+
+        Writes an INFO log line tagged '[EVENT][<level>]' and appends a
+        StrategyEvent to the in-memory ring buffer for live UI consumption.
+        Tick time is resolved via the trading API clock source, matching
+        the OrderGuard clock semantics (sim time in backtests, wall-clock
+        in live trading).
+
+        Args:
+            message: Human-readable event description
+            level: Algo-semantic severity (INFO/NOTICE/ALERT) — does NOT
+                   change the underlying log level, which is always INFO
+            reason_key: Optional machine-readable key for grouping/filtering
+        """
+        tick_time = self.trading_api.get_current_time()
+        event = StrategyEvent(
+            message=message,
+            level=level,
+            tick_time=tick_time,
+            reason_key=reason_key,
+        )
+        self._event_history.append(event)
+        self._total_events_emitted += 1
+        self.logger.info(
+            f"[EVENT][{level.name}] t={tick_time.isoformat()} {message}"
+        )
+
+    def get_event_history(self) -> List[StrategyEvent]:
+        """
+        Read the event tape (non-destructive).
+
+        Returns:
+            List of StrategyEvent from the ring buffer (oldest first)
+        """
+        return list(self._event_history)
+
+    def get_total_events_emitted(self) -> int:
+        """
+        Total events emitted since session start (includes evicted ones).
+
+        Returns:
+            Cumulative event count
+        """
+        return self._total_events_emitted
 
     # ============================================
     # API Injection

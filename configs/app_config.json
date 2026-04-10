@@ -68,7 +68,8 @@
             "export_portfolio_stats": false,
             "export_performance_stats": false,
             "export_current_bars": false
-        }
+        },
+        "event_tape_size": 5
     },
     "history": {
         "bar_max_history": 1000,
