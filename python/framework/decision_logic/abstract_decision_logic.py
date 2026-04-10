@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
-from python.framework.types.decision_logic_types import Decision
+from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
@@ -90,6 +90,9 @@ class AbstractDecisionLogic(ABC):
         # Raw dict access preserved for WorkerOrchestrator._extract_decision_logic_type()
         # which reads: decision_logic.config['decision_logic_type']
         self.config = self.params.as_dict()
+
+        # AwarenessChannel — ephemeral narration slot (single slot, last write wins)
+        self._last_awareness: Optional[DecisionAwareness] = None
 
     # ============================================
     # abstractmethods
@@ -280,6 +283,42 @@ class AbstractDecisionLogic(ABC):
             Decision object with action/confidence/reason
         """
         pass
+
+    # ============================================
+    # AwarenessChannel — ephemeral narration
+    # ============================================
+
+    def notify_awareness(
+        self,
+        message: str,
+        level: AwarenessLevel = AwarenessLevel.INFO,
+        reason_key: Optional[str] = None
+    ) -> None:
+        """
+        Set the current awareness narration (single slot, last write wins).
+
+        Called in compute() to tell the operator what the algo is "thinking".
+        NOT for structural rejections (those go through OrderGuard).
+
+        Args:
+            message: Human-readable narration
+            level: Visual severity (INFO/NOTICE/ALERT)
+            reason_key: Optional machine-readable key for grouping
+        """
+        self._last_awareness = DecisionAwareness(
+            message=message,
+            level=level,
+            reason_key=reason_key,
+        )
+
+    def get_last_awareness(self) -> Optional[DecisionAwareness]:
+        """
+        Read the last awareness narration (non-destructive).
+
+        Returns:
+            DecisionAwareness or None if never set
+        """
+        return self._last_awareness
 
     # ============================================
     # API Injection

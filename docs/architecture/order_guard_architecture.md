@@ -13,6 +13,30 @@ Two rules are enforced:
 
 ---
 
+## Guard Scope — What Belongs Here (and What Does Not)
+
+The OrderGuard enforces exactly two categories of rules:
+
+1. **Broker would reject** — the order is structurally invalid (SHORT on SPOT, rate limit exceeded, market closed). The guard saves a broker roundtrip.
+2. **Algo bug** — the order passed strategy logic but shouldn't have (position limit exceeded due to race condition, rejection spam due to logic error). The guard is a safety net the algo should never normally trigger.
+
+```
+  IN SCOPE (OrderGuard)                OUT OF SCOPE
+  ─────────────────────                ──────────────
+  SHORT on SPOT market                 Spread too wide (broker fills anyway)
+  Rejection cooldown                   Low liquidity / thin orderbook
+  Rate limiting (API bans)             High volatility
+  Position limit (bug catcher)         News event proximity
+  Max exposure (pyramiding bug)        Entry quality decisions
+  Market hours (broker rejects)
+```
+
+**Heuristic:** "Would the broker reject this, or does it indicate an algo bug?" → OrderGuard. "Is the market in a state where we'd prefer not to trade?" → strategy-level (`compute()`) or a future MarketConditionMonitor layer.
+
+Market quality concerns (spread, volatility, liquidity) are **not** rejections — brokers fill them at the current price without complaint. Moving these into the guard would blur the boundary between safety enforcement and trading strategy. They belong either in the decision logic's `compute()` method or in a dedicated monitoring layer (separate concern, separate issue).
+
+---
+
 ## Position in the Architecture
 
 ```

@@ -31,7 +31,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
-from python.framework.types.decision_logic_types import DecisionLogicAction
+from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
@@ -583,6 +583,20 @@ class AutoTraderLiveDisplay:
             else:
                 decision_parts.append(f'{key}={value}')
         lines.append(f'Decision:  {" ".join(decision_parts)}')
+
+        # AwarenessChannel — ephemeral narration from decision logic
+        if stats.last_awareness is not None:
+            awareness = stats.last_awareness
+            if awareness.level == AwarenessLevel.ALERT:
+                a_color = 'bold red'
+                a_icon = '!!'
+            elif awareness.level == AwarenessLevel.NOTICE:
+                a_color = 'yellow'
+                a_icon = '!'
+            else:
+                a_color = 'dim'
+                a_icon = 'i'
+            lines.append(f'[{a_color}]  {a_icon} {awareness.message}[/{a_color}]')
 
         # Worker outputs (details below decision)
         worker_lines = []

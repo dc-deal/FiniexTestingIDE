@@ -118,7 +118,13 @@ def process_live_export(live_setup: ProcessLiveSetup,
                 worker_coordinator.performance_log_coordinator.get_snapshot()
             )
 
-        # 3. Current Bars
+        # 3. AwarenessChannel (ephemeral, ~0 cost)
+        awareness = worker_coordinator.decision_logic.get_last_awareness()
+        if awareness is not None:
+            live_data['last_awareness_message'] = awareness.message
+            live_data['last_awareness_level'] = awareness.level.value
+
+        # 4. Current Bars
         if config.live_stats_config.export_current_bars:
             live_data["current_bars"] = serialize_current_bars(
                 current_bars)

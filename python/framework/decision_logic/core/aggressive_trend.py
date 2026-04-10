@@ -48,7 +48,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
     AbstractDecisionLogic
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
@@ -385,6 +385,12 @@ class AggressiveTrend(AbstractDecisionLogic):
                         'timestamp': tick.timestamp.isoformat(),
                     },
                 )
+            else:
+                self.notify_awareness(
+                    f"BUY signal weak — conf {confidence:.2f} < {self.min_confidence}",
+                    AwarenessLevel.NOTICE,
+                    'low_confidence'
+                )
 
         # Check for SELL signal (OR logic - either indicator is enough)
         sell_signal_rsi = rsi_value > self.rsi_sell
@@ -412,6 +418,11 @@ class AggressiveTrend(AbstractDecisionLogic):
                 )
 
         # No signal
+        self.notify_awareness(
+            f"No edge — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+            AwarenessLevel.INFO,
+            'no_edge'
+        )
         return Decision(
             action=DecisionLogicAction.FLAT,
             outputs={

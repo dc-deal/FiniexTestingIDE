@@ -7,9 +7,38 @@ All decision logic implementations must use these typed structures.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict
+from typing import Dict, Optional
 
 from python.framework.types.parameter_types import OutputValue
+
+
+class AwarenessLevel(Enum):
+    """
+    Visual severity for awareness narration.
+
+    Controls icon + color in both AutoTrader and backtesting displays.
+    """
+    INFO = 'info'
+    NOTICE = 'notice'
+    ALERT = 'alert'
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionAwareness:
+    """
+    Ephemeral narration slot — what the algo is "thinking" right now.
+
+    Single-slot, last-write-wins. NOT persisted to logs or batch_summary.
+    Display layers read non-destructively.
+
+    Args:
+        message: Human-readable narration (e.g. "RSI 52, no edge")
+        level: Visual severity (INFO/NOTICE/ALERT)
+        reason_key: Optional machine-readable key for grouping (e.g. 'rsi_filter_buy')
+    """
+    message: str
+    level: AwarenessLevel = AwarenessLevel.INFO
+    reason_key: Optional[str] = None
 
 
 class DecisionLogicAction(Enum):

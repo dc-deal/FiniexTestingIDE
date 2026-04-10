@@ -382,6 +382,36 @@ class AggressiveTrend(AbstractDecisionLogic):
 | `compute()` | Analyze workers, return `Decision(action=..., outputs={...})` |
 | `_execute_decision_impl()` | Execute trades via `trading_api` |
 
+### AwarenessChannel — Narrate Your Algo
+
+The AwarenessChannel lets your decision logic narrate what it's thinking.
+It appears as a single status line in both the AutoTrader Live Display
+and the Backtesting Live Progress — no log persistence, purely visual.
+
+```python
+from python.framework.types.decision_logic_types import AwarenessLevel
+
+# Inside compute():
+self.notify_awareness(
+    f"No edge — RSI {rsi_value:.1f}",
+    AwarenessLevel.INFO,
+    'no_edge'
+)
+```
+
+Three levels control icon and color:
+
+| Level | Icon | Color | Use for |
+|-------|------|-------|---------|
+| `INFO` | `i` | dim grey | Normal state narration |
+| `NOTICE` | `!` | yellow | Filter blocks, weak signals |
+| `ALERT` | `!!` | red bold | Unusual conditions |
+
+The call is optional — if your algo never calls `notify_awareness()`,
+no line is rendered and cost is zero. Place calls in `compute()`,
+not in `_execute_decision_impl()` (execution-layer events go through
+OrderGuard, not the awareness channel).
+
 ---
 
 ## Step 3: Create the Config
