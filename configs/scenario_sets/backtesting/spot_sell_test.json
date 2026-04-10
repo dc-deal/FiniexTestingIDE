@@ -1,8 +1,8 @@
 {
     "version": "1.0",
-    "scenario_set_name": "order_guard_spot_short_test",
-    "created": "2026-04-08T00:00:00.000000",
-    "description": "OrderGuard SHORT+SPOT — Verifies that SHORT orders are blocked in spot mode by the universal pre-validation guard",
+    "scenario_set_name": "spot_sell_test",
+    "created": "2026-04-10T00:00:00.000000",
+    "description": "Spot SELL validation — Verifies that SELL signals on spot correctly sell held base currency (SHORT direction passes through guard and executor) and that SELL with insufficient base balance produces INSUFFICIENT_FUNDS rejection",
     "global": {
         "data_mode": "realistic",
         "strategy_config": {
@@ -24,29 +24,29 @@
                     {
                         "tick_number": 100,
                         "direction": "LONG",
-                        "lot_size": 0.001,
-                        "hold_ticks": 2000,
-                        "_comment": "LONG in spot — passes guard, executes normally"
+                        "lot_size": 0.01,
+                        "hold_ticks": 500,
+                        "_comment": "Trade #0: BUY 0.01 ETH — acquires base currency"
                     },
                     {
-                        "tick_number": 300,
+                        "tick_number": 800,
                         "direction": "SHORT",
-                        "lot_size": 0.001,
-                        "expect_rejection": true,
-                        "_comment": "SHORT in spot — blocked by OrderGuard (SPOT_SHORT_BLOCKED)"
+                        "lot_size": 0.01,
+                        "hold_ticks": 500,
+                        "_comment": "Trade #1: SELL 0.01 ETH — sells held base currency (was blocked before refactor)"
                     },
                     {
-                        "tick_number": 500,
+                        "tick_number": 1500,
                         "direction": "SHORT",
-                        "lot_size": 0.001,
+                        "lot_size": 1.0,
                         "expect_rejection": true,
-                        "_comment": "Second SHORT — still blocked, guard is stateless for SPOT check"
+                        "_comment": "Trade #2: SELL 1.0 ETH — REJECTED (INSUFFICIENT_FUNDS, no base balance)"
                     }
                 ],
                 "close_events": [],
                 "retry_events": [],
                 "edge_case_orders": [],
-                "lot_size": 0.001
+                "lot_size": 0.01
             }
         },
         "execution_config": {
@@ -60,18 +60,17 @@
             }
         },
         "order_guard": {
-            "_comment": "Explicit guard config — test verifies SPOT_SHORT_BLOCKED regardless of cooldown thresholds",
             "cooldown_seconds": 60.0,
             "max_consecutive_rejections": 2
         }
     },
     "scenarios": [
         {
-            "name": "BTCUSD_order_guard_spot_short",
-            "symbol": "BTCUSD",
+            "name": "ETHUSD_spot_sell_validation",
+            "symbol": "ETHUSD",
             "data_broker_type": "kraken_spot",
-            "start_date": "2026-01-25T00:00:00+00:00",
-            "end_date": "2026-01-26T00:00:00+00:00",
+            "start_date": "2026-02-10T10:00:00+00:00",
+            "end_date": "2026-02-10T20:00:00+00:00",
             "max_ticks": 3000,
             "data_mode": "realistic",
             "enabled": true,

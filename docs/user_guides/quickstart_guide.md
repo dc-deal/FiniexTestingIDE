@@ -344,11 +344,11 @@ class AggressiveTrend(AbstractDecisionLogic):
         # Check existing positions (one position only)
         open_positions = self.trading_api.get_open_positions()
 
+        new_side = OrderSide.BUY if decision.action == DecisionLogicAction.BUY else OrderSide.SELL
+        new_direction = OrderDirection.LONG if new_side == OrderSide.BUY else OrderDirection.SHORT
+
         if len(open_positions) > 0:
             current = open_positions[0]
-            new_direction = (OrderDirection.LONG
-                           if decision.action == DecisionLogicAction.BUY
-                           else OrderDirection.SHORT)
 
             # Same direction? Skip
             if current.direction == new_direction:
@@ -358,15 +358,21 @@ class AggressiveTrend(AbstractDecisionLogic):
             self.trading_api.close_position(current.position_id)
             return None
 
-        # Open new position
-        direction = (OrderDirection.LONG
-                    if decision.action == DecisionLogicAction.BUY
-                    else OrderDirection.SHORT)
+        # Spot SELL: verify base currency balance before submitting.
+        # On margin this is a no-op. On spot it prevents firing SELLs
+        # for a base asset you don't hold (which would land in the guard
+        # cooldown and flood the log).
+        if new_side == OrderSide.SELL and self.trading_api.is_spot_mode():
+            spec = self.trading_api.get_symbol_spec(tick.symbol)
+            required = self.lot_size * spec.contract_size
+            if self.trading_api.get_asset_balance(spec.base_currency) < required:
+                return None
 
+        # Open new position
         return self.trading_api.send_order(
             symbol=tick.symbol,
             order_type=OrderType.MARKET,
-            direction=direction,
+            side=new_side,
             lots=self.lot_size,
             comment=f"AggressiveTrend: {decision.get_signal('reason')}"
         )
@@ -411,6 +417,14 @@ The call is optional — if your algo never calls `notify_awareness()`,
 no line is rendered and cost is zero. Place calls in `compute()`,
 not in `_execute_decision_impl()` (execution-layer events go through
 OrderGuard, not the awareness channel).
+
+**Single-slot, last-write-wins:** the channel holds exactly one
+narration string. If you only update it on some terminal paths, the
+display will show stale text from an earlier tick whenever an
+un-narrated path is taken. Rule of thumb: **every terminal path in
+`compute()` — BUY, SELL, FLAT, and each blocked-signal branch — should
+call `notify_awareness()` at least once before returning.** That
+keeps the display synchronized with the current decision.
 
 ---
 

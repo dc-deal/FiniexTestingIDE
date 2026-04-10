@@ -136,6 +136,16 @@ class MyDecision(AbstractDecisionLogic):
   events (rejections, guard blocks) go through OrderGuard
 - Single slot: only the last call per tick is displayed
 - `reason_key` is optional but helps identify narration patterns
+- **Narrate every terminal path.** The channel is single-slot and
+  last-write-wins, so if a path (e.g. a successful BUY return) skips
+  `notify_awareness()`, the display keeps showing the last narration
+  from a *previous* tick — typically the FLAT/"no signal" message —
+  even though the current decision is different. Rule of thumb: each
+  `return Decision(...)` in `compute()` should be preceded by exactly
+  one `notify_awareness()` call describing that path's state
+  ("BUY mode", "SELL blocked — OBV bearish", "No consensus", etc.).
+  Look at the CORE decision logics (`simple_consensus`, `aggressive_trend`,
+  `cautious_macd`) for reference patterns.
 
 ---
 

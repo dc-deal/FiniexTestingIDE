@@ -256,7 +256,6 @@ def setup_pipeline(
     trading_api = DecisionTradingApi(
         executor=executor,
         required_order_types=required_order_types,
-        trading_model=trading_model,
         order_guard_config=config.order_guard,
     )
     decision_logic.set_trading_api(trading_api)

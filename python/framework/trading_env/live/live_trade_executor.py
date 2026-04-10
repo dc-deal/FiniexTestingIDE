@@ -142,6 +142,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
     # ============================================
+    # Clock
+    # ============================================
+
+    def get_current_time(self) -> datetime:
+        """
+        Broker-delivered tick timestamp — the wall-clock time anchor for
+        downstream timing logic. In live mode this matches real time
+        (no simulation drift).
+
+        Raises:
+            RuntimeError: If called before the first tick has arrived
+        """
+        if self._current_tick is None:
+            raise RuntimeError(
+                'LiveTradeExecutor.get_current_time() called before first tick'
+            )
+        return self._current_tick.timestamp
+
+    # ============================================
     # Pending Order Processing (live-specific)
     # ============================================
 

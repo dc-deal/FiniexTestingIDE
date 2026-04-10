@@ -1,18 +1,31 @@
 """
 FiniexTestingIDE - Order Guard
-Pre-validation layer between DecisionLogic and the trade executor.
+Spam protection layer in the intermediate layer between DecisionLogic and executor.
 
-Enforces two runtime safety rules universally for CORE and USER decisions:
+The OrderGuard has a single responsibility: catch repeated broker failures and
+prevent rejection storms. It does NOT enforce business rules, does NOT know
+about market types, does NOT know about balances.
 
-1. SHORT+SPOT guard — rejects SHORT orders in spot mode (no short selling).
-2. Rejection cooldown — blocks a direction after N consecutive broker rejections
-   for a configurable period, preventing rejection spam.
+Structural validation (market type, balance, order type compatibility) belongs
+in the executor, not in the guard.
+
+Current rule:
+- Rejection cooldown — blocks a direction after N consecutive broker rejections
+  for a configurable period, preventing rejection spam (e.g. repeated
+  INSUFFICIENT_MARGIN attempts).
 
 The guard sits inside DecisionTradingApi.send_order() and returns a fully-formed
 OrderResult(REJECTED) on block — the executor is never called for blocked orders.
 Guard rejections are recorded in the executor's order history via
 AbstractTradeExecutor.record_guard_rejection() so batch reports see them
 alongside real broker rejections.
+
+Time source:
+- The guard is clock-agnostic — all time-dependent methods take an explicit
+  `now: datetime` parameter supplied by the caller. In backtesting this is the
+  current simulated tick timestamp (ensures determinism and sim-correct
+  cooldown durations). In live trading it is the wall-clock tick timestamp
+  (effectively datetime.now()). The guard never calls datetime.now() itself.
 
 State updates flow through two paths:
 - Synchronous: direct rejections from open_order() (lot validation, adapter error)
@@ -22,11 +35,10 @@ State updates flow through two paths:
   order_outcome_callback → DecisionTradingApi._on_order_outcome().
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 from uuid import uuid4
 
-from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
@@ -38,7 +50,7 @@ from python.framework.types.trading_env_types.order_types import (
 
 class OrderGuard:
     """
-    Pre-validation guard for DecisionTradingApi.
+    Spam protection guard for DecisionTradingApi.
 
     Stateful — tracks consecutive rejections per direction and enforces
     cooldowns independently for LONG and SHORT.
@@ -46,17 +58,14 @@ class OrderGuard:
 
     def __init__(
         self,
-        trading_model: TradingModel,
         cooldown_seconds: float = 60.0,
         max_consecutive_rejections: int = 2,
     ):
         """
         Args:
-            trading_model: SPOT or MARGIN — determines SHORT+SPOT blocking
             cooldown_seconds: Cooldown duration after max_consecutive_rejections is reached
             max_consecutive_rejections: Consecutive rejections per direction before cooldown triggers
         """
-        self._trading_model = trading_model
         self._cooldown_seconds = cooldown_seconds
         self._max_consecutive_rejections = max_consecutive_rejections
         self._rejection_counts: Dict[OrderDirection, int] = {}
@@ -66,29 +75,24 @@ class OrderGuard:
     # Validation
     # ============================================
 
-    def validate(self, request: OpenOrderRequest) -> Optional[OrderResult]:
+    def validate(
+        self,
+        request: OpenOrderRequest,
+        now: datetime,
+    ) -> Optional[OrderResult]:
         """
-        Pre-validate an order request.
+        Pre-validate an order request against the rejection cooldown.
 
         Args:
             request: Bundled order parameters
+            now: Current tick time (simulated in backtests, wall-clock in live)
 
         Returns:
-            OrderResult(REJECTED) if blocked, None if the order may proceed
+            OrderResult(REJECTED) if blocked by cooldown, None otherwise
         """
-        # 1. SHORT+SPOT guard
-        if (request.direction == OrderDirection.SHORT
-                and self._trading_model == TradingModel.SPOT):
-            return create_rejection_result(
-                order_id=self._make_order_id(),
-                reason=RejectionReason.SPOT_SHORT_BLOCKED,
-                message='SHORT orders are not supported in spot mode',
-            )
-
-        # 2. Rejection cooldown guard
         cooldown_until = self._cooldown_until.get(request.direction)
-        if cooldown_until is not None and cooldown_until > datetime.now(timezone.utc):
-            remaining = (cooldown_until - datetime.now(timezone.utc)).total_seconds()
+        if cooldown_until is not None and cooldown_until > now:
+            remaining = (cooldown_until - now).total_seconds()
             return create_rejection_result(
                 order_id=self._make_order_id(),
                 reason=RejectionReason.REJECTION_COOLDOWN,
@@ -104,15 +108,20 @@ class OrderGuard:
     # State updates (called by DecisionTradingApi)
     # ============================================
 
-    def record_rejection(self, direction: OrderDirection) -> None:
-        """Increment consecutive rejection counter and arm cooldown on threshold."""
+    def record_rejection(self, direction: OrderDirection, now: datetime) -> None:
+        """
+        Increment consecutive rejection counter and arm cooldown on threshold.
+
+        Args:
+            direction: Direction that was rejected
+            now: Current tick time — used as the cooldown anchor
+        """
         count = self._rejection_counts.get(direction, 0) + 1
         self._rejection_counts[direction] = count
 
         if count >= self._max_consecutive_rejections:
             self._cooldown_until[direction] = (
-                datetime.now(timezone.utc)
-                + timedelta(seconds=self._cooldown_seconds)
+                now + timedelta(seconds=self._cooldown_seconds)
             )
 
     def record_success(self, direction: OrderDirection) -> None:
@@ -120,12 +129,25 @@ class OrderGuard:
         self._rejection_counts[direction] = 0
         self._cooldown_until.pop(direction, None)
 
-    def is_direction_blocked(self, direction: OrderDirection) -> bool:
-        """Return True if direction is currently in cooldown."""
+    def is_direction_blocked(
+        self,
+        direction: OrderDirection,
+        now: datetime,
+    ) -> bool:
+        """
+        Return True if direction is currently in cooldown.
+
+        Args:
+            direction: Direction to check
+            now: Current tick time
+
+        Returns:
+            True if cooldown is active for this direction
+        """
         cooldown_until = self._cooldown_until.get(direction)
         if cooldown_until is None:
             return False
-        return cooldown_until > datetime.now(timezone.utc)
+        return cooldown_until > now
 
     # ============================================
     # Internals

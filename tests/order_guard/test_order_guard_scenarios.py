@@ -4,9 +4,8 @@ FiniexTestingIDE - OrderGuard Scenario Tests
 End-to-end integration tests that run full backtesting scenarios through
 the DecisionTradingApi → OrderGuard → TradeSimulator pipeline.
 
-Two scenarios:
-- order_guard_spot_short_test: SHORT orders in SPOT mode → SPOT_SHORT_BLOCKED
-- order_guard_cooldown_test:    Consecutive INSUFFICIENT_MARGIN → REJECTION_COOLDOWN
+Scenario:
+- order_guard_cooldown_test: Consecutive INSUFFICIENT_MARGIN → REJECTION_COOLDOWN
 
 Unlike the unit tests in test_order_guard_unit.py, these verify that guard
 rejections correctly flow into _order_history and execution_stats.orders_rejected
@@ -29,83 +28,6 @@ from tests.shared.fixture_helpers import (
     extract_tick_loop_results,
     run_scenario,
 )
-
-
-# =============================================================================
-# SPOT + SHORT SCENARIO
-# =============================================================================
-
-SPOT_SHORT_CONFIG = 'backtesting/order_guard_spot_short_test.json'
-
-
-@pytest.fixture(scope='module')
-def spot_short_tick_loop():
-    """Run the SHORT+SPOT scenario once for the module."""
-    summary = run_scenario(SPOT_SHORT_CONFIG)
-    process_result = extract_process_result(summary)
-    return extract_tick_loop_results(process_result)
-
-
-@pytest.fixture(scope='module')
-def spot_short_order_history(spot_short_tick_loop) -> List[OrderResult]:
-    return extract_order_history(spot_short_tick_loop)
-
-
-@pytest.fixture(scope='module')
-def spot_short_execution_stats(spot_short_tick_loop) -> ExecutionStats:
-    return spot_short_tick_loop.execution_stats
-
-
-class TestSpotShortBlocked:
-    """SHORT orders must be blocked by OrderGuard when trading_model == SPOT."""
-
-    def test_short_rejections_in_order_history(
-        self,
-        spot_short_order_history: List[OrderResult],
-    ):
-        """All SHORT attempts should appear as SPOT_SHORT_BLOCKED rejections."""
-        guard_rejections = [
-            r for r in spot_short_order_history
-            if r.rejection_reason == RejectionReason.SPOT_SHORT_BLOCKED
-        ]
-        assert len(guard_rejections) >= 2, (
-            f"Expected at least 2 SPOT_SHORT_BLOCKED rejections, "
-            f"got {len(guard_rejections)}"
-        )
-
-    def test_guard_rejections_have_guard_prefix(
-        self,
-        spot_short_order_history: List[OrderResult],
-    ):
-        """Guard rejections must use the 'guard_' order_id prefix."""
-        for result in spot_short_order_history:
-            if result.rejection_reason == RejectionReason.SPOT_SHORT_BLOCKED:
-                assert result.order_id.startswith('guard_'), (
-                    f"Guard rejection has wrong id prefix: {result.order_id}"
-                )
-
-    def test_long_order_executed_in_spot(
-        self,
-        spot_short_order_history: List[OrderResult],
-    ):
-        """The LONG order must pass the guard and execute normally."""
-        executed = [
-            r for r in spot_short_order_history
-            if r.status == OrderStatus.EXECUTED
-        ]
-        assert len(executed) >= 1, (
-            'Expected at least 1 executed LONG order in spot mode'
-        )
-
-    def test_execution_stats_counts_guard_rejections(
-        self,
-        spot_short_execution_stats: ExecutionStats,
-    ):
-        """Guard rejections must be reflected in orders_rejected counter."""
-        assert spot_short_execution_stats.orders_rejected >= 2, (
-            f"Expected >= 2 rejections in execution_stats, "
-            f"got {spot_short_execution_stats.orders_rejected}"
-        )
 
 
 # =============================================================================

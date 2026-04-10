@@ -67,8 +67,8 @@
             }
         },
         "order_guard": {
-            "_comment": "Explicit guard config — max_consecutive_rejections=1 makes a single INSUFFICIENT_MARGIN rejection arm the cooldown, decoupling the test from the framework default",
-            "cooldown_seconds": 60.0,
+            "_comment": "Explicit guard config — max_consecutive_rejections=1 makes a single INSUFFICIENT_MARGIN rejection arm the cooldown, decoupling the test from the framework default. cooldown_seconds is measured in SIMULATED (tick) time, not wall-clock: at ~18s/tick this scenario spans ~1h between the rejecting trade and the follow-up, so the cooldown must cover the full scenario window to ensure Trade #3 still sees the armed cooldown.",
+            "cooldown_seconds": 86400.0,
             "max_consecutive_rejections": 1
         }
     },

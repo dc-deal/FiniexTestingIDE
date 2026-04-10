@@ -53,6 +53,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
+    OrderSide,
     OrderStatus,
     OrderResult,
     OrderCapabilities,
@@ -292,6 +293,33 @@ class AbstractTradeExecutor(ABC):
                     close_reason=CloseReason.TP_TRIGGERED
                 )
                 self._sl_tp_triggered += 1
+
+    # ============================================
+    # Order Side Resolution (DecisionTradingApi → executor)
+    # ============================================
+
+    def resolve_order_side(self, side: OrderSide) -> OrderDirection:
+        """
+        Resolve algo-facing OrderSide to internal OrderDirection.
+
+        The executor owns the mapping because it knows the trading model:
+
+            Margin: BUY  → LONG  (open long position)
+                    SELL → SHORT (open short position)
+
+            Spot:   BUY  → LONG  (buy base currency with quote)
+                    SELL → SHORT (sell held base currency; internal marker
+                                  — the spot branch in _fill_open_order
+                                  handles base/quote balance movement)
+
+        Args:
+            side: OrderSide.BUY or OrderSide.SELL
+
+        Returns:
+            The internal OrderDirection used by OpenOrderRequest and
+            the portfolio manager.
+        """
+        return OrderDirection.LONG if side == OrderSide.BUY else OrderDirection.SHORT
 
     # ============================================
     # Order Submission (DecisionTradingApi routes here)
@@ -856,6 +884,22 @@ class AbstractTradeExecutor(ABC):
         if not self._current_tick or self._current_tick.symbol != symbol:
             raise ValueError(f"No current price data for {symbol}")
         return self._current_tick.bid, self._current_tick.ask
+
+    @abstractmethod
+    def get_current_time(self) -> datetime:
+        """
+        Canonical clock for downstream timing logic (guard cooldowns,
+        rate limiters, etc).
+
+        Implementation per executor mode:
+        - TradeSimulator: current tick timestamp (simulated time — keeps
+          cooldowns deterministic and sim-correct).
+        - LiveTradeExecutor: broker-delivered tick timestamp (wall-clock).
+
+        Returns:
+            Timezone-aware datetime
+        """
+        pass
 
     # ============================================
     # Post-Run (Framework statistics collection)

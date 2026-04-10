@@ -30,16 +30,18 @@ FUTURE NOTES:
   Example: DecisionTradingApi(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
+from datetime import datetime
 from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
 from .portfolio_manager import UNSET, _UnsetType
 from python.framework.types.autotrader_types.autotrader_config_types import OrderGuardConfig
-from python.framework.types.market_types.market_config_types import TradingModel
+from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
+    OrderSide,
     OrderStatus,
     OrderResult,
     OrderCapabilities,
@@ -78,7 +80,6 @@ class DecisionTradingApi:
         self,
         executor: AbstractTradeExecutor,
         required_order_types: List[OrderType],
-        trading_model: TradingModel = TradingModel.MARGIN,
         order_guard_config: Optional[OrderGuardConfig] = None,
     ):
         """
@@ -87,8 +88,7 @@ class DecisionTradingApi:
         Args:
             executor: AbstractTradeExecutor instance (TradeSimulator or LiveTradeExecutor)
             required_order_types: Order types that Decision Logic will use
-            trading_model: SPOT or MARGIN — drives SHORT+SPOT guard behavior
-            order_guard_config: Pre-validation guard configuration (defaults if None)
+            order_guard_config: Spam-protection guard configuration (defaults if None)
 
         Raises:
             ValueError: If any required order type is not supported by broker
@@ -99,10 +99,10 @@ class DecisionTradingApi:
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
 
-        # Pre-validation guard for SHORT+SPOT and rejection cooldown
+        # Spam-protection guard — rejection cooldown only. Business rules
+        # (market type, balance, etc.) live in the executor.
         guard_cfg = order_guard_config or OrderGuardConfig()
         self._order_guard = OrderGuard(
-            trading_model=trading_model,
             cooldown_seconds=guard_cfg.cooldown_seconds,
             max_consecutive_rejections=guard_cfg.max_consecutive_rejections,
         )
@@ -170,7 +170,7 @@ class DecisionTradingApi:
         self,
         symbol: str,
         order_type: OrderType,
-        direction: OrderDirection,
+        side: OrderSide,
         lots: float,
         price: Optional[float] = None,
         stop_price: Optional[float] = None,
@@ -182,13 +182,15 @@ class DecisionTradingApi:
         Send order to trading environment.
 
         This is the main entry point for Decision Logics to execute trades.
+        Decision logics speak OrderSide (BUY/SELL) — the executor resolves
+        the side to an internal OrderDirection based on the trading model.
         Order-type validation already happened in __init__, so this will
         only fail due to runtime issues (insufficient margin, etc).
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
             order_type: MARKET, LIMIT, STOP, or STOP_LIMIT
-            direction: OrderDirection.LONG or OrderDirection.SHORT
+            side: OrderSide.BUY or OrderSide.SELL (algo intent)
             lots: Position size
             price: Limit price (required for LIMIT and STOP_LIMIT, None for MARKET/STOP)
             stop_price: Stop trigger price (required for STOP and STOP_LIMIT, None for MARKET/LIMIT)
@@ -199,6 +201,10 @@ class DecisionTradingApi:
         Returns:
             OrderResult with execution details
         """
+        # Resolve algo-facing OrderSide to internal OrderDirection.
+        # The executor owns this mapping — it knows the trading model.
+        direction = self._executor.resolve_order_side(side)
+
         request = OpenOrderRequest(
             symbol=symbol,
             order_type=order_type,
@@ -211,8 +217,11 @@ class DecisionTradingApi:
             comment=comment,
         )
 
-        # Pre-validation guard — SHORT+SPOT and rejection cooldown
-        guard_result = self._order_guard.validate(request)
+        # Spam-protection guard — cooldown only. Time source is the
+        # executor's current tick timestamp: simulated in backtests (keeps
+        # cooldowns deterministic and sim-correct), wall-clock in live.
+        now = self._executor.get_current_time()
+        guard_result = self._order_guard.validate(request, now)
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
             return guard_result
@@ -229,7 +238,7 @@ class DecisionTradingApi:
         # _on_order_outcome callback registered in __init__.
         if result.is_rejected:
             if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
-                self._order_guard.record_rejection(request.direction)
+                self._order_guard.record_rejection(request.direction, now)
 
         return result
 
@@ -256,7 +265,10 @@ class DecisionTradingApi:
         """
         if result.is_rejected:
             if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
-                self._order_guard.record_rejection(direction)
+                self._order_guard.record_rejection(
+                    direction,
+                    self._executor.get_current_time(),
+                )
         elif result.status == OrderStatus.EXECUTED:
             self._order_guard.record_success(direction)
 
@@ -279,6 +291,46 @@ class DecisionTradingApi:
             AccountInfo dataclass with all account metrics
         """
         return self._executor.get_account_info(order_direction)
+
+    def get_symbol_spec(self, symbol: str) -> SymbolSpecification:
+        """
+        Get broker-side symbol specification (lot size, contract size,
+        base/quote currencies, tick size, etc).
+
+        Useful for algos that need to size orders against balances or derive
+        base/quote currency names (e.g. for spot balance checks).
+
+        Args:
+            symbol: Trading symbol (e.g. 'BTCUSD')
+
+        Returns:
+            SymbolSpecification for the symbol
+        """
+        return self._executor.broker.get_symbol_specification(symbol)
+
+    def is_spot_mode(self) -> bool:
+        """
+        Return True if the executor runs in spot mode (asset balances)
+        rather than margin mode (free margin).
+        """
+        return self._executor.portfolio.is_spot_mode()
+
+    def get_asset_balance(self, currency: str) -> float:
+        """
+        Get free balance of a specific currency (spot mode).
+
+        Decision logics use this before submitting SELL orders on spot to
+        verify sufficient base-currency balance is held. Margin strategies
+        should use get_account_info().free_margin instead — asset balances
+        are not the relevant quantity for margin trading.
+
+        Args:
+            currency: Asset symbol (e.g. 'BTC', 'USD', 'ETH')
+
+        Returns:
+            Available balance as float (0.0 if not held)
+        """
+        return self._executor.portfolio.get_asset_balance(currency)
 
     def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
         """
@@ -419,6 +471,17 @@ class DecisionTradingApi:
     # ============================================
     # Utility Methods
     # ============================================
+
+    def get_current_time(self) -> datetime:
+        """
+        Canonical clock for decision logic timing (event timestamps, etc.).
+
+        Returns tick timestamp: simulated time in backtests, wall-clock in live.
+
+        Returns:
+            Current tick timestamp (timezone-aware UTC)
+        """
+        return self._executor.get_current_time()
 
     def get_broker_name(self) -> str:
         """Get name of connected broker"""
