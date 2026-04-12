@@ -206,7 +206,7 @@ Default mock config uses real Kraken BTCUSD specification:
 
 ## Test Suite
 
-Full pytest test suite available at `tests/live_executor/` (47 tests):
+Full pytest test suite available at `tests/autotrader/live_executor/` (47 tests):
 
 | File | Tests | Scope |
 |------|-------|-------|
@@ -215,10 +215,10 @@ Full pytest test suite available at `tests/live_executor/` (47 tests):
 | `test_live_executor_multi_order.py` | 7 | Multi-order scenarios (open+close, close_all, stats consistency) |
 
 ```bash
-pytest tests/live_executor/ -v
+pytest tests/autotrader/live_executor/ -v
 ```
 
-Full test documentation: `docs/tests/tests_live_executor_docs.md`
+Full test documentation: `docs/tests/autotrader/live_executor_tests.md`
 
 ---
 

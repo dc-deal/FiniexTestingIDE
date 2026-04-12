@@ -58,19 +58,35 @@ class TestRunnerCli:
         ignored = config.get_ignored()
         fail_fast = config.is_fail_fast()
 
-        # Discover test suite directories
+        # Discover test suite directories (2-level: group/suite)
         tests_dir = Path('tests')
         if not tests_dir.exists():
             print('tests/ directory not found.')
             sys.exit(1)
 
         skip_dirs = set(excluded + ignored)
-        suites = sorted([
-            d.name for d in tests_dir.iterdir()
-            if d.is_dir()
-            and not d.name.startswith('__')
-            and d.name not in skip_dirs
-        ])
+        suites: List[str] = []
+        for group_dir in sorted(tests_dir.iterdir()):
+            if not group_dir.is_dir() or group_dir.name.startswith('__'):
+                continue
+            if group_dir.name in skip_dirs:
+                continue
+            # Check if group_dir itself contains test files (flat suite)
+            has_test_files = any(
+                f.name.startswith('test_') for f in group_dir.iterdir() if f.is_file()
+            )
+            if has_test_files:
+                suites.append(group_dir.name)
+            else:
+                # Scan sub-suites within group
+                for suite_dir in sorted(group_dir.iterdir()):
+                    if not suite_dir.is_dir() or suite_dir.name.startswith('__'):
+                        continue
+                    full_name = f'{group_dir.name}/{suite_dir.name}'
+                    if suite_dir.name in skip_dirs or full_name in skip_dirs:
+                        continue
+                    suites.append(full_name)
+        suites.sort()
 
         if not suites:
             print('No test suites found.')

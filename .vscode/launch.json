@@ -974,7 +974,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/import_pipeline/",
+                "tests/data/import_pipeline/",
                 "-v",
                 "--tb=short"
             ],
@@ -987,7 +987,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/data_integration/",
+                "tests/data/data_integration/",
                 "-v",
                 "--tb=short"
             ],
@@ -1000,7 +1000,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/baseline/",
+                "tests/simulation/baseline/",
                 "-v",
                 "--tb=short"
             ],
@@ -1013,7 +1013,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/multi_position/",
+                "tests/simulation/multi_position/",
                 "-v",
                 "--tb=short"
             ],
@@ -1027,7 +1027,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/sltp_limit_validation/",
+                "tests/simulation/sltp_limit_validation/",
                 "-v",
                 "--tb=short"
             ],
@@ -1040,7 +1040,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/partial_close/",
+                "tests/simulation/partial_close/",
                 "-v",
                 "--tb=short"
             ],
@@ -1054,7 +1054,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/margin_validation/",
+                "tests/simulation/margin_validation/",
                 "-v",
                 "--tb=short"
             ],
@@ -1068,7 +1068,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/pending_stats/",
+                "tests/simulation/pending_stats/",
                 "-v",
                 "--tb=short"
             ],
@@ -1081,7 +1081,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/active_order_display/",
+                "tests/simulation/active_order_display/",
                 "-v",
                 "--tb=short"
             ],
@@ -1094,7 +1094,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/worker_tests/",
+                "tests/framework/worker_tests/",
                 "-v",
                 "--tb=short"
             ],
@@ -1107,7 +1107,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/bar_rendering/",
+                "tests/framework/bar_rendering/",
                 "-v",
                 "--tb=short"
             ],
@@ -1120,7 +1120,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/user_namespace/",
+                "tests/framework/user_namespace/",
                 "-v"
             ],
             "console": "integratedTerminal"
@@ -1131,7 +1131,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/inter_tick_interval/",
+                "tests/data/inter_tick_interval/",
                 "-v",
                 "--tb=short"
             ],
@@ -1144,7 +1144,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/tick_processing_budget/",
+                "tests/data/tick_processing_budget/",
                 "-v",
                 "--tb=short"
             ],
@@ -1157,7 +1157,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/live_executor/",
+                "tests/autotrader/live_executor/",
                 "-v",
                 "--tb=short"
             ],
@@ -1170,7 +1170,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/scenario_generator/",
+                "tests/data/scenario_generator/",
                 "-v",
                 "--tb=short"
             ],
@@ -1183,7 +1183,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/autotrader_integration/",
+                "tests/autotrader/integration/",
                 "-v",
                 "--tb=short"
             ],
@@ -1196,7 +1196,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/safety_circuit_breaker/",
+                "tests/autotrader/safety/",
                 "-v",
                 "--tb=short"
             ],
@@ -1209,7 +1209,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/safety_circuit_breaker/test_safety_integration.py",
+                "tests/autotrader/safety/test_safety_integration.py",
                 "-v",
                 "--tb=short"
             ],
@@ -1222,7 +1222,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/order_guard/",
+                "tests/autotrader/order_guard/",
                 "-v",
                 "--tb=short"
             ],
@@ -1235,7 +1235,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/spot_trading/",
+                "tests/simulation/spot_trading/",
                 "-v",
                 "--tb=short"
             ],
@@ -1248,7 +1248,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/benchmark/",
+                "tests/simulation/benchmark/",
                 "-v",
                 "--tb=short",
                 "--release-version",

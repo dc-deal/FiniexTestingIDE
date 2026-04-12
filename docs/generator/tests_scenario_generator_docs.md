@@ -4,9 +4,9 @@
 
 Tests for the scenario generator core logic: chronological block generation (`BlocksGenerator`). All tests run against mocked data — no file I/O, no external data dependencies.
 
-**Location:** `tests/scenario_generator/`
+**Location:** `tests/data/scenario_generator/`
 
-**Run:** `pytest tests/scenario_generator/ -v`
+**Run:** `pytest tests/data/scenario_generator/ -v`
 
 ---
 
