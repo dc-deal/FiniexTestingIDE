@@ -18,7 +18,7 @@ class AbstractTickSource(ABC):
     via queue.Queue to the main algo thread (Threading model 8.a).
 
     Implementations:
-    - MockTickSource: Parquet replay (replay / realtime mode)
+    - MockTickSource: Parquet replay
     - KrakenTickSource: WebSocket v2 (future, #232)
     """
 

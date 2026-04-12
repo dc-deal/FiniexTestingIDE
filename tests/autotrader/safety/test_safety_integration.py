@@ -5,7 +5,7 @@ End-to-end tests through the AutoTrader mock pipeline.
 Validates that safety checks use equity (spot) and balance (margin)
 correctly during a real tick loop session.
 
-Uses btcusd_mock_fast.json as base profile, overrides safety config
+Uses btcusd_mock_safety.json as base profile, overrides safety config
 programmatically. max_ticks=15000 (profile default) ensures warmup
 completes and algo produces trades.
 """
@@ -21,7 +21,7 @@ from python.framework.types.autotrader_types.autotrader_result_types import Auto
 
 
 # Base profile: spot, 15K ticks, display off, INSTANT_FILL mock adapter
-BASE_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock_fast.json'
+BASE_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock_safety.json'
 
 
 def _run_with_safety(safety: SafetyConfig) -> AutoTraderResult:

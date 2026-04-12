@@ -35,7 +35,7 @@ Direct tests against `_check_safety` using a lightweight stub that mirrors the i
 
 ### Level 2 — Integration Tests (8 tests)
 
-End-to-end tests that run full AutoTrader mock sessions with overridden safety configs. Uses `btcusd_mock_fast.json` (15K ticks, display off, INSTANT_FILL mock adapter). Three session scenarios, each run once and shared across all tests in the module.
+End-to-end tests that run full AutoTrader mock sessions with overridden safety configs. Uses `btcusd_mock_safety.json` (15K ticks, display off, INSTANT_FILL mock adapter). Three session scenarios, each run once and shared across all tests in the module.
 
 | Class | Safety Config | What it validates |
 |-------|--------------|-------------------|
@@ -84,7 +84,7 @@ No shared fixtures. Each test creates its own `_SafetyStub` via `_make_stub()`. 
 | `trigger_session` | module | Mock session with aggressive thresholds (forces trigger) |
 | `disabled_session` | module | Mock session with safety disabled |
 
-All fixtures use `_run_with_safety()` which loads `btcusd_mock_fast.json`, overrides `config.safety`, runs the session, and cleans up the log directory.
+All fixtures use `_run_with_safety()` which loads `btcusd_mock_safety.json`, overrides `config.safety`, runs the session, and cleans up the log directory.
 
 ---
 

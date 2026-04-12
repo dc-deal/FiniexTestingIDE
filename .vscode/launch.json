@@ -225,7 +225,8 @@
             "args": [
                 "run",
                 "--config",
-                "${input:userAutotraderConfig}"
+                "${input:userAutotraderConfig}",
+                "--display"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -306,14 +307,17 @@
         // 🤖 AUTOTRADER
         // ====================================================
         {
-            "name": "🤖 AutoTrader: BTCUSD Mock (replay)",
+            "name": "🤖 AutoTrader: BTCUSD Mock",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/btcusd_mock.json"
+                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -848,7 +852,7 @@
         // 🧩 PYTEST VALIDATION
         // ====================================================
         {
-            "name": "🧪 Run (BACKTESTING Scenario)",
+            "name": "🧪 Simulation: Baseline",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -860,7 +864,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (MULTI_POSITION Scenario)",
+            "name": "🧪 Simulation: Multi Position",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -872,7 +876,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (MARGIN_VALIDATION Scenario)",
+            "name": "🧪 Simulation: Margin Validation",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -884,7 +888,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (ZERO_BALANCE Scenario)",
+            "name": "🧪 Simulation: Zero Balance",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -896,7 +900,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (SL/TP & Limit Validation)",
+            "name": "🧪 Simulation: SL/TP & Limit Validation",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -908,7 +912,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Limit/Stop History Mock Test)",
+            "name": "🧪 Simulation: Active Order Display (Limit/Stop)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -920,7 +924,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Spot SELL Scenario)",
+            "name": "🧪 Simulation: Spot SELL",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -932,7 +936,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (OrderGuard Cooldown Scenario)",
+            "name": "🧪 Simulation: OrderGuard Cooldown",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -944,20 +948,79 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Safety Circuit Breaker — AutoTrader Mock)",
+            "name": "🧪 Simulation: Partial Close",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/partial_close_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Simulation: Pending Stats",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/pending_stats_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 AutoTrader: Safety Circuit Breaker",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/btcusd_mock_fast.json"
+                "configs/autotrader_profiles/backtesting/btcusd_mock_safety.json",
+                "--display",
+                "--delay",
+                "1"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (BENCHMARK Scenario)",
+            "name": "🧪 AutoTrader: Mock Session (Full)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 AutoTrader: Trade Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/trade_lifecycle_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Simulation: Benchmark",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",

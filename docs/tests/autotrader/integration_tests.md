@@ -15,13 +15,13 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | `test_full_mock_session` | Normal shutdown, tick count (29780), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, trades CSV, orders CSV |
 
-**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/btcusd_mock.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
+**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
 ### test_autotrader_trade_lifecycle.py (15 Tests)
 
-Trade lifecycle validation through the AutoTrader mock pipeline. Uses `btcusd_mock.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
+Trade lifecycle validation through the AutoTrader mock pipeline. Uses `mock_session_test.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
 
 One session is shared across all test classes (`scope='module'`) to avoid running 29780 ticks multiple times.
 
@@ -33,7 +33,7 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 | `TestSessionEndWithOpenPosition` | 1 | SCENARIO_END trades have valid exit prices |
 | `TestLogFiles` | 1 | All log files and directories created |
 
-**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/btcusd_mock_fast.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
+**Data Dependency:** Uses `configs/autotrader_profiles/backtesting/trade_lifecycle_test.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
 
 **Runtime:** ~6 seconds total (session shared across 14 tests via `scope='module'`, LogFiles test runs own session).
 

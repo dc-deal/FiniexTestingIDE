@@ -2,7 +2,7 @@
 FiniexTestingIDE - AutoTrader Trade Lifecycle Tests
 Trade lifecycle validation through the AutoTrader mock pipeline.
 
-Uses btcusd_mock_fast.json (3000 ticks, display off) for fast execution.
+Uses trade_lifecycle_test.json (3000 ticks, display off) for fast execution.
 Validates fill prices, close reasons, portfolio integrity, and log output
 through LiveTradeExecutor — complementary to the backtesting suite.
 """
@@ -16,7 +16,7 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock_fast.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/trade_lifecycle_test.json'
 
 
 @pytest.fixture(scope='module')

@@ -2,7 +2,7 @@
 FiniexTestingIDE - AutoTrader Mock Session Integration Test
 End-to-end test: Config → Pipeline → Tick Loop → Shutdown → Result.
 
-Uses btcusd_mock.json profile with parquet replay data.
+Uses mock_session_test.json profile with parquet replay data.
 Deterministic: same data + same config = same results.
 """
 
@@ -15,7 +15,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
 
 
 @pytest.fixture(scope='module')
@@ -36,7 +36,7 @@ class TestAutotraderMockSession:
     """
     End-to-end integration test for AutoTrader mock pipeline.
 
-    Runs a full session with btcusd_mock.json (parquet replay, ~30K ticks).
+    Runs a full session with mock_session_test.json (parquet replay, ~30K ticks).
     Validates that the complete pipeline produces correct, deterministic results.
     """
 

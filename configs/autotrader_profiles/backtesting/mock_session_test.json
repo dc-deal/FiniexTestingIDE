@@ -1,9 +1,10 @@
 {
-  "name": "btcusd_mock_delayed",
+  "name": "btcusd_mock",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "mock",
+
   "strategy_config": {
     "decision_logic_type": "CORE/simple_consensus",
     "worker_instances": {
@@ -42,22 +43,25 @@
       "obv_confidence_boost": 0.1
     }
   },
+
   "account": {
-    "balances": {
-      "USD": 10000.0,
-      "BTC": 0.0
-    }
+    "balances": { "USD": 10000.0, "BTC": 0.0 }
   },
+
   "tick_source": {
     "type": "mock",
-    "parquet_path": "data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet",
-    "mode": "replay",
-    "tick_delay_ms": 1
+    "parquet_path": "data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet"
   },
+
   "execution": {
     "parallel_workers": false,
     "bar_max_history": 1000
   },
+
+  "display": {
+    "enabled": false
+  },
+
   "clipping_monitor": {
     "report_interval_s": 60.0,
     "strategy": "queue_all"
