@@ -99,6 +99,8 @@ class AutotraderTickLoop:
         # Safety / circuit breaker state
         self._safety_blocked = False
         self._safety_reason = ''
+        self._safety_current_value: float = 0.0
+        self._safety_drawdown_pct: float = 0.0
 
         # Last rejection (displayed until overwritten by next rejection)
         self._last_rejection = ''
@@ -196,7 +198,13 @@ class AutotraderTickLoop:
             )
 
             # === 5. Safety Check (circuit breaker) ===
-            self._check_safety(self._executor.get_balance(),
+            # Spot: equity (balance + held asset value). Margin: raw balance.
+            if self._trading_model == TradingModel.SPOT:
+                safety_value = self._executor.portfolio.get_spot_equity(
+                    (tick.bid + tick.ask) / 2.0)
+            else:
+                safety_value = self._executor.get_balance()
+            self._check_safety(safety_value,
                                self._executor.portfolio.initial_balance)
 
             # === 6. Order Execution ===
@@ -403,6 +411,8 @@ class AutotraderTickLoop:
             trading_model=self._trading_model.value,
             safety_blocked=self._safety_blocked,
             safety_reason=self._safety_reason,
+            safety_current_value=self._safety_current_value,
+            safety_drawdown_pct=self._safety_drawdown_pct,
             last_rejection=self._last_rejection,
             last_awareness=self._decision_logic.get_last_awareness(),
             event_history=self._decision_logic.get_event_history(),
@@ -410,7 +420,7 @@ class AutotraderTickLoop:
             last_tick_time=self._executor.get_current_time(),
         )
 
-    def _check_safety(self, balance: float, initial_balance: float) -> None:
+    def _check_safety(self, current_value: float, initial_balance: float) -> None:
         """
         Evaluate circuit breaker conditions and update safety state.
 
@@ -418,31 +428,44 @@ class AutotraderTickLoop:
         new entries are blocked by overriding decision to FLAT.
 
         Args:
-            balance: Current account balance
-            initial_balance: Session start balance
+            current_value: Equity (spot) or balance (margin) — the checked value
+            initial_balance: Session start balance (== initial equity, no positions at start)
         """
         safety = self._config.safety
         if not safety.enabled:
             return
 
-        # Already blocked — check if conditions cleared (balance recovered)
+        # Already blocked — check if conditions cleared (value recovered)
         was_blocked = self._safety_blocked
         self._safety_blocked = False
         self._safety_reason = ''
+        self._safety_current_value = current_value
 
-        if safety.min_balance > 0 and balance < safety.min_balance:
+        # Min threshold: spot checks min_equity, margin checks min_balance
+        if self._trading_model == TradingModel.SPOT:
+            min_threshold = safety.min_equity
+            min_label = 'min_equity'
+        else:
+            min_threshold = safety.min_balance
+            min_label = 'min_balance'
+
+        if min_threshold > 0 and current_value < min_threshold:
             self._safety_blocked = True
-            self._safety_reason = f'min_balance ({balance:.4f} < {safety.min_balance:.4f})'
+            self._safety_reason = f'{min_label} ({current_value:.4f} < {min_threshold:.4f})'
 
+        # Drawdown: same threshold, different input (equity for spot, balance for margin)
         if safety.max_drawdown_pct > 0 and initial_balance > 0:
-            drawdown_pct = (initial_balance - balance) / \
+            drawdown_pct = (initial_balance - current_value) / \
                 initial_balance * 100.0
+            self._safety_drawdown_pct = max(0.0, drawdown_pct)
             if drawdown_pct > safety.max_drawdown_pct:
                 self._safety_blocked = True
                 reason = f'max_drawdown ({drawdown_pct:.1f}% > {safety.max_drawdown_pct:.1f}%)'
                 self._safety_reason = (
                     f'{self._safety_reason} + {reason}' if self._safety_reason else reason
                 )
+        else:
+            self._safety_drawdown_pct = 0.0
 
         if self._safety_blocked and not was_blocked:
             self._logger.warning(

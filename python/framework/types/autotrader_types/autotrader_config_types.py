@@ -75,11 +75,13 @@ class SafetyConfig:
 
     Args:
         enabled: Master switch for safety checks
-        min_balance: Block new positions if balance drops below this value (account currency)
-        max_drawdown_pct: Block new positions if session loss exceeds this % of initial balance
+        min_balance: Block new positions if balance drops below this value (margin mode, account currency)
+        min_equity: Block new positions if equity drops below this value (spot mode, account currency)
+        max_drawdown_pct: Block new positions if session drawdown exceeds this % (balance for margin, equity for spot)
     """
     enabled: bool = False
     min_balance: float = 0.0
+    min_equity: float = 0.0
     max_drawdown_pct: float = 0.0
 
 

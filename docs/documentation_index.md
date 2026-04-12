@@ -87,5 +87,6 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
 | [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [AutoTrader Integration](tests/autotrader_integration_tests.md) | End-to-end mock session validation |
+| [Safety Circuit Breaker](tests/safety_circuit_breaker_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Order Guard](tests/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Spot SELL](tests/spot_sell_tests.md) | Spot BUY/SELL execution, insufficient base balance rejection |

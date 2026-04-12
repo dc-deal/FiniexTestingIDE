@@ -58,6 +58,7 @@
   "safety": {
     "enabled": false,
     "min_balance": 5.0,
+    "min_equity": 5.0,
     "max_drawdown_pct": 30.0
   },
   "order_guard": {

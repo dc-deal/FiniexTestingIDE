@@ -944,6 +944,19 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 Run (Safety Circuit Breaker — AutoTrader Mock)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/btcusd_mock_fast.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 Run (BENCHMARK Scenario)",
             "type": "debugpy",
             "request": "launch",
@@ -1171,6 +1184,32 @@
             "module": "pytest",
             "args": [
                 "tests/autotrader_integration/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/safety_circuit_breaker/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker Integration (AutoTrader only)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/safety_circuit_breaker/test_safety_integration.py",
                 "-v",
                 "--tb=short"
             ],

@@ -76,6 +76,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         safety=SafetyConfig(
             enabled=safety_raw.get('enabled', False),
             min_balance=safety_raw.get('min_balance', 0.0),
+            min_equity=safety_raw.get('min_equity', 0.0),
             max_drawdown_pct=safety_raw.get('max_drawdown_pct', 0.0),
         ),
         order_guard=OrderGuardConfig(
