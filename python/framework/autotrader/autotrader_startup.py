@@ -314,7 +314,6 @@ def setup_tick_source(
             parquet_path=config.tick_source.parquet_path,
             symbol=config.symbol,
             tick_queue=tick_queue,
-            mode=config.tick_source.mode,
             max_ticks=config.tick_source.max_ticks,
             tick_delay_ms=config.tick_source.tick_delay_ms,
         )
@@ -345,16 +344,10 @@ def setup_tick_source(
         daemon=True,
     )
     tick_thread.start()
-    if config.tick_source.type == 'mock':
-        logger.info(
-            f"📡 Tick source started: {config.tick_source.type} "
-            f"(mode={config.tick_source.mode})"
-        )
-    else:
-        logger.info(
-            f"📡 Tick source started: {config.tick_source.type} "
-            f"({config.symbol})"
-        )
+    logger.info(
+        f"📡 Tick source started: {config.tick_source.type} "
+        f"({config.symbol})"
+    )
 
     return tick_source, tick_thread
 

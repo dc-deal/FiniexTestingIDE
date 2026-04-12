@@ -289,7 +289,7 @@ class AutoTraderLiveDisplay:
         if stats.safety_blocked:
             safety_str = f'[red bold]⛔ BLOCKED[/red bold]  [dim]{stats.safety_reason}[/dim]'
         elif self._config.safety.enabled:
-            safety_str = '[green]● ACTIVE[/green]'
+            safety_str = f'[green]● ACTIVE[/green]  [dim]({stats.trading_model})[/dim]'
         else:
             safety_str = '[dim]off[/dim]'
 
@@ -301,6 +301,29 @@ class AutoTraderLiveDisplay:
             f'Mode:    {mode}',
             f'Safety:  {safety_str}',
         ]
+
+        # Safety detail line — headroom at a glance
+        if self._config.safety.enabled:
+            safety = self._config.safety
+            # Min threshold: mode-specific field name and value
+            if stats.trading_model == 'spot':
+                min_label = 'min_equity'
+                min_threshold = safety.min_equity
+            else:
+                min_label = 'min_balance'
+                min_threshold = safety.min_balance
+
+            if min_threshold > 0:
+                min_part = f'{min_label}: {min_threshold:.2f} (now: {stats.safety_current_value:.2f})'
+            else:
+                min_part = f'{min_label}: off'
+
+            if safety.max_drawdown_pct > 0:
+                dd_part = f'dd: {stats.safety_drawdown_pct:.1f}% / {safety.max_drawdown_pct:.1f}%'
+            else:
+                dd_part = 'dd: off'
+
+            lines.append(f'         [dim]{min_part}  |  {dd_part}[/dim]')
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:

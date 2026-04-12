@@ -225,7 +225,8 @@
             "args": [
                 "run",
                 "--config",
-                "${input:userAutotraderConfig}"
+                "${input:userAutotraderConfig}",
+                "--display"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -306,14 +307,17 @@
         // 🤖 AUTOTRADER
         // ====================================================
         {
-            "name": "🤖 AutoTrader: BTCUSD Mock (replay)",
+            "name": "🤖 AutoTrader: BTCUSD Mock",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/backtesting/btcusd_mock.json"
+                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -848,7 +852,7 @@
         // 🧩 PYTEST VALIDATION
         // ====================================================
         {
-            "name": "🧪 Run (BACKTESTING Scenario)",
+            "name": "🧪 Simulation: Baseline",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -860,7 +864,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (MULTI_POSITION Scenario)",
+            "name": "🧪 Simulation: Multi Position",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -872,7 +876,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (MARGIN_VALIDATION Scenario)",
+            "name": "🧪 Simulation: Margin Validation",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -884,7 +888,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (ZERO_BALANCE Scenario)",
+            "name": "🧪 Simulation: Zero Balance",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -896,7 +900,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (SL/TP & Limit Validation)",
+            "name": "🧪 Simulation: SL/TP & Limit Validation",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -908,7 +912,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Limit/Stop History Mock Test)",
+            "name": "🧪 Simulation: Active Order Display (Limit/Stop)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -920,7 +924,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (Spot SELL Scenario)",
+            "name": "🧪 Simulation: Spot SELL",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -932,7 +936,7 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (OrderGuard Cooldown Scenario)",
+            "name": "🧪 Simulation: OrderGuard Cooldown",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -944,7 +948,79 @@
             "justMyCode": false
         },
         {
-            "name": "🧪 Run (BENCHMARK Scenario)",
+            "name": "🧪 Simulation: Partial Close",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/partial_close_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Simulation: Pending Stats",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/pending_stats_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 AutoTrader: Safety Circuit Breaker",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/btcusd_mock_safety.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 AutoTrader: Mock Session (Full)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 AutoTrader: Trade Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/trade_lifecycle_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧪 Simulation: Benchmark",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
@@ -961,7 +1037,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/import_pipeline/",
+                "tests/data/import_pipeline/",
                 "-v",
                 "--tb=short"
             ],
@@ -974,7 +1050,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/data_integration/",
+                "tests/data/data_integration/",
                 "-v",
                 "--tb=short"
             ],
@@ -987,7 +1063,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/baseline/",
+                "tests/simulation/baseline/",
                 "-v",
                 "--tb=short"
             ],
@@ -1000,7 +1076,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/multi_position/",
+                "tests/simulation/multi_position/",
                 "-v",
                 "--tb=short"
             ],
@@ -1014,7 +1090,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/sltp_limit_validation/",
+                "tests/simulation/sltp_limit_validation/",
                 "-v",
                 "--tb=short"
             ],
@@ -1027,7 +1103,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/partial_close/",
+                "tests/simulation/partial_close/",
                 "-v",
                 "--tb=short"
             ],
@@ -1041,7 +1117,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/margin_validation/",
+                "tests/simulation/margin_validation/",
                 "-v",
                 "--tb=short"
             ],
@@ -1055,7 +1131,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/pending_stats/",
+                "tests/simulation/pending_stats/",
                 "-v",
                 "--tb=short"
             ],
@@ -1068,7 +1144,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/active_order_display/",
+                "tests/simulation/active_order_display/",
                 "-v",
                 "--tb=short"
             ],
@@ -1081,7 +1157,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/worker_tests/",
+                "tests/framework/worker_tests/",
                 "-v",
                 "--tb=short"
             ],
@@ -1094,7 +1170,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/bar_rendering/",
+                "tests/framework/bar_rendering/",
                 "-v",
                 "--tb=short"
             ],
@@ -1107,7 +1183,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/user_namespace/",
+                "tests/framework/user_namespace/",
                 "-v"
             ],
             "console": "integratedTerminal"
@@ -1118,7 +1194,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/inter_tick_interval/",
+                "tests/data/inter_tick_interval/",
                 "-v",
                 "--tb=short"
             ],
@@ -1131,7 +1207,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/tick_processing_budget/",
+                "tests/data/tick_processing_budget/",
                 "-v",
                 "--tb=short"
             ],
@@ -1144,7 +1220,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/live_executor/",
+                "tests/autotrader/live_executor/",
                 "-v",
                 "--tb=short"
             ],
@@ -1157,7 +1233,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/scenario_generator/",
+                "tests/data/scenario_generator/",
                 "-v",
                 "--tb=short"
             ],
@@ -1170,7 +1246,33 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/autotrader_integration/",
+                "tests/autotrader/integration/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/safety/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker Integration (AutoTrader only)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/safety/test_safety_integration.py",
                 "-v",
                 "--tb=short"
             ],
@@ -1183,7 +1285,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/order_guard/",
+                "tests/autotrader/order_guard/",
                 "-v",
                 "--tb=short"
             ],
@@ -1196,7 +1298,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/spot_trading/",
+                "tests/simulation/spot_trading/",
                 "-v",
                 "--tb=short"
             ],
@@ -1209,7 +1311,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/benchmark/",
+                "tests/simulation/benchmark/",
                 "-v",
                 "--tb=short",
                 "--release-version",

@@ -163,6 +163,9 @@ class AutoTraderDisplayStats:
     # Safety / circuit breaker state
     safety_blocked: bool = False
     safety_reason: str = ''
+    # Safety detail values (for headroom display in SESSION panel)
+    safety_current_value: float = 0.0
+    safety_drawdown_pct: float = 0.0
 
     # Last order rejection (persists until session end or next successful trade)
     last_rejection: str = ''

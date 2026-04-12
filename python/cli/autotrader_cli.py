@@ -3,7 +3,7 @@ FiniexTestingIDE - AutoTrader CLI
 Command-line interface for FiniexAutoTrader live trading sessions.
 
 Usage:
-    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/btcusd_mock.json
+    python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/mock_session_test.json
 """
 
 import argparse
@@ -30,7 +30,13 @@ def main():
         'run', help='Start an AutoTrader live session')
     run_parser.add_argument(
         '--config', required=True,
-        help='Path to autotrader config JSON (e.g., configs/autotrader_profiles/backtesting/btcusd_mock.json)')
+        help='Path to autotrader config JSON (e.g., configs/autotrader_profiles/backtesting/mock_session_test.json)')
+    run_parser.add_argument(
+        '--display', action='store_true',
+        help='Force enable live console dashboard (overrides config display.enabled)')
+    run_parser.add_argument(
+        '--delay', type=int, metavar='MS',
+        help='Override tick_delay_ms for mock tick source (e.g. --delay 1)')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -43,13 +49,17 @@ def main():
 
     try:
         if args.command == 'run':
-            print('\n' + '=' * 606)
+            print('\n' + '=' * 60)
             print('🤖 FiniexAutoTrader')
             print('=' * 60)
             print(f'Config: {args.config}')
             print('=' * 60 + '\n')
 
             config = load_autotrader_config(args.config)
+            if args.display:
+                config.display.enabled = True
+            if args.delay is not None:
+                config.tick_source.tick_delay_ms = args.delay
             trader = AutotraderMain(config)
             result = trader.run()
 

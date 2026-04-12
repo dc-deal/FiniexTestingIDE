@@ -19,9 +19,8 @@ class MockTickSource(AbstractTickSource):
     """
     Mock tick source that replays ticks from a parquet file.
 
-    Two modes:
-    - 'replay' (default): Emit ticks as fast as possible (functional testing)
-    - 'realtime': Sleep between ticks based on collected_msc delta (clipping testing)
+    Emits ticks as fast as possible (functional testing). Optional
+    per-tick delay for visual debugging.
 
     Runs in a separate thread. Pushes TickData objects to a queue.Queue
     that the main algo thread consumes (Threading model 8.a).
@@ -30,8 +29,8 @@ class MockTickSource(AbstractTickSource):
         parquet_path: Path to parquet tick data file
         symbol: Trading symbol (e.g., 'BTCUSD')
         tick_queue: Thread-safe queue for tick delivery to main thread
-        mode: 'replay' or 'realtime'
-        tick_delay_ms: Artificial per-tick delay in ms (replay mode only, 0 = full speed)
+        max_ticks: Stop after N ticks. 0 = no limit (full file)
+        tick_delay_ms: Artificial per-tick delay in ms (0 = full speed)
     """
 
     def __init__(
@@ -39,14 +38,12 @@ class MockTickSource(AbstractTickSource):
         parquet_path: str,
         symbol: str,
         tick_queue: queue.Queue,
-        mode: str = 'replay',
         max_ticks: int = 0,
         tick_delay_ms: int = 0,
     ):
         self._parquet_path = parquet_path
         self._symbol = symbol
         self._tick_queue = tick_queue
-        self._mode = mode
         self._max_ticks = max_ticks  # 0 = no limit
         self._tick_delay_s = tick_delay_ms / 1000.0 if tick_delay_ms > 0 else 0.0
         self._running = False
@@ -64,32 +61,18 @@ class MockTickSource(AbstractTickSource):
         self._running = True
         self._ticks = self._load_ticks_from_parquet()
 
-        prev_msc: int = 0
-
         for tick in self._ticks:
             if not self._running:
                 break
             if self._max_ticks > 0 and self._ticks_emitted >= self._max_ticks:
                 break
 
-            # Realtime mode: sleep based on inter-tick interval
-            if self._mode == 'realtime' and prev_msc > 0:
-                current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
-                if current_msc > prev_msc:
-                    delta_s = (current_msc - prev_msc) / 1000.0
-                    # Cap sleep to 5s to avoid extremely long waits on data gaps
-                    time.sleep(min(delta_s, 5.0))
-
-            # Throttle for visual debugging (replay mode only)
-            if self._tick_delay_s > 0 and self._mode == 'replay':
+            # Throttle for visual debugging
+            if self._tick_delay_s > 0:
                 time.sleep(self._tick_delay_s)
 
             self._tick_queue.put(tick)
             self._ticks_emitted += 1
-
-            current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
-            if current_msc > 0:
-                prev_msc = current_msc
 
         self._exhausted = True
         # Sentinel: signal the consumer that no more ticks will come

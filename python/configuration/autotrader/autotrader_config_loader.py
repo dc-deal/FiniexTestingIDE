@@ -58,7 +58,6 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         tick_source=TickSourceConfig(
             type=tick_source_raw.get('type', 'mock'),
             parquet_path=tick_source_raw.get('parquet_path', ''),
-            mode=tick_source_raw.get('mode', 'replay'),
             max_ticks=tick_source_raw.get('max_ticks', 0),
         ),
         execution=ExecutionConfig(
@@ -76,6 +75,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         safety=SafetyConfig(
             enabled=safety_raw.get('enabled', False),
             min_balance=safety_raw.get('min_balance', 0.0),
+            min_equity=safety_raw.get('min_equity', 0.0),
             max_drawdown_pct=safety_raw.get('max_drawdown_pct', 0.0),
         ),
         order_guard=OrderGuardConfig(

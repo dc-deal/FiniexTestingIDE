@@ -109,7 +109,7 @@ python/framework/
 
 ```
     ┌─────────────────────┐
-    │  AutoTraderConfig    │  ← configs/autotrader_profiles/backtesting/btcusd_mock.json
+    │  AutoTraderConfig    │  ← configs/autotrader_profiles/backtesting/mock_session_test.json
     └─────────┬───────────┘
               │
     ┌─────────▼───────────┐
@@ -173,7 +173,7 @@ Signal handling: First Ctrl+C → normal shutdown. Second Ctrl+C within 3s → f
 
 ## Configuration
 
-Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own format, NOT scenario-set based.
+Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` — own format, NOT scenario-set based.
 
 ```json
 {
@@ -185,7 +185,7 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
   "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
   "account": { "balances": { "USD": 10000.0, "BTC": 0.0 } },
-  "tick_source": { "type": "mock", "parquet_path": "...", "mode": "replay" },
+  "tick_source": { "type": "mock", "parquet_path": "..." },
   "execution": { "parallel_workers": false, "bar_max_history": 1000 },
   "clipping_monitor": { "report_interval_s": 60.0, "strategy": "queue_all" }
 }
@@ -215,12 +215,8 @@ Config file: `configs/autotrader_profiles/backtesting/btcusd_mock.json` — own 
 
 | Source | Status | Description |
 |--------|--------|-------------|
-| `MockTickSource` | ✅ Built | Parquet replay (replay / realtime modes) |
+| `MockTickSource` | ✅ Built | Parquet replay — ticks as fast as possible, optional `tick_delay_ms` for visual debugging |
 | `KrakenTickSource` | ✅ Built (#232) | Kraken WS v2 trade channel, auto-reconnect |
-
-MockTickSource modes:
-- **replay** (default): Ticks as fast as possible — functional testing
-- **realtime**: `time.sleep(delta)` between ticks — clipping behavior testing
 
 ### KrakenTickSource (#232)
 
@@ -389,19 +385,20 @@ A soft-stop mechanism that blocks new position entries when configurable risk th
 Tick rein
   → executor.on_tick()    ← SL/TP checks run (always, unaffected)
   → Workers → Decision    ← produces BUY / SELL / FLAT
-  → [SAFETY CHECK]        ← evaluates thresholds against current balance
+  → [SAFETY CHECK]        ← evaluates thresholds against equity (spot) or balance (margin)
   → if blocked: decision.action = FLAT  ← override, no trade opened
   → execute_decision()
 ```
 
-The check runs after every tick. If conditions clear (e.g. balance recovers above `min_balance`), the block is automatically lifted and trading resumes.
+The check runs after every tick. If conditions clear (e.g. equity/balance recovers above threshold), the block is automatically lifted and trading resumes.
 
 ### Configuration
 
 ```json
 "safety": {
   "enabled": true,
-  "min_balance": 9.0,
+  "min_balance": 500.0,
+  "min_equity": 9.0,
   "max_drawdown_pct": 20.0
 }
 ```
@@ -409,24 +406,31 @@ The check runs after every tick. If conditions clear (e.g. balance recovers abov
 | Field | Description |
 |---|---|
 | `enabled` | Master switch — omit or set `false` to disable entirely |
-| `min_balance` | Block if `current_balance < min_balance` (account currency) |
-| `max_drawdown_pct` | Block if session loss > X% of `initial_balance` |
+| `min_balance` | Block if `balance < min_balance` (margin mode, account currency) |
+| `min_equity` | Block if `equity < min_equity` (spot mode, account currency) |
+| `max_drawdown_pct` | Block if session drawdown > X%. Computed from balance (margin) or equity (spot) |
 
-Both conditions are OR-combined — either alone triggers the block. Set to `0.0` to disable a specific condition while keeping the other active.
+Both conditions are OR-combined — either alone triggers the block. Set to `0.0` to disable a specific condition while keeping the other active. Each mode uses its own min-threshold field (`min_balance` for margin, `min_equity` for spot).
 
 ### Display
 
-SESSION panel shows safety state:
+SESSION panel shows safety state with mode indicator and headroom detail:
+
+```
+Safety:  ● ACTIVE  (spot)
+         min_equity: 9.00 (now: 12.48)  |  dd: 0.1% / 20.0%
+```
 
 | Display | Meaning |
 |---|---|
 | `Safety: off` | Not configured (`enabled: false` or block omitted) |
-| `Safety: ● ACTIVE` | Configured and conditions not triggered |
-| `Safety: ⛔ BLOCKED  min_balance (12.29 < 15.00)` | Triggered — reason shown inline |
+| `Safety: ● ACTIVE (spot)` | Configured, spot mode, conditions not triggered |
+| `Safety: ● ACTIVE (margin)` | Configured, margin mode, conditions not triggered |
+| `Safety: ⛔ BLOCKED  min_equity (4.80 < 5.00)` | Triggered — reason shown inline |
 
 Trigger and clear events are logged:
 ```
-WARNING | ⛔ Safety circuit breaker triggered: min_balance (12.2930 < 15.0000)
+WARNING | ⛔ Safety circuit breaker triggered: min_equity (4.8000 < 5.0000)
 INFO    | ✅ Safety circuit breaker cleared
 ```
 
@@ -471,7 +475,9 @@ configs/autotrader_profiles/
   solusd_live.json               Live trading config (SOLUSD, Kraken API)
   dotusd_live.json               Live trading config (DOTUSD — no index data, data-independence proof)
   backtesting/
-    btcusd_mock.json             Default mock config (BTCUSD parquet replay)
+    mock_session_test.json       Full mock session test (BTCUSD parquet replay)
+    trade_lifecycle_test.json  Trade lifecycle test (BTCUSD, 15K ticks)
+    btcusd_mock_safety.json    Safety circuit breaker test (aggressive thresholds)
 
 configs/broker_settings/
   kraken_spot.json               Tracked defaults (dry_run, API URL, credentials ref)
@@ -484,10 +490,10 @@ configs/credentials/
 
 ```bash
 # CLI
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/btcusd_mock.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/backtesting/mock_session_test.json
 
 # VS Code launch.json
-# 🤖 AutoTrader: BTCUSD Mock (replay)
+# 🤖 AutoTrader: BTCUSD Mock
 ```
 
 ## Logging

@@ -69,23 +69,24 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | Document | Description |
 |----------|-------------|
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
-| [Baseline Tests](tests/tests_baseline_docs.md) | Core functionality validation |
-| [Margin Validation](tests/tests_margin_validation_docs.md) | Margin rejection, fill timing |
-| [Multi-Position](tests/tests_multi_position_docs.md) | Concurrent position management |
-| [Live Executor](tests/tests_live_executor_docs.md) | LiveTradeExecutor pipeline |
-| [Pending Stats](tests/tests_pending_stats_docs.md) | Pending order statistics |
-| [SL/TP & Limit Validation](tests/tests_sltp_limit_validation_docs.md) | Stop-Loss/Take-Profit, limit/stop orders |
-| [Partial Close](tests/tests_partial_close_docs.md) | Partial position close |
-| [Worker Tests](tests/tests_worker_docs.md) | Worker framework validation |
-| [Import Pipeline](tests/tests_import_pipeline_docs.md) | Tick/bar import pipeline |
-| [Data Integration](tests/tests_data_integration_docs.md) | Data chain integration |
+| [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
+| [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
+| [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
+| [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
+| [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
+| [Margin Validation](tests/simulation/margin_validation_tests.md) | Margin rejection, fill timing |
+| [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
+| [Pending Stats](tests/simulation/pending_stats_tests.md) | Pending order statistics |
+| [SL/TP & Limit Validation](tests/simulation/sltp_limit_validation_tests.md) | Stop-Loss/Take-Profit, limit/stop orders |
+| [Partial Close](tests/simulation/partial_close_tests.md) | Partial position close |
+| [Active Order Display](tests/simulation/active_order_display_tests.md) | Unresolved order reporting |
+| [Spot SELL](tests/simulation/spot_sell_tests.md) | Spot BUY/SELL execution, insufficient base balance rejection |
+| [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
+| [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
+| [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |
+| [Inter-Tick Interval](tests/data/inter_tick_interval_tests.md) | Market-side interval measurement |
+| [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
-| [Active Order Display](tests/tests_active_order_display_docs.md) | Unresolved order reporting |
-| [Path-Based Loading](tests/tests_user_namespace_docs.md) | Worker/logic path loading, introspection, CORE integrity |
-| [Inter-Tick Interval](tests/inter_tick_interval_tests.md) | Market-side interval measurement |
-| [Tick Processing Budget](tests/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
-| [Benchmark](tests/tests_benchmark_docs.md) | Performance regression (environment-specific) |
-| [Bar Rendering Consistency](tests/bar_rendering_consistency_test.md) | BarRenderer vs VectorizedBarRenderer equivalence |
-| [AutoTrader Integration](tests/autotrader_integration_tests.md) | End-to-end mock session validation |
-| [Order Guard](tests/order_guard_tests.md) | Rejection cooldown, async callback |
-| [Spot SELL](tests/spot_sell_tests.md) | Spot BUY/SELL execution, insufficient base balance rejection |
+| [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
+| [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
+| [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
