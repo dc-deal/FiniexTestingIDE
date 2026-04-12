@@ -133,6 +133,10 @@ class AutotraderTickLoop:
         ticks_clipped = 0
         prev_msc: int = 0
 
+        # Track last valid tick/decision for the final shutdown snapshot
+        last_tick: Optional[TickData] = None
+        last_decision: Optional[Decision] = None
+
         # Daily rotation: date initialized from first tick (not wall clock)
         # This prevents spurious rotation in mock/replay mode where tick
         # timestamps differ from current date.
@@ -231,6 +235,29 @@ class AutotraderTickLoop:
                 except queue.Full:
                     pass  # Display will use last known state
 
+            # Track last valid tick/decision for the final shutdown snapshot
+            last_tick = tick
+            last_decision = decision
+
+        # Final display snapshot — ensures the last rendered frame reflects
+        # the terminal pipeline state regardless of display refresh timing.
+        # The queue (maxsize=10) is likely full from high-speed tick replay,
+        # so drain stale snapshots first to guarantee the final one lands.
+        if (self._display_queue is not None
+                and last_tick is not None
+                and last_decision is not None):
+            while not self._display_queue.empty():
+                try:
+                    self._display_queue.get_nowait()
+                except queue.Empty:
+                    break
+            final_stats = self._build_display_stats(
+                last_decision, ticks_processed, last_tick)
+            try:
+                self._display_queue.put(final_stats, timeout=1.0)
+            except queue.Full:
+                pass
+
         self._running = False
         return ticks_processed, ticks_clipped
 
@@ -254,6 +281,19 @@ class AutotraderTickLoop:
 
         # Ensure P&L is current before snapshotting (display only, not every tick)
         portfolio.ensure_positions_updated()
+
+        # Mid price (needed early for spot equity)
+        last_price = (tick.bid + tick.ask) / 2.0
+
+        # Equity + spot balances — spot mode reads balances directly (O(1), no cache trigger)
+        if self._trading_model == TradingModel.SPOT:
+            equity = portfolio.get_spot_equity(last_price)
+            spot_balances = portfolio.get_balances()
+        else:
+            # Margin mode: balance + unrealized P&L (positions already updated above)
+            unrealized = sum(pos.unrealized_pnl for pos in portfolio.open_positions.values())
+            equity = portfolio.balance + unrealized
+            spot_balances = None
 
         # Open positions → PositionSnapshot
         open_positions = []
@@ -325,9 +365,6 @@ class AutotraderTickLoop:
                          self._session_start).total_seconds() / 60.0)
         ticks_per_min = ticks_processed / uptime_min
 
-        # Last mid price
-        last_price = (tick.bid + tick.ask) / 2.0
-
         return AutoTraderDisplayStats(
             session_start=self._session_start,
             dry_run=self._dry_run,
@@ -339,6 +376,8 @@ class AutotraderTickLoop:
             total_trades=portfolio.get_total_trades(),
             winning_trades=portfolio.get_winning_trades(),
             losing_trades=portfolio.get_losing_trades(),
+            equity=equity,
+            spot_balances=spot_balances,
             open_positions=open_positions,
             active_orders=active_orders,
             pipeline_count=pipeline_count,

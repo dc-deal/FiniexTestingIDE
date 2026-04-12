@@ -12,6 +12,7 @@ All Dict[str, Any] types replaced with strongly-typed dataclasses.
 """
 
 from dataclasses import dataclass
+from typing import Dict, Optional
 
 
 @dataclass
@@ -24,7 +25,7 @@ class AccountInfo:
 
     Attributes:
         balance: Account balance (realized P&L)
-        equity: Current equity (balance + unrealized P&L)
+        equity: Current equity (spot: total portfolio value; margin: balance + unrealized P&L)
         margin_used: Total margin used by open positions
         free_margin: Available margin for new positions
         margin_level: Margin level percentage
@@ -32,6 +33,7 @@ class AccountInfo:
         total_lots: Total lot size across all positions
         currency: Account currency
         leverage: Account leverage
+        balances: Multi-currency balance dict (spot mode only, None in margin mode)
     """
     balance: float
     equity: float
@@ -42,6 +44,7 @@ class AccountInfo:
     total_lots: float
     currency: str
     leverage: int
+    balances: Optional[Dict[str, float]] = None
 
 
 @dataclass

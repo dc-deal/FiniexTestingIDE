@@ -324,6 +324,22 @@ class AbstractAdapter(ABC):
         """
         return False
 
+    def on_tick(self, tick: TickData) -> None:
+        """
+        Receive a market tick update.
+
+        OPTIONAL — Real adapters determine market state broker-side and
+        typically ignore this. Mock/simulation adapters use it to keep
+        their internal market view in sync with the tick loop so that
+        execute_order() can fill at the current market price.
+
+        Default: no-op.
+
+        Args:
+            tick: Current tick data
+        """
+        pass
+
     def execute_order(
         self,
         symbol: str,

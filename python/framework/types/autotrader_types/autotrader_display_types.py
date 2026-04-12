@@ -122,6 +122,10 @@ class AutoTraderDisplayStats:
     winning_trades: int
     losing_trades: int
 
+    # Equity + spot balances (spot mode populated, margin mode equity only)
+    equity: float = 0.0
+    spot_balances: Optional[Dict[str, float]] = None
+
     # Open Positions
     open_positions: List[PositionSnapshot] = field(default_factory=list)
 
