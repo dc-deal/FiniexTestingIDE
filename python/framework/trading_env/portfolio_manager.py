@@ -163,6 +163,27 @@ class PortfolioManager:
         """Check if portfolio operates in spot mode."""
         return self._spot_mode
 
+    def get_spot_equity(self, current_price: float) -> float:
+        """
+        Calculate total portfolio value in account currency for spot mode.
+
+        Converts all balances to account currency using current mid price.
+        Reads only _balances dict — no position update, no cache trigger (O(1)).
+
+        Args:
+            current_price: Current mid price of the traded symbol
+
+        Returns:
+            Total portfolio value in account currency
+        """
+        total = 0.0
+        for currency, amount in self._balances.items():
+            if currency == self.account_currency:
+                total += amount
+            else:
+                total += amount * current_price
+        return total
+
     # ============================================
     # Position Management
     # ============================================
@@ -314,6 +335,12 @@ class PortfolioManager:
                 self._balances[spec.base_currency] = (
                     self._balances.get(spec.base_currency, 0.0) + position.lots
                 )
+            # Refresh P&L against the actual exit_price (not the stale
+            # mark-to-market cache). In live mode the broker fill price
+            # can differ from the last marked tick, which would otherwise
+            # leave the trade record inconsistent with the balance delta.
+            position.update_current_price(
+                exit_price, exit_price, exit_tick_value, position.digits)
             realized_pnl = position.unrealized_pnl
         else:
             # Margin mode — existing logic
@@ -825,6 +852,12 @@ class PortfolioManager:
         # Position stats
         total_lots = sum(pos.lots for pos in self.open_positions.values())
 
+        # Spot mode: equity = total portfolio value (all balances in account currency)
+        # Overrides margin-style equity for consistent algo visibility
+        if self._spot_mode and self._current_tick is not None:
+            mid_price = (self._current_tick.bid + self._current_tick.ask) / 2.0
+            equity = self.get_spot_equity(mid_price)
+
         return AccountInfo(
             balance=self.balance,
             equity=equity,
@@ -834,7 +867,8 @@ class PortfolioManager:
             open_positions=len(self.open_positions),
             total_lots=total_lots,
             currency=self.account_currency,
-            leverage=self.leverage
+            leverage=self.leverage,
+            balances=dict(self._balances) if self._spot_mode else None,
         )
 
     def get_total_trades(self) -> int:

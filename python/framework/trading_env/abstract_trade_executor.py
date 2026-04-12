@@ -221,6 +221,10 @@ class AbstractTradeExecutor(ABC):
         self._tick_counter += 1
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
+        # Forward tick to broker adapter — mock/simulation adapters need
+        # the current market to fill orders at realistic prices. Real
+        # adapters default to a no-op.
+        self.broker.adapter.on_tick(tick)
         self._process_pending_orders()
         self._check_sl_tp_triggers(tick)
 

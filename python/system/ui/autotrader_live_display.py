@@ -97,23 +97,11 @@ class AutoTraderLiveDisplay:
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop the display thread. Final render before shutdown."""
-        # Final render
-        if self._live:
-            try:
-                self._live.update(self._render())
-                time.sleep(0.5)
-            except Exception:
-                pass
-
+        """Stop the display thread. Final drain + render happens inside the
+        display thread to avoid cross-thread ``live.update()`` calls."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
-        if self._live:
-            try:
-                self._live.stop()
-            except Exception:
-                pass
 
     def _update_loop(self) -> None:
         """Main update loop running in display thread."""
@@ -143,6 +131,19 @@ class AutoTraderLiveDisplay:
                 except Exception:
                     self._running = False
                     raise
+
+            # Final drain after _running = False — ensures the very last
+            # snapshot pushed by the tick loop is rendered, regardless of
+            # refresh timing. This runs inside the display thread, so
+            # live.update() is safe (same thread that owns the Live context).
+            while True:
+                try:
+                    stats = self._display_queue.get_nowait()
+                    with self._lock:
+                        self._stats = stats
+                except queue.Empty:
+                    break
+            live.update(self._render())
 
     # =========================================================================
     # RENDER — responsive layout
@@ -303,9 +304,14 @@ class AutoTraderLiveDisplay:
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Portfolio state: account context, balance (both currencies), P&L."""
-        # Include unrealized P&L from open positions (spot: balance alone
-        # drops when buying assets, the held value must be accounted for)
+        """Portfolio state: delegate to spot/margin branch."""
+        if stats.trading_model == 'spot' and stats.spot_balances is not None:
+            return self._build_spot_portfolio_panel(stats)
+        return self._build_margin_portfolio_panel(stats)
+
+    def _build_margin_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
+        """Portfolio state (margin): account context, balance, P&L."""
+        # Include unrealized P&L from open positions
         unrealized = sum(p.unrealized_pnl for p in stats.open_positions)
         net_pnl = stats.balance - stats.initial_balance + unrealized
         pnl_pct = (net_pnl / stats.initial_balance *
@@ -317,13 +323,7 @@ class AutoTraderLiveDisplay:
         quote_currency = stats.quote_currency or stats.symbol[-3:]
         base_currency = stats.base_currency or stats.symbol[:-3]
 
-        # Derive market type from broker_type
-        if stats.broker_type.startswith('kraken'):
-            market_label = 'crypto'
-        elif stats.broker_type == 'mt5':
-            market_label = 'forex'
-        else:
-            market_label = stats.broker_type
+        market_label = self._market_label(stats.broker_type)
 
         # Dual-currency balance display
         # account_currency tells us which side we hold — the other is estimated from price
@@ -355,6 +355,65 @@ class AutoTraderLiveDisplay:
             f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
         ]
         return Panel('\n'.join(lines), title='[bold]PORTFOLIO[/bold]', box=box.ROUNDED)
+
+    def _build_spot_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
+        """Portfolio state (spot): equity line + dual-balance breakdown."""
+        quote_currency = stats.quote_currency or stats.symbol[-3:]
+        base_currency = stats.base_currency or stats.symbol[:-3]
+
+        # P&L based on equity change from initial balance (real portfolio value)
+        net_pnl = stats.equity - stats.initial_balance
+        pnl_pct = (net_pnl / stats.initial_balance *
+                   100) if stats.initial_balance > 0 else 0.0
+        pnl_color = 'green' if net_pnl >= 0 else 'red'
+        pnl_sign = '+' if net_pnl >= 0 else ''
+
+        market_label = self._market_label(stats.broker_type)
+
+        # Account role label: which side does account_currency sit on?
+        if stats.account_currency == quote_currency:
+            role = 'quote'
+        elif stats.account_currency == base_currency:
+            role = 'base'
+        else:
+            role = '?'
+
+        lines = [
+            f'Account:  [bold]{stats.account_currency}[/bold] ({role})  [dim]{market_label} | {stats.trading_model} ({stats.broker_type})[/dim]',
+            f'Equity:   [bold]{stats.equity:,.6f} {stats.account_currency}[/bold]',
+        ]
+
+        # Dual-balance breakdown with cross-conversion
+        quote_amount = stats.spot_balances.get(quote_currency, 0.0)
+        base_amount = stats.spot_balances.get(base_currency, 0.0)
+
+        if stats.last_price > 0:
+            quote_as_base = quote_amount / stats.last_price
+            base_as_quote = base_amount * stats.last_price
+            lines.append(
+                f'  {quote_currency}:    {quote_amount:>14,.6f}  [dim](≈ {quote_as_base:,.6f} {base_currency})[/dim]'
+            )
+            lines.append(
+                f'  {base_currency}:    {base_amount:>14,.6f}  [dim](≈ {base_as_quote:,.6f} {quote_currency})[/dim]'
+            )
+        else:
+            lines.append(f'  {quote_currency}:    {quote_amount:>14,.6f}')
+            lines.append(f'  {base_currency}:    {base_amount:>14,.6f}')
+
+        lines += [
+            f'Net P&L:  [{pnl_color}]{pnl_sign}{net_pnl:,.6f} ({pnl_sign}{pnl_pct:.2f}%)[/{pnl_color}]',
+            f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
+        ]
+        return Panel('\n'.join(lines), title='[bold]PORTFOLIO[/bold]', box=box.ROUNDED)
+
+    @staticmethod
+    def _market_label(broker_type: str) -> str:
+        """Derive market label (crypto/forex/...) from broker_type."""
+        if broker_type.startswith('kraken'):
+            return 'crypto'
+        if broker_type == 'mt5':
+            return 'forex'
+        return broker_type
 
     def _build_positions_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Open positions table."""

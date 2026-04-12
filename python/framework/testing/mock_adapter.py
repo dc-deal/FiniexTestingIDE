@@ -25,6 +25,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_types import (
     BrokerSpecification,
     BrokerType,
@@ -123,6 +124,9 @@ class MockBrokerAdapter(AbstractAdapter):
         self._mock_pending: Dict[str, Dict[str, Any]] = {}
         # Configurable fill price offset (simulates slippage)
         self._slippage_points: float = 0.0
+        # Last-seen tick per symbol (fed via on_tick) — used to fill
+        # orders at the current market price instead of a static fallback.
+        self._last_ticks: Dict[str, TickData] = {}
 
     # ============================================
     # Configuration (required by AbstractAdapter)
@@ -309,6 +313,43 @@ class MockBrokerAdapter(AbstractAdapter):
         """Mock adapter supports live execution."""
         return True
 
+    def on_tick(self, tick: TickData) -> None:
+        """
+        Store the latest tick so execute_order() can fill at the
+        current market price (bid for SHORT, ask for LONG).
+        """
+        self._last_ticks[tick.symbol] = tick
+
+    def _resolve_market_fill_price(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        expected_price: Optional[float],
+    ) -> float:
+        """
+        Determine fill price for a market order.
+
+        Priority:
+        1. Explicit ``expected_price`` kwarg (test override).
+        2. Last tick seen via on_tick — ask for LONG, bid for SHORT.
+        3. Fallback constant (legacy tests without tick feed).
+
+        Args:
+            symbol: Trading symbol
+            direction: LONG (BUY) or SHORT (SELL)
+            expected_price: Optional explicit override
+
+        Returns:
+            Fill price in quote currency
+        """
+        if expected_price is not None:
+            return expected_price
+        last_tick = self._last_ticks.get(symbol)
+        if last_tick is not None:
+            return last_tick.ask if direction == OrderDirection.LONG else last_tick.bid
+        # Legacy fallback — tests that never feed a tick still work.
+        return 50000.0
+
     def execute_order(
         self,
         symbol: str,
@@ -342,13 +383,14 @@ class MockBrokerAdapter(AbstractAdapter):
                 timestamp=now,
             )
 
+        market_price = self._resolve_market_fill_price(
+            symbol, direction, kwargs.get("expected_price"))
+
         if self._mode == MockExecutionMode.INSTANT_FILL:
-            # Simulate fill at a reasonable price
-            fill_price = kwargs.get("expected_price", 50000.0)
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.FILLED,
-                fill_price=fill_price + self._slippage_points,
+                fill_price=market_price + self._slippage_points,
                 filled_lots=lots,
                 timestamp=now,
             )
@@ -359,7 +401,7 @@ class MockBrokerAdapter(AbstractAdapter):
             "direction": direction,
             "lots": lots,
             "submitted_at": now,
-            "expected_price": kwargs.get("expected_price", 50000.0),
+            "expected_price": market_price,
         }
 
         return BrokerResponse(
