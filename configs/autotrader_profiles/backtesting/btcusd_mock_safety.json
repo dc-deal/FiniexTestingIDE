@@ -59,6 +59,7 @@
   },
   "safety": {
     "enabled": true,
+    "min_balance": 5.0,
     "min_equity": 9990,
     "max_drawdown_pct": 0.1
   },
