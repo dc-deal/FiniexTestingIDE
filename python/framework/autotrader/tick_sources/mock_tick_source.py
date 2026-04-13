@@ -9,9 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-import pandas as pd
-
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.types.market_types.market_data_types import TickData
 
 
@@ -121,7 +120,7 @@ class MockTickSource(AbstractTickSource):
                 f"Parquet tick data not found: {self._parquet_path}"
             )
 
-        df = pd.read_parquet(path)
+        df = read_tick_parquet(path)
 
         # Ensure time_msc column exists
         if 'time_msc' not in df.columns:
@@ -142,7 +141,7 @@ class MockTickSource(AbstractTickSource):
                 symbol=self._symbol,
                 bid=float(row['bid']),
                 ask=float(row['ask']),
-                volume=float(row.get('real_volume', row.get('volume', 0.0))),
+                volume=float(row.get('volume', 0.0)),
                 time_msc=time_msc,
                 collected_msc=int(row.get('collected_msc', 0)),
             )

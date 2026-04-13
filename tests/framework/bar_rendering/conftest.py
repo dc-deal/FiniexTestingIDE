@@ -68,7 +68,7 @@ def ticks_to_dataframe(ticks: List[TickData]) -> pd.DataFrame:
         ticks: List of TickData objects
 
     Returns:
-        DataFrame with timestamp, bid, ask, real_volume columns
+        DataFrame with timestamp, bid, ask, volume columns
     """
     records = []
     for t in ticks:
@@ -76,7 +76,7 @@ def ticks_to_dataframe(ticks: List[TickData]) -> pd.DataFrame:
             'timestamp': t.timestamp,
             'bid': t.bid,
             'ask': t.ask,
-            'real_volume': t.volume,
+            'volume': t.volume,
         })
     return pd.DataFrame(records)
 
