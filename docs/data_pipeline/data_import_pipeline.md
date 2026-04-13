@@ -362,6 +362,30 @@ Offset Registry:
 
 ---
 
+## Tick Parquet Column Normalization
+
+Tick parquet files use broker-native column names that vary by source. The central reader `read_tick_parquet()` normalizes these before any consumer sees the data.
+
+**Module:** `python/framework/data_preparation/tick_parquet_reader.py`
+
+**Normalization rules:**
+
+| Parquet State | Action | Result |
+|---------------|--------|--------|
+| Has `real_volume`, no `volume` | Rename `real_volume` → `volume` | Standard crypto path (Kraken) |
+| Has `volume`, no `real_volume` | No-op | Already normalized |
+| Neither column present | Add `volume = 0.0` | Legacy data graceful handling |
+
+**All consumers must use `read_tick_parquet()` instead of `pd.read_parquet()`** for tick files. This ensures a single canonical column contract. Current call sites:
+
+- `SharedDataPreparator` — simulation pipeline tick loading
+- `BarImporter` — batch bar rendering from tick files
+- `MockTickSource` — AutoTrader mock tick replay
+
+**What it does NOT do:** Drop raw columns, interpret market type, or cache. It is a pure normalization function. Column trimming happens downstream at the transport boundary (`serialize_ticks_for_transport()`), and caching is planned for #21.
+
+---
+
 ## Parquet → Simulation Pipeline
 
 After import, tick data flows from Parquet into the simulation engine:
@@ -369,8 +393,10 @@ After import, tick data flows from Parquet into the simulation engine:
 ```
 Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
        ↓
+  read_tick_parquet()                        [tick_parquet_reader.py]
+  └─ Normalizes columns (real_volume → volume)
+       ↓
   SharedDataPreparator
-  ├─ Loads tick Parquet via pd.read_parquet()
   ├─ Filters by timestamp (UTC-aware)
   ├─ serialize_ticks_for_transport(df) → trimmed dicts
   │   Only TickTransportColumn fields cross the process boundary
@@ -408,7 +434,7 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 |-------|--------|
 | `timestamp` | Derived from `time_msc` during deserialization (eliminates Pandas Timestamp from pickle) |
 | `symbol` | Injected from scenario config during deserialization |
-| `last`, `tick_volume`, `real_volume`, `chart_tick_volume` | Not consumed by tick loop |
+| `last`, `tick_volume`, `chart_tick_volume` | Not consumed by tick loop |
 | `spread_points`, `spread_pct` | Quality checks only (pre-transport) |
 | `tick_flags`, `session` | Import metadata only |
 

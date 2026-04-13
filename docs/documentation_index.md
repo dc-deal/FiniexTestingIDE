@@ -89,4 +89,5 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
+| [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |

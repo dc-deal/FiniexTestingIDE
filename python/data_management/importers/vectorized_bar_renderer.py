@@ -123,10 +123,10 @@ class VectorizedBarRenderer:
         df = ticks_df.copy()
 
         # === 0. VALIDATE REQUIRED COLUMNS ===
-        if 'real_volume' not in df.columns:
+        if 'volume' not in df.columns:
             raise ValueError(
-                "Missing 'real_volume' column in tick data. "
-                "Required for bar rendering. Re-import with importer >= 1.5"
+                "Missing 'volume' column in tick data. "
+                "Use read_tick_parquet() to load with normalized columns."
             )
 
         # === 1. CALCULATE MID-PRICE ===
@@ -178,16 +178,16 @@ class VectorizedBarRenderer:
         # resample() groups ticks by time periods and aggregates them
 
         # Build aggregation dict
-        # real_volume: actual trade volume (crypto) or 0.0 (forex CFD)
+        # volume: actual trade volume (crypto) or 0.0 (forex CFD)
         agg_dict = {
             'mid': ['first', 'max', 'min', 'last'],  # OHLC from mid-price
             'bid': 'count',                          # Tick count
-            'real_volume': 'sum'                     # Trade volume
+            'volume': 'sum'                          # Trade volume
         }
 
         bars = prepared_df.resample(rule).agg(agg_dict)
 
-        # Flatten multi-level column names (real_volume → volume)
+        # Flatten multi-level column names
         bars.columns = ['open', 'high', 'low', 'close', 'tick_count', 'volume']
 
         # Drop bars with no ticks (NaN rows from gaps)

@@ -26,6 +26,7 @@ from python.framework.types.process_data_types import (
     BarRequirement
 )
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -516,7 +517,7 @@ class SharedDataPreparator:
             # Load and concat all relevant files into one in-memory DataFrame
             dfs = []
             for file_path in relevant_files:
-                df = pd.read_parquet(file_path)
+                df = read_tick_parquet(file_path)
                 if 'timestamp' in df.columns:
                     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
                 dfs.append(df)

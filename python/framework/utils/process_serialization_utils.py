@@ -27,23 +27,19 @@ def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Trim DataFrame to transport columns and convert to list of dicts.
 
     Filters the DataFrame to only the columns needed by the tick loop consumer,
-    dropping all other Parquet columns (last, tick_volume, chart_tick_volume,
+    dropping all other columns (last, tick_volume, chart_tick_volume,
     spread_points, spread_pct, tick_flags, session, etc.).
 
-    Maps real_volume → volume before filtering (Parquet stores real_volume,
-    transport contract uses volume). Gracefully handles missing columns
-    (e.g. collected_msc in pre-V1.3.0 data) — consumer uses defaults.
+    Expects normalized column names (volume, not real_volume) — callers
+    should use read_tick_parquet() for loading. Gracefully handles missing
+    columns (e.g. collected_msc in pre-V1.3.0 data) — consumer uses defaults.
 
     Args:
-        df: DataFrame with tick data from Parquet (post-filtering)
+        df: DataFrame with tick data (normalized columns from read_tick_parquet)
 
     Returns:
         List of dicts with only transport-relevant fields
     """
-    # Map real_volume → volume (Parquet uses real_volume, transport uses volume)
-    if 'real_volume' in df.columns and 'volume' not in df.columns:
-        df = df.rename(columns={'real_volume': 'volume'})
-
     available_cols = [
         c.value for c in TickTransportColumn if c.value in df.columns]
     return df[available_cols].to_dict('records')

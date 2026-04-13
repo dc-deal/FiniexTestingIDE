@@ -27,6 +27,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.import_config_manager import ImportConfigManager
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -185,7 +186,7 @@ def _load_all_ticks_for_symbol(
 
     dfs = []
     for tick_file in tick_files:
-        df = pd.read_parquet(tick_file)
+        df = read_tick_parquet(tick_file)
         dfs.append(df)
 
     if not dfs:
