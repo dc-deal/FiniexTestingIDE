@@ -988,6 +988,22 @@
             "justMyCode": false
         },
         {
+            "name": "🧪 AutoTrader: Margin Safety",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/margin_safety_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧪 AutoTrader: Mock Session (Full)",
             "type": "debugpy",
             "request": "launch",

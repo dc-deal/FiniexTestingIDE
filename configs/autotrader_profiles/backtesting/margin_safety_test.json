@@ -1,0 +1,70 @@
+{
+  "name": "margin_safety_test",
+  "symbol": "EURUSD",
+  "broker_type": "mt5",
+  "broker_config_path": "configs/brokers/mt5/mt5_broker_config.json",
+  "adapter_type": "mock",
+  "strategy_config": {
+    "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
+    "worker_instances": {
+      "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+    },
+    "workers": {
+      "backtesting_worker": {
+        "periods": {
+          "M5": 14,
+          "M30": 20
+        },
+        "bar_snapshot_checks": []
+      }
+    },
+    "decision_logic_config": {
+      "trade_sequence": [
+        {
+          "tick_number": 100,
+          "direction": "LONG",
+          "lot_size": 0.01,
+          "hold_ticks": 200,
+          "_comment": "Trade #0: Opens at tick 100, closes at ~300. Spread cost reduces balance."
+        },
+        {
+          "tick_number": 1000,
+          "direction": "LONG",
+          "lot_size": 0.01,
+          "hold_ticks": 5000,
+          "_comment": "Trade #1: Second trade after first closed. Validates safety doesn't block prematurely."
+        }
+      ],
+      "close_events": [],
+      "retry_events": [],
+      "edge_case_orders": []
+    }
+  },
+  "account": {
+    "balances": {
+      "USD": 10000.0
+    }
+  },
+  "tick_source": {
+    "type": "mock",
+    "parquet_path": "data/processed/mt5/ticks/EURUSD/EURUSD_20250923_133009.parquet",
+    "max_ticks": 15000
+  },
+  "execution": {
+    "parallel_workers": false,
+    "bar_max_history": 1000
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 9990.0,
+    "min_equity": 5.0,
+    "max_drawdown_pct": 0.1
+  },
+  "display": {
+    "enabled": false
+  },
+  "clipping_monitor": {
+    "report_interval_s": 60.0,
+    "strategy": "queue_all"
+  }
+}
