@@ -287,7 +287,7 @@ Three layouts based on terminal width:
 | OPEN POSITIONS | Right | Live positions: ID, direction, lots, entry price, unrealized P&L |
 | ORDERS | Right | Active limit/stop orders + pipeline (in-transit) count |
 | TRADE HISTORY | Right | Last 8 completed trades (newest first): dir, lots, entry, exit, P&L, close reason |
-| ALGO STATE | Right | Worker `display=True` outputs (e.g., `rsi_value`, `upper`/`lower`), last decision + confidence |
+| ALGO STATE | Right | Decision + confidence, config params with `display=True` (e.g., `rsi_os=30 env_l=0.30`), worker `display=True` outputs (e.g., `rsi`, `up`/`lo`) |
 
 ### Connection Panel — Two Distinct Clocks
 

@@ -33,7 +33,7 @@ class RsiWorker(AbstractWorker):
             'rsi_value': OutputParamDef(
                 param_type=float, min_val=0.0, max_val=100.0,
                 description='RSI oscillator value',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='rsi',
             ),
             'avg_gain': OutputParamDef(
                 param_type=float, min_val=0.0,

@@ -142,7 +142,7 @@ class MockTickSource(AbstractTickSource):
                 symbol=self._symbol,
                 bid=float(row['bid']),
                 ask=float(row['ask']),
-                volume=float(row.get('volume', 0.0)),
+                volume=float(row.get('real_volume', row.get('volume', 0.0))),
                 time_msc=time_msc,
                 collected_msc=int(row.get('collected_msc', 0)),
             )

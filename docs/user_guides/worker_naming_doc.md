@@ -172,6 +172,25 @@ self.emit_event(
 
 ---
 
+## Display Labels in Parameter Schemas
+
+Both `InputParamDef` (worker/logic config parameters) and `OutputParamDef` (computed outputs) support two optional fields for live dashboard visibility:
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `display` | `bool` | `False` | Include this parameter in the ALGO STATE panel |
+| `display_label` | `str` | `''` | Short label for the dashboard (e.g., `'rsi_b'` instead of `'rsi_buy_threshold'`) |
+
+If `display=True` but no `display_label` is set, the raw parameter key is shown.
+
+**Input params** (`get_parameter_schema`) with `display=True` appear as a `Params:` line in the ALGO STATE panel — showing the active config thresholds at a glance (e.g., `rsi_os=30 rsi_ob=70 min_conf=0.50`).
+
+**Output params** (`get_output_schema`) with `display=True` appear in the worker output rows — shortened labels keep the dashboard compact (e.g., `rsi` instead of `rsi_value`, `up`/`lo` instead of `upper`/`lower`).
+
+Labels are resolved once at startup and cached (frozen `DisplayLabelCache`) — no per-tick schema reads.
+
+---
+
 ## Common Issues
 
 ### ❌ File not found

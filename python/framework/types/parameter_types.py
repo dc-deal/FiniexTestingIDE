@@ -48,11 +48,15 @@ class AbstractParamDef:
         min_val: Minimum value inclusive (numeric types only)
         max_val: Maximum value inclusive (numeric types only)
         description: Functional description (not UX - like a docstring)
+        display: True to show this parameter in the live dashboard
+        display_label: Short label for the dashboard (falls back to raw key if empty)
     """
     param_type: type
     min_val: Any = None
     max_val: Any = None
     description: str = ''
+    display: bool = False
+    display_label: str = ''
 
 
 @dataclass(frozen=True)
@@ -91,14 +95,12 @@ class OutputParamDef(AbstractParamDef):
         max_val: Maximum value inclusive (numeric types only)
         description: Functional description
         category: 'SIGNAL' for decision-relevant, 'INFO' for diagnostic/transparency
-        display: True to show in live dashboard (#228)
         choices: Allowed values for categorical outputs (tuple for immutability)
 
     Returns:
         Immutable output parameter definition
     """
     category: str = 'INFO'
-    display: bool = False
     choices: Optional[tuple] = None
 
 

@@ -95,7 +95,7 @@ class MacdWorker(AbstractWorker):
             'histogram': OutputParamDef(
                 param_type=float,
                 description='MACD histogram (MACD - signal)',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='hist',
             ),
             'fast_ema': OutputParamDef(
                 param_type=float,

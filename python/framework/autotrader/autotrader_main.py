@@ -30,6 +30,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
@@ -75,6 +76,7 @@ class AutotraderMain:
         self._worker_orchestrator: Optional[WorkerOrchestrator] = None
         self._decision_logic: Optional[AbstractDecisionLogic] = None
         self._clipping_monitor: Optional[LiveClippingMonitor] = None
+        self._display_label_cache: Optional[DisplayLabelCache] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -136,7 +138,8 @@ class AutotraderMain:
              self._worker_orchestrator,
              self._decision_logic,
              self._clipping_monitor,
-             self._trading_model) = setup_pipeline(self._config, self._session_logger)
+             self._trading_model,
+             self._display_label_cache) = setup_pipeline(self._config, self._session_logger)
             self._print_startup_phase('Pipeline created successfully')
 
             # === TICK SOURCE ===
@@ -155,6 +158,7 @@ class AutotraderMain:
                     tick_source=self._tick_source,
                     config=self._config,
                     dry_run=dry_run,
+                    display_label_cache=self._display_label_cache,
                 )
                 self._display.start()
                 self._global_logger.info('📺 Live display started')
@@ -179,6 +183,7 @@ class AutotraderMain:
                 display_queue=self._display_queue,
                 session_start=run_timestamp,
                 dry_run=dry_run,
+                display_label_cache=self._display_label_cache,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
 

@@ -15,10 +15,13 @@ import pandas as pd
 
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
+from python.framework.workers.abstract_worker import AbstractWorker
 
 
 class AutotraderWarmupPreparator:
@@ -223,6 +226,83 @@ class AutotraderWarmupPreparator:
 
         return result
 
+
+    # =========================================================================
+    # DISPLAY LABEL CACHE — built once, read by tick loop + display thread
+    # =========================================================================
+
+    def build_display_label_cache(
+        self,
+        decision_logic: AbstractDecisionLogic,
+        workers: List[AbstractWorker],
+    ) -> DisplayLabelCache:
+        """
+        Build the immutable display label cache from decision logic and
+        worker schemas. Called once during startup after warmup injection.
+
+        Decision logic input params with display=True flow into the
+        Params: line of the ALGO STATE panel. Worker and decision output
+        display_labels shorten raw output keys in the same panel.
+
+        Args:
+            decision_logic: Instantiated decision logic (for schema access
+                and current param value readback)
+            workers: List of instantiated workers for the session
+
+        Returns:
+            Frozen DisplayLabelCache ready to be shared read-only between
+            the tick loop and the display thread.
+        """
+        # Decision logic input params → Params: line (display=True only)
+        dl_input_schema = decision_logic.__class__.get_parameter_schema()
+        config_param_specs: List[tuple] = []
+        for raw_key, param_def in dl_input_schema.items():
+            if not param_def.display:
+                continue
+            display_key = param_def.display_label or raw_key
+            config_param_specs.append((raw_key, display_key))
+
+        # Decision logic output labels (only where display_label is set)
+        dl_output_schema = decision_logic.__class__.get_output_schema()
+        decision_output_labels: Dict[str, str] = {}
+        for raw_key, param_def in dl_output_schema.items():
+            if param_def.display_label:
+                decision_output_labels[raw_key] = param_def.display_label
+
+        # Worker output display keys + labels (per worker instance)
+        worker_display_output_keys: Dict[str, tuple] = {}
+        worker_output_labels: Dict[str, Dict[str, str]] = {}
+        for worker in workers:
+            schema = worker.__class__.get_output_schema()
+            display_keys = tuple(
+                raw_key for raw_key, param_def in schema.items()
+                if param_def.display
+            )
+            if display_keys:
+                worker_display_output_keys[worker.name] = display_keys
+
+            labels = {
+                raw_key: param_def.display_label
+                for raw_key, param_def in schema.items()
+                if param_def.display_label
+            }
+            if labels:
+                worker_output_labels[worker.name] = labels
+
+        cache = DisplayLabelCache(
+            config_param_specs=tuple(config_param_specs),
+            worker_display_output_keys=worker_display_output_keys,
+            worker_output_labels=worker_output_labels,
+            decision_output_labels=decision_output_labels,
+        )
+
+        self._logger.debug(
+            f"🏷️  Display label cache built: "
+            f"{len(config_param_specs)} config params, "
+            f"{len(worker_display_output_keys)} workers, "
+            f"{sum(len(l) for l in worker_output_labels.values())} worker output labels"
+        )
+        return cache
 
     def _validate_warmup_bars(
         self,
