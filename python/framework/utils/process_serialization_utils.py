@@ -27,11 +27,12 @@ def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Trim DataFrame to transport columns and convert to list of dicts.
 
     Filters the DataFrame to only the columns needed by the tick loop consumer,
-    dropping all other Parquet columns (last, tick_volume, real_volume,
-    chart_tick_volume, spread_points, spread_pct, tick_flags, session, etc.).
+    dropping all other Parquet columns (last, tick_volume, chart_tick_volume,
+    spread_points, spread_pct, tick_flags, session, etc.).
 
-    Gracefully handles missing columns (e.g. collected_msc in pre-V1.3.0 data,
-    volume if not present) — consumer uses defaults for absent fields.
+    Maps real_volume → volume before filtering (Parquet stores real_volume,
+    transport contract uses volume). Gracefully handles missing columns
+    (e.g. collected_msc in pre-V1.3.0 data) — consumer uses defaults.
 
     Args:
         df: DataFrame with tick data from Parquet (post-filtering)
@@ -39,7 +40,12 @@ def serialize_ticks_for_transport(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Returns:
         List of dicts with only transport-relevant fields
     """
-    available_cols = [c.value for c in TickTransportColumn if c.value in df.columns]
+    # Map real_volume → volume (Parquet uses real_volume, transport uses volume)
+    if 'real_volume' in df.columns and 'volume' not in df.columns:
+        df = df.rename(columns={'real_volume': 'volume'})
+
+    available_cols = [
+        c.value for c in TickTransportColumn if c.value in df.columns]
     return df[available_cols].to_dict('records')
 
 
@@ -81,8 +87,10 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
                 ask=float(tick_data[TickTransportColumn.ASK]),
                 volume=float(tick_data.get(TickTransportColumn.VOLUME, 0.0)),
                 time_msc=time_msc,
-                collected_msc=int(tick_data.get(TickTransportColumn.COLLECTED_MSC, 0)),
-                is_clipped=bool(tick_data.get(TickTransportColumn.IS_CLIPPED, False))
+                collected_msc=int(tick_data.get(
+                    TickTransportColumn.COLLECTED_MSC, 0)),
+                is_clipped=bool(tick_data.get(
+                    TickTransportColumn.IS_CLIPPED, False))
             ))
     return tuple(result)
 

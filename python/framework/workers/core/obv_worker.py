@@ -64,7 +64,7 @@ class ObvWorker(AbstractWorker):
             'obv_value': OutputParamDef(
                 param_type=float,
                 description='On-Balance Volume cumulative value',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='obv',
             ),
             'trend': OutputParamDef(
                 param_type=str,

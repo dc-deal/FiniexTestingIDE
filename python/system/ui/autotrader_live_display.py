@@ -31,6 +31,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
@@ -65,11 +66,13 @@ class AutoTraderLiveDisplay:
         tick_source: AbstractTickSource,
         config: AutoTraderConfig,
         dry_run: bool = True,
+        display_label_cache: Optional[DisplayLabelCache] = None,
     ):
         self._display_queue = display_queue
         self._tick_source = tick_source
         self._config = config
         self._dry_run = dry_run
+        self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._update_interval = config.display.update_interval_ms / 1000.0
 
         # Stats cache (latest snapshot from queue)
@@ -651,20 +654,37 @@ class AutoTraderLiveDisplay:
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
 
     def _build_algo_state_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Worker display=True outputs and last decision."""
+        """Worker display=True outputs, last decision, and static config params."""
         lines = []
+        cache = self._display_label_cache
 
         # Decision first (result before details)
         action = stats.last_decision_action
         action_color = 'green' if action == DecisionLogicAction.BUY else (
             'red' if action == DecisionLogicAction.SELL else 'dim')
         decision_parts = [f'[{action_color}]{action.value}[/{action_color}]']
+        decision_output_labels = cache.decision_output_labels
         for key, value in stats.decision_outputs.items():
+            label = decision_output_labels.get(key, key)
             if isinstance(value, float):
-                decision_parts.append(f'{key}={value:.2f}')
+                decision_parts.append(f'{label}={value:.2f}')
             else:
-                decision_parts.append(f'{key}={value}')
+                decision_parts.append(f'{label}={value}')
         lines.append(f'Decision:  {" ".join(decision_parts)}')
+
+        # Params line — static decision logic config thresholds (#271)
+        if cache.config_param_specs and stats.config_params:
+            param_parts = []
+            for raw_key, display_key in cache.config_param_specs:
+                if raw_key not in stats.config_params:
+                    continue
+                value = stats.config_params[raw_key]
+                if isinstance(value, float):
+                    param_parts.append(f'{display_key}={value:.2f}')
+                else:
+                    param_parts.append(f'{display_key}={value}')
+            if param_parts:
+                lines.append(f'Params:    {" ".join(param_parts)}')
 
         # AwarenessChannel — ephemeral narration from decision logic
         if stats.last_awareness is not None:
@@ -702,13 +722,16 @@ class AutoTraderLiveDisplay:
 
         # Worker outputs (details below decision)
         worker_lines = []
+        worker_output_labels = cache.worker_output_labels
         for worker_name, outputs in stats.worker_outputs.items():
+            labels = worker_output_labels.get(worker_name, {})
             parts = []
             for key, value in outputs.items():
+                label = labels.get(key, key)
                 if isinstance(value, float):
-                    parts.append(f'{key}={value:.4f}')
+                    parts.append(f'{label}={value:.4f}')
                 else:
-                    parts.append(f'{key}={value}')
+                    parts.append(f'{label}={value}')
             if parts:
                 worker_lines.append(f'{worker_name:<16s} {", ".join(parts)}')
         if worker_lines:

@@ -22,6 +22,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
@@ -74,6 +75,7 @@ class AutotraderTickLoop:
         display_queue: Optional[queue.Queue] = None,
         session_start: Optional[datetime] = None,
         dry_run: bool = True,
+        display_label_cache: Optional[DisplayLabelCache] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -89,6 +91,7 @@ class AutotraderTickLoop:
         self._display_queue = display_queue
         self._session_start = session_start or datetime.now(timezone.utc)
         self._dry_run = dry_run
+        self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._running = False
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
@@ -339,10 +342,11 @@ class AutotraderTickLoop:
         # Clipping — lightweight snapshot (avoids full session summary construction)
         clipping_stats = self._clipping_monitor.get_display_stats()
 
-        # Worker performance + outputs (display=True only)
+        # Worker performance + outputs (display=True only — keys from cache)
         worker_times: Dict[str, float] = {}
         worker_max_times: Dict[str, float] = {}
         worker_outputs: Dict[str, Dict[str, OutputValue]] = {}
+        worker_display_keys = self._display_label_cache.worker_display_output_keys
         for name, worker in self._worker_orchestrator.workers.items():
             # Performance
             if worker.performance_logger:
@@ -350,14 +354,17 @@ class AutotraderTickLoop:
                 worker_times[name] = stats.worker_avg_time_ms
                 worker_max_times[name] = stats.worker_max_time_ms
 
-            # Outputs (display=True from schema)
-            schema = worker.__class__.get_output_schema()
+            # Outputs (cached display=True key list, no per-tick schema read)
+            display_keys = worker_display_keys.get(name)
+            if not display_keys:
+                continue
             result = self._worker_orchestrator.get_worker_result(name)
-            if result and schema:
-                display_outputs = {}
-                for key, param_def in schema.items():
-                    if param_def.display and key in result.outputs:
-                        display_outputs[key] = result.outputs[key]
+            if result:
+                display_outputs = {
+                    key: result.outputs[key]
+                    for key in display_keys
+                    if key in result.outputs
+                }
                 if display_outputs:
                     worker_outputs[name] = display_outputs
 
@@ -367,6 +374,12 @@ class AutotraderTickLoop:
         for key, param_def in decision_schema.items():
             if param_def.display and key in decision.outputs:
                 decision_outputs[key] = decision.outputs[key]
+
+        # Decision logic config params (static, but read fresh to support future live reload)
+        config_params: Dict[str, OutputValue] = {}
+        for raw_key, _display_key in self._display_label_cache.config_param_specs:
+            if self._decision_logic.params.has(raw_key):
+                config_params[raw_key] = self._decision_logic.params.get(raw_key)
 
         # Tick rate (session average)
         uptime_min = max(0.001, (datetime.now(timezone.utc) -
@@ -403,6 +416,7 @@ class AutotraderTickLoop:
             worker_outputs=worker_outputs,
             last_decision_action=decision.action,
             decision_outputs=decision_outputs,
+            config_params=config_params,
             decision_time_ms=self._decision_logic.performance_logger.get_stats().decision_avg_time_ms if self._decision_logic.performance_logger else 0.0,
             decision_max_time_ms=self._decision_logic.performance_logger.get_stats().decision_max_time_ms if self._decision_logic.performance_logger else 0.0,
             account_currency=self._executor.account_currency,

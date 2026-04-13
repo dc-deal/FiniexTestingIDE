@@ -31,6 +31,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.market_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -134,7 +135,7 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
 def setup_pipeline(
     config: AutoTraderConfig,
     logger: ScenarioLogger
-) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor, TradingModel]:
+) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor, TradingModel, DisplayLabelCache]:
     """
     Create all pipeline objects for AutoTrader session.
 
@@ -155,7 +156,7 @@ def setup_pipeline(
         logger: ScenarioLogger instance
 
     Returns:
-        (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model)
+        (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache)
     """
     # === Phase 1: Broker Config ===
     broker_config = _create_broker_config(config, logger)
@@ -269,12 +270,16 @@ def setup_pipeline(
     bar_controller.register_workers(workers)
     logger.debug('✅ BarRenderingController created')
 
-    # === Phase 9: Warmup ===
+    # === Phase 9: Warmup + Display Label Cache ===
     warmup_preparator = AutotraderWarmupPreparator(logger=logger)
     warmup_preparator.prepare_and_inject(
         config=config,
         workers=workers,
         bar_controller=bar_controller,
+    )
+    display_label_cache = warmup_preparator.build_display_label_cache(
+        decision_logic=decision_logic,
+        workers=workers,
     )
 
     # === Phase 10: LiveClippingMonitor ===
@@ -287,7 +292,7 @@ def setup_pipeline(
         f"report_interval={config.clipping_monitor.report_interval_s}s"
     )
 
-    return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model
+    return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache
 
 
 def setup_tick_source(

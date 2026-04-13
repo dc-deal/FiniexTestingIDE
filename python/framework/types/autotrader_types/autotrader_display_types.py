@@ -183,6 +183,9 @@ class AutoTraderDisplayStats:
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
 
+    # Decision logic config params (display=True inputs → Params: line in ALGO STATE)
+    config_params: Dict[str, OutputValue] = field(default_factory=dict)
+
     # AwarenessChannel — ephemeral narration from decision logic
     last_awareness: Optional[DecisionAwareness] = None
 

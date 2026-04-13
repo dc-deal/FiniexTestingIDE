@@ -134,23 +134,28 @@ class SimpleConsensus(AbstractDecisionLogic):
         return {
             'rsi_oversold': InputParamDef(
                 param_type=float, default=30, min_val=1, max_val=49,
-                description="RSI oversold threshold (buy signal)"
+                description="RSI oversold threshold (buy signal)",
+                display=True, display_label='rsi_os',
             ),
             'rsi_overbought': InputParamDef(
                 param_type=float, default=70, min_val=51, max_val=99,
-                description="RSI overbought threshold (sell signal)"
+                description="RSI overbought threshold (sell signal)",
+                display=True, display_label='rsi_ob',
             ),
             'envelope_lower_threshold': InputParamDef(
                 param_type=float, default=0.3, min_val=0.0, max_val=1.0,
-                description="Envelope position threshold for buy signal"
+                description="Envelope position threshold for buy signal",
+                display=True, display_label='env_l',
             ),
             'envelope_upper_threshold': InputParamDef(
                 param_type=float, default=0.7, min_val=0.0, max_val=1.0,
-                description="Envelope position threshold for sell signal"
+                description="Envelope position threshold for sell signal",
+                display=True, display_label='env_u',
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.5, min_val=0.0, max_val=1.0,
-                description="Minimum confidence to generate trading signal"
+                description="Minimum confidence to generate trading signal",
+                display=True, display_label='min_conf',
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,

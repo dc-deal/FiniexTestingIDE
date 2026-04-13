@@ -61,7 +61,7 @@ class EnvelopeWorker(AbstractWorker):
             'upper': OutputParamDef(
                 param_type=float,
                 description='Upper band value',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='up',
             ),
             'middle': OutputParamDef(
                 param_type=float,
@@ -71,12 +71,12 @@ class EnvelopeWorker(AbstractWorker):
             'lower': OutputParamDef(
                 param_type=float,
                 description='Lower band value',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='lo',
             ),
             'position': OutputParamDef(
                 param_type=float, min_val=0.0, max_val=1.0,
                 description='Price position within bands (0=lower, 1=upper)',
-                category='SIGNAL', display=True,
+                category='SIGNAL', display=True, display_label='pos',
             ),
             'std_dev': OutputParamDef(
                 param_type=float, min_val=0.0,

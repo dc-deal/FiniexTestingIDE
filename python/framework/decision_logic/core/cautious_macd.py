@@ -134,11 +134,13 @@ class CautiousMacd(AbstractDecisionLogic):
         return {
             'rsi_filter_buy': InputParamDef(
                 param_type=float, default=60, min_val=1, max_val=99,
-                description="RSI max for BUY entry (skip if RSI is overbought)"
+                description="RSI max for BUY entry (skip if RSI is overbought)",
+                display=True, display_label='rsi_fb',
             ),
             'rsi_filter_sell': InputParamDef(
                 param_type=float, default=40, min_val=1, max_val=99,
-                description="RSI min for SELL entry (skip if RSI is oversold)"
+                description="RSI min for SELL entry (skip if RSI is oversold)",
+                display=True, display_label='rsi_fs',
             ),
             'stop_distance_pips': InputParamDef(
                 param_type=float, default=15, min_val=1, max_val=500,
@@ -158,7 +160,8 @@ class CautiousMacd(AbstractDecisionLogic):
             ),
             'break_even_trigger_pips': InputParamDef(
                 param_type=float, default=15, min_val=0, max_val=1000,
-                description="Move SL to entry after X pips profit (0 = disabled)"
+                description="Move SL to entry after X pips profit (0 = disabled)",
+                display=True, display_label='be_pips',
             ),
             'min_histogram': InputParamDef(
                 param_type=float, default=0.00005, min_val=0, max_val=100000,
@@ -166,7 +169,8 @@ class CautiousMacd(AbstractDecisionLogic):
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.0, min_val=0.0, max_val=1.0,
-                description="Minimum confidence score to act on a crossover (0.0 = disabled)"
+                description="Minimum confidence score to act on a crossover (0.0 = disabled)",
+                display=True, display_label='min_conf',
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,

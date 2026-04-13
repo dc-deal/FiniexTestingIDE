@@ -59,7 +59,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -68,13 +71,16 @@
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",
       "end_date": "2026-01-26T08:00:00+00:00",
-      "max_ticks": 5000,
+      "max_ticks": 25000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -83,13 +89,16 @@
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-26T16:00:00+00:00",
       "end_date": "2026-01-27T08:00:00+00:00",
-      "max_ticks": 5000,
+      "max_ticks": 25000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -98,13 +107,16 @@
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-27T16:00:00+00:00",
       "end_date": "2026-01-28T08:00:00+00:00",
-      "max_ticks": 5000,
+      "max_ticks": 25000,
       "data_mode": "realistic",
-      "enabled": false,
+      "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -119,7 +131,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -134,7 +149,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -149,7 +167,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     },
     {
@@ -164,7 +185,10 @@
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
-        "balances": {"USD": 10000.0, "BTC": 0.0}
+        "balances": {
+          "USD": 10000.0,
+          "BTC": 0.0
+        }
       }
     }
   ]

@@ -124,19 +124,23 @@ class AggressiveTrend(AbstractDecisionLogic):
         return {
             'rsi_buy_threshold': InputParamDef(
                 param_type=float, default=35, min_val=1, max_val=49,
-                description="RSI threshold for buy signal (aggressive, higher than consensus)"
+                description="RSI threshold for buy signal (aggressive, higher than consensus)",
+                display=True, display_label='rsi_b',
             ),
             'rsi_sell_threshold': InputParamDef(
                 param_type=float, default=65, min_val=51, max_val=99,
-                description="RSI threshold for sell signal (aggressive, lower than consensus)"
+                description="RSI threshold for sell signal (aggressive, lower than consensus)",
+                display=True, display_label='rsi_s',
             ),
             'envelope_extremes': InputParamDef(
                 param_type=float, default=0.25, min_val=0.01, max_val=0.5,
-                description="Envelope distance from center to trigger signal"
+                description="Envelope distance from center to trigger signal",
+                display=True, display_label='env_x',
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.4, min_val=0.0, max_val=1.0,
-                description="Minimum confidence to generate trading signal"
+                description="Minimum confidence to generate trading signal",
+                display=True, display_label='min_conf',
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
