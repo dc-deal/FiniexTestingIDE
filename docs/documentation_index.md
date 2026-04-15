@@ -81,6 +81,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Partial Close](tests/simulation/partial_close_tests.md) | Partial position close |
 | [Active Order Display](tests/simulation/active_order_display_tests.md) | Unresolved order reporting |
 | [Spot SELL](tests/simulation/spot_sell_tests.md) | Spot BUY/SELL execution, insufficient base balance rejection |
+| [Tick Clipping](tests/simulation/tick_clipping_tests.md) | Bar rendering correctness under tick processing budget clipping |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
 | [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |

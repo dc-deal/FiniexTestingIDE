@@ -136,20 +136,23 @@ def execute_tick_loop(
             profile_times['trade_simulator'] += (t2 - t1) * 1000
             profile_counts['trade_simulator'] += 1
 
-            # === CLIPPING GATE ===
-            # Ticks flagged by tick processing budget skip the algo path.
-            # The broker already processed them above.
-            if tick.is_clipped:
-                continue
-
-            # === ALGO PATH (non-clipped ticks only) ===
-
-            # === 2. Bar Rendering ===
+            # === 2. Bar Rendering (all ticks) ===
+            # Bars must reflect the complete market data stream — including
+            # clipped ticks. Clipping simulates "algo was too slow to react",
+            # NOT "market data was incomplete". Same ordering as AutoTrader.
             t3 = time.perf_counter()
             current_bars = bar_rendering_controller.process_tick(tick)
             t4 = time.perf_counter()
             profile_times['bar_rendering'] += (t4 - t3) * 1000
             profile_counts['bar_rendering'] += 1
+
+            # === CLIPPING GATE ===
+            # Ticks flagged by tick processing budget skip the algo path.
+            # The broker and bar rendering already processed them above.
+            if tick.is_clipped:
+                continue
+
+            # === ALGO PATH (non-clipped ticks only) ===
 
             # === 3. Bar History Retrieval ===
             t5 = time.perf_counter()
