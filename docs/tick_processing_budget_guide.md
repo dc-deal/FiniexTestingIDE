@@ -6,9 +6,9 @@
 
 In live trading, ticks that arrive while the algorithm is still processing the previous tick are **lost** (clipped). The backtesting simulation processes every tick sequentially — optimistically biased because no ticks are ever skipped.
 
-The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped, simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop — the broker path (`trade_simulator.on_tick()`) sees every tick, while the algo path (workers, decision logic) skips clipped ticks.
+The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped, simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop — the broker path (`trade_simulator.on_tick()`) and bar rendering see every tick, while the algo path (bar history, workers, decision logic) skips clipped ticks.
 
-**Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The `is_clipped` flag on each tick controls whether the algo path processes it. This ensures the broker simulation (pending order fills, SL/TP triggers, limit/stop monitoring) operates on the full market data stream — identical to a real broker.
+**Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The `is_clipped` flag on each tick controls whether the algo path processes it. This ensures the broker simulation (pending order fills, SL/TP triggers, limit/stop monitoring) and bar construction (OHLC, volume, tick count) operate on the full market data stream — identical to a real broker and market data feed.
 
 ---
 
@@ -180,10 +180,11 @@ SharedDataPreparator (Main Process, Phase 1)
                     │
                     for tick in ticks:
                     │   ├── trade_simulator.on_tick(tick)   ← BROKER PATH (all ticks)
+                    │   ├── bar_rendering.process_tick(tick) ← BAR PATH (all ticks)
                     │   │
                     │   ├── if tick.is_clipped: continue    ← CLIPPING GATE
                     │   │
-                    │   └── bar_rendering, workers,         ← ALGO PATH (non-clipped only)
+                    │   └── bar_history, workers,           ← ALGO PATH (non-clipped only)
                     │       decision, live_export
                     │
                     ▼
@@ -194,15 +195,15 @@ SharedDataPreparator (Main Process, Phase 1)
 ```
 
 - Flagging in main process → all ticks cross pickle boundary (with `is_clipped` flag)
-- Tick loop splits into broker path (all ticks) and algo path (non-clipped only)
-- Broker simulation sees full market data — pending order fills, SL/TP triggers operate correctly
+- Tick loop splits into broker+bar path (all ticks) and algo path (non-clipped only)
+- Broker simulation and bar rendering see full market data — bars reflect complete OHLC/volume
 - ClippingStats flows through main process (same pattern as `broker_scenario_map`)
 
 ---
 
 ## Tick Loop Split — Log Evidence
 
-When budget is active, the scenario log shows the broker/algo path separation per tick. Example from a USDJPY scenario (budget 1.5ms, LONG trade opened at algo-tick 10):
+When budget is active, the scenario log shows the broker+bar/algo path separation per tick. Example from a USDJPY scenario (budget 1.5ms, LONG trade opened at algo-tick 10):
 
 ```
 ✅ BROKER+ALGO tick #0   bid=149.78  open_positions=0   ← both paths
@@ -224,6 +225,7 @@ Confirmed by profiling call counts:
 | Operation | Calls | Meaning |
 |-----------|-------|---------|
 | `trade_simulator` | 5,000 | All ticks (broker path) |
+| `bar_rendering` | 5,000 | All ticks (bar path) |
 | `worker_decision` | 3,950 | Algo ticks only (non-clipped) |
 
 Executive summary displays both: `Ticks Processed: 5,000 total (3,950 algo)`
