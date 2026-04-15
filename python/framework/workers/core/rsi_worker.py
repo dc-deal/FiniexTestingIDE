@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -25,6 +25,11 @@ class RsiWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """RSI is price-based — no activity-data dependency."""
+        return None
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

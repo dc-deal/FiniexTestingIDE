@@ -4,7 +4,7 @@ Workers with artificial CPU load for testing parallel performance
 """
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -64,6 +64,11 @@ class HeavyRsiWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """Heavy RSI is price-based — no activity-data dependency."""
+        return None
 
     def get_warmup_requirements(self) -> Dict[str, int]:
         """Heavy RSI warmup requirements from config 'periods'"""

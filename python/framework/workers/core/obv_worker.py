@@ -7,12 +7,13 @@ OBV Logic:
 - If close < prev_close: OBV -= volume
 - If close == prev_close: OBV unchanged
 
-⚠️ MARKET TYPE NOTE:
-- Crypto: ✅ Works (volume = traded amount in base currency)
-- Forex:  ⚠️ Always 0 (CFD has no real volume) - OBV will be constant
+Market compatibility is enforced pre-flight via
+get_required_activity_metric() → 'volume'. Scenarios on markets whose
+primary_activity_metric is not 'volume' (e.g. forex) are rejected before
+any worker is instantiated.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -42,13 +43,6 @@ class ObvWorker(AbstractWorker):
             logger=logger, trading_context=trading_context
         )
 
-        # Warn if Forex market (volume will be 0 for CFDs)
-        if trading_context and trading_context.market_type == MarketType.FOREX:
-            logger.warning(
-                f"OBV worker '{name}' used with FOREX market. "
-                f"Tick volume in Forex CFDs is typically 0 - "
-                f"OBV will produce meaningless results."
-            )
         self._market_type = (
             trading_context.market_type if trading_context else None
         )
@@ -56,6 +50,11 @@ class ObvWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """OBV requires real trade volume — crypto markets only."""
+        return 'volume'
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

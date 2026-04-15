@@ -55,6 +55,28 @@ Helper classes (not inheriting from any abstract base) in the same file are fine
 
 ---
 
+## Mandatory Worker Classmethod — Market Compatibility
+
+Every concrete worker **must** override `get_required_activity_metric()` on `AbstractWorker`. It declares which market activity metric the worker needs, so the framework can reject incompatible scenarios before any subprocess starts.
+
+```python
+from typing import Optional
+
+class MyWorker(AbstractWorker):
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        # Options:
+        # - None          → price-based only (RSI, Envelope, MACD, range/session workers)
+        # - 'volume'      → real trade volume (crypto only)
+        # - 'tick_count'  → tick arrival density (forex only)
+        return None
+```
+
+**Why it is mandatory.** The parent class raises `NotImplementedError` with an actionable message if you forget. The framework validates at pre-flight time (Phase 2 — Availability) that the scenario's broker provides the declared metric, using `primary_activity_metric` from `configs/market_config.json` as the single source of truth. Incompatible scenarios are marked invalid and skipped; the remaining scenarios continue running. See [`docs/architecture/market_capabilities.md`](../architecture/market_capabilities.md) for the full flow and rationale.
+
+---
+
 ## The Contract Model
 
 ### 1. Decision Logic declares required workers

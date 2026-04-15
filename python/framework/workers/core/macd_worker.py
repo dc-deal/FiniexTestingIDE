@@ -3,7 +3,7 @@ FiniexTestingIDE - MACD Worker
 Bar-based MACD (Moving Average Convergence Divergence) computation
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -114,6 +114,11 @@ class MacdWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """MACD is price-based — no activity-data dependency."""
+        return None
 
     @classmethod
     def calculate_requirements(cls, config: Dict[str, Any]) -> Dict[str, int]:

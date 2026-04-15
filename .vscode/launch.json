@@ -1218,6 +1218,19 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "🧩 Pytest: Market Compatibility (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/market_compatibility/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: Inter Tick Interval (All)",
             "type": "debugpy",
             "request": "launch",

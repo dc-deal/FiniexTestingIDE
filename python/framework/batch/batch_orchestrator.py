@@ -333,7 +333,7 @@ class BatchOrchestrator:
             logger=self._logger,
             scenarios=self._scenario_set.get_valid_scenarios(),
             tick_index_manager=tick_index_manager,
-            app_config=self._app_config_manager
+            app_config=self._app_config_manager,
         )
         coverage_report_manager.generate_reports()
         warmup_phases.append(WarmupPhaseEntry('Index & Coverage', time.time() - _phase_t))

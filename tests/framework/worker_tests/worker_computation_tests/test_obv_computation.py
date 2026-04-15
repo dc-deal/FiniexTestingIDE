@@ -9,31 +9,26 @@ Key implementation details (verified from source):
     close[i] < close[i-1] → OBV -= volume[i]
     close[i] == close[i-1] → OBV unchanged
 - Returns WorkerResult with outputs dict {obv_value, trend, has_volume, ...}
-- Constructor accepts trading_context (optional, for Forex warning)
 - Needs at least 2 bars, otherwise returns obv_value=0.0
 
 Volume matters here! Other workers use make_bars() with constant volume.
 OBV tests use make_bars_with_volume() for explicit volume control.
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.types.worker_types import WorkerResult
-from python.framework.types.market_types.market_config_types import MarketType
 
 from conftest import make_bars_with_volume, make_tick
 
 
-def _make_obv_worker(mock_logger, period=20, trading_context=None):
+def _make_obv_worker(mock_logger, period=20):
     """Helper: create OBV worker with standard config."""
     return ObvWorker(
         name="test_obv",
         parameters={"periods": {"M5": period}},
         logger=mock_logger,
-        trading_context=trading_context,
     )
 
 
@@ -235,20 +230,3 @@ class TestOBVOutputFields:
                                 "M5": bars}, current_bars={})
 
         assert result.get_signal('has_volume') is False
-
-    def test_obv_forex_warning(self, mock_logger):
-        """
-        Forex market type → logger.warning about zero volume.
-
-        OBV is meaningless for Forex CFDs because volume = 0.
-        The worker should warn at construction time.
-        """
-        forex_context = MagicMock()
-        forex_context.market_type = MarketType.FOREX
-
-        _make_obv_worker(mock_logger, trading_context=forex_context)
-
-        # Check that a warning was issued during __init__
-        mock_logger.warning.assert_called()
-        warning_text = mock_logger.warning.call_args[0][0]
-        assert "OBV" in warning_text or "volume" in warning_text.lower()

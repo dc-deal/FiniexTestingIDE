@@ -9,6 +9,9 @@ from typing import Dict, List, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.exceptions.market_compatibility_error import MarketCompatibilityError
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
@@ -161,6 +164,96 @@ class ScenarioDataValidator:
                 f"available data range (latest: {data_end.strftime('%Y-%m-%d %H:%M:%S')} UTC). "
                 f"Adjust end_date to <= {data_end.strftime('%Y-%m-%d')}."
             )
+
+        return errors
+
+    @staticmethod
+    def validate_worker_market_compatibility(
+        scenario: SingleScenario,
+        worker_factory: WorkerFactory,
+        market_config_manager: MarketConfigManager,
+    ) -> List[str]:
+        """
+        Validate that all workers in this scenario are compatible with the
+        broker's market activity metric.
+
+        Resolves each worker class via the factory (static, no instance),
+        calls the mandatory get_required_activity_metric() classmethod, and
+        cross-references it against the broker's primary_activity_metric
+        from market_config.json.
+
+        A missing classmethod override raises NotImplementedError — this is
+        caught and reported as a configuration error so the scenario fails
+        pre-flight instead of during subprocess execution.
+
+        Staticmethod — uses no instance state. Called from RequirementsCollector
+        (Phase 3) as the first per-scenario check before data requirements are
+        aggregated.
+
+        Args:
+            scenario: Scenario to validate
+            worker_factory: Worker factory used to resolve worker classes
+            market_config_manager: Market config lookup for activity metric
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors: List[str] = []
+
+        strategy_config = scenario.strategy_config or {}
+        worker_instances = strategy_config.get('worker_instances', {})
+
+        if not worker_instances:
+            return errors
+
+        # Broker metric (single lookup per scenario)
+        try:
+            broker_metric = market_config_manager.get_primary_activity_metric_for_broker(
+                scenario.data_broker_type
+            )
+            market_type = market_config_manager.get_market_type(
+                scenario.data_broker_type
+            ).value
+        except ValueError as e:
+            errors.append(
+                f"Cannot resolve market metric for broker "
+                f"'{scenario.data_broker_type}': {e}"
+            )
+            return errors
+
+        for instance_name, worker_type in worker_instances.items():
+            try:
+                worker_class, _ = worker_factory._resolve_worker_class(worker_type)
+            except ValueError as e:
+                errors.append(
+                    f"Cannot resolve worker '{instance_name}' ({worker_type}): {e}"
+                )
+                continue
+
+            try:
+                required_metric = worker_class.get_required_activity_metric()
+            except NotImplementedError as e:
+                errors.append(
+                    f"Worker '{instance_name}' ({worker_type}) does not declare "
+                    f"get_required_activity_metric(). {e}"
+                )
+                continue
+
+            if required_metric is None:
+                # Price-based worker — no activity-data dependency
+                continue
+
+            if required_metric != broker_metric:
+                compat_error = MarketCompatibilityError(
+                    scenario_name=scenario.name,
+                    worker_instance_name=instance_name,
+                    worker_type=worker_type,
+                    required_metric=required_metric,
+                    broker_type=scenario.data_broker_type,
+                    broker_metric=broker_metric,
+                    market_type=market_type,
+                )
+                errors.append(str(compat_error))
 
         return errors
 

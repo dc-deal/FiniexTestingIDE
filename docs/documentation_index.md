@@ -42,6 +42,7 @@
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (balance/drawdown thresholds, AutoTrader only) |
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |
+| [Market Capabilities](architecture/market_capabilities.md) | Worker activity metric declaration, pre-flight compatibility validation |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 
 ## Data Pipeline
@@ -92,3 +93,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
+| [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
