@@ -3,7 +3,7 @@ FiniexTestingIDE - Envelope Worker
 Bar-based envelope/bollinger band computation
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -91,6 +91,11 @@ class EnvelopeWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """Envelope/Bollinger is price-based — no activity-data dependency."""
+        return None
 
     # ============================================
     # DYNAMIC: Instance methods für Runtime

@@ -29,6 +29,7 @@ class SuiteResult:
     skipped: int
     exit_code: int
     duration: float
+    failed_tests: List[str]
 
 
 class TestRunnerCli:
@@ -65,28 +66,43 @@ class TestRunnerCli:
             sys.exit(1)
 
         skip_dirs = set(excluded + ignored)
-        suites: List[str] = []
+        # Each entry: (display_name, list of pytest path args)
+        suites: List[tuple] = []
         for group_dir in sorted(tests_dir.iterdir()):
             if not group_dir.is_dir() or group_dir.name.startswith('__'):
                 continue
             if group_dir.name in skip_dirs:
                 continue
-            # Check if group_dir itself contains test files (flat suite)
-            has_test_files = any(
-                f.name.startswith('test_') for f in group_dir.iterdir() if f.is_file()
-            )
-            if has_test_files:
-                suites.append(group_dir.name)
-            else:
-                # Scan sub-suites within group
-                for suite_dir in sorted(group_dir.iterdir()):
-                    if not suite_dir.is_dir() or suite_dir.name.startswith('__'):
-                        continue
-                    full_name = f'{group_dir.name}/{suite_dir.name}'
-                    if suite_dir.name in skip_dirs or full_name in skip_dirs:
-                        continue
-                    suites.append(full_name)
-        suites.sort()
+
+            subdirs = [
+                d for d in sorted(group_dir.iterdir())
+                if d.is_dir() and not d.name.startswith('__')
+            ]
+            loose_files = [
+                f for f in sorted(group_dir.iterdir())
+                if f.is_file() and f.name.startswith('test_') and f.suffix == '.py'
+            ]
+
+            if not subdirs:
+                # Flat suite: only loose test files at group level
+                suites.append((group_dir.name, [f'tests/{group_dir.name}/']))
+                continue
+
+            # Sub-suites as individual entries
+            for suite_dir in subdirs:
+                full_name = f'{group_dir.name}/{suite_dir.name}'
+                if suite_dir.name in skip_dirs or full_name in skip_dirs:
+                    continue
+                suites.append((full_name, [f'tests/{full_name}/']))
+
+            # Loose top-level test files become a synthetic <group>/_root suite
+            if loose_files:
+                root_name = f'{group_dir.name}/_root'
+                if '_root' in skip_dirs or root_name in skip_dirs:
+                    continue
+                suites.append((root_name, [str(f) for f in loose_files]))
+
+        suites.sort(key=lambda s: s[0])
 
         if not suites:
             print('No test suites found.')
@@ -97,15 +113,15 @@ class TestRunnerCli:
 
         results: List[SuiteResult] = []
         aborted = False
-        max_name_len = max(len(s) for s in suites)
+        max_name_len = max(len(name) for name, _ in suites)
 
-        for suite in suites:
+        for suite_name, pytest_paths in suites:
             # Show "running..." on current line
-            running_text = f"  {suite.ljust(max_name_len)}   running..."
+            running_text = f"  {suite_name.ljust(max_name_len)}   running..."
             sys.stdout.write(running_text)
             sys.stdout.flush()
 
-            result = self._run_suite(suite)
+            result = self._run_suite(suite_name, pytest_paths)
             results.append(result)
 
             # Overwrite "running..." with result
@@ -124,20 +140,20 @@ class TestRunnerCli:
         has_failures = any(r.exit_code != 0 for r in results)
         sys.exit(1 if has_failures else 0)
 
-    def _run_suite(self, suite_name: str) -> SuiteResult:
+    def _run_suite(self, suite_name: str, pytest_paths: List[str]) -> SuiteResult:
         """
         Run a single test suite via subprocess.
 
         Args:
-            suite_name: Name of the test suite directory
+            suite_name: Display name of the suite
+            pytest_paths: Explicit pytest path args (directory or file list)
 
         Returns:
             SuiteResult with parsed test counts and exit code
         """
-        suite_path = f"tests/{suite_name}/"
         start = time.monotonic()
         proc = subprocess.run(
-            [sys.executable, '-m', 'pytest', suite_path, '-v', '--tb=short'],
+            [sys.executable, '-m', 'pytest', *pytest_paths, '-v', '--tb=short'],
             capture_output=True,
             text=True,
             cwd=os.getcwd()
@@ -145,6 +161,7 @@ class TestRunnerCli:
         duration = time.monotonic() - start
 
         passed, failed, errors, skipped = self._parse_pytest_output(proc.stdout)
+        failed_tests = self._parse_failed_tests(proc.stdout)
 
         return SuiteResult(
             name=suite_name,
@@ -153,8 +170,36 @@ class TestRunnerCli:
             errors=errors,
             skipped=skipped,
             exit_code=proc.returncode,
-            duration=duration
+            duration=duration,
+            failed_tests=failed_tests
         )
+
+    def _parse_failed_tests(self, output: str) -> List[str]:
+        """
+        Extract failing test node IDs from the pytest short-summary block.
+
+        Args:
+            output: Full pytest stdout
+
+        Returns:
+            List of 'FAILED <nodeid> - <reason>' lines (reason truncated)
+        """
+        failed: List[str] = []
+        in_summary = False
+        for line in output.splitlines():
+            if 'short test summary info' in line:
+                in_summary = True
+                continue
+            if in_summary:
+                stripped = line.strip()
+                if stripped.startswith('FAILED ') or stripped.startswith('ERROR '):
+                    # Truncate overly long reason text for console readability
+                    if len(stripped) > 200:
+                        stripped = stripped[:197] + '...'
+                    failed.append(stripped)
+                elif stripped.startswith('=') and stripped.endswith('='):
+                    break
+        return failed
 
     def _parse_pytest_output(self, output: str) -> tuple:
         """
@@ -230,6 +275,13 @@ class TestRunnerCli:
         total_skipped = sum(r.skipped for r in results)
         total_duration = sum(r.duration for r in results)
         suites_run = len(results)
+
+        # Print failing test details for every failed suite
+        for result in results:
+            if result.exit_code != 0 and result.failed_tests:
+                print(f"  {result.name}:")
+                for entry in result.failed_tests:
+                    print(f"    {entry}")
 
         if aborted:
             failed_suite = results[-1].name

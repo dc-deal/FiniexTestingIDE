@@ -13,6 +13,7 @@ from datetime import timezone
 from typing import Dict
 from dateutil import parser
 
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import (
     RequirementsMap,
@@ -20,7 +21,6 @@ from python.framework.types.process_data_types import (
     BarRequirement,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.factory.worker_factory import WorkerFactory
 
 
 class AggregateScenarioDataRequirements:
@@ -37,9 +37,17 @@ class AggregateScenarioDataRequirements:
     - Prevents timezone comparison errors
     """
 
-    def __init__(self, logger: AbstractLogger):
-        """Initialize empty requirements collector."""
+    def __init__(self, logger: AbstractLogger, worker_factory: WorkerFactory):
+        """
+        Initialize empty requirements collector.
+
+        Args:
+            logger: Logger instance
+            worker_factory: Shared worker factory used to resolve worker
+                classes for classmethod-based requirement calculation
+        """
         self._logger = logger
+        self._worker_factory = worker_factory
         self.requirements = RequirementsMap()
         self._scenario_count = 0
 
@@ -100,11 +108,9 @@ class AggregateScenarioDataRequirements:
                 strict = scenario.execution_config.get(
                     "strict_parameter_validation", True
                 )
-            worker_factory = WorkerFactory(
-                logger=self._logger, strict_parameter_validation=strict)
 
             # Resolve worker class (from registry) — unpack (class, source_path) tuple
-            worker_class, _ = worker_factory._resolve_worker_class(
+            worker_class, _ = self._worker_factory._resolve_worker_class(
                 worker_type)
 
             # Validate config (ensures 'periods' exists & valid Timeframes for INDICATOR)

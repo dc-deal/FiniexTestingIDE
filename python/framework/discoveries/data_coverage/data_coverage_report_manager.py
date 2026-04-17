@@ -188,15 +188,16 @@ class DataCoverageReportManager:
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-            else:
-                # All checks passed
-                validation_result = ValidationResult(
-                    is_valid=True,
-                    scenario_name=scenario.name,
-                    errors=[],
-                    warnings=[]
-                )
-                scenario.validation_result.append(validation_result)
+                continue
+
+            # All checks passed
+            validation_result = ValidationResult(
+                is_valid=True,
+                scenario_name=scenario.name,
+                errors=[],
+                warnings=[]
+            )
+            scenario.validation_result.append(validation_result)
 
     def validate_after_load(
         self,

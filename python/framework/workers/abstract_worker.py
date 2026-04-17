@@ -4,7 +4,7 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
@@ -174,6 +174,32 @@ class AbstractWorker(ABC):
         Forces explicit type declaration.
         """
         pass
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """
+        Declare the market activity metric this worker requires.
+
+        MUST be overridden by every worker — no default, no silent fallback.
+        The framework validates at pre-flight time that the scenario's broker
+        provides this metric, by cross-referencing
+        market_config.json → primary_activity_metric.
+
+        Returns:
+            Metric string ('volume', 'tick_count', ...) or None if the
+            worker has no activity-data dependency (pure price-based
+            workers like RSI, Envelope, MACD).
+
+        Raises:
+            NotImplementedError: If subclass does not override this method.
+        """
+        raise NotImplementedError(
+            f"{cls.__name__} must declare get_required_activity_metric(). "
+            f"Return 'volume' if the worker consumes real trade volume, "
+            f"'tick_count' if it depends on tick arrival density, or None "
+            f"if it is purely price-based (RSI, Envelope, MACD). "
+            f"See docs/architecture/market_capabilities.md."
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

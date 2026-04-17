@@ -32,7 +32,7 @@ Data Flow:
 4. BacktestingDeterministic extracts metadata for BacktestingMetadata
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
@@ -124,6 +124,11 @@ class BacktestingSampleWorker(AbstractWorker):
     def get_worker_type(cls) -> WorkerType:
         """This is an INDICATOR-type worker (requires warmup bars)."""
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_required_activity_metric(cls) -> Optional[str]:
+        """Backtesting sample worker has no market-data dependency."""
+        return None
 
     # ============================================
     # Instance Methods (Runtime Interface)
