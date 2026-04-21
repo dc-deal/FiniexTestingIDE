@@ -63,14 +63,37 @@ allow_origins=[
 
 For production use, restrict `allow_origins` to the actual deployment domain. No additional changes are needed — the CORS list is the only configuration surface.
 
-## Endpoints (#297 Foundation)
+## Endpoints
 
-| Method | Path | Handler | Description |
-|---|---|---|---|
-| GET | `/api/v1/health` | `health()` | Server liveness check |
-| GET | `/api/v1/brokers` | `list_brokers()` | Broker types available in bar index |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
+| GET | `/api/v1/brokers` | Broker types available in bar index |
+| GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
 
-Full data endpoints (symbols, coverage, bars) are added in #298.
+### Bars Endpoint Details
+
+- `from` and `to` are ISO-8601 UTC datetime strings (e.g. `2026-01-01T00:00:00Z`)
+- Naive datetimes are treated as UTC
+- Response timestamps `t` are **unix seconds UTC**
+- Maximum bars per request: `MAX_BARS = 10_000` — prevents accidental huge responses
+- Valid timeframes: M1, M5, M15, M30, H1, H4, D1 (via `TimeframeConfig`)
+
+### Error Responses
+
+All errors return structured JSON — no raw FastAPI tracebacks:
+```json
+{"error": "not_found", "detail": "Symbol 'XYZ' not found for broker 'mt5'."}
+```
+
+| HTTP | `error` key | Condition |
+|---|---|---|
+| 400 | `invalid_timeframe` | Timeframe not in `TimeframeConfig` registry |
+| 400 | `invalid_range` | `from >= to` |
+| 404 | `not_found` | Unknown broker or symbol |
+| 500 | `config_error` | Broker in bar index but missing from `market_config.json` |
 
 ## Extension Guide — Adding a New Endpoint
 

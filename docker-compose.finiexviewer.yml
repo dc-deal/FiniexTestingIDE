@@ -1,0 +1,52 @@
+# Optional compose extension — FiniexViewer companion integration.
+# See docs/user_guides/finiexviewer_setup.md for full setup instructions.
+#
+# This file is NOT active by default. To enable:
+#   1. Add "docker-compose.finiexviewer.yml" to the dockerComposeFile array
+#      in .devcontainer/devcontainer.json
+#   2. Rebuild the devcontainer (VS Code: Dev Containers — Rebuild Container)
+#
+# Prerequisite: FiniexViewer must exist as a sibling directory on the host:
+#     .../code/FiniexTestingIDE    (this repo)
+#     .../code/FiniexViewer        (companion repo)
+#
+# Activation modes:
+#   Phase 1 — API work only, Viewer folder visible in the dev container:
+#     docker compose up -d
+#
+#   Phase 2 — additionally start the Vite dev server in its own container:
+#     docker compose --profile viewer up -d
+
+services:
+  finiex-dev:
+    # Mount the FiniexViewer project into the dev container so both repos
+    # are accessible from a single editor session. Read-write — the Viewer
+    # code is authored here during development.
+    volumes:
+      - ../FiniexViewer:/viewer
+
+    # FastAPI port — accessible in the browser for OpenAPI UI and manual testing.
+    ports:
+      - "8000:8000"
+
+  # ---------------------------------------------------------------------------
+  # Vite dev server — second container (profile: viewer).
+  # Only starts when activated via --profile viewer. Kept out of the default
+  # stack so backend-only work does not drag along a Node container.
+  # ---------------------------------------------------------------------------
+  finiex-viewer:
+    image: node:20-alpine
+    container_name: finiex-viewer
+    working_dir: /app
+    volumes:
+      - ../FiniexViewer:/app
+    ports:
+      - "5173:5173"
+    environment:
+      # Vite dev proxy resolves this via the compose network (service name = DNS).
+      - VITE_API_BASE_URL=http://finiex-dev:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - finiex-dev
+    profiles:
+      - viewer

@@ -208,7 +208,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 
 - **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
 - **No Partial Fills on Live** - Partial position close supported in backtesting; live execution planned
-- **No Frontend** - CLI and VS Code launch configs only
+- **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
 > **Note on Multiple Positions:** The system supports multiple simultaneous positions, validated by the multi-position test suite (65 tests). However, all included bots use single-position strategies. Multi-position strategies require careful margin management.
 
