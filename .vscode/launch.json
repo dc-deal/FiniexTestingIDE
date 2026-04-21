@@ -543,6 +543,20 @@
             "justMyCode": false
         },
         // ====================================================
+        // 🚀 API SERVER
+        // ====================================================
+        {
+            "name": "🚀 API Server (Dev)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/api_server_cli.py",
+            "args": [
+                "--reload"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
         // ⚡ SCENARIO GENERATION
         // ====================================================
         {
