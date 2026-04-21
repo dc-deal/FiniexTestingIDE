@@ -1,5 +1,6 @@
 {
     "name": "FiniexTestingIDE Dev",
+    // To enable the FiniexViewer visual frontend: see docs/user_guides/finiexviewer_setup.md
     "dockerComposeFile": "../docker-compose.yml",
     "service": "finiex-dev",
     "workspaceFolder": "/app",

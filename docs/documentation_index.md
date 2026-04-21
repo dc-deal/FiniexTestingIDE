@@ -14,6 +14,7 @@
 |----------|-------------|
 | [User Algo Workspace & Loading](user_guides/user_modules_and_hot_reload_mechanics.md) | user_algos/ layout, on-demand loading, hot-reload mechanics |
 | [External Workspace Setup](user_guides/external_workspace_setup.md) | Docker volume setup for external algo directories |
+| [FiniexViewer Setup](user_guides/finiexviewer_setup.md) | Visual frontend — dual-repo dev environment, API server, Vite dev server |
 
 ## Configuration
 
@@ -93,5 +94,6 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
+| [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |

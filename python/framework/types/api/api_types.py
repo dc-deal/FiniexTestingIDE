@@ -16,3 +16,40 @@ class HealthResponse(BaseModel):
 
 class BrokerListResponse(BaseModel):
     brokers: list[str]
+
+
+class SymbolInfo(BaseModel):
+    symbol: str
+    market_type: str
+
+
+class SymbolListResponse(BaseModel):
+    symbols: list[SymbolInfo]
+
+
+class CoverageResponse(BaseModel):
+    start: str          # ISO-8601 UTC
+    end: str            # ISO-8601 UTC
+    timeframes: list[str]
+
+
+class BarResponse(BaseModel):
+    t: int              # unix seconds UTC
+    o: float
+    h: float
+    l: float
+    c: float
+    v: float
+
+
+class ApiException(Exception):
+    """
+    Raised by endpoint handlers to produce a structured JSON error response.
+
+    Response body: {"error": "<error>", "detail": "<detail>"}
+    """
+
+    def __init__(self, status_code: int, error: str, detail: str):
+        self.status_code = status_code
+        self.error = error
+        self.detail = detail
