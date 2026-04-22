@@ -8,6 +8,7 @@ services:
       # Git Konfiguration vom Host übernehmen
       - ~/.gitconfig:/root/.gitconfig:ro
       - ~/.ssh:/root/.ssh:ro # SSH Keys für Git
+      - ~/.claude:/root/.claude # developer tool state — survives container rebuilds
     environment:
       - PYTHONPATH=/app
     stdin_open: true # Für interaktive Shell
