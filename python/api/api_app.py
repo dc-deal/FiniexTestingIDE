@@ -20,7 +20,8 @@ from fastapi.responses import JSONResponse
 
 from python.api.endpoints import bars_router, broker_router
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.api.api_types import ApiException, BrokerListResponse, HealthResponse
+from python.framework.types.api.api_types import ApiException, BrokerListResponse, HealthResponse, TimeframeListResponse
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 APP_VERSION = '1.2.1'
 
@@ -60,6 +61,10 @@ def create_app() -> FastAPI:
     @app.get('/api/v1/health', response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status='ok', version=APP_VERSION)
+
+    @app.get('/api/v1/timeframes', response_model=TimeframeListResponse)
+    def list_timeframes() -> TimeframeListResponse:
+        return TimeframeListResponse(timeframes=TimeframeConfig.sorted())
 
     @app.get('/api/v1/brokers', response_model=BrokerListResponse)
     def list_brokers() -> BrokerListResponse:

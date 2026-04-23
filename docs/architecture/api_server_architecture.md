@@ -68,10 +68,15 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
+| GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
+
+### Timeframes Endpoint Details
+
+Returns the globally configured timeframe list in ascending order (by bar duration). The list mirrors `TimeframeConfig._REGISTRY` — adding a new timeframe there automatically makes it appear here. No parameters.
 
 ### Bars Endpoint Details
 
