@@ -84,22 +84,28 @@ def _sample_bars_df() -> pd.DataFrame:
 
 class TestTimeframes:
 
-    def test_list_timeframes(self, client):
+    def test_list_timeframes_structure(self, client):
         r = client.get('/api/v1/timeframes')
         assert r.status_code == 200
         data = r.json()
         assert 'timeframes' in data
         tfs = data['timeframes']
-        assert isinstance(tfs, list)
         assert len(tfs) > 0
-        assert 'M1' in tfs
-        assert 'D1' in tfs
+        assert all('name' in tf and 'minutes' in tf for tf in tfs)
 
-    def test_timeframes_are_sorted_ascending(self, client):
+    def test_list_timeframes_contains_known_entries(self, client):
         r = client.get('/api/v1/timeframes')
         tfs = r.json()['timeframes']
-        from python.framework.utils.timeframe_config_utils import TimeframeConfig
-        assert tfs == TimeframeConfig.sorted()
+        by_name = {tf['name']: tf['minutes'] for tf in tfs}
+        assert by_name.get('M1') == 1
+        assert by_name.get('H1') == 60
+        assert by_name.get('D1') == 1440
+
+    def test_timeframes_sorted_ascending_by_minutes(self, client):
+        r = client.get('/api/v1/timeframes')
+        tfs = r.json()['timeframes']
+        minutes = [tf['minutes'] for tf in tfs]
+        assert minutes == sorted(minutes)
 
 
 # ---------------------------------------------------------------------------

@@ -42,8 +42,13 @@ class BarResponse(BaseModel):
     v: float
 
 
+class TimeframeInfo(BaseModel):
+    name: str
+    minutes: int
+
+
 class TimeframeListResponse(BaseModel):
-    timeframes: list[str]
+    timeframes: list[TimeframeInfo]
 
 
 class ApiException(Exception):
