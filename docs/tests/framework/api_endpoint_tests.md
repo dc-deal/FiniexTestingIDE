@@ -9,6 +9,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 
 | Class | Test | Validates |
 |---|---|---|
+| `TestTimeframes` | `test_list_timeframes_structure` | Response has `timeframes` list, each entry has `name` and `minutes` |
+| `TestTimeframes` | `test_list_timeframes_contains_known_entries` | M1=1min, H1=60min, D1=1440min are present and correct |
+| `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
