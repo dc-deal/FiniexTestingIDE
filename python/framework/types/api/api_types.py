@@ -42,6 +42,10 @@ class BarResponse(BaseModel):
     v: float
 
 
+class TimeframeListResponse(BaseModel):
+    timeframes: list[str]
+
+
 class ApiException(Exception):
     """
     Raised by endpoint handlers to produce a structured JSON error response.

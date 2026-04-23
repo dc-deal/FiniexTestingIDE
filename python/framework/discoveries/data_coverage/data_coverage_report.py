@@ -5,13 +5,8 @@ Validates time range coverage and detects gaps in tick data
 Gap detection and human-readable coverage reports
 """
 
-from dataclasses import dataclass
-from datetime import datetime
 from typing import List, Dict
-from pathlib import Path
-
 import pandas as pd
-import pytz
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
