@@ -39,10 +39,13 @@ Test suites are grouped by pipeline under `tests/`:
 tests/
 ├── autotrader/       # AutoTrader pipeline (integration, safety, live_executor, order_guard)
 ├── simulation/       # Backtesting pipeline (baseline, margin_validation, benchmark, ...)
+├── parity/           # Dual-pipeline parity tests — simulation vs. AutoTrader (#294)
 ├── data/             # Data pipeline (import_pipeline, data_integration, ...)
 ├── framework/        # Framework mechanics (bar_rendering, worker_tests, user_namespace)
 └── shared/           # Helper modules (not a suite — ignored)
 ```
+
+For the full test classification (marks, test types, suite map) see [test_taxonomy.md](test_taxonomy.md).
 
 Integration tests that use JSON profiles/scenario sets must reference the `backtesting/`
 subdirectory of the respective config source:
@@ -69,20 +72,29 @@ Each integration test suite has its own dedicated config file named after the te
 
 Successful run:
 ```
-Running 18 test suites...
+Running 26 test suites...
 ──────────────────────────────────────────────────
-  autotrader/integration             39 passed  (18s)
+  autotrader/integration             39 passed  (15s)
   autotrader/live_executor           58 passed  (4s)
   data/import_pipeline               57 passed  (7s)
+  parity                             no tests   (0s)
   simulation/baseline                45 passed  (9s)
   ...
 ──────────────────────────────────────────────────
 TOTAL: 858 passed  (2m 23s)
+
+  autotrader        150 passed
+  data              124 passed
+  framework         298 passed
+  parity            0 passed
+  simulation        286 passed
 ```
+
+The per-category breakdown groups suites by their top-level directory. Suites with no collected tests show `no tests` (e.g. placeholder directories like `parity/` before Phase 2 lands).
 
 Aborted run (fail_fast):
 ```
-Running 18 test suites...
+Running 26 test suites...
 ──────────────────────────────────────────────────
   autotrader/integration             39 passed  (18s)
   data/import_pipeline               ❌ exit code 2  (4s)

@@ -5,12 +5,11 @@ Parquet-based tick replay for AutoTrader testing without live data.
 
 import queue
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
-from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.data_preparation.tick_parquet_reader import load_ticks_from_parquet
 from python.framework.types.market_types.market_data_types import TickData
 
 
@@ -114,37 +113,4 @@ class MockTickSource(AbstractTickSource):
         Returns:
             List of TickData objects sorted by time_msc
         """
-        path = Path(self._parquet_path)
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Parquet tick data not found: {self._parquet_path}"
-            )
-
-        df = read_tick_parquet(path)
-
-        # Ensure time_msc column exists
-        if 'time_msc' not in df.columns:
-            raise ValueError(
-                f"Parquet file missing 'time_msc' column: {self._parquet_path}"
-            )
-
-        # Sort by time_msc for correct replay order
-        df = df.sort_values('time_msc').reset_index(drop=True)
-
-        ticks = []
-        for _, row in df.iterrows():
-            time_msc = int(row['time_msc'])
-            ts = datetime.fromtimestamp(time_msc / 1000, tz=timezone.utc)
-
-            tick = TickData(
-                timestamp=ts,
-                symbol=self._symbol,
-                bid=float(row['bid']),
-                ask=float(row['ask']),
-                volume=float(row.get('volume', 0.0)),
-                time_msc=time_msc,
-                collected_msc=int(row.get('collected_msc', 0)),
-            )
-            ticks.append(tick)
-
-        return ticks
+        return load_ticks_from_parquet(Path(self._parquet_path), self._symbol)
