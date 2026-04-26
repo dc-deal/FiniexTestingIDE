@@ -14,6 +14,7 @@ All tests are classified by **pipeline domain** and **test type**. pytest marks 
 | `framework` | `tests/framework/` | `pytest -m framework` |
 | `data` | `tests/data/` | `pytest -m data` |
 | `benchmark` | `tests/simulation/benchmark/` | excluded from normal runner |
+| `live_adapter` | `tests/live_adapters/` | excluded from normal runner — requires real account |
 | `integration` | any path containing `/integration/` | `pytest -m integration` |
 | `unit` | order_guard, live_executor, safety, bar_rendering, workers, etc. | `pytest -m unit` |
 
@@ -27,6 +28,7 @@ simulation             ✓          ✓                               ✓
 autotrader             ✓          ✓            ✓        ✓
 framework              ✓
 data                   ✓          ✓
+live_adapters                                            ✓
 ```
 
 **Axes:**
@@ -67,12 +69,16 @@ tests/
 │   ├── user_namespace/    unit — USER worker/decision discovery
 │   └── api/               unit — REST API endpoints
 │
-└── data/
-    ├── import_pipeline/   unit + integration — tick import, duplicate detection
-    ├── data_integration/  integration — volume integrity
-    ├── inter_tick_interval/   unit — interval stats
-    ├── scenario_generator/    unit — block generation
-    └── tick_processing_budget/ unit — budget filtering
+├── data/
+│   ├── import_pipeline/   unit + integration — tick import, duplicate detection
+│   ├── data_integration/  integration — volume integrity
+│   ├── inter_tick_interval/   unit — interval stats
+│   ├── scenario_generator/    unit — block generation
+│   └── tick_processing_budget/ unit — budget filtering
+│
+└── live_adapters/         live-api — real broker API validation (excluded from runner)
+    ├── test_kraken_adapter_order_lifecycle.py   Phase 1: AddOrder dry-run (validate=true)
+    └── reports/           release receipt JSON files (committed per release)
 ```
 
 ---

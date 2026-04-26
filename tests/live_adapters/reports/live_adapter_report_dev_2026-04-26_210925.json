@@ -1,0 +1,23 @@
+{
+  "release_version": "dev",
+  "git_commit": "f2b9321",
+  "timestamp": "2026-04-26T21:09:25+00:00",
+  "result": "passed",
+  "tests_passed": 6,
+  "tests_failed": 0,
+  "tests_skipped": 0,
+  "tests_run": [
+    "test_market_buy_dryrun",
+    "test_market_sell_dryrun",
+    "test_limit_buy_dryrun",
+    "test_limit_buy_with_sltp_dryrun",
+    "test_invalid_symbol_rejected",
+    "test_below_minimum_lot_rejected"
+  ],
+  "broker_settings": {
+    "api_base_url": "https://api.kraken.com",
+    "dry_run": true,
+    "rate_limit_interval_s": 1.0,
+    "request_timeout_s": 15
+  }
+}
