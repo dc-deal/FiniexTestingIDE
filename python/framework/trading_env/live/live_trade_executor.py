@@ -658,6 +658,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         try:
             response = self.broker.adapter.modify_order(
                 broker_ref=broker_ref,
+                symbol=target_pending.symbol,
                 new_price=adapter_price,
                 new_stop_loss=adapter_sl,
                 new_take_profit=adapter_tp,

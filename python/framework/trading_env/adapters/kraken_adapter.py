@@ -674,6 +674,7 @@ class KrakenAdapter(AbstractAdapter):
     def modify_order(
         self,
         broker_ref: str,
+        symbol: str,
         new_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
@@ -686,6 +687,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Args:
             broker_ref: Current Kraken txid
+            symbol: Trading symbol (e.g., 'ETHUSD') — required by Kraken EditOrder as pair
             new_price: New limit price (None=no change)
             new_stop_loss: New stop loss level (None=no change)
             new_take_profit: New take profit level (None=no change)
@@ -704,7 +706,8 @@ class KrakenAdapter(AbstractAdapter):
                 timestamp=now,
             )
 
-        data: Dict[str, str] = {'txid': broker_ref}
+        pair = self._resolve_kraken_pair(symbol)
+        data: Dict[str, str] = {'txid': broker_ref, 'pair': pair}
         if new_price is not None:
             data['price'] = str(new_price)
 

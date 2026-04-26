@@ -77,7 +77,9 @@ tests/
 │   └── tick_processing_budget/ unit — budget filtering
 │
 └── live_adapters/         live-api — real broker API validation (excluded from runner)
-    ├── test_kraken_adapter_order_lifecycle.py   Phase 1: AddOrder dry-run (validate=true)
+    ├── test_kraken_adapter_order_lifecycle_dry.py    AddOrder dry-run (validate=true), no funds
+    ├── test_kraken_adapter_order_lifecycle_live.py   Full lifecycle, real orders, no fills
+    └── test_kraken_adapter_order_lifecycle_fill.py   Fill validation, real MARKET execution
     └── reports/           release receipt JSON files (committed per release)
 ```
 
