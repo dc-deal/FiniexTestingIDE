@@ -1402,6 +1402,19 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "🧩 Pytest: Parity (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/parity/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
     ],
     "inputs": [
         {

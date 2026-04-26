@@ -84,6 +84,20 @@ _MOCK_BROKER_CONFIG: Dict[str, Any] = {
             "stops_level": 0,
             "freeze_level": 0,
         },
+        "ETHUSD": {
+            "description": "ETH vs USD",
+            "base_currency": "ETH",
+            "quote_currency": "USD",
+            "trade_allowed": True,
+            "volume_min": 0.002,
+            "volume_max": 10000,
+            "volume_step": 1e-8,
+            "contract_size": 1,
+            "tick_size": 0.01,
+            "digits": 2,
+            "stops_level": 0,
+            "freeze_level": 0,
+        },
     },
 }
 
@@ -551,6 +565,16 @@ class MockBrokerAdapter(AbstractAdapter):
             points: Price offset applied to fills (positive = worse price)
         """
         self._slippage_points = points
+
+    def add_symbol(self, symbol: str, spec: Dict[str, Any]) -> None:
+        """
+        Register an additional symbol specification at runtime.
+
+        Args:
+            symbol: Trading symbol (e.g., 'EURUSD')
+            spec: Symbol spec dict with keys matching _MOCK_BROKER_CONFIG symbols entries
+        """
+        self.broker_config['symbols'][symbol] = spec
 
     def get_maker_fee(self) -> float:
         """Get mock maker fee percentage."""

@@ -163,13 +163,17 @@ class TestRunnerCli:
         passed, failed, errors, skipped = self._parse_pytest_output(proc.stdout)
         failed_tests = self._parse_failed_tests(proc.stdout)
 
+        # Exit code 5 = pytest "no tests collected" — not a failure,
+        # just an empty suite (e.g. placeholder directory with no test files yet).
+        exit_code = 0 if proc.returncode == 5 else proc.returncode
+
         return SuiteResult(
             name=suite_name,
             passed=passed,
             failed=failed,
             errors=errors,
             skipped=skipped,
-            exit_code=proc.returncode,
+            exit_code=exit_code,
             duration=duration,
             failed_tests=failed_tests
         )
@@ -243,9 +247,12 @@ class TestRunnerCli:
         duration = self._format_duration(result.duration)
 
         if result.exit_code == 0:
-            status = f"{result.passed} passed"
-            if result.skipped > 0:
-                status += f", {result.skipped} skipped"
+            if result.passed == 0 and result.skipped == 0:
+                status = 'no tests'
+            else:
+                status = f"{result.passed} passed"
+                if result.skipped > 0:
+                    status += f", {result.skipped} skipped"
             line = f"  {name_col}   {status}  ({duration})"
         else:
             parts = []
@@ -263,7 +270,7 @@ class TestRunnerCli:
 
     def _print_summary(self, results: List[SuiteResult], aborted: bool) -> None:
         """
-        Print final summary with total duration.
+        Print final summary with total duration and per-category breakdown.
 
         Args:
             results: All collected suite results
@@ -297,6 +304,27 @@ class TestRunnerCli:
             parts.append(f"{total_skipped} skipped")
 
         print(f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
+
+        # Per-category breakdown (grouped by first path component)
+        categories: dict = {}
+        for r in results:
+            cat = r.name.split('/')[0]
+            if cat not in categories:
+                categories[cat] = {'passed': 0, 'failed': 0, 'errors': 0}
+            categories[cat]['passed'] += r.passed
+            categories[cat]['failed'] += r.failed
+            categories[cat]['errors'] += r.errors
+
+        if len(categories) > 1:
+            print()
+            for cat in sorted(categories):
+                counts = categories[cat]
+                cat_parts = [f"{counts['passed']} passed"]
+                if counts['failed'] > 0:
+                    cat_parts.append(f"{counts['failed']} failed")
+                if counts['errors'] > 0:
+                    cat_parts.append(f"{counts['errors']} errors")
+                print(f"  {cat:<16} {', '.join(cat_parts)}")
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
