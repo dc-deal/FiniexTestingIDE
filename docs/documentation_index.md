@@ -74,6 +74,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
+| [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Dry-run order lifecycle against real Kraken API — real account required, release-gate |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |

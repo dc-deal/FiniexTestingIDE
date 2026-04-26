@@ -1056,7 +1056,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "backtesting_loadtest_40_scenarios.json"
+                "backtesting/backtesting_loadtest_40_scenarios.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -1409,6 +1409,19 @@
             "module": "pytest",
             "args": [
                 "tests/parity/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Live Adapters (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_adapters/",
                 "-v",
                 "--tb=short"
             ],

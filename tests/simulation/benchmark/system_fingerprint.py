@@ -14,6 +14,8 @@ import psutil
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple
 
+from tests.shared.report_utils import get_git_commit  # noqa: F401 — re-exported for benchmark conftest
+
 
 @dataclass
 class SystemFingerprint:
@@ -153,23 +155,3 @@ def find_matching_system(
     return None, error_msg
 
 
-def get_git_commit() -> Optional[str]:
-    """
-    Get current git commit hash.
-
-    Returns:
-        Short commit hash or None if not in git repo
-    """
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return None

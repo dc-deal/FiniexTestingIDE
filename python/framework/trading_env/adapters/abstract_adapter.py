@@ -403,6 +403,7 @@ class AbstractAdapter(ABC):
     def modify_order(
         self,
         broker_ref: str,
+        symbol: str,
         new_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
@@ -415,6 +416,7 @@ class AbstractAdapter(ABC):
 
         Args:
             broker_ref: Broker's order reference ID
+            symbol: Trading symbol (e.g., 'ETHUSD') — required by some brokers for modification
             new_price: New limit price (None=no change)
             new_stop_loss: New stop loss level (None=no change)
             new_take_profit: New take profit level (None=no change)

@@ -10,6 +10,7 @@ Mark taxonomy (see docs/tests/test_taxonomy.md):
 - parity        tests/parity/
 - framework     tests/framework/
 - data          tests/data/
+- live_adapter  tests/live_adapters/
 - benchmark     tests/simulation/benchmark/
 - integration   tests with 'integration' in their path
 - unit          order_guard, live_executor, safety, bar_rendering, workers, etc.
@@ -34,6 +35,10 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.framework)
         if '/tests/data/' in path:
             item.add_marker(pytest.mark.data)
+
+        # Live broker adapter tests (excluded from normal runner — require real account)
+        if '/tests/live_adapters/' in path:
+            item.add_marker(pytest.mark.live_adapter)
 
         # Benchmark (subset of simulation — excluded from normal runner)
         if '/tests/simulation/benchmark/' in path:

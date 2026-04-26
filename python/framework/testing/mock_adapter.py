@@ -489,6 +489,7 @@ class MockBrokerAdapter(AbstractAdapter):
     def modify_order(
         self,
         broker_ref: str,
+        symbol: str,
         new_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
@@ -502,6 +503,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         Args:
             broker_ref: Broker's order reference ID
+            symbol: Trading symbol (unused in mock, required for interface compliance)
             new_price: New limit price (None=no change)
             new_stop_loss: New stop loss level (None=no change)
             new_take_profit: New take profit level (None=no change)
