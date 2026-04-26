@@ -22,8 +22,8 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 | `MockBrokerAdapter` | `python/framework/testing/mock_adapter.py` | Simulates broker API responses |
 | `MockOrderExecution` | `python/framework/testing/mock_order_execution.py` | Test utility: creates executor + feeds ticks |
 | `MockExecutionMode` | `python/framework/testing/mock_adapter.py` | Enum: execution behavior modes |
-| `BrokerResponse` | `python/framework/types/live_execution_types.py` | Standardized broker reply |
-| `TimeoutConfig` | `python/framework/types/live_execution_types.py` | Timeout thresholds |
+| `BrokerResponse` | `python/framework/types/live_types/live_execution_types.py` | Standardized broker reply |
+| `TimeoutConfig` | `python/framework/types/live_types/live_execution_types.py` | Timeout thresholds |
 
 ---
 
@@ -227,7 +227,6 @@ Full test documentation: `docs/tests/autotrader/live_executor_tests.md`
 ```
 python/framework/
   testing/
-    __init__.py
     mock_adapter.py              ← MockBrokerAdapter, MockExecutionMode
     mock_order_execution.py      ← MockOrderExecution utility
   trading_env/
@@ -237,7 +236,8 @@ python/framework/
     adapters/
       abstract_adapter.py        ← Tier 3: execute_order, check_order_status, cancel_order
   types/
-    live_execution_types.py      ← BrokerResponse, BrokerOrderStatus, TimeoutConfig
+    live_types/
+      live_execution_types.py    ← BrokerResponse, BrokerOrderStatus, TimeoutConfig
   exceptions/
     live_execution_errors.py     ← BrokerConnectionError, OrderTimeoutError
   factory/
