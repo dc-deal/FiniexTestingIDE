@@ -113,8 +113,8 @@ def assert_portfolio_equal(
         at_stats: PortfolioStats from AutoTrader
         float_tolerance: Absolute tolerance for float comparisons
     """
-    assert sim_stats.balance == pytest.approx(at_stats.balance, abs=float_tolerance), \
-        f'balance: sim={sim_stats.balance}, at={at_stats.balance}'
+    assert sim_stats.current_balance == pytest.approx(at_stats.current_balance, abs=float_tolerance), \
+        f'current_balance: sim={sim_stats.current_balance}, at={at_stats.current_balance}'
     assert sim_stats.total_profit == pytest.approx(at_stats.total_profit, abs=float_tolerance), \
         f'total_profit: sim={sim_stats.total_profit}, at={at_stats.total_profit}'
     assert sim_stats.total_loss == pytest.approx(at_stats.total_loss, abs=float_tolerance), \
