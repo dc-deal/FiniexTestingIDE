@@ -4,24 +4,27 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.2.1
+> **Version:** 1.2.2
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.2.1
+## What's New in 1.2.2
 
-- **Millisecond-Based Latency Timing** — Tick-based latency replaced with millisecond-timestamp timing. Fill detection uses `collected_msc` / `time_msc` for realistic broker delay simulation.
-- **Inbound-Only Fill Semantics** — Fill price determined at broker arrival (`broker_fill_msc = placed_at_msc + inbound_delay`). Matches industry standard (QuantConnect, Backtrader, Zipline, MetaTrader). Portfolio updated immediately — no outbound delay queue.
-- **Tick Processing Budget** — Deterministic per-tick processing time simulation with configurable budget and clipping detection.
-- **Filtering Bypass for Broker Simulation** — Flag-based tick loop split ensures filtered ticks still pass through broker simulation (latency drain, active order monitoring).
-- **Generator Profile System** — Volatility-aware block generation with profile-based scenario selection.
-- **Post-Run Block Splitting Correctness Metric** — Quality metric for generator block boundaries in batch reports.
-- **Generator Warmup Removal** — Eliminated redundant warmup time from generator calculations.
+- **FiniexAutoTrader — Live Trading Pipeline** — Connects to real brokers for live and paper trading. Processes real-time tick streams, evaluates strategies continuously, and executes orders through broker APIs. Currently supports Kraken Spot with dry-run (order validation without execution) and live modes. Production-validated: end-to-end live trades executed and verified.
+- **Live Console UI** — Rich terminal dashboard during live sessions: session health, portfolio balance with spot dual-balance breakdown, open positions, active orders, trade history, algo state with configurable display labels, and worker performance metrics. Responsive 1/2/3-column layout.
+- **Spot Trading Model** — Full dual-balance tracking (quote currency + held asset). Equity calculation includes held assets at current market price. Safety circuit breaker operates on equity rather than raw cash balance.
+- **Order Guard & Position Safety** — Duplicate open-position guard prevents multiple entries on repeated signals. SHORT protection in spot mode. Direction-specific rejection cooldown after broker-side rejections.
+- **AwarenessChannel** — Narration channel for decision logic: emit named strategy moments that surface in the live display without impacting execution.
+- **REST API Foundation** — Read-only FastAPI server for tick and bar data. Foundation for FiniexViewer and remote session monitoring.
+- **Dual-Pipeline Parity Tests** — Regression suite ensuring the backtesting simulation and AutoTrader pipelines produce identical results for the same strategy and data.
+- **User Algo Workspace** — `user_algos/` consolidates USER workers and decision logics into a gitignored, independently version-controlled workspace.
+- **Worker & Decision Output Schema** — Typed output parameters with display labels. Uniform schema across all workers and decision logics — feeds directly into the live display algo state panel.
 
 ### Previous Releases
 
+- **1.2.1** — Millisecond-based latency timing, inbound-only fill semantics, tick processing budget, generator profile system
 - **1.2.0** — USER Namespace, trading core completion (all order types), tick data trimming, unified test runner, discovery cache
 - **1.1.2** — STOP/STOP_LIMIT orders, active order preservation and reporting
 - **1.1.1** — Live Trade Executor, MockBrokerAdapter, margin/multi-position/pending stats test suites
@@ -31,7 +34,7 @@
 
 ## What is FiniexTestingIDE?
 
-FiniexTestingIDE is a high-performance backtesting framework for forex and crypto trading strategies. It processes real tick data, simulates realistic broker execution, and provides comprehensive performance analysis.
+FiniexTestingIDE is a high-performance backtesting and live trading framework for forex and crypto strategies. It processes real tick data, simulates realistic broker execution, and connects directly to live brokers for production trading.
 
 **Core capabilities:**
 - ✅ Tick-by-tick backtesting with real market data
@@ -39,6 +42,7 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - ✅ Multi-scenario parallel execution
 - ✅ Deterministic, reproducible results (seeded randomness)
 - ✅ Multi-market support (Forex via MT5, Crypto via Kraken)
+- ✅ Live trading via FiniexAutoTrader (Kraken Spot, production-validated)
 - ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites
 - ✅ Validated performance — standardized benchmark certificate with regression detection
 
@@ -61,7 +65,17 @@ FiniexTestingIDE is a high-performance backtesting framework for forex and crypt
 - **Parameter Validation** - Schema-based validation with strict/non-strict modes
 - **USER Namespace** - Custom workers and decision logic with auto-discovery and hot-reload
 
-### Trade Simulation & Live Execution
+### FiniexAutoTrader (Live Trading)
+- **Live Pipeline** - Real-time tick loop connecting broker WebSocket → workers → decision logic → order execution
+- **Kraken Spot Adapter** - WebSocket v2 tick source, REST warmup (OHLC bars), live account balance, order execution
+- **Dry-Run Mode** - Full pipeline validation without order execution (`validate=true` on Kraken)
+- **Live Console UI** - Rich terminal dashboard: session health, portfolio, positions, orders, trade history, algo state
+- **Spot Trading Model** - Dual-balance (quote + base asset), equity calculation, safety circuit breaker on equity
+- **Order Guard** - Duplicate signal guard, SHORT protection in spot mode, rejection cooldown
+- **AwarenessChannel** - Decision logic narration channel for live display integration
+- **Clipping Monitor** - Detects when tick processing time exceeds tick arrival interval
+
+### Trade Simulation & Execution
 - **Realistic Execution** - Inbound latency simulation with ms-timestamp fill detection (seeded)
 - **Live Trade Executor** - Broker adapter communication with pending order tracking
 - **Spread Calculation** - Live bid/ask spread from tick data
@@ -196,6 +210,8 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 
 **Benchmark Certificate:** Each release includes a benchmark report validating throughput performance against registered system baselines (3-run median, tolerance-based regression detection). The certificate is verified automatically in CI. See [`docs/tests/simulation/benchmark_tests.md`](docs/tests/simulation/benchmark_tests.md) for details.
 
+**Live Adapter Certificate:** Each release includes a live adapter report validating the full Kraken API contract — dry-run order validation, limit order lifecycle (place → modify → cancel), and market order round-trip (buy + sell with real fills). Requires a Kraken account with API key; no funds consumed beyond minimal trading fees. See [`docs/tests/live_adapters/kraken_adapter_integration_tests.md`](docs/tests/live_adapters/kraken_adapter_integration_tests.md) for details.
+
 ---
 
 ## Documentation
@@ -210,17 +226,21 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - **No Partial Fills on Live** - Partial position close supported in backtesting; live execution planned
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
-> **Note on Multiple Positions:** The system supports multiple simultaneous positions, validated by the multi-position test suite (65 tests). However, all included bots use single-position strategies. Multi-position strategies require careful margin management.
+> **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests. No core decision logic actively uses it yet — example development is planned. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
 
 ---
 
 ## Roadmap
 
-**Horizon 1 — Foundation: Complete (V1.2)**
+**Horizon 1 — Foundation: Complete (V1.1–V1.2)**
 - Trading simulation core with all order types (Market, Limit, Stop, Stop-Limit, Partial Close)
 - USER Namespace — custom workers and decision logic outside framework code
 - Multi-market data pipeline (MT5 Forex + Kraken Spot, 16 instruments)
 - Unified test infrastructure and discovery cache management
+
+**Horizon 2 — Live Trading: In Progress (V1.3)**
+- FiniexAutoTrader pipeline with Kraken Spot, production-validated (V1.2.2)
+- Remaining: Reconciliation Layer, Config Architecture Unification, Production Bot
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 
