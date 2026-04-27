@@ -54,7 +54,7 @@ tests/
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
-│   ├── integration/       integration — mock session, trade lifecycle (full pipeline)
+│   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveOrderTracker
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   └── safety/            unit — circuit breaker (margin + spot)
