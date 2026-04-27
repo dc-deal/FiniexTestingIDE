@@ -7,12 +7,12 @@ Extracted from BatchOrchestrator to separate data preparation logic.
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
-from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
+from python.framework.trading_env.broker_config import BrokerType
 from python.framework.types.process_data_types import ClippingStats, DataLoadTimings, ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.logging.abstract_logger import AbstractLogger
-from typing import Dict, List, Optional, Protocol, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 
 class StatusBroadcaster(Protocol):
@@ -48,7 +48,6 @@ class DataPreparationCoordinator:
         self._scenarios = scenarios
         self._logger = logger
         self._data_preparator = SharedDataPreparator(logger)
-        self._broker_preparator = BrokerDataPreparator(scenarios, logger)
         self._app_config = app_config
 
     def get_tick_index_manager(self) -> TickIndexManager:
@@ -57,6 +56,7 @@ class DataPreparationCoordinator:
     def prepare(
         self,
         requirements_map: RequirementsMap,
+        broker_configs: Dict[BrokerType, Dict[str, Any]],
         status_broadcaster: Optional[StatusBroadcaster] = None
     ) -> Tuple[Dict[int, ProcessDataPackage], Dict[int, ClippingStats], DataLoadTimings]:
         """
@@ -67,6 +67,7 @@ class DataPreparationCoordinator:
 
         Args:
             requirements_map: Aggregated requirements from all scenarios
+            broker_configs: Serialized broker configs from BrokerDataPreparator
             status_broadcaster: Optional status broadcaster for live updates
 
         Returns:
@@ -77,17 +78,6 @@ class DataPreparationCoordinator:
         """
         self._logger.info("📄 Phase 1: Preparing shared data...")
 
-        # ========================================================================
-        # 1.1 PREPARE BROKER CONFIG FIRST
-        # ========================================================================
-        if status_broadcaster:
-            status_broadcaster.broadcast_status(ScenarioStatus.WARMUP_TRADER)
-
-        broker_configs = self._broker_preparator.prepare()
-
-        # ========================================================================
-        # 1.2 PREPARE SCENARIO-SPECIFIC PACKAGES
-        # ========================================================================
         # Broadcast status: Loading ticks
         if status_broadcaster:
             status_broadcaster.broadcast_status(
@@ -108,11 +98,3 @@ class DataPreparationCoordinator:
 
         return scenario_packages, clipping_stats_map, load_timings
 
-    def get_broker_scenario_map(self) -> dict:
-        """
-        Get broker-to-scenario mapping.
-
-        Returns:
-            Broker scenario map from broker preparator
-        """
-        return self._broker_preparator.get_broker_scenario_map()
