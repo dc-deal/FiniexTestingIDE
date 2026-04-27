@@ -472,7 +472,9 @@ class BatchOrchestrator:
             batch_warmup_time=batch_warmup_time,
             batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
-            broker_scenario_map=_broker_preparator.get_broker_scenario_map(),
+            broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
+                self._scenario_set.get_valid_scenarios()
+            ),
             # clipping stats from tick processing budget (main process, not subprocess)
             clipping_stats_map=clipping_stats_map,
             # per-phase warmup timing breakdown

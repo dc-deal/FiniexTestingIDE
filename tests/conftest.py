@@ -54,6 +54,7 @@ def pytest_collection_modifyitems(items):
             '/tests/autotrader/live_executor/',
             '/tests/autotrader/safety/',
             '/tests/framework/bar_rendering/',
+            '/tests/framework/batch_validations/',
             '/tests/framework/worker_tests/',
             '/tests/framework/market_compatibility/',
             '/tests/framework/tick_parquet_reader/',

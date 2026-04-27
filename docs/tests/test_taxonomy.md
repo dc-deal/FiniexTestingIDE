@@ -63,6 +63,7 @@ tests/
 │
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency
+│   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization

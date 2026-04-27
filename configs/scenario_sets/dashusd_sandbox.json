@@ -48,7 +48,7 @@
     {
       "name": "DASHUSD_sandbox_01",
       "symbol": "DASHUSD",
-      "data_broker_type": "kraken_spot",
+      "data_broker_type": "mt5",
       "start_date": "2026-01-25T10:00:00+00:00",
       "end_date": "2026-02-15T10:00:00+00:00",
       "max_ticks": 20000,

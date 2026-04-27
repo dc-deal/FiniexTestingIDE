@@ -51,11 +51,8 @@ class BrokerSummary(AbstractBatchSummarySection):
             # already pre sorted and de-duplicated.
             self._symbol_specs[broker_key] = {}
             for symbol in sorted(broker_scenario_info.symbols):
-                try:
-                    symbol_spec = broker_config.get_symbol_specification(symbol)
-                    self._symbol_specs[broker_key][symbol] = symbol_spec
-                except ValueError:
-                    pass  # symbol invalid/not registered — scenario was invalidated in Phase 0
+                symbol_spec = broker_config.get_symbol_specification(symbol)
+                self._symbol_specs[broker_key][symbol] = symbol_spec
 
     def render(self, renderer: ConsoleRenderer, compact: bool = False, threshold: int = 9):
         """
