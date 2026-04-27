@@ -37,6 +37,25 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 
 **Runtime:** ~6 seconds total (session shared across 14 tests via `scope='module'`, LogFiles test runs own session).
 
+### test_autotrader_trade_scenarios.py (12 Tests)
+
+Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level propagation, duplicate signal suppression, and resilience under minimal warmup data.
+
+Each class runs an independent session from its own profile. Sessions are module-scoped.
+
+> **Architectural note:** In the AutoTrader pipeline, SL/TP triggering is broker-side (live: Kraken handles it). Engine-side SL/TP monitoring (`_check_sl_tp_levels`) runs only in `ExecutorMode.SIMULATION`. `LiveTradeExecutor` uses `LIVE` mode — MockAdapter does not implement broker-side SL/TP monitoring, so positions always close via `SCENARIO_END` in these tests. The SL/TP tests verify the configuration propagation path, not the trigger path.
+
+| Class | Tests | What it validates |
+|-------|-------|-------------------|
+| `TestStopLossConfiguration` | 3 | SL level flows: decision → executor → TradeRecord.stop_loss == 89200.0; entry_price > 0; no session errors |
+| `TestTakeProfitConfiguration` | 3 | TP level flows: decision → executor → TradeRecord.take_profit == 89350.0; entry_price > 0; no session errors |
+| `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); SCENARIO_END close; no errors |
+| `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
+
+**Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.
+
+**Runtime:** ~6 seconds total across all 4 sessions.
+
 ### test_live_clipping_monitor.py (22 Tests)
 
 Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data, no time dependency (mocked where needed).
@@ -63,7 +82,11 @@ pytest tests/autotrader/integration/test_autotrader_trade_lifecycle.py -v
 
 # Clipping monitor only
 pytest tests/autotrader/integration/test_live_clipping_monitor.py -v
+
+# Trade scenarios only
+pytest tests/autotrader/integration/test_autotrader_trade_scenarios.py -v
 ```
 
-VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all three files.
+VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all four files.
 VS Code: `🧩 Pytest: AutoTrader Trade Lifecycle` — trade lifecycle only.
+VS Code: `🧪 AutoTrader: SL Triggered` / `TP Triggered` / `Duplicate Signal Guard` / `Minimal Warmup` — individual scenario CLI runs with live display.
