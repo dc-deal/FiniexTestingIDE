@@ -1,0 +1,123 @@
+{
+  "release_version": "1.2.2",
+  "timestamp": "2026-04-27T11:16:42.876341+00:00",
+  "valid_until": "2026-07-26T11:16:42.876341+00:00",
+  "git_commit": "7b6ffa2",
+  "system_id": "ryzen_7_8845hs_16core",
+  "system_details": {
+    "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "cpu_cores": 16,
+    "ram_total_gb": 30.3,
+    "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
+  },
+  "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
+  "runs": 3,
+  "comment": "Acer laptop, performance mode: white eco-mode",
+  "debug_mode_detected": false,
+  "overall_status": "PASSED",
+  "metrics": [
+    {
+      "name": "ticks_per_second",
+      "measured": 80962.67,
+      "reference": 90000,
+      "deviation_percent": -10.04,
+      "tolerance_percent": 20.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "tickrun_time_s",
+      "measured": 18.48,
+      "reference": 17.0,
+      "deviation_percent": 8.71,
+      "tolerance_percent": 20.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "warmup_time_s",
+      "measured": 5.58,
+      "reference": 6.5,
+      "deviation_percent": -14.19,
+      "tolerance_percent": 30.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "summary_generation_time_s",
+      "measured": 0.12,
+      "reference": null,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "total_ticks",
+      "measured": 1496267,
+      "reference": 1496267,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "scenarios_count",
+      "measured": 40,
+      "reference": 40,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    }
+  ],
+  "raw_measurements": {
+    "ticks_per_second": [
+      86946.92,
+      80962.67,
+      79689.34
+    ],
+    "tickrun_time_s": [
+      17.21,
+      18.48,
+      18.78
+    ],
+    "warmup_time_s": [
+      5.58,
+      5.46,
+      5.63
+    ],
+    "summary_generation_time_s": [
+      0.12,
+      0.13,
+      0.12
+    ]
+  },
+  "artifacts": [
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111527/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_1/scenario_summary.log",
+      "copied_at": "2026-04-27T11:16:42.915741+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111527/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_1/scenario_global_log.log",
+      "copied_at": "2026-04-27T11:16:42.947264+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111552/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_2/scenario_summary.log",
+      "copied_at": "2026-04-27T11:16:42.982085+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111552/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_2/scenario_global_log.log",
+      "copied_at": "2026-04-27T11:16:43.013961+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111617/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_3/scenario_summary.log",
+      "copied_at": "2026-04-27T11:16:43.051563+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260427_111617/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_3/scenario_global_log.log",
+      "copied_at": "2026-04-27T11:16:43.082446+00:00"
+    }
+  ],
+  "warnings": []
+}

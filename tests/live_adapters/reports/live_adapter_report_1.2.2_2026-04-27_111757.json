@@ -1,9 +1,9 @@
 {
-  "release_version": "dev",
-  "git_commit": "0414fdb",
-  "timestamp": "2026-04-26T21:49:06+00:00",
+  "release_version": "1.2.2",
+  "git_commit": "7b6ffa2",
+  "timestamp": "2026-04-27T11:17:57+00:00",
   "result": "passed",
-  "tests_passed": 7,
+  "tests_passed": 8,
   "tests_failed": 0,
   "tests_skipped": 0,
   "tests_run": [
@@ -13,6 +13,7 @@
     "test_limit_buy_with_sltp_dryrun",
     "test_invalid_symbol_rejected",
     "test_below_minimum_lot_rejected",
+    "test_market_order_fill_roundtrip",
     "test_limit_order_lifecycle"
   ],
   "broker_settings": {

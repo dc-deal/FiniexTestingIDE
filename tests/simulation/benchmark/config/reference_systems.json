@@ -9,12 +9,12 @@
                 "ram_minimum_gb": 28.0
             },
             "baseline": {
-                "created": "2026-03-18T09:00:00Z",
+                "created": "2026-04-27T11:00:00Z",
                 "scenario": "backtesting/backtesting_loadtest_40_scenarios",
                 "metrics": {
                     "ticks_per_second": 90000,
                     "tickrun_time_s": 17.0,
-                    "warmup_time_s": 18.0,
+                    "warmup_time_s": 6.5,
                     "total_ticks": 1496267,
                     "scenarios_count": 40
                 }
