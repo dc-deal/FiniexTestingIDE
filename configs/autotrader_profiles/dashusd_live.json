@@ -1,0 +1,68 @@
+{
+  "name": "dashusd_live",
+  "symbol": "DASHUSD",
+  "broker_type": "kraken_spot",
+  "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
+  "adapter_type": "live",
+  "broker_settings": "kraken_spot.json",
+  "strategy_config": {
+    "decision_logic_type": "CORE/aggressive_trend",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "envelope_main": "CORE/envelope"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "envelope_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      }
+    },
+    "decision_logic_config": {
+      "rsi_buy_threshold": 35,
+      "rsi_sell_threshold": 65,
+      "envelope_extremes": 0.25,
+      "min_confidence": 0.4,
+      "lot_size": 0.15,
+      "min_free_margin": 0.01
+    }
+  },
+  "account": {
+    "balances": {
+      "USD": 0.0,
+      "DASH": 0.0
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "execution": {
+    "parallel_workers": false,
+    "bar_max_history": 1000
+  },
+  "clipping_monitor": {
+    "report_interval_s": 60.0,
+    "strategy": "queue_all"
+  },
+  "display": {
+    "enabled": true,
+    "update_interval_ms": 300
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 9.0,
+    "min_equity": 9.0,
+    "max_drawdown_pct": 20.0
+  },
+  "order_guard": {
+    "_comment": "Pre-validation guard: blocks SHORT in spot mode, arms cooldown after N consecutive broker rejections to prevent retry spam",
+    "cooldown_seconds": 60.0,
+    "max_consecutive_rejections": 2
+  }
+}

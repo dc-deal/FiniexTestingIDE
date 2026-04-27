@@ -94,6 +94,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Inter-Tick Interval](tests/data/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
+| [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |

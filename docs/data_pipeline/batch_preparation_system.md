@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-The batch orchestrator coordinates scenario execution through 7 distinct phases, each with clear responsibilities and optimized for performance.
+The batch orchestrator coordinates scenario execution through 8 phases (Phase 0 through Phase 7), each with clear responsibilities and optimized for performance.
 
 ---
 
@@ -12,6 +12,13 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 ┌─────────────────────────────────────────────────────────────────┐
 │                    BATCH ORCHESTRATOR WORKFLOW                  │
 ├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Phase 0: Config Validation                                    │
+│  ├─ Load broker configs (BrokerDataPreparator)                 │
+│  ├─ Validate scenario names (unique, non-empty)                │
+│  ├─ Validate scenario boundaries (end_date or max_ticks)       │
+│  ├─ Validate symbols registered in broker config               │
+│  └─ Validate account currency compatibility                    │
 │                                                                 │
 │  Phase 1: Index & Coverage Setup                               │
 │  ├─ Load tick index                                            │
@@ -29,8 +36,7 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 │                                                                 │
 │  Phase 4: Data Loading                                         │
 │  ├─ Load ticks from parquet                                    │
-│  ├─ Load warmup bars                                           │
-│  └─ Prepare broker configurations                              │
+│  └─ Load warmup bars                                           │
 │                                                                 │
 │  Phase 5: Quality Validation                                   │
 │  ├─ Validate tick stretch gaps                                 │
@@ -52,6 +58,27 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 ---
 
 ## Phase Details
+
+### Phase 0: Config Validation
+**Purpose:** Validate scenario configuration before any I/O  
+**Mode:** Serial (main process)  
+**Key Operations:**
+- `BrokerDataPreparator.prepare()` — loads broker configs, sets `scenario.broker_type` on every scenario
+- `validate_scenario_names()` — rejects missing or duplicate names
+- `validate_scenario_boundaries()` — rejects scenarios with neither `end_date` nor `max_ticks`
+- `validate_scenario_symbols()` — rejects scenarios whose symbol is not registered in the broker config
+- `validate_account_currencies()` / `set_scenario_account_currency()` — validates and derives account currency from balances
+
+**Broker config loading:**  
+`BrokerDataPreparator` loads each unique broker config JSON once (cached by path), sets `scenario.broker_type`, and returns serialized configs for subprocess sharing. The `broker_scenario_map` produced here is the authoritative source used by all subsequent validators and the Phase 7 `BrokerSummary`.
+
+**Output:**
+- Invalid scenarios marked with `validation_result`; batch continues with remaining valid scenarios
+- `_broker_scenario_map` available for Phases 0 validators and Phase 7 reporting
+
+**Performance:** Fast (<200ms — JSON loads only, no tick I/O)
+
+---
 
 ### Phase 1: Index & Coverage Setup
 **Purpose:** Load metadata indices and generate coverage reports for all symbols  
@@ -115,8 +142,7 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 **Key Operations:**
 - Load ticks from parquet (based on RequirementsMap)
 - Load warmup bars (filtered to start_time)
-- Prepare broker configurations
-- Package into ProcessDataPackage
+- Package into ProcessDataPackage (broker configs from Phase 0 injected here)
 
 **Optimization:** 
 - Copy-on-Write (CoW) sharing in subprocesses
@@ -179,9 +205,18 @@ The batch orchestrator coordinates scenario execution through 7 distinct phases,
 
 ## Validation Flow
 
-### Three-Stage Validation Design
+### Four-Stage Validation Design
 
 ```
+Phase 0: Config Validation (PRE-LOAD)
+├─ Load broker configs → set scenario.broker_type
+├─ Check: Scenario names (unique, non-empty)
+├─ Check: Scenario boundaries (end_date or max_ticks)
+├─ Check: Symbol registered in broker config
+└─ Check: Account currency matches symbol
+   ↓
+   [Filter invalid scenarios]
+   ↓
 Phase 2: Availability Validation (PRE-LOAD)
 ├─ Check: Date logic (end >= start)
 ├─ Check: Coverage report exists
@@ -209,11 +244,12 @@ Phase 6: Execution (with second parameter validation)
    (Only final valid scenarios)
 ```
 
-### Benefits of Two-Stage Validation
-1. **Early filtering** - Invalid scenarios don't trigger expensive data loading
-2. **Clear separation** - Availability vs Quality concerns
-3. **No crashes** - Batch continues with valid scenarios
-4. **Detailed errors** - Users get specific validation failure reasons
+### Benefits of Four-Stage Validation
+1. **Config errors caught first** - Broker/symbol/currency problems surface before any I/O
+2. **Early filtering** - Invalid scenarios don't trigger expensive data loading
+3. **Clear separation** - Config vs Availability vs Quality concerns
+4. **No crashes** - Batch continues with valid scenarios
+5. **Detailed errors** - Users get specific validation failure reasons
 
 ---
 
@@ -241,8 +277,9 @@ Phase 6: Execution (with second parameter validation)
 
 ## Performance Characteristics
 
-### Serial Phases (1-5)
+### Serial Phases (0-5)
 **Total:** ~2-10 seconds (depending on data size)
+- Phase 0: <0.2s (broker JSON loads, config validation)
 - Phase 1: <1s (index is cached)
 - Phase 2: <0.1s (validation only)
 - Phase 3: <0.1s (in-memory operations)
@@ -301,6 +338,7 @@ Phase 6: Execution (with second parameter validation)
 Each phase logs with consistent format:
 
 ```
+Phase 0: Validating configuration...
 Phase 1: Index & coverage setup...
 Phase 2: Validating data availability...
 Phase 3: Collecting data requirements...

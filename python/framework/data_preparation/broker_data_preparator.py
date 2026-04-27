@@ -52,6 +52,37 @@ class BrokerDataPreparator:
     def get_broker_scenario_map(self) -> Dict[BrokerType, BrokerScenarioInfo]:
         return self._broker_scenario_map
 
+    def get_valid_broker_scenario_map(
+        self, valid_scenarios: List[SingleScenario]
+    ) -> Dict[BrokerType, BrokerScenarioInfo]:
+        """
+        Return broker_scenario_map filtered to valid scenarios only.
+
+        Brokers with no valid scenarios are excluded entirely.
+        Used for reporting so invalid scenario symbols never reach BrokerSummary.
+
+        Args:
+            valid_scenarios: Scenarios that passed Phase 0 validation
+
+        Returns:
+            Filtered map containing only symbols and scenario names from valid scenarios
+        """
+        valid_pairs = {(s.broker_type, s.symbol) for s in valid_scenarios}
+        valid_names = {s.name for s in valid_scenarios}
+
+        filtered: Dict[BrokerType, BrokerScenarioInfo] = {}
+        for broker_type, info in self._broker_scenario_map.items():
+            filtered_symbols = {sym for sym in info.symbols if (broker_type, sym) in valid_pairs}
+            if not filtered_symbols:
+                continue
+            filtered[broker_type] = BrokerScenarioInfo(
+                config_path=info.config_path,
+                scenarios=[s for s in info.scenarios if s in valid_names],
+                symbols=filtered_symbols,
+                broker_config=info.broker_config,
+            )
+        return filtered
+
     def prepare(self) -> Dict[BrokerType, Dict[str, Any]]:
         """
         Main entry point - loads, maps, and logs broker configurations.

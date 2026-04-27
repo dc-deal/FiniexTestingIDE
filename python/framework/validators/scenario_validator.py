@@ -5,18 +5,18 @@ Validates scenario configurations for consistency and compatibility
 Key Validations:
 - Scenario Names: Unique and non-empty
 - Account Currency: Compatible with symbol (base or quote)
-- Symbol Format: Valid 6-character format
-- Currency Consistency: For reporting purposes (legacy)
+- Symbol Format: Authoritative from BrokerConfig; known-quote-suffix fallback
 
 Usage:
     # Phase 0: Config validation
     ScenarioValidator.validate_scenario_names(scenarios, logger)
-    ScenarioValidator.validate_account_currencies(scenarios, logger)
+    ScenarioValidator.validate_account_currencies(scenarios, logger, broker_scenario_map)
 """
 
 from typing import Dict, List
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.logging.abstract_logger import AbstractLogger
 
@@ -37,29 +37,25 @@ class ScenarioValidator:
         """
         Detect quote currency from trading symbol.
 
-        Quote currency is always the last 3 characters of the symbol.
+        Matches against known quote suffixes first; falls back to last 3 chars.
+        Supports symbols with variable-length base currencies (e.g., DASHUSD).
 
         Examples:
             GBPUSD -> USD (you buy GBP with USD)
             EURUSD -> USD
             USDJPY -> JPY
-            EURJPY -> JPY
+            DASHUSD -> USD
 
         Args:
-            symbol: Trading symbol (e.g., "GBPUSD")
+            symbol: Trading symbol (e.g., "GBPUSD", "DASHUSD")
 
         Returns:
             Quote currency (e.g., "USD")
-
-        Raises:
-            ValueError: If symbol format is invalid
         """
-        if len(symbol) != 6:
-            raise ValueError(
-                f"Invalid symbol format: '{symbol}'. "
-                f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
-            )
-
+        known_quotes = ['USD', 'EUR', 'GBP', 'CAD', 'JPY', 'AUD']
+        for quote in known_quotes:
+            if symbol.upper().endswith(quote):
+                return quote
         return symbol[-3:].upper()
 
     @staticmethod
@@ -67,71 +63,117 @@ class ScenarioValidator:
         """
         Detect base currency from trading symbol.
 
-        Base currency is always the first 3 characters of the symbol.
+        Matches against known quote suffixes to derive base; falls back to all but last 3 chars.
+        Supports symbols with variable-length base currencies (e.g., DASHUSD).
 
         Examples:
             GBPUSD -> GBP (you buy GBP with USD)
             EURUSD -> EUR
             USDJPY -> USD
-            EURJPY -> EUR
+            DASHUSD -> DASH
 
         Args:
-            symbol: Trading symbol (e.g., "GBPUSD")
+            symbol: Trading symbol (e.g., "GBPUSD", "DASHUSD")
 
         Returns:
-            Base currency (e.g., "GBP")
-
-        Raises:
-            ValueError: If symbol format is invalid
+            Base currency (e.g., "GBP", "DASH")
         """
-        if len(symbol) != 6:
-            raise ValueError(
-                f"Invalid symbol format: '{symbol}'. "
-                f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
-            )
-
-        return symbol[:3].upper()
+        known_quotes = ['USD', 'EUR', 'GBP', 'CAD', 'JPY', 'AUD']
+        for quote in known_quotes:
+            if symbol.upper().endswith(quote):
+                return symbol[:-len(quote)].upper()
+        return symbol[:-3].upper()
 
     @staticmethod
-    def get_currency_consistency(scenarios: List[SingleScenario]) -> str:
+    def _get_symbol_currencies(
+        symbol: str,
+        scenario_broker_type: BrokerType,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
+    ):
         """
-        Get all scenarios use same quote currency.
+        Return (base_currency, quote_currency) for a symbol.
 
-        Account currency is explicitly configured per scenario.
+        Uses authoritative BrokerConfig lookup when available; falls back to
+        known-quote-suffix heuristic for unknown broker types.
+
+        Args:
+            symbol: Trading symbol (e.g. 'DASHUSD')
+            scenario_broker_type: BrokerType assigned to the scenario
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo
+
+        Returns:
+            Tuple of (base_currency, quote_currency)
+        """
+        broker_info = broker_scenario_map.get(scenario_broker_type)
+        if broker_info:
+            try:
+                spec = broker_info.broker_config.get_symbol_specification(symbol)
+                return spec.base_currency, spec.quote_currency
+            except ValueError:
+                pass  # symbol not in broker — validate_scenario_symbols catches this
+        return (
+            ScenarioValidator.detect_base_currency(symbol),
+            ScenarioValidator.detect_quote_currency(symbol),
+        )
+
+    @staticmethod
+    def validate_scenario_symbols(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
+    ) -> None:
+        """
+        Validate each scenario's symbol is registered in its broker config.
+
+        Side Effects:
+        - Sets validation_result if invalid
+        - Does NOT raise — marks scenarios as invalid instead
 
         Args:
             scenarios: List of scenarios to validate
-
-        Returns:
-            Quote currency if all scenarios use same one
-
-        Raises:
-            ValueError: If scenarios use different quote currencies
+            logger: Logger for error messages
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo
         """
-        if not scenarios:
-            raise ValueError("Cannot validate empty scenario list")
-
-        # Extract quote currencies from all scenarios
-        quote_currencies = set()
-        symbol_currency_map = {}
-
         for scenario in scenarios:
-            symbol = scenario.symbol
-            quote = ScenarioValidator.detect_quote_currency(symbol)
-            quote_currencies.add(quote)
-            symbol_currency_map[symbol] = quote
-
-        # Return the single detected currency
-        return list(quote_currencies)[0]
+            broker_info = broker_scenario_map.get(scenario.broker_type)
+            if not broker_info:
+                continue
+            try:
+                broker_info.broker_config.get_symbol_specification(scenario.symbol)
+            except ValueError:
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[
+                        f"Symbol '{scenario.symbol}' not found in broker configuration "
+                        f"for '{scenario.data_broker_type}'. "
+                        f"Check the 'symbols' section in the broker config."
+                    ],
+                    warnings=[]
+                )
+                scenario.validation_result.append(validation_result)
+                logger.error(
+                    f"❌ {scenario.name}: Symbol '{scenario.symbol}' not registered "
+                    f"in broker '{scenario.data_broker_type}'"
+                )
 
     @staticmethod
-    def set_scenario_account_currency(logger: ScenarioLogger, scenarios: List[SingleScenario]):
+    def set_scenario_account_currency(
+        logger: ScenarioLogger,
+        scenarios: List[SingleScenario],
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
+    ):
         """
         Derive account currency from balances dict for all scenarios.
 
         Reads 'balances' from trade_simulator_config and determines which
         currency key matches the symbol's base or quote currency.
         If balances is missing, skips — validate_account_currency() flags it later.
+
+        Args:
+            logger: Logger for debug messages
+            scenarios: List of scenarios to process
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo for currency lookup
         """
         for scenario in scenarios:
             symbol = scenario.symbol
@@ -146,8 +188,8 @@ class ScenarioValidator:
             if explicit:
                 account_currency = explicit
             else:
-                quote = ScenarioValidator.detect_quote_currency(symbol)
-                base = ScenarioValidator.detect_base_currency(symbol)
+                base, quote = ScenarioValidator._get_symbol_currencies(
+                    symbol, scenario.broker_type, broker_scenario_map)
                 if quote in balances:
                     account_currency = quote
                 elif base in balances:
@@ -262,7 +304,8 @@ class ScenarioValidator:
     @staticmethod
     def validate_account_currency(
         scenario: SingleScenario,
-        logger: AbstractLogger
+        logger: AbstractLogger,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
     ) -> None:
         """
         Validate balances dict contains a currency matching the symbol.
@@ -278,16 +321,15 @@ class ScenarioValidator:
         Args:
             scenario: Scenario to validate
             logger: Logger for error messages
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo for currency lookup
         """
         balances = scenario.trade_simulator_config.get('balances', {})
         symbol = scenario.symbol
 
         # Reject missing balances
         if not balances:
-            try:
-                suggested = ScenarioValidator.detect_quote_currency(symbol)
-            except ValueError:
-                suggested = 'USD'
+            _, suggested = ScenarioValidator._get_symbol_currencies(
+                symbol, scenario.broker_type, broker_scenario_map)
             validation_result = ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
@@ -303,24 +345,13 @@ class ScenarioValidator:
             )
             return
 
-        # Validate symbol format and extract currencies
-        try:
-            base_currency = ScenarioValidator.detect_base_currency(symbol)
-            quote_currency = ScenarioValidator.detect_quote_currency(symbol)
-        except ValueError as e:
-            validation_result = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[str(e)],
-                warnings=[]
-            )
-            scenario.validation_result.append(validation_result)
-            logger.error(f"❌ {scenario.name}: {str(e)}")
-            return
+        base_currency, quote_currency = ScenarioValidator._get_symbol_currencies(
+            symbol, scenario.broker_type, broker_scenario_map)
 
-        # Check at least one balance key matches base or quote
         balance_currencies = set(balances.keys())
         symbol_currencies = {base_currency, quote_currency}
+
+        # Check at least one balance key matches base or quote
         if not balance_currencies & symbol_currencies:
             validation_result = ValidationResult(
                 is_valid=False,
@@ -341,7 +372,8 @@ class ScenarioValidator:
     @staticmethod
     def validate_account_currencies(
         scenarios: List[SingleScenario],
-        logger: AbstractLogger
+        logger: AbstractLogger,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
     ) -> None:
         """
         Validate account_currency for all scenarios.
@@ -352,6 +384,7 @@ class ScenarioValidator:
         Args:
             scenarios: List of scenarios to validate
             logger: Logger for error messages
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo for currency lookup
         """
         for scenario in scenarios:
-            ScenarioValidator.validate_account_currency(scenario, logger)
+            ScenarioValidator.validate_account_currency(scenario, logger, broker_scenario_map)

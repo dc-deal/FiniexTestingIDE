@@ -251,7 +251,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             api_base = self.KRAKEN_TO_STANDARD.get(api_base, api_base)
 
             if api_base == target_base and api_quote == target_quote:
-                return self._build_symbol_config(target_symbol, pair_info, _pair_name)
+                return self._build_symbol_config(target_symbol, pair_info, api_base, api_quote, _pair_name)
 
         return None
 
@@ -259,6 +259,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self,
         symbol: str,
         pair_info: Dict[str, Any],
+        base_currency: str,
+        quote_currency: str,
         kraken_pair_name: str = '',
     ) -> Dict[str, Any]:
         """
@@ -267,13 +269,13 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
             pair_info: Raw API pair data
+            base_currency: Normalized base currency from API wsname (e.g., 'BTC')
+            quote_currency: Quote currency from API wsname (e.g., 'USD')
             kraken_pair_name: Kraken internal pair name (e.g., 'XXBTZUSD') for order API calls
 
         Returns:
             Symbol config dict matching static JSON structure
         """
-        base, quote = self._split_symbol(symbol)
-
         pair_decimals = pair_info.get('pair_decimals', 1)
         lot_decimals = pair_info.get('lot_decimals', 8)
         ordermin = float(pair_info.get('ordermin', 0.0001))
@@ -281,9 +283,9 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         tick_size = 10 ** (-pair_decimals)
 
         return {
-            'description': f"{base} vs {quote}",
-            'base_currency': base,
-            'quote_currency': quote,
+            'description': f"{base_currency} vs {quote_currency}",
+            'base_currency': base_currency,
+            'quote_currency': quote_currency,
             'trade_allowed': True,
             'volume_min': ordermin,
             'volume_max': 10000.0,

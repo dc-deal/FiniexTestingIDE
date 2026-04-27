@@ -130,6 +130,7 @@ from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
+from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
 
 
 class BatchOrchestrator:
@@ -290,6 +291,13 @@ class BatchOrchestrator:
         self._logger.info("🔍 Phase 0: Validating configuration...")
         _phase_t = time.time()
 
+        # Load broker configs first — sets scenario.broker_type, needed by validators.
+        self._live_stats_coordinator.broadcast_status(ScenarioStatus.WARMUP_TRADER)
+        _broker_preparator = BrokerDataPreparator(
+            self._scenario_set.get_valid_scenarios(), self._logger)
+        _broker_configs = _broker_preparator.prepare()
+        _broker_scenario_map = _broker_preparator.get_broker_scenario_map()
+
         # 1. Validate scenario names (unique, non-empty)
         ScenarioValidator.validate_scenario_names(
             scenarios=self._scenario_set.get_valid_scenarios(),
@@ -302,16 +310,25 @@ class BatchOrchestrator:
             logger=self._logger
         )
 
-        # 3. Validate account_currency compatibility with symbols
+        # 3. Validate each symbol is registered in its broker config
+        ScenarioValidator.validate_scenario_symbols(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger,
+            broker_scenario_map=_broker_scenario_map,
+        )
+
+        # 4. Validate account_currency compatibility with symbols
         ScenarioValidator.validate_account_currencies(
             scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger
+            logger=self._logger,
+            broker_scenario_map=_broker_scenario_map,
         )
 
         # set scenario final currencies.
         ScenarioValidator.set_scenario_account_currency(
             scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger
+            logger=self._logger,
+            broker_scenario_map=_broker_scenario_map,
         )
         warmup_phases.append(WarmupPhaseEntry('Config Validation', time.time() - _phase_t))
 
@@ -370,6 +387,7 @@ class BatchOrchestrator:
         # Prepare data only for scenarios in requirements_map
         scenario_packages, clipping_stats_map, load_timings = data_coordinator.prepare(
             requirements_map=requirements_map,
+            broker_configs=_broker_configs,
             status_broadcaster=self._live_stats_coordinator
         )
         warmup_phases.append(WarmupPhaseEntry('Data Loading → Ticks (parquet)', load_timings.ticks_s))
@@ -454,7 +472,9 @@ class BatchOrchestrator:
             batch_warmup_time=batch_warmup_time,
             batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
-            broker_scenario_map=data_coordinator.get_broker_scenario_map(),
+            broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
+                self._scenario_set.get_valid_scenarios()
+            ),
             # clipping stats from tick processing budget (main process, not subprocess)
             clipping_stats_map=clipping_stats_map,
             # per-phase warmup timing breakdown

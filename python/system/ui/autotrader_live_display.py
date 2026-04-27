@@ -345,9 +345,8 @@ class AutoTraderLiveDisplay:
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
-        # Use explicit currencies from SymbolSpec (populated by tick loop)
-        quote_currency = stats.quote_currency or stats.symbol[-3:]
-        base_currency = stats.base_currency or stats.symbol[:-3]
+        quote_currency = stats.quote_currency
+        base_currency = stats.base_currency
 
         market_label = self._market_label(stats.broker_type)
 
@@ -384,8 +383,8 @@ class AutoTraderLiveDisplay:
 
     def _build_spot_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Portfolio state (spot): equity line + dual-balance breakdown."""
-        quote_currency = stats.quote_currency or stats.symbol[-3:]
-        base_currency = stats.base_currency or stats.symbol[:-3]
+        quote_currency = stats.quote_currency
+        base_currency = stats.base_currency
 
         # P&L based on equity change from initial balance (real portfolio value)
         net_pnl = stats.equity - stats.initial_balance

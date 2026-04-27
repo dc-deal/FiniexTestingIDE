@@ -268,6 +268,18 @@
             "justMyCode": false
         },
         {
+            "name": "🔬 Run DASHUSD_sandbox - algo:simple_consensus",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "DASHUSD_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🔬 Run eurusd_3_windows_reference",
             "type": "debugpy",
             "request": "launch",
@@ -357,6 +369,19 @@
                 "run",
                 "--config",
                 "configs/autotrader_profiles/dotusd_live.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🤖 AutoTrader: DASHUSD Live",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/dashusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -538,6 +563,20 @@
                 "show",
                 "kraken_spot",
                 "ADAUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🔍 Disc - Data Coverage: kraken_spot/DASHUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "data-coverage",
+                "show",
+                "kraken_spot",
+                "DASHUSD"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -1473,6 +1512,19 @@
             "module": "pytest",
             "args": [
                 "tests/parity/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Batch Validations (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/batch_validations/",
                 "-v",
                 "--tb=short"
             ],
