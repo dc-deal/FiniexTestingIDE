@@ -144,8 +144,15 @@ class AutotraderMain:
 
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
+            _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
+                self._config.symbol
+            )
             self._tick_source, self._tick_thread = setup_tick_source(
-                self._config, self._tick_queue, self._global_logger
+                self._config,
+                self._tick_queue,
+                _symbol_spec.base_currency,
+                _symbol_spec.quote_currency,
+                self._global_logger,
             )
             self._print_startup_phase('Tick source running')
 

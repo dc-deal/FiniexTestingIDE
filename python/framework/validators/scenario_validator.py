@@ -5,7 +5,7 @@ Validates scenario configurations for consistency and compatibility
 Key Validations:
 - Scenario Names: Unique and non-empty
 - Account Currency: Compatible with symbol (base or quote)
-- Symbol Format: Valid 6-character format
+- Symbol Format: Known-quote-suffix detection (USD, EUR, GBP, CAD, JPY, AUD)
 - Currency Consistency: For reporting purposes (legacy)
 
 Usage:
@@ -37,29 +37,25 @@ class ScenarioValidator:
         """
         Detect quote currency from trading symbol.
 
-        Quote currency is always the last 3 characters of the symbol.
+        Matches against known quote suffixes first; falls back to last 3 chars.
+        Supports symbols with variable-length base currencies (e.g., DASHUSD).
 
         Examples:
             GBPUSD -> USD (you buy GBP with USD)
             EURUSD -> USD
             USDJPY -> JPY
-            EURJPY -> JPY
+            DASHUSD -> USD
 
         Args:
-            symbol: Trading symbol (e.g., "GBPUSD")
+            symbol: Trading symbol (e.g., "GBPUSD", "DASHUSD")
 
         Returns:
             Quote currency (e.g., "USD")
-
-        Raises:
-            ValueError: If symbol format is invalid
         """
-        if len(symbol) != 6:
-            raise ValueError(
-                f"Invalid symbol format: '{symbol}'. "
-                f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
-            )
-
+        known_quotes = ['USD', 'EUR', 'GBP', 'CAD', 'JPY', 'AUD']
+        for quote in known_quotes:
+            if symbol.upper().endswith(quote):
+                return quote
         return symbol[-3:].upper()
 
     @staticmethod
@@ -67,30 +63,26 @@ class ScenarioValidator:
         """
         Detect base currency from trading symbol.
 
-        Base currency is always the first 3 characters of the symbol.
+        Matches against known quote suffixes to derive base; falls back to all but last 3 chars.
+        Supports symbols with variable-length base currencies (e.g., DASHUSD).
 
         Examples:
             GBPUSD -> GBP (you buy GBP with USD)
             EURUSD -> EUR
             USDJPY -> USD
-            EURJPY -> EUR
+            DASHUSD -> DASH
 
         Args:
-            symbol: Trading symbol (e.g., "GBPUSD")
+            symbol: Trading symbol (e.g., "GBPUSD", "DASHUSD")
 
         Returns:
-            Base currency (e.g., "GBP")
-
-        Raises:
-            ValueError: If symbol format is invalid
+            Base currency (e.g., "GBP", "DASH")
         """
-        if len(symbol) != 6:
-            raise ValueError(
-                f"Invalid symbol format: '{symbol}'. "
-                f"Expected 6 characters (e.g., GBPUSD, EURUSD, USDJPY)"
-            )
-
-        return symbol[:3].upper()
+        known_quotes = ['USD', 'EUR', 'GBP', 'CAD', 'JPY', 'AUD']
+        for quote in known_quotes:
+            if symbol.upper().endswith(quote):
+                return symbol[:-len(quote)].upper()
+        return symbol[:-3].upper()
 
     @staticmethod
     def get_currency_consistency(scenarios: List[SingleScenario]) -> str:

@@ -298,6 +298,8 @@ def setup_pipeline(
 def setup_tick_source(
     config: AutoTraderConfig,
     tick_queue: queue.Queue,
+    base_currency: str,
+    quote_currency: str,
     logger: ScenarioLogger
 ) -> tuple:
     """
@@ -309,6 +311,8 @@ def setup_tick_source(
     Args:
         config: AutoTrader configuration
         tick_queue: Thread-safe queue for tick delivery
+        base_currency: Symbol base currency from SymbolSpec (e.g., 'BTC', 'DASH')
+        quote_currency: Symbol quote currency from SymbolSpec (e.g., 'USD')
         logger: Logger instance
 
     Returns:
@@ -325,7 +329,7 @@ def setup_tick_source(
 
     elif config.tick_source.type == 'kraken':
         ws_pair = _resolve_ws_pair(
-            config.symbol, config.broker_settings, logger)
+            config.symbol, base_currency, quote_currency, config.broker_settings, logger)
         tick_source = KrakenTickSource(
             symbol=config.symbol,
             ws_pair=ws_pair,
@@ -508,21 +512,27 @@ def _load_broker_settings(settings_filename: str) -> Dict[str, Any]:
 
 def _resolve_ws_pair(
     symbol: str,
+    base_currency: str,
+    quote_currency: str,
     broker_settings_filename: str,
     logger: ScenarioLogger
 ) -> str:
     """
     Resolve internal symbol to Kraken WS pair format.
 
-    Lookup chain: symbol_to_ws_pair in broker settings -> fallback slash-insert at position 3.
+    Derives WS pair from SymbolSpec base/quote currencies. The symbol_to_ws_pair
+    map in broker settings acts as an explicit override (dead code for standard symbols,
+    will be removed in #252).
 
     Args:
         symbol: Internal symbol (e.g., 'BTCUSD')
+        base_currency: Symbol base currency from SymbolSpec (e.g., 'BTC', 'DASH')
+        quote_currency: Symbol quote currency from SymbolSpec (e.g., 'USD')
         broker_settings_filename: Broker settings filename (e.g., 'kraken_spot.json')
         logger: ScenarioLogger for warnings
 
     Returns:
-        Kraken WS pair (e.g., 'BTC/USD')
+        Kraken WS pair (e.g., 'BTC/USD', 'DASH/USD')
     """
     if not broker_settings_filename:
         raise ValueError(
@@ -536,17 +546,4 @@ def _resolve_ws_pair(
     if symbol in ws_pair_map:
         return ws_pair_map[symbol]
 
-    # Fallback: insert slash at position 3 (e.g., BTCUSD -> BTC/USD)
-    if len(symbol) >= 4:
-        ws_pair = f'{symbol[:3]}/{symbol[3:]}'
-        logger.warning(
-            f"📡 Symbol '{symbol}' not in symbol_to_ws_pair mapping, "
-            f"using fallback: '{ws_pair}'. "
-            f"Add to broker_settings for explicit control."
-        )
-        return ws_pair
-
-    raise ValueError(
-        f"Cannot resolve WS pair for symbol '{symbol}'. "
-        f"Add it to 'symbol_to_ws_pair' in broker settings ({broker_settings_filename})."
-    )
+    return f'{base_currency}/{quote_currency}'

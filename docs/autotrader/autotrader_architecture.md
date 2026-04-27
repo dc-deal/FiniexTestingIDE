@@ -243,7 +243,7 @@ DataCollector            AutoTrader (live)
 JSON → Parquet           Queue → Algo
 ```
 
-**Symbol mapping:** `symbol_to_ws_pair` in broker settings (`kraken_spot.json`) maps internal symbols to Kraken WS format (e.g., `BTCUSD` → `BTC/USD`). Fallback: slash-insert at position 3.
+**Symbol mapping:** WS pair is derived from `SymbolSpec.base_currency`/`quote_currency` (e.g., `BTCUSD` → `BTC/USD`, `DASHUSD` → `DASH/USD`). `symbol_to_ws_pair` in broker settings acts as an explicit override — will be removed in #252.
 
 **Config** (all fields optional, defaults in `TickSourceConfig`):
 ```json
