@@ -296,12 +296,17 @@ class AutoTraderLiveDisplay:
         else:
             safety_str = '[dim]off[/dim]'
 
+        config_name = self._config.name
+        config_file = self._config.config_path.name if self._config.config_path else ''
+        config_str = f'{config_name}  [dim]({config_file})[/dim]' if config_file else config_name
+
         lines = [
             f'Uptime:  {uptime_str}',
             f'Status:  [green]● RUNNING[/green]',
-            f'Rate:    {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
+            f'Processed: {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
             f'Trades:  {stats.total_trades}  (Win: {win_rate:.1f}%)',
             f'Mode:    {mode}',
+            f'Config:  {config_str}',
             f'Safety:  {safety_str}',
         ]
 
@@ -573,7 +578,7 @@ class AutoTraderLiveDisplay:
         if stats and emitted > 0:
             uptime_min = max(0.001, (datetime.now(
                 timezone.utc) - stats.session_start).total_seconds() / 60.0)
-            emit_rate_str = f'{emitted / uptime_min:.1f}/min'
+            emit_rate_str = f'{emitted / uptime_min:.1f}/min  ({emitted:,} total)'
         else:
             emit_rate_str = '[dim]—[/dim]'
 
@@ -635,20 +640,25 @@ class AutoTraderLiveDisplay:
 
         # Decision first (result before details)
         if stats.decision_time_ms > 0:
-            d_filled = min(bar_width, int(
-                (stats.decision_time_ms / max_scale_ms) * bar_width))
-            d_bar = '█' * max(1, d_filled) + '░' * \
-                (bar_width - max(1, d_filled))
+            # Short name: "CORE/aggressive_trend" → "aggressive_trend"
+            dl_type = self._config.strategy_config.get('decision_logic_type', '')
+            dl_label = (dl_type.split('/')[-1] if dl_type else 'decision')[:16]
+            rolling_ms = stats.decision_rolling_avg_ms
+            display_ms = rolling_ms if rolling_ms > 0 else stats.decision_time_ms
+            d_filled = min(bar_width, int((display_ms / max_scale_ms) * bar_width))
+            d_bar = '█' * max(1, d_filled) + '░' * (bar_width - max(1, d_filled))
             d_max = stats.decision_max_time_ms
             lines.append(
-                f'{"decision":<16s} {d_bar} {stats.decision_time_ms:.2f}ms  [dim]max {d_max:.2f}ms[/dim]')
+                f'{dl_label:<16s} {d_bar} avg={display_ms:.2f}ms  [dim]max {d_max:.2f}ms[/dim]')
             lines.append('─' * 55)
 
         for name, avg_ms in stats.worker_times_ms.items():
-            filled = min(bar_width, int((avg_ms / max_scale_ms) * bar_width))
+            rolling_ms = stats.worker_rolling_avg_times_ms.get(name, 0.0)
+            display_ms = rolling_ms if rolling_ms > 0 else avg_ms
+            filled = min(bar_width, int((display_ms / max_scale_ms) * bar_width))
             bar = '█' * max(1, filled) + '░' * (bar_width - max(1, filled))
             max_ms = stats.worker_max_times_ms.get(name, 0.0)
-            lines.append(f'{name:<16s} {bar} {avg_ms:.2f}ms  [dim]max {max_ms:.2f}ms[/dim]')
+            lines.append(f'{name:<16s} {bar} avg={display_ms:.2f}ms  [dim]max {max_ms:.2f}ms[/dim]')
 
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
 

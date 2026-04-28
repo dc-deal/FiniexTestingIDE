@@ -10,11 +10,15 @@ Tracks performance metrics for decision logic execution
 """
 
 
+from collections import deque
+
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 
 
 class DecisionLogicPerformanceTracker:
+
+    _ROLLING_WINDOW = 30
     """
     Performance tracker for decision logic.
 
@@ -45,6 +49,9 @@ class DecisionLogicPerformanceTracker:
         self._min_time_ms = float('inf')
         self._max_time_ms = 0.0
 
+        # Rolling window for live display avg
+        self._recent_times: deque = deque(maxlen=self._ROLLING_WINDOW)
+
     def record(self, execution_time_ms: float, decision: Decision) -> None:
         """
         Record a single execution time and decision.
@@ -67,6 +74,7 @@ class DecisionLogicPerformanceTracker:
         self._stats.decision_total_time_ms += execution_time_ms
         self._min_time_ms = min(self._min_time_ms, execution_time_ms)
         self._max_time_ms = max(self._max_time_ms, execution_time_ms)
+        self._recent_times.append(execution_time_ms)
 
     def record_trade_requested(self) -> None:
         """
@@ -102,8 +110,20 @@ class DecisionLogicPerformanceTracker:
 
         return self._stats
 
+    def get_rolling_avg_ms(self) -> float:
+        """
+        Rolling average over last _ROLLING_WINDOW executions.
+
+        Returns:
+            Average ms over the rolling window, 0.0 if no data yet
+        """
+        if not self._recent_times:
+            return 0.0
+        return round(sum(self._recent_times) / len(self._recent_times), 3)
+
     def reset(self) -> None:
         """Reset all metrics to initial state."""
         self._stats = DecisionLogicStats()
         self._min_time_ms = float('inf')
         self._max_time_ms = 0.0
+        self._recent_times.clear()

@@ -108,6 +108,13 @@ class AutotraderTickLoop:
         # Last rejection (displayed until overwritten by next rejection)
         self._last_rejection = ''
 
+        # New-max tracking for debug logging
+        self._known_worker_maxes: Dict[str, float] = {}
+        self._known_decision_max: float = 0.0
+
+        # Initial spot equity baseline — set on first tick (first live price)
+        self._initial_spot_equity: float = 0.0
+
         # Daily rotation state
         self._current_log_date: Optional[str] = None
         # Track placeholder file for cleanup on first tick
@@ -185,6 +192,11 @@ class AutotraderTickLoop:
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
 
+            # Capture spot equity baseline on first tick (first live price available)
+            if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
+                first_price = (tick.bid + tick.ask) / 2.0
+                self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
+
             # === 2. Bar Rendering ===
             current_bars = self._bar_controller.process_tick(tick)
 
@@ -200,6 +212,9 @@ class AutotraderTickLoop:
                 bar_history=bar_history
             )
 
+            # === 4b. New-max debug logging ===
+            self._check_new_maxes()
+
             # === 5. Safety Check (circuit breaker) ===
             # Spot: equity (balance + held asset value). Margin: raw balance.
             if self._trading_model == TradingModel.SPOT:
@@ -207,8 +222,12 @@ class AutotraderTickLoop:
                     (tick.bid + tick.ask) / 2.0)
             else:
                 safety_value = self._executor.get_balance()
-            self._check_safety(safety_value,
-                               self._executor.portfolio.initial_balance)
+            safety_baseline = (
+                self._initial_spot_equity
+                if self._trading_model == TradingModel.SPOT and self._initial_spot_equity > 0
+                else self._executor.portfolio.initial_balance
+            )
+            self._check_safety(safety_value, safety_baseline)
 
             # === 6. Order Execution ===
             if self._safety_blocked:
@@ -345,6 +364,7 @@ class AutotraderTickLoop:
         # Worker performance + outputs (display=True only — keys from cache)
         worker_times: Dict[str, float] = {}
         worker_max_times: Dict[str, float] = {}
+        worker_rolling_avgs: Dict[str, float] = {}
         worker_outputs: Dict[str, Dict[str, OutputValue]] = {}
         worker_display_keys = self._display_label_cache.worker_display_output_keys
         for name, worker in self._worker_orchestrator.workers.items():
@@ -353,6 +373,7 @@ class AutotraderTickLoop:
                 stats = worker.performance_logger.get_stats()
                 worker_times[name] = stats.worker_avg_time_ms
                 worker_max_times[name] = stats.worker_max_time_ms
+                worker_rolling_avgs[name] = worker.performance_logger.get_rolling_avg_ms()
 
             # Outputs (cached display=True key list, no per-tick schema read)
             display_keys = worker_display_keys.get(name)
@@ -386,6 +407,13 @@ class AutotraderTickLoop:
                          self._session_start).total_seconds() / 60.0)
         ticks_per_min = ticks_processed / uptime_min
 
+        # Spot mode: P&L baseline = full equity at session start (USD + crypto × first_price)
+        # Margin mode: P&L baseline = account balance at session start
+        if self._trading_model == TradingModel.SPOT and self._initial_spot_equity > 0:
+            initial_balance_for_display = self._initial_spot_equity
+        else:
+            initial_balance_for_display = portfolio.initial_balance
+
         return AutoTraderDisplayStats(
             session_start=self._session_start,
             dry_run=self._dry_run,
@@ -393,7 +421,7 @@ class AutotraderTickLoop:
             broker_type=self._config.broker_type,
             ticks_processed=ticks_processed,
             balance=portfolio.balance,
-            initial_balance=portfolio.initial_balance,
+            initial_balance=initial_balance_for_display,
             total_trades=portfolio.get_total_trades(),
             winning_trades=portfolio.get_winning_trades(),
             losing_trades=portfolio.get_losing_trades(),
@@ -413,12 +441,14 @@ class AutotraderTickLoop:
             last_price=last_price,
             worker_times_ms=worker_times,
             worker_max_times_ms=worker_max_times,
+            worker_rolling_avg_times_ms=worker_rolling_avgs,
             worker_outputs=worker_outputs,
             last_decision_action=decision.action,
             decision_outputs=decision_outputs,
             config_params=config_params,
             decision_time_ms=self._decision_logic.performance_logger.get_stats().decision_avg_time_ms if self._decision_logic.performance_logger else 0.0,
             decision_max_time_ms=self._decision_logic.performance_logger.get_stats().decision_max_time_ms if self._decision_logic.performance_logger else 0.0,
+            decision_rolling_avg_ms=self._decision_logic.performance_logger.get_rolling_avg_ms() if self._decision_logic.performance_logger else 0.0,
             account_currency=self._executor.account_currency,
             base_currency=self._base_currency,
             quote_currency=self._quote_currency,
@@ -433,6 +463,30 @@ class AutotraderTickLoop:
             total_events_emitted=self._decision_logic.get_total_events_emitted(),
             last_tick_time=self._executor.get_current_time(),
         )
+
+    def _check_new_maxes(self) -> None:
+        """Log new all-time max execution times for workers and decision logic."""
+        for name, worker in self._worker_orchestrator.workers.items():
+            if not worker.performance_logger:
+                continue
+            current_max = worker.performance_logger.get_stats().worker_max_time_ms
+            prev_max = self._known_worker_maxes.get(name, 0.0)
+            if current_max > prev_max:
+                self._known_worker_maxes[name] = current_max
+                self._logger.debug(
+                    f'NEW MAX: {name:<16s} {current_max:.2f}ms  (prev: {prev_max:.2f}ms)'
+                )
+
+        if self._decision_logic.performance_logger:
+            current_max = self._decision_logic.performance_logger.get_stats().decision_max_time_ms
+            if current_max > self._known_decision_max:
+                prev = self._known_decision_max
+                self._known_decision_max = current_max
+                dl_type = self._config.strategy_config.get('decision_logic_type', '')
+                dl_label = dl_type.split('/')[-1] if dl_type else 'decision'
+                self._logger.debug(
+                    f'NEW MAX: {dl_label:<16s} {current_max:.2f}ms  (prev: {prev:.2f}ms)'
+                )
 
     def _check_safety(self, current_value: float, initial_balance: float) -> None:
         """

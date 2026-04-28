@@ -173,6 +173,7 @@ class AutoTraderDisplayStats:
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
     worker_max_times_ms: Dict[str, float] = field(default_factory=dict)
+    worker_rolling_avg_times_ms: Dict[str, float] = field(default_factory=dict)
 
     # Worker Outputs (display=True only)
     worker_outputs: Dict[str, Dict[str, OutputValue]] = field(default_factory=dict)
@@ -182,6 +183,7 @@ class AutoTraderDisplayStats:
     decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
+    decision_rolling_avg_ms: float = 0.0
 
     # Decision logic config params (display=True inputs → Params: line in ALGO STATE)
     config_params: Dict[str, OutputValue] = field(default_factory=dict)
