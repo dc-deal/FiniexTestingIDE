@@ -134,11 +134,13 @@ def _run_autotrader(ticks):
     symbol_spec.base_currency = 'BTC'
     symbol_spec.quote_currency = 'USD'
     executor.broker.adapter.get_symbol_specification.return_value = symbol_spec
+    executor.portfolio.get_spot_equity.return_value = 1000.0
 
     order_result = MagicMock()
     order_result.is_rejected = False
     decision_logic = MagicMock()
     decision_logic.execute_decision.return_value = order_result
+    decision_logic.performance_logger = None
 
     worker_orchestrator = MagicMock()
     worker_orchestrator.process_tick.return_value = MagicMock()

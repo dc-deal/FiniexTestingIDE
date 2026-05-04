@@ -256,6 +256,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     order_result.is_rejected = False
     decision_logic = MagicMock()
     decision_logic.execute_decision.return_value = order_result
+    decision_logic.performance_logger = None
 
     worker_orchestrator = MagicMock()
     worker_orchestrator.process_tick.return_value = MagicMock()

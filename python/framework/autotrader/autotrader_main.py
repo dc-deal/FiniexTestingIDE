@@ -394,21 +394,15 @@ class AutotraderMain:
 
     def _is_dry_run(self) -> bool:
         """
-        Determine if the session is a dry-run based on broker settings.
+        Determine if the session is a dry-run based on market config.
 
-        Mock adapter is always dry-run. Live adapter checks
-        broker_settings JSON for the dry_run flag (default: True).
+        Mock adapter is always dry-run. Live adapter reads the dry_run flag
+        from market_config.json for the broker type.
 
         Returns:
             True if dry-run mode
         """
         if self._config.adapter_type == 'mock':
             return True
-        if not self._config.broker_settings:
-            return True
-        try:
-            from python.framework.autotrader.autotrader_startup import _load_broker_settings
-            settings = _load_broker_settings(self._config.broker_settings)
-            return settings.get('dry_run', True)
-        except Exception:
-            return True
+        from python.configuration.market_config_manager import MarketConfigManager
+        return MarketConfigManager().get_dry_run(self._config.broker_type)

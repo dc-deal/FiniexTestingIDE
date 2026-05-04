@@ -25,9 +25,9 @@ For a broker named `example`:
 ```
 python/framework/trading_env/adapters/example_adapter.py     ← adapter class
 configs/brokers/example/example_broker_config.json           ← static symbol/broker specs
-configs/broker_settings/example.json                         ← runtime settings (URL, rate limit)
 configs/credentials/example_credentials.json                 ← placeholder (empty or test key)
 user_configs/credentials/example_credentials.json            ← real credentials (gitignored)
+# connection settings (dry_run, api_base_url, etc.) go in market_config.json under the broker entry
 configs/autotrader_profiles/live/example_ethusd.json         ← AutoTrader profile
 tests/live_adapters/test_example_adapter_order_lifecycle_dry.py
 tests/live_adapters/test_example_adapter_order_lifecycle_live.py
@@ -108,20 +108,20 @@ Required `broker_info` fields: `company`, `server`, `trade_mode`, `leverage`, `h
 
 Required per-symbol fields: `volume_min`, `volume_max`, `volume_step`, `contract_size`, `tick_size`, `digits`, `trade_allowed`, `base_currency`, `quote_currency`.
 
-**`configs/broker_settings/<broker>.json`** — runtime settings, user-editable:
+**`configs/market_config.json` — broker entry** — connection settings for live sessions:
 
 ```json
 {
+  "broker_type": "example_spot",
   "credentials_file": "example_credentials.json",
   "api_base_url": "https://api.example.com",
   "dry_run": true,
   "rate_limit_interval_s": 1.0,
-  "request_timeout_s": 15,
-  "symbol_to_broker_pair": {
-    "BTCUSD": "BTC-USD"
-  }
+  "request_timeout_s": 15
 }
 ```
+
+To override (e.g., go live): create `user_configs/market_config.json` with only the changed fields. Connection settings are read from `market_config.json` via `MarketConfigManager` — not passed in the AutoTrader profile.
 
 ---
 
@@ -140,18 +140,24 @@ Prefer `user_path` if it exists, fall back to `default_path`. Never log credenti
 
 ## Tier 3 Implementation
 
-### `enable_live(broker_settings)`
+### `enable_live()`
 
-Called by the AutoTrader pipeline before any live execution. Reads the broker settings dict, loads credentials, sets internal state.
+Called by the AutoTrader pipeline before any live execution. Accepts typed connection parameters (sourced from `market_config.json` via `MarketConfigManager`), loads credentials, sets internal state.
 
 ```python
-def enable_live(self, broker_settings: Dict[str, Any]) -> None:
-    credentials_file = broker_settings.get('credentials_file', 'example_credentials.json')
+def enable_live(
+    self,
+    credentials_file: str,
+    api_base_url: str,
+    dry_run: bool,
+    rate_limit_interval_s: float,
+    request_timeout_s: int,
+) -> None:
     self._api_key, self._api_secret = self._load_credentials(credentials_file)
-    self._api_base_url = broker_settings.get('api_base_url', 'https://api.example.com')
-    self._dry_run = broker_settings.get('dry_run', True)
-    self._rate_limit_interval_s = broker_settings.get('rate_limit_interval_s', 1.0)
-    self._request_timeout_s = broker_settings.get('request_timeout_s', 15)
+    self._api_base_url = api_base_url
+    self._dry_run = dry_run
+    self._rate_limit_interval_s = rate_limit_interval_s
+    self._request_timeout_s = request_timeout_s
     self._live_enabled = True
 
 def is_live_capable(self) -> bool:
@@ -225,15 +231,26 @@ Key rules:
 
 ## AutoTrader Wiring
 
-The AutoTrader profile references the broker config and settings:
+The AutoTrader profile references only the broker type. Connection settings come from `market_config.json`:
 
 ```json
 {
-  "broker": {
-    "broker_type": "example_spot",
-    "broker_config_path": "configs/brokers/example/example_broker_config.json",
-    "broker_settings_path": "configs/broker_settings/example.json"
-  }
+  "broker_type": "example_spot",
+  "adapter_type": "live",
+  "symbol": "BTCUSD",
+  ...
+}
+```
+
+In `market_config.json`, add the broker entry with connection settings:
+```json
+{
+  "broker_type": "example_spot",
+  "config_mode": "dynamic",
+  "broker_config_path": "configs/brokers/example/example_broker_config.json",
+  "credentials_file": "example_credentials.json",
+  "dry_run": true,
+  "api_base_url": "https://api.example.com"
 }
 ```
 

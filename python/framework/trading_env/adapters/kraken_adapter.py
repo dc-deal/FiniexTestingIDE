@@ -87,7 +87,6 @@ class KrakenAdapter(AbstractAdapter):
         self._dry_run: bool = True
         self._rate_limit_interval_s: float = 1.0
         self._request_timeout_s: int = 15
-        self._symbol_to_kraken_pair: Dict[str, str] = {}
         self._last_request_time: float = 0.0
         self._dry_run_counter: int = 0
 
@@ -463,20 +462,29 @@ class KrakenAdapter(AbstractAdapter):
     # Live Execution — Tier 3 Setup
     # ============================================
 
-    def enable_live(self, broker_settings: Dict[str, Any]) -> None:
+    def enable_live(
+        self,
+        credentials_file: str,
+        api_base_url: str,
+        dry_run: bool,
+        rate_limit_interval_s: float,
+        request_timeout_s: int,
+    ) -> None:
         """
         Enable Tier 3 live execution by loading credentials and broker settings.
 
         Args:
-            broker_settings: Parsed broker settings dict with credentials_file, api_base_url, dry_run, rate_limit_interval_s, request_timeout_s, symbol_to_kraken_pair
+            credentials_file: Credentials filename (resolved via cascade)
+            api_base_url: Broker API base URL
+            dry_run: True = validate only, no real orders placed
+            rate_limit_interval_s: Minimum seconds between API requests
+            request_timeout_s: HTTP request timeout in seconds
         """
-        credentials_file = broker_settings.get('credentials_file', 'kraken_credentials.json')
         self._api_key, self._api_secret = self._load_credentials(credentials_file)
-        self._api_base_url = broker_settings.get('api_base_url', 'https://api.kraken.com')
-        self._dry_run = broker_settings.get('dry_run', True)
-        self._rate_limit_interval_s = broker_settings.get('rate_limit_interval_s', 1.0)
-        self._request_timeout_s = broker_settings.get('request_timeout_s', 15)
-        self._symbol_to_kraken_pair = broker_settings.get('symbol_to_kraken_pair', {})
+        self._api_base_url = api_base_url
+        self._dry_run = dry_run
+        self._rate_limit_interval_s = rate_limit_interval_s
+        self._request_timeout_s = request_timeout_s
         self._live_enabled = True
 
     def is_live_capable(self) -> bool:
@@ -815,23 +823,18 @@ class KrakenAdapter(AbstractAdapter):
         """
         Resolve standard symbol to Kraken pair name for order API calls.
 
-        Uses kraken_pair_name from live-fetched config, falls back to static mapping.
+        Uses kraken_pair_name from broker config (static or live-fetched).
 
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
 
         Returns:
-            Kraken pair name (e.g., 'XXBTZUSD' or 'XBTUSD')
+            Kraken pair name (e.g., 'XBTUSD')
         """
-        # Try live-fetched pair name first
         symbol_info = self.broker_config.get('symbols', {}).get(symbol, {})
         pair_name = symbol_info.get('kraken_pair_name', '')
         if pair_name:
             return pair_name
-
-        # Fallback to broker settings mapping
-        if symbol in self._symbol_to_kraken_pair:
-            return self._symbol_to_kraken_pair[symbol]
 
         # Last resort: return symbol as-is
         return symbol

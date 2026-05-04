@@ -61,6 +61,11 @@ class BrokerConfig:
         self._capabilities = adapter.get_order_capabilities()
         self._symbol_specification: Dict[str, SymbolSpecification] = {}
 
+    @property
+    def config_hash(self) -> str:
+        """8-char SHA256 hash of the symbols block. Empty string if not available."""
+        return self.adapter.broker_config.get('_config_meta', {}).get('symbols_hash') or ''
+
     def load_all_symbol_specs(self):
         """
             init all symbols broker delivers in symbols list.

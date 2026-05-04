@@ -97,6 +97,78 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         self._log_info(f"✅ Broker config fetched: {symbol}")
         return config
 
+    def fetch_broker_config_with_cache(self, symbol: str, broker_type: str) -> Dict[str, Any]:
+        """
+        Fetch broker config with runtime cache and staleness guard.
+
+        Lookup chain:
+          1. Cache < 7 days old   → use cache silently, no API call
+          2. Cache 7–30 days old  → try API refresh; on failure use cache + warning
+          3. Cache > 30 days old  → try API refresh; on failure use cache + strong warning
+          4. No cache present     → fetch from API; failure = hard error with instructions
+
+        Cache location: data/runtime/brokers/<broker_type>/<broker_type>_broker_config.json
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSD')
+            broker_type: Broker type identifier (e.g., 'kraken_spot')
+
+        Returns:
+            Complete broker config dict (from cache or fresh API fetch)
+        """
+        cache_path = _get_runtime_cache_path(broker_type)
+        cache_age_days = _get_cache_age_days(cache_path)
+
+        # Cache fresh (< 7 days): use as-is if requested symbol is present
+        if cache_age_days is not None and cache_age_days < _CACHE_REFRESH_DAYS:
+            cached = _load_json(cache_path)
+            if symbol in cached.get('symbols', {}):
+                self._log_info(
+                    f"🗄  Broker config from cache: {broker_type} "
+                    f"({cache_age_days:.0f}d old, refresh in "
+                    f"{_CACHE_REFRESH_DAYS - cache_age_days:.0f}d)"
+                )
+                return cached
+            # Symbol not in cache yet — fall through to fetch and extend
+            self._log_info(
+                f"🔄  Symbol '{symbol}' not in cache — fetching from API..."
+            )
+
+        # Stale or no cache: try API refresh
+        try:
+            fresh_dict = self.fetch_broker_config(symbol, broker_type)
+            merged = _merge_with_cache(fresh_dict, cache_path)
+            _write_cache(merged, cache_path)
+            config_hash = merged.get('_config_meta', {}).get('symbols_hash', '')
+            hash_tag = f' [{config_hash}]' if config_hash else ''
+            active_count = sum(1 for s in merged.get('symbols', {}).values() if s.get('_active', True))
+            self._log_info(
+                f"💱 Broker config refreshed: {broker_type}{hash_tag} — {active_count} active symbols\n"
+                f"    Cache: {cache_path}"
+            )
+            return merged
+        except Exception as e:
+            if cache_age_days is not None:
+                _warn_stale_cache(cache_path, cache_age_days, broker_type, e, self._logger)
+                return _load_json(cache_path)
+
+            # No cache at all: hard error
+            raise ConnectionError(
+                f"❌ No broker config available for '{broker_type}'.\n"
+                f"\n"
+                f"   Cache:   {cache_path} — NOT FOUND\n"
+                f"   Reason:  {e}\n"
+                f"\n"
+                f"   This appears to be your first run, or the cache was deleted.\n"
+                f"   Fix:     Ensure internet / API access and restart.\n"
+                f"            Once fetched, the config is cached locally and only\n"
+                f"            re-fetched when it is older than {_CACHE_REFRESH_DAYS} days.\n"
+                f"\n"
+                f"   Offline fallback: Set \"config_mode\": \"static\" for '{broker_type}' in\n"
+                f"            configs/market_config.json to use the static seed file instead:\n"
+                f"            configs/brokers/kraken/kraken_spot_broker_config.json"
+            ) from e
+
     def fetch_account_balance(self, currency: str) -> Optional[float]:
         """
         Fetch account balance from Kraken Balance endpoint.
@@ -326,6 +398,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         return {
             '_comment': 'Live broker config fetched from Kraken API',
             '_version': '1.1',
+            'broker_type': broker_type,
             'export_info': {
                 'timestamp': now.isoformat(),
                 'source': 'Kraken REST API (live fetch)',
@@ -435,3 +508,243 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         """Log warning message if logger available."""
         if self._logger:
             self._logger.warning(message)
+
+
+# =============================================================================
+# RUNTIME CACHE HELPERS  (module-level, used by KrakenConfigFetcher)
+# =============================================================================
+
+_RUNTIME_CACHE_BASE = Path('data/runtime/brokers')
+_CACHE_REFRESH_DAYS = 7
+_CACHE_STALE_WARN_DAYS = 30
+
+
+def _get_runtime_cache_path(broker_type: str) -> Path:
+    """Return the runtime cache file path for a broker type."""
+    return _RUNTIME_CACHE_BASE / broker_type / f'{broker_type}_broker_config.json'
+
+
+def get_runtime_cache_path(broker_type: str) -> Path:
+    """
+    Return the runtime cache file path for a broker type.
+
+    Args:
+        broker_type: Broker type identifier (e.g., 'kraken_spot')
+
+    Returns:
+        Path to the runtime cache JSON file
+    """
+    return _get_runtime_cache_path(broker_type)
+
+
+def load_runtime_cache(broker_type: str) -> Dict[str, Any]:
+    """
+    Load the runtime cache for a broker type without any API calls.
+
+    Args:
+        broker_type: Broker type identifier (e.g., 'kraken_spot')
+
+    Returns:
+        Cache dict loaded from the runtime cache file
+
+    Raises:
+        FileNotFoundError: If no runtime cache exists for the broker
+    """
+    cache_path = _get_runtime_cache_path(broker_type)
+    if not cache_path.exists():
+        raise FileNotFoundError(
+            f"❌ No runtime cache found for '{broker_type}'.\n"
+            f"   Cache:  {cache_path}\n"
+            f"   Fix:    Start an AutoTrader session for any {broker_type} symbol (once)\n"
+            f"           to populate the cache, or run:\n"
+            f"           python python/cli/broker_config_cli.py sync --broker {broker_type}"
+        )
+    data = _load_json(cache_path)
+    # Inject broker_type if absent — caches written before this field was added
+    if 'broker_type' not in data:
+        data['broker_type'] = broker_type
+    return data
+
+
+def _get_cache_age_days(cache_path: Path) -> Optional[float]:
+    """
+    Return age of cache file in days, or None if file does not exist.
+
+    Args:
+        cache_path: Path to runtime cache file
+
+    Returns:
+        Age in days, or None if cache missing
+    """
+    if not cache_path.exists():
+        return None
+    try:
+        with open(cache_path, 'r') as f:
+            data = json.load(f)
+        last_fetched_str = data.get('_config_meta', {}).get('last_fetched')
+        if not last_fetched_str:
+            return None
+        last_fetched = datetime.fromisoformat(last_fetched_str.replace('Z', '+00:00'))
+        age = (datetime.now(timezone.utc) - last_fetched).total_seconds() / 86400.0
+        return age
+    except Exception:
+        return None
+
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    """Load JSON file and return as dict."""
+    with open(path, 'r') as f:
+        return json.load(f)
+
+
+def _write_cache(config_dict: Dict[str, Any], cache_path: Path) -> None:
+    """
+    Write broker config dict to runtime cache file.
+
+    Args:
+        config_dict: Broker config dict to write
+        cache_path: Destination path
+    """
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, 'w') as f:
+        json.dump(config_dict, f, indent=2)
+
+
+def _compute_symbols_hash(symbols: Dict[str, Any]) -> str:
+    """
+    Compute 8-char SHA256 hash of the symbols block.
+
+    Hash is stable across _config_meta changes — only symbols data affects it.
+
+    Args:
+        symbols: The 'symbols' dict from a broker config
+
+    Returns:
+        8-character hex hash string
+    """
+    return hashlib.sha256(
+        json.dumps(symbols, sort_keys=True).encode()
+    ).hexdigest()[:8]
+
+
+def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str, Any]:
+    """
+    Extend existing cache with freshly fetched symbol(s).
+
+    Since each fetch covers only one symbol, existing symbols are kept as-is —
+    they are not tombstoned. Tombstoning (setting _active: false) must be done
+    by a full-refresh path (fetch all symbols) which is not yet implemented.
+
+    Merge rules:
+      - Symbol in fresh             → add or update, set _active: true, set _last_fetched: now
+      - Symbol in cache only        → keep unchanged (_active and _last_fetched preserved)
+
+    Also updates _config_meta with current timestamp and recomputed hash.
+
+    Args:
+        fresh_dict: Config dict from broker API (typically one symbol)
+        cache_path: Path to existing cache (may not exist)
+
+    Returns:
+        Merged config dict with updated _config_meta
+    """
+    merged_symbols: Dict[str, Any] = {}
+
+    # Load existing cache symbols if present — keep their current state
+    if cache_path.exists():
+        try:
+            existing = _load_json(cache_path)
+            for sym, spec in existing.get('symbols', {}).items():
+                merged_symbols[sym] = dict(spec)
+        except Exception:
+            pass  # corrupted cache: start fresh
+
+    # Add / update fresh API symbols (always active)
+    now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    for sym, spec in fresh_dict.get('symbols', {}).items():
+        merged_symbols[sym] = dict(spec)
+        merged_symbols[sym]['_active'] = True
+        merged_symbols[sym]['_last_fetched'] = now_str
+
+    # Build merged dict from fresh structure (preserves broker_info, fee_structure, etc.)
+    result = dict(fresh_dict)
+    result['symbols'] = merged_symbols
+
+    # Update _config_meta
+    symbols_hash = _compute_symbols_hash(merged_symbols)
+    result['_config_meta'] = {
+        'schema_version': '2.0',
+        'last_fetched': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'symbols_hash': symbols_hash,
+    }
+
+    return result
+
+
+def _warn_stale_cache(
+    cache_path: Path,
+    age_days: float,
+    broker_type: str,
+    error: Exception,
+    logger: Optional[ScenarioLogger],
+) -> None:
+    """
+    Log a staleness warning with human-readable instructions.
+
+    Args:
+        cache_path: Path to the stale cache file
+        age_days: Age of the cache in days
+        broker_type: Broker type identifier
+        error: Exception from the failed API refresh attempt
+        logger: ScenarioLogger for status messages (may be None)
+    """
+    is_very_stale = age_days > _CACHE_STALE_WARN_DAYS
+
+    try:
+        cached_data = _load_json(cache_path)
+        config_hash = cached_data.get('_config_meta', {}).get('symbols_hash', '')
+        symbols = cached_data.get('symbols', {})
+        active_count = sum(1 for s in symbols.values() if s.get('_active', True))
+        hash_tag = f' [{config_hash}]' if config_hash else ''
+        symbol_summary = f"{active_count} active symbols{hash_tag}"
+    except Exception:
+        symbol_summary = 'cache unreadable'
+
+    try:
+        last_fetched = cached_data.get('_config_meta', {}).get('last_fetched', 'unknown')  # type: ignore[union-attr]
+    except Exception:
+        last_fetched = 'unknown'
+
+    age_label = f"{age_days:.0f} days ago"
+
+    if is_very_stale:
+        msg = (
+            f"⚠️  Broker config is {age_days:.0f} days old — symbol specs may be outdated.\n"
+            f"    Cache:   {cache_path}\n"
+            f"    Cached:  {last_fetched} ({age_label}) — STALE (>{_CACHE_STALE_WARN_DAYS} days)\n"
+            f"    Config:  {symbol_summary}\n"
+            f"    Reason:  {error}\n"
+            f"\n"
+            f"    Risk:    Volume limits, tick sizes, or listed symbols may have changed.\n"
+            f"             Delisted symbols will continue trading on outdated specs.\n"
+            f"    Fix:     Ensure internet / API access and restart to force a refresh.\n"
+            f"\n"
+            f"    Static seed (for manual inspection and git-tracked reference):\n"
+            f"    configs/brokers/kraken/kraken_spot_broker_config.json\n"
+            f"    (sync and commit after a successful cache refresh)"
+        )
+    else:
+        msg = (
+            f"⚠️  Could not refresh broker config — using cached version.\n"
+            f"    Cache:   {cache_path}\n"
+            f"    Cached:  {last_fetched} ({age_label}) — within acceptable range\n"
+            f"    Config:  {symbol_summary}\n"
+            f"    Reason:  {error}\n"
+            f"    Next:    A fresh fetch will be attempted on your next session start.\n"
+            f"             To force a refresh: ensure API access and restart."
+        )
+
+    if logger:
+        logger.warning(msg)
+    else:
+        print(msg)

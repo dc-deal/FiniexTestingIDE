@@ -5,7 +5,6 @@ Pipeline object creation for live AutoTrader sessions.
 Mirrors process_startup_preparation.py for backtesting.
 """
 
-import json
 import queue
 import threading
 from datetime import datetime, timezone
@@ -32,7 +31,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
-from python.framework.types.market_types.market_config_types import TradingModel
+from python.framework.types.market_types.market_config_types import ConfigMode, TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -328,8 +327,7 @@ def setup_tick_source(
         )
 
     elif config.tick_source.type == 'kraken':
-        ws_pair = _resolve_ws_pair(
-            config.symbol, base_currency, quote_currency, config.broker_settings, logger)
+        ws_pair = _resolve_ws_pair(config.symbol, base_currency, quote_currency)
         tick_source = KrakenTickSource(
             symbol=config.symbol,
             ws_pair=ws_pair,
@@ -365,8 +363,10 @@ def _create_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> B
     """
     Load broker config and attach appropriate adapter.
 
-    For adapter_type='mock': uses static JSON + MockBrokerAdapter.
-    For adapter_type='live': fetches from Kraken API (fallback to static JSON).
+    For adapter_type='mock': always uses static JSON + MockBrokerAdapter.
+    For adapter_type='live': routes by config_mode from market_config.json.
+      - DYNAMIC: fetches from broker API with runtime cache + staleness guard
+      - STATIC:  loads static JSON with info log (no API fetch)
 
     Args:
         config: AutoTrader configuration
@@ -375,28 +375,36 @@ def _create_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> B
     Returns:
         BrokerConfig with adapter
     """
-    if config.adapter_type == 'live':
-        return _create_live_broker_config(config, logger)
+    # Mock always uses static JSON, regardless of config_mode
+    if config.adapter_type == 'mock':
+        broker_config_path = MarketConfigManager().get_broker_config_path(config.broker_type)
+        broker_config = BrokerConfigFactory.build_broker_config(broker_config_path)
+        mock_adapter = MockBrokerAdapter(
+            broker_config=broker_config.adapter.broker_config
+        )
+        result = BrokerConfig(
+            broker_type=broker_config.broker_type,
+            adapter=mock_adapter
+        )
+        _log_broker_config_loaded(result, broker_config_path, logger)
+        return result
 
-    # Mock path: load static JSON, wrap in MockBrokerAdapter
-    broker_config = BrokerConfigFactory.build_broker_config(
-        config.broker_config_path
-    )
-    mock_adapter = MockBrokerAdapter(
-        broker_config=broker_config.adapter.broker_config
-    )
-    return BrokerConfig(
-        broker_type=broker_config.broker_type,
-        adapter=mock_adapter
-    )
+    # Live: route by config_mode
+    config_mode = MarketConfigManager().get_config_mode(config.broker_type)
+    if config_mode == ConfigMode.DYNAMIC:
+        return _create_live_broker_config_dynamic(config, logger)
+    return _create_live_broker_config_static(config, logger)
 
 
-def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
+def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
     """
-    Fetch broker config from Kraken API, with fallback to static JSON.
+    Fetch broker config from broker API with runtime cache and staleness guard.
 
-    Loads broker settings via cascade, fetches symbol specs and account balance,
-    then enables live execution on the adapter.
+    Lookup chain:
+      1. Cache fresh (< 7 days)  → use cache, no API call
+      2. Cache stale (7-30 days) → try API refresh; on failure use cache + warning
+      3. Cache very stale (>30d) → try API refresh; on failure use cache + strong warning
+      4. No cache               → must fetch from API; failure = hard error
 
     Args:
         config: AutoTrader configuration
@@ -406,52 +414,26 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
         BrokerConfig with live-enabled KrakenAdapter
     """
     # Lazy import to avoid loading requests in mock mode
-    from python.configuration.autotrader.kraken_config_fetcher import KrakenConfigFetcher
+    from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 
-    # === Load broker settings via cascade ===
-    if not config.broker_settings:
-        raise ValueError(
-            "broker_settings required for adapter_type='live'. "
-            "Add 'broker_settings' to profile JSON."
-        )
+    entry = MarketConfigManager().get_broker_entry(config.broker_type)
+    dry_run = entry.dry_run
 
-    broker_settings = _load_broker_settings(config.broker_settings)
-    credentials_file = broker_settings.get(
-        'credentials_file', 'kraken_credentials.json')
-    api_base_url = broker_settings.get('api_base_url')
-    dry_run = broker_settings.get('dry_run', True)
+    logger.info(f"🔧 Broker config: {config.broker_type} (dry_run={dry_run})")
+    print(f"  ▸ Broker: {config.broker_type} (dry_run={dry_run})")
 
-    logger.info(
-        f"🔧 Broker settings loaded: {config.broker_settings} "
-        f"(dry_run={dry_run})"
-    )
-    print(f"  ▸ Broker settings: {config.broker_settings} (dry_run={dry_run})")
-
-    fetcher = KrakenConfigFetcher(
-        credentials_path=credentials_file,
+    fetcher = BrokerConfigFetcherFactory.create(
+        broker_type=config.broker_type,
         logger=logger,
-        api_base_url=api_base_url,
     )
 
-    # === Fetch broker config (symbol specs) ===
-    try:
-        config_dict = fetcher.fetch_broker_config(
-            symbol=config.symbol,
-            broker_type=config.broker_type,
-        )
-        logger.info(f"💱 Live broker config fetched for {config.symbol}")
-    except Exception as e:
-        # Fallback to static JSON for symbol specs (rarely change)
-        logger.warning(
-            f"⚠️  API config fetch failed ({e}), "
-            f"falling back to static: {config.broker_config_path}"
-        )
-        config_dict = BrokerConfigFactory.build_broker_config(
-            config.broker_config_path
-        ).adapter.broker_config
+    # === Fetch broker config with cache + staleness guard ===
+    config_dict = fetcher.fetch_broker_config_with_cache(
+        symbol=config.symbol,
+        broker_type=config.broker_type,
+    )
 
     # === Fetch account balances (no fallback — must succeed for live) ===
-    # Fetch all currencies listed in profile balances from Kraken
     for currency in list(config.account.balances.keys()):
         balance = fetcher.fetch_account_balance(currency)
         if balance is None:
@@ -474,76 +456,84 @@ def _create_live_broker_config(config: AutoTraderConfig, logger: ScenarioLogger)
     )
 
     # === Enable live execution on adapter ===
-    broker_config.adapter.enable_live(broker_settings)
+    broker_config.adapter.enable_live(
+        credentials_file=entry.credentials_file,
+        api_base_url=entry.api_base_url,
+        dry_run=entry.dry_run,
+        rate_limit_interval_s=entry.rate_limit_interval_s,
+        request_timeout_s=entry.request_timeout_s,
+    )
     mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
     logger.info(f"🚀 Mode: {mode_label}")
     print(f"  ▸ Mode: {mode_label}")
 
+    _log_broker_config_loaded(broker_config, 'data/runtime/brokers (cached)', logger)
     return broker_config
 
 
-def _load_broker_settings(settings_filename: str) -> Dict[str, Any]:
+def _create_live_broker_config_static(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
     """
-    Load broker settings via cascade: user_configs/broker_settings/ → configs/broker_settings/.
+    Load broker config from static JSON for live sessions with config_mode=static.
+
+    Symbol specs are not refreshed from the broker API. Use config_mode=dynamic
+    in market_config.json to enable auto-refresh via runtime cache.
 
     Args:
-        settings_filename: Broker settings filename (e.g., 'kraken_spot.json')
+        config: AutoTrader configuration
+        logger: ScenarioLogger for status messages
 
     Returns:
-        Parsed broker settings dict
+        BrokerConfig (no live adapter — caller must call enable_live() separately)
     """
-    user_path = Path('user_configs/broker_settings') / settings_filename
-    default_path = Path('configs/broker_settings') / settings_filename
+    broker_config_path = MarketConfigManager().get_broker_config_path(config.broker_type)
+    logger.info(
+        f"ℹ️  Using static broker config for live session.\n"
+        f"    File:   {broker_config_path}\n"
+        f"    Note:   config_mode=static — symbol specs are not refreshed from the broker API.\n"
+        f"    Tip:    Set \"config_mode\": \"dynamic\" for {config.broker_type} in "
+        f"configs/market_config.json to enable auto-refresh."
+    )
+    print(f"  ▸ Static broker config: {broker_config_path}")
 
-    if user_path.exists():
-        settings_path = user_path
-    elif default_path.exists():
-        settings_path = default_path
-    else:
-        raise FileNotFoundError(
-            f"Broker settings file not found. Expected at:\n"
-            f"  {user_path} (user override)\n"
-            f"  {default_path} (default)"
-        )
-
-    with open(settings_path, 'r') as f:
-        return json.load(f)
+    broker_config = BrokerConfigFactory.build_broker_config(broker_config_path)
+    _log_broker_config_loaded(broker_config, broker_config_path, logger)
+    return broker_config
 
 
-def _resolve_ws_pair(
-    symbol: str,
-    base_currency: str,
-    quote_currency: str,
-    broker_settings_filename: str,
-    logger: ScenarioLogger
-) -> str:
+def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: ScenarioLogger) -> None:
+    """
+    Log broker config load event with config hash and active symbol count.
+
+    Args:
+        broker_config: Loaded BrokerConfig
+        source: File path or description of config source
+        logger: ScenarioLogger for status messages
+    """
+    config_hash = broker_config.config_hash
+    symbols = broker_config.adapter.broker_config.get('symbols', {})
+    active_count = sum(
+        1 for s in symbols.values()
+        if s.get('_active', True)  # missing _active defaults to active (legacy format)
+    )
+    hash_tag = f' [{config_hash}]' if config_hash else ''
+    logger.info(
+        f"🗄  Broker config loaded: {broker_config.broker_type.value}{hash_tag}\n"
+        f"    Source:  {source}\n"
+        f"    Symbols: {active_count} active"
+    )
+    print(f"  ▸ Broker config: {broker_config.broker_type.value}{hash_tag} — {active_count} active symbols")
+
+
+def _resolve_ws_pair(symbol: str, base_currency: str, quote_currency: str) -> str:
     """
     Resolve internal symbol to Kraken WS pair format.
-
-    Derives WS pair from SymbolSpec base/quote currencies. The symbol_to_ws_pair
-    map in broker settings acts as an explicit override (dead code for standard symbols,
-    will be removed in #252).
 
     Args:
         symbol: Internal symbol (e.g., 'BTCUSD')
         base_currency: Symbol base currency from SymbolSpec (e.g., 'BTC', 'DASH')
         quote_currency: Symbol quote currency from SymbolSpec (e.g., 'USD')
-        broker_settings_filename: Broker settings filename (e.g., 'kraken_spot.json')
-        logger: ScenarioLogger for warnings
 
     Returns:
         Kraken WS pair (e.g., 'BTC/USD', 'DASH/USD')
     """
-    if not broker_settings_filename:
-        raise ValueError(
-            "broker_settings required for tick_source type='kraken'. "
-            "Add 'broker_settings' to the AutoTrader profile JSON."
-        )
-
-    settings = _load_broker_settings(broker_settings_filename)
-    ws_pair_map = settings.get('symbol_to_ws_pair', {})
-
-    if symbol in ws_pair_map:
-        return ws_pair_map[symbol]
-
     return f'{base_currency}/{quote_currency}'

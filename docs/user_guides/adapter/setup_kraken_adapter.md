@@ -36,41 +36,43 @@ This file is gitignored. The tracked default at `configs/credentials/kraken_cred
 
 **Cascade:** `user_configs/credentials/` takes priority over `configs/credentials/`.
 
-## 3. Broker Settings
+## 3. Broker Connection Settings
 
-Create or edit `user_configs/broker_settings/kraken_spot.json`:
+Connection settings for `kraken_spot` live in `configs/market_config.json` under the `kraken_spot` broker entry:
 
 ```json
 {
+  "broker_type": "kraken_spot",
   "credentials_file": "kraken_credentials.json",
-  "api_base_url": "https://api.kraken.com",
   "dry_run": true,
+  "api_base_url": "https://api.kraken.com",
   "rate_limit_interval_s": 1.0,
-  "request_timeout_s": 15,
-  "symbol_to_kraken_pair": {
-    "BTCUSD": "XBTUSD",
-    "BTCEUR": "XBTEUR",
-    "ETHUSD": "ETHUSD",
-    "ETHEUR": "ETHEUR",
-    "SOLUSD": "SOLUSD",
-    "ADAUSD": "ADAUSD",
-    "XRPUSD": "XRPUSD",
-    "LTCUSD": "LTCUSD",
-    "DASHUSD": "DASHUSD"
-  }
+  "request_timeout_s": 15
 }
 ```
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | `credentials_file` | Credentials filename (resolved via cascade) | `kraken_credentials.json` |
-| `api_base_url` | Kraken REST API base URL | `https://api.kraken.com` |
 | `dry_run` | Validate orders without executing (`validate=true`) | `true` |
+| `api_base_url` | Kraken REST API base URL | `https://api.kraken.com` |
 | `rate_limit_interval_s` | Minimum seconds between private API calls | `1.0` |
 | `request_timeout_s` | HTTP request timeout in seconds | `15` |
-| `symbol_to_kraken_pair` | Standard symbol → Kraken pair name mapping for order API | See config |
 
-**Cascade:** `user_configs/broker_settings/` takes priority over `configs/broker_settings/`.
+To override any field, create `user_configs/market_config.json` with only the changed values:
+
+```json
+{
+  "brokers": [
+    {
+      "broker_type": "kraken_spot",
+      "dry_run": false
+    }
+  ]
+}
+```
+
+`user_configs/market_config.json` is gitignored — safe for real credentials references and live mode flags.
 
 ### Dry-Run Mode
 
@@ -80,18 +82,18 @@ This is Kraken's native validation parameter — not a local simulation. It catc
 
 **Kraken Spot has no testnet/sandbox.** Dry-run mode is the only way to test order flow without real execution.
 
+`dry_run` is a **broker-level deployment decision** — not a per-session flag. It applies to all AutoTrader sessions that use `kraken_spot`. The committed default (`configs/market_config.json`) is always `true`. Switch to live trading by overriding in `user_configs/market_config.json`.
+
 ## 4. AutoTrader Profile
 
-Point your profile to the broker settings file. Example `configs/autotrader_profiles/ethusd_live.json`:
+AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/ethusd_live.json`:
 
 ```json
 {
   "name": "ethusd_live",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
-  "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "adapter_type": "live",
-  "broker_settings": "kraken_spot.json",
   "strategy_config": { ... },
   "account": { "balances": { "USD": 0.0, "ETH": 0.0 }, "account_currency": "USD" },
   ...
@@ -104,10 +106,10 @@ Point your profile to the broker settings file. Example `configs/autotrader_prof
 
 ```
 AutoTrader Profile (ethusd_live.json)
-  "broker_settings": "kraken_spot.json"
+  "broker_type": "kraken_spot"
         |
         v
-Broker Settings (user_configs/broker_settings/kraken_spot.json)
+market_config.json → kraken_spot entry
   "credentials_file": "kraken_credentials.json"
   "dry_run": true
   "api_base_url": "https://api.kraken.com"
@@ -119,7 +121,7 @@ Credentials (user_configs/credentials/kraken_credentials.json)
 ```
 
 **Profile** = algorithm config (strategy, symbol, workers).
-**Broker Settings** = broker-specific live config (API URL, dry_run, rate limit, credentials reference).
+**market_config.json** = broker-specific live config (API URL, dry_run, rate limit, credentials reference).
 **Credentials** = only API keys.
 
 ## 5. First Run (Dry-Run)
@@ -130,7 +132,6 @@ python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/eth
 
 Expected startup output:
 ```
-Broker settings loaded: kraken_spot.json (dry_run=True)
 Live broker config fetched for ETHUSD
 Live balance: 0.006 ETH (profile default was 0.0)
 Mode: DRY RUN (validate only)
@@ -140,11 +141,16 @@ If balance fetch succeeds, your API key and permissions are correct. Orders will
 
 ## 6. Going Live
 
-Set `dry_run: false` in your broker settings file:
+Set `dry_run: false` in `user_configs/market_config.json` (gitignored):
 
 ```json
 {
-  "dry_run": false
+  "brokers": [
+    {
+      "broker_type": "kraken_spot",
+      "dry_run": false
+    }
+  ]
 }
 ```
 

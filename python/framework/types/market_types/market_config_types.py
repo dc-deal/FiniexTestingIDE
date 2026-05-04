@@ -20,6 +20,12 @@ class TradingModel(Enum):
     SPOT = 'spot'
 
 
+class ConfigMode(Enum):
+    """Broker config source — static file vs API-fetched runtime cache."""
+    STATIC = 'static'
+    DYNAMIC = 'dynamic'
+
+
 @dataclass
 class ProfileDefaults:
     """
@@ -64,8 +70,14 @@ class BrokerEntry:
     Args:
         broker_type: Unique identifier for data source (e.g., 'mt5', 'kraken_spot')
         market_type: Associated market type for trading rules
-        broker_config_path: Path to broker JSON configuration file
+        broker_config_path: Path to broker JSON configuration file (static seed)
         trading_model: Trading model (margin or spot) — determines balance tracking
+        config_mode: Static file (default) or API-fetched runtime cache
+        credentials_file: Credentials filename for live API access (cascade: user_configs/ → configs/)
+        dry_run: True = validate only, no real orders placed (global default per broker)
+        api_base_url: Broker API base URL (empty = use fetcher default)
+        rate_limit_interval_s: Minimum seconds between API requests
+        request_timeout_s: HTTP request timeout in seconds
     """
     broker_type: str
     market_type: MarketType
@@ -73,6 +85,12 @@ class BrokerEntry:
     # MULTI-SYMBOL TOUCHPOINT
     # Spot mode changes "margin aggregation" (#257 Phase 2) to "shared currency pool"
     trading_model: TradingModel = TradingModel.MARGIN
+    config_mode: ConfigMode = ConfigMode.STATIC
+    credentials_file: str = ''
+    dry_run: bool = True
+    api_base_url: str = ''
+    rate_limit_interval_s: float = 1.0
+    request_timeout_s: int = 15
 
 
 @dataclass

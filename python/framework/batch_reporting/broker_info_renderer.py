@@ -84,6 +84,7 @@ class BrokerInfoRenderer:
         market_type=MarketType,
         compact: bool = False,
         threshold: int = 9,
+        config_hash: str = '',
     ) -> str:
         """
         Render broker info as table for batch summaries.
@@ -94,6 +95,7 @@ class BrokerInfoRenderer:
             indent: Line indentation
             compact: If True and len(scenarios) > threshold, show count only
             threshold: Max scenarios to list before collapsing to count
+            config_hash: 8-char config seed hash (shown if non-empty)
 
         Returns:
             Multi-line table string
@@ -108,6 +110,8 @@ class BrokerInfoRenderer:
             f"{indent}Leverage: 1:{broker_spec.leverage} | Margin: {broker_spec.margin_mode.value}",
             f"{indent}Risk: MC {broker_spec.margin_call_level}% / SO {broker_spec.stopout_level}% | Hedging: {'✅' if broker_spec.hedging_allowed else '❌'}",
         ]
+        if config_hash:
+            lines.append(f"{indent}Config:  [{config_hash}]")
 
         # Add scenarios as bullet points (collapsed to count in compact mode)
         if scenarios:

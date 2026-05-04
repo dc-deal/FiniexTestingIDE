@@ -420,6 +420,7 @@ class AutotraderTickLoop:
             symbol=self._config.symbol,
             broker_type=self._config.broker_type,
             ticks_processed=ticks_processed,
+            config_hash=self._executor.broker.config_hash,
             balance=portfolio.balance,
             initial_balance=initial_balance_for_display,
             total_trades=portfolio.get_total_trades(),

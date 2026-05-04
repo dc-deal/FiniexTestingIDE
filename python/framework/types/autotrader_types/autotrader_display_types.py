@@ -122,6 +122,9 @@ class AutoTraderDisplayStats:
     winning_trades: int
     losing_trades: int
 
+    # Broker config seed (8-char SHA256 of symbols block — empty if unavailable)
+    config_hash: str = ''
+
     # Equity + spot balances (spot mode populated, margin mode equity only)
     equity: float = 0.0
     spot_balances: Optional[Dict[str, float]] = None

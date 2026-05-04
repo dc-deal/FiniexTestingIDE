@@ -292,8 +292,8 @@ class KrakenTickSource(AbstractTickSource):
             if error:
                 raise ValueError(
                     f"Subscription failed for {self._ws_pair}: {error}. "
-                    f"Check 'symbol_to_ws_pair' in broker settings — "
-                    f"the symbol must match Kraken WS v2 format (e.g., 'BTC/USD')."
+                    f"Pair must match Kraken WS v2 format (e.g., 'BTC/USD'). "
+                    f"Check base_currency / quote_currency in broker config."
                 )
 
             # Status, heartbeat, or other non-subscription messages — skip

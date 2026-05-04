@@ -131,7 +131,7 @@ On completion, a JSON receipt is written to `tests/live_adapters/reports/`:
   "tests_failed": 0,
   "tests_skipped": 0,
   "tests_run": ["test_market_buy_dryrun", "...", "test_limit_order_lifecycle"],
-  "broker_settings": {
+  "connection_settings": {
     "api_base_url": "https://api.kraken.com",
     "dry_run": true,
     "rate_limit_interval_s": 1.0,
@@ -140,8 +140,8 @@ On completion, a JSON receipt is written to `tests/live_adapters/reports/`:
 }
 ```
 
-Note: `broker_settings` in the report reflects the config file, not per-test overrides.
-Phase 2 explicitly sets `dry_run=False` at runtime.
+Note: `connection_settings` in the report reflects `market_config.json`, not per-test overrides.
+Phase 2 explicitly calls `enable_live(..., dry_run=False)` at runtime.
 
 Commit this report alongside the benchmark report as release artifacts.
 
@@ -189,5 +189,5 @@ no changes needed there when adding new adapter test files.
 
 - `python/framework/trading_env/adapters/kraken_adapter.py` — adapter under test
 - `configs/brokers/kraken/kraken_spot_broker_config.json` — symbol specs
-- `configs/broker_settings/kraken_spot.json` — broker settings (user-controlled)
+- `configs/market_config.json` — connection settings for `kraken_spot` (override via `user_configs/market_config.json`)
 - Issue #304 — when `dry_run` is retired, fixture key changes to `'paper_mode': True`

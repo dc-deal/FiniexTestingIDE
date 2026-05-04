@@ -186,13 +186,21 @@ class AutoTraderLiveDisplay:
             box=box.ROUNDED,
         )
 
-    def _build_header_title(self, stats: Optional[AutoTraderDisplayStats] = None) -> str:
-        """Build the header title with symbol and mode."""
+    def _build_header_title(self, stats: Optional[AutoTraderDisplayStats] = None) -> Text:
+        """Build the header title with symbol, mode and config seed hash."""
         symbol = stats.symbol if stats else self._config.symbol
         broker = stats.broker_type if stats else self._config.broker_type
         dry_run = stats.dry_run if stats else self._dry_run
-        mode_label = '[yellow]DRY RUN[/yellow]' if dry_run else '[green bold]LIVE TRADING[/green bold]'
-        return f'[bold cyan]FiniexAutoTrader[/bold cyan] — {symbol} ({broker}) — {mode_label}'
+        config_hash = stats.config_hash if stats else ''
+
+        title = Text()
+        title.append('FiniexAutoTrader', style='bold cyan')
+        title.append(f' — {symbol} ({broker})')
+        if config_hash:
+            title.append(f' [{config_hash}]', style='bright_black')
+        title.append(' — ')
+        title.append('DRY RUN' if dry_run else 'LIVE TRADING', style='yellow' if dry_run else 'green bold')
+        return title
 
     # =========================================================================
     # LAYOUT VARIANTS
