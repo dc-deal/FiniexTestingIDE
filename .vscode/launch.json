@@ -316,6 +316,20 @@
             "justMyCode": false
         },
         // ====================================================
+        // 🔧 BROKER CONFIG
+        // ====================================================
+        {
+            "name": "🔧 Broker Config: Sync (all dynamic brokers)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/broker_config_cli.py",
+            "args": [
+                "sync"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        // ====================================================
         // 🤖 AUTOTRADER
         // ====================================================
         {

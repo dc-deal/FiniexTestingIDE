@@ -2,7 +2,6 @@
   "name": "margin_safety_test",
   "symbol": "EURUSD",
   "broker_type": "mt5",
-  "broker_config_path": "configs/brokers/mt5/mt5_broker_config.json",
   "adapter_type": "mock",
   "strategy_config": {
     "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",

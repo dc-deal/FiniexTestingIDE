@@ -122,6 +122,9 @@ class AutoTraderDisplayStats:
     winning_trades: int
     losing_trades: int
 
+    # Broker config seed (8-char SHA256 of symbols block — empty if unavailable)
+    config_hash: str = ''
+
     # Equity + spot balances (spot mode populated, margin mode equity only)
     equity: float = 0.0
     spot_balances: Optional[Dict[str, float]] = None
@@ -173,6 +176,7 @@ class AutoTraderDisplayStats:
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)
     worker_max_times_ms: Dict[str, float] = field(default_factory=dict)
+    worker_rolling_avg_times_ms: Dict[str, float] = field(default_factory=dict)
 
     # Worker Outputs (display=True only)
     worker_outputs: Dict[str, Dict[str, OutputValue]] = field(default_factory=dict)
@@ -182,6 +186,7 @@ class AutoTraderDisplayStats:
     decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)
     decision_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
+    decision_rolling_avg_ms: float = 0.0
 
     # Decision logic config params (display=True inputs → Params: line in ALGO STATE)
     config_params: Dict[str, OutputValue] = field(default_factory=dict)

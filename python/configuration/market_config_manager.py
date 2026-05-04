@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from python.configuration.market_config_loader import MarketConfigFileLoader
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.market_types.market_config_types import (
+    ConfigMode,
     MarketType,
     MarketRules,
     ProfileDefaults,
@@ -98,11 +99,26 @@ class MarketConfigManager:
                     f"   Valid values: {[tm.value for tm in TradingModel]}"
                 )
 
+            config_mode_str = broker_dict.get('config_mode', 'static')
+            try:
+                config_mode = ConfigMode(config_mode_str)
+            except ValueError:
+                raise ValueError(
+                    f"❌ Invalid config_mode '{config_mode_str}' for broker '{broker_type}'\n"
+                    f"   Valid values: {[cm.value for cm in ConfigMode]}"
+                )
+
             self._broker_lookup[broker_type] = BrokerEntry(
                 broker_type=broker_type,
                 market_type=market_type,
-                broker_config_path=broker_config_path or "",
+                broker_config_path=broker_config_path or '',
                 trading_model=trading_model,
+                config_mode=config_mode,
+                credentials_file=broker_dict.get('credentials_file', ''),
+                dry_run=broker_dict.get('dry_run', True),
+                api_base_url=broker_dict.get('api_base_url', ''),
+                rate_limit_interval_s=broker_dict.get('rate_limit_interval_s', 1.0),
+                request_timeout_s=broker_dict.get('request_timeout_s', 15),
             )
 
     def get_market_type(self, broker_type: BrokerType) -> MarketType:
@@ -214,6 +230,30 @@ class MarketConfigManager:
         """
         entry = self.get_broker_entry(broker_type)
         return entry.trading_model
+
+    def get_config_mode(self, broker_type: str) -> ConfigMode:
+        """
+        Get config mode for a broker type.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            ConfigMode.STATIC or ConfigMode.DYNAMIC
+        """
+        return self.get_broker_entry(broker_type).config_mode
+
+    def get_dry_run(self, broker_type: str) -> bool:
+        """
+        Get dry_run flag for a broker type.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            True if dry-run mode is active (no real orders placed)
+        """
+        return self.get_broker_entry(broker_type).dry_run
 
     def get_all_broker_types(self) -> List[str]:
         """

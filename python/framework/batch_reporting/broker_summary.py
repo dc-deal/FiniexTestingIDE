@@ -87,6 +87,7 @@ class BrokerSummary(AbstractBatchSummarySection):
                 market_type=market_type,
                 compact=compact,
                 threshold=threshold,
+                config_hash=self._broker_scenario_map[broker_key].broker_config.config_hash,
             )
             print(broker_info)
 

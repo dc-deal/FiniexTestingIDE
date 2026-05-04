@@ -14,10 +14,12 @@ from typing import Dict, List, Any
 from dataclasses import dataclass
 
 from python.configuration.market_config_manager import MarketConfigManager
+from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path, load_runtime_cache
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
+from python.framework.types.market_types.market_config_types import ConfigMode
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.validation_types import ValidationResult
 
@@ -103,31 +105,69 @@ class BrokerDataPreparator:
         Load unique broker configs and build scenario mapping.
 
         Performance optimization:
-        - Uses config_path cache to avoid duplicate loading
-        - Each unique path is loaded only once via BrokerConfigFactory
+        - STATIC brokers: cached by config_path (load once per unique file)
+        - DYNAMIC brokers: loaded from runtime cache read-only; all symbols for the
+          broker are collected upfront and checked before loading
 
         Side effects:
         - Populates self._config_path_cache
         - Populates self._broker_scenario_map
         - Assigns scenario.broker_type for each scenario
         """
-        # Initialize MarketConfigManager once for all scenarios
         market_config = MarketConfigManager()
 
+        # Pre-collect symbols per DYNAMIC broker so all can be checked at once
+        dynamic_broker_symbols: Dict[str, List[str]] = {}
         for scenario in self.scenarios:
-            # Get config_path from MarketConfigManager via data_broker_type
-            # This replaces: scenario.trade_simulator_config.get("broker_config_path")
-            config_path = market_config.get_broker_config_path(
-                scenario.data_broker_type
-            )
+            if market_config.get_config_mode(scenario.data_broker_type) == ConfigMode.DYNAMIC:
+                symbols = dynamic_broker_symbols.setdefault(scenario.data_broker_type, [])
+                if scenario.symbol not in symbols:
+                    symbols.append(scenario.symbol)
 
-            # Load broker config (cached: only once per unique config_path)
-            if config_path not in self._config_path_cache:
-                self._config_path_cache[config_path] = (
-                    BrokerConfigFactory.build_broker_config(config_path)
+        # Pre-load DYNAMIC broker configs once (read-only, no API calls).
+        # Config/data errors (missing cache, missing symbol) are caught here and
+        # propagated as ValidationResult on each affected scenario — not as a crash.
+        dynamic_broker_configs: Dict[str, BrokerConfig] = {}
+        dynamic_broker_errors: Dict[str, str] = {}
+        for data_broker_type, symbols in dynamic_broker_symbols.items():
+            try:
+                dynamic_broker_configs[data_broker_type] = self._load_dynamic_broker_config(
+                    data_broker_type, symbols
                 )
+            except (FileNotFoundError, ValueError) as e:
+                dynamic_broker_errors[data_broker_type] = str(e)
 
-            broker_config = self._config_path_cache[config_path]
+        # Main loop: assign broker types and build scenario map
+        for scenario in self.scenarios:
+            data_broker_type = scenario.data_broker_type
+            config_mode = market_config.get_config_mode(data_broker_type)
+
+            if config_mode == ConfigMode.DYNAMIC and data_broker_type in dynamic_broker_errors:
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[dynamic_broker_errors[data_broker_type]],
+                    warnings=[],
+                ))
+                self.logger.error(
+                    f'❌ {scenario.name}: broker config unavailable — {dynamic_broker_errors[data_broker_type]}'
+                )
+                continue
+
+            if config_mode == ConfigMode.DYNAMIC:
+                broker_config = dynamic_broker_configs[data_broker_type]
+                config_path = str(get_runtime_cache_path(data_broker_type))
+            else:
+                # Get config_path from MarketConfigManager via data_broker_type
+                # This replaces: scenario.trade_simulator_config.get("broker_config_path")
+                config_path = market_config.get_broker_config_path(data_broker_type)
+                # Load broker config (cached: only once per unique config_path)
+                if config_path not in self._config_path_cache:
+                    self._config_path_cache[config_path] = (
+                        BrokerConfigFactory.build_broker_config(config_path)
+                    )
+                broker_config = self._config_path_cache[config_path]
+
             broker_type = broker_config.broker_type
 
             # Assign broker_type to scenario (needed for subprocess deserialization)
@@ -143,12 +183,47 @@ class BrokerDataPreparator:
                 )
 
             # Track scenario assignment
-            self._broker_scenario_map[broker_type].scenarios.append(
-                scenario.name)
+            self._broker_scenario_map[broker_type].scenarios.append(scenario.name)
             # Track symbols, but do not resolve (performance)
             # Will be resolved later in the reports.
             # Can be resolved with broker_config.get_symbol_specification
             self._broker_scenario_map[broker_type].symbols.add(scenario.symbol)
+
+    @staticmethod
+    def _load_dynamic_broker_config(broker_type: str, symbols: List[str]) -> BrokerConfig:
+        """
+        Load broker config from the runtime cache without any API calls.
+
+        All requested symbols must be present in the cache. If any are missing,
+        raises ValueError with instructions on how to populate the cache.
+
+        Args:
+            broker_type: Broker type identifier (e.g., 'kraken_spot')
+            symbols: Symbols that must be present in the cache
+
+        Returns:
+            BrokerConfig built from the runtime cache
+
+        Raises:
+            FileNotFoundError: If no runtime cache exists
+            ValueError: If any requested symbol is not in the cache
+        """
+        cache_path = get_runtime_cache_path(broker_type)
+        cached = load_runtime_cache(broker_type)  # raises FileNotFoundError if missing
+
+        cached_symbols = set(cached.get('symbols', {}).keys())
+        missing = [s for s in symbols if s not in cached_symbols]
+
+        if missing:
+            raise ValueError(
+                f"❌ Symbol(s) {missing} not in runtime cache for '{broker_type}'.\n"
+                f"   Cache:    {cache_path}\n"
+                f"   Present:  {sorted(cached_symbols)}\n"
+                f"   Fix:      Start an AutoTrader session for each missing symbol, or run:\n"
+                f"             python python/cli/broker_config_cli.py sync --broker {broker_type}"
+            )
+
+        return BrokerConfigFactory.build_from_dict(cached, str(cache_path))
 
     def _serialize_broker_configs(self) -> Dict[BrokerType, Dict[str, Any]]:
         """

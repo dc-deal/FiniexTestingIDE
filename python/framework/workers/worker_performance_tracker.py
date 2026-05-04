@@ -7,6 +7,7 @@ Tracks performance metrics for individual workers
 
 """
 
+from collections import deque
 
 from python.framework.types.performance_types.performance_stats_types import WorkerPerformanceStats
 
@@ -22,6 +23,8 @@ class WorkerPerformanceTracker:
         worker_type: Worker type (e.g., "CORE/rsi")
         worker_name: Worker instance name (e.g., "rsi_fast")
     """
+
+    _ROLLING_WINDOW = 30
 
     def __init__(self, worker_type: str, worker_name: str):
         """
@@ -49,6 +52,9 @@ class WorkerPerformanceTracker:
         self._min_time_ms = float('inf')
         self._max_time_ms = 0.0
 
+        # Rolling window for live display avg
+        self._recent_times: deque = deque(maxlen=self._ROLLING_WINDOW)
+
     def record(self, execution_time_ms: float) -> None:
         """
         Record a single execution time.
@@ -61,6 +67,7 @@ class WorkerPerformanceTracker:
 
         self._min_time_ms = min(self._min_time_ms, execution_time_ms)
         self._max_time_ms = max(self._max_time_ms, execution_time_ms)
+        self._recent_times.append(execution_time_ms)
 
     def get_stats(self) -> WorkerPerformanceStats:
         """
@@ -86,6 +93,17 @@ class WorkerPerformanceTracker:
 
         return self._stats
 
+    def get_rolling_avg_ms(self) -> float:
+        """
+        Rolling average over last _ROLLING_WINDOW executions.
+
+        Returns:
+            Average ms over the rolling window, 0.0 if no data yet
+        """
+        if not self._recent_times:
+            return 0.0
+        return round(sum(self._recent_times) / len(self._recent_times), 3)
+
     def reset(self) -> None:
         """Reset all metrics to initial state."""
         self._stats = WorkerPerformanceStats(
@@ -99,3 +117,4 @@ class WorkerPerformanceTracker:
         )
         self._min_time_ms = float('inf')
         self._max_time_ms = 0.0
+        self._recent_times.clear()

@@ -48,9 +48,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         name=raw.get('name', ''),
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
-        broker_config_path=raw.get('broker_config_path', ''),
         adapter_type=raw.get('adapter_type', 'mock'),
-        broker_settings=raw.get('broker_settings', ''),
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             balances=account_raw.get('balances', {}),

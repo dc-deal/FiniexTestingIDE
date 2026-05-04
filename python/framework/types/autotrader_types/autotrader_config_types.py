@@ -137,9 +137,7 @@ class AutoTraderConfig:
         name: Session name (used for log directory, e.g., 'btcusd_mock')
         symbol: Trading symbol (e.g., 'BTCUSD')
         broker_type: Broker type identifier (e.g., 'kraken_spot')
-        broker_config_path: Path to broker config JSON
         adapter_type: Adapter type ('mock' or 'live')
-        broker_settings: Broker settings filename (cascade: user_configs/broker_settings/ → configs/broker_settings/)
         strategy_config: Complete strategy configuration (workers + decision logic)
         account: Account configuration
         tick_source: Tick source configuration
@@ -149,9 +147,7 @@ class AutoTraderConfig:
     name: str = ''
     symbol: str = ''
     broker_type: str = ''
-    broker_config_path: str = ''
     adapter_type: str = 'mock'
-    broker_settings: str = ''
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     account: AccountConfig = field(default_factory=AccountConfig)
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
