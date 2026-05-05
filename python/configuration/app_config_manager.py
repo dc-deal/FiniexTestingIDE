@@ -65,7 +65,7 @@ class AppConfigManager:
         Returns:
             Execution config dict
         """
-        return self._config.get("execution", {})
+        return self._config.get('backtesting', {}).get('execution', {})
 
     def get_scenario_execution_defaults(self) -> Dict[str, Any]:
         """
@@ -93,7 +93,7 @@ class AppConfigManager:
         Returns:
             Default trade simulator config dict (latency ranges, etc.)
         """
-        return self._config.get('default_trade_simulator_config', {})
+        return self._config.get('backtesting', {}).get('default_trade_simulator_config', {})
 
     def get_logging_show_scenario_logging(self) -> bool:
         """
@@ -127,13 +127,21 @@ class AppConfigManager:
 
     def get_paths_config(self) -> Dict[str, Any]:
         """
-        Get paths configuration.
+        Get shared paths configuration (data_processed, user_algo_dirs).
 
         Returns:
-            Paths config dict
+            Shared paths config dict
         """
-        config = self._config
-        return config.get("paths", {})
+        return self._config.get('paths', {})
+
+    def _get_backtesting_paths_config(self) -> Dict[str, Any]:
+        """
+        Get backtesting-specific paths configuration.
+
+        Returns:
+            Backtesting paths config dict
+        """
+        return self._config.get('backtesting', {}).get('paths', {})
 
     def get_monitoring_config(self) -> Dict[str, Any]:
         """
@@ -142,8 +150,7 @@ class AppConfigManager:
         Returns:
             Monitoring config dict
         """
-        config = self._config
-        return config.get("monitoring", {})
+        return self._config.get('backtesting', {}).get('monitoring', {})
 
     def get_event_tape_size(self) -> int:
         """
@@ -272,7 +279,7 @@ class AppConfigManager:
         Returns:
             Data validation config dict
         """
-        return self._config.get("data_validation", {})
+        return self._config.get('backtesting', {}).get('data_validation', {})
 
     def get_warmup_quality_mode(self) -> str:
         """
@@ -337,12 +344,12 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self.get_paths_config()
+        paths = self._get_backtesting_paths_config()
         path = paths.get("scenario_sets")
         if not path:
             raise ValueError(
                 "Missing required path 'scenario_sets' in app_config.json. "
-                "Add to 'paths' section: \"scenario_sets\": \"configs/scenario_sets\""
+                "Add to 'backtesting.paths' section: \"scenario_sets\": \"configs/scenario_sets\""
             )
         return path
 
@@ -365,12 +372,12 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self.get_paths_config()
+        paths = self._get_backtesting_paths_config()
         path = paths.get("brokers")
         if not path:
             raise ValueError(
                 "Missing required path 'brokers' in app_config.json. "
-                "Add to 'paths' section: \"brokers\": \"configs/brokers\""
+                "Add to 'backtesting.paths' section: \"brokers\": \"configs/brokers\""
             )
         return path
 
@@ -384,12 +391,12 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self.get_paths_config()
+        paths = self._get_backtesting_paths_config()
         path = paths.get("generator_template")
         if not path:
             raise ValueError(
                 "Missing required path 'generator_template' in app_config.json. "
-                "Add to 'paths' section: \"generator_template\": \"configs/generator/template_scenario_set_header.json\""
+                "Add to 'backtesting.paths' section: \"generator_template\": \"configs/generator/template_scenario_set_header.json\""
             )
         return path
 
@@ -411,7 +418,7 @@ class AppConfigManager:
         Returns:
             Path string for generator output directory
         """
-        paths = self.get_paths_config()
+        paths = self._get_backtesting_paths_config()
         path = paths.get("generator_output")
         if not path:
             # Fallback to scenario_sets path

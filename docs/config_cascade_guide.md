@@ -70,32 +70,36 @@ This system enables:
 
 ```json
 {
-  "version": "1.0",
-  "execution": {
-    "parallel_scenarios": true,
-    "max_parallel_scenarios": 99,
-    "default_scenario_execution_config": { ... }
-  },
+  "version": "1.2.1",
   "console_logging": {
     "enabled": true,
-    "log_level": "DEBUG",
+    "log_level": "INFO",
     "warn_on_parameter_override": true,
-    "scenario": {
-      "enabled": false,
-      "log_level": "WARNING",
-      "write_system_info": true
-    },
-    "summary": {
-      "show_global_log": false,
-      "detail": false,
-      "scenario_detail_threshold": 9
-    }
+    "scenario": { ... },
+    "summary": { ... }
   },
   "file_logging": { ... },
   "paths": {
-    "scenario_sets": "configs/scenario_sets",
-    "brokers": "configs/brokers",
-    "data_processed": "data/processed"
+    "data_processed": "data/processed",
+    "user_algo_dirs": ["user_algos/"]
+  },
+  "history": { ... },
+  "autotrader": { ... },
+  "backtesting": {
+    "execution": {
+      "parallel_scenarios": true,
+      "max_parallel_scenarios": 99,
+      "default_scenario_execution_config": { ... }
+    },
+    "default_trade_simulator_config": { ... },
+    "monitoring": { ... },
+    "data_validation": { ... },
+    "paths": {
+      "scenario_sets": "configs/scenario_sets",
+      "brokers": "configs/brokers",
+      "generator_template": "configs/generator/template_scenario_set_header.json",
+      "generator_output": "configs/scenario_sets"
+    }
   }
 }
 ```
@@ -405,11 +409,13 @@ Execution settings cascade individually, allowing performance testing with diffe
 
 Trading simulator settings cascade individually (app_config → global → scenario), enabling testing across different account configurations. App-level defaults are defined in `app_config.json::default_trade_simulator_config` and provide latency simulation ranges.
 
-**App Defaults** (`app_config.json`):
+**App Defaults** (`app_config.json` → `backtesting.default_trade_simulator_config`):
 ```json
-"default_trade_simulator_config": {
-  "inbound_latency_min_ms": 20,
-  "inbound_latency_max_ms": 80
+"backtesting": {
+  "default_trade_simulator_config": {
+    "inbound_latency_min_ms": 20,
+    "inbound_latency_max_ms": 80
+  }
 }
 ```
 
