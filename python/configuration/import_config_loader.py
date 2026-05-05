@@ -9,6 +9,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
+from python.framework.utils.config_merge_utils import deep_merge
+
 
 class ImportConfigFileLoader:
     """
@@ -117,29 +119,4 @@ class ImportConfigFileLoader:
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Deep merge override dict into base dict.
-
-        Args:
-            base: Base configuration dictionary
-            override: Override configuration dictionary
-
-        Returns:
-            Merged configuration dictionary
-        """
-        result = base.copy()
-
-        for key, value in override.items():
-            if (
-                key in result and
-                isinstance(result[key], dict) and
-                isinstance(value, dict)
-            ):
-                # Recursive merge for nested dicts
-                result[key] = ImportConfigFileLoader._deep_merge(
-                    result[key], value)
-            else:
-                # Direct override for non-dict values
-                result[key] = value
-
-        return result
+        return deep_merge(base, override)

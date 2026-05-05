@@ -6,6 +6,8 @@ Loads AutoTraderConfig from JSON file.
 import json
 from pathlib import Path
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.utils.config_merge_utils import deep_merge
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AccountConfig,
     AutoTraderConfig,
@@ -35,6 +37,11 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     with open(path, 'r') as f:
         raw = json.load(f)
 
+    # Cascade: app_config.autotrader defaults → profile (profile wins)
+    app_defaults = AppConfigManager().get_autotrader_defaults()
+    if app_defaults:
+        raw = deep_merge(app_defaults, raw, atomic_keys={'balances'})
+
     # Parse nested config sections
     account_raw = raw.get('account', {})
     tick_source_raw = raw.get('tick_source', {})
@@ -52,6 +59,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             balances=account_raw.get('balances', {}),
+            account_currency=account_raw.get('account_currency', None),
         ),
         tick_source=TickSourceConfig(
             type=tick_source_raw.get('type', 'mock'),

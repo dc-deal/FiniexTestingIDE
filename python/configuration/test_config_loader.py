@@ -6,7 +6,9 @@ Simple loader for test_config.json
 import json
 from pathlib import Path
 from typing import Any, Dict, List
+
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.config_merge_utils import deep_merge
 
 vLog = get_global_logger()
 
@@ -104,28 +106,4 @@ class TestConfigLoader:
         return base_config
 
     def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Deep merge override dict into base dict.
-
-        Args:
-            base: Base configuration dictionary
-            override: Override configuration dictionary
-
-        Returns:
-            Merged configuration dictionary
-        """
-        result = base.copy()
-
-        for key, value in override.items():
-            if (
-                key in result and
-                isinstance(result[key], dict) and
-                isinstance(value, dict)
-            ):
-                # Recursive merge for nested dicts
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                # Direct override for non-dict values
-                result[key] = value
-
-        return result
+        return deep_merge(base, override)

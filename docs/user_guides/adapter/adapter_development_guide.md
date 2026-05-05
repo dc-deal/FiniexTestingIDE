@@ -256,6 +256,8 @@ In `market_config.json`, add the broker entry with connection settings:
 
 The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py`) must include the new broker type. The adapter factory (`python/framework/factory/`) must map the new `BrokerType` to the concrete adapter class.
 
+**Important:** `broker_config_path` is resolved automatically from `broker_type` via `MarketConfigManager` — never put it in the AutoTrader profile. The profile contains only `broker_type`; all connection settings come from `market_config.json`.
+
 ---
 
 ## Related
