@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.types.market_types.market_config_types import ConfigMode
 
 
@@ -64,8 +65,6 @@ class BrokerConfigCli:
         Args:
             broker_type: Broker type identifier
         """
-        from python.data_management.index.tick_index_manager import TickIndexManager
-
         fetcher = BrokerConfigFetcherFactory.create(broker_type=broker_type)
 
         tick_index = TickIndexManager()

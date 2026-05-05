@@ -18,6 +18,14 @@ import os
 import platform
 import psutil
 import subprocess
+try:
+    import numpy as _numpy
+except ImportError:
+    _numpy = None
+try:
+    import pandas as _pandas
+except ImportError:
+    _pandas = None
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -295,18 +303,10 @@ def _get_dependencies() -> Dict[str, str]:
     deps = {}
 
     # NumPy
-    try:
-        import numpy
-        deps['numpy'] = numpy.__version__
-    except ImportError:
-        deps['numpy'] = 'not installed'
+    deps['numpy'] = _numpy.__version__ if _numpy is not None else 'not installed'
 
     # Pandas
-    try:
-        import pandas
-        deps['pandas'] = pandas.__version__
-    except ImportError:
-        deps['pandas'] = 'not installed'
+    deps['pandas'] = _pandas.__version__ if _pandas is not None else 'not installed'
 
     return deps
 

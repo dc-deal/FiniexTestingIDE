@@ -23,8 +23,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
+from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
+from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -70,9 +72,6 @@ class DecisionLogicFactory:
         They live in python/framework/decision_logic/core/.
         """
         try:
-            from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
-            from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-
             self._registry['CORE/simple_consensus'] = (SimpleConsensus, None)
             self._registry['CORE/aggressive_trend'] = (AggressiveTrend, None)
             self._registry['CORE/cautious_macd'] = (CautiousMacd, None)

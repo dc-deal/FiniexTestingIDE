@@ -6,6 +6,8 @@ Deep merging utility for multi-level config inheritance
 import copy
 from typing import Dict, Any
 
+from python.framework.utils.config_merge_utils import deep_merge
+
 
 class ScenarioCascade:
     """
@@ -157,32 +159,4 @@ class ScenarioCascade:
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Recursively merge override dict into base dict.
-
-        Nested dicts are merged deeply, not replaced.
-        Keys in ATOMIC_KEYS are always replaced entirely (never deep-merged).
-        All other values (including lists) are replaced.
-
-        Args:
-            base: Base configuration dict
-            override: Override configuration dict
-
-        Returns:
-            Merged dict with override taking precedence
-        """
-        result = copy.deepcopy(base)
-
-        for key, override_value in override.items():
-            # Atomic keys: replace entirely, never merge
-            if key in ScenarioCascade.ATOMIC_KEYS:
-                result[key] = copy.deepcopy(override_value)
-            # If key exists in base and both are dicts → merge recursively
-            elif key in result and isinstance(result[key], dict) and isinstance(override_value, dict):
-                result[key] = ScenarioCascade._deep_merge(
-                    result[key], override_value)
-            else:
-                # Otherwise replace (handles primitives, lists, new keys)
-                result[key] = copy.deepcopy(override_value)
-
-        return result
+        return deep_merge(base, override, atomic_keys=ScenarioCascade.ATOMIC_KEYS)

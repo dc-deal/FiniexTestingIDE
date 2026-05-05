@@ -40,27 +40,10 @@
   "tick_source": {
     "type": "kraken"
   },
-  "execution": {
-    "parallel_workers": false,
-    "bar_max_history": 1000
-  },
-  "clipping_monitor": {
-    "report_interval_s": 60.0,
-    "strategy": "queue_all"
-  },
-  "display": {
-    "enabled": true,
-    "update_interval_ms": 300
-  },
   "safety": {
     "enabled": true,
     "min_balance": 9.0,
     "min_equity": 9.0,
     "max_drawdown_pct": 20.0
-  },
-  "order_guard": {
-    "_comment": "Pre-validation guard: blocks SHORT in spot mode, arms cooldown after N consecutive broker rejections to prevent retry spam",
-    "cooldown_seconds": 60.0,
-    "max_consecutive_rejections": 2
   }
 }

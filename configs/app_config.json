@@ -1,5 +1,5 @@
 {
-    "version": "1.0",
+    "version": "1.2.1",
     "description": "FiniexTestingIDE - Application Configuration",
     "development": {
         "dev_mode": false
@@ -84,5 +84,23 @@
             "weekend",
             "holiday"
         ]
+    },
+    "autotrader": {
+        "execution": {
+            "parallel_workers": false,
+            "bar_max_history": 1000
+        },
+        "clipping_monitor": {
+            "report_interval_s": 60.0,
+            "strategy": "queue_all"
+        },
+        "display": {
+            "enabled": true,
+            "update_interval_ms": 300
+        },
+        "order_guard": {
+            "cooldown_seconds": 60.0,
+            "max_consecutive_rejections": 2
+        }
     }
 }

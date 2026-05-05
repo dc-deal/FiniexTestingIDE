@@ -3,6 +3,7 @@ FiniexTestingIDE - Worker Coordinator ()
 Coordinates multiple workers and delegates decision-making to DecisionLogic
 """
 
+import re
 import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -158,7 +159,6 @@ class WorkerOrchestrator:
         # Fallback: Use class name
         class_name = decision_logic.__class__.__name__
         # Convert CamelCase to snake_case
-        import re
         snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
         return f"CORE/{snake_case}"
 

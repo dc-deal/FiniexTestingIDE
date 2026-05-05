@@ -11,6 +11,7 @@ Architecture:
 - Separation of concerns: Static config vs. dynamic market data
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
@@ -170,7 +171,6 @@ def extract_currencies_from_symbol(symbol: str) -> tuple[str, str, str]:
     Returns:
         (base_currency, quote_currency, margin_currency)
     """
-    import warnings
     warnings.warn(
         "extract_currencies_from_symbol() is deprecated. "
         "Use base_currency/quote_currency from broker config instead.",

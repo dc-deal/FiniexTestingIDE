@@ -50,12 +50,7 @@
     "max_ticks": 300
   },
   "execution": {
-    "parallel_workers": false,
     "bar_max_history": 30
-  },
-  "clipping_monitor": {
-    "report_interval_s": 60.0,
-    "strategy": "queue_all"
   },
   "display": {
     "enabled": false

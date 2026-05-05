@@ -20,6 +20,7 @@ Usage:
     executor = LiveTradeExecutor(broker_config, ...)
 """
 
+import copy
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -127,7 +128,6 @@ class MockBrokerAdapter(AbstractAdapter):
         config = broker_config or _MOCK_BROKER_CONFIG.copy()
         # Deep copy symbols to avoid mutation
         if broker_config is None:
-            import copy
             config = copy.deepcopy(_MOCK_BROKER_CONFIG)
 
         super().__init__(config)

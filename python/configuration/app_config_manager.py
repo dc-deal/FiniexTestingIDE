@@ -393,6 +393,15 @@ class AppConfigManager:
             )
         return path
 
+    def get_autotrader_defaults(self) -> Dict[str, Any]:
+        """
+        Get AutoTrader-wide default config from app_config.json.
+
+        Returns:
+            autotrader section dict, empty dict if section absent
+        """
+        return self._config.get('autotrader', {})
+
     def get_generator_output_path(self) -> str:
         """
         Get generator output path from config.
