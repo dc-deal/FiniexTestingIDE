@@ -4,26 +4,6 @@
     "development": {
         "dev_mode": false
     },
-    "execution": {
-        "parallel_scenarios": true,
-        "max_parallel_scenarios": 99,
-        "default_scenario_execution_config": {
-            "parallel_workers": false,
-            "worker_parallel_threshold_ms": 1.0,
-            "adaptive_parallelization": true,
-            "log_performance_stats": true,
-            "strict_parameter_validation": true,
-            "tick_processing_budget_ms": 0.0
-        }
-    },
-    "default_trade_simulator_config": {
-        "balances": { "USD": 10000 },
-        "seeds": {
-            "inbound_latency_seed": 42
-        },
-        "inbound_latency_min_ms": 20,
-        "inbound_latency_max_ms": 80
-    },
     "console_logging": {
         "enabled": true,
         "log_level": "INFO",
@@ -52,38 +32,13 @@
         }
     },
     "paths": {
-        "scenario_sets": "configs/scenario_sets",
-        "brokers": "configs/brokers",
-        "generator_template": "configs/generator/template_scenario_set_header.json",
-        "generator_output": "configs/scenario_sets",
         "data_processed": "data/processed",
         "user_algo_dirs": ["user_algos/"]
-    },
-    "monitoring": {
-        "enabled": true,
-        "tui_refresh_rate_ms": 300,
-        "detailed_live_stats": true,
-        "detailed_live_stats_threshold": 3,
-        "detailed_live_stats_exports": {
-            "export_portfolio_stats": false,
-            "export_performance_stats": false,
-            "export_current_bars": false
-        },
-        "event_tape_size": 5
     },
     "history": {
         "bar_max_history": 1000,
         "order_history_max": 10000,
         "trade_history_max": 5000
-    },
-    "data_validation": {
-        "warmup_quality_mode": "standard",
-        "allowed_gap_categories": [
-            "seamless",
-            "short",
-            "weekend",
-            "holiday"
-        ]
     },
     "autotrader": {
         "execution": {
@@ -101,6 +56,55 @@
         "order_guard": {
             "cooldown_seconds": 60.0,
             "max_consecutive_rejections": 2
+        }
+    },
+    "backtesting": {
+        "execution": {
+            "parallel_scenarios": true,
+            "max_parallel_scenarios": 99,
+            "default_scenario_execution_config": {
+                "parallel_workers": false,
+                "worker_parallel_threshold_ms": 1.0,
+                "adaptive_parallelization": true,
+                "log_performance_stats": true,
+                "strict_parameter_validation": true,
+                "tick_processing_budget_ms": 0.0
+            }
+        },
+        "default_trade_simulator_config": {
+            "balances": { "USD": 10000 },
+            "seeds": {
+                "inbound_latency_seed": 42
+            },
+            "inbound_latency_min_ms": 20,
+            "inbound_latency_max_ms": 80
+        },
+        "monitoring": {
+            "enabled": true,
+            "tui_refresh_rate_ms": 300,
+            "detailed_live_stats": true,
+            "detailed_live_stats_threshold": 3,
+            "detailed_live_stats_exports": {
+                "export_portfolio_stats": false,
+                "export_performance_stats": false,
+                "export_current_bars": false
+            },
+            "event_tape_size": 5
+        },
+        "data_validation": {
+            "warmup_quality_mode": "standard",
+            "allowed_gap_categories": [
+                "seamless",
+                "short",
+                "weekend",
+                "holiday"
+            ]
+        },
+        "paths": {
+            "scenario_sets": "configs/scenario_sets",
+            "brokers": "configs/brokers",
+            "generator_template": "configs/generator/template_scenario_set_header.json",
+            "generator_output": "configs/scenario_sets"
         }
     }
 }

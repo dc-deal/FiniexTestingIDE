@@ -56,10 +56,14 @@ Result: 6 ticks total, 4 algo (non-clipped), 2 clipped (33.3%). All 6 ticks ente
 
 The budget is configured via `execution_config.tick_processing_budget_ms` and cascades through the standard 3-level hierarchy (app → global → scenario):
 
-**App-level default** (`configs/app_config.json`):
+**App-level default** (`configs/app_config.json` → `backtesting.execution.default_scenario_execution_config`):
 ```json
-"default_scenario_execution_config": {
-    "tick_processing_budget_ms": 0.0
+"backtesting": {
+    "execution": {
+        "default_scenario_execution_config": {
+            "tick_processing_budget_ms": 0.0
+        }
+    }
 }
 ```
 
