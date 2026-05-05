@@ -26,19 +26,29 @@
 | `strategy_config.decision_logic_config` | 2 | global → scenario | Yes (per-parameter) |
 | `execution_config` | 3 | app_config → global → scenario | Yes (per-parameter) |
 | `trade_simulator_config` | 3 | app_config → global → scenario | Yes (per-parameter) |
+| `stress_test_config` | 2 | global → scenario | Yes (per-parameter) |
+| `order_guard` | 2 | global → scenario | Yes (per-parameter) |
 | `strategy_config.decision_logic_type` | 1 | global only | No |
 | `strategy_config.worker_instances` | 1 | global only | No |
 | Top-level properties (name, symbol, dates) | — | scenario only | N/A (scenario-specific) |
 
 ---
 
-> **Note:** This document describes the **scenario-level configuration cascade** (app → global → scenario).
-> 
+> **Key validation:** Both loaders check for unknown keys in each config section *before* the merge.
+> A typo like `tick_processing_budget_mss` produces a WARNING with full level provenance
+> (e.g. `global.execution_config` or `scenario[BTCUSD_01].execution_config`).
+> `strategy_config` is excluded — it has an open user-defined schema.
+
+> **Note:** This document describes the **backtesting scenario cascade** (app → global → scenario).
+>
+> The AutoTrader pipeline has its own 2-level cascade (`app_config.autotrader` → profile) — documented in [autotrader_architecture.md](autotrader/autotrader_architecture.md).
+>
 > For **application-level configuration overrides** (app_config.json, market_config.json), see the `user_configs/` folder system described in the main [README](../Readme.md#configuration).
-> 
-> These are two separate systems:
+>
+> These are three separate systems:
 > - **user_configs/** - Override base application settings (gitignored, personal)
-> - **Cascade system** - Scenario configuration inheritance (tracked in git, shared)
+> - **Scenario cascade** - Backtesting scenario configuration inheritance (this document)
+> - **AutoTrader cascade** - AutoTrader profile defaults inheritance
 
 ---
 
@@ -245,7 +255,9 @@ This system enables:
 │       ├─ Merge configs (global + scenario overrides)    │
 │       │  ├─ strategy_config.workers: Per-param merge    │
 │       │  ├─ execution_config: Per-parameter merge       │
-│       │  └─ trade_simulator_config: Per-parameter merge │
+│       │  ├─ trade_simulator_config: Per-parameter merge │
+│       │  ├─ stress_test_config: Per-parameter merge     │
+│       │  └─ order_guard: Per-parameter merge            │
 │       │                                                  │
 │       ├─ Detect overrides (if warn_on_override)         │
 │       │  └─ Log: ⚠️  Parameter overrides...             │
@@ -451,6 +463,75 @@ Trading simulator settings cascade individually (app_config → global → scena
 ```
 ⚠️  Parameter overrides in scenario 'USDJPY_window_02':
    └─ trade_simulator_config.balances: {'EUR': 10000} → {'JPY': 50000}
+```
+
+---
+
+### 5. `stress_test_config` (Per-Parameter Merge)
+
+Stress testing configuration cascades individually, allowing injection testing on specific scenarios only.
+
+**Global:**
+```json
+"stress_test_config": {
+  "reject_open_order": {
+    "enabled": true,
+    "seed": 999,
+    "probability": 0.3
+  }
+}
+```
+
+**Scenario Override:**
+```json
+"stress_test_config": {
+  "reject_open_order": {
+    "seed": 1,
+    "probability": 1.0
+  }
+}
+```
+
+**Result (Merged):**
+```json
+"stress_test_config": {
+  "reject_open_order": {
+    "enabled": true,    // ← FROM GLOBAL
+    "seed": 1,          // ← FROM SCENARIO
+    "probability": 1.0  // ← FROM SCENARIO
+  }
+}
+```
+
+See [stress_test.md](../stress_test.md) for full documentation.
+
+---
+
+### 6. `order_guard` (Per-Parameter Merge)
+
+Order guard configuration cascades individually.
+
+**Global:**
+```json
+"order_guard": {
+  "cooldown_seconds": 30.0,
+  "max_consecutive_rejections": 3
+}
+```
+
+**Scenario Override:**
+```json
+"order_guard": {
+  "cooldown_seconds": 5.0
+}
+```
+
+**Result (Merged):**
+```json
+"order_guard": {
+  "cooldown_seconds": 5.0,             // ← FROM SCENARIO
+  "max_consecutive_rejections": 3      // ← FROM GLOBAL
+}
 ```
 
 ---
@@ -872,7 +953,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 ### 4. **Enable Override Warnings**
 ```json
 // app_config.json
-"logging": {
+"console_logging": {
   "warn_on_parameter_override": true  // ← See what changes!
 }
 ```

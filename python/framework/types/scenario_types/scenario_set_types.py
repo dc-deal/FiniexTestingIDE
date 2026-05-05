@@ -65,7 +65,10 @@ class SingleScenario:
     account_currency: str = ''
 
     # === VALIDATION TRACKING ===
-    validation_result: List[ValidationResult] = field(default_factory=list)
+    # never init validation_result — its only purpose is to be filled
+    # by batch phases to exclude failed scenarios from execution
+    validation_result: List[ValidationResult] = field(
+        default_factory=list, init=False)
 
     # === DATA SOURCE METADATA (populated during data loading) ===
     data_format_versions: List[str] = field(default_factory=list)
@@ -199,7 +202,8 @@ class ScenarioSet:
                 shutil.copy2(profile_path, run_configs_dir / profile_path.name)
             except Exception as e:
                 vLog = get_global_logger()
-                vLog.warning(f"⚠️ Failed to copy profile {profile_path.name}: {e}")
+                vLog.warning(
+                    f"⚠️ Failed to copy profile {profile_path.name}: {e}")
 
     def write_scenario_system_info_log(self):
         """

@@ -33,7 +33,9 @@
     },
     "paths": {
         "data_processed": "data/processed",
-        "user_algo_dirs": ["user_algos/"]
+        "user_algo_dirs": [
+            "user_algos/"
+        ]
     },
     "history": {
         "bar_max_history": 1000,
@@ -72,7 +74,7 @@
             }
         },
         "default_trade_simulator_config": {
-            "balances": { "USD": 10000 },
+            "balances": {},
             "seeds": {
                 "inbound_latency_seed": 42
             },

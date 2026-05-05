@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.utils.config_merge_utils import deep_merge
+from python.framework.utils.config_merge_utils import check_unknown_keys, deep_merge
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AccountConfig,
     AutoTraderConfig,
@@ -18,6 +18,27 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     SafetyConfig,
     TickSourceConfig,
 )
+
+# ============================================
+# Known config keys per profile section
+# ============================================
+
+_KNOWN_PROFILE_TOP_KEYS: frozenset = frozenset({
+    'name', 'symbol', 'broker_type', 'adapter_type',
+    'strategy_config', 'account', 'tick_source',
+    'execution', 'clipping_monitor', 'display', 'safety', 'order_guard',
+})
+_KNOWN_EXECUTION_KEYS: frozenset = frozenset({'parallel_workers', 'bar_max_history'})
+_KNOWN_CLIPPING_KEYS: frozenset  = frozenset({'report_interval_s', 'strategy'})
+_KNOWN_DISPLAY_KEYS: frozenset   = frozenset({'enabled', 'update_interval_ms'})
+_KNOWN_SAFETY_KEYS: frozenset    = frozenset({'enabled', 'min_balance', 'min_equity', 'max_drawdown_pct'})
+_KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({'cooldown_seconds', 'max_consecutive_rejections'})
+_KNOWN_ACCOUNT_KEYS: frozenset   = frozenset({'balances', 'account_currency'})
+_KNOWN_TICK_SOURCE_KEYS: frozenset = frozenset({
+    'type', 'parquet_path', 'max_ticks', 'tick_delay_ms',
+    'ws_url', 'reconnect_initial_delay_s', 'reconnect_max_delay_s',
+    'heartbeat_interval_s', 'heartbeat_dead_s',
+})
 
 
 def load_autotrader_config(config_path: str) -> AutoTraderConfig:
@@ -50,6 +71,16 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     display_raw = raw.get('display', {})
     safety_raw = raw.get('safety', {})
     order_guard_raw = raw.get('order_guard', {})
+
+    # Structural key validation — profile level (pre-construction, full provenance)
+    check_unknown_keys('profile (top level)', raw,              _KNOWN_PROFILE_TOP_KEYS)
+    check_unknown_keys('execution',           execution_raw,    _KNOWN_EXECUTION_KEYS)
+    check_unknown_keys('clipping_monitor',    clipping_raw,     _KNOWN_CLIPPING_KEYS)
+    check_unknown_keys('display',             display_raw,      _KNOWN_DISPLAY_KEYS)
+    check_unknown_keys('safety',              safety_raw,       _KNOWN_SAFETY_KEYS)
+    check_unknown_keys('order_guard',         order_guard_raw,  _KNOWN_ORDER_GUARD_KEYS)
+    check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
+    check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
     return AutoTraderConfig(
         name=raw.get('name', ''),

@@ -38,3 +38,30 @@ def deep_merge(
             result[key] = copy.deepcopy(override_value)
 
     return result
+
+
+# Keys allowed in any config section — JSON documentation convention.
+_CONFIG_META_KEYS: frozenset = frozenset({'_comment'})
+
+
+def check_unknown_keys(
+    location: str,
+    config: Dict[str, Any],
+    known: frozenset,
+) -> None:
+    """
+    Raise if config contains keys absent from the known set.
+
+    Used by config loaders before deep_merge to detect typos with full
+    level provenance (global vs. per-scenario, section name).
+    Hard fail — unknown keys indicate a structural misconfiguration.
+    Meta keys (e.g. '_comment') are universally allowed.
+
+    Args:
+        location: Human-readable path (e.g. 'global.execution_config')
+        config: Raw config dict to inspect
+        known: Set of valid key names for this section
+    """
+    unknown = set(config.keys()) - known - _CONFIG_META_KEYS
+    if unknown:
+        raise ValueError(f"Unknown keys in {location}: {unknown} — check for typos or add to known keys")
