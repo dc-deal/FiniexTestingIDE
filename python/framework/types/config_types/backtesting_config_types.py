@@ -1,0 +1,79 @@
+"""
+FiniexTestingIDE - Backtesting Pipeline Configuration Types
+Pydantic models for the app_config.json::backtesting section.
+"""
+from typing import Dict, List
+from pydantic import BaseModel
+
+
+class DefaultScenarioExecutionConfig(BaseModel):
+    """Per-scenario execution defaults (base layer of 3-level cascade)."""
+    parallel_workers: bool = False
+    worker_parallel_threshold_ms: float = 1.0
+    adaptive_parallelization: bool = True
+    log_performance_stats: bool = True
+    strict_parameter_validation: bool = True
+    tick_processing_budget_ms: float = 0.0
+
+
+class BacktestingExecutionConfig(BaseModel):
+    """Backtesting batch execution settings."""
+    parallel_scenarios: bool = True
+    max_parallel_scenarios: int = 99
+    default_scenario_execution_config: DefaultScenarioExecutionConfig = DefaultScenarioExecutionConfig()
+
+
+class TradeSimulatorSeeds(BaseModel):
+    """RNG seeds for deterministic simulation."""
+    inbound_latency_seed: int = 42
+
+
+class TradeSimulatorDefaults(BaseModel):
+    """Trade simulator defaults (base layer of 3-level cascade)."""
+    balances: Dict[str, float] = {'USD': 10000}
+    seeds: TradeSimulatorSeeds = TradeSimulatorSeeds()
+    inbound_latency_min_ms: int = 20
+    inbound_latency_max_ms: int = 80
+
+
+class DetailedLiveStatsExports(BaseModel):
+    """Monitoring TUI export toggles."""
+    export_portfolio_stats: bool = False
+    export_performance_stats: bool = False
+    export_current_bars: bool = False
+
+
+class MonitoringConfig(BaseModel):
+    """Backtesting TUI monitoring settings."""
+    enabled: bool = True
+    tui_refresh_rate_ms: int = 300
+    detailed_live_stats: bool = True
+    detailed_live_stats_threshold: int = 3
+    detailed_live_stats_exports: DetailedLiveStatsExports = DetailedLiveStatsExports()
+    event_tape_size: int = 5
+
+
+class DataValidationConfig(BaseModel):
+    """Warmup and data gap validation settings."""
+    warmup_quality_mode: str = 'standard'
+    allowed_gap_categories: List[str] = ['seamless', 'short', 'weekend', 'holiday']
+
+
+class BacktestingPaths(BaseModel):
+    """Filesystem paths used exclusively by the backtesting pipeline."""
+    scenario_sets: str = 'configs/scenario_sets'
+    brokers: str = 'configs/brokers'
+    generator_template: str = 'configs/generator/template_scenario_set_header.json'
+    generator_output: str = 'configs/scenario_sets'
+
+
+class BacktestingConfig(BaseModel):
+    """
+    Top-level model for app_config.json::backtesting.
+    Groups all settings that apply only to the backtesting pipeline.
+    """
+    execution: BacktestingExecutionConfig = BacktestingExecutionConfig()
+    default_trade_simulator_config: TradeSimulatorDefaults = TradeSimulatorDefaults()
+    monitoring: MonitoringConfig = MonitoringConfig()
+    data_validation: DataValidationConfig = DataValidationConfig()
+    paths: BacktestingPaths = BacktestingPaths()

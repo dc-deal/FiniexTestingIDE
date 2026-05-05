@@ -20,7 +20,7 @@ import numpy as np
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker

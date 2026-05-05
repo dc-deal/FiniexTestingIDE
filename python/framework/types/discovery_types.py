@@ -6,17 +6,14 @@ Type definitions for market discovery results.
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import List
 
 
-class MoveDirection(Enum):
+class MoveDirection(StrEnum):
     """Direction of an extreme price move."""
     LONG = "long"
     SHORT = "short"
-
-    def __str__(self) -> str:
-        return self.value
 
 
 @dataclass

@@ -29,7 +29,7 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_types.market_config_types import TradingModel
+from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
 

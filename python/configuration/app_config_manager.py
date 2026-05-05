@@ -4,9 +4,10 @@ Centralized app config management
 """
 
 from typing import Dict, Any, List
-from python.configuration.console_logging_config import ConsoleLoggingConfig
-from python.configuration.file_logging_config import FileLoggingConfig
+from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
+from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 from python.configuration.config_file_loader import ConfigFileLoader
+from python.framework.types.config_types.app_config_types import AppConfig
 from python.framework.types.log_level import LogLevel
 
 
@@ -23,12 +24,10 @@ class AppConfigManager:
         Initialize app config loader.
         """
         # Only load once
-        config, was_first_load = ConfigFileLoader.get_config()
-        self._config = config
+        raw_config, was_first_load = ConfigFileLoader.get_config()
+        self._app_config = AppConfig(**raw_config)
         if was_first_load:
             self._print_config_status()
-        self._file_logging_config = FileLoggingConfig()
-        self._console_logging_config = ConsoleLoggingConfig()
 
     def _print_config_status(self):
         """Print config status (replaces old config.py print)"""
@@ -40,14 +39,14 @@ class AppConfigManager:
         """
         Get structured logging configuration.
         """
-        return self._console_logging_config
+        return self._app_config.console_logging
 
     def get_file_logging_config_object(self) -> FileLoggingConfig:
         """
         Get structured file logging configuration.
             ValueError: If config structure invalid
         """
-        return self._file_logging_config
+        return self._app_config.file_logging
 
     def get_config(self) -> Dict[str, Any]:
         """
@@ -56,7 +55,7 @@ class AppConfigManager:
         Returns:
             Complete config dict
         """
-        return self._config
+        return self._app_config.model_dump()
 
     def get_execution_config(self) -> Dict[str, Any]:
         """
@@ -65,7 +64,7 @@ class AppConfigManager:
         Returns:
             Execution config dict
         """
-        return self._config.get('backtesting', {}).get('execution', {})
+        return self._app_config.backtesting.execution.model_dump()
 
     def get_scenario_execution_defaults(self) -> Dict[str, Any]:
         """
@@ -80,8 +79,7 @@ class AppConfigManager:
         Returns:
             Default execution config dict for scenarios
         """
-        exec_config = self.get_execution_config()
-        return exec_config.get("scenario_execution_defaults", {})
+        return self._app_config.backtesting.execution.default_scenario_execution_config.model_dump()
 
     def get_trade_simulator_defaults(self) -> Dict[str, Any]:
         """
@@ -93,7 +91,7 @@ class AppConfigManager:
         Returns:
             Default trade simulator config dict (latency ranges, etc.)
         """
-        return self._config.get('backtesting', {}).get('default_trade_simulator_config', {})
+        return self._app_config.backtesting.default_trade_simulator_config.model_dump()
 
     def get_logging_show_scenario_logging(self) -> bool:
         """
@@ -125,24 +123,6 @@ class AppConfigManager:
         logging_config = self.get_console_logging_config_object()
         return logging_config.scenario_write_system_info
 
-    def get_paths_config(self) -> Dict[str, Any]:
-        """
-        Get shared paths configuration (data_processed, user_algo_dirs).
-
-        Returns:
-            Shared paths config dict
-        """
-        return self._config.get('paths', {})
-
-    def _get_backtesting_paths_config(self) -> Dict[str, Any]:
-        """
-        Get backtesting-specific paths configuration.
-
-        Returns:
-            Backtesting paths config dict
-        """
-        return self._config.get('backtesting', {}).get('paths', {})
-
     def get_monitoring_config(self) -> Dict[str, Any]:
         """
         Get monitoring configuration.
@@ -150,7 +130,7 @@ class AppConfigManager:
         Returns:
             Monitoring config dict
         """
-        return self._config.get('backtesting', {}).get('monitoring', {})
+        return self._app_config.backtesting.monitoring.model_dump()
 
     def get_event_tape_size(self) -> int:
         """
@@ -159,7 +139,7 @@ class AppConfigManager:
         Returns:
             Maximum number of events to retain in the UI ring buffer
         """
-        return self.get_monitoring_config().get('event_tape_size', 5)
+        return self._app_config.backtesting.monitoring.event_tape_size
 
     def get_default_parallel_scenarios(self) -> bool:
         """
@@ -168,8 +148,7 @@ class AppConfigManager:
         Returns:
             True if scenarios should run in parallel by default
         """
-        exec_config = self.get_execution_config()
-        return exec_config.get("parallel_scenarios", True)
+        return self._app_config.backtesting.execution.parallel_scenarios
 
     def get_default_max_parallel_scenarios(self) -> int:
         """
@@ -178,8 +157,7 @@ class AppConfigManager:
         Returns:
             Max number of scenarios to run in parallel
         """
-        exec_config = self.get_execution_config()
-        return exec_config.get("max_parallel_scenarios", 4)
+        return self._app_config.backtesting.execution.max_parallel_scenarios
 
     def get_default_parallel_workers(self) -> bool:
         """
@@ -188,8 +166,7 @@ class AppConfigManager:
         Returns:
             True if workers should run in parallel by default
         """
-        exec_config = self.get_execution_config()
-        return exec_config.get("parallel_workers", True)
+        return self._app_config.backtesting.execution.default_scenario_execution_config.parallel_workers
 
     def should_warn_on_override(self) -> bool:
         """
@@ -225,15 +202,6 @@ class AppConfigManager:
     # Development Config
     # ============================================
 
-    def get_development_config(self) -> Dict[str, Any]:
-        """
-        Get development configuration.
-
-        Returns:
-            Development config dict
-        """
-        return self._config.get("development", {})
-
     def get_dev_mode(self) -> bool:
         """
         Get dev mode setting.
@@ -241,36 +209,23 @@ class AppConfigManager:
         Returns:
             True if dev mode is enabled
         """
-        dev_config = self.get_development_config()
-        return dev_config.get("dev_mode", False)
+        return self._app_config.development.dev_mode
 
     # ============================================
     # History Config
     # ============================================
 
-    def get_history_config(self) -> Dict[str, Any]:
-        """
-        Get history retention configuration.
-
-        Returns:
-            History config dict with keys:
-            - bar_max_history: Max bars per symbol/timeframe (default: 1000)
-            - order_history_max: Max order records (default: 10000, 0=unlimited)
-            - trade_history_max: Max trade records (default: 5000, 0=unlimited)
-        """
-        return self._config.get("history", {})
-
     def get_bar_max_history(self) -> int:
         """Get max bars to retain per symbol/timeframe."""
-        return self.get_history_config().get("bar_max_history", 1000)
+        return self._app_config.history.bar_max_history
 
     def get_order_history_max(self) -> int:
         """Get max order history entries (0=unlimited)."""
-        return self.get_history_config().get("order_history_max", 10000)
+        return self._app_config.history.order_history_max
 
     def get_trade_history_max(self) -> int:
         """Get max trade history entries (0=unlimited)."""
-        return self.get_history_config().get("trade_history_max", 5000)
+        return self._app_config.history.trade_history_max
 
     def get_data_validation_config(self) -> Dict[str, Any]:
         """
@@ -279,7 +234,7 @@ class AppConfigManager:
         Returns:
             Data validation config dict
         """
-        return self._config.get('backtesting', {}).get('data_validation', {})
+        return self._app_config.backtesting.data_validation.model_dump()
 
     def get_warmup_quality_mode(self) -> str:
         """
@@ -288,8 +243,7 @@ class AppConfigManager:
         Returns:
             Warmup quality mode: 'permissive' or 'standard' (default: 'standard')
         """
-        validation_config = self.get_data_validation_config()
-        return validation_config.get("warmup_quality_mode", "standard")
+        return self._app_config.backtesting.data_validation.warmup_quality_mode
 
     def get_allowed_gap_categories(self) -> List[str]:
         """
@@ -298,8 +252,7 @@ class AppConfigManager:
         Returns:
             List of allowed gap category strings (default: ['seamless', 'short'])
         """
-        validation_config = self.get_data_validation_config()
-        return validation_config.get("allowed_gap_categories", ["seamless", "short", "weekend", "holiday"])
+        return self._app_config.backtesting.data_validation.allowed_gap_categories
 
     # ============================================
     # Centralized Path Methods (Validated)
@@ -312,8 +265,7 @@ class AppConfigManager:
         Returns:
             List of directory paths (default: ["user_algos/"])
         """
-        paths = self.get_paths_config()
-        return paths.get('user_algo_dirs', ['user_algos/'])
+        return self._app_config.paths.user_algo_dirs
 
     def get_data_processed_path(self) -> str:
         """
@@ -325,14 +277,7 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self.get_paths_config()
-        path = paths.get("data_processed")
-        if not path:
-            raise ValueError(
-                "Missing required path 'data_processed' in app_config.json. "
-                "Add to 'paths' section: \"data_processed\": \"data/processed\""
-            )
-        return path
+        return self._app_config.paths.data_processed
 
     def get_scenario_sets_path(self) -> str:
         """
@@ -344,14 +289,7 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self._get_backtesting_paths_config()
-        path = paths.get("scenario_sets")
-        if not path:
-            raise ValueError(
-                "Missing required path 'scenario_sets' in app_config.json. "
-                "Add to 'backtesting.paths' section: \"scenario_sets\": \"configs/scenario_sets\""
-            )
-        return path
+        return self._app_config.backtesting.paths.scenario_sets
 
     def get_user_scenario_sets_path(self) -> str:
         """
@@ -372,14 +310,7 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self._get_backtesting_paths_config()
-        path = paths.get("brokers")
-        if not path:
-            raise ValueError(
-                "Missing required path 'brokers' in app_config.json. "
-                "Add to 'backtesting.paths' section: \"brokers\": \"configs/brokers\""
-            )
-        return path
+        return self._app_config.backtesting.paths.brokers
 
     def get_generator_template_path(self) -> str:
         """
@@ -391,14 +322,7 @@ class AppConfigManager:
         Raises:
             ValueError: If path not configured
         """
-        paths = self._get_backtesting_paths_config()
-        path = paths.get("generator_template")
-        if not path:
-            raise ValueError(
-                "Missing required path 'generator_template' in app_config.json. "
-                "Add to 'backtesting.paths' section: \"generator_template\": \"configs/generator/template_scenario_set_header.json\""
-            )
-        return path
+        return self._app_config.backtesting.paths.generator_template
 
     def get_autotrader_defaults(self) -> Dict[str, Any]:
         """
@@ -407,7 +331,7 @@ class AppConfigManager:
         Returns:
             autotrader section dict, empty dict if section absent
         """
-        return self._config.get('autotrader', {})
+        return self._app_config.autotrader.model_dump()
 
     def get_generator_output_path(self) -> str:
         """
@@ -418,9 +342,4 @@ class AppConfigManager:
         Returns:
             Path string for generator output directory
         """
-        paths = self._get_backtesting_paths_config()
-        path = paths.get("generator_output")
-        if not path:
-            # Fallback to scenario_sets path
-            return self.get_scenario_sets_path()
-        return path
+        return self._app_config.backtesting.paths.generator_output

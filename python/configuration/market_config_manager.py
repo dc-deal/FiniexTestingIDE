@@ -7,12 +7,13 @@ from typing import Dict, List, Optional
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
 from python.framework.types.trading_env_types.broker_types import BrokerType
-from python.framework.types.market_types.market_config_types import (
-    ConfigMode,
-    MarketType,
-    MarketRules,
-    ProfileDefaults,
+from python.framework.types.config_types.market_config_types import (
     BrokerEntry,
+    ConfigMode,
+    MarketConfigModel,
+    MarketRules,
+    MarketType,
+    ProfileDefaults,
     TradingModel,
 )
 
@@ -29,96 +30,45 @@ class MarketConfigManager:
 
     def __init__(self):
         """Initialize market config manager."""
-        config, _ = MarketConfigFileLoader.get_config()
-        self._config = config
+        raw_config, _ = MarketConfigFileLoader.get_config()
         self._broker_lookup: Dict[str, BrokerEntry] = {}
         self._market_rules: Dict[MarketType, MarketRules] = {}
-        self._build_lookups()
+        self._build_lookups(raw_config)
 
-    def _build_lookups(self) -> None:
+    def _build_lookups(self, raw_config: dict) -> None:
         """Build internal lookup dictionaries from config."""
-        # Build market rules lookup
-        rules_config = self._config.get("market_rules", {})
-        for market_type_str, rules_dict in rules_config.items():
-            try:
-                market_type = MarketType(market_type_str)
-                # Parse profile defaults if present
-                profile_defaults = None
-                profile_dict = rules_dict.get("generator_profile_defaults")
-                if profile_dict:
-                    profile_defaults = ProfileDefaults(
-                        min_block_hours=profile_dict.get("min_block_hours", 2),
-                        max_block_hours=profile_dict.get("max_block_hours", 24),
-                        atr_percentile_threshold=profile_dict.get("atr_percentile_threshold", 10),
-                    )
+        parsed = MarketConfigModel(**raw_config)
 
-                self._market_rules[market_type] = MarketRules(
-                    weekend_closure=rules_dict.get("weekend_closure", True),
-                    session_bucketing=rules_dict.get(
-                        "session_bucketing", True),
-                    primary_activity_metric=rules_dict.get(
-                        "primary_activity_metric", "tick_count"),
-                    inter_tick_gap_threshold_s=rules_dict.get(
-                        "inter_tick_gap_threshold_s", 300.0),
-                    generator_profile_defaults=profile_defaults,
+        for market_type_str, rules in parsed.market_rules.items():
+            market_type = MarketType(market_type_str)
+            profile_defaults = None
+            if rules.generator_profile_defaults:
+                pd = rules.generator_profile_defaults
+                profile_defaults = ProfileDefaults(
+                    min_block_hours=pd.min_block_hours,
+                    max_block_hours=pd.max_block_hours,
+                    atr_percentile_threshold=pd.atr_percentile_threshold,
                 )
-            except ValueError:
-                raise ValueError(
-                    f"❌ Invalid market_type in market_config.json: '{market_type_str}'\n"
-                    f"   Valid values: {[mt.value for mt in MarketType]}"
-                )
+            self._market_rules[market_type] = MarketRules(
+                weekend_closure=rules.weekend_closure,
+                session_bucketing=rules.session_bucketing,
+                primary_activity_metric=rules.primary_activity_metric,
+                inter_tick_gap_threshold_s=rules.inter_tick_gap_threshold_s,
+                generator_profile_defaults=profile_defaults,
+            )
 
-        # Build broker lookup
-
-        brokers_config = self._config.get("brokers", [])
-        for broker_dict in brokers_config:
-            broker_type = broker_dict.get("broker_type")
-            market_type_str = broker_dict.get("market_type")
-            broker_config_path = broker_dict.get("broker_config_path")
-
-            if not broker_type:
-                raise ValueError(
-                    f"❌ Missing 'broker_type' in broker entry: {broker_dict}"
-                )
-
-            try:
-                market_type = MarketType(market_type_str)
-            except ValueError:
-                raise ValueError(
-                    f"❌ Invalid market_type '{market_type_str}' for broker '{broker_type}'\n"
-                    f"   Valid values: {[mt.value for mt in MarketType]}"
-                )
-
-            # Parse trading_model (default: margin)
-            trading_model_str = broker_dict.get('trading_model', 'margin')
-            try:
-                trading_model = TradingModel(trading_model_str)
-            except ValueError:
-                raise ValueError(
-                    f"❌ Invalid trading_model '{trading_model_str}' for broker '{broker_type}'\n"
-                    f"   Valid values: {[tm.value for tm in TradingModel]}"
-                )
-
-            config_mode_str = broker_dict.get('config_mode', 'static')
-            try:
-                config_mode = ConfigMode(config_mode_str)
-            except ValueError:
-                raise ValueError(
-                    f"❌ Invalid config_mode '{config_mode_str}' for broker '{broker_type}'\n"
-                    f"   Valid values: {[cm.value for cm in ConfigMode]}"
-                )
-
-            self._broker_lookup[broker_type] = BrokerEntry(
-                broker_type=broker_type,
-                market_type=market_type,
-                broker_config_path=broker_config_path or '',
-                trading_model=trading_model,
-                config_mode=config_mode,
-                credentials_file=broker_dict.get('credentials_file', ''),
-                dry_run=broker_dict.get('dry_run', True),
-                api_base_url=broker_dict.get('api_base_url', ''),
-                rate_limit_interval_s=broker_dict.get('rate_limit_interval_s', 1.0),
-                request_timeout_s=broker_dict.get('request_timeout_s', 15),
+        for broker in parsed.brokers:
+            self._broker_lookup[broker.broker_type] = BrokerEntry(
+                broker_type=broker.broker_type,
+                market_type=broker.market_type,
+                broker_config_path=broker.broker_config_path,
+                trading_model=broker.trading_model,
+                config_mode=broker.config_mode,
+                credentials_file=broker.credentials_file,
+                dry_run=broker.dry_run,
+                api_base_url=broker.api_base_url,
+                rate_limit_interval_s=broker.rate_limit_interval_s,
+                request_timeout_s=broker.request_timeout_s,
             )
 
     def get_market_type(self, broker_type: BrokerType) -> MarketType:

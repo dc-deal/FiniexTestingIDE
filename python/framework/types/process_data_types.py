@@ -18,7 +18,7 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_types.market_config_types import MarketType, TradingModel
+from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord

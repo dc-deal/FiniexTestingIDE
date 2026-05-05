@@ -4,16 +4,17 @@ FiniexTestingIDE - MarketConfigManager Unit Tests
 Covers:
 - ConfigMode parsing from market_config.json broker entries
 - Static default when config_mode is omitted
-- Invalid config_mode raises ValueError with clear message
+- Invalid config_mode raises ValidationError
 - get_config_mode() getter returns correct enum value
 - Unknown broker_type raises ValueError
 """
 
 import pytest
+from pydantic import ValidationError
 from unittest.mock import patch
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.market_types.market_config_types import ConfigMode
+from python.framework.types.config_types.market_config_types import ConfigMode
 
 
 _CONFIG_STATIC_AND_DYNAMIC = {
@@ -87,7 +88,7 @@ class TestConfigModeParsing:
                 },
             ],
         }
-        with pytest.raises(ValueError, match="Invalid config_mode 'turbo'"):
+        with pytest.raises(ValidationError, match="config_mode"):
             _make_manager(config)
 
     def test_get_config_mode_getter(self):

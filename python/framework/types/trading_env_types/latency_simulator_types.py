@@ -14,14 +14,14 @@ Live fields:       submitted_at, broker_ref, timeout_at
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Dict, Optional
 
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.utils.process_serialization_utils import serialize_value
 
 
-class PendingOrderAction(Enum):
+class PendingOrderAction(StrEnum):
     """
     Pending order action type.
 
@@ -31,12 +31,8 @@ class PendingOrderAction(Enum):
     OPEN = "open"
     CLOSE = "close"
 
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
-
-class PendingOrderOutcome(Enum):
+class PendingOrderOutcome(StrEnum):
     """
     How a pending order's lifecycle ended.
 
@@ -49,10 +45,6 @@ class PendingOrderOutcome(Enum):
     REJECTED = "rejected"
     TIMED_OUT = "timed_out"
     FORCE_CLOSED = "force_closed"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
 
 @dataclass

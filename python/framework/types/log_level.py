@@ -1,17 +1,8 @@
 """
 FiniexTestingIDE - Log Level Definitions
 Case-insensitive log level validation and filtering
-
-Usage:
-    from python.framework.types.log_level import LogLevel
-    
-    # Validate
-    level = LogLevel.validate("debug")  # Returns "DEBUG"
-    
-    # Check if should log
-    if LogLevel.should_log("DEBUG", "INFO"):
-        print("Message won't be logged")
 """
+from enum import StrEnum
 
 
 class ColorCodes:
@@ -27,28 +18,26 @@ class ColorCodes:
     RESET = '\033[0m'
 
 
-class LogLevel:
-    """
-    Log level definitions and validation.
-    Thread-safe, case-insensitive validation.
-    """
+# Priority mapping — outside class to avoid str Enum member collision
+_LOG_LEVEL_PRIORITY = {
+    "VERBOSE": 0,
+    "DEBUG": 10,
+    "INFO": 20,
+    "WARNING": 30,
+    "ERROR": 40
+}
+
+
+class LogLevel(StrEnum):
+    """Log level definitions and validation."""
     VERBOSE = "VERBOSE"
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
 
-    # Priority for filtering (higher = more important)
-    _PRIORITY = {
-        "VERBOSE": 0,
-        "DEBUG": 10,
-        "INFO": 20,
-        "WARNING": 30,
-        "ERROR": 40
-    }
-
     @classmethod
-    def validate(cls, level: str) -> str:
+    def validate(cls, level: str) -> 'LogLevel':
         """
         Validate and normalize log level (case insensitive).
 
@@ -56,7 +45,7 @@ class LogLevel:
             level: Log level string (any case, e.g., "debug", "INFO", "Warning")
 
         Returns:
-            Normalized uppercase log level (e.g., "DEBUG", "INFO", "WARNING")
+            LogLevel enum member
 
         Raises:
             ValueError: If invalid log level
@@ -65,13 +54,13 @@ class LogLevel:
             raise TypeError(
                 f"Log level must be a string, but got {type(level).__name__}: {level}"
             )
-        level_upper = level.upper()
-        if level_upper not in cls._PRIORITY:
-            valid_levels = ", ".join(cls._PRIORITY.keys())
+        try:
+            return cls(level.upper())
+        except ValueError:
+            valid_levels = ', '.join(m.value for m in cls)
             raise ValueError(
                 f"Invalid log level: '{level}'. Must be one of: {valid_levels}"
             )
-        return level_upper
 
     @classmethod
     def should_log(cls, message_level: str, configured_level: str) -> bool:
@@ -87,8 +76,8 @@ class LogLevel:
         Returns:
             True if message should be logged, False otherwise
         """
-        msg_priority = cls._PRIORITY.get(message_level.upper(), 0)
-        cfg_priority = cls._PRIORITY.get(configured_level.upper(), 10)
+        msg_priority = _LOG_LEVEL_PRIORITY.get(message_level.upper(), 0)
+        cfg_priority = _LOG_LEVEL_PRIORITY.get(configured_level.upper(), 10)
         return msg_priority >= cfg_priority
 
     @classmethod
@@ -100,6 +89,6 @@ class LogLevel:
             level: Log level string
 
         Returns:
-            Numeric priority (10-40)
+            Numeric priority (0-40)
         """
-        return cls._PRIORITY.get(level.upper(), 0)
+        return _LOG_LEVEL_PRIORITY.get(level.upper(), 0)

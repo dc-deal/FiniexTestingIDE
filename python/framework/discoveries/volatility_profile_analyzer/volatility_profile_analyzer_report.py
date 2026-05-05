@@ -5,7 +5,7 @@ Single symbol volatility profile report generator.
 """
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
     SymbolVolatilityProfile,
     TradingSession,

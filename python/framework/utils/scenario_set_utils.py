@@ -7,7 +7,7 @@ import shutil
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.configuration.app_config_manager import AppConfigManager
-from python.configuration.file_logging_config import FileLoggingConfig
+from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 vLog = get_global_logger()
 
