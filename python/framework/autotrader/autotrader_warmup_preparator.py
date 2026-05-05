@@ -21,6 +21,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
+from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -203,8 +204,6 @@ class AutotraderWarmupPreparator:
         Returns:
             Dict[timeframe, List[Bar]]
         """
-        from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
-
         fetcher = KrakenOhlcBarFetcher(logger=self._logger)
         result: Dict[str, List[Bar]] = {}
 

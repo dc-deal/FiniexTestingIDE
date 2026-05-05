@@ -33,7 +33,7 @@ from python.framework.types.scenario_types.generator_profile_types import (
     ProfileMetadata,
     ProfileSplitConfig,
 )
-from python.framework.types.scenario_types.scenario_generator_types import ProfileStrategyConfig
+from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig, ProfileStrategyConfig
 from python.framework.utils.market_calendar import GapCategory
 from python.scenario.generator.blocks_generator import BlocksGenerator
 
@@ -550,7 +550,6 @@ class ProfileGenerator:
             return []
 
         # Reuse BlocksGenerator region extraction (same gap policy)
-        from python.framework.types.scenario_types.scenario_generator_types import GeneratorConfig
         dummy_config = GeneratorConfig(blocks=None)
         extractor = BlocksGenerator(config=dummy_config)
         regions = extractor._extract_continuous_regions(report)

@@ -34,6 +34,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.market_types.market_config_types import ConfigMode, TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -413,9 +414,6 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
     Returns:
         BrokerConfig with live-enabled KrakenAdapter
     """
-    # Lazy import to avoid loading requests in mock mode
-    from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
-
     entry = MarketConfigManager().get_broker_entry(config.broker_type)
     dry_run = entry.dry_run
 

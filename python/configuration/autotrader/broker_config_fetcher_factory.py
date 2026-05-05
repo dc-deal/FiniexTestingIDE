@@ -6,8 +6,9 @@ Central registry for broker-specific config fetcher instantiation.
 from typing import Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.configuration.autotrader.abstract_broker_config_fetcher import AbstractBrokerConfigFetcher
+from python.configuration.autotrader.kraken_config_fetcher import KrakenConfigFetcher
+from python.framework.logging.scenario_logger import ScenarioLogger
 
 
 class BrokerConfigFetcherFactory:
@@ -39,7 +40,6 @@ class BrokerConfigFetcherFactory:
             NotImplementedError: If no fetcher is implemented for broker_type
         """
         if broker_type == 'kraken_spot':
-            from python.configuration.autotrader.kraken_config_fetcher import KrakenConfigFetcher
             entry = MarketConfigManager().get_broker_entry(broker_type)
             return KrakenConfigFetcher(
                 credentials_path=entry.credentials_file,

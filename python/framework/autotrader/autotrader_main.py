@@ -31,6 +31,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
@@ -404,5 +405,4 @@ class AutotraderMain:
         """
         if self._config.adapter_type == 'mock':
             return True
-        from python.configuration.market_config_manager import MarketConfigManager
         return MarketConfigManager().get_dry_run(self._config.broker_type)
