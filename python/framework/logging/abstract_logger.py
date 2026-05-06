@@ -19,8 +19,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.configuration.console_logging_config import ConsoleLoggingConfig
-from python.configuration.file_logging_config import FileLoggingConfig
+from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
+from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 from python.framework.types.log_level import ColorCodes, LogLevel
 
 

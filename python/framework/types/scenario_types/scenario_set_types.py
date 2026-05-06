@@ -59,13 +59,16 @@ class SingleScenario:
     stress_test_config: Optional[Dict[str, Any]] = None
 
     # OrderGuard configuration (per scenario, cascaded from global)
-    # None = OrderGuardConfig defaults (60s cooldown, 2 rejections)
+    # None = OrderGuardDefaults (60s cooldown, 2 rejections)
     order_guard_config: Optional[Dict[str, Any]] = None
 
     account_currency: str = ''
 
     # === VALIDATION TRACKING ===
-    validation_result: List[ValidationResult] = field(default_factory=list)
+    # never init validation_result — its only purpose is to be filled
+    # by batch phases to exclude failed scenarios from execution
+    validation_result: List[ValidationResult] = field(
+        default_factory=list, init=False)
 
     # === DATA SOURCE METADATA (populated during data loading) ===
     data_format_versions: List[str] = field(default_factory=list)
@@ -78,19 +81,16 @@ class SingleScenario:
             raise ValueError(
                 "Property name of scenario array Objects must be filled.")
 
-        # Smart Defaults für Execution Config
+        # Smart defaults for execution config
         if self.execution_config is None:
             self.execution_config = {
                 # ============================================
                 # EXECUTION CONFIGURATION STANDARD
                 # ============================================
                 # Worker-Level Parallelization
-                # True = Workers parallel (gut bei 4+ workers)
+                # True = workers run in parallel (good with 4+ workers)
                 "parallel_workers": None,  # Auto-detect
-                "worker_parallel_threshold_ms": 1.0,  # Nur parallel wenn Worker >1ms
-                # Künstliche Last - NUR für Heavy workers
-                # Ist eher für self-testing szenarios und stress tests gedacht.
-                "artificial_load_ms": 5.0,  # 5ms pro Worker
+                "worker_parallel_threshold_ms": 1.0,  # Only parallelize when worker takes >1ms
                 # Performance Tuning
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
                 "log_performance_stats": True,  # Log timing statistics
@@ -125,7 +125,7 @@ class SingleScenario:
         if not self.validation_result:
             return True
 
-        # Prüfe alle ValidationResult-Objekte
+        # Check all ValidationResult objects
         return all(v.is_valid for v in self.validation_result)
 
 
@@ -151,7 +151,7 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
 
-        # ScenarioSet erstellt SEINE EIGENEN Logger
+        # ScenarioSet creates its own loggers
         self._run_timestamp = datetime.now(
             timezone.utc)
 
@@ -199,7 +199,8 @@ class ScenarioSet:
                 shutil.copy2(profile_path, run_configs_dir / profile_path.name)
             except Exception as e:
                 vLog = get_global_logger()
-                vLog.warning(f"⚠️ Failed to copy profile {profile_path.name}: {e}")
+                vLog.warning(
+                    f"⚠️ Failed to copy profile {profile_path.name}: {e}")
 
     def write_scenario_system_info_log(self):
         """

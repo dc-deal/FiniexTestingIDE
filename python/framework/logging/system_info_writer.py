@@ -442,7 +442,7 @@ def _format_debug_details(
         f"CPU Model:             {cpu_detailed['model']}",
     ]
 
-    # CPU frequencies (nur zeigen wenn verfügbar)
+    # CPU frequencies (show only if available)
     if cpu_detailed['frequencies'] and cpu_detailed['frequencies'].get('max', 0) > 0:
         freq = cpu_detailed['frequencies']
         lines.append(

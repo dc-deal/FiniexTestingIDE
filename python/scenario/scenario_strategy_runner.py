@@ -131,7 +131,7 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
 
 def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_config_loader: AppConfigManager):
     try:
-        # ScenarioSet erstellt sich selbst mit eigenen Loggern
+        # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(scenario_config_data, app_config_loader)
 
         vLog.info("📊 Writing system & version information...")

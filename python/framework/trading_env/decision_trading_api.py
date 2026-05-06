@@ -36,7 +36,7 @@ from typing import Dict, List, Optional, Union
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
 from .portfolio_manager import UNSET, _UnsetType
-from python.framework.types.autotrader_types.autotrader_config_types import OrderGuardConfig
+from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
@@ -80,7 +80,7 @@ class DecisionTradingApi:
         self,
         executor: AbstractTradeExecutor,
         required_order_types: List[OrderType],
-        order_guard_config: Optional[OrderGuardConfig] = None,
+        order_guard_config: Optional[OrderGuardDefaults] = None,
     ):
         """
         Initialize Decision Trading API with order-type validation.
@@ -101,7 +101,7 @@ class DecisionTradingApi:
 
         # Spam-protection guard — rejection cooldown only. Business rules
         # (market type, balance, etc.) live in the executor.
-        guard_cfg = order_guard_config or OrderGuardConfig()
+        guard_cfg = order_guard_config or OrderGuardDefaults()
         self._order_guard = OrderGuard(
             cooldown_seconds=guard_cfg.cooldown_seconds,
             max_consecutive_rejections=guard_cfg.max_consecutive_rejections,

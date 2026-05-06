@@ -123,7 +123,7 @@ class BatchSummary:
             return BatchStatus.PARTIAL
 
     def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
-        # Build ProfilingData für alle Scenarios
+        # Build ProfilingData for all scenarios
 
         profiling_data_map = {}
 

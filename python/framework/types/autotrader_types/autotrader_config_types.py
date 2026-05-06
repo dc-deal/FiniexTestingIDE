@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    AutotraderExecutionDefaults,
+    ClippingMonitorDefaults,
+    DisplayDefaults,
+    OrderGuardDefaults,
+)
+
 
 @dataclass
 class TickSourceConfig:
@@ -34,19 +41,6 @@ class TickSourceConfig:
     reconnect_max_delay_s: float = 60.0
     heartbeat_interval_s: float = 30.0
     heartbeat_dead_s: float = 90.0
-
-
-@dataclass
-class ClippingMonitorConfig:
-    """
-    Configuration for live clipping monitoring (#197).
-
-    Args:
-        report_interval_s: Seconds between periodic clipping reports
-        strategy: Clipping strategy ('queue_all' or 'drop_stale')
-    """
-    report_interval_s: float = 60.0
-    strategy: str = 'queue_all'
 
 
 @dataclass
@@ -84,48 +78,6 @@ class SafetyConfig:
 
 
 @dataclass
-class OrderGuardConfig:
-    """
-    Order guard configuration — pre-validation layer between DecisionLogic and executor.
-
-    Enforces SHORT+SPOT safety and a rejection cooldown that blocks a direction
-    after N consecutive broker rejections for a configurable period.
-
-    Args:
-        cooldown_seconds: Cooldown duration in seconds after max_consecutive_rejections is hit
-        max_consecutive_rejections: Consecutive rejections per direction before cooldown triggers
-    """
-    cooldown_seconds: float = 60.0
-    max_consecutive_rejections: int = 2
-
-
-@dataclass
-class DisplayConfig:
-    """
-    AutoTrader live console display configuration (#228).
-
-    Args:
-        enabled: Enable live console dashboard
-        update_interval_ms: Display refresh interval in milliseconds
-    """
-    enabled: bool = True
-    update_interval_ms: int = 300
-
-
-@dataclass
-class ExecutionConfig:
-    """
-    Execution configuration for AutoTrader session.
-
-    Args:
-        parallel_workers: Enable parallel worker execution
-        bar_max_history: Maximum bar history size per timeframe
-    """
-    parallel_workers: bool = False
-    bar_max_history: int = 1000
-
-
-@dataclass
 class AutoTraderConfig:
     """
     Top-level configuration for FiniexAutoTrader live sessions.
@@ -151,9 +103,9 @@ class AutoTraderConfig:
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     account: AccountConfig = field(default_factory=AccountConfig)
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
-    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
-    clipping_monitor: ClippingMonitorConfig = field(default_factory=ClippingMonitorConfig)
-    display: DisplayConfig = field(default_factory=DisplayConfig)
+    execution: AutotraderExecutionDefaults = field(default_factory=AutotraderExecutionDefaults)
+    clipping_monitor: ClippingMonitorDefaults = field(default_factory=ClippingMonitorDefaults)
+    display: DisplayDefaults = field(default_factory=DisplayDefaults)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
-    order_guard: OrderGuardConfig = field(default_factory=OrderGuardConfig)
+    order_guard: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
     config_path: Optional[Path] = None

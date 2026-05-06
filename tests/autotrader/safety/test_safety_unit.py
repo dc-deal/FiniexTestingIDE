@@ -19,7 +19,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
 )
-from python.framework.types.market_types.market_config_types import TradingModel
+from python.framework.types.config_types.market_config_types import TradingModel
 
 
 class _SafetyStub:

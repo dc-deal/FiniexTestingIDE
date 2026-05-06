@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.market_types.market_types import TradingContext
 
 

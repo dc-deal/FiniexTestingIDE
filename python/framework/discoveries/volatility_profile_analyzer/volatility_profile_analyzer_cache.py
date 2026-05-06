@@ -36,7 +36,7 @@ from python.framework.utils.config_fingerprint_utils import generate_config_fing
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
     VolatilityPeriod,
     SessionSummary,

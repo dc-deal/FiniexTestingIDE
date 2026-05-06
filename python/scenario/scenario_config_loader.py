@@ -7,16 +7,42 @@ import copy  # CRITICAL: For deep copying nested structures
 import json
 from pathlib import Path
 from typing import List, Dict, Any
+
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
-
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
-
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.time_utils import parse_datetime
 from python.scenario.scenario_cascade import ScenarioCascade
+from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
+from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.config_types.backtesting_config_types import (
+    DefaultScenarioExecutionConfig,
+    TradeSimulatorDefaults,
+)
 vLog = get_global_logger()
+
+
+# ============================================
+# Known config keys per cascade section
+# ============================================
+
+_KNOWN_EXECUTION_KEYS: frozenset = frozenset({
+    'parallel_workers', 'worker_parallel_threshold_ms',
+    'adaptive_parallelization', 'log_performance_stats',
+    'strict_parameter_validation', 'tick_processing_budget_ms',
+})
+_KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
+    'balances', 'seeds', 'inbound_latency_min_ms',
+    'inbound_latency_max_ms', 'broker_config_path', 'account_currency',
+})
+_KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({
+    'cooldown_seconds', 'max_consecutive_rejections',
+})
+_KNOWN_STRESS_TEST_KEYS: frozenset = frozenset({
+    'reject_open_order',
+})
 
 
 class ScenarioConfigLoader:
@@ -103,6 +129,12 @@ class ScenarioConfigLoader:
         # Parse global order_guard config
         global_order_guard = global_config.get('order_guard', {})
 
+        # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
+        check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
+        check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
+        check_unknown_keys('global.stress_test_config',      global_stress_test,    _KNOWN_STRESS_TEST_KEYS)
+
         # Get warn_on_override flag from app_config
         app_config = AppConfigManager()
         warn_on_override = app_config.should_warn_on_override()
@@ -122,6 +154,13 @@ class ScenarioConfigLoader:
                     f"🔻 Skipping disabled scenario: {scenario_data['name']}")
                 continue  # Skip disabled
 
+            # Structural key validation — scenario level (pre-merge, full provenance)
+            _scenario_name = scenario_data.get('name', '<unnamed>')
+            check_unknown_keys(f'scenario[{_scenario_name}].execution_config',       scenario_data.get('execution_config', {}),       _KNOWN_EXECUTION_KEYS)
+            check_unknown_keys(f'scenario[{_scenario_name}].trade_simulator_config', scenario_data.get('trade_simulator_config', {}), _KNOWN_TRADE_SIM_KEYS)
+            check_unknown_keys(f'scenario[{_scenario_name}].order_guard',            scenario_data.get('order_guard', {}),            _KNOWN_ORDER_GUARD_KEYS)
+            check_unknown_keys(f'scenario[{_scenario_name}].stress_test_config',     scenario_data.get('stress_test_config', {}),     _KNOWN_STRESS_TEST_KEYS)
+
             # Get app-level execution defaults (3-level cascade base)
             app_execution_defaults = app_config.get_scenario_execution_defaults()
 
@@ -137,6 +176,7 @@ class ScenarioConfigLoader:
                 global_execution,
                 scenario_data.get('execution_config', {})
             )
+            validate_merged_config(DefaultScenarioExecutionConfig, scenario_execution, f'execution_config[{_scenario_name}]')
 
             # Deep merge trade_simulator_config (3-level: app → global → scenario)
             app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
@@ -145,6 +185,7 @@ class ScenarioConfigLoader:
                 global_trade_simulator,
                 scenario_data.get('trade_simulator_config', {})
             )
+            validate_merged_config(TradeSimulatorDefaults, scenario_trade_simulator, f'trade_simulator_config[{_scenario_name}]')
 
             # Deep merge stress_test_config (2-level: global → scenario)
             scenario_stress_test = ScenarioCascade.merge_stress_test_config(
@@ -157,6 +198,7 @@ class ScenarioConfigLoader:
                 global_order_guard,
                 scenario_data.get('order_guard', {})
             )
+            validate_merged_config(OrderGuardDefaults, scenario_order_guard, f'order_guard[{_scenario_name}]')
 
             # ============================================
             # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
@@ -227,7 +269,7 @@ class ScenarioConfigLoader:
 
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
 
-        # ScenarioSet erstellt SELBST seine Logger
+        # ScenarioSet creates its own loggers
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
@@ -270,6 +312,12 @@ class ScenarioConfigLoader:
         global_stress_test = global_config.get('stress_test_config', {})
         global_order_guard = global_config.get('order_guard', {})
 
+        # Structural key validation — global level (pre-merge, full provenance)
+        check_unknown_keys('global.execution_config',        global_execution,      _KNOWN_EXECUTION_KEYS)
+        check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
+        check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
+        check_unknown_keys('global.stress_test_config',      global_stress_test,    _KNOWN_STRESS_TEST_KEYS)
+
         # App-level defaults for 3-tier cascade
         app_config = AppConfigManager()
         app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
@@ -280,6 +328,11 @@ class ScenarioConfigLoader:
             global_trade_simulator,
             {}  # No per-scenario overrides in profile mode
         )
+
+        # Post-merge type validation (global level — no per-scenario overrides in profile mode)
+        validate_merged_config(DefaultScenarioExecutionConfig, global_execution,       'global.execution_config (profile)')
+        validate_merged_config(TradeSimulatorDefaults,         merged_trade_simulator, 'global.trade_simulator_config (profile)')
+        validate_merged_config(OrderGuardDefaults,             global_order_guard,     'global.order_guard (profile)')
 
         scenario_set_name = config.get('scenario_set_name', 'unknown')
 

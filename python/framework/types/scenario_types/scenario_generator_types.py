@@ -7,7 +7,7 @@ Type definitions for scenario generation strategies and results.
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
-from enum import Enum
+from enum import StrEnum
 
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
@@ -19,13 +19,9 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 # ENUMS
 # =============================================================================
 
-class GenerationStrategy(Enum):
+class GenerationStrategy(StrEnum):
     """Scenario generation strategies."""
     BLOCKS = 'blocks'
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
 
 # =============================================================================

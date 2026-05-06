@@ -144,21 +144,21 @@ class LiveProgressDisplay:
 
             while self._running:
                 try:
-                    # === 1. AGGRESSIV Queue lesen - NICHT empty() prüfen! ===
+                    # === 1. Read queue aggressively — do NOT check empty()! ===
                     updates_processed = 0
                     max_updates_per_cycle = 100  # Prevent infinite loop
 
                     for _ in range(max_updates_per_cycle):
                         try:
-                            # Versuche zu lesen - wirft Exception wenn leer
+                            # Try to read — throws exception when empty
                             update = self.live_queue.get_nowait()
                             self._process_update(update)
                             updates_processed += 1
                         except:
-                            # Queue ist wirklich leer
+                            # Queue is truly empty
                             break
 
-                    # === 2. Render display (IMMER!) ===
+                    # === 2. Render display (always!) ===
                     live.update(self._render())
 
                     # === 3. HART warten ===
@@ -177,7 +177,7 @@ class LiveProgressDisplay:
         Args:
             update: Update message from queue
         """
-        # === REGULÄRE UPDATES (benötigen scenario_index) ===
+        # === REGULAR UPDATES (require scenario_index) ===
         scenario_index = update.get("scenario_index")
         if scenario_index is None:
             return

@@ -16,7 +16,7 @@ from python.configuration.discoveries_config_loader import DiscoveriesConfigLoad
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.market_types.market_volatility_profile_types import (

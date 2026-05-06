@@ -8,16 +8,16 @@ trading sessions, volatility periods, and symbol-level profile summaries.
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
-from enum import Enum
+from enum import StrEnum
 
-from python.framework.types.market_types.market_config_types import MarketType
+from python.framework.types.config_types.market_config_types import MarketType
 
 
 # =============================================================================
 # ENUMS
 # =============================================================================
 
-class VolatilityRegime(Enum):
+class VolatilityRegime(StrEnum):
     """Volatility regime classification."""
     VERY_LOW = "very_low"
     LOW = "low"
@@ -25,26 +25,18 @@ class VolatilityRegime(Enum):
     HIGH = "high"
     VERY_HIGH = "very_high"
 
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
-
     @property
     def short_label(self) -> str:
         """Short label for compact display (VL, L, M, H, VH)."""
         return _REGIME_SHORT_LABELS[self]
 
 
-class TradingSession(Enum):
+class TradingSession(StrEnum):
     """Trading session identifiers."""
     SYDNEY_TOKYO = "sydney_tokyo"
     LONDON = "london"
     NEW_YORK = "new_york"
     TRANSITION = "transition"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
     @property
     def display_name(self) -> str:

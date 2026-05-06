@@ -28,7 +28,10 @@
       "log_performance_stats": true
     },
     "trade_simulator_config": {
-      "balances": { "JPY": 100000 },
+      "balances": {
+        "JPY": 100000,
+        "USD": 100000
+      },
       "seeds": {
         "inbound_latency_seed": 12345
       }

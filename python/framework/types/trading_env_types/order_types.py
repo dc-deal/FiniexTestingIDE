@@ -9,7 +9,7 @@ Two-Tier Order System:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Dict, Optional
 
 from python.framework.utils.process_serialization_utils import serialize_value
@@ -41,7 +41,7 @@ class OrderType(Enum):
     ICEBERG = "iceberg"
 
 
-class OrderDirection(Enum):
+class OrderDirection(StrEnum):
     """
     Resulting position direction (internal to the executor and portfolio).
 
@@ -53,12 +53,8 @@ class OrderDirection(Enum):
     LONG = "long"
     SHORT = "short"
 
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
-
-class OrderSide(Enum):
+class OrderSide(StrEnum):
     """
     Algo-facing order intent — what the strategy wants to do.
 
@@ -70,10 +66,6 @@ class OrderSide(Enum):
     """
     BUY = "buy"
     SELL = "sell"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
 
 class OrderStatus(Enum):

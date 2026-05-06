@@ -136,11 +136,10 @@ record_success(LONG)    → counter[LONG] = 0, cooldown_until[LONG] cleared
 
 ## Configuration
 
-The OrderGuard is configured through `OrderGuardConfig`:
+The OrderGuard is configured through `OrderGuardDefaults`:
 
 ```python
-@dataclass
-class OrderGuardConfig:
+class OrderGuardDefaults(BaseModel):
     cooldown_seconds: float = 60.0           # Cooldown duration after threshold
     max_consecutive_rejections: int = 2       # Rejections before cooldown arms
 ```
@@ -173,7 +172,7 @@ Configured in scenario set JSON (`configs/scenario_sets/backtesting/*.json`):
 
 Supports 2-level cascade (`global` → per-`scenario`), same pattern as `stress_test_config`. Loaded by `scenario_config_loader.py` → `ProcessScenarioConfig.order_guard_config`.
 
-If omitted, `OrderGuardConfig()` defaults apply in both pipelines.
+If omitted, `OrderGuardDefaults()` defaults apply in both pipelines.
 
 > **Note on `cooldown_seconds` in backtests:** the value is measured in **simulated tick time**, not wall-clock. A backtest that processes 10 hours of data in 3 seconds of CPU time will see 10 hours of cooldown-relevant time, not 3 seconds. Size this value to the simulated-time gap between consecutive retry attempts you want to suppress, not to the wall-clock execution speed.
 
@@ -197,7 +196,7 @@ Guard rejections are recorded in the executor's `_order_history` via `record_gua
 | `python/framework/trading_env/order_guard.py` | OrderGuard class — cooldown validation + state tracking |
 | `python/framework/trading_env/decision_trading_api.py` | Integration point — guard in `send_order()`, async callback, side→direction resolution |
 | `python/framework/trading_env/abstract_trade_executor.py` | Callback mechanism (`set_order_outcome_callback`, `_notify_outcome`), `resolve_order_side()` |
-| `python/framework/types/autotrader_types/autotrader_config_types.py` | `OrderGuardConfig` dataclass |
+| `python/framework/types/config_types/autotrader_defaults_config_types.py` | `OrderGuardDefaults` Pydantic model — shared by both pipelines |
 | `python/framework/types/trading_env_types/order_types.py` | `OrderSide`, `OrderDirection`, `REJECTION_COOLDOWN` enum value |
 
 ---

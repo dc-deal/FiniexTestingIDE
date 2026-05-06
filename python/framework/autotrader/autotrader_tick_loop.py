@@ -23,7 +23,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
-from python.framework.types.market_types.market_config_types import TradingModel
+from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,

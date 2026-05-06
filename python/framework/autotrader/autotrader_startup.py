@@ -31,7 +31,7 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
-from python.framework.types.market_types.market_config_types import ConfigMode, TradingModel
+from python.framework.types.config_types.market_config_types import ConfigMode, TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory

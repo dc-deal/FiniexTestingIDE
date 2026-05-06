@@ -7,7 +7,7 @@ All decision logic implementations must use these typed structures.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Dict, Optional
 
 from python.framework.types.parameter_types import OutputValue
@@ -63,7 +63,7 @@ class StrategyEvent:
     reason_key: Optional[str] = None
 
 
-class DecisionLogicAction(Enum):
+class DecisionLogicAction(StrEnum):
     """
     Trading action signals from DecisionLogic.
 
@@ -84,10 +84,6 @@ class DecisionLogicAction(Enum):
     BUY = "BUY"
     SELL = "SELL"
     FLAT = "FLAT"
-
-    def __str__(self) -> str:
-        """String representation returns the enum value"""
-        return self.value
 
 
 @dataclass
