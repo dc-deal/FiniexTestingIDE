@@ -7,16 +7,20 @@ import copy  # CRITICAL: For deep copying nested structures
 import json
 from pathlib import Path
 from typing import List, Dict, Any
+
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
-
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
-
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.time_utils import parse_datetime
 from python.scenario.scenario_cascade import ScenarioCascade
-from python.framework.utils.config_merge_utils import check_unknown_keys
+from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
+from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.config_types.backtesting_config_types import (
+    DefaultScenarioExecutionConfig,
+    TradeSimulatorDefaults,
+)
 vLog = get_global_logger()
 
 
@@ -28,7 +32,6 @@ _KNOWN_EXECUTION_KEYS: frozenset = frozenset({
     'parallel_workers', 'worker_parallel_threshold_ms',
     'adaptive_parallelization', 'log_performance_stats',
     'strict_parameter_validation', 'tick_processing_budget_ms',
-    'artificial_load_ms',
 })
 _KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
     'balances', 'seeds', 'inbound_latency_min_ms',
@@ -173,6 +176,7 @@ class ScenarioConfigLoader:
                 global_execution,
                 scenario_data.get('execution_config', {})
             )
+            validate_merged_config(DefaultScenarioExecutionConfig, scenario_execution, f'execution_config[{_scenario_name}]')
 
             # Deep merge trade_simulator_config (3-level: app → global → scenario)
             app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
@@ -181,6 +185,7 @@ class ScenarioConfigLoader:
                 global_trade_simulator,
                 scenario_data.get('trade_simulator_config', {})
             )
+            validate_merged_config(TradeSimulatorDefaults, scenario_trade_simulator, f'trade_simulator_config[{_scenario_name}]')
 
             # Deep merge stress_test_config (2-level: global → scenario)
             scenario_stress_test = ScenarioCascade.merge_stress_test_config(
@@ -193,6 +198,7 @@ class ScenarioConfigLoader:
                 global_order_guard,
                 scenario_data.get('order_guard', {})
             )
+            validate_merged_config(OrderGuardDefaults, scenario_order_guard, f'order_guard[{_scenario_name}]')
 
             # ============================================
             # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
@@ -263,7 +269,7 @@ class ScenarioConfigLoader:
 
         vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
 
-        # ScenarioSet erstellt SELBST seine Logger
+        # ScenarioSet creates its own loggers
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
@@ -322,6 +328,11 @@ class ScenarioConfigLoader:
             global_trade_simulator,
             {}  # No per-scenario overrides in profile mode
         )
+
+        # Post-merge type validation (global level — no per-scenario overrides in profile mode)
+        validate_merged_config(DefaultScenarioExecutionConfig, global_execution,       'global.execution_config (profile)')
+        validate_merged_config(TradeSimulatorDefaults,         merged_trade_simulator, 'global.trade_simulator_config (profile)')
+        validate_merged_config(OrderGuardDefaults,             global_order_guard,     'global.order_guard (profile)')
 
         scenario_set_name = config.get('scenario_set_name', 'unknown')
 

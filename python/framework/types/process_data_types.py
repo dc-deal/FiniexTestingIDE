@@ -22,7 +22,7 @@ from python.framework.types.config_types.market_config_types import MarketType, 
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.autotrader_types.autotrader_config_types import OrderGuardConfig
+from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -206,7 +206,7 @@ class ProcessScenarioConfig:
         default_factory=StressTestConfig.disabled)
 
     # === ORDER GUARD CONFIG ===
-    order_guard_config: OrderGuardConfig = field(default_factory=OrderGuardConfig)
+    order_guard_config: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
 
     # === HISTORY LIMITS ===
     bar_max_history: int = 1000
@@ -310,14 +310,14 @@ class ProcessScenarioConfig:
 
         # Parse order_guard config from scenario (defaults if None)
         if scenario.order_guard_config:
-            order_guard_config = OrderGuardConfig(
+            order_guard_config = OrderGuardDefaults(
                 cooldown_seconds=scenario.order_guard_config.get(
                     'cooldown_seconds', 60.0),
                 max_consecutive_rejections=scenario.order_guard_config.get(
                     'max_consecutive_rejections', 2),
             )
         else:
-            order_guard_config = OrderGuardConfig()
+            order_guard_config = OrderGuardDefaults()
 
         # Default live stats config if not provided
         if live_stats_config is None:

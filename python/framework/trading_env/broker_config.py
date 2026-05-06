@@ -195,11 +195,6 @@ class BrokerConfig:
 
         return self._symbol_specification[symbol]
 
-    # ============================================
-    # NEUE METHODE HINZUFÜGEN
-    # Position: Nach get_symbol_specification()
-    # ============================================
-
     def get_broker_specification(self) -> BrokerSpecification:
         """
         Get fully typed broker specification.

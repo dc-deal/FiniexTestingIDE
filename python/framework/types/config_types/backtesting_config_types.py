@@ -3,11 +3,12 @@ FiniexTestingIDE - Backtesting Pipeline Configuration Types
 Pydantic models for the app_config.json::backtesting section.
 """
 from typing import Dict, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class DefaultScenarioExecutionConfig(BaseModel):
     """Per-scenario execution defaults (base layer of 3-level cascade)."""
+    model_config = ConfigDict(extra='forbid')
     parallel_workers: bool = False
     worker_parallel_threshold_ms: float = 1.0
     adaptive_parallelization: bool = True
@@ -30,6 +31,7 @@ class TradeSimulatorSeeds(BaseModel):
 
 class TradeSimulatorDefaults(BaseModel):
     """Trade simulator defaults (base layer of 3-level cascade)."""
+    model_config = ConfigDict(extra='ignore')
     balances: Dict[str, float] = {'USD': 10000}
     seeds: TradeSimulatorSeeds = TradeSimulatorSeeds()
     inbound_latency_min_ms: int = 20

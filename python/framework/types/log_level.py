@@ -11,7 +11,7 @@ class ColorCodes:
     YELLOW = '\033[93m'
     BLUE = '\033[94m'
     GREEN = '\033[92m'
-    PURPLE = '\033[95m'  # für VERBOSE
+    PURPLE = '\033[95m'  # for VERBOSE
     CYAN = '\033[96m'
     GRAY = '\033[90m'
     BOLD = '\033[1m'

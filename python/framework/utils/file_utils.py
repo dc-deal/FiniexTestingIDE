@@ -6,17 +6,17 @@ def sanitize_filename(name: str) -> str:
     Sanitize a string to make it safe for use as a filename.
     Replaces all invalid characters with underscores.
     """
-    # Windows verbotene Zeichen:  \ / : * ? " < > |
-    # Zusätzlich auch Steuerzeichen entfernen
+    # Windows forbidden characters: \ / : * ? " < > |
+    # Also strip control characters
     name = re.sub(r'[\\/:*?"<>|\x00-\x1F]', '_', name)
 
-    # Optional: whitespace am Anfang/Ende entfernen
+    # Optional: strip leading/trailing whitespace
     name = name.strip()
 
-    # Optional: Doppelte Unterstriche reduzieren
+    # Optional: collapse repeated underscores
     name = re.sub(r'_+', '_', name)
 
-    # Falls alles wegfällt → fallback
+    # If everything is stripped → fallback
     if not name:
         name = "_"
 

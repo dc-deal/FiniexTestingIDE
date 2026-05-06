@@ -38,7 +38,7 @@ class EnvelopeWorker(AbstractWorker):
         self.deviation = self.params.get('deviation')
 
     # ============================================
-    # STATIC: Classmethods für Factory/UI
+    # STATIC: Classmethods for factory/UI
     # ============================================
 
     @classmethod
@@ -98,7 +98,7 @@ class EnvelopeWorker(AbstractWorker):
         return None
 
     # ============================================
-    # DYNAMIC: Instance methods für Runtime
+    # DYNAMIC: Instance methods for runtime
     # ============================================
 
     def get_warmup_requirements(self) -> Dict[str, int]:

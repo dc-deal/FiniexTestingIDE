@@ -42,7 +42,7 @@ def broadcast_status_update(
         return
 
     try:
-        # === NORMAL STATUS UPDATE (alle Szenarien) ===
+        # === NORMAL STATUS UPDATE (all scenarios) ===
         live_queue.put_nowait({
             "type": "status",
             "scenario_index": scenario_index,

@@ -4,7 +4,9 @@ Shared deep merge helper for all configuration loaders.
 """
 
 import copy
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, Type
+
+from pydantic import BaseModel, ValidationError
 
 
 def deep_merge(
@@ -65,3 +67,27 @@ def check_unknown_keys(
     unknown = set(config.keys()) - known - _CONFIG_META_KEYS
     if unknown:
         raise ValueError(f"Unknown keys in {location}: {unknown} — check for typos or add to known keys")
+
+
+def validate_merged_config(
+    model_class: Type[BaseModel],
+    config: Dict[str, Any],
+    location: str,
+) -> None:
+    """
+    Validate a merged config dict against a Pydantic model.
+
+    Used by config loaders after deep_merge to catch type errors with full
+    level provenance. Hard fail — wrong value types indicate misconfiguration.
+
+    Args:
+        model_class: Pydantic model class to validate against
+        config: Merged config dict
+        location: Human-readable path for error messages (e.g. 'execution_config[my_scenario]')
+    """
+    if not config:
+        return
+    try:
+        model_class.model_validate(config)
+    except ValidationError as e:
+        raise ValueError(f"Type error in {location}: {e}") from e

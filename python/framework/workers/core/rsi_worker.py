@@ -55,7 +55,7 @@ class RsiWorker(AbstractWorker):
         }
 
     # ============================================
-    # DYNAMIC: Instance methods für Runtime
+    # DYNAMIC: Instance methods for runtime
     # ============================================
 
     def get_warmup_requirements(self) -> Dict[str, int]:
@@ -99,7 +99,7 @@ class RsiWorker(AbstractWorker):
         # Get bar history for our timeframe
         bars = bar_history.get(timeframe, [])
         current_bar = current_bars.get(timeframe)  # Default: None
-        if current_bar:  # Prüft ob Bar existiert
+        if current_bar:  # Check if bar exists
             bars = list(bars) + [current_bar]
 
         # Extract close prices from bars

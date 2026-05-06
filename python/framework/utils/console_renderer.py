@@ -68,7 +68,7 @@ class ConsoleRenderer:
         if input > 0:
             return self.green(f"+{amount_str}")
         elif input < 0:
-            return self.red(f"-{amount_str}")  # ← MINUS HINZUFÜGEN!
+            return self.red(f"-{amount_str}")
         else:
             return amount_str
 

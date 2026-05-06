@@ -11,12 +11,14 @@ from python.framework.utils.config_merge_utils import check_unknown_keys, deep_m
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AccountConfig,
     AutoTraderConfig,
-    ClippingMonitorConfig,
-    DisplayConfig,
-    ExecutionConfig,
-    OrderGuardConfig,
     SafetyConfig,
     TickSourceConfig,
+)
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    AutotraderExecutionDefaults,
+    ClippingMonitorDefaults,
+    DisplayDefaults,
+    OrderGuardDefaults,
 )
 
 # ============================================
@@ -97,15 +99,15 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             parquet_path=tick_source_raw.get('parquet_path', ''),
             max_ticks=tick_source_raw.get('max_ticks', 0),
         ),
-        execution=ExecutionConfig(
+        execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),
             bar_max_history=execution_raw.get('bar_max_history', 1000),
         ),
-        clipping_monitor=ClippingMonitorConfig(
+        clipping_monitor=ClippingMonitorDefaults(
             report_interval_s=clipping_raw.get('report_interval_s', 60.0),
             strategy=clipping_raw.get('strategy', 'queue_all'),
         ),
-        display=DisplayConfig(
+        display=DisplayDefaults(
             enabled=display_raw.get('enabled', True),
             update_interval_ms=display_raw.get('update_interval_ms', 300),
         ),
@@ -115,7 +117,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             min_equity=safety_raw.get('min_equity', 0.0),
             max_drawdown_pct=safety_raw.get('max_drawdown_pct', 0.0),
         ),
-        order_guard=OrderGuardConfig(
+        order_guard=OrderGuardDefaults(
             cooldown_seconds=order_guard_raw.get('cooldown_seconds', 60.0),
             max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
         ),
