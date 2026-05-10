@@ -108,7 +108,7 @@ class DecisionTradingApi:
         )
 
         # Register for async order outcomes (margin rejection at fill time, etc.)
-        self._executor.set_order_outcome_callback(self._on_order_outcome)
+        self._executor.add_order_outcome_listener(self._on_order_outcome)
 
     # ============================================
     # Order Type Validation
