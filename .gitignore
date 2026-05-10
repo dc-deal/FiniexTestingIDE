@@ -198,3 +198,8 @@ CLAUDE.md
 # GitHub issues export (local reference only)
 github_issues/
 export_github_issues.sh
+
+# Generated project analysis snapshot (local only, regenerate on demand)
+project_analysis_detailed.txt
+SUMMARY_*.md
+ISSUE_*.md

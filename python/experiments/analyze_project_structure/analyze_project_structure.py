@@ -3,10 +3,12 @@
 FiniexTestingIDE Project Structure Analyzer
 ============================================
 
-Creates a structured overview of all Python classes in the project.
+Creates a structured overview of all Python classes and module-level
+functions in the project.
 Shows:
 - Directory structure
 - All classes with inheritance
+- Module-level functions (utilities, helpers, loaders)
 - File sizes and line counts
 - Namespace issues (duplicate class names)
 
@@ -48,12 +50,23 @@ class ClassInfo:
         self.methods = []  # List of tuples: (method_name, docstring)
 
 
+class FunctionInfo:
+    """Information about a module-level function (not a class method)."""
+
+    def __init__(self, name: str, file_path: str, line_number: int, docstring: str = None):
+        self.name = name
+        self.file_path = file_path
+        self.line_number = line_number
+        self.docstring = docstring
+
+
 class ProjectAnalyzer:
     """Analyzes Python project structure."""
 
     def __init__(self, root_dir: str = "."):
         self.root_dir = Path(root_dir).resolve()
         self.classes: List[ClassInfo] = []
+        self.functions: List[FunctionInfo] = []
         self.files_processed = 0
         self.errors: List[Tuple[str, str]] = []
 
@@ -89,6 +102,22 @@ class ProjectAnalyzer:
                 content = f.read()
 
             tree = ast.parse(content, filename=str(file_path))
+
+            # Extract module-level functions (direct children of module, not inside classes)
+            class_names_in_file = {
+                node.name for node in ast.walk(tree)
+                if isinstance(node, ast.ClassDef)
+            }
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef):
+                    func_docstring = ast.get_docstring(node)
+                    rel_path = file_path.relative_to(self.root_dir)
+                    self.functions.append(FunctionInfo(
+                        name=node.name,
+                        file_path=str(rel_path),
+                        line_number=node.lineno,
+                        docstring=func_docstring,
+                    ))
 
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
@@ -189,10 +218,17 @@ class ProjectAnalyzer:
         largest_classes = sorted(
             self.classes, key=lambda c: len(c.methods), reverse=True)[:5]
 
+        # Group functions by directory
+        functions_by_directory = defaultdict(list)
+        for fn in self.functions:
+            directory = str(Path(fn.file_path).parent)
+            functions_by_directory[directory].append(fn)
+
         return {
             'total_classes': len(self.classes),
             'total_files': self.files_processed,
             'total_methods': total_methods,
+            'total_functions': len(self.functions),
             'documented_classes': documented_classes,
             'documented_methods': documented_methods,
             'undocumented_classes': undocumented_classes,
@@ -200,9 +236,11 @@ class ProjectAnalyzer:
             'classes_with_inheritance': classes_with_inheritance,
             'largest_classes': largest_classes,
             'by_directory': dict(by_directory),
+            'functions_by_directory': dict(functions_by_directory),
             'duplicates': duplicates,
             'errors': self.errors,
-            'all_classes': self.classes
+            'all_classes': self.classes,
+            'all_functions': self.functions,
         }
 
 
@@ -221,6 +259,7 @@ def format_statistics_header(report: Dict) -> str:
     lines.append(f"Total Directories:           {len(report['by_directory'])}")
     lines.append(f"Total Classes:               {report['total_classes']}")
     lines.append(f"Total Methods:               {report['total_methods']}")
+    lines.append(f"Module-Level Functions:      {report['total_functions']}")
 
     # Average
     avg_methods = report['total_methods'] / \
@@ -321,18 +360,30 @@ def format_tree_output(report: Dict) -> str:
     lines.append("📁 DIRECTORY STRUCTURE WITH CLASSES")
     lines.append("=" * 80)
 
-    for directory in sorted(report['by_directory'].keys()):
-        classes = report['by_directory'][directory]
+    # Build combined file→items map across all directories
+    all_directories = set(report['by_directory'].keys()) | set(report['functions_by_directory'].keys())
+
+    for directory in sorted(all_directories):
+        classes = report['by_directory'].get(directory, [])
+        functions = report['functions_by_directory'].get(directory, [])
+        fn_count = f", {len(functions)} functions" if functions else ""
         lines.append(f"\n📂 {directory}/")
-        lines.append(f"   ({len(classes)} classes)")
+        lines.append(f"   ({len(classes)} classes{fn_count})")
 
-        # Group by file
-        by_file = defaultdict(list)
+        # Group classes and functions by file
+        by_file_classes = defaultdict(list)
         for cls in classes:
-            by_file[cls.file_path].append(cls)
+            by_file_classes[cls.file_path].append(cls)
 
-        for file_path in sorted(by_file.keys()):
-            file_classes = by_file[file_path]
+        by_file_functions = defaultdict(list)
+        for fn in functions:
+            by_file_functions[fn.file_path].append(fn)
+
+        all_files = sorted(set(list(by_file_classes.keys()) + list(by_file_functions.keys())))
+
+        for file_path in all_files:
+            file_classes = by_file_classes.get(file_path, [])
+            file_functions = by_file_functions.get(file_path, [])
             filename = Path(file_path).name
             lines.append(f"\n   📄 {filename}")
 
@@ -384,6 +435,22 @@ def format_tree_output(report: Dict) -> str:
                         lines.append(
                             f"{prefix}└─ {marker} {method_name}(){method_doc_info}")
 
+            # Module-level functions for this file
+            for fn in sorted(file_functions, key=lambda f: f.line_number):
+                marker = "🔒" if fn.name.startswith('_') else "🔓"
+                doc_info = ""
+                if fn.docstring:
+                    first_line = fn.docstring.split('\n')[0].strip()
+                    if len(first_line) > 60:
+                        first_line = first_line[:57] + "..."
+                    doc_info = f' | "{first_line}"'
+                else:
+                    doc_info = ' | ⚠️  NO DOCSTRING'
+                lines.append(
+                    f"      ├─ {marker} def {fn.name}(){doc_info}")
+                lines.append(
+                    f"      │  └─ Line {fn.line_number}")
+
     # ====================================================================
     # PARSING ERRORS
     # ====================================================================
@@ -410,42 +477,74 @@ def format_detailed_output(report: Dict) -> str:
 
     lines.append("")
     lines.append("=" * 80)
-    lines.append("DETAILED CLASS ANALYSIS")
+    lines.append("DETAILED CLASS AND FUNCTION ANALYSIS")
     lines.append("=" * 80)
 
-    for cls in sorted(report['all_classes'], key=lambda c: (c.file_path, c.line_number)):
-        lines.append(f"\n{'=' * 80}")
-        lines.append(f"class {cls.name}")
+    # Build file → classes and file → functions maps
+    by_file_classes = defaultdict(list)
+    for cls in report['all_classes']:
+        by_file_classes[cls.file_path].append(cls)
 
-        if cls.base_classes:
-            lines.append(f"  Inherits from: {', '.join(cls.base_classes)}")
+    by_file_functions = defaultdict(list)
+    for fn in report['all_functions']:
+        by_file_functions[fn.file_path].append(fn)
 
-        if cls.decorators:
-            lines.append(f"  Decorators: {', '.join(cls.decorators)}")
+    all_files = sorted(
+        set(list(by_file_classes.keys()) + list(by_file_functions.keys()))
+    )
 
-        lines.append(f"  File: {cls.file_path}:{cls.line_number}")
+    for file_path in all_files:
+        file_classes = sorted(by_file_classes.get(file_path, []), key=lambda c: c.line_number)
+        file_functions = sorted(by_file_functions.get(file_path, []), key=lambda f: f.line_number)
 
-        # Class docstring
-        if cls.docstring:
-            lines.append(f"\n  Class Docstring:")
-            for line in cls.docstring.split('\n'):
-                lines.append(f"    {line}")
-        else:
-            lines.append(f"\n  ⚠️  NO CLASS DOCSTRING")
+        # Classes
+        for cls in file_classes:
+            lines.append(f"\n{'=' * 80}")
+            lines.append(f"class {cls.name}")
 
-        # Methods with docstrings
-        if cls.methods:
-            lines.append(f"\n  Methods ({len(cls.methods)}):")
-            for method_name, method_doc in cls.methods:
-                marker = "🔒" if method_name.startswith('_') else "🔓"
-                lines.append(f"\n    {marker} {method_name}()")
+            if cls.base_classes:
+                lines.append(f"  Inherits from: {', '.join(cls.base_classes)}")
 
-                if method_doc:
-                    lines.append(f"       Docstring:")
-                    for line in method_doc.split('\n'):
-                        lines.append(f"         {line}")
-                else:
-                    lines.append(f"       ⚠️  NO DOCSTRING")
+            if cls.decorators:
+                lines.append(f"  Decorators: {', '.join(cls.decorators)}")
+
+            lines.append(f"  File: {cls.file_path}:{cls.line_number}")
+
+            # Class docstring
+            if cls.docstring:
+                lines.append(f"\n  Class Docstring:")
+                for line in cls.docstring.split('\n'):
+                    lines.append(f"    {line}")
+            else:
+                lines.append(f"\n  ⚠️  NO CLASS DOCSTRING")
+
+            # Methods with docstrings
+            if cls.methods:
+                lines.append(f"\n  Methods ({len(cls.methods)}):")
+                for method_name, method_doc in cls.methods:
+                    marker = "🔒" if method_name.startswith('_') else "🔓"
+                    lines.append(f"\n    {marker} {method_name}()")
+
+                    if method_doc:
+                        lines.append(f"       Docstring:")
+                        for line in method_doc.split('\n'):
+                            lines.append(f"         {line}")
+                    else:
+                        lines.append(f"       ⚠️  NO DOCSTRING")
+
+        # Module-level functions
+        for fn in file_functions:
+            lines.append(f"\n{'=' * 80}")
+            marker = "🔒" if fn.name.startswith('_') else "🔓"
+            lines.append(f"{marker} def {fn.name}()")
+            lines.append(f"  File: {fn.file_path}:{fn.line_number}")
+
+            if fn.docstring:
+                lines.append(f"\n  Docstring:")
+                for line in fn.docstring.split('\n'):
+                    lines.append(f"    {line}")
+            else:
+                lines.append(f"\n  ⚠️  NO DOCSTRING")
 
     return "\n".join(lines)
 
