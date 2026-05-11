@@ -7,6 +7,7 @@ Ensures consistent order creation API across different broker types.
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
@@ -426,6 +427,271 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.get_broker_name()} does not support live order modification"
+        )
+
+    # ============================================
+    # Tier 3 — Decoupled Operation Layers (Transport-Neutral)
+    # ============================================
+    #
+    # Each Tier-3 operation (submit, query, cancel, modify) is split into
+    # three pure layers that any live-capable adapter MUST provide:
+    #
+    #   _build_*_payload      Pure — assemble broker-specific request payload
+    #   _do_request_*         Transport — send the request, return raw response
+    #                         (HTTP, RPC, terminal bridge — implementation choice)
+    #   _parse_*_response     Pure — convert raw response to BrokerResponse
+    #
+    # The public Tier-3 surface above (execute_order, check_order_status,
+    # cancel_order, modify_order) currently composes these layers as a
+    # backwards-compatible orchestrator. It will be removed in a later
+    # refactor step once the LiveRequestProcessor calls the layers directly.
+    #
+    # Default behavior: raise NotImplementedError. Live-capable adapters
+    # override these. Adapters that only serve Tier 1+2 (backtesting) need
+    # not implement them.
+    # ============================================
+
+    # --- Build payloads (pure) ---
+
+    def _build_submit_payload(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        lots: float,
+        order_type: OrderType,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an order submission request.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            symbol: Trading symbol
+            direction: LONG or SHORT
+            lots: Order size
+            order_type: MARKET or LIMIT
+            **kwargs: price (for LIMIT), stop_loss, take_profit, etc.
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_submit)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_submit_payload"
+        )
+
+    def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an order status query.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            broker_ref: Broker's order reference ID
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_query)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_query_payload"
+        )
+
+    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an order cancellation request.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            broker_ref: Broker's order reference ID
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_cancel)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_cancel_payload"
+        )
+
+    def _build_modify_payload(
+        self,
+        broker_ref: str,
+        symbol: str,
+        new_price: Optional[float] = None,
+        new_stop_loss: Optional[float] = None,
+        new_take_profit: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an order modification request.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            broker_ref: Current broker order reference
+            symbol: Trading symbol (required by some brokers)
+            new_price: New limit price (None=no change)
+            new_stop_loss: New stop loss (None=no change)
+            new_take_profit: New take profit (None=no change)
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_modify)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_modify_payload"
+        )
+
+    # --- Transport (broker-side I/O, raises on error) ---
+
+    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an order submission request to the broker. Raises on transport error.
+
+        Transport-neutral: HTTP, RPC, terminal bridge — implementation choice.
+        Designed to be called from a worker thread (post LiveRequestProcessor).
+
+        Args:
+            payload: Pre-built submission payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_submit"
+        )
+
+    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an order status query to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built query payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_query"
+        )
+
+    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an order cancellation request to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built cancel payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_cancel"
+        )
+
+    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an order modification request to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built modify payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_modify"
+        )
+
+    # --- Parse responses (pure) ---
+
+    def _parse_submit_response(
+        self,
+        raw: Dict[str, Any],
+        timestamp: datetime,
+    ) -> BrokerResponse:
+        """
+        Convert a raw broker submit response into a BrokerResponse.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            raw: Raw broker response dict
+            timestamp: Response receipt timestamp (UTC)
+
+        Returns:
+            BrokerResponse with broker_ref and status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_submit_response"
+        )
+
+    def _parse_query_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        timestamp: datetime,
+    ) -> BrokerResponse:
+        """
+        Convert a raw broker query response into a BrokerResponse.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            raw: Raw broker response dict
+            broker_ref: The broker reference that was queried
+            timestamp: Response receipt timestamp (UTC)
+
+        Returns:
+            BrokerResponse with current status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_query_response"
+        )
+
+    def _parse_cancel_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        timestamp: datetime,
+    ) -> BrokerResponse:
+        """
+        Convert a raw broker cancel response into a BrokerResponse.
+
+        Pure — no I/O, no state mutation.
+
+        Args:
+            raw: Raw broker response dict
+            broker_ref: The broker reference that was cancelled
+            timestamp: Response receipt timestamp (UTC)
+
+        Returns:
+            BrokerResponse with cancellation status
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_cancel_response"
+        )
+
+    def _parse_modify_response(
+        self,
+        raw: Dict[str, Any],
+        original_broker_ref: str,
+        timestamp: datetime,
+    ) -> BrokerResponse:
+        """
+        Convert a raw broker modify response into a BrokerResponse.
+
+        Pure — no I/O, no state mutation. Some brokers (e.g. Kraken EditOrder)
+        return a NEW broker_ref that replaces the original; the caller is
+        responsible for swapping the reference in any tracking index.
+
+        Args:
+            raw: Raw broker response dict
+            original_broker_ref: The pre-modification broker reference
+            timestamp: Response receipt timestamp (UTC)
+
+        Returns:
+            BrokerResponse with (potentially new) broker_ref
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_modify_response"
         )
 
     # ============================================

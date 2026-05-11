@@ -6,7 +6,7 @@ FiniexTestingIDE - Live Trade Executor
 Live broker execution via adapter API (Horizon 2).
 
 Inherits from AbstractTradeExecutor — provides live order execution
-with broker adapter communication and LiveOrderTracker for pending
+with broker adapter communication and LiveRequestProcessor for pending
 order management.
 
 Architecture:
@@ -35,7 +35,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.trading_env.live.live_order_tracker import LiveOrderTracker
+from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.live_types.live_execution_types import (
@@ -64,7 +64,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     Extends AbstractTradeExecutor with live-specific behavior:
     - Order submission via adapter.execute_order()
-    - Pending order tracking via LiveOrderTracker
+    - Pending order tracking via LiveRequestProcessor
     - Broker status polling in _process_pending_orders()
     - Timeout detection for unresponsive orders
 
@@ -77,7 +77,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     This subclass implements:
     - HOW orders are submitted (broker API)
     - HOW fills are detected (broker polling)
-    - HOW pending state is tracked (LiveOrderTracker)
+    - HOW pending state is tracked (LiveRequestProcessor)
     """
 
     def __init__(
@@ -127,7 +127,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._timeout_config = timeout_config or TimeoutConfig()
 
         # Live order tracker with broker ref tracking
-        self._order_tracker = LiveOrderTracker(
+        self._request_processor = LiveRequestProcessor(
             logger=logger,
             timeout_config=self._timeout_config,
         )
@@ -140,6 +140,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f"{broker_config.get_broker_name()} "
             f"(timeout={self._timeout_config.order_timeout_seconds}s)"
         )
+
+        # Start the processor's worker thread. In V1 the worker stays idle
+        # (no jobs enqueued); async dispatch is activated in a later step.
+        self._request_processor.start_worker()
 
     # ============================================
     # Clock
@@ -168,7 +172,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Poll broker for pending order updates and handle timeouts.
 
-        Phase 1: Poll LiveOrderTracker (MARKET orders in transit)
+        Phase 0: Drain async worker responses (idle in V1; carries
+                 fills/rejections from the worker thread once async
+                 dispatch is activated in a later refactor step).
+        Phase 1: Poll LiveRequestProcessor (MARKET orders in transit)
         Phase 2: Poll active limit/stop orders for broker fills
 
         For each pending order:
@@ -177,9 +184,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         3. On rejection: record in _order_history
         4. On timeout: record rejection with BROKER_ERROR reason
         """
-        # === Phase 1: LiveOrderTracker (MARKET orders in transit) ===
-        if self._order_tracker.has_pending_orders():
-            pending_orders = self._order_tracker.get_pending_orders()
+        # === Phase 0: Drain async worker responses (no-op in V1) ===
+        self._request_processor.drain_inbox()
+
+        # === Phase 1: LiveRequestProcessor (MARKET orders in transit) ===
+        if self._request_processor.has_pending_orders():
+            pending_orders = self._request_processor.get_pending_orders()
             for pending in pending_orders:
                 if not pending.broker_ref:
                     continue
@@ -189,7 +199,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 self._handle_broker_response(pending, response)
 
             # Check for timeouts (orders that broker never responded to)
-            timed_out = self._order_tracker.check_timeouts()
+            timed_out = self._request_processor.check_timeouts()
             for pending in timed_out:
                 self._handle_timeout(pending)
 
@@ -209,7 +219,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             response: Broker's current status response
         """
         if response.status == BrokerOrderStatus.FILLED:
-            filled = self._order_tracker.mark_filled(
+            filled = self._request_processor.mark_filled(
                 broker_ref=pending.broker_ref,
                 fill_price=response.fill_price,
                 filled_lots=response.filled_lots,
@@ -219,7 +229,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Record pending outcome (latency = time from submission to fill)
             latency_ms = self._calculate_pending_latency_ms(filled)
-            self._order_tracker.record_outcome(
+            self._request_processor.record_outcome(
                 filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
 
             # Call inherited fill processing
@@ -229,7 +239,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 self._fill_close_order(filled, fill_price=response.fill_price)
 
         elif response.status == BrokerOrderStatus.REJECTED:
-            rejected = self._order_tracker.mark_rejected(
+            rejected = self._request_processor.mark_rejected(
                 broker_ref=pending.broker_ref,
                 reason=response.rejection_reason or "broker_rejected",
             )
@@ -238,7 +248,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Record pending outcome
             latency_ms = self._calculate_pending_latency_ms(rejected)
-            self._order_tracker.record_outcome(
+            self._request_processor.record_outcome(
                 rejected, PendingOrderOutcome.REJECTED, latency_ms=latency_ms)
 
             # Record rejection in order history
@@ -271,11 +281,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Record pending outcome as TIMED_OUT
         latency_ms = self._calculate_pending_latency_ms(pending)
-        self._order_tracker.record_outcome(
+        self._request_processor.record_outcome(
             pending, PendingOrderOutcome.TIMED_OUT, latency_ms=latency_ms)
 
         # Remove from tracker
-        self._order_tracker.mark_rejected(
+        self._request_processor.mark_rejected(
             broker_ref=pending.broker_ref,
             reason="order_timeout",
         )
@@ -357,7 +367,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Send order to broker for execution.
 
         Validates parameters, sends to broker via adapter, tracks in
-        LiveOrderTracker. MARKET and LIMIT orders supported.
+        LiveRequestProcessor. MARKET and LIMIT orders supported.
 
         Args:
             request: OpenOrderRequest with all order parameters
@@ -404,24 +414,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if request.order_type == OrderType.LIMIT and request.price is not None:
             order_kwargs["price"] = request.price
 
-        # Send to broker via adapter (adapter keeps **kwargs — broker boundary)
-        try:
-            response = self.broker.adapter.execute_order(
-                symbol=request.symbol,
-                direction=request.direction,
-                lots=request.lots,
-                order_type=request.order_type,
-                **order_kwargs,
-            )
-        except Exception as e:
-            self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
-                reason=RejectionReason.BROKER_ERROR,
-                message=f"Adapter execute_order() failed: {e}",
-            )
-            self._order_history.append(result)
-            return result
+        # Delegate transport to processor orchestrator (composes adapter
+        # Tier-3 layers). Catches transport errors internally and returns
+        # a REJECTED BrokerResponse. The Executor handles storage decisions
+        # (register MARKET pendings in processor, LIMIT pendings in
+        # _active_limit_orders — until step 7 unifies them).
+        response = self._request_processor.submit_open_order(
+            symbol=request.symbol,
+            direction=request.direction,
+            lots=request.lots,
+            order_type=request.order_type,
+            adapter=self.broker.adapter,
+            **order_kwargs,
+        )
 
         # Handle immediate rejection from broker
         if response.is_rejected:
@@ -437,7 +442,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Handle immediate fill (some brokers fill market orders synchronously)
         if response.is_filled:
             # Track briefly then mark filled immediately
-            self._order_tracker.submit_order(
+            self._request_processor.register_pending_open(
                 order_id=order_id,
                 symbol=request.symbol,
                 direction=request.direction,
@@ -445,7 +450,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 broker_ref=response.broker_ref,
                 order_kwargs=order_kwargs,
             )
-            filled = self._order_tracker.mark_filled(
+            filled = self._request_processor.mark_filled(
                 broker_ref=response.broker_ref,
                 fill_price=response.fill_price,
                 filled_lots=response.filled_lots,
@@ -484,8 +489,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
             self._active_limit_orders.append(pending)
         else:
-            # MARKET orders: track in LiveOrderTracker (short-lived)
-            self._order_tracker.submit_order(
+            # MARKET orders: track in LiveRequestProcessor (short-lived)
+            self._request_processor.register_pending_open(
                 order_id=order_id,
                 symbol=request.symbol,
                 direction=request.direction,
@@ -543,19 +548,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
         close_lots = lots if lots else position.lots
 
-        try:
-            response = self.broker.adapter.execute_order(
-                symbol=position.symbol,
-                direction=close_direction,
-                lots=close_lots,
-                order_type=OrderType.MARKET,
-            )
-        except Exception as e:
-            return create_rejection_result(
-                order_id=f"close_{position_id}",
-                reason=RejectionReason.BROKER_ERROR,
-                message=f"Adapter execute_order() failed on close: {e}",
-            )
+        # Delegate transport to processor orchestrator (close = reverse MARKET).
+        response = self._request_processor.submit_close_order(
+            symbol=position.symbol,
+            close_direction=close_direction,
+            close_lots=close_lots,
+            adapter=self.broker.adapter,
+        )
 
         # Handle immediate rejection
         if response.is_rejected:
@@ -567,12 +566,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Handle immediate fill
         if response.is_filled:
-            self._order_tracker.submit_close_order(
+            self._request_processor.register_pending_close(
                 position_id=position_id,
                 broker_ref=response.broker_ref,
                 close_lots=close_lots,
             )
-            filled = self._order_tracker.mark_filled(
+            filled = self._request_processor.mark_filled(
                 broker_ref=response.broker_ref,
                 fill_price=response.fill_price,
                 filled_lots=response.filled_lots,
@@ -590,7 +589,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
 
         # Pending close — track
-        self._order_tracker.submit_close_order(
+        self._request_processor.register_pending_close(
             position_id=position_id,
             broker_ref=response.broker_ref,
             close_lots=close_lots,
@@ -779,15 +778,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def has_pipeline_orders(self) -> bool:
         """Check if any orders are in the broker tracker (MARKET orders in transit)."""
-        return self._order_tracker.has_pending_orders()
+        return self._request_processor.has_pending_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
-        return self._order_tracker.is_pending_close(position_id)
+        return self._request_processor.is_pending_close(position_id)
 
     def _get_pipeline_count(self) -> int:
         """Get number of orders in the broker tracker."""
-        return self._order_tracker.get_pending_count()
+        return self._request_processor.get_pending_count()
 
     def get_pending_stats(self) -> PendingOrderStats:
         """
@@ -796,7 +795,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             PendingOrderStats with ms-based latency metrics + active order snapshots
         """
-        stats = self._order_tracker.get_pending_stats()
+        stats = self._request_processor.get_pending_stats()
         self._populate_active_order_snapshots(stats)
         return stats
 
@@ -864,10 +863,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"{len(open_positions)} positions remain open — direct-closing (no pending)"
             )
             for pos in open_positions:
-                synthetic = self._order_tracker.create_synthetic_close_order(
+                synthetic = self._request_processor.create_synthetic_close_order(
                     pos.position_id)
                 self._fill_close_order(
                     synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Phase 3: Catch genuine stuck-in-pipeline orders (real anomalies)
-        self._order_tracker.clear_pending(reason="scenario_end")
+        self._request_processor.clear_pending(reason="scenario_end")
+
+        # Phase 4: Stop the worker thread cleanly
+        self._request_processor.stop_worker()

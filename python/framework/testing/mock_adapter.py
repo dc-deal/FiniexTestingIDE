@@ -547,6 +547,104 @@ class MockBrokerAdapter(AbstractAdapter):
         )
 
     # ============================================
+    # Tier-3 Decoupled Layers (Mock Wrappers)
+    # ============================================
+    #
+    # The mock has no real transport — no HTTP, no RPC. To satisfy the
+    # AbstractAdapter Tier-3 contract (required by LiveRequestProcessor),
+    # the build/request/parse layers wrap the existing public methods.
+    # The "raw" dict simply carries the already-built BrokerResponse.
+    #
+    # These wrappers are temporary. When the legacy public Tier-3 surface
+    # is removed (refactor step 8), the mock will be rewritten so its
+    # mock logic lives in the layers directly.
+    # ============================================
+
+    # --- Build payloads (pack params into a dict) ---
+
+    def _build_submit_payload(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        lots: float,
+        order_type: OrderType,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        return {
+            'symbol': symbol,
+            'direction': direction,
+            'lots': lots,
+            'order_type': order_type,
+            'kwargs': kwargs,
+        }
+
+    def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+        return {'broker_ref': broker_ref}
+
+    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
+        return {'broker_ref': broker_ref}
+
+    def _build_modify_payload(
+        self,
+        broker_ref: str,
+        symbol: str,
+        new_price: Optional[float] = None,
+        new_stop_loss: Optional[float] = None,
+        new_take_profit: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        return {
+            'broker_ref': broker_ref,
+            'symbol': symbol,
+            'new_price': new_price,
+            'new_stop_loss': new_stop_loss,
+            'new_take_profit': new_take_profit,
+        }
+
+    # --- Transport (call existing public method, wrap response) ---
+
+    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        response = self.execute_order(
+            symbol=payload['symbol'],
+            direction=payload['direction'],
+            lots=payload['lots'],
+            order_type=payload['order_type'],
+            **payload['kwargs'],
+        )
+        return {'__response': response}
+
+    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        response = self.check_order_status(payload['broker_ref'])
+        return {'__response': response}
+
+    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        response = self.cancel_order(payload['broker_ref'])
+        return {'__response': response}
+
+    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        response = self.modify_order(
+            broker_ref=payload['broker_ref'],
+            symbol=payload['symbol'],
+            new_price=payload['new_price'],
+            new_stop_loss=payload['new_stop_loss'],
+            new_take_profit=payload['new_take_profit'],
+        )
+        return {'__response': response}
+
+    # --- Parse responses (unwrap the carried BrokerResponse) ---
+
+    def _parse_submit_response(self, raw: Dict[str, Any], timestamp: datetime) -> BrokerResponse:
+        return raw['__response']
+
+    def _parse_query_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+        return raw['__response']
+
+    def _parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+        return raw['__response']
+
+    def _parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
+        return raw['__response']
+
+    # ============================================
     # Mock Configuration Helpers
     # ============================================
 
