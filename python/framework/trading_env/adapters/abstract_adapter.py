@@ -341,94 +341,6 @@ class AbstractAdapter(ABC):
         """
         pass
 
-    def execute_order(
-        self,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        order_type: OrderType,
-        **kwargs
-    ) -> BrokerResponse:
-        """
-        Send order to broker for execution.
-
-        OPTIONAL — Only live-capable adapters implement this.
-        Default raises NotImplementedError.
-
-        Args:
-            symbol: Trading symbol (e.g., "BTCUSD")
-            direction: LONG or SHORT
-            lots: Order size
-            order_type: Order type (MARKET for V1)
-            **kwargs: Additional order parameters
-
-        Returns:
-            BrokerResponse with broker_ref and initial status
-        """
-        raise NotImplementedError(
-            f"{self.get_broker_name()} does not support live order execution"
-        )
-
-    def check_order_status(self, broker_ref: str) -> BrokerResponse:
-        """
-        Poll broker for current order status.
-
-        OPTIONAL — Only live-capable adapters implement this.
-
-        Args:
-            broker_ref: Broker's order reference ID
-
-        Returns:
-            BrokerResponse with current status (pending/filled/rejected)
-        """
-        raise NotImplementedError(
-            f"{self.get_broker_name()} does not support live order status checks"
-        )
-
-    def cancel_order(self, broker_ref: str) -> BrokerResponse:
-        """
-        Cancel a pending order at broker.
-
-        OPTIONAL — Only live-capable adapters implement this.
-
-        Args:
-            broker_ref: Broker's order reference ID
-
-        Returns:
-            BrokerResponse with cancellation status
-        """
-        raise NotImplementedError(
-            f"{self.get_broker_name()} does not support live order cancellation"
-        )
-
-    def modify_order(
-        self,
-        broker_ref: str,
-        symbol: str,
-        new_price: Optional[float] = None,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None,
-    ) -> BrokerResponse:
-        """
-        Modify a pending order at broker (price, SL, TP).
-
-        OPTIONAL — Only live-capable adapters implement this.
-        Default raises NotImplementedError.
-
-        Args:
-            broker_ref: Broker's order reference ID
-            symbol: Trading symbol (e.g., 'ETHUSD') — required by some brokers for modification
-            new_price: New limit price (None=no change)
-            new_stop_loss: New stop loss level (None=no change)
-            new_take_profit: New take profit level (None=no change)
-
-        Returns:
-            BrokerResponse with modification status
-        """
-        raise NotImplementedError(
-            f"{self.get_broker_name()} does not support live order modification"
-        )
-
     # ============================================
     # Tier 3 — Decoupled Operation Layers (Transport-Neutral)
     # ============================================
@@ -441,10 +353,11 @@ class AbstractAdapter(ABC):
     #                         (HTTP, RPC, terminal bridge — implementation choice)
     #   _parse_*_response     Pure — convert raw response to BrokerResponse
     #
-    # The public Tier-3 surface above (execute_order, check_order_status,
-    # cancel_order, modify_order) currently composes these layers as a
-    # backwards-compatible orchestrator. It will be removed in a later
-    # refactor step once the LiveRequestProcessor calls the layers directly.
+    # LiveRequestProcessor composes these layers — submit_open_order /
+    # submit_close_order_async / modify_order_sync / cancel_order_sync /
+    # query_order_sync drive them directly. There is no public
+    # execute_order / check_order_status / cancel_order / modify_order
+    # surface on the adapter.
     #
     # Default behavior: raise NotImplementedError. Live-capable adapters
     # override these. Adapters that only serve Tier 1+2 (backtesting) need

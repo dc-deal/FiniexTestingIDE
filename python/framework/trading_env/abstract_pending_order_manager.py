@@ -14,7 +14,8 @@ trading need for tracking in-flight orders:
 
 Subclasses add mode-specific behavior:
 - SimulationLatencyManager: Seeded tick-based delays, deterministic fills
-- LiveOrderTracker: Broker reference tracking, timeout detection (Horizon 2)
+- LiveRequestProcessor: Broker reference tracking, timeout detection,
+  Tier-3 orchestration (async submit worker thread, inbox/drain)
 
 Architecture:
     AbstractPendingOrderManager
@@ -23,10 +24,11 @@ Architecture:
         │   - SeededDelayGenerator (utils/seeded_generators/) for deterministic delays
         │   - process_tick() → fills based on tick count
         │
-        └── LiveOrderTracker (Horizon 2)
+        └── LiveRequestProcessor
             - Broker reference tracking
             - mark_filled() / mark_rejected() from broker responses
             - check_timeouts() for unresponsive orders
+            - Async submit worker thread + drain_inbox routing
 
 Both managers share the same PendingOrder dataclass and the same
 storage/query interface. The TradeExecutor subclasses delegate

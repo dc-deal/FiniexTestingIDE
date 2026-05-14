@@ -19,7 +19,7 @@ import hmac
 import json
 import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +29,7 @@ from python.framework.types.trading_env_types.broker_types import BrokerSpecific
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from .abstract_adapter import AbstractAdapter
+from .dry_run_simulator import DryRunOrderSimulator
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderType,
@@ -64,6 +65,12 @@ class KrakenAdapter(AbstractAdapter):
         'expired': BrokerOrderStatus.EXPIRED,
     }
 
+    # Sentinel key marking a raw response as a dry-run handoff. The
+    # _do_request_* layer tags the raw dict; _parse_*_response detects
+    # the tag and delegates to DryRunOrderSimulator for the synthetic
+    # BrokerResponse so the response timestamp matches the parse stage.
+    _DRY_RUN_SENTINEL = '__dry_run_op__'
+
     def __init__(self, broker_config: Dict[str, Any]):
         """
         Initialize Kraken adapter with broker configuration.
@@ -88,7 +95,12 @@ class KrakenAdapter(AbstractAdapter):
         self._rate_limit_interval_s: float = 1.0
         self._request_timeout_s: int = 15
         self._last_request_time: float = 0.0
-        self._dry_run_counter: int = 0
+
+        # Dry-run lifecycle simulator. Always instantiated so DRYRUN-*
+        # refs remain queryable even if dry_run is toggled off mid-run.
+        # Tier-3 transport layers route to it when self._dry_run is True
+        # or when the broker_ref carries the DRYRUN-* prefix.
+        self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator()
 
     # ============================================
     # Configuration
@@ -512,13 +524,15 @@ class KrakenAdapter(AbstractAdapter):
     # defined on AbstractAdapter):
     #   _build_*_payload     — pure, no I/O, no state
     #   _do_request_*        — transport (HTTP for Kraken), raises on error
-    #   _parse_*_response    — pure, raw dict → BrokerResponse
+    #   _parse_*_response    — pure w.r.t. broker payload (delegates to
+    #                          DryRunOrderSimulator on the dry-run branch)
     #
-    # Public methods (execute_order, check_order_status, cancel_order,
-    # modify_order) are thin orchestrators that compose the three layers
-    # and handle dry-run shortcuts and transport-error mapping. The dry-run
-    # synthetic-response branch is preserved here unchanged; it will be
-    # replaced by DryRunOrderSimulator in a later step.
+    # LiveRequestProcessor composes these layers directly — see its
+    # submit/query/cancel/modify orchestrators. Dry-run flows through the
+    # DryRunOrderSimulator owned by this adapter: _do_request_* runs the
+    # real broker call when validation is still desired (validate=true
+    # for submit) and tags the raw with the operation kind; the parse
+    # layer hands off to the simulator with the parse-stage timestamp.
     # ============================================
 
     # --- Build payloads (pure) ---
@@ -599,17 +613,23 @@ class KrakenAdapter(AbstractAdapter):
         broker_ref: str,
         symbol: str,
         new_price: Optional[float] = None,
+        new_stop_loss: Optional[float] = None,
+        new_take_profit: Optional[float] = None,
     ) -> Dict[str, str]:
         """
         Build Kraken EditOrder payload.
 
         Pure — no I/O, no state. Kraken EditOrder requires the pair name
-        alongside the txid.
+        alongside the txid. Kraken EditOrder does not support SL/TP
+        modification — those kwargs are accepted for interface symmetry
+        and silently ignored here.
 
         Args:
             broker_ref: Current Kraken txid
             symbol: Trading symbol (resolved to Kraken pair internally)
             new_price: New limit price (None=no change)
+            new_stop_loss: Ignored — Kraken EditOrder does not modify SL
+            new_take_profit: Ignored — Kraken EditOrder does not modify TP
 
         Returns:
             POST data dict
@@ -622,54 +642,98 @@ class KrakenAdapter(AbstractAdapter):
 
     # --- HTTP transport (raises on error) ---
 
-    def _do_request_submit(self, payload: Dict[str, str]) -> Dict[str, Any]:
+    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send AddOrder request to Kraken. Raises on HTTP/API error.
 
-        Called from worker thread post-step-6. Returns raw Kraken result.
+        In dry-run mode, first calls Kraken with validate=true so the
+        broker validates pair, lot size, cost minimum, and margin —
+        an invalid order still raises and surfaces as REJECTED. On
+        successful validation the call hands off to DryRunOrderSimulator
+        via a sentinel-tagged dict so _parse_submit_response can produce
+        the synthetic BrokerResponse with the parse-stage timestamp.
 
         Args:
             payload: Pre-built AddOrder payload
 
         Returns:
-            Raw Kraken result dict
+            Raw Kraken result dict (sentinel-tagged in dry-run)
         """
+        if self._dry_run:
+            self._fetch_private(
+                '/0/private/AddOrder',
+                {**payload, 'validate': 'true'},
+            )
+            return {
+                self._DRY_RUN_SENTINEL: 'submit',
+                'lots': float(payload['volume']),
+                'price': float(payload['price']) if 'price' in payload else None,
+            }
         return self._fetch_private('/0/private/AddOrder', payload)
 
     def _do_request_query(self, payload: Dict[str, str]) -> Dict[str, Any]:
         """
         Send QueryOrders request to Kraken. Raises on HTTP/API error.
 
+        Dry-run orders (DRYRUN-* refs) do not exist at the broker —
+        delegate to the simulator via a sentinel-tagged dict.
+
         Args:
             payload: Pre-built QueryOrders payload
 
         Returns:
-            Raw Kraken result dict
+            Raw Kraken result dict (sentinel-tagged in dry-run)
         """
+        broker_ref = payload['txid']
+        if self._dry_run or broker_ref.startswith('DRYRUN-'):
+            return {
+                self._DRY_RUN_SENTINEL: 'query',
+                'broker_ref': broker_ref,
+            }
         return self._fetch_private('/0/private/QueryOrders', payload)
 
     def _do_request_cancel(self, payload: Dict[str, str]) -> Dict[str, Any]:
         """
         Send CancelOrder request to Kraken. Raises on HTTP/API error.
 
+        Dry-run orders (DRYRUN-* refs) do not exist at the broker —
+        delegate to the simulator via a sentinel-tagged dict.
+
         Args:
             payload: Pre-built CancelOrder payload
 
         Returns:
-            Raw Kraken result dict
+            Raw Kraken result dict (sentinel-tagged in dry-run)
         """
+        broker_ref = payload['txid']
+        if self._dry_run or broker_ref.startswith('DRYRUN-'):
+            return {
+                self._DRY_RUN_SENTINEL: 'cancel',
+                'broker_ref': broker_ref,
+            }
         return self._fetch_private('/0/private/CancelOrder', payload)
 
-    def _do_request_modify(self, payload: Dict[str, str]) -> Dict[str, Any]:
+    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send EditOrder request to Kraken. Raises on HTTP/API error.
+
+        Dry-run orders (DRYRUN-* refs) do not exist at the broker —
+        delegate to the simulator via a sentinel-tagged dict that
+        carries new_price for ref replacement.
 
         Args:
             payload: Pre-built EditOrder payload
 
         Returns:
-            Raw Kraken result dict
+            Raw Kraken result dict (sentinel-tagged in dry-run)
         """
+        broker_ref = payload['txid']
+        if self._dry_run or broker_ref.startswith('DRYRUN-'):
+            return {
+                self._DRY_RUN_SENTINEL: 'modify',
+                'broker_ref': broker_ref,
+                'new_price': float(payload['price']) if 'price' in payload else None,
+            }
         return self._fetch_private('/0/private/EditOrder', payload)
 
     # --- Parse responses (pure) ---
@@ -678,16 +742,26 @@ class KrakenAdapter(AbstractAdapter):
         """
         Parse Kraken AddOrder response into BrokerResponse.
 
-        Pure — no I/O, no state. Real-mode only; the dry-run synthetic
-        response is built by the orchestrator.
+        Pure w.r.t. broker payload. In dry-run mode delegates to the
+        DryRunOrderSimulator (which is stateful — counter + per-order
+        tracking) so the response is a freshly-issued PENDING with a
+        synthetic DRYRUN-* ref. Real-mode parse is unchanged.
 
         Args:
             raw: Raw Kraken result dict
             timestamp: Response receipt timestamp (UTC)
 
         Returns:
-            BrokerResponse(status=PENDING) with extracted txid
+            BrokerResponse — PENDING in both modes; dry-run uses
+            simulator-issued synthetic ref
         """
+        if raw.get(self._DRY_RUN_SENTINEL) == 'submit':
+            return self._dry_run_simulator.submit(
+                lots=raw['lots'],
+                price=raw['price'],
+                timestamp=timestamp,
+            )
+
         txid_list = raw.get('txid', [])
         broker_ref = txid_list[0] if txid_list else ''
         return BrokerResponse(
@@ -706,8 +780,11 @@ class KrakenAdapter(AbstractAdapter):
         """
         Parse Kraken QueryOrders response into BrokerResponse.
 
-        Pure — no I/O, no state. Maps Kraken status codes to
-        BrokerOrderStatus and extracts fill data when terminal.
+        Pure w.r.t. broker payload. In dry-run mode delegates to the
+        simulator, which advances the per-order poll counter and may
+        flip the order from PENDING to FILLED. Real-mode parse maps
+        Kraken status codes to BrokerOrderStatus and extracts fill
+        data when terminal.
 
         Args:
             raw: Raw Kraken result dict
@@ -717,6 +794,9 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             BrokerResponse with current status
         """
+        if raw.get(self._DRY_RUN_SENTINEL) == 'query':
+            return self._dry_run_simulator.query(broker_ref, timestamp)
+
         order_info = raw.get(broker_ref, {})
         kraken_status = order_info.get('status', 'pending')
         status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.PENDING)
@@ -745,7 +825,9 @@ class KrakenAdapter(AbstractAdapter):
         """
         Parse Kraken CancelOrder response into BrokerResponse.
 
-        Pure — no I/O, no state.
+        Pure w.r.t. broker payload. Dry-run path delegates to the
+        simulator so the cancelled ref is removed from its internal
+        state (so subsequent queries do not see PENDING).
 
         Args:
             raw: Raw Kraken result dict
@@ -755,6 +837,9 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             BrokerResponse(status=CANCELLED)
         """
+        if raw.get(self._DRY_RUN_SENTINEL) == 'cancel':
+            return self._dry_run_simulator.cancel(broker_ref, timestamp)
+
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.CANCELLED,
@@ -771,9 +856,11 @@ class KrakenAdapter(AbstractAdapter):
         """
         Parse Kraken EditOrder response into BrokerResponse.
 
-        Pure — no I/O, no state. EditOrder replaces the order — Kraken
+        Pure w.r.t. broker payload. EditOrder replaces the order — Kraken
         returns a NEW txid that must replace the original in any tracking
-        index. The caller is responsible for that swap.
+        index; the caller is responsible for that swap. Dry-run path
+        delegates to the simulator which carries internal state across
+        the ref replacement.
 
         Args:
             raw: Raw Kraken result dict
@@ -783,6 +870,13 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             BrokerResponse with NEW broker_ref
         """
+        if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
+            return self._dry_run_simulator.modify(
+                broker_ref=raw['broker_ref'],
+                new_price=raw['new_price'],
+                timestamp=timestamp,
+            )
+
         new_txid = raw.get('txid', original_broker_ref)
         return BrokerResponse(
             broker_ref=new_txid,
@@ -790,182 +884,6 @@ class KrakenAdapter(AbstractAdapter):
             timestamp=timestamp,
             raw_response=raw,
         )
-
-    # --- Public Tier-3 surface (orchestrators) ---
-
-    def execute_order(
-        self,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        order_type: OrderType,
-        **kwargs
-    ) -> BrokerResponse:
-        """
-        Send order to Kraken via POST /0/private/AddOrder.
-
-        In dry-run mode, appends validate=true — Kraken validates but does not execute.
-
-        Args:
-            symbol: Trading symbol (e.g., 'BTCUSD')
-            direction: LONG or SHORT
-            lots: Order size
-            order_type: MARKET or LIMIT
-            **kwargs: price (for limit), stop_loss, take_profit
-
-        Returns:
-            BrokerResponse with broker_ref (txid) and status
-        """
-        payload = self._build_submit_payload(symbol, direction, lots, order_type, **kwargs)
-
-        # Dry-run: validate only (Kraken validates the order without executing)
-        if self._dry_run:
-            payload['validate'] = 'true'
-
-        now = datetime.now(timezone.utc)
-
-        try:
-            raw = self._do_request_submit(payload)
-        except Exception as e:
-            return BrokerResponse(
-                broker_ref='',
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
-
-        # Dry-run: synthetic response (Kraken returns no txid in validate mode).
-        # fill_price falls back to 0.0 for market orders — validate mode returns
-        # no execution data. Replaced by DryRunOrderSimulator in a later step.
-        if self._dry_run:
-            self._dry_run_counter += 1
-            return BrokerResponse(
-                broker_ref=f"DRYRUN-{self._dry_run_counter:06d}",
-                status=BrokerOrderStatus.FILLED,
-                fill_price=kwargs.get('price') or kwargs.get('expected_price') or 0.0,
-                filled_lots=lots,
-                timestamp=now,
-                raw_response=raw,
-            )
-
-        return self._parse_submit_response(raw, timestamp=now)
-
-    def check_order_status(self, broker_ref: str) -> BrokerResponse:
-        """
-        Poll Kraken for order status via POST /0/private/QueryOrders.
-
-        Args:
-            broker_ref: Kraken txid
-
-        Returns:
-            BrokerResponse with current status
-        """
-        now = datetime.now(timezone.utc)
-
-        # Dry-run orders don't exist at broker
-        if self._dry_run or broker_ref.startswith('DRYRUN-'):
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.FILLED,
-                timestamp=now,
-            )
-
-        payload = self._build_query_payload(broker_ref)
-
-        try:
-            raw = self._do_request_query(payload)
-        except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
-
-        return self._parse_query_response(raw, broker_ref, now)
-
-    def cancel_order(self, broker_ref: str) -> BrokerResponse:
-        """
-        Cancel order at Kraken via POST /0/private/CancelOrder.
-
-        Args:
-            broker_ref: Kraken txid
-
-        Returns:
-            BrokerResponse with cancellation status
-        """
-        now = datetime.now(timezone.utc)
-
-        # Dry-run orders don't exist at broker
-        if self._dry_run or broker_ref.startswith('DRYRUN-'):
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.CANCELLED,
-                timestamp=now,
-            )
-
-        payload = self._build_cancel_payload(broker_ref)
-
-        try:
-            raw = self._do_request_cancel(payload)
-        except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
-
-        return self._parse_cancel_response(raw, broker_ref, now)
-
-    def modify_order(
-        self,
-        broker_ref: str,
-        symbol: str,
-        new_price: Optional[float] = None,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None,
-    ) -> BrokerResponse:
-        """
-        Modify order at Kraken via POST /0/private/EditOrder.
-
-        Kraken EditOrder replaces the order — returns a NEW txid. The old txid becomes invalid.
-        The caller must update tracking accordingly.
-
-        Args:
-            broker_ref: Current Kraken txid
-            symbol: Trading symbol (e.g., 'ETHUSD') — required by Kraken EditOrder as pair
-            new_price: New limit price (None=no change)
-            new_stop_loss: New stop loss level (None=no change)
-            new_take_profit: New take profit level (None=no change)
-
-        Returns:
-            BrokerResponse with NEW broker_ref (new txid from Kraken)
-        """
-        now = datetime.now(timezone.utc)
-
-        # Dry-run orders don't exist at broker
-        if self._dry_run or broker_ref.startswith('DRYRUN-'):
-            self._dry_run_counter += 1
-            return BrokerResponse(
-                broker_ref=f"DRYRUN-{self._dry_run_counter:06d}",
-                status=BrokerOrderStatus.PENDING,
-                timestamp=now,
-            )
-
-        payload = self._build_modify_payload(broker_ref, symbol, new_price)
-
-        try:
-            raw = self._do_request_modify(payload)
-        except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
-
-        return self._parse_modify_response(raw, broker_ref, now)
 
     # ============================================
     # Kraken REST API — HTTP + Signing

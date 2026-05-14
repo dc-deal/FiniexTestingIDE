@@ -8,11 +8,16 @@ Simulates broker responses for testing LiveTradeExecutor without a real broker.
 Extends AbstractAdapter with mock data (BTCUSD from real Kraken config)
 and configurable execution behavior (instant fill, delayed, reject, timeout).
 
+Implements the Tier-3 layers (_build/_do_request/_parse) natively — the
+"mock transport" lives in _do_request_* and mutates internal mock state
+(counter, _mock_pending). _build_* layers pack parameters into a dict;
+_parse_* layers turn the mock raw dict into a BrokerResponse.
+
 Modes:
-    instant_fill:  execute_order() returns FILLED immediately
-    delayed_fill:  execute_order() returns PENDING, check_order_status() returns FILLED
-    reject_all:    execute_order() returns REJECTED
-    timeout:       execute_order() returns PENDING, check_order_status() stays PENDING
+    instant_fill:  submit returns FILLED immediately
+    delayed_fill:  submit returns PENDING, query returns FILLED
+    reject_all:    submit + modify return REJECTED
+    timeout:       submit returns PENDING, query stays PENDING
 
 Usage:
     adapter = MockBrokerAdapter(mode="instant_fill")
@@ -320,7 +325,15 @@ class MockBrokerAdapter(AbstractAdapter):
         )
 
     # ============================================
-    # Live Execution (mock implementations)
+    # Live Execution — Tier-3 Layers (Native Mock Implementation)
+    # ============================================
+    #
+    # The mock has no real transport — no HTTP, no RPC. The Tier-3 layers
+    # implement the mock execution semantics directly:
+    #   _build_*    Pure — pack parameters into a dict
+    #   _do_request_*  Mock transport — mutates _order_counter and
+    #                  _mock_pending, returns a status-tagged raw dict
+    #   _parse_*_response  Pure — turn the raw dict into a BrokerResponse
     # ============================================
 
     def is_live_capable(self) -> bool:
@@ -329,8 +342,8 @@ class MockBrokerAdapter(AbstractAdapter):
 
     def on_tick(self, tick: TickData) -> None:
         """
-        Store the latest tick so execute_order() can fill at the
-        current market price (bid for SHORT, ask for LONG).
+        Store the latest tick so the submit layer can fill market orders
+        at the current price (ask for LONG, bid for SHORT).
         """
         self._last_ticks[tick.symbol] = tick
 
@@ -364,203 +377,7 @@ class MockBrokerAdapter(AbstractAdapter):
         # Legacy fallback — tests that never feed a tick still work.
         return 50000.0
 
-    def execute_order(
-        self,
-        symbol: str,
-        direction: OrderDirection,
-        lots: float,
-        order_type: OrderType,
-        **kwargs
-    ) -> BrokerResponse:
-        """
-        Simulate order execution based on configured mode.
-
-        Args:
-            symbol: Trading symbol
-            direction: LONG or SHORT
-            lots: Order size
-            order_type: Order type
-            **kwargs: Additional parameters
-
-        Returns:
-            BrokerResponse with mode-dependent status
-        """
-        self._order_counter += 1
-        broker_ref = f"MOCK-{self._order_counter:06d}"
-        now = datetime.now(timezone.utc)
-
-        if self._mode == MockExecutionMode.REJECT_ALL:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason="Mock broker: reject_all mode",
-                timestamp=now,
-            )
-
-        market_price = self._resolve_market_fill_price(
-            symbol, direction, kwargs.get("expected_price"))
-
-        if self._mode == MockExecutionMode.INSTANT_FILL:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.FILLED,
-                fill_price=market_price + self._slippage_points,
-                filled_lots=lots,
-                timestamp=now,
-            )
-
-        # DELAYED_FILL or TIMEOUT: return pending, track internally
-        self._mock_pending[broker_ref] = {
-            "symbol": symbol,
-            "direction": direction,
-            "lots": lots,
-            "submitted_at": now,
-            "expected_price": market_price,
-        }
-
-        return BrokerResponse(
-            broker_ref=broker_ref,
-            status=BrokerOrderStatus.PENDING,
-            timestamp=now,
-        )
-
-    def check_order_status(self, broker_ref: str) -> BrokerResponse:
-        """
-        Check mock order status.
-
-        In delayed_fill mode: returns FILLED.
-        In timeout mode: always returns PENDING (never fills).
-
-        Args:
-            broker_ref: Broker's order reference ID
-
-        Returns:
-            BrokerResponse with current status
-        """
-        now = datetime.now(timezone.utc)
-
-        if broker_ref not in self._mock_pending:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason="Unknown broker_ref",
-                timestamp=now,
-            )
-
-        if self._mode == MockExecutionMode.TIMEOUT:
-            # Never fills — stays pending forever
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.PENDING,
-                timestamp=now,
-            )
-
-        # DELAYED_FILL: fill on first status check
-        order_data = self._mock_pending.pop(broker_ref)
-        fill_price = order_data["expected_price"] + self._slippage_points
-
-        return BrokerResponse(
-            broker_ref=broker_ref,
-            status=BrokerOrderStatus.FILLED,
-            fill_price=fill_price,
-            filled_lots=order_data["lots"],
-            timestamp=now,
-        )
-
-    def cancel_order(self, broker_ref: str) -> BrokerResponse:
-        """
-        Cancel a mock pending order.
-
-        Args:
-            broker_ref: Broker's order reference ID
-
-        Returns:
-            BrokerResponse with CANCELLED status
-        """
-        now = datetime.now(timezone.utc)
-        self._mock_pending.pop(broker_ref, None)
-
-        return BrokerResponse(
-            broker_ref=broker_ref,
-            status=BrokerOrderStatus.CANCELLED,
-            timestamp=now,
-        )
-
-    def modify_order(
-        self,
-        broker_ref: str,
-        symbol: str,
-        new_price: Optional[float] = None,
-        new_stop_loss: Optional[float] = None,
-        new_take_profit: Optional[float] = None,
-    ) -> BrokerResponse:
-        """
-        Simulate order modification based on configured mode.
-
-        In REJECT_ALL mode: returns REJECTED.
-        Otherwise: returns FILLED (modification accepted).
-        Unknown broker_ref: returns REJECTED.
-
-        Args:
-            broker_ref: Broker's order reference ID
-            symbol: Trading symbol (unused in mock, required for interface compliance)
-            new_price: New limit price (None=no change)
-            new_stop_loss: New stop loss level (None=no change)
-            new_take_profit: New take profit level (None=no change)
-
-        Returns:
-            BrokerResponse with modification status
-        """
-        now = datetime.now(timezone.utc)
-
-        if self._mode == MockExecutionMode.REJECT_ALL:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason="Mock broker: reject_all mode",
-                timestamp=now,
-            )
-
-        # Check if order exists in pending (delayed/timeout) or was instant-filled
-        if broker_ref not in self._mock_pending:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=f"Unknown broker_ref: {broker_ref}",
-                timestamp=now,
-            )
-
-        # Apply modification to mock pending state
-        order_data = self._mock_pending[broker_ref]
-        if new_price is not None:
-            order_data["expected_price"] = new_price
-        # SL/TP stored but not used in mock fill logic
-        if new_stop_loss is not None:
-            order_data["stop_loss"] = new_stop_loss
-        if new_take_profit is not None:
-            order_data["take_profit"] = new_take_profit
-
-        return BrokerResponse(
-            broker_ref=broker_ref,
-            status=BrokerOrderStatus.FILLED,
-            timestamp=now,
-        )
-
-    # ============================================
-    # Tier-3 Decoupled Layers (Mock Wrappers)
-    # ============================================
-    #
-    # The mock has no real transport — no HTTP, no RPC. To satisfy the
-    # AbstractAdapter Tier-3 contract (required by LiveRequestProcessor),
-    # the build/request/parse layers wrap the existing public methods.
-    # The "raw" dict simply carries the already-built BrokerResponse.
-    #
-    # These wrappers are temporary. When the legacy public Tier-3 surface
-    # is removed (refactor step 8), the mock will be rewritten so its
-    # mock logic lives in the layers directly.
-    # ============================================
-
-    # --- Build payloads (pack params into a dict) ---
+    # --- Build payloads (pure parameter packing) ---
 
     def _build_submit_payload(
         self,
@@ -575,7 +392,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'direction': direction,
             'lots': lots,
             'order_type': order_type,
-            'kwargs': kwargs,
+            'expected_price': kwargs.get('expected_price'),
         }
 
     def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
@@ -600,49 +417,171 @@ class MockBrokerAdapter(AbstractAdapter):
             'new_take_profit': new_take_profit,
         }
 
-    # --- Transport (call existing public method, wrap response) ---
+    # --- Mock transport (mutates mock state, returns status-tagged raw) ---
 
     def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        response = self.execute_order(
-            symbol=payload['symbol'],
-            direction=payload['direction'],
-            lots=payload['lots'],
-            order_type=payload['order_type'],
-            **payload['kwargs'],
-        )
-        return {'__response': response}
+        """
+        Simulate broker submit transport. Mutates _order_counter and,
+        for DELAYED_FILL/TIMEOUT, _mock_pending. Returns a status-tagged
+        raw dict that _parse_submit_response converts to a BrokerResponse.
+        """
+        self._order_counter += 1
+        broker_ref = f"MOCK-{self._order_counter:06d}"
+        symbol = payload['symbol']
+        direction = payload['direction']
+        lots = payload['lots']
+        expected_price = payload['expected_price']
+
+        if self._mode == MockExecutionMode.REJECT_ALL:
+            return {
+                'status': 'REJECTED',
+                'broker_ref': broker_ref,
+                'rejection_reason': 'Mock broker: reject_all mode',
+            }
+
+        market_price = self._resolve_market_fill_price(symbol, direction, expected_price)
+
+        if self._mode == MockExecutionMode.INSTANT_FILL:
+            return {
+                'status': 'FILLED',
+                'broker_ref': broker_ref,
+                'fill_price': market_price + self._slippage_points,
+                'filled_lots': lots,
+            }
+
+        # DELAYED_FILL or TIMEOUT: return pending, track internally for later fill
+        self._mock_pending[broker_ref] = {
+            'symbol': symbol,
+            'direction': direction,
+            'lots': lots,
+            'submitted_at': datetime.now(timezone.utc),
+            'expected_price': market_price,
+        }
+        return {
+            'status': 'PENDING',
+            'broker_ref': broker_ref,
+        }
 
     def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        response = self.check_order_status(payload['broker_ref'])
-        return {'__response': response}
+        """
+        Simulate broker query transport. DELAYED_FILL flips PENDING→FILLED
+        on first query; TIMEOUT keeps the order PENDING forever. Unknown
+        broker_ref yields a REJECTED tag.
+        """
+        broker_ref = payload['broker_ref']
+
+        if broker_ref not in self._mock_pending:
+            return {
+                'status': 'REJECTED',
+                'broker_ref': broker_ref,
+                'rejection_reason': 'Unknown broker_ref',
+            }
+
+        if self._mode == MockExecutionMode.TIMEOUT:
+            return {
+                'status': 'PENDING',
+                'broker_ref': broker_ref,
+            }
+
+        order_data = self._mock_pending.pop(broker_ref)
+        return {
+            'status': 'FILLED',
+            'broker_ref': broker_ref,
+            'fill_price': order_data['expected_price'] + self._slippage_points,
+            'filled_lots': order_data['lots'],
+        }
 
     def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        response = self.cancel_order(payload['broker_ref'])
-        return {'__response': response}
+        """
+        Simulate broker cancel transport. Idempotent — discards any
+        pending state for the broker_ref and returns CANCELLED.
+        """
+        broker_ref = payload['broker_ref']
+        self._mock_pending.pop(broker_ref, None)
+        return {
+            'status': 'CANCELLED',
+            'broker_ref': broker_ref,
+        }
 
     def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        response = self.modify_order(
-            broker_ref=payload['broker_ref'],
-            symbol=payload['symbol'],
-            new_price=payload['new_price'],
-            new_stop_loss=payload['new_stop_loss'],
-            new_take_profit=payload['new_take_profit'],
-        )
-        return {'__response': response}
+        """
+        Simulate broker modify transport. REJECT_ALL fails the modify;
+        unknown broker_ref fails; otherwise applies new_price / SL / TP
+        to the mock pending entry and returns FILLED (modification
+        accepted).
+        """
+        broker_ref = payload['broker_ref']
 
-    # --- Parse responses (unwrap the carried BrokerResponse) ---
+        if self._mode == MockExecutionMode.REJECT_ALL:
+            return {
+                'status': 'REJECTED',
+                'broker_ref': broker_ref,
+                'rejection_reason': 'Mock broker: reject_all mode',
+            }
+
+        if broker_ref not in self._mock_pending:
+            return {
+                'status': 'REJECTED',
+                'broker_ref': broker_ref,
+                'rejection_reason': f'Unknown broker_ref: {broker_ref}',
+            }
+
+        order_data = self._mock_pending[broker_ref]
+        if payload['new_price'] is not None:
+            order_data['expected_price'] = payload['new_price']
+        if payload['new_stop_loss'] is not None:
+            order_data['stop_loss'] = payload['new_stop_loss']
+        if payload['new_take_profit'] is not None:
+            order_data['take_profit'] = payload['new_take_profit']
+
+        return {
+            'status': 'FILLED',
+            'broker_ref': broker_ref,
+        }
+
+    # --- Parse responses (pure raw→BrokerResponse) ---
+
+    _STATUS_MAP: Dict[str, BrokerOrderStatus] = {
+        'FILLED': BrokerOrderStatus.FILLED,
+        'PENDING': BrokerOrderStatus.PENDING,
+        'REJECTED': BrokerOrderStatus.REJECTED,
+        'CANCELLED': BrokerOrderStatus.CANCELLED,
+    }
 
     def _parse_submit_response(self, raw: Dict[str, Any], timestamp: datetime) -> BrokerResponse:
-        return raw['__response']
+        return BrokerResponse(
+            broker_ref=raw['broker_ref'],
+            status=self._STATUS_MAP[raw['status']],
+            fill_price=raw.get('fill_price'),
+            filled_lots=raw.get('filled_lots'),
+            rejection_reason=raw.get('rejection_reason'),
+            timestamp=timestamp,
+        )
 
     def _parse_query_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
-        return raw['__response']
+        return BrokerResponse(
+            broker_ref=raw['broker_ref'],
+            status=self._STATUS_MAP[raw['status']],
+            fill_price=raw.get('fill_price'),
+            filled_lots=raw.get('filled_lots'),
+            rejection_reason=raw.get('rejection_reason'),
+            timestamp=timestamp,
+        )
 
     def _parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
-        return raw['__response']
+        return BrokerResponse(
+            broker_ref=raw['broker_ref'],
+            status=self._STATUS_MAP[raw['status']],
+            timestamp=timestamp,
+        )
 
     def _parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
-        return raw['__response']
+        return BrokerResponse(
+            broker_ref=raw['broker_ref'],
+            status=self._STATUS_MAP[raw['status']],
+            rejection_reason=raw.get('rejection_reason'),
+            timestamp=timestamp,
+        )
 
     # ============================================
     # Mock Configuration Helpers

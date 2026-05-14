@@ -90,6 +90,24 @@ class MockOrderExecution:
             timeout_config=self._timeout_config,
         )
 
+    def await_submit_confirmation(self, executor: LiveTradeExecutor) -> None:
+        """
+        Wait for pending async submits to be confirmed by the worker,
+        then drain the inbox WITHOUT triggering on_tick. Use for tests
+        that need a submit-confirmation but should NOT race against
+        Phase-2 fill polling in the same tick.
+
+        Pattern:
+            ex.open_order(... LIMIT ...)
+            mock.await_submit_confirmation(ex)   # broker_ref set, no fill
+            ex.modify_limit_order(...)           # finds the order
+
+        Args:
+            executor: LiveTradeExecutor whose processor has a worker thread
+        """
+        executor._request_processor.flush_outbox()
+        executor._request_processor.drain_inbox()
+
     def feed_tick(
         self,
         executor: LiveTradeExecutor,
@@ -100,6 +118,12 @@ class MockOrderExecution:
     ) -> TickData:
         """
         Feed a tick to the executor (triggers on_tick → _process_pending_orders).
+
+        Before delivering the tick, blocks until any in-flight async submit
+        jobs in the worker outbox have been processed. This makes the
+        previously-synchronous test pattern (submit → feed_tick → assert)
+        deterministic against the async submit path: the next on_tick call
+        will see a populated inbox and drain it.
 
         Args:
             executor: LiveTradeExecutor instance
@@ -120,6 +144,12 @@ class MockOrderExecution:
             bid=bid,
             ask=ask,
         )
+
+        # Ensure async submit jobs are worker-processed before this tick's
+        # drain_inbox call runs — otherwise the inbox would be empty when
+        # _process_pending_orders inspects it, and assertions made right
+        # after open_order + feed_tick would race the worker.
+        executor._request_processor.flush_outbox()
 
         executor.on_tick(tick)
         return tick

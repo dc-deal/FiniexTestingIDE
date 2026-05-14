@@ -63,7 +63,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     Live Trade Executor — broker execution via adapter API.
 
     Extends AbstractTradeExecutor with live-specific behavior:
-    - Order submission via adapter.execute_order()
+    - Order submission via LiveRequestProcessor (Tier-3 layered adapter)
     - Pending order tracking via LiveRequestProcessor
     - Broker status polling in _process_pending_orders()
     - Timeout detection for unresponsive orders
@@ -141,8 +141,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             f"(timeout={self._timeout_config.order_timeout_seconds}s)"
         )
 
-        # Start the processor's worker thread. In V1 the worker stays idle
-        # (no jobs enqueued); async dispatch is activated in a later step.
+        # Wire the processor's drain-inbox hooks into the executor.
+        # All hooks run on the main thread inside drain_inbox().
+        # _fill_open_order / _fill_close_order already append the
+        # EXECUTED result to order_history and notify listeners, so
+        # they can be used directly as hooks — no wrapper needed.
+        # limit_response routes LIMIT submit responses back here so we
+        # can update _active_limit_orders (Hybrid pattern — shared storage).
+        self._request_processor.set_executor_hooks(
+            fill_open=self._fill_open_order,
+            fill_close=self._fill_close_order,
+            on_rejection=self._record_async_rejection,
+            limit_response=self._handle_limit_submit_response,
+        )
+
+        # Start the processor's worker thread.
         self._request_processor.start_worker()
 
     # ============================================
@@ -194,8 +207,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 if not pending.broker_ref:
                     continue
 
-                response = self.broker.adapter.check_order_status(
-                    pending.broker_ref)
+                response = self._request_processor.query_order_sync(
+                    pending.broker_ref, self.broker.adapter)
                 self._handle_broker_response(pending, response)
 
             # Check for timeouts (orders that broker never responded to)
@@ -270,10 +283,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             pending: The timed-out pending order
         """
-        # Try to cancel at broker
+        # Try to cancel at broker via Tier-3-decoupled sync orchestrator
         if pending.broker_ref:
             try:
-                self.broker.adapter.cancel_order(pending.broker_ref)
+                self._request_processor.cancel_order_sync(
+                    broker_ref=pending.broker_ref,
+                    adapter=self.broker.adapter,
+                )
             except Exception as e:
                 self.logger.warning(
                     f"Failed to cancel timed-out order {pending.pending_order_id}: {e}"
@@ -306,6 +322,84 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
     # ============================================
+    # Async Submit Outcome Handler (called by processor.drain_inbox)
+    # ============================================
+
+    def _record_async_rejection(
+        self,
+        direction: OrderDirection,
+        rejection: OrderResult,
+    ) -> None:
+        """
+        Record a rejection delivered by processor.drain_inbox().
+
+        Runs on the main thread when the worker reports a broker-side
+        rejection for an async submit. Updates the rejection counter,
+        appends to order history, and notifies registered listeners
+        (OrderGuard, future Reconciliation #151).
+
+        Args:
+            direction: Order direction (LONG/SHORT) of the rejected order
+            rejection: The OrderResult with status=REJECTED
+        """
+        self._orders_rejected += 1
+        self._order_history.append(rejection)
+        self._notify_outcome(direction, rejection)
+
+    def _handle_limit_submit_response(
+        self,
+        order_id: str,
+        response: BrokerResponse,
+    ) -> None:
+        """
+        Drain-inbox hook for LIMIT submit responses.
+
+        LIMIT orders live in _active_limit_orders (Hybrid pattern shared
+        with sim) rather than in the processor's _pending_orders dict.
+        When the worker delivers a SubmitResponse for a LIMIT order, the
+        processor delegates here so we can update that list directly.
+
+        Three branches:
+          REJECTED → remove from _active_limit_orders + record rejection
+          FILLED   → remove + _fill_open_order (sync-fill broker, rare)
+          PENDING  → confirm broker_ref (polling Phase 2 takes over)
+
+        Args:
+            order_id: Internal order id (matches PendingOrder.pending_order_id)
+            response: BrokerResponse from the worker
+        """
+        pending = None
+        for p in self._active_limit_orders:
+            if p.pending_order_id == order_id:
+                pending = p
+                break
+        if pending is None:
+            self.logger.warning(
+                f"drain_inbox: LIMIT SubmitResponse for unknown order_id {order_id}"
+            )
+            return
+
+        if response.is_rejected:
+            self._active_limit_orders.remove(pending)
+            rejection = create_rejection_result(
+                order_id=order_id,
+                reason=RejectionReason.BROKER_ERROR,
+                message=f"Broker rejected LIMIT: {response.rejection_reason or 'unknown'}",
+            )
+            self._record_async_rejection(pending.direction, rejection)
+            return
+
+        # Non-rejected: confirm broker_ref on the active-limit pending
+        pending.broker_ref = response.broker_ref
+
+        if response.is_filled:
+            # Sync-fill LIMIT (rare — e.g. price already crossed at submit)
+            self._active_limit_orders.remove(pending)
+            self._fill_open_order(pending, fill_price=response.fill_price)
+        # else: PENDING — pending stays in _active_limit_orders,
+        # _process_active_orders Phase 2 polls it for fills.
+
+    # ============================================
     # Active Order Processing (broker-accepted, waiting for trigger)
     # ============================================
 
@@ -326,8 +420,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 remaining.append(pending)
                 continue
 
-            response = self.broker.adapter.check_order_status(
-                pending.broker_ref)
+            response = self._request_processor.query_order_sync(
+                pending.broker_ref, self.broker.adapter)
 
             if response.status == BrokerOrderStatus.FILLED:
                 self._fill_open_order(
@@ -414,100 +508,90 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if request.order_type == OrderType.LIMIT and request.price is not None:
             order_kwargs["price"] = request.price
 
-        # Delegate transport to processor orchestrator (composes adapter
-        # Tier-3 layers). Catches transport errors internally and returns
-        # a REJECTED BrokerResponse. The Executor handles storage decisions
-        # (register MARKET pendings in processor, LIMIT pendings in
-        # _active_limit_orders — until step 7 unifies them).
-        response = self._request_processor.submit_open_order(
+        # MARKET: async submit via the processor worker thread.
+        # 1) Register the pending in the processor with broker_ref=None
+        #    so has_pending_orders() blocks the algo during the in-flight
+        #    window. 2) Enqueue the SubmitJob. 3) Return PENDING right away.
+        # The worker pushes a SubmitResponse to _http_inbox; drain_inbox()
+        # on the next tick confirms the broker_ref (or applies fill / reject).
+        if request.order_type == OrderType.MARKET:
+            self._request_processor.register_pending_open(
+                order_id=order_id,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
+                broker_ref=None,
+                order_kwargs=order_kwargs,
+            )
+            self._request_processor.submit_open_order_async(
+                order_id=order_id,
+                symbol=request.symbol,
+                direction=request.direction,
+                lots=request.lots,
+                order_type=OrderType.MARKET,
+                adapter=self.broker.adapter,
+                **order_kwargs,
+            )
+            result = OrderResult(
+                order_id=order_id,
+                status=OrderStatus.PENDING,
+                broker_order_id=None,
+                metadata={
+                    "symbol": request.symbol,
+                    "direction": request.direction.value,
+                    "lots": request.lots,
+                    "broker_ref": None,
+                },
+            )
+            self._order_history.append(result)
+            return result
+
+        # LIMIT: async submit via the processor worker thread.
+        # Storage stays in _active_limit_orders (Hybrid pattern shared
+        # with sim — the resting-order list is conceptually identical in
+        # both pipelines). The processor's drain_inbox routes the LIMIT
+        # SubmitResponse back via _handle_limit_submit_response so the
+        # broker_ref gets confirmed (or the entry removed on rejection /
+        # filled on sync-fill).
+        # 1) Append placeholder PendingOrder with broker_ref=None so the
+        #    algo's has_pending_orders() blocks during the in-flight window.
+        pending = PendingOrder(
+            pending_order_id=order_id,
+            order_action=PendingOrderAction.OPEN,
+            order_type=OrderType.LIMIT,
+            submitted_at=datetime.now(timezone.utc),
+            broker_ref=None,
             symbol=request.symbol,
             direction=request.direction,
             lots=request.lots,
-            order_type=request.order_type,
+            entry_price=request.price,
+            entry_time=datetime.now(timezone.utc),
+            order_kwargs=order_kwargs,
+        )
+        self._active_limit_orders.append(pending)
+
+        # 2) Enqueue the SubmitJob — worker handles HTTP, drain_inbox
+        #    routes the response to _handle_limit_submit_response.
+        self._request_processor.submit_open_order_async(
+            order_id=order_id,
+            symbol=request.symbol,
+            direction=request.direction,
+            lots=request.lots,
+            order_type=OrderType.LIMIT,
             adapter=self.broker.adapter,
             **order_kwargs,
         )
 
-        # Handle immediate rejection from broker
-        if response.is_rejected:
-            self._orders_rejected += 1
-            result = create_rejection_result(
-                order_id=order_id,
-                reason=RejectionReason.BROKER_ERROR,
-                message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
-            )
-            self._order_history.append(result)
-            return result
-
-        # Handle immediate fill (some brokers fill market orders synchronously)
-        if response.is_filled:
-            # Track briefly then mark filled immediately
-            self._request_processor.register_pending_open(
-                order_id=order_id,
-                symbol=request.symbol,
-                direction=request.direction,
-                lots=request.lots,
-                broker_ref=response.broker_ref,
-                order_kwargs=order_kwargs,
-            )
-            filled = self._request_processor.mark_filled(
-                broker_ref=response.broker_ref,
-                fill_price=response.fill_price,
-                filled_lots=response.filled_lots,
-            )
-            if filled:
-                self._fill_open_order(filled, fill_price=response.fill_price)
-
-            result = OrderResult(
-                order_id=order_id,
-                status=OrderStatus.EXECUTED,
-                executed_price=response.fill_price,
-                executed_lots=response.filled_lots or request.lots,
-                execution_time=datetime.now(timezone.utc),
-                broker_order_id=response.broker_ref,
-                metadata={"symbol": request.symbol,
-                          "direction": request.direction.value},
-            )
-            self._order_history.append(result)
-            return result
-
-        # Order is pending — route by order type
-        if request.order_type == OrderType.LIMIT:
-            # LIMIT orders: shadow state in _active_limit_orders (broker-accepted)
-            pending = PendingOrder(
-                pending_order_id=order_id,
-                order_action=PendingOrderAction.OPEN,
-                order_type=OrderType.LIMIT,
-                submitted_at=datetime.now(timezone.utc),
-                broker_ref=response.broker_ref,
-                symbol=request.symbol,
-                direction=request.direction,
-                lots=request.lots,
-                entry_price=request.price,
-                entry_time=datetime.now(timezone.utc),
-                order_kwargs=order_kwargs,
-            )
-            self._active_limit_orders.append(pending)
-        else:
-            # MARKET orders: track in LiveRequestProcessor (short-lived)
-            self._request_processor.register_pending_open(
-                order_id=order_id,
-                symbol=request.symbol,
-                direction=request.direction,
-                lots=request.lots,
-                broker_ref=response.broker_ref,
-                order_kwargs=order_kwargs,
-            )
-
+        # 3) Return PENDING immediately; broker_ref set later by drain
         result = OrderResult(
             order_id=order_id,
             status=OrderStatus.PENDING,
-            broker_order_id=response.broker_ref,
+            broker_order_id=None,
             metadata={
                 "symbol": request.symbol,
                 "direction": request.direction.value,
                 "lots": request.lots,
-                "broker_ref": response.broker_ref,
+                "broker_ref": None,
             },
         )
         self._order_history.append(result)
@@ -548,61 +632,30 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
         close_lots = lots if lots else position.lots
 
-        # Delegate transport to processor orchestrator (close = reverse MARKET).
-        response = self._request_processor.submit_close_order(
+        # Close is always a MARKET order — async submit via worker.
+        # 1) Register pending close with broker_ref=None
+        # 2) Enqueue the SubmitJob
+        # 3) Return PENDING; drain_inbox() applies the fill on the next tick
+        self._request_processor.register_pending_close(
+            position_id=position_id,
+            broker_ref=None,
+            close_lots=close_lots,
+        )
+        self._request_processor.submit_close_order_async(
+            position_id=position_id,
             symbol=position.symbol,
             close_direction=close_direction,
             close_lots=close_lots,
             adapter=self.broker.adapter,
         )
 
-        # Handle immediate rejection
-        if response.is_rejected:
-            return create_rejection_result(
-                order_id=f"close_{position_id}",
-                reason=RejectionReason.BROKER_ERROR,
-                message=f"Broker rejected close: {response.rejection_reason}",
-            )
-
-        # Handle immediate fill
-        if response.is_filled:
-            self._request_processor.register_pending_close(
-                position_id=position_id,
-                broker_ref=response.broker_ref,
-                close_lots=close_lots,
-            )
-            filled = self._request_processor.mark_filled(
-                broker_ref=response.broker_ref,
-                fill_price=response.fill_price,
-                filled_lots=response.filled_lots,
-            )
-            if filled:
-                self._fill_close_order(filled, fill_price=response.fill_price)
-
-            return OrderResult(
-                order_id=position_id,
-                status=OrderStatus.EXECUTED,
-                executed_price=response.fill_price,
-                executed_lots=close_lots,
-                execution_time=datetime.now(timezone.utc),
-                broker_order_id=response.broker_ref,
-            )
-
-        # Pending close — track
-        self._request_processor.register_pending_close(
-            position_id=position_id,
-            broker_ref=response.broker_ref,
-            close_lots=close_lots,
-        )
-
         return OrderResult(
             order_id=position_id,
             status=OrderStatus.PENDING,
-            broker_order_id=response.broker_ref,
+            broker_order_id=None,
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
-            metadata={"awaiting_fill": True,
-                      "broker_ref": response.broker_ref},
+            metadata={"awaiting_fill": True, "broker_ref": None},
         )
 
     # ============================================
@@ -620,7 +673,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Modify a pending limit order via broker adapter + local shadow state.
 
         Resolves order_id to broker_ref via _active_limit_orders, then calls
-        adapter.modify_order(). On success, updates local shadow state.
+        processor.modify_order_sync(). On success, updates local shadow state.
 
         Args:
             order_id: Pending limit order ID
@@ -653,14 +706,18 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_tp = None if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
-        # Call broker adapter
+        # Delegate to Tier-3-decoupled sync orchestrator in the processor.
+        # The processor composes adapter._build_modify_payload →
+        # _do_request_modify → _parse_modify_response and handles
+        # transport-error mapping. Async modify is the subject of #318.
         try:
-            response = self.broker.adapter.modify_order(
+            response = self._request_processor.modify_order_sync(
                 broker_ref=broker_ref,
                 symbol=target_pending.symbol,
                 new_price=adapter_price,
                 new_stop_loss=adapter_sl,
                 new_take_profit=adapter_tp,
+                adapter=self.broker.adapter,
             )
         except Exception as e:
             self.logger.warning(
@@ -750,7 +807,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if pending.pending_order_id == order_id:
                 if pending.broker_ref:
                     try:
-                        self.broker.adapter.cancel_order(pending.broker_ref)
+                        self._request_processor.cancel_order_sync(
+                            broker_ref=pending.broker_ref,
+                            adapter=self.broker.adapter,
+                        )
                     except Exception as e:
                         self.logger.warning(
                             f"Failed to cancel limit order {order_id} at broker: {e}")
@@ -849,7 +909,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             for pending in self._active_limit_orders:
                 if pending.broker_ref:
                     try:
-                        self.broker.adapter.cancel_order(pending.broker_ref)
+                        self._request_processor.cancel_order_sync(
+                            broker_ref=pending.broker_ref,
+                            adapter=self.broker.adapter,
+                        )
                     except Exception as e:
                         self.logger.warning(
                             f"Failed to cancel active limit "

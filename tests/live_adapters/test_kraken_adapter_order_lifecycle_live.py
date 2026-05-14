@@ -20,9 +20,11 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
@@ -52,8 +54,17 @@ def live_adapter_real():
     broker_settings['rate_limit_interval_s'] = 0.5
 
     adapter = KrakenAdapter(broker_config)
-    adapter.enable_live(broker_settings)
+    adapter.enable_live(**broker_settings)
     return adapter
+
+
+@pytest.fixture(scope='module')
+def processor():
+    """LiveRequestProcessor used to drive the adapter's Tier-3 layers."""
+    return LiveRequestProcessor(
+        logger=GlobalLogger(name='LiveAdapterTestLive'),
+        timeout_config=TimeoutConfig(order_timeout_seconds=30.0),
+    )
 
 
 class TestKrakenAdapterOrderLifecyclePhase2:
@@ -66,16 +77,17 @@ class TestKrakenAdapterOrderLifecyclePhase2:
     test fails mid-way to avoid leaving open orders on the account.
     """
 
-    def test_limit_order_lifecycle(self, live_adapter_real):
+    def test_limit_order_lifecycle(self, live_adapter_real, processor):
         """LIMIT buy lifecycle: place → query → modify → query → cancel."""
         txid = None
         try:
             # 1. Place LIMIT buy far below market — never fills
-            response = live_adapter_real.execute_order(
+            response = processor.submit_open_order(
                 symbol='ETHUSD',
                 direction=OrderDirection.LONG,
                 lots=0.1,
                 order_type=OrderType.LIMIT,
+                adapter=live_adapter_real,
                 price=100.0,
             )
             assert response.status == BrokerOrderStatus.PENDING, (
@@ -88,13 +100,20 @@ class TestKrakenAdapterOrderLifecyclePhase2:
             txid = response.broker_ref
 
             # 2. Query — order should be open (Kraken 'open' maps to PENDING)
-            status_response = live_adapter_real.check_order_status(txid)
+            status_response = processor.query_order_sync(txid, live_adapter_real)
             assert status_response.status == BrokerOrderStatus.PENDING, (
                 f"Expected PENDING for open order, got: {status_response.status}"
             )
 
             # 3. Modify price — Kraken EditOrder returns a new txid
-            modify_response = live_adapter_real.modify_order(txid, symbol='ETHUSD', new_price=110.0)
+            modify_response = processor.modify_order_sync(
+                broker_ref=txid,
+                symbol='ETHUSD',
+                new_price=110.0,
+                new_stop_loss=None,
+                new_take_profit=None,
+                adapter=live_adapter_real,
+            )
             assert modify_response.status == BrokerOrderStatus.PENDING, (
                 f"Expected PENDING after modify, got: {modify_response.status}"
                 f" — {modify_response.rejection_reason}"
@@ -104,13 +123,13 @@ class TestKrakenAdapterOrderLifecyclePhase2:
             txid = new_txid
 
             # 4. Query modified order — should still be open
-            modified_status = live_adapter_real.check_order_status(txid)
+            modified_status = processor.query_order_sync(txid, live_adapter_real)
             assert modified_status.status == BrokerOrderStatus.PENDING, (
                 f"Expected PENDING for modified order, got: {modified_status.status}"
             )
 
             # 5. Cancel
-            cancel_response = live_adapter_real.cancel_order(txid)
+            cancel_response = processor.cancel_order_sync(txid, live_adapter_real)
             assert cancel_response.status == BrokerOrderStatus.CANCELLED, (
                 f"Expected CANCELLED, got: {cancel_response.status}"
             )
@@ -118,4 +137,4 @@ class TestKrakenAdapterOrderLifecyclePhase2:
 
         finally:
             if txid is not None:
-                live_adapter_real.cancel_order(txid)
+                processor.cancel_order_sync(txid, live_adapter_real)

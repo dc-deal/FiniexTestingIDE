@@ -20,16 +20,22 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.types.live_types.live_execution_types import (
+    BrokerOrderStatus,
+    BrokerResponse,
+    TimeoutConfig,
+)
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
-_POLL_MAX = 10  # max check_order_status attempts before giving up
+_POLL_MAX = 10  # max query_order_sync attempts before giving up
 
 
 @pytest.fixture(scope='module')
@@ -53,26 +59,36 @@ def live_adapter_fill():
     broker_settings['rate_limit_interval_s'] = 0.5
 
     adapter = KrakenAdapter(broker_config)
-    adapter.enable_live(broker_settings)
+    adapter.enable_live(**broker_settings)
     return adapter
 
 
-def _poll_until_filled(adapter: KrakenAdapter, txid: str) -> BrokerResponse:
+@pytest.fixture(scope='module')
+def processor():
+    """LiveRequestProcessor used to drive the adapter's Tier-3 layers."""
+    return LiveRequestProcessor(
+        logger=GlobalLogger(name='LiveAdapterTestFill'),
+        timeout_config=TimeoutConfig(order_timeout_seconds=30.0),
+    )
+
+
+def _poll_until_filled(processor: LiveRequestProcessor, adapter: KrakenAdapter, txid: str) -> BrokerResponse:
     """
-    Poll check_order_status until FILLED or _POLL_MAX exhausted.
+    Poll query_order_sync until FILLED or _POLL_MAX exhausted.
 
     Args:
+        processor: LiveRequestProcessor driving the Tier-3 query layer
         adapter: Live KrakenAdapter instance
         txid: Broker order reference to poll
 
     Returns:
         Last BrokerResponse (FILLED or final status after timeout)
     """
-    response = adapter.check_order_status(txid)
+    response = processor.query_order_sync(txid, adapter)
     for _ in range(_POLL_MAX - 1):
         if response.status == BrokerOrderStatus.FILLED:
             return response
-        response = adapter.check_order_status(txid)
+        response = processor.query_order_sync(txid, adapter)
     return response
 
 
@@ -80,19 +96,20 @@ class TestKrakenAdapterOrderLifecycleFill:
     """
     Fill validation: MARKET buy → poll FILLED → MARKET sell → poll FILLED.
 
-    Verifies that check_order_status() correctly parses Kraken's QueryOrders
+    Verifies that query_order_sync correctly parses Kraken's QueryOrders
     response for filled orders: fill_price > 0, filled_lots populated.
     Net exposure is ~0. Cost: ~$0.012 in fees (0.001 ETH × ~$2300 × 0.26% × 2).
     """
 
-    def test_market_order_fill_roundtrip(self, live_adapter_fill):
+    def test_market_order_fill_roundtrip(self, live_adapter_fill, processor):
         """MARKET buy 0.001 ETHUSD → verify fill → MARKET sell → verify fill."""
         # 1. Buy
-        buy_response = live_adapter_fill.execute_order(
+        buy_response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter_fill,
         )
         assert buy_response.status == BrokerOrderStatus.PENDING, (
             f"Expected PENDING after MARKET buy, got: {buy_response.status}"
@@ -104,7 +121,7 @@ class TestKrakenAdapterOrderLifecycleFill:
         buy_txid = buy_response.broker_ref
 
         # 2. Poll until buy is filled (MARKET orders fill in ~100-500ms)
-        buy_fill = _poll_until_filled(live_adapter_fill, buy_txid)
+        buy_fill = _poll_until_filled(processor, live_adapter_fill, buy_txid)
         assert buy_fill.status == BrokerOrderStatus.FILLED, (
             f"Buy order not filled after {_POLL_MAX} polls: {buy_fill.status}"
         )
@@ -116,11 +133,12 @@ class TestKrakenAdapterOrderLifecycleFill:
         )
 
         # 3. Immediately sell to close — net exposure back to zero
-        sell_response = live_adapter_fill.execute_order(
+        sell_response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.SHORT,
             lots=0.001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter_fill,
         )
         assert sell_response.status == BrokerOrderStatus.PENDING, (
             f"Expected PENDING after MARKET sell, got: {sell_response.status}"
@@ -129,7 +147,7 @@ class TestKrakenAdapterOrderLifecycleFill:
         sell_txid = sell_response.broker_ref
 
         # 4. Poll until sell is filled
-        sell_fill = _poll_until_filled(live_adapter_fill, sell_txid)
+        sell_fill = _poll_until_filled(processor, live_adapter_fill, sell_txid)
         assert sell_fill.status == BrokerOrderStatus.FILLED, (
             f"Sell order not filled after {_POLL_MAX} polls: {sell_fill.status}"
         )

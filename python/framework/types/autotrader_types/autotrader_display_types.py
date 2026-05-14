@@ -92,7 +92,7 @@ class AutoTraderDisplayStats:
         losing_trades: Number of losing trades
         open_positions: Current open position snapshots
         active_orders: Active limit/stop orders + pending orders in transit
-        pipeline_count: Orders currently in transit to broker (LiveOrderTracker)
+        pipeline_count: Orders currently in transit to broker (LiveRequestProcessor)
         recent_trades: Last N completed trades (newest first)
         clipping_ratio: Fraction of ticks that experienced clipping
         avg_processing_ms: Average tick processing time in ms

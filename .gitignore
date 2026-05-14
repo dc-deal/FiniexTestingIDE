@@ -203,3 +203,4 @@ export_github_issues.sh
 project_analysis_detailed.txt
 SUMMARY_*.md
 ISSUE_*.md
+SESSION_*.md
