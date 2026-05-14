@@ -50,12 +50,13 @@ tests/
 │   ├── spot_trading/      integration — spot sell sequences, dual-balance
 │   ├── active_order_display/  integration — order display in scenario summary
 │   ├── pending_stats/     integration — pending order statistics
+│   ├── modify_lifecycle/  unit — async modify/cancel scheduling + resolution (#318)
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
-│   ├── live_executor/     unit — LiveTradeExecutor, LiveOrderTracker
+│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel (#319, #321, #318)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   └── safety/            unit — circuit breaker (margin + spot)
 │

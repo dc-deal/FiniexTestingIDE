@@ -51,6 +51,12 @@ from python.framework.types.live_types.live_execution_types import (
     TimeoutConfig,
 )
 from python.framework.types.live_types.live_request_types import (
+    CancelJob,
+    CancelResponse,
+    EditJob,
+    EditResponse,
+    PositionModifyJob,
+    PositionModifyResponse,
     SubmitJob,
     SubmitResponse,
 )
@@ -113,10 +119,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # / fill_close / rejection hooks). LIMIT responses are forwarded
         # to limit_response_hook so the executor can update its
         # _active_limit_orders list (Hybrid pattern — shared storage).
+        # #318 — modify/cancel/position-modify responses forwarded to
+        # their respective hooks since the target order/position lives in
+        # the executor's _active_*_orders / portfolio (Hybrid pattern).
         self._fill_open_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._fill_close_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._rejection_hook: Optional[Callable[[OrderDirection, OrderResult], None]] = None
         self._limit_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
+        self._modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
+        self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
+        self._position_modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
 
     # ============================================
     # High-Level Orchestrators (sync in V1, async post-step-6)
@@ -551,6 +563,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         fill_close: Callable[[PendingOrder, float], None],
         on_rejection: Callable[[OrderDirection, OrderResult], None],
         limit_response: Optional[Callable[[str, BrokerResponse], None]] = None,
+        modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
+        cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
+        position_modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
     ) -> None:
         """
         Register executor callbacks for async outcomes.
@@ -572,11 +587,27 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                             broker_response). Invoked for LIMIT submit
                             responses so the executor can update its
                             _active_limit_orders list (Hybrid pattern).
+            modify_response: Optional (#318) — _handle_modify_response(order_id,
+                            broker_response). Invoked for EditResponse so the
+                            executor can apply the modification to the target
+                            in _active_limit_orders / _active_stop_orders and
+                            clear in_flight_operation.
+            cancel_response: Optional (#318) — _handle_cancel_response(order_id,
+                            broker_response). Invoked for CancelResponse so the
+                            executor can remove the cancelled order from its
+                            active list (or handle race-with-fill on rejection).
+            position_modify_response: Optional (#318) —
+                            _handle_position_modify_response(position_id,
+                            broker_response). Invoked for PositionModifyResponse
+                            so the executor can apply SL/TP to portfolio.
         """
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
         self._rejection_hook = on_rejection
         self._limit_response_hook = limit_response
+        self._modify_response_hook = modify_response
+        self._cancel_response_hook = cancel_response
+        self._position_modify_response_hook = position_modify_response
 
     def start_worker(self) -> None:
         """
@@ -618,9 +649,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Daemon worker loop. Pulls jobs from _http_outbox and dispatches them.
 
-        SubmitJob currently supported. EditJob / CancelJob will be added
-        when #318 lands. The short get() timeout keeps shutdown latency
-        bounded (max one timeout interval after stop_worker).
+        Job types (#318 + #319):
+        - SubmitJob: submit a new order (open or close)
+        - EditJob: modify a pending order
+        - CancelJob: cancel a pending order
+        - PositionModifyJob: modify an open position's SL/TP
+
+        The short get() timeout keeps shutdown latency bounded (max one
+        timeout interval after stop_worker).
         """
         while self._worker_running:
             try:
@@ -630,6 +666,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
             if isinstance(job, SubmitJob):
                 self._dispatch_submit_job(job)
+            elif isinstance(job, EditJob):
+                self._dispatch_edit_job(job)
+            elif isinstance(job, CancelJob):
+                self._dispatch_cancel_job(job)
+            elif isinstance(job, PositionModifyJob):
+                self._dispatch_position_modify_job(job)
             else:
                 self.logger.warning(
                     f'Unknown job type in outbox: {type(job).__name__}'
@@ -663,6 +705,112 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_id=job.order_id,
             action=job.action,
             order_type=job.order_type,
+            broker_response=response,
+        ))
+
+    def _dispatch_edit_job(self, job: EditJob) -> None:
+        """
+        Worker-thread handler for EditJob (#318).
+
+        Composes adapter Tier-3 modify layer:
+            _build_modify_payload → _do_request_modify → _parse_modify_response
+
+        Transport errors are surfaced as REJECTED BrokerResponse. The main
+        thread's drain_inbox routes the EditResponse to the executor via
+        _modify_response_hook for state application.
+
+        Args:
+            job: EditJob enqueued by submit_modify_order_async
+        """
+        now = datetime.now(timezone.utc)
+        try:
+            payload = job.adapter._build_modify_payload(
+                broker_ref=job.broker_ref,
+                symbol=job.symbol,
+                new_price=job.new_price,
+                new_stop_loss=job.new_stop_loss,
+                new_take_profit=job.new_take_profit,
+            )
+            raw = job.adapter._do_request_modify(payload)
+            response = job.adapter._parse_modify_response(
+                raw, original_broker_ref=job.broker_ref, timestamp=now,
+            )
+        except Exception as e:
+            response = BrokerResponse(
+                broker_ref=job.broker_ref,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=str(e),
+                timestamp=now,
+            )
+
+        self._http_inbox.put(EditResponse(
+            order_id=job.order_id,
+            broker_response=response,
+        ))
+
+    def _dispatch_cancel_job(self, job: CancelJob) -> None:
+        """
+        Worker-thread handler for CancelJob (#318).
+
+        Composes adapter Tier-3 cancel layer:
+            _build_cancel_payload → _do_request_cancel → _parse_cancel_response
+        """
+        now = datetime.now(timezone.utc)
+        try:
+            payload = job.adapter._build_cancel_payload(job.broker_ref)
+            raw = job.adapter._do_request_cancel(payload)
+            response = job.adapter._parse_cancel_response(
+                raw, job.broker_ref, now,
+            )
+        except Exception as e:
+            response = BrokerResponse(
+                broker_ref=job.broker_ref,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=str(e),
+                timestamp=now,
+            )
+
+        self._http_inbox.put(CancelResponse(
+            order_id=job.order_id,
+            broker_response=response,
+        ))
+
+    def _dispatch_position_modify_job(self, job: PositionModifyJob) -> None:
+        """
+        Worker-thread handler for PositionModifyJob (#318).
+
+        Position-modify Tier-3 surface is adapter-specific. The current
+        contract assumes the adapter exposes
+            _build_position_modify_payload(position_id, symbol, new_sl, new_tp)
+            _do_request_position_modify(payload)
+            _parse_position_modify_response(raw, position_id, timestamp)
+        as a separate operation triple. Adapters that fold position-modify
+        into the existing modify operation (#209 design decision) should
+        override this dispatch method or expose the same triple names as
+        thin aliases.
+        """
+        now = datetime.now(timezone.utc)
+        try:
+            payload = job.adapter._build_position_modify_payload(
+                position_id=job.position_id,
+                symbol=job.symbol,
+                new_stop_loss=job.new_stop_loss,
+                new_take_profit=job.new_take_profit,
+            )
+            raw = job.adapter._do_request_position_modify(payload)
+            response = job.adapter._parse_position_modify_response(
+                raw, position_id=job.position_id, timestamp=now,
+            )
+        except Exception as e:
+            response = BrokerResponse(
+                broker_ref=job.position_id,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=str(e),
+                timestamp=now,
+            )
+
+        self._http_inbox.put(PositionModifyResponse(
+            position_id=job.position_id,
             broker_response=response,
         ))
 
@@ -713,6 +861,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
             if isinstance(item, SubmitResponse):
                 self._handle_submit_response(item)
+            elif isinstance(item, EditResponse):
+                self._handle_edit_response(item)
+            elif isinstance(item, CancelResponse):
+                self._handle_cancel_response(item)
+            elif isinstance(item, PositionModifyResponse):
+                self._handle_position_modify_response(item)
             else:
                 self.logger.warning(
                     f'Unknown response type in inbox: {type(item).__name__}'
@@ -791,6 +945,64 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 if self._fill_close_hook is not None:
                     self._fill_close_hook(filled, response.fill_price)
         # else: PENDING — pending stays in store, polling will handle it
+
+    # ============================================
+    # Async Modify / Cancel / Position-Modify Drain Handlers (#318)
+    # ============================================
+
+    def _handle_edit_response(self, item: EditResponse) -> None:
+        """
+        Main-thread handler for an EditResponse from the worker.
+
+        Delegates to the executor's _modify_response_hook because the target
+        PendingOrder lives in the executor's _active_*_orders (Hybrid pattern).
+        The hook is responsible for:
+          - Applying the modification (entry_price, SL, TP) on success
+          - Discarding the provisional pending_modification on rejection
+          - Clearing in_flight_operation
+          - Calling update_broker_ref(old, new) if the broker returned a new ref
+        """
+        if self._modify_response_hook is not None:
+            self._modify_response_hook(item.order_id, item.broker_response)
+        else:
+            self.logger.warning(
+                f"drain_inbox: EditResponse for {item.order_id} "
+                f"but no modify_response_hook registered"
+            )
+
+    def _handle_cancel_response(self, item: CancelResponse) -> None:
+        """
+        Main-thread handler for a CancelResponse.
+
+        Delegates to the executor's _cancel_response_hook. The hook removes
+        the order from its active list on success, or surfaces the race
+        condition (cancel-during-fill) on rejection.
+        """
+        if self._cancel_response_hook is not None:
+            self._cancel_response_hook(item.order_id, item.broker_response)
+        else:
+            self.logger.warning(
+                f"drain_inbox: CancelResponse for {item.order_id} "
+                f"but no cancel_response_hook registered"
+            )
+
+    def _handle_position_modify_response(self, item: PositionModifyResponse) -> None:
+        """
+        Main-thread handler for a PositionModifyResponse.
+
+        Delegates to the executor's _position_modify_response_hook. The hook
+        applies SL/TP changes to portfolio.modify_position on success, or
+        discards the provisional state on rejection.
+        """
+        if self._position_modify_response_hook is not None:
+            self._position_modify_response_hook(
+                item.position_id, item.broker_response,
+            )
+        else:
+            self.logger.warning(
+                f"drain_inbox: PositionModifyResponse for {item.position_id} "
+                f"but no position_modify_response_hook registered"
+            )
 
     # ============================================
     # Async Submit Orchestrators (enqueue to worker)
@@ -875,6 +1087,116 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             action=PendingOrderAction.CLOSE,
             order_type=OrderType.MARKET,
             payload=payload,
+            adapter=adapter,
+        ))
+
+    # ============================================
+    # Async Modify / Cancel / Position-Modify Orchestrators (#318)
+    # ============================================
+    #
+    # These methods enqueue jobs to the worker thread for non-blocking
+    # broker roundtrips. The caller (LiveTradeExecutor) is responsible
+    # for setting in_flight_operation on the target PendingOrder before
+    # enqueueing — so the busy-check and Algo's discipline pattern work
+    # against the visible state. drain_inbox routes responses to the
+    # executor via the registered hooks.
+
+    def submit_modify_order_async(
+        self,
+        order_id: str,
+        broker_ref: str,
+        symbol: str,
+        new_price: Optional[float],
+        new_stop_loss: Optional[float],
+        new_take_profit: Optional[float],
+        adapter: AbstractAdapter,
+    ) -> None:
+        """
+        Enqueue an EditJob for the worker thread.
+
+        Caller (LiveTradeExecutor.modify_limit_order / modify_stop_order) MUST
+        already have:
+          1. Resolved order_id → broker_ref via _active_*_orders lookup
+          2. Set pending.in_flight_operation = PENDING_MODIFY on the target
+          3. Stored pending.pending_modification = ModificationRequest(...)
+          4. Validated that the order is not busy and not unconfirmed
+
+        The worker dispatches the modify via adapter Tier-3 layers; the
+        response arrives via _http_inbox and routes to _modify_response_hook
+        on the next drain_inbox.
+
+        Args:
+            order_id: Internal order id (matches in_flight target)
+            broker_ref: Current broker ref (some brokers return a NEW ref;
+                        the hook handles update_broker_ref)
+            symbol: Trading symbol (required by some adapters on modify)
+            new_price, new_stop_loss, new_take_profit: New values (None = no change)
+            adapter: Live-capable adapter
+        """
+        self._http_outbox.put(EditJob(
+            order_id=order_id,
+            broker_ref=broker_ref,
+            symbol=symbol,
+            new_price=new_price,
+            new_stop_loss=new_stop_loss,
+            new_take_profit=new_take_profit,
+            adapter=adapter,
+        ))
+
+    def submit_cancel_order_async(
+        self,
+        order_id: str,
+        broker_ref: str,
+        adapter: AbstractAdapter,
+    ) -> None:
+        """
+        Enqueue a CancelJob for the worker thread.
+
+        Caller MUST set in_flight_operation = PENDING_CANCEL on the target
+        PendingOrder before enqueueing.
+
+        Args:
+            order_id: Internal order id
+            broker_ref: Current broker ref
+            adapter: Live-capable adapter
+        """
+        self._http_outbox.put(CancelJob(
+            order_id=order_id,
+            broker_ref=broker_ref,
+            adapter=adapter,
+        ))
+
+    def submit_modify_position_async(
+        self,
+        position_id: str,
+        symbol: str,
+        new_stop_loss: Optional[float],
+        new_take_profit: Optional[float],
+        adapter: AbstractAdapter,
+    ) -> None:
+        """
+        Enqueue a PositionModifyJob for the worker thread.
+
+        Used by LiveTradeExecutor.modify_position when the adapter declares
+        OrderCapabilities.native_position_sl_tp = True (e.g. MT5 in #209).
+        For adapters with native_position_sl_tp = False, the executor falls
+        back to portfolio.modify_position directly and never enqueues this.
+
+        Caller MUST track the in-flight state separately on the executor
+        side (positions don't have a PendingOrder.in_flight_operation flag
+        since positions aren't PendingOrders).
+
+        Args:
+            position_id: Position identifier
+            symbol: Trading symbol
+            new_stop_loss, new_take_profit: New SL/TP values
+            adapter: Live-capable adapter with native_position_sl_tp = True
+        """
+        self._http_outbox.put(PositionModifyJob(
+            position_id=position_id,
+            symbol=symbol,
+            new_stop_loss=new_stop_loss,
+            new_take_profit=new_take_profit,
             adapter=adapter,
         ))
 

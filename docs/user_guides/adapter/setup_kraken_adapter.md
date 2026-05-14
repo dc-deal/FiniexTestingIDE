@@ -154,7 +154,7 @@ Set `dry_run: false` in `user_configs/market_config.json` (gitignored):
 }
 ```
 
-**This enables real order execution with real money.** Orders sent via `execute_order()` will be placed on the Kraken order book.
+**This enables real order execution with real money.** Orders sent via `LiveRequestProcessor.submit_open_order` (composing the adapter's Tier-3 layers `_build_submit_payload` → `_do_request_submit` → `_parse_submit_response`) will be placed on the Kraken order book.
 
 Ensure:
 - Your account has sufficient balance for the configured `lot_size`

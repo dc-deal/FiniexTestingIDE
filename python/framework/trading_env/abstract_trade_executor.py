@@ -47,7 +47,7 @@ from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation, PendingOrder, PendingOrderAction
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
@@ -855,6 +855,46 @@ class AbstractTradeExecutor(ABC):
         return (self.has_pipeline_orders()
                 or len(self._active_limit_orders) > 0
                 or len(self._active_stop_orders) > 0)
+
+    def has_in_flight_operation(self, order_id: str) -> bool:
+        """
+        Is there a modify or cancel operation in flight on this order? (#318)
+
+        Scans _active_limit_orders and _active_stop_orders for a PendingOrder
+        matching order_id with in_flight_operation != NONE. Used by algos
+        that want finer-grained control than has_pending_orders — e.g. to
+        avoid sending a second modify while the first is still resolving.
+
+        Args:
+            order_id: Internal order or position identifier
+
+        Returns:
+            True if the order has PENDING_MODIFY or PENDING_CANCEL in flight,
+            False otherwise (including order-not-found).
+        """
+        op = self.get_in_flight_operation(order_id)
+        return op != PendingOperation.NONE
+
+    def get_in_flight_operation(self, order_id: str) -> PendingOperation:
+        """
+        Return the in-flight operation type for an order or position. (#318)
+
+        Searches _active_limit_orders and _active_stop_orders for a
+        PendingOrder by order_id. Returns the in_flight_operation enum
+        value, or PendingOperation.NONE if not found or no operation in
+        flight.
+
+        Subclasses may extend this to also check position-level trackers
+        (e.g. LiveTradeExecutor._pending_position_modifications) — base
+        class only knows about the shared active-order lists.
+        """
+        for pending in self._active_limit_orders:
+            if pending.pending_order_id == order_id:
+                return pending.in_flight_operation
+        for pending in self._active_stop_orders:
+            if pending.pending_order_id == order_id:
+                return pending.in_flight_operation
+        return PendingOperation.NONE
 
     @abstractmethod
     def has_pipeline_orders(self) -> bool:

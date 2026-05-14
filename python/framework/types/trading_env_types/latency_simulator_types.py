@@ -47,6 +47,60 @@ class PendingOrderOutcome(StrEnum):
     FORCE_CLOSED = "force_closed"
 
 
+class PendingOperation(StrEnum):
+    """
+    In-flight broker-side operation on a pending order.
+
+    Used by #318's async modify/cancel pattern to track whether an
+    operation is currently dispatched and awaiting resolution. The
+    sim and live executors set this when a modify/cancel is enqueued
+    and clear it when the resolve path (next-tick for sim, drain_inbox
+    for live) applies the change.
+
+    NONE: No operation in flight; order in steady state
+    PENDING_SUBMIT: Initial submit not yet broker-confirmed (broker_ref=None)
+    PENDING_MODIFY: Modify dispatched, awaiting next-tick resolve / drain
+    PENDING_CANCEL: Cancel dispatched, awaiting next-tick resolve / drain
+    """
+    NONE = "none"
+    PENDING_SUBMIT = "submit"
+    PENDING_MODIFY = "modify"
+    PENDING_CANCEL = "cancel"
+
+
+@dataclass
+class ModificationRequest:
+    """
+    Provisional values held during a PENDING_MODIFY operation.
+
+    The request is attached to the PendingOrder when the modify is
+    enqueued. On successful resolve, the values are applied to the
+    PendingOrder; on rejection, the request is discarded (no state
+    change). UNSET-translation happens at the executor boundary —
+    fields here are concrete None or a value.
+
+    Args:
+        new_price: New limit price (LIMIT) or new stop trigger price (STOP /
+                   STOP_LIMIT). Maps to PendingOrder.entry_price. None = no
+                   price change.
+        new_limit_price: New limit price for STOP_LIMIT only (the limit price
+                         that activates once stop trigger fires). Maps to
+                         PendingOrder.order_kwargs['limit_price']. None = no
+                         change. Unused for LIMIT (new_price covers it) and
+                         position-modifies (no limit-price concept).
+        new_stop_loss: New SL level (None = explicit clear, absent in kwargs = no change)
+        new_take_profit: New TP level (analog)
+        submitted_at: Timestamp the modify was enqueued (UTC, live only)
+        apply_at_msc: Simulation resolution trigger (msc when resolve fires)
+    """
+    new_price: Optional[float] = None
+    new_limit_price: Optional[float] = None
+    new_stop_loss: Optional[float] = None
+    new_take_profit: Optional[float] = None
+    submitted_at: Optional[datetime] = None
+    apply_at_msc: Optional[int] = None
+
+
 @dataclass
 class PendingOrder:
     """
@@ -85,6 +139,17 @@ class PendingOrder:
     # === For CLOSE orders ===
     close_lots: Optional[float] = None
 
+    # === Async modify/cancel state (#318) ===
+    # in_flight_operation: NONE in steady state, or PENDING_SUBMIT/MODIFY/CANCEL
+    #   while a broker-side operation is dispatched and awaiting resolve.
+    # pending_modification: provisional values during PENDING_MODIFY (applied
+    #   on resolve, discarded on reject).
+    # cancel_apply_at_msc: sim resolution trigger for PENDING_CANCEL (live
+    #   uses drain_inbox instead, so this field is sim-only).
+    in_flight_operation: PendingOperation = PendingOperation.NONE
+    pending_modification: Optional[ModificationRequest] = None
+    cancel_apply_at_msc: Optional[int] = None
+
     def to_dict(self) -> dict:
         return {
             'pending_order_id': self.pending_order_id,
@@ -101,4 +166,6 @@ class PendingOrder:
             'lots': self.lots,
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
+            # Async operation state (#318)
+            'in_flight_operation': self.in_flight_operation.value if self.in_flight_operation else None,
         }

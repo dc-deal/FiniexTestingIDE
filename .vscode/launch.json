@@ -333,7 +333,7 @@
         // 🤖 AUTOTRADER
         // ====================================================
         {
-            "name": "🤖 AutoTrader: BTCUSD Mock",
+            "name": "🤖 AutoTrader: BTCUSD Mock - simple_consensus",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
@@ -341,6 +341,22 @@
                 "run",
                 "--config",
                 "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🤖 AutoTrader: BTCUSD Mock - Cautious MACD (MARKET TYPE NOT SUPPORTET)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/cautious_macd_mock.json",
                 "--display",
                 "--delay",
                 "1"
@@ -1211,6 +1227,45 @@
             "module": "pytest",
             "args": [
                 "tests/data/data_integration/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Live Executor Async Modify",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_async_modify.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Live Executor Async Cancel",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_async_cancel.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Sim Modify Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/modify_lifecycle/",
                 "-v",
                 "--tb=short"
             ],

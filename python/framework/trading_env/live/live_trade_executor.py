@@ -36,7 +36,13 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    ModificationRequest,
+    PendingOperation,
+    PendingOrder,
+    PendingOrderAction,
+    PendingOrderOutcome,
+)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
@@ -52,6 +58,7 @@ from python.framework.types.trading_env_types.order_types import (
     RejectionReason,
     ModificationRejectionReason,
     ModificationResult,
+    ModificationStatus,
     OpenOrderRequest,
     create_rejection_result,
 )
@@ -135,6 +142,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Live mode: broker handles SL/TP server-side
         self._executor_mode = ExecutorMode.LIVE
 
+        # #318 — Tracker for in-flight position SL/TP modifications.
+        # Active only when adapter declares native_position_sl_tp=True (MT5 in
+        # #209). For Kraken-style adapters the modify_position path falls back
+        # to instant portfolio.modify_position and this tracker stays empty.
+        self._pending_position_modifications: Dict[str, ModificationRequest] = {}
+
         self.logger.info(
             f"LiveTradeExecutor initialized with broker: "
             f"{broker_config.get_broker_name()} "
@@ -148,11 +161,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # they can be used directly as hooks — no wrapper needed.
         # limit_response routes LIMIT submit responses back here so we
         # can update _active_limit_orders (Hybrid pattern — shared storage).
+        # #318 — modify/cancel/position-modify responses route to handlers
+        # that mutate _active_*_orders / portfolio (Hybrid pattern).
         self._request_processor.set_executor_hooks(
             fill_open=self._fill_open_order,
             fill_close=self._fill_close_order,
             on_rejection=self._record_async_rejection,
             limit_response=self._handle_limit_submit_response,
+            modify_response=self._handle_modify_response,
+            cancel_response=self._handle_cancel_response,
+            position_modify_response=self._handle_position_modify_response,
         )
 
         # Start the processor's worker thread.
@@ -398,6 +416,173 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._fill_open_order(pending, fill_price=response.fill_price)
         # else: PENDING — pending stays in _active_limit_orders,
         # _process_active_orders Phase 2 polls it for fills.
+
+    # ============================================
+    # Async Modify / Cancel / Position-Modify Drain Handlers (#318)
+    # ============================================
+
+    def _find_active_order(self, order_id: str) -> Optional[PendingOrder]:
+        """Find a PendingOrder by order_id in _active_limit_orders / _active_stop_orders."""
+        for p in self._active_limit_orders:
+            if p.pending_order_id == order_id:
+                return p
+        for p in self._active_stop_orders:
+            if p.pending_order_id == order_id:
+                return p
+        return None
+
+    def _handle_modify_response(
+        self,
+        order_id: str,
+        response: BrokerResponse,
+    ) -> None:
+        """
+        Drain-inbox hook for EditResponse (modify-limit / modify-stop).
+
+        On success: apply the provisional ModificationRequest to the
+        PendingOrder's entry_price + order_kwargs, swap broker_ref if
+        the broker returned a new one (Kraken EditOrder semantic).
+        On rejection: discard the provisional values, record rejection.
+
+        In both cases: clear in_flight_operation on the target.
+        """
+        pending = self._find_active_order(order_id)
+        if pending is None:
+            self.logger.warning(
+                f"drain_inbox: EditResponse for unknown order_id {order_id}"
+            )
+            return
+
+        mod = pending.pending_modification
+
+        if response.is_rejected:
+            self.logger.warning(
+                f"Broker rejected modify for {order_id}: "
+                f"{response.rejection_reason or 'unknown'}"
+            )
+            rejection = create_rejection_result(
+                order_id=order_id,
+                reason=RejectionReason.BROKER_ERROR,
+                message=f"Modify rejected: {response.rejection_reason or 'unknown'}",
+            )
+            # Record without removing from active list — the order is still
+            # working at the broker, just the modify failed.
+            self._orders_rejected += 1
+            self._order_history.append(rejection)
+            self._notify_outcome(pending.direction, rejection)
+        else:
+            # Success — apply provisional values to local shadow state
+            if mod is not None:
+                if mod.new_price is not None:
+                    pending.entry_price = mod.new_price
+                if pending.order_kwargs is None:
+                    pending.order_kwargs = {}
+                if mod.new_limit_price is not None:
+                    pending.order_kwargs['limit_price'] = mod.new_limit_price
+                if mod.new_stop_loss is not None:
+                    pending.order_kwargs['stop_loss'] = mod.new_stop_loss
+                if mod.new_take_profit is not None:
+                    pending.order_kwargs['take_profit'] = mod.new_take_profit
+
+            # Kraken EditOrder returns a new broker_ref on success
+            if response.broker_ref and response.broker_ref != pending.broker_ref:
+                self._request_processor.update_broker_ref(
+                    old_ref=pending.broker_ref, new_ref=response.broker_ref,
+                )
+                pending.broker_ref = response.broker_ref
+
+            self.logger.info(
+                f"✏️ Order {order_id} modify resolved "
+                f"(broker_ref={pending.broker_ref})"
+            )
+
+        # Clear in-flight state in all cases (success or rejection)
+        pending.in_flight_operation = PendingOperation.NONE
+        pending.pending_modification = None
+
+    def _handle_cancel_response(
+        self,
+        order_id: str,
+        response: BrokerResponse,
+    ) -> None:
+        """
+        Drain-inbox hook for CancelResponse.
+
+        On success: remove the order from its active list, fire EXPIRED-style
+        outcome notification (algo learns the order is gone).
+        On rejection: most often a race condition (order filled before cancel
+        reached broker). Surface as informational — the regular poll cycle
+        will pick up the actual terminal state (FILLED).
+        """
+        pending = self._find_active_order(order_id)
+        if pending is None:
+            self.logger.warning(
+                f"drain_inbox: CancelResponse for unknown order_id {order_id}"
+            )
+            return
+
+        if response.is_rejected:
+            # Cancel-during-fill race or other broker rejection — log,
+            # clear in-flight, but leave order in active list for the next
+            # poll cycle to determine the actual state.
+            self.logger.warning(
+                f"Broker rejected cancel for {order_id}: "
+                f"{response.rejection_reason or 'unknown'} (cancel-race possible)"
+            )
+            pending.in_flight_operation = PendingOperation.NONE
+            return
+
+        # Success — remove from active list. No order_history append: the
+        # algo's discipline pattern (has_pending_orders / has_in_flight_operation)
+        # observes the state transition naturally. Order_history is reserved
+        # for EXECUTED / REJECTED-by-broker, not for algo-initiated cancels.
+        if pending in self._active_limit_orders:
+            self._active_limit_orders.remove(pending)
+        elif pending in self._active_stop_orders:
+            self._active_stop_orders.remove(pending)
+
+        pending.in_flight_operation = PendingOperation.NONE
+        self.logger.info(
+            f"❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})"
+        )
+
+    def _handle_position_modify_response(
+        self,
+        position_id: str,
+        response: BrokerResponse,
+    ) -> None:
+        """
+        Drain-inbox hook for PositionModifyResponse (#318, native_position_sl_tp=True).
+
+        On success: apply SL/TP changes to portfolio.modify_position.
+        On rejection: discard the provisional state.
+
+        In both cases: clear the executor-side tracker for this position.
+        """
+        mod = self._pending_position_modifications.pop(position_id, None)
+        if mod is None:
+            self.logger.warning(
+                f"drain_inbox: PositionModifyResponse for unknown position_id {position_id}"
+            )
+            return
+
+        if response.is_rejected:
+            self.logger.warning(
+                f"Broker rejected position modify for {position_id}: "
+                f"{response.rejection_reason or 'unknown'}"
+            )
+            return
+
+        # Apply to portfolio
+        self.portfolio.modify_position(
+            position_id=position_id,
+            new_stop_loss=mod.new_stop_loss,
+            new_take_profit=mod.new_take_profit,
+        )
+        self.logger.info(
+            f"✏️ Position {position_id} modify resolved "
+            f"(sl={mod.new_stop_loss}, tp={mod.new_take_profit})"
+        )
 
     # ============================================
     # Active Order Processing (broker-accepted, waiting for trigger)
@@ -659,6 +844,83 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
     # ============================================
+    # Position Modification (#318) — capability-gated dual-mode
+    # ============================================
+
+    def modify_position(
+        self,
+        position_id: str,
+        new_stop_loss=UNSET,
+        new_take_profit=UNSET,
+    ) -> ModificationResult:
+        """
+        Modify position SL/TP — capability-gated dual-mode (#318, symmetric to TradeSimulator).
+
+        Routing depends on adapter capability `native_position_sl_tp`:
+        - True  (e.g. MT5 in #209): async-pending pattern. Track in
+                _pending_position_modifications, enqueue PositionModifyJob,
+                drain_inbox applies via portfolio.modify_position. Returns PENDING.
+        - False (e.g. Kraken Spot): synchronous fallback to base-class
+                portfolio.modify_position (current behavior — Kraken has no
+                native attached SL/TP, so the local-only path is correct).
+        """
+        caps = self.broker.adapter.get_order_capabilities()
+        if not caps.native_position_sl_tp:
+            # Synchronous fallback — Kraken-style local-only update
+            return self.portfolio.modify_position(
+                position_id=position_id,
+                new_stop_loss=new_stop_loss,
+                new_take_profit=new_take_profit,
+            )
+
+        # Async path — adapter declared native SL/TP support (#209 MT5)
+        position = self.portfolio.get_position(position_id)
+        if position is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.POSITION_NOT_FOUND,
+            )
+
+        if position_id in self._pending_position_modifications:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY,
+            )
+
+        # Capture effective SL/TP — UNSET → current position value
+        effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        self._pending_position_modifications[position_id] = ModificationRequest(
+            new_stop_loss=effective_sl,
+            new_take_profit=effective_tp,
+            submitted_at=datetime.now(timezone.utc),
+        )
+
+        # Enqueue PositionModifyJob — worker thread does the broker roundtrip.
+        # Adapter must implement _build_position_modify_payload /
+        # _do_request_position_modify / _parse_position_modify_response
+        # (or equivalent — #209 finalizes the surface).
+        self._request_processor.submit_modify_position_async(
+            position_id=position_id,
+            symbol=position.symbol,
+            new_stop_loss=effective_sl,
+            new_take_profit=effective_tp,
+            adapter=self.broker.adapter,
+        )
+
+        self.logger.info(
+            f"✏️ Position {position_id} modify scheduled — "
+            f"sl={effective_sl}, tp={effective_tp}"
+        )
+
+        return ModificationResult(
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=position_id,
+        )
+
+    # ============================================
     # Limit Order Modification
     # ============================================
 
@@ -670,10 +932,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order via broker adapter + local shadow state.
+        Schedule modification of a pending limit order via async pattern (#318).
 
-        Resolves order_id to broker_ref via _active_limit_orders, then calls
-        processor.modify_order_sync(). On success, updates local shadow state.
+        Resolves order_id to broker_ref via _active_limit_orders, sets the
+        in-flight flag on the target PendingOrder, enqueues an EditJob to the
+        worker thread, and returns immediately with status=PENDING. The
+        modification is applied to local shadow state when the broker's
+        EditResponse arrives on the next drain_inbox.
 
         Args:
             order_id: Pending limit order ID
@@ -682,89 +947,73 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             new_take_profit: New TP level (UNSET=no change, None=remove)
 
         Returns:
-            ModificationResult with success status and rejection reason
+            ModificationResult — PENDING on accept, REJECTED with reason on:
+                LIMIT_ORDER_NOT_FOUND: order_id not in _active_limit_orders
+                ORDER_NOT_CONFIRMED:   broker_ref still None (submit in-flight)
+                OPERATION_BUSY:        another modify/cancel already in flight
         """
-        # Resolve order_id → broker_ref via active limit orders
+        # Resolve order_id → target pending in active limit orders
         target_pending = None
-        broker_ref = None
         for pending in self._active_limit_orders:
             if pending.pending_order_id == order_id:
                 target_pending = pending
-                broker_ref = pending.broker_ref
                 break
 
-        if broker_ref is None:
+        if target_pending is None:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
 
-        # Translate UNSET → None for adapter (adapter uses None=no change)
-        adapter_price = None if isinstance(
-            new_price, _UnsetType) else new_price
-        adapter_sl = None if isinstance(
-            new_stop_loss, _UnsetType) else new_stop_loss
-        adapter_tp = None if isinstance(
-            new_take_profit, _UnsetType) else new_take_profit
-
-        # Delegate to Tier-3-decoupled sync orchestrator in the processor.
-        # The processor composes adapter._build_modify_payload →
-        # _do_request_modify → _parse_modify_response and handles
-        # transport-error mapping. Async modify is the subject of #318.
-        try:
-            response = self._request_processor.modify_order_sync(
-                broker_ref=broker_ref,
-                symbol=target_pending.symbol,
-                new_price=adapter_price,
-                new_stop_loss=adapter_sl,
-                new_take_profit=adapter_tp,
-                adapter=self.broker.adapter,
-            )
-        except Exception as e:
-            self.logger.warning(
-                f"modify_limit_order failed for {order_id}: {e}"
-            )
+        # Option A: reject modify-on-unconfirmed-submit (broker_ref still None)
+        if target_pending.broker_ref is None:
             return ModificationResult(
                 success=False,
-                rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+                rejection_reason=ModificationRejectionReason.ORDER_NOT_CONFIRMED)
 
-        # Handle broker rejection
-        if response.is_rejected:
-            self.logger.warning(
-                f"Broker rejected modify for {order_id}: "
-                f"{response.rejection_reason}"
-            )
+        # Busy check — one in-flight operation at a time
+        if target_pending.in_flight_operation != PendingOperation.NONE:
             return ModificationResult(
                 success=False,
-                rejection_reason=ModificationRejectionReason.INVALID_PRICE)
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
 
-        # Update broker ref if broker returned a new one (Kraken EditOrder returns new txid)
-        if response.broker_ref and response.broker_ref != broker_ref:
-            target_pending.broker_ref = response.broker_ref
+        # Translate UNSET → adapter args (None = no change at the adapter layer)
+        adapter_price = None if isinstance(new_price, _UnsetType) else new_price
+        adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
 
-        # Update local shadow state
-        if not isinstance(new_price, _UnsetType):
-            target_pending.entry_price = new_price
-        if not isinstance(new_stop_loss, _UnsetType):
-            if target_pending.order_kwargs is None:
-                target_pending.order_kwargs = {}
-            if new_stop_loss is None:
-                target_pending.order_kwargs.pop('stop_loss', None)
-            else:
-                target_pending.order_kwargs['stop_loss'] = new_stop_loss
-        if not isinstance(new_take_profit, _UnsetType):
-            if target_pending.order_kwargs is None:
-                target_pending.order_kwargs = {}
-            if new_take_profit is None:
-                target_pending.order_kwargs.pop('take_profit', None)
-            else:
-                target_pending.order_kwargs['take_profit'] = new_take_profit
-
-        self.logger.info(
-            f"✏️ Limit order {order_id} modified at broker "
-            f"(broker_ref={response.broker_ref or broker_ref})"
+        # Mark in-flight on the target and store provisional values.
+        # The drain handler (_handle_modify_response) consumes these on
+        # successful response and applies them to entry_price / order_kwargs.
+        target_pending.in_flight_operation = PendingOperation.PENDING_MODIFY
+        target_pending.pending_modification = ModificationRequest(
+            new_price=adapter_price,
+            new_stop_loss=adapter_sl,
+            new_take_profit=adapter_tp,
+            submitted_at=datetime.now(timezone.utc),
         )
 
-        return ModificationResult(success=True)
+        # Enqueue EditJob — worker thread does the broker roundtrip
+        self._request_processor.submit_modify_order_async(
+            order_id=order_id,
+            broker_ref=target_pending.broker_ref,
+            symbol=target_pending.symbol,
+            new_price=adapter_price,
+            new_stop_loss=adapter_sl,
+            new_take_profit=adapter_tp,
+            adapter=self.broker.adapter,
+        )
+
+        self.logger.info(
+            f"✏️ Limit order {order_id} modify scheduled — "
+            f"price={adapter_price}, sl={adapter_sl}, tp={adapter_tp} "
+            f"(broker_ref={target_pending.broker_ref})"
+        )
+
+        return ModificationResult(
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=order_id,
+        )
 
     def modify_stop_order(
         self,
@@ -775,9 +1024,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending stop order (not supported in live).
+        Schedule modification of a pending stop order via async pattern (#318).
 
-        Live executor does not manage stop orders locally — broker handles them.
+        Capability-gated: returns ORDER_TYPE_NOT_SUPPORTED if the adapter
+        doesn't declare stop_orders or stop_limit_orders. Today (#318) the
+        path is wired but _active_stop_orders stays empty in live — the
+        SUBMIT path is added by #209 (MT5 Live Adapter).
 
         Args:
             order_id: Pending stop order ID
@@ -787,49 +1039,154 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             new_take_profit: New TP level (UNSET=no change, None=remove)
 
         Returns:
-            ModificationResult (always NOT_FOUND — no local stop order queue)
+            ModificationResult — PENDING on accept, REJECTED with reason.
         """
+        caps = self.broker.adapter.get_order_capabilities()
+        if not (caps.stop_orders or caps.stop_limit_orders):
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.ORDER_TYPE_NOT_SUPPORTED)
+
+        target_pending = None
+        for pending in self._active_stop_orders:
+            if pending.pending_order_id == order_id:
+                target_pending = pending
+                break
+
+        if target_pending is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
+
+        if target_pending.broker_ref is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.ORDER_NOT_CONFIRMED)
+
+        if target_pending.in_flight_operation != PendingOperation.NONE:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
+
+        # Translate UNSET → None at adapter boundary
+        adapter_stop = None if isinstance(new_stop_price, _UnsetType) else new_stop_price
+        adapter_limit = None if isinstance(new_limit_price, _UnsetType) else new_limit_price
+        adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Note: the EditJob currently carries only new_price/new_sl/new_tp.
+        # For STOP modify, new_price maps to the stop trigger price; the
+        # new_limit_price is stored in pending_modification.new_limit_price
+        # for the drain handler to apply to order_kwargs['limit_price'].
+        # #209 may extend EditJob with a dedicated new_limit_price slot if
+        # MT5's ORDER_MODIFY differentiates the two prices.
+        target_pending.in_flight_operation = PendingOperation.PENDING_MODIFY
+        target_pending.pending_modification = ModificationRequest(
+            new_price=adapter_stop,
+            new_limit_price=adapter_limit,
+            new_stop_loss=adapter_sl,
+            new_take_profit=adapter_tp,
+            submitted_at=datetime.now(timezone.utc),
+        )
+
+        self._request_processor.submit_modify_order_async(
+            order_id=order_id,
+            broker_ref=target_pending.broker_ref,
+            symbol=target_pending.symbol,
+            new_price=adapter_stop,
+            new_stop_loss=adapter_sl,
+            new_take_profit=adapter_tp,
+            adapter=self.broker.adapter,
+        )
+
+        self.logger.info(
+            f"✏️ Stop order {order_id} modify scheduled — "
+            f"stop={adapter_stop}, limit={adapter_limit}, "
+            f"sl={adapter_sl}, tp={adapter_tp}"
+        )
+
         return ModificationResult(
-            success=False,
-            rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=order_id,
+        )
 
     def cancel_limit_order(self, order_id: str) -> bool:
         """
-        Cancel an active limit order at broker + remove from local shadow state.
+        Schedule cancellation of an active limit order via async pattern (#318).
+
+        Sets in_flight_operation=PENDING_CANCEL on the target PendingOrder
+        and enqueues a CancelJob to the worker thread. The order is removed
+        from _active_limit_orders only when the broker's CancelResponse
+        arrives via drain_inbox.
 
         Args:
             order_id: Order ID to cancel
 
         Returns:
-            True if order was found and cancelled
+            True if cancellation was scheduled. False if order not found,
+            still in submit-in-flight (broker_ref=None), or busy.
         """
-        for i, pending in enumerate(self._active_limit_orders):
-            if pending.pending_order_id == order_id:
-                if pending.broker_ref:
-                    try:
-                        self._request_processor.cancel_order_sync(
-                            broker_ref=pending.broker_ref,
-                            adapter=self.broker.adapter,
-                        )
-                    except Exception as e:
-                        self.logger.warning(
-                            f"Failed to cancel limit order {order_id} at broker: {e}")
-                        return False
-                self._active_limit_orders.pop(i)
-                self.logger.info(f"❌ Limit order {order_id} cancelled")
-                return True
+        for pending in self._active_limit_orders:
+            if pending.pending_order_id != order_id:
+                continue
+            if pending.broker_ref is None:
+                # Option A: reject cancel-on-unconfirmed-submit
+                return False
+            if pending.in_flight_operation != PendingOperation.NONE:
+                return False  # busy
+
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            self._request_processor.submit_cancel_order_async(
+                order_id=order_id,
+                broker_ref=pending.broker_ref,
+                adapter=self.broker.adapter,
+            )
+            self.logger.info(
+                f"❌ Limit order {order_id} cancel scheduled "
+                f"(broker_ref={pending.broker_ref})"
+            )
+            return True
         return False
 
     def cancel_stop_order(self, order_id: str) -> bool:
         """
-        Cancel an active stop order (not supported in live).
+        Schedule cancellation of an active stop order via async pattern (#318).
+
+        Capability-gated: returns False if the adapter doesn't declare
+        stop_orders or stop_limit_orders support. Today (#318) the path is
+        wired but _active_stop_orders stays empty in live — the SUBMIT path
+        for STOP orders is added by #209 (MT5 Live Adapter).
 
         Args:
             order_id: Order ID to cancel
 
         Returns:
-            False (no local stop order queue)
+            True if cancellation was scheduled. False otherwise.
         """
+        caps = self.broker.adapter.get_order_capabilities()
+        if not (caps.stop_orders or caps.stop_limit_orders):
+            return False
+
+        for pending in self._active_stop_orders:
+            if pending.pending_order_id != order_id:
+                continue
+            if pending.broker_ref is None:
+                return False
+            if pending.in_flight_operation != PendingOperation.NONE:
+                return False
+
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            self._request_processor.submit_cancel_order_async(
+                order_id=order_id,
+                broker_ref=pending.broker_ref,
+                adapter=self.broker.adapter,
+            )
+            self.logger.info(
+                f"❌ Stop order {order_id} cancel scheduled "
+                f"(broker_ref={pending.broker_ref})"
+            )
+            return True
         return False
 
     # ============================================
@@ -933,6 +1290,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Phase 3: Catch genuine stuck-in-pipeline orders (real anomalies)
         self._request_processor.clear_pending(reason="scenario_end")
+
+        # #318 — clear pending position modifications (live tracker)
+        if self._pending_position_modifications:
+            self.logger.info(
+                f"✏️ {len(self._pending_position_modifications)} pending "
+                f"position modifications at scenario end — discarded"
+            )
+            self._pending_position_modifications.clear()
 
         # Phase 4: Stop the worker thread cleanly
         self._request_processor.stop_worker()
