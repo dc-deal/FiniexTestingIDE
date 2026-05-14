@@ -333,7 +333,7 @@
         // 🤖 AUTOTRADER
         // ====================================================
         {
-            "name": "🤖 AutoTrader: BTCUSD Mock",
+            "name": "🤖 AutoTrader: BTCUSD Mock - simple_consensus",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
@@ -341,6 +341,22 @@
                 "run",
                 "--config",
                 "configs/autotrader_profiles/backtesting/mock_session_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🤖 AutoTrader: BTCUSD Mock - Cautious MACD (MARKET TYPE NOT SUPPORTET)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/cautious_macd_mock.json",
                 "--display",
                 "--delay",
                 "1"

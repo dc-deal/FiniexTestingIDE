@@ -82,3 +82,9 @@ def executor_delayed(mock_delayed) -> LiveTradeExecutor:
 def executor_reject(mock_reject) -> LiveTradeExecutor:
     """LiveTradeExecutor with reject-all mock adapter."""
     return mock_reject.create_executor()
+
+
+@pytest.fixture
+def executor_timeout(mock_timeout) -> LiveTradeExecutor:
+    """LiveTradeExecutor with TIMEOUT mock adapter (orders never fill)."""
+    return mock_timeout.create_executor()
