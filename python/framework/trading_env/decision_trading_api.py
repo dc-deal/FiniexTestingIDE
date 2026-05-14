@@ -410,6 +410,42 @@ class DecisionTradingApi:
         """
         return self._executor.has_pipeline_orders()
 
+    def has_in_flight_operation(self, order_id: str) -> bool:
+        """
+        Is there a modify or cancel operation currently in flight on this order? (#318)
+
+        Finer-grained than has_pending_orders. Use when an algo wants to
+        know whether a specific order has a pending modify/cancel waiting
+        for resolution — vs. blocking on ALL pendings via has_pending_orders.
+
+        Args:
+            order_id: Internal order or position identifier
+
+        Returns:
+            True if the order/position has PENDING_MODIFY or PENDING_CANCEL
+            in flight. False if no in-flight operation or order not found.
+
+        Example:
+            api.modify_limit_order(order_id=oid, new_price=51000)
+            # ... later, before submitting another modify on the same order:
+            if api.has_in_flight_operation(oid):
+                return None   # previous modify still resolving
+        """
+        return self._executor.has_in_flight_operation(order_id)
+
+    def get_in_flight_operation(self, order_id: str):
+        """
+        Return the in-flight operation type for an order (#318), or NONE.
+
+        Args:
+            order_id: Internal order or position identifier
+
+        Returns:
+            PendingOperation enum value (NONE / PENDING_SUBMIT / PENDING_MODIFY
+            / PENDING_CANCEL). Returns PendingOperation.NONE if order not found.
+        """
+        return self._executor.get_in_flight_operation(order_id)
+
     def is_pending_close(self, position_id: str) -> bool:
         """
         Is this specific position currently being closed?

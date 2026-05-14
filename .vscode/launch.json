@@ -1234,6 +1234,45 @@
             "justMyCode": false
         },
         {
+            "name": "🧩 Pytest: Live Executor Async Modify",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_async_modify.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Live Executor Async Cancel",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_async_cancel.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "🧩 Pytest: Sim Modify Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/modify_lifecycle/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "🧩 Pytest: Baseline (All)",
             "type": "debugpy",
             "request": "launch",

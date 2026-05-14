@@ -10,7 +10,7 @@ The live executor test suite validates the LiveTradeExecutor, LiveRequestProcess
 - Initial Balance: 10,000 USD
 - Execution Modes: instant_fill, delayed_fill, reject_all, timeout
 
-**Total Tests:** 67
+**Total Tests:** 87
 
 **Location:** `tests/autotrader/live_executor/`
 
@@ -30,7 +30,9 @@ tests/autotrader/live_executor/
 ├── test_live_executor_mock.py          ← Level 2: LiveTradeExecutor + MockAdapter integration
 ├── test_live_executor_multi_order.py   ← Level 3: Multi-order scenarios
 ├── test_live_executor_modify.py        ← Level 4: Limit order modification via broker
-└── test_async_submit.py                ← Level 5: Async submit lifecycle regressions (#321)
+├── test_async_submit.py                ← Level 5: Async submit lifecycle regressions (#321)
+├── test_async_modify.py                ← Level 6: Async modify lifecycle regressions (#318)
+└── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
 ```
 
 **Why this pattern?**
@@ -252,13 +254,13 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 
 | Test | Description |
 |------|-------------|
-| `test_broker_rejects_modify` | Returns failure when broker rejects modification |
+| `test_broker_rejects_modify` | Async (#318): initial PENDING accept; broker rejection arrives via drain on next tick; `orders_rejected` counter increments |
 
 #### TestModifyLimitOrderAdapterException
 
 | Test | Description |
 |------|-------------|
-| `test_adapter_exception_handled` | Adapter exceptions handled gracefully via processor.modify_order_sync |
+| `test_adapter_exception_handled` | Async (#318): exception raised in worker thread, surfaced as REJECTED via drain; `orders_rejected` counter increments |
 
 #### TestGetBrokerRefReverseLookup
 
@@ -326,6 +328,109 @@ Asserts that are unique to this file:
 | Test | Description |
 |------|-------------|
 | `test_async_submit_multiple_orders` | Three async submits back-to-back, one drain tick, three positions exist |
+
+---
+
+### test_async_modify.py (11 Tests) — #318 Modify Regression Coverage
+
+Locks down the shape of the async modify lifecycle introduced by #318:
+- `modify_limit_order` returns `success=True, status=PENDING` immediately
+- `target.in_flight_operation = PENDING_MODIFY` during the in-flight window
+- `drain_inbox` applies the modification on next tick (entry_price, SL, TP)
+- broker_ref swap (Kraken EditOrder semantic) is handled in drain
+- Busy / not-confirmed / not-found / unsupported-capability reject paths
+
+Uses `await_submit_confirmation` for drain isolation (no Phase-2 polling that would fill the order in DELAYED_FILL mode).
+
+#### TestModifyLimitOrderAsyncLifecycle
+
+| Test | Description |
+|------|-------------|
+| `test_modify_returns_pending_initially` | Returns `success=True, status=PENDING, order_id=order_id` |
+| `test_in_flight_operation_set_during_window` | `target.in_flight_operation == PENDING_MODIFY`, `pending_modification.new_price` populated |
+| `test_modification_applied_after_drain` | After `await_submit_confirmation`: entry_price + SL + TP reflect new values |
+| `test_in_flight_clears_after_drain` | After drain: `in_flight_operation == NONE`, `pending_modification is None` |
+
+#### TestModifyLimitOrderBusy
+
+| Test | Description |
+|------|-------------|
+| `test_second_modify_returns_busy` | Second modify on PENDING_MODIFY order → OPERATION_BUSY |
+| `test_modify_during_pending_cancel_returns_busy` | Modify on PENDING_CANCEL order → OPERATION_BUSY |
+
+#### TestModifyLimitOrderNotConfirmed
+
+| Test | Description |
+|------|-------------|
+| `test_modify_before_broker_ref_confirmed` | Modify on order with broker_ref=None → ORDER_NOT_CONFIRMED (Option A) |
+
+#### TestModifyLimitOrderNotFound
+
+| Test | Description |
+|------|-------------|
+| `test_modify_nonexistent_order` | Unknown order_id → LIMIT_ORDER_NOT_FOUND |
+
+#### TestModifyStopOrderCapabilityGate
+
+| Test | Description |
+|------|-------------|
+| `test_modify_stop_order_rejected_for_kraken_profile` | Mock declares stop_orders=False → ORDER_TYPE_NOT_SUPPORTED |
+
+#### TestModifyLimitOrderHasInFlight
+
+| Test | Description |
+|------|-------------|
+| `test_has_in_flight_operation_during_window` | `has_in_flight_operation(order_id)` returns True between schedule and drain |
+| `test_has_in_flight_operation_clears_after_drain` | Returns False after drain — and verifies order is still in active list (cleared, not filled) |
+
+---
+
+### test_async_cancel.py (9 Tests) — #318 Cancel Regression Coverage
+
+Locks down the shape of the async cancel lifecycle:
+- `cancel_limit_order` returns True (scheduled) immediately
+- `target.in_flight_operation = PENDING_CANCEL` during the in-flight window
+- `drain_inbox` removes the order from `_active_limit_orders` on success
+- Busy / not-confirmed / not-found / unsupported-capability reject paths
+
+#### TestCancelLimitOrderAsyncLifecycle
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_returns_true_when_scheduled` | Returns True for valid, confirmed, idle order |
+| `test_in_flight_operation_set_during_window` | `target.in_flight_operation == PENDING_CANCEL` |
+| `test_order_removed_from_active_after_drain` | After `feed_tick`: order removed from `_active_limit_orders` |
+
+#### TestCancelLimitOrderBusy
+
+| Test | Description |
+|------|-------------|
+| `test_second_cancel_returns_false` | Second cancel on PENDING_CANCEL order → False (busy) |
+| `test_cancel_during_pending_modify_returns_false` | Cancel on PENDING_MODIFY order → False (busy) |
+
+#### TestCancelLimitOrderNotConfirmed
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_before_broker_ref_confirmed` | Cancel on order with broker_ref=None → False (Option A) |
+
+#### TestCancelLimitOrderNotFound
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_nonexistent_order` | Unknown order_id → False |
+
+#### TestCancelStopOrderCapabilityGate
+
+| Test | Description |
+|------|-------------|
+| `test_cancel_stop_order_returns_false_for_kraken_profile` | Mock declares stop_orders=False → False |
+
+#### TestCancelHasInFlight
+
+| Test | Description |
+|------|-------------|
+| `test_has_in_flight_operation_after_cancel_schedule` | `has_in_flight_operation(order_id)` returns True after cancel schedule |
 
 ---
 

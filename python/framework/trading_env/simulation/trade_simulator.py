@@ -20,7 +20,13 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderOutcome
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    ModificationRequest,
+    PendingOperation,
+    PendingOrder,
+    PendingOrderAction,
+    PendingOrderOutcome,
+)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig, StressTestRejectOrderConfig
@@ -35,6 +41,7 @@ from python.framework.types.trading_env_types.order_types import (
     FillType,
     ModificationRejectionReason,
     ModificationResult,
+    ModificationStatus,
     OpenOrderRequest,
     create_rejection_result
 )
@@ -114,6 +121,23 @@ class TradeSimulator(AbstractTradeExecutor):
         self._stress_test_rejection = StressTestRejection(
             reject_config, logger)
 
+        # #318 — Async modify/cancel resolution state.
+        #
+        # Modify/cancel of orders in _active_limit_orders / _active_stop_orders
+        # is scheduled via the PendingOrder.in_flight_operation flag and resolved
+        # in _resolve_pending_operations() at the start of each tick (Phase 0).
+        # No separate index needed — the resolve loop iterates the active lists
+        # directly and applies the modification or removes the cancelled order.
+        #
+        # modify_position has no PendingOrder to flag (positions live in
+        # portfolio, not in active-order lists), so it gets a dedicated tracker
+        # below. Capability-gated by adapter.get_order_capabilities().native_position_sl_tp:
+        # when True (e.g. MT5 in #209), modify_position is async-pending; when
+        # False (e.g. Kraken Spot, default Mock), modify_position falls back to
+        # the synchronous portfolio.modify_position call (current behavior).
+        self._pending_position_modifications: Dict[str, ModificationRequest] = {}
+        self._modify_cancel_delay_msc: int = 1  # cosmetic single-msc delay default
+
     # ============================================
     # Clock
     # ============================================
@@ -139,7 +163,12 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def _process_pending_orders(self) -> None:
         """
-        Three-phase pending order processing.
+        Four-phase pending order processing.
+
+        Phase 0: Resolve scheduled modify/cancel operations from previous ticks
+          (#318). Applies modifications and removes cancelled orders BEFORE
+          price triggers are checked, so the updated entry_price / SL / TP is
+          in effect for the current tick.
 
         Phase 1: Drain latency queue (broker accepted orders after delay).
           - MARKET OPEN → fill immediately at current tick price
@@ -159,6 +188,9 @@ class TradeSimulator(AbstractTradeExecutor):
           - STOP: trigger reached → fill at current market price
           - STOP_LIMIT: trigger reached → convert to limit order (→ Phase 2)
         """
+        # === Phase 0: Resolve scheduled modify/cancel ops (#318) ===
+        self._resolve_pending_operations()
+
         # === Phase 1: Latency queue drain ===
         filled_orders = self.latency_simulator.process_tick(self._current_tick)
 
@@ -637,19 +669,34 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def cancel_limit_order(self, order_id: str) -> bool:
         """
-        Cancel an active limit order by order ID.
+        Schedule cancellation of an active limit order (async pattern, #318).
+
+        Sets the order's `in_flight_operation = PENDING_CANCEL` and stores the
+        resolve trigger on `cancel_apply_at_msc` (current_msc + 1 by default).
+        The actual removal from `_active_limit_orders` happens at the next
+        tick's Phase 0 (_resolve_pending_operations).
 
         Args:
             order_id: Order ID to cancel
 
         Returns:
-            True if order was found and cancelled
+            True if cancellation was scheduled (pending resolve).
+            False if the order is not found OR has another in-flight operation
+                (algo discipline pattern — caller waits via has_pending_orders()).
         """
-        for i, pending in enumerate(self._active_limit_orders):
-            if pending.pending_order_id == order_id:
-                self._active_limit_orders.pop(i)
-                self.logger.info(f"❌ Limit order {order_id} cancelled")
-                return True
+        for pending in self._active_limit_orders:
+            if pending.pending_order_id != order_id:
+                continue
+            if pending.in_flight_operation != PendingOperation.NONE:
+                return False  # busy — another modify/cancel in flight
+            current_msc = self._get_current_msc()
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            self.logger.info(
+                f"❌ Limit order {order_id} cancel scheduled "
+                f"(apply_at_msc={pending.cancel_apply_at_msc})"
+            )
+            return True
         return False
 
     def modify_limit_order(
@@ -686,6 +733,12 @@ class TradeSimulator(AbstractTradeExecutor):
                 success=False,
                 rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
 
+        # Busy check — #318 async pattern: one in-flight operation at a time
+        if pending.in_flight_operation != PendingOperation.NONE:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
+
         # Validate new price
         if not isinstance(new_price, _UnsetType):
             if new_price <= 0:
@@ -706,35 +759,38 @@ class TradeSimulator(AbstractTradeExecutor):
         effective_tp = current_tp if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
-        # Validate SL/TP against limit price (not current tick)
+        # Validate SL/TP against limit price (not current tick).
+        # Validation happens AT SCHEDULING time — algo gets immediate rejection
+        # if the modification is invalid. Only the application is deferred.
         rejection = self._validate_limit_order_sl_tp(
             pending.direction, effective_price, effective_sl, effective_tp)
         if rejection is not None:
             return ModificationResult(success=False, rejection_reason=rejection)
 
-        # Apply changes
-        if not isinstance(new_price, _UnsetType):
-            pending.entry_price = new_price
-        if not isinstance(new_stop_loss, _UnsetType):
-            if pending.order_kwargs is None:
-                pending.order_kwargs = {}
-            if new_stop_loss is None:
-                pending.order_kwargs.pop('stop_loss', None)
-            else:
-                pending.order_kwargs['stop_loss'] = new_stop_loss
-        if not isinstance(new_take_profit, _UnsetType):
-            if pending.order_kwargs is None:
-                pending.order_kwargs = {}
-            if new_take_profit is None:
-                pending.order_kwargs.pop('take_profit', None)
-            else:
-                pending.order_kwargs['take_profit'] = new_take_profit
+        # Schedule the modification — Phase 0 of next tick applies it.
+        # Effective values are captured here; resolve writes them as-is to the
+        # PendingOrder. UNSET semantics are baked in via the merge above.
+        current_msc = self._get_current_msc()
+        pending.in_flight_operation = PendingOperation.PENDING_MODIFY
+        pending.pending_modification = ModificationRequest(
+            new_price=effective_price,
+            new_stop_loss=effective_sl,
+            new_take_profit=effective_tp,
+            submitted_at=datetime.now(timezone.utc),
+            apply_at_msc=current_msc + self._modify_cancel_delay_msc,
+        )
 
         self.logger.info(
-            f"✏️ Limit order {order_id} modified — "
-            f"price={effective_price:.5f}, sl={effective_sl}, tp={effective_tp}")
+            f"✏️ Limit order {order_id} modify scheduled — "
+            f"price={effective_price:.5f}, sl={effective_sl}, tp={effective_tp} "
+            f"(apply_at_msc={pending.pending_modification.apply_at_msc})"
+        )
 
-        return ModificationResult(success=True)
+        return ModificationResult(
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=order_id,
+        )
 
     def _validate_limit_order_sl_tp(
         self,
@@ -800,19 +856,36 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def cancel_stop_order(self, order_id: str) -> bool:
         """
-        Cancel an active stop order by order ID.
+        Schedule cancellation of an active stop order (async pattern, #318).
+
+        Same pattern as cancel_limit_order, applied to `_active_stop_orders`.
+        Capability-gated: returns False if the adapter doesn't declare
+        stop_orders or stop_limit_orders support.
 
         Args:
             order_id: Order ID to cancel
 
         Returns:
-            True if order was found and cancelled
+            True if scheduled. False if the adapter doesn't support stop
+            orders, the order is not found, or another operation is in flight.
         """
-        for i, pending in enumerate(self._active_stop_orders):
-            if pending.pending_order_id == order_id:
-                self._active_stop_orders.pop(i)
-                self.logger.info(f"❌ Stop order {order_id} cancelled")
-                return True
+        caps = self.broker.adapter.get_order_capabilities()
+        if not (caps.stop_orders or caps.stop_limit_orders):
+            return False  # adapter does not support STOP / STOP_LIMIT
+
+        for pending in self._active_stop_orders:
+            if pending.pending_order_id != order_id:
+                continue
+            if pending.in_flight_operation != PendingOperation.NONE:
+                return False  # busy
+            current_msc = self._get_current_msc()
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            self.logger.info(
+                f"❌ Stop order {order_id} cancel scheduled "
+                f"(apply_at_msc={pending.cancel_apply_at_msc})"
+            )
+            return True
         return False
 
     def modify_stop_order(
@@ -847,10 +920,23 @@ class TradeSimulator(AbstractTradeExecutor):
                 pending = p
                 break
 
+        # Capability gate (#318): adapter must declare STOP support
+        caps = self.broker.adapter.get_order_capabilities()
+        if not (caps.stop_orders or caps.stop_limit_orders):
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.ORDER_TYPE_NOT_SUPPORTED)
+
         if pending is None:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
+
+        # Busy check — one in-flight operation at a time
+        if pending.in_flight_operation != PendingOperation.NONE:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
 
         is_stop_limit = (pending.order_type == OrderType.STOP_LIMIT)
 
@@ -899,35 +985,209 @@ class TradeSimulator(AbstractTradeExecutor):
         if rejection is not None:
             return ModificationResult(success=False, rejection_reason=rejection)
 
-        # Apply changes
-        if not isinstance(new_stop_price, _UnsetType):
-            pending.entry_price = new_stop_price
-        if not isinstance(new_limit_price, _UnsetType) and is_stop_limit:
-            if pending.order_kwargs is None:
-                pending.order_kwargs = {}
-            pending.order_kwargs['limit_price'] = new_limit_price
-        if not isinstance(new_stop_loss, _UnsetType):
-            if pending.order_kwargs is None:
-                pending.order_kwargs = {}
-            if new_stop_loss is None:
-                pending.order_kwargs.pop('stop_loss', None)
-            else:
-                pending.order_kwargs['stop_loss'] = new_stop_loss
-        if not isinstance(new_take_profit, _UnsetType):
-            if pending.order_kwargs is None:
-                pending.order_kwargs = {}
-            if new_take_profit is None:
-                pending.order_kwargs.pop('take_profit', None)
-            else:
-                pending.order_kwargs['take_profit'] = new_take_profit
+        # Schedule the modification — Phase 0 of next tick applies it.
+        # Effective values captured here; resolve writes them as-is.
+        current_msc = self._get_current_msc()
+        pending.in_flight_operation = PendingOperation.PENDING_MODIFY
+        pending.pending_modification = ModificationRequest(
+            new_price=effective_stop,
+            new_limit_price=effective_limit if is_stop_limit else None,
+            new_stop_loss=effective_sl,
+            new_take_profit=effective_tp,
+            submitted_at=datetime.now(timezone.utc),
+            apply_at_msc=current_msc + self._modify_cancel_delay_msc,
+        )
 
         self.logger.info(
-            f"✏️ Stop order {order_id} modified — "
+            f"✏️ Stop order {order_id} modify scheduled — "
             f"stop={effective_stop:.5f}, "
             f"{'limit=' + f'{effective_limit:.5f}, ' if is_stop_limit else ''}"
-            f"sl={effective_sl}, tp={effective_tp}")
+            f"sl={effective_sl}, tp={effective_tp} "
+            f"(apply_at_msc={pending.pending_modification.apply_at_msc})"
+        )
 
-        return ModificationResult(success=True)
+        return ModificationResult(
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=order_id,
+        )
+
+    # ============================================
+    # Position Modify (#318) — capability-gated async pattern
+    # ============================================
+
+    def modify_position(
+        self,
+        position_id: str,
+        new_stop_loss=UNSET,
+        new_take_profit=UNSET,
+    ) -> ModificationResult:
+        """
+        Modify position SL/TP — capability-gated dual-mode (#318).
+
+        Routing depends on adapter capability `native_position_sl_tp`:
+        - True  (e.g. MT5, future #209): async-pending pattern. Schedule the
+                modification in `_pending_position_modifications`; resolve at
+                next tick's Phase 0 via `portfolio.modify_position`. Returns
+                ModificationResult(PENDING).
+        - False (e.g. Kraken Spot, default Mock): synchronous fallback. Direct
+                call to `portfolio.modify_position` — current behavior preserved.
+
+        Args:
+            position_id: Position to modify
+            new_stop_loss: New SL price, None to remove, UNSET to keep current
+            new_take_profit: New TP price, None to remove, UNSET to keep current
+
+        Returns:
+            ModificationResult — PENDING (async path) or SUCCESS/REJECTED
+            (sync fallback)
+        """
+        caps = self.broker.adapter.get_order_capabilities()
+        if not caps.native_position_sl_tp:
+            # Synchronous fallback — preserves current Kraken-style behavior
+            return self.portfolio.modify_position(
+                position_id=position_id,
+                new_stop_loss=new_stop_loss,
+                new_take_profit=new_take_profit,
+            )
+
+        # Async path — adapter declared native SL/TP support (#209 MT5).
+        position = self.portfolio.get_position(position_id)
+        if position is None:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.POSITION_NOT_FOUND,
+            )
+
+        if position_id in self._pending_position_modifications:
+            return ModificationResult(
+                success=False,
+                rejection_reason=ModificationRejectionReason.OPERATION_BUSY,
+            )
+
+        # Capture effective SL/TP — UNSET → current position value
+        effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
+        effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        current_msc = self._get_current_msc()
+        self._pending_position_modifications[position_id] = ModificationRequest(
+            new_stop_loss=effective_sl,
+            new_take_profit=effective_tp,
+            submitted_at=datetime.now(timezone.utc),
+            apply_at_msc=current_msc + self._modify_cancel_delay_msc,
+        )
+
+        self.logger.info(
+            f"✏️ Position {position_id} modify scheduled — "
+            f"sl={effective_sl}, tp={effective_tp} "
+            f"(apply_at_msc={current_msc + self._modify_cancel_delay_msc})"
+        )
+
+        return ModificationResult(
+            success=True,
+            status=ModificationStatus.PENDING,
+            order_id=position_id,
+        )
+
+    # ============================================
+    # Phase 0 Resolve — #318 async modify/cancel
+    # ============================================
+
+    def _get_current_msc(self) -> int:
+        """Current tick millisecond timestamp (collected_msc preferred, time_msc fallback)."""
+        tick = self._current_tick
+        if tick.collected_msc > 0:
+            return tick.collected_msc
+        return tick.time_msc
+
+    def _resolve_pending_operations(self) -> None:
+        """
+        Phase 0 of _process_pending_orders — apply scheduled modify/cancel
+        operations whose apply_at_msc has been reached.
+
+        Runs BEFORE Phase 1 (latency drain) and Phase 2/3 (price triggers) so
+        that a modification's new entry_price / SL / TP is in effect for the
+        current tick's trigger checks. Cancellations also fire before triggers
+        — a cancelled order will not be filled on the same tick.
+
+        Position modifications resolve via `portfolio.modify_position`.
+        """
+        current_msc = self._get_current_msc()
+
+        # Order-level: limit + stop modify/cancel
+        for active_list, list_name in (
+            (self._active_limit_orders, 'limit'),
+            (self._active_stop_orders, 'stop'),
+        ):
+            to_cancel = []
+            for pending in active_list:
+                if pending.in_flight_operation == PendingOperation.PENDING_MODIFY:
+                    mod = pending.pending_modification
+                    if mod is not None and mod.apply_at_msc <= current_msc:
+                        self._apply_pending_modification(pending)
+                elif pending.in_flight_operation == PendingOperation.PENDING_CANCEL:
+                    if pending.cancel_apply_at_msc is not None and pending.cancel_apply_at_msc <= current_msc:
+                        to_cancel.append(pending)
+            # Remove cancelled orders after iteration to avoid mutation during loop
+            for pending in to_cancel:
+                active_list.remove(pending)
+                pending.in_flight_operation = PendingOperation.NONE
+                pending.cancel_apply_at_msc = None
+                self.logger.info(
+                    f"❌ {list_name.capitalize()} order {pending.pending_order_id} "
+                    f"cancellation resolved"
+                )
+
+        # Position-level: SL/TP modifications (when native_position_sl_tp=True)
+        for position_id in list(self._pending_position_modifications.keys()):
+            mod = self._pending_position_modifications[position_id]
+            if mod.apply_at_msc <= current_msc:
+                self.portfolio.modify_position(
+                    position_id=position_id,
+                    new_stop_loss=mod.new_stop_loss,
+                    new_take_profit=mod.new_take_profit,
+                )
+                del self._pending_position_modifications[position_id]
+                self.logger.info(
+                    f"✏️ Position {position_id} modification resolved "
+                    f"(sl={mod.new_stop_loss}, tp={mod.new_take_profit})"
+                )
+
+    def _apply_pending_modification(self, pending: PendingOrder) -> None:
+        """
+        Apply a resolved modification to a PendingOrder in-place and clear
+        the in-flight state.
+
+        Writes effective values (snapshotted at scheduling time):
+        - new_price → entry_price (limit/stop trigger price)
+        - new_limit_price → order_kwargs['limit_price'] (STOP_LIMIT only)
+        - new_stop_loss / new_take_profit → order_kwargs['stop_loss' / 'take_profit']
+        """
+        mod = pending.pending_modification
+        if pending.order_kwargs is None:
+            pending.order_kwargs = {}
+
+        pending.entry_price = mod.new_price
+        if mod.new_limit_price is not None:
+            pending.order_kwargs['limit_price'] = mod.new_limit_price
+
+        # SL/TP: explicit None = clear, value = set
+        if mod.new_stop_loss is None:
+            pending.order_kwargs.pop('stop_loss', None)
+        else:
+            pending.order_kwargs['stop_loss'] = mod.new_stop_loss
+        if mod.new_take_profit is None:
+            pending.order_kwargs.pop('take_profit', None)
+        else:
+            pending.order_kwargs['take_profit'] = mod.new_take_profit
+
+        pending.pending_modification = None
+        pending.in_flight_operation = PendingOperation.NONE
+
+        self.logger.info(
+            f"✏️ Order {pending.pending_order_id} modification resolved — "
+            f"price={pending.entry_price:.5f}"
+        )
 
     # ============================================
     # Pending Order Awareness
@@ -1010,3 +1270,14 @@ class TradeSimulator(AbstractTradeExecutor):
         # Catch genuine stuck-in-pipeline orders (real anomalies)
         self.latency_simulator.clear_pending(
             current_msc=current_msc, reason="scenario_end")
+
+        # #318 — clear pending position modifications (sim-only tracker for
+        # the native_position_sl_tp=True path). Other in_flight_operation state
+        # on PendingOrder objects in _active_*_orders is implicitly cleared
+        # because the active lists are not reused across scenarios.
+        if self._pending_position_modifications:
+            self.logger.info(
+                f"✏️ {len(self._pending_position_modifications)} pending "
+                f"position modifications at scenario end — discarded"
+            )
+            self._pending_position_modifications.clear()

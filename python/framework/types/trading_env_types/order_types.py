@@ -142,6 +142,14 @@ class OrderCapabilities:
     hedging_allowed: bool = False
     partial_fills_supported: bool = False
 
+    # Position-level features (#318)
+    # native_position_sl_tp: broker supports server-side attached SL/TP on
+    # open positions (MT5: True, Kraken Spot: False). When True, the executor
+    # routes modify_position through the async pattern (processor.submit_
+    # modify_position_async / sim _pending_position_modifications). When
+    # False, modify_position falls back to instant local portfolio update.
+    native_position_sl_tp: bool = False
+
     def supports_order_type(self, order_type: OrderType) -> bool:
         """Check if broker supports specific order type"""
         mapping = {
@@ -389,6 +397,27 @@ class ModificationRejectionReason(Enum):
     SL_TP_CROSS = "sl_tp_cross"
     INVALID_PRICE = "invalid_price"
     NO_CURRENT_PRICE = "no_current_price"
+    # #318 — Async modify/cancel reject cases
+    ORDER_NOT_CONFIRMED = "order_not_confirmed"   # broker_ref still None (Option A)
+    OPERATION_BUSY = "operation_busy"             # another in_flight_operation already
+    ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"   # capability gate (e.g. stop_orders=False)
+
+
+class ModificationStatus(Enum):
+    """
+    Lifecycle status of a modification request.
+
+    PENDING: Accepted into the async pipeline, awaiting resolve (next-tick sim,
+             drain_inbox live). Used as the return value of modify/cancel calls
+             post-#318 — algos check has_in_flight_operation() to know when
+             the operation has resolved.
+    SUCCESS: Modification applied (synchronous fallback path, or resolved async
+             outcome surfaced via outcome listener).
+    REJECTED: Modification rejected (validation, broker, or async outcome).
+    """
+    PENDING = "pending"
+    SUCCESS = "success"
+    REJECTED = "rejected"
 
 
 @dataclass
@@ -397,8 +426,20 @@ class ModificationResult:
     Result of a position or limit order modification attempt.
 
     Args:
-        success: True if modification was applied
-        rejection_reason: Reason for rejection (None if successful)
+        success: True if modification was accepted (PENDING or SUCCESS).
+                 Backward-compatible — algos checking `if result.success`
+                 keep working under the post-#318 async path where the
+                 modification is queued and resolves on the next tick / drain.
+        status: Lifecycle status (PENDING for async-queued, SUCCESS for
+                synchronous fallback or post-resolve, REJECTED on reject).
+                Defaults to SUCCESS so legacy callers that don't set status
+                explicitly behave unchanged.
+        rejection_reason: Reason for rejection (None if successful or pending)
+        order_id: Order/position id this modification targets — populated for
+                  PENDING returns so the caller can use has_in_flight_operation()
+                  to wait for resolve.
     """
     success: bool
     rejection_reason: Optional[ModificationRejectionReason] = None
+    status: ModificationStatus = ModificationStatus.SUCCESS
+    order_id: Optional[str] = None

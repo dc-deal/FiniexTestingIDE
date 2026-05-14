@@ -19,6 +19,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderStatus,
     ModificationRejectionReason,
+    ModificationStatus,
     OpenOrderRequest,
 )
 
@@ -129,10 +130,11 @@ class TestModifyLimitOrderNotFound:
 
 
 class TestModifyLimitOrderBrokerRejection:
-    """Broker rejects the modification."""
+    """Broker rejects the modification — async (#318): initial PENDING accept,
+    rejection delivered via drain on next tick."""
 
     def test_broker_rejects_modify(self):
-        """modify_limit_order() returns failure when broker rejects."""
+        """modify_limit_order() returns PENDING; broker rejection arrives via drain."""
         # Start with delayed mode to get a pending LIMIT order
         mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
         executor = mock.create_executor()
@@ -149,18 +151,26 @@ class TestModifyLimitOrderBrokerRejection:
         # Switch adapter to reject_all mode before modify
         executor.broker.adapter.set_mode(MockExecutionMode.REJECT_ALL)
 
+        rejected_before = executor.get_execution_stats().orders_rejected
         mod_result = executor.modify_limit_order(
             order_id=order_id, new_price=51000.0)
 
-        assert mod_result.success is False
-        assert mod_result.rejection_reason == ModificationRejectionReason.INVALID_PRICE
+        # Initial async accept — modification is queued, not yet rejected
+        assert mod_result.success is True
+        assert mod_result.status == ModificationStatus.PENDING
+
+        # Drain delivers the broker rejection on next tick
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
+        rejected_after = executor.get_execution_stats().orders_rejected
+        assert rejected_after == rejected_before + 1
 
 
 class TestModifyLimitOrderAdapterException:
-    """Adapter raises exception during modify_order()."""
+    """Adapter raises exception during modify_order() — async (#318): exception
+    raised in worker thread, surfaced as REJECTED via drain."""
 
     def test_adapter_exception_handled(self, mock_delayed, executor_delayed):
-        """modify_limit_order() handles adapter exceptions gracefully."""
+        """modify_limit_order() handles adapter exceptions via the async path."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
@@ -171,19 +181,25 @@ class TestModifyLimitOrderAdapterException:
         # Confirm broker_ref without triggering Phase-2 polling
         mock_delayed.await_submit_confirmation(executor_delayed)
 
-        # Monkey-patch adapter's Tier-3-dumb _do_request_modify to raise.
-        # processor.modify_order_sync wraps this in try/except and surfaces
-        # the transport error as a REJECTED BrokerResponse.
+        # Monkey-patch adapter's Tier-3 _do_request_modify to raise.
+        # Worker catches it and surfaces as REJECTED EditResponse via inbox.
         def raise_on_modify(*args, **kwargs):
             raise ConnectionError("Broker connection lost")
 
         executor_delayed.broker.adapter._do_request_modify = raise_on_modify
 
+        rejected_before = executor_delayed.get_execution_stats().orders_rejected
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0)
 
-        assert mod_result.success is False
-        assert mod_result.rejection_reason == ModificationRejectionReason.INVALID_PRICE
+        # Initial async accept
+        assert mod_result.success is True
+        assert mod_result.status == ModificationStatus.PENDING
+
+        # Drain surfaces the connection error as REJECTED
+        mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
+        rejected_after = executor_delayed.get_execution_stats().orders_rejected
+        assert rejected_after == rejected_before + 1
 
 
 class TestGetBrokerRefReverseLookup:
