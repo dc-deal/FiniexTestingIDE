@@ -1,9 +1,22 @@
 """
 FiniexTestingIDE - MT5 Broker Adapter
-Full implementation for MetaTrader 5 brokers
 
-Loads existing broker_config.json from BrokerConfigExporter.mq5.
-Supports MT5-specific order types: Market, Limit, Stop, StopLimit.
+Tier-1 + Tier-2 implementation for MetaTrader 5 brokers — used for
+backtesting against MT5-style broker data (symbol specs, fees, swap,
+margin rules). Loads broker_config.json produced by BrokerConfigExporter.mq5.
+
+Tier 1: config validation, broker / symbol specifications
+Tier 2: order CREATION (MarketOrder, LimitOrder, StopOrder, StopLimitOrder
+        dataclasses) and lot-size validation
+
+Tier 3 (live order EXECUTION — execute_order / check_order_status /
+cancel_order / modify_order plus the build/request/parse layers) is not
+implemented here. The inherited NotImplementedError defaults from
+AbstractAdapter apply. `is_live_capable()` returns False (default).
+
+Live execution support is tracked separately in #209 (MT5 Live Adapter).
+Until then, attempting live trading with this adapter fails fast with a
+clear NotImplementedError.
 """
 
 from typing import Dict, Any, List, Optional

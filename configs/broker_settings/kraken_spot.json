@@ -1,0 +1,7 @@
+{
+    "credentials_file": "kraken_credentials.json",
+    "api_base_url": "https://api.kraken.com",
+    "dry_run": true,
+    "rate_limit_interval_s": 1.0,
+    "request_timeout_s": 15
+}

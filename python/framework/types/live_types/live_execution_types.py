@@ -5,8 +5,8 @@
 FiniexTestingIDE - Live Execution Type Definitions
 Data structures for live broker communication and order tracking.
 
-Used by LiveTradeExecutor, LiveOrderTracker, and broker adapters
-for live order execution (Horizon 2).
+Used by LiveTradeExecutor, LiveRequestProcessor, and broker adapters
+for live order execution.
 
 Architecture:
     BrokerResponse: Standardized broker reply (fill, rejection, status)
@@ -41,7 +41,8 @@ class BrokerResponse:
     Standardized response from broker API.
 
     Wraps broker-specific response formats into a unified structure.
-    Used by AbstractAdapter.execute_order(), check_order_status(), cancel_order().
+    Used by AbstractAdapter Tier-3 layers (_parse_*_response) and the
+    LiveRequestProcessor sync/async orchestrators.
 
     Args:
         broker_ref: Broker's order reference ID (e.g., Kraken txid)

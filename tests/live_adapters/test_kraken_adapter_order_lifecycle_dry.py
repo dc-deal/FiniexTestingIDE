@@ -17,9 +17,11 @@ from pathlib import Path
 
 import pytest
 
+from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
@@ -50,101 +52,122 @@ def live_adapter():
     broker_settings['rate_limit_interval_s'] = 0.5
 
     adapter = KrakenAdapter(broker_config)
-    adapter.enable_live(broker_settings)
+    adapter.enable_live(**broker_settings)
     return adapter
+
+
+@pytest.fixture(scope='module')
+def processor():
+    """LiveRequestProcessor used to drive the adapter's Tier-3 layers."""
+    return LiveRequestProcessor(
+        logger=GlobalLogger(name='LiveAdapterTest'),
+        timeout_config=TimeoutConfig(order_timeout_seconds=30.0),
+    )
 
 
 class TestKrakenAdapterOrderLifecycle:
     """
     Phase 1: Dry-run order lifecycle validation.
 
-    Calls execute_order() directly against the real Kraken API with validate=true.
-    Kraken validates syntax, pair resolution, and margin but does NOT place orders.
-    All tests skip if credentials are not available.
+    Drives the adapter's Tier-3 layers via LiveRequestProcessor.submit_open_order
+    against the real Kraken API with validate=true (set inside the adapter's
+    dry-run path). Kraken validates syntax, pair resolution, and margin but
+    does NOT place orders. All tests skip if credentials are not available.
 
-    Note: execute_order() does not call validate_order() internally — invalid
+    Post-DryRunOrderSimulator behavior: a successful submit returns PENDING
+    with a synthetic DRYRUN-* ref. The order flips to FILLED after
+    polls_until_fill (default 2) query_order_sync calls — exercised by the
+    Phase 2 live tests, not here.
+
+    Note: submit_open_order does not call validate_order() internally — invalid
     symbol and below-min-lot cases reach the API and return REJECTED.
 
     LIMIT order volume uses 0.1 ETH (@ $100 limit price → $10 cost) to satisfy
     Kraken's minimum order cost requirement (~$5). MARKET tests use 0.001 (volume_min).
     """
 
-    def test_market_buy_dryrun(self, live_adapter):
-        """MARKET buy with validate=true — expects synthetic DRYRUN ref."""
-        response = live_adapter.execute_order(
+    def test_market_buy_dryrun(self, live_adapter, processor):
+        """MARKET buy with validate=true — expects PENDING with synthetic DRYRUN ref."""
+        response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter,
         )
-        assert response.status == BrokerOrderStatus.FILLED
+        assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
             f"Expected DRYRUN ref, got: {response.broker_ref}"
         )
 
-    def test_market_sell_dryrun(self, live_adapter):
-        """MARKET sell with validate=true — expects synthetic DRYRUN ref."""
-        response = live_adapter.execute_order(
+    def test_market_sell_dryrun(self, live_adapter, processor):
+        """MARKET sell with validate=true — expects PENDING with synthetic DRYRUN ref."""
+        response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.SHORT,
             lots=0.001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter,
         )
-        assert response.status == BrokerOrderStatus.FILLED
+        assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
             f"Expected DRYRUN ref, got: {response.broker_ref}"
         )
 
-    def test_limit_buy_dryrun(self, live_adapter):
+    def test_limit_buy_dryrun(self, live_adapter, processor):
         """LIMIT buy far below market — 0.1 ETH @ $100 meets Kraken cost minimum (~$10)."""
-        response = live_adapter.execute_order(
+        response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
             lots=0.1,
             order_type=OrderType.LIMIT,
+            adapter=live_adapter,
             price=100.0,
         )
-        assert response.status == BrokerOrderStatus.FILLED
+        assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
             f"Expected DRYRUN ref, got: {response.broker_ref}"
         )
 
-    def test_limit_buy_with_sltp_dryrun(self, live_adapter):
+    def test_limit_buy_with_sltp_dryrun(self, live_adapter, processor):
         """LIMIT buy with stop_loss and take_profit kwargs — 0.1 ETH @ $100."""
-        response = live_adapter.execute_order(
+        response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
             lots=0.1,
             order_type=OrderType.LIMIT,
+            adapter=live_adapter,
             price=100.0,
             stop_loss=50.0,
             take_profit=200.0,
         )
-        assert response.status == BrokerOrderStatus.FILLED
+        assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
             f"Expected DRYRUN ref, got: {response.broker_ref}"
         )
 
-    def test_invalid_symbol_rejected(self, live_adapter):
+    def test_invalid_symbol_rejected(self, live_adapter, processor):
         """Unknown symbol reaches Kraken API — expects REJECTED response."""
-        response = live_adapter.execute_order(
+        response = processor.submit_open_order(
             symbol='XXXUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter,
         )
         assert response.status == BrokerOrderStatus.REJECTED, (
             f"Expected REJECTED for unknown symbol, got: {response.status}"
         )
         assert response.rejection_reason, 'Expected non-empty rejection reason'
 
-    def test_below_minimum_lot_rejected(self, live_adapter):
+    def test_below_minimum_lot_rejected(self, live_adapter, processor):
         """Volume below ETHUSD minimum (0.001) reaches Kraken API — expects REJECTED response."""
-        response = live_adapter.execute_order(
+        response = processor.submit_open_order(
             symbol='ETHUSD',
             direction=OrderDirection.LONG,
             lots=0.00001,
             order_type=OrderType.MARKET,
+            adapter=live_adapter,
         )
         assert response.status == BrokerOrderStatus.REJECTED, (
             f"Expected REJECTED for below-min volume, got: {response.status}"

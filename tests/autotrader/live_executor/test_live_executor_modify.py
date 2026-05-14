@@ -6,7 +6,7 @@ Tests modify_limit_order() via broker adapter:
 - Non-existent order rejection
 - Broker rejection handling
 - Adapter exception handling
-- LiveOrderTracker.get_broker_ref() reverse lookup
+- LiveRequestProcessor.get_broker_ref() reverse lookup
 
 Uses DELAYED_FILL mode so orders stay in pending (broker_ref tracked).
 """
@@ -24,19 +24,29 @@ from python.framework.types.trading_env_types.order_types import (
 
 
 class TestModifyLimitOrderSuccess:
-    """Successful modification of pending limit orders via broker."""
+    """Successful modification of pending limit orders via broker.
+
+    LIMIT submit is async (#319 step 7): open_order returns PENDING with
+    broker_ref=None. An additional feed_tick is needed so drain_inbox
+    confirms the broker_ref via _handle_limit_submit_response before
+    modify_limit_order can find it.
+    """
 
     def test_modify_pending_order_price(self, mock_delayed, executor_delayed):
         """modify_limit_order() succeeds for LIMIT order in _active_limit_orders."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        # Submit LIMIT order — stays PENDING in _active_limit_orders
+        # Submit LIMIT order — async, broker_ref still None
         result = executor_delayed.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         assert result.status == OrderStatus.PENDING
         order_id = result.order_id
+
+        # Confirm broker_ref without triggering Phase-2 polling (which
+        # would fill the order in DELAYED_FILL mode immediately)
+        mock_delayed.await_submit_confirmation(executor_delayed)
 
         # Modify the pending order's price
         mod_result = executor_delayed.modify_limit_order(
@@ -54,6 +64,8 @@ class TestModifyLimitOrderSuccess:
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
+        # Confirm broker_ref without triggering Phase-2 polling
+        mock_delayed.await_submit_confirmation(executor_delayed)
 
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id,
@@ -71,6 +83,8 @@ class TestModifyLimitOrderSuccess:
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
+        # Confirm broker_ref without triggering Phase-2 polling
+        mock_delayed.await_submit_confirmation(executor_delayed)
 
         # Only modify price, leave SL/TP as UNSET (default)
         mod_result = executor_delayed.modify_limit_order(
@@ -129,6 +143,8 @@ class TestModifyLimitOrderBrokerRejection:
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
+        # Confirm broker_ref without triggering Phase-2 polling
+        mock.await_submit_confirmation(executor)
 
         # Switch adapter to reject_all mode before modify
         executor.broker.adapter.set_mode(MockExecutionMode.REJECT_ALL)
@@ -152,12 +168,16 @@ class TestModifyLimitOrderAdapterException:
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
+        # Confirm broker_ref without triggering Phase-2 polling
+        mock_delayed.await_submit_confirmation(executor_delayed)
 
-        # Monkey-patch adapter to raise on modify_order
+        # Monkey-patch adapter's Tier-3-dumb _do_request_modify to raise.
+        # processor.modify_order_sync wraps this in try/except and surfaces
+        # the transport error as a REJECTED BrokerResponse.
         def raise_on_modify(*args, **kwargs):
             raise ConnectionError("Broker connection lost")
 
-        executor_delayed.broker.adapter.modify_order = raise_on_modify
+        executor_delayed.broker.adapter._do_request_modify = raise_on_modify
 
         mod_result = executor_delayed.modify_limit_order(
             order_id=order_id, new_price=51000.0)
@@ -167,11 +187,11 @@ class TestModifyLimitOrderAdapterException:
 
 
 class TestGetBrokerRefReverseLookup:
-    """LiveOrderTracker.get_broker_ref() reverse lookup tests."""
+    """LiveRequestProcessor.get_broker_ref() reverse lookup tests."""
 
-    def test_get_broker_ref_returns_ref(self, order_tracker):
+    def test_get_broker_ref_returns_ref(self, request_processor):
         """get_broker_ref() returns broker_ref for known order_id."""
-        order_tracker.submit_order(
+        request_processor.register_pending_open(
             order_id="ORD-100",
             symbol="BTCUSD",
             direction=OrderDirection.LONG,
@@ -179,17 +199,17 @@ class TestGetBrokerRefReverseLookup:
             broker_ref="MOCK-000100",
         )
 
-        broker_ref = order_tracker.get_broker_ref("ORD-100")
+        broker_ref = request_processor.get_broker_ref("ORD-100")
         assert broker_ref == "MOCK-000100"
 
-    def test_get_broker_ref_unknown_returns_none(self, order_tracker):
+    def test_get_broker_ref_unknown_returns_none(self, request_processor):
         """get_broker_ref() returns None for unknown order_id."""
-        broker_ref = order_tracker.get_broker_ref("NONEXISTENT")
+        broker_ref = request_processor.get_broker_ref("NONEXISTENT")
         assert broker_ref is None
 
-    def test_get_broker_ref_after_fill_returns_none(self, order_tracker):
+    def test_get_broker_ref_after_fill_returns_none(self, request_processor):
         """get_broker_ref() returns None after order is filled (removed from index)."""
-        order_tracker.submit_order(
+        request_processor.register_pending_open(
             order_id="ORD-101",
             symbol="BTCUSD",
             direction=OrderDirection.LONG,
@@ -197,25 +217,25 @@ class TestGetBrokerRefReverseLookup:
             broker_ref="MOCK-000101",
         )
 
-        order_tracker.mark_filled(
+        request_processor.mark_filled(
             broker_ref="MOCK-000101",
             fill_price=50000.0,
             filled_lots=0.001,
         )
 
-        broker_ref = order_tracker.get_broker_ref("ORD-101")
+        broker_ref = request_processor.get_broker_ref("ORD-101")
         assert broker_ref is None
 
-    def test_get_broker_ref_multiple_orders(self, order_tracker):
+    def test_get_broker_ref_multiple_orders(self, request_processor):
         """get_broker_ref() returns correct ref when multiple orders tracked."""
-        order_tracker.submit_order(
+        request_processor.register_pending_open(
             order_id="ORD-102",
             symbol="BTCUSD",
             direction=OrderDirection.LONG,
             lots=0.001,
             broker_ref="MOCK-000102",
         )
-        order_tracker.submit_order(
+        request_processor.register_pending_open(
             order_id="ORD-103",
             symbol="BTCUSD",
             direction=OrderDirection.SHORT,
@@ -223,5 +243,5 @@ class TestGetBrokerRefReverseLookup:
             broker_ref="MOCK-000103",
         )
 
-        assert order_tracker.get_broker_ref("ORD-102") == "MOCK-000102"
-        assert order_tracker.get_broker_ref("ORD-103") == "MOCK-000103"
+        assert request_processor.get_broker_ref("ORD-102") == "MOCK-000102"
+        assert request_processor.get_broker_ref("ORD-103") == "MOCK-000103"

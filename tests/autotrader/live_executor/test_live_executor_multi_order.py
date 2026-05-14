@@ -20,7 +20,7 @@ class TestMultipleOrdersTracked:
     """Multiple orders submitted and tracked independently."""
 
     def test_two_orders_both_fill(self):
-        """Two instant-fill orders both create positions."""
+        """Two instant-fill orders both create positions (after async drain)."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
@@ -30,6 +30,8 @@ class TestMultipleOrdersTracked:
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+        # Drain worker fills via next tick
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         positions = executor.get_open_positions()
         assert len(positions) == 2
@@ -77,32 +79,34 @@ class TestOpenCloseCycle:
     """Full open → close cycle with portfolio verification."""
 
     def test_open_close_cycle_completes(self):
-        """Open and close order completes full cycle."""
+        """Open and close order completes full cycle (async-aware)."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        # Open
+        # Open — async, returns PENDING; fill on next tick drain
         open_result = executor.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
-        assert open_result.status == OrderStatus.EXECUTED
+        assert open_result.status == OrderStatus.PENDING
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         positions = executor.get_open_positions()
         assert len(positions) == 1
         position_id = positions[0].position_id
 
-        # Close at different price
+        # Close at different price — also async
         mock.feed_tick(executor, bid=50100.0, ask=50102.0)
         close_result = executor.close_position(position_id)
-        assert close_result.status == OrderStatus.EXECUTED
+        assert close_result.status == OrderStatus.PENDING
+        mock.feed_tick(executor, bid=50100.0, ask=50102.0)
 
         # No open positions remain
         assert len(executor.get_open_positions()) == 0
 
     def test_trade_history_after_close(self):
-        """Closed trade appears in trade history with P&L."""
+        """Closed trade appears in trade history with P&L (async-aware)."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
@@ -110,12 +114,16 @@ class TestOpenCloseCycle:
         executor.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
+        # Drain open fill so the position exists
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         positions = executor.get_open_positions()
         position_id = positions[0].position_id
 
         mock.feed_tick(executor, bid=50100.0, ask=50102.0)
         executor.close_position(position_id)
+        # Drain close fill so trade history is populated
+        mock.feed_tick(executor, bid=50100.0, ask=50102.0)
 
         trade_history = executor.get_trade_history()
         assert len(trade_history) >= 1
@@ -125,7 +133,7 @@ class TestCloseAllRemaining:
     """close_all_remaining_orders() cleanup."""
 
     def test_close_all_closes_open_positions(self):
-        """close_all_remaining_orders() closes all positions."""
+        """close_all_remaining_orders() closes all positions (async-aware)."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
@@ -135,6 +143,8 @@ class TestCloseAllRemaining:
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.002))
+        # Drain submits so positions materialize
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         assert len(executor.get_open_positions()) == 2
 
@@ -159,7 +169,7 @@ class TestStatsConsistency:
     """Execution stats stay consistent across multiple operations."""
 
     def test_sent_equals_executed_plus_rejected(self):
-        """orders_sent == orders_executed + orders_rejected (all modes)."""
+        """orders_sent == orders_executed + orders_rejected (all modes, async-aware)."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
@@ -172,6 +182,8 @@ class TestStatsConsistency:
             symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
         executor.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001))
+        # Drain worker responses so orders_executed counter catches up
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         stats = executor.get_execution_stats()
         assert stats.orders_sent == stats.orders_executed + stats.orders_rejected

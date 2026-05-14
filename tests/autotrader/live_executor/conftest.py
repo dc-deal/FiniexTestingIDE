@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Live Executor Test Fixtures
-Fixtures for LiveOrderTracker + LiveTradeExecutor + MockBrokerAdapter tests.
+Fixtures for LiveRequestProcessor + LiveTradeExecutor + MockBrokerAdapter tests.
 
 Unlike backtesting suites, these tests do NOT require scenario execution.
 MockOrderExecution provides pre-configured LiveTradeExecutor instances
@@ -15,7 +15,7 @@ import pytest
 from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.trading_env.live.live_order_tracker import LiveOrderTracker
+from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
 
@@ -37,9 +37,9 @@ def logger() -> GlobalLogger:
 
 
 @pytest.fixture
-def order_tracker(logger, timeout_config) -> LiveOrderTracker:
-    """Fresh LiveOrderTracker for isolated unit tests."""
-    return LiveOrderTracker(logger=logger, timeout_config=timeout_config)
+def request_processor(logger, timeout_config) -> LiveRequestProcessor:
+    """Fresh LiveRequestProcessor for isolated unit tests."""
+    return LiveRequestProcessor(logger=logger, timeout_config=timeout_config)
 
 
 @pytest.fixture

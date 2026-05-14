@@ -151,10 +151,11 @@ class AbstractTradeExecutor(ABC):
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
 
-        # Order outcome callback — notifies DecisionTradingApi (or any listener)
-        # of async fill/rejection outcomes (e.g. margin check at fill time).
-        # Signature: (direction: OrderDirection, result: OrderResult) -> None
-        self._order_outcome_callback: Optional[Callable[[OrderDirection, OrderResult], None]] = None
+        # Order outcome listeners — notify DecisionTradingApi, Reconciliation,
+        # and other consumers of async fill/rejection outcomes (e.g. margin
+        # check at fill time). Signature: (direction, result) -> None.
+        # Multi-slot: any number of listeners can register independently.
+        self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult], None]] = []
 
     def _check_order_history_limit(self) -> None:
         """Emit one-time warning when order history reaches capacity."""
@@ -171,22 +172,23 @@ class AbstractTradeExecutor(ABC):
     # Order Outcome Callback
     # ============================================
 
-    def set_order_outcome_callback(
+    def add_order_outcome_listener(
         self,
-        callback: Callable[[OrderDirection, OrderResult], None]
+        listener: Callable[[OrderDirection, OrderResult], None]
     ) -> None:
         """
-        Register a callback for async order outcomes.
+        Register a listener for async order outcomes.
 
-        Called by DecisionTradingApi to receive fill/rejection notifications
-        that happen after the initial open_order() returns PENDING.
-        This bridges the gap between async execution (latency simulation,
-        broker polling) and the synchronous OrderGuard state.
+        Called by DecisionTradingApi (OrderGuard), the Reconciliation Layer,
+        and any other consumer that needs fill/rejection notifications after
+        the initial open_order() returns PENDING. Listeners are notified in
+        registration order. Multi-slot — registering does not replace existing
+        listeners.
 
         Args:
-            callback: Function receiving (direction, result) for each outcome
+            listener: Function receiving (direction, result) for each outcome
         """
-        self._order_outcome_callback = callback
+        self._order_outcome_listeners.append(listener)
 
     def _notify_outcome(
         self,
@@ -194,17 +196,18 @@ class AbstractTradeExecutor(ABC):
         result: OrderResult
     ) -> None:
         """
-        Notify the registered callback of an async order outcome.
+        Notify all registered listeners of an async order outcome.
 
         Called at every point where an order reaches a terminal state
-        (filled or rejected) after the initial PENDING return.
+        (filled or rejected) after the initial PENDING return. Iterates
+        over all registered listeners in registration order.
 
         Args:
             direction: Order direction (LONG/SHORT)
             result: The terminal OrderResult (EXECUTED or REJECTED)
         """
-        if self._order_outcome_callback is not None:
-            self._order_outcome_callback(direction, result)
+        for listener in self._order_outcome_listeners:
+            listener(direction, result)
 
     # ============================================
     # Tick Lifecycle (called by process_tick_loop)
