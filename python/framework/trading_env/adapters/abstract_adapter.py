@@ -9,6 +9,7 @@ Ensures consistent order creation API across different broker types.
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerResponse
@@ -452,6 +453,24 @@ class AbstractAdapter(ABC):
             f"{self.get_broker_name()} does not implement _build_modify_payload"
         )
 
+    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for a per-execution trade-record query.
+
+        Used by #326's Order ↔ Executions Pairing model. The response carries
+        the list of fills produced by the order (1 for typical full fills, N for
+        partial fills). Pure — no I/O, no state mutation.
+
+        Args:
+            broker_ref: Broker's order reference ID
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_trades_query)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_trades_query_payload"
+        )
+
     # --- Transport (broker-side I/O, raises on error) ---
 
     def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -511,6 +530,20 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.get_broker_name()} does not implement _do_request_modify"
+        )
+
+    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send a per-execution trade-record query to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built trades-query payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_trades_query"
         )
 
     # --- Parse responses (pure) ---
@@ -605,6 +638,32 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.get_broker_name()} does not implement _parse_modify_response"
+        )
+
+    def _parse_trades_query_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        order_id: str,
+    ) -> List[BrokerTrade]:
+        """
+        Convert a raw broker trades-query response into a list of BrokerTrade.
+
+        Pure — no I/O, no state mutation. Maps broker-specific execution records
+        (Kraken tradeid/vol/price/fee; MT5 deal ticket/volume/price/commission)
+        to the broker-agnostic BrokerTrade shape. One order produces 1..N records
+        (single full fill produces 1; partial fills produce multiple).
+
+        Args:
+            raw: Raw broker response dict
+            broker_ref: The parent broker order reference (carried into each BrokerTrade)
+            order_id: OUR internal order_id (carried into each BrokerTrade for routing)
+
+        Returns:
+            List of BrokerTrade records (empty list = no executions found / error)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_trades_query_response"
         )
 
     # ============================================

@@ -39,6 +39,7 @@
 | [Simulation vs Live Flow](architecture/simulation_vs_live_flow.md) | Side-by-side tick flow comparison |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
+| [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (balance/drawdown thresholds, AutoTrader only) |

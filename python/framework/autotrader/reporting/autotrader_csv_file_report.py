@@ -109,7 +109,7 @@ class AutotraderCsvFileReport:
         fields = [
             'order_id', 'status', 'executed_price', 'executed_lots',
             'execution_time', 'commission', 'swap', 'slippage_points',
-            'rejection_reason', 'rejection_message', 'broker_order_id',
+            'rejection_reason', 'rejection_message', 'position_id',
         ]
         try:
             with open(path, 'w', newline='') as f:
@@ -127,7 +127,7 @@ class AutotraderCsvFileReport:
                         o.slippage_points,
                         o.rejection_reason.value if o.rejection_reason and hasattr(o.rejection_reason, 'value') else (o.rejection_reason or ''),
                         o.rejection_message,
-                        o.broker_order_id or '',
+                        o.position_id or '',
                     ])
         except Exception as e:
             print(f"Warning: Failed to write order CSV: {e}")

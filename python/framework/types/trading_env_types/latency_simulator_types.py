@@ -12,11 +12,12 @@ Simulation fields: placed_at_msc, broker_fill_msc (millisecond timestamps)
 Live fields:       submitted_at, broker_ref, timeout_at
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.utils.process_serialization_utils import serialize_value
 
@@ -150,6 +151,33 @@ class PendingOrder:
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
 
+    # === Order ↔ Executions pairing (#326) ===
+    # trades: per-execution BrokerTrade records produced by this order.
+    #   Single fill orders typically produce 1 record; partial fills produce N.
+    #   Live: populated by _handle_trades_response after FILLED detection.
+    #   Sim: populated by TradeSimulator._fill_open_order on synthetic fill.
+    # cumulative_*: derived aggregates over trades, cached on append_trade.
+    trades: List[BrokerTrade] = field(default_factory=list)
+    cumulative_filled_lots: float = 0.0
+    cumulative_fee: float = 0.0
+    cumulative_avg_price: float = 0.0
+
+    def append_trade(self, trade: BrokerTrade) -> None:
+        """
+        Append an execution record and recompute cumulative aggregates.
+
+        Args:
+            trade: BrokerTrade to append. Mutates self.trades and the
+                   cumulative_* fields. Idempotent on identical inputs at
+                   the caller — no duplicate detection here.
+        """
+        self.trades.append(trade)
+        self.cumulative_filled_lots = sum(t.volume for t in self.trades)
+        self.cumulative_fee = sum(t.fee for t in self.trades)
+        if self.cumulative_filled_lots > 0:
+            volume_weighted_sum = sum(t.volume * t.price for t in self.trades)
+            self.cumulative_avg_price = volume_weighted_sum / self.cumulative_filled_lots
+
     def to_dict(self) -> dict:
         return {
             'pending_order_id': self.pending_order_id,
@@ -168,4 +196,9 @@ class PendingOrder:
             'close_lots': self.close_lots,
             # Async operation state (#318)
             'in_flight_operation': self.in_flight_operation.value if self.in_flight_operation else None,
+            # Trade records (#326)
+            'trades': [t.to_dict() for t in self.trades],
+            'cumulative_filled_lots': self.cumulative_filled_lots,
+            'cumulative_fee': self.cumulative_fee,
+            'cumulative_avg_price': self.cumulative_avg_price,
         }

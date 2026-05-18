@@ -46,6 +46,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation, PendingOrder, PendingOrderAction
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
@@ -505,6 +506,19 @@ class AbstractTradeExecutor(ABC):
                     )
                     return
 
+        # #326: ensure pending.trades is populated before portfolio open.
+        # If a consumer (live polling, future async trades_query) already
+        # populated it, skip synthesis to preserve the per-execution truth.
+        if not pending_order.trades:
+            self._synthesize_pending_trade(
+                pending_order=pending_order,
+                fill_price=entry_price,
+                filled_lots=pending_order.lots,
+                entry_type=entry_type,
+                symbol_spec=symbol_spec,
+                fee_cost=(entry_fee.cost if entry_fee else 0.0),
+            )
+
         # Open position in portfolio
         position = self.portfolio.open_position(
             order_id=pending_order.pending_order_id,
@@ -533,7 +547,7 @@ class AbstractTradeExecutor(ABC):
             executed_lots=pending_order.lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
-            broker_order_id=position.position_id,
+            position_id=position.position_id,
             metadata={
                 "symbol": pending_order.symbol,
                 "direction": pending_order.direction,
@@ -642,6 +656,20 @@ class AbstractTradeExecutor(ABC):
 
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots
+
+        # #326: synthesize a BrokerTrade for the close execution if not yet
+        # populated. Exit fee is 0.0 in V1 (no exit commission), matching the
+        # portfolio call below; real broker exit fees become available via
+        # async trades_query in a future enhancement.
+        if not pending_order.trades:
+            self._synthesize_pending_trade(
+                pending_order=pending_order,
+                fill_price=close_price,
+                filled_lots=executed_lots,
+                entry_type=EntryType.MARKET,  # closes are market in V1
+                symbol_spec=symbol_spec,
+                fee_cost=0.0,
+            )
 
         # Execute close
         if is_partial:
@@ -1260,3 +1288,48 @@ class AbstractTradeExecutor(ABC):
             tick_value=tick_value,
             digits=symbol_spec.digits
         )
+
+    def _synthesize_pending_trade(
+        self,
+        pending_order: PendingOrder,
+        fill_price: float,
+        filled_lots: float,
+        entry_type: EntryType,
+        symbol_spec: SymbolSpecification,
+        fee_cost: float,
+    ) -> None:
+        """
+        Append a synthetic BrokerTrade to pending_order.trades (#326).
+
+        Shared sim/live helper invoked from _fill_open_order when the order
+        hasn't yet been enriched with per-execution data (no real broker
+        QueryTrades response). One trade per fill; is_maker is derived from
+        entry_type (LIMIT and STOP_LIMIT = maker, MARKET and STOP = taker).
+
+        The fee_cost is the locally-computed entry_fee.cost — this matches
+        what the portfolio receives. #327 Drift Audit compares this against
+        real broker fees when a TradesQueryResponse arrives via the async
+        path; the synthetic baseline supports the comparison.
+
+        Args:
+            pending_order: PendingOrder being filled
+            fill_price: Single aggregate fill price
+            filled_lots: Single aggregate filled volume
+            entry_type: How the position was opened (drives is_maker)
+            symbol_spec: Symbol specification (for fee_currency = quote)
+            fee_cost: Locally-computed entry fee in account currency
+        """
+        is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
+        trade = BrokerTrade(
+            trade_id=f'SYNTH-{pending_order.pending_order_id}',
+            parent_broker_ref=pending_order.broker_ref or '',
+            order_id=pending_order.pending_order_id,
+            volume=filled_lots,
+            price=fill_price,
+            fee=fee_cost,
+            fee_currency=symbol_spec.quote_currency,
+            timestamp=datetime.now(timezone.utc),
+            side=pending_order.direction,
+            is_maker=is_maker,
+        )
+        pending_order.append_trade(trade)

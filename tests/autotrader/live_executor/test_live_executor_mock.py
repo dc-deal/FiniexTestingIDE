@@ -39,7 +39,7 @@ class TestInstantFill:
 
         # Initial return is PENDING — broker_ref is set later via drain_inbox
         assert result.status == OrderStatus.PENDING
-        assert result.broker_order_id is None
+        assert result.position_id is None
 
     def test_instant_fill_creates_position(self, mock_instant, executor_instant):
         """Instant fill creates an open position after the next tick drain."""
@@ -138,7 +138,7 @@ class TestDelayedFill:
         # not yet known. The broker_ref gets confirmed on the next tick
         # via drain_inbox.
         assert result.status == OrderStatus.PENDING
-        assert result.broker_order_id is None
+        assert result.position_id is None
 
     def test_pending_order_tracked(self, mock_delayed, executor_delayed):
         """Delayed order is tracked as pending."""

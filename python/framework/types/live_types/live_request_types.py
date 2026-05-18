@@ -25,11 +25,12 @@ Response types (inbox, worker → main):
     PositionModifyResponse result of a PositionModifyJob (#318)
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.types.live_types.live_execution_types import BrokerResponse
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
 from python.framework.types.trading_env_types.order_types import OrderType
 
@@ -234,3 +235,63 @@ class PositionModifyResponse:
     """
     position_id: str
     broker_response: BrokerResponse
+
+
+# ============================================
+# #326 — Broker Trade Record Pull (Order ↔ Executions Pairing)
+# ============================================
+# After an order reports FILLED, fetch its per-execution detail via the
+# adapter's Tier-3 trades-query layer. drain_inbox routes the response to
+# LiveTradeExecutor._handle_trades_response, which appends each trade to
+# pending.trades (updating cumulative_*) and triggers _fill_open_order
+# with the aggregated cumulative_avg_price / cumulative_fee.
+#
+# See docs/architecture/broker_trade_records.md and ISSUE_326 §8.
+
+
+@dataclass
+class TradesQueryJob:
+    """
+    Trades-query job — fetches the per-execution detail for a filled order.
+
+    The worker uses the adapter's Tier-3 trades-query triple:
+        adapter._build_trades_query_payload(broker_ref)
+        adapter._do_request_trades_query(payload) → raw
+        adapter._parse_trades_query_response(raw, broker_ref, order_id)
+            → List[BrokerTrade]
+
+    Args:
+        order_id: Internal order identifier (primary routing key in drain)
+        broker_ref: Parent order's broker_ref (Kraken txid, MT5 order ticket)
+        adapter: Live-capable adapter with trade_level_reporting capability
+    """
+    order_id: str
+    broker_ref: str
+    adapter: AbstractAdapter
+
+
+@dataclass
+class TradesQueryResponse:
+    """
+    Result of a TradesQueryJob carried via _http_inbox to the main thread.
+
+    drain_inbox routes this to LiveTradeExecutor._handle_trades_response,
+    which appends each trade to pending.trades, updates cumulative_*, and
+    triggers _fill_open_order with the aggregated values.
+
+    Stale-response guard: if response.broker_ref != pending.broker_ref at
+    drain time (e.g. after an EditOrder flipped the ref), the response is
+    discarded.
+
+    Args:
+        order_id: Internal order identifier (matches TradesQueryJob.order_id)
+        broker_ref: Parent order's broker_ref at query time (stale-response guard)
+        trades: List of BrokerTrade records (empty on broker error / no data)
+        success: True if query succeeded; False on broker rejection or transport error
+        error_message: Non-empty if success=False
+    """
+    order_id: str
+    broker_ref: str
+    trades: List[BrokerTrade] = field(default_factory=list)
+    success: bool = True
+    error_message: Optional[str] = None

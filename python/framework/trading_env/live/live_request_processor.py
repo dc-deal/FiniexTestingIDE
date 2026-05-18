@@ -59,6 +59,8 @@ from python.framework.types.live_types.live_request_types import (
     PositionModifyResponse,
     SubmitJob,
     SubmitResponse,
+    TradesQueryJob,
+    TradesQueryResponse,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
@@ -129,6 +131,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._position_modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
+        # #326: trades-query drain handler — main-thread callback receiving
+        # the parsed TradesQueryResponse so the executor can append trades to
+        # pending.trades and trigger _fill_open_order with cumulative truth.
+        self._trades_response_hook: Optional[Callable[[TradesQueryResponse], None]] = None
 
     # ============================================
     # High-Level Orchestrators (sync in V1, async post-step-6)
@@ -566,6 +572,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         position_modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
+        trades_response: Optional[Callable[[TradesQueryResponse], None]] = None,
     ) -> None:
         """
         Register executor callbacks for async outcomes.
@@ -600,6 +607,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                             _handle_position_modify_response(position_id,
                             broker_response). Invoked for PositionModifyResponse
                             so the executor can apply SL/TP to portfolio.
+            trades_response: Optional (#326) — _handle_trades_response(response).
+                            Invoked for TradesQueryResponse so the executor can
+                            append per-execution BrokerTrade records to the
+                            parent PendingOrder and finalize the fill with
+                            cumulative truth (price + fee).
         """
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
@@ -608,6 +620,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._modify_response_hook = modify_response
         self._cancel_response_hook = cancel_response
         self._position_modify_response_hook = position_modify_response
+        self._trades_response_hook = trades_response
 
     def start_worker(self) -> None:
         """
@@ -672,6 +685,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._dispatch_cancel_job(job)
             elif isinstance(job, PositionModifyJob):
                 self._dispatch_position_modify_job(job)
+            elif isinstance(job, TradesQueryJob):
+                self._dispatch_trades_query_job(job)
             else:
                 self.logger.warning(
                     f'Unknown job type in outbox: {type(job).__name__}'
@@ -814,6 +829,39 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_response=response,
         ))
 
+    def _dispatch_trades_query_job(self, job: TradesQueryJob) -> None:
+        """
+        Worker-thread handler for TradesQueryJob (#326).
+
+        Composes adapter Tier-3 trades-query layer:
+            _build_trades_query_payload → _do_request_trades_query
+            → _parse_trades_query_response
+
+        Transport errors are surfaced as a TradesQueryResponse with success=False
+        and an empty trades list — the main thread's drain handler decides how
+        to react (typically: leave the pending in place, retry on next poll).
+        """
+        try:
+            payload = job.adapter._build_trades_query_payload(job.broker_ref)
+            raw = job.adapter._do_request_trades_query(payload)
+            trades = job.adapter._parse_trades_query_response(
+                raw, broker_ref=job.broker_ref, order_id=job.order_id,
+            )
+            self._http_inbox.put(TradesQueryResponse(
+                order_id=job.order_id,
+                broker_ref=job.broker_ref,
+                trades=trades,
+                success=True,
+            ))
+        except Exception as e:
+            self._http_inbox.put(TradesQueryResponse(
+                order_id=job.order_id,
+                broker_ref=job.broker_ref,
+                trades=[],
+                success=False,
+                error_message=str(e),
+            ))
+
     def flush_outbox(self, timeout: float = 2.0) -> bool:
         """
         Block until the worker has processed all queued outbox jobs.
@@ -867,6 +915,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._handle_cancel_response(item)
             elif isinstance(item, PositionModifyResponse):
                 self._handle_position_modify_response(item)
+            elif isinstance(item, TradesQueryResponse):
+                self._handle_trades_query_response(item)
             else:
                 self.logger.warning(
                     f'Unknown response type in inbox: {type(item).__name__}'
@@ -1002,6 +1052,23 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self.logger.warning(
                 f"drain_inbox: PositionModifyResponse for {item.position_id} "
                 f"but no position_modify_response_hook registered"
+            )
+
+    def _handle_trades_query_response(self, item: TradesQueryResponse) -> None:
+        """
+        Main-thread handler for a TradesQueryResponse (#326).
+
+        Delegates to the executor's _trades_response_hook. The hook appends
+        each BrokerTrade to the parent PendingOrder.trades, updates
+        cumulative_* aggregates, and finalizes the fill via _fill_open_order.
+        See ISSUE_326 §8 Post-Drain Distribution Flow for the full chain.
+        """
+        if self._trades_response_hook is not None:
+            self._trades_response_hook(item)
+        else:
+            self.logger.warning(
+                f"drain_inbox: TradesQueryResponse for {item.order_id} "
+                f"but no trades_response_hook registered"
             )
 
     # ============================================
@@ -1197,6 +1264,32 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol=symbol,
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit,
+            adapter=adapter,
+        ))
+
+    def submit_trades_query_async(
+        self,
+        order_id: str,
+        broker_ref: str,
+        adapter: AbstractAdapter,
+    ) -> None:
+        """
+        Enqueue a TradesQueryJob for the worker thread (#326).
+
+        Triggered by LiveTradeExecutor after a query response detects FILLED.
+        The worker fetches per-execution trade records via the adapter's
+        Tier-3 trades_query layer; drain_inbox routes the response to
+        _handle_trades_response, which appends BrokerTrade records to
+        pending.trades and finalizes the fill.
+
+        Args:
+            order_id: Internal order identifier (primary routing key)
+            broker_ref: Parent order's broker reference
+            adapter: Live-capable adapter with trade_level_reporting capability
+        """
+        self._http_outbox.put(TradesQueryJob(
+            order_id=order_id,
+            broker_ref=broker_ref,
             adapter=adapter,
         ))
 

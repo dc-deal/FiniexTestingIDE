@@ -150,6 +150,15 @@ class OrderCapabilities:
     # False, modify_position falls back to instant local portfolio update.
     native_position_sl_tp: bool = False
 
+    # Trade-record reporting (#326)
+    # trade_level_reporting: broker exposes per-execution detail (Kraken
+    # QueryTrades, MT5 HistoryDealsGet). When True, the executor queries
+    # trade records on FILLED via the Tier-3 trades_query layer and
+    # populates pending.trades + cumulative_* aggregates. When False,
+    # the executor synthesizes a single aggregate BrokerTrade from the
+    # query response — the data model stays consistent.
+    trade_level_reporting: bool = True
+
     def supports_order_type(self, order_type: OrderType) -> bool:
         """Check if broker supports specific order type"""
         mapping = {
@@ -294,7 +303,7 @@ class OrderResult:
     rejection_reason: Optional[RejectionReason] = None
     rejection_message: str = ""
 
-    broker_order_id: Optional[str] = None
+    position_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -322,7 +331,7 @@ class OrderResult:
             'rejection_reason': self.rejection_reason.value if self.rejection_reason else None,
             'rejection_message': self.rejection_message,
 
-            'broker_order_id': self.broker_order_id,
+            'position_id': self.position_id,
             'metadata': serialize_value(self.metadata),
         }
 
