@@ -51,16 +51,17 @@ tests/
 │   ├── active_order_display/  integration — order display in scenario summary
 │   ├── pending_stats/     integration — pending order statistics
 │   ├── modify_lifecycle/  unit — async modify/cancel scheduling + resolution (#318)
+│   ├── trade_emission/    unit — sim BrokerTrade emission via shared _fill_open_order (#326)
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
-│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel (#319, #321, #318)
+│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query (#319, #321, #318, #326)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   └── safety/            unit — circuit breaker (margin + spot)
 │
-├── parity/                parity — simulation vs. AutoTrader identical output (#294)
+├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326)
 │
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency

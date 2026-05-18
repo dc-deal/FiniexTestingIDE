@@ -4,26 +4,22 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.2.2
+> **Version:** 1.2.3
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.2.2
+## What's New in 1.2.3
 
-- **FiniexAutoTrader — Live Trading Pipeline** — Connects to real brokers for live and paper trading. Processes real-time tick streams, evaluates strategies continuously, and executes orders through broker APIs. Currently supports Kraken Spot with dry-run (order validation without execution) and live modes. Production-validated: end-to-end live trades executed and verified.
-- **Live Console UI** — Rich terminal dashboard during live sessions: session health, portfolio balance with spot dual-balance breakdown, open positions, active orders, trade history, algo state with configurable display labels, and worker performance metrics. Responsive 1/2/3-column layout.
-- **Spot Trading Model** — Full dual-balance tracking (quote currency + held asset). Equity calculation includes held assets at current market price. Safety circuit breaker operates on equity rather than raw cash balance.
-- **Order Guard & Position Safety** — Duplicate open-position guard prevents multiple entries on repeated signals. SHORT protection in spot mode. Direction-specific rejection cooldown after broker-side rejections.
-- **AwarenessChannel** — Narration channel for decision logic: emit named strategy moments that surface in the live display without impacting execution.
-- **REST API Foundation** — Read-only FastAPI server for tick and bar data. Foundation for FiniexViewer and remote session monitoring.
-- **Dual-Pipeline Parity Tests** — Regression suite ensuring the backtesting simulation and AutoTrader pipelines produce identical results for the same strategy and data.
-- **User Algo Workspace** — `user_algos/` consolidates USER workers and decision logics into a gitignored, independently version-controlled workspace.
-- **Worker & Decision Output Schema** — Typed output parameters with display labels. Uniform schema across all workers and decision logics — feeds directly into the live display algo state panel.
+- **Live Execution Architecture Refactor** — `LiveRequestProcessor` introduces symmetric sim/live pipelines, a multi-listener foundation for order outcomes, async HTTP dispatch via a worker thread, and a Tier-3-decoupled adapter contract (build payload / send request / parse response per operation). Removes the synchronous HTTP bottleneck on the main thread.
+- **Async Modify, Cancel, and Position-Modify** — All order lifecycle operations now run through the worker thread with a `PendingOperation` state machine on the order itself. `has_in_flight_operation(order_id)` lets algos wait for resolution. Position-level SL/TP modify is capability-gated (Kraken Spot uses local fallback; MT5 will use async when added).
+- **Broker Trade Record Model — Order ↔ Executions Pairing** — Per-execution data model (`BrokerTrade`) mirrors what every institutional broker provides: each order produces one or more execution records with their own price, volume, fee, and timestamp. `pending.trades` plus cumulative aggregates (filled lots, avg price, fee) flow through the shared fill path. Tier-3 trades-query layer on every adapter; Kraken implementation uses the two-call `QueryOrders+QueryTrades` pattern. Mock supports configurable multi-trade emission for partial-fill regression testing.
+- **Test Suite Expansion** — Async submit regression tests (#321), async modify/cancel parity tests, sim modify lifecycle, broker trade records, sim trade emission, trade records parity. 1041 tests total.
 
 ### Previous Releases
 
+- **1.2.2** — FiniexAutoTrader Live Trading Pipeline, Live Console UI, Spot Trading Model, Order Guard, AwarenessChannel, REST API Foundation, Dual-Pipeline Parity Tests, User Algo Workspace
 - **1.2.1** — Millisecond-based latency timing, inbound-only fill semantics, tick processing budget, generator profile system
 - **1.2.0** — USER Namespace, trading core completion (all order types), tick data trimming, unified test runner, discovery cache
 - **1.1.2** — STOP/STOP_LIMIT orders, active order preservation and reporting
@@ -240,6 +236,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 
 **Horizon 2 — Live Trading: In Progress (V1.3)**
 - FiniexAutoTrader pipeline with Kraken Spot, production-validated (V1.2.2)
+- Live execution refactor with async dispatch and broker trade record model (V1.2.3)
 - Remaining: Reconciliation Layer, Config Architecture Unification, Production Bot
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.

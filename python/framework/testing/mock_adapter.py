@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
     BrokerSpecification,
     BrokerType,
@@ -122,6 +123,7 @@ class MockBrokerAdapter(AbstractAdapter):
         self,
         mode: MockExecutionMode = MockExecutionMode.INSTANT_FILL,
         broker_config: Optional[Dict[str, Any]] = None,
+        trades_per_fill: int = 1,
     ):
         """
         Initialize mock adapter.
@@ -129,6 +131,10 @@ class MockBrokerAdapter(AbstractAdapter):
         Args:
             mode: Execution behavior (instant_fill, delayed_fill, reject_all, timeout)
             broker_config: Override config (default: BTCUSD mock config)
+            trades_per_fill: How many BrokerTrade records to emit per fill (#326).
+                Default 1 = single trade for the full volume. > 1 splits the
+                fill volume evenly into N records with small price offsets —
+                used by partial-fill regression tests.
         """
         config = broker_config or _MOCK_BROKER_CONFIG.copy()
         # Deep copy symbols to avoid mutation
@@ -147,6 +153,13 @@ class MockBrokerAdapter(AbstractAdapter):
         # orders at the current market price instead of a static fallback.
         self._last_ticks: Dict[str, TickData] = {}
 
+        # === #326 Trade Record Emission ===
+        # Per-broker_ref trade records, populated on fill. Looked up later
+        # by _do_request_trades_query. Empty until an order produces fills.
+        self._trades_per_fill: int = trades_per_fill
+        self._mock_trades: Dict[str, List[Dict[str, Any]]] = {}
+        self._trade_counter: int = 0
+
     # ============================================
     # Configuration (required by AbstractAdapter)
     # ============================================
@@ -164,7 +177,9 @@ class MockBrokerAdapter(AbstractAdapter):
         return BrokerType.KRAKEN_SPOT
 
     def get_order_capabilities(self) -> OrderCapabilities:
-        """Mock supports market orders only (feature gating)."""
+        """Mock supports market orders only (feature gating). Trade-level
+        reporting is True so the live executor exercises the trades-query
+        drain path during tests."""
         return OrderCapabilities(
             market_orders=True,
             limit_orders=False,
@@ -174,6 +189,7 @@ class MockBrokerAdapter(AbstractAdapter):
             iceberg_orders=False,
             hedging_allowed=False,
             partial_fills_supported=False,
+            trade_level_reporting=True,
         )
 
     # ============================================
@@ -417,6 +433,9 @@ class MockBrokerAdapter(AbstractAdapter):
             'new_take_profit': new_take_profit,
         }
 
+    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+        return {'broker_ref': broker_ref}
+
     # --- Mock transport (mutates mock state, returns status-tagged raw) ---
 
     def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -442,10 +461,20 @@ class MockBrokerAdapter(AbstractAdapter):
         market_price = self._resolve_market_fill_price(symbol, direction, expected_price)
 
         if self._mode == MockExecutionMode.INSTANT_FILL:
+            fill_price = market_price + self._slippage_points
+            # #326: emit synthetic trade records for this fill
+            self._record_mock_trades(
+                broker_ref=broker_ref,
+                symbol=symbol,
+                direction=direction,
+                total_lots=lots,
+                fill_price=fill_price,
+                is_maker=False,  # mock submits are market = taker
+            )
             return {
                 'status': 'FILLED',
                 'broker_ref': broker_ref,
-                'fill_price': market_price + self._slippage_points,
+                'fill_price': fill_price,
                 'filled_lots': lots,
             }
 
@@ -484,10 +513,20 @@ class MockBrokerAdapter(AbstractAdapter):
             }
 
         order_data = self._mock_pending.pop(broker_ref)
+        fill_price = order_data['expected_price'] + self._slippage_points
+        # #326: emit synthetic trade records for this DELAYED_FILL resolution
+        self._record_mock_trades(
+            broker_ref=broker_ref,
+            symbol=order_data['symbol'],
+            direction=order_data['direction'],
+            total_lots=order_data['lots'],
+            fill_price=fill_price,
+            is_maker=False,
+        )
         return {
             'status': 'FILLED',
             'broker_ref': broker_ref,
-            'fill_price': order_data['expected_price'] + self._slippage_points,
+            'fill_price': fill_price,
             'filled_lots': order_data['lots'],
         }
 
@@ -501,6 +540,18 @@ class MockBrokerAdapter(AbstractAdapter):
         return {
             'status': 'CANCELLED',
             'broker_ref': broker_ref,
+        }
+
+    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Simulate broker trades-query transport. Returns the synthetic trade
+        records recorded at fill time (see _record_mock_trades). Unknown
+        broker_ref returns an empty list — equivalent to "no trades yet".
+        """
+        broker_ref = payload['broker_ref']
+        return {
+            'broker_ref': broker_ref,
+            'trades': self._mock_trades.get(broker_ref, []),
         }
 
     def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -583,6 +634,34 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
+    def _parse_trades_query_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        order_id: str,
+    ) -> List[BrokerTrade]:
+        """
+        Convert mock trade dicts into BrokerTrade records. The mock stores
+        intermediate dicts at _record_mock_trades time; this layer injects
+        the caller-supplied order_id (which the mock does not own) and the
+        parent_broker_ref into each BrokerTrade.
+        """
+        out: List[BrokerTrade] = []
+        for t in raw.get('trades', []):
+            out.append(BrokerTrade(
+                trade_id=t['trade_id'],
+                parent_broker_ref=broker_ref,
+                order_id=order_id,
+                volume=t['volume'],
+                price=t['price'],
+                fee=t['fee'],
+                fee_currency=t['fee_currency'],
+                timestamp=t['timestamp'],
+                side=t['side'],
+                is_maker=t['is_maker'],
+            ))
+        return out
+
     # ============================================
     # Mock Configuration Helpers
     # ============================================
@@ -604,6 +683,72 @@ class MockBrokerAdapter(AbstractAdapter):
             points: Price offset applied to fills (positive = worse price)
         """
         self._slippage_points = points
+
+    def set_trades_per_fill(self, n: int) -> None:
+        """
+        Configure how many synthetic BrokerTrade records to emit per fill (#326).
+
+        Args:
+            n: Number of trades to split each fill into. 1 = single full trade,
+               > 1 = N trades with even volume and small price offsets (used by
+               partial-fill regression tests).
+        """
+        if n < 1:
+            raise ValueError(f"trades_per_fill must be >= 1, got {n}")
+        self._trades_per_fill = n
+
+    def _record_mock_trades(
+        self,
+        broker_ref: str,
+        symbol: str,
+        direction: OrderDirection,
+        total_lots: float,
+        fill_price: float,
+        is_maker: bool,
+    ) -> None:
+        """
+        Synthesize per-execution trade records for a mock fill (#326).
+
+        Splits total_lots evenly across self._trades_per_fill records. For N>1,
+        applies small price offsets around fill_price to model book-walking.
+        Stores trade dicts in self._mock_trades — _parse_trades_query_response
+        maps these to BrokerTrade later, when the caller supplies an order_id.
+
+        Args:
+            broker_ref: Parent order's broker reference
+            symbol: Trading symbol (for fee currency resolution)
+            direction: LONG or SHORT
+            total_lots: Filled volume to split across trades
+            fill_price: Center price; multi-trade splits offset around this
+            is_maker: True for limit/maker, False for market/taker
+        """
+        n = self._trades_per_fill
+        quote_currency = (
+            self.broker_config.get('symbols', {})
+            .get(symbol, {})
+            .get('quote_currency', 'USD')
+        )
+        fee_rate = 0.0016 if is_maker else 0.0026
+        records: List[Dict[str, Any]] = []
+        for i in range(n):
+            self._trade_counter += 1
+            volume = total_lots / n
+            # Symmetric price offset around fill_price for n > 1
+            price_offset = 0.0
+            if n > 1:
+                price_offset = (i - (n - 1) / 2.0) * 0.01
+            price = fill_price + price_offset
+            records.append({
+                'trade_id': f'MOCK-TRADE-{self._trade_counter:06d}',
+                'volume': volume,
+                'price': price,
+                'fee': volume * price * fee_rate,
+                'fee_currency': quote_currency,
+                'timestamp': datetime.now(timezone.utc),
+                'side': direction,
+                'is_maker': is_maker,
+            })
+        self._mock_trades[broker_ref] = records
 
     def add_symbol(self, symbol: str, spec: Dict[str, Any]) -> None:
         """

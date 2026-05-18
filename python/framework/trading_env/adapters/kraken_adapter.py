@@ -19,12 +19,13 @@ import hmac
 import json
 import time
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
 
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
@@ -640,6 +641,22 @@ class KrakenAdapter(AbstractAdapter):
             data['price'] = str(new_price)
         return data
 
+    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, str]:
+        """
+        Build Kraken trades-query payload (#326).
+
+        Pure — no I/O, no state. The payload carries only the order's txid;
+        _do_request_trades_query performs the two-call Kraken pattern
+        (QueryOrders trades=true → QueryTrades) internally.
+
+        Args:
+            broker_ref: Kraken order txid
+
+        Returns:
+            POST data dict
+        """
+        return {'txid': broker_ref}
+
     # --- HTTP transport (raises on error) ---
 
     def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -735,6 +752,48 @@ class KrakenAdapter(AbstractAdapter):
                 'new_price': float(payload['price']) if 'price' in payload else None,
             }
         return self._fetch_private('/0/private/EditOrder', payload)
+
+    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fetch per-execution trade records for an order (#326). Two-call Kraken
+        pattern internally:
+            1. QueryOrders(trades=true)  → list of trade IDs for this order
+            2. QueryTrades(txid=ids)     → full trade detail per ID
+
+        Dry-run orders (DRYRUN-* refs) do not produce real trade records —
+        returns a sentinel-tagged dict that _parse_trades_query_response
+        converts to an empty list.
+
+        Args:
+            payload: Pre-built trades-query payload (carries the order's txid)
+
+        Returns:
+            Raw Kraken result dict (sentinel-tagged in dry-run; otherwise
+            wraps the QueryTrades response under 'trades_raw')
+        """
+        broker_ref = payload['txid']
+        if self._dry_run or broker_ref.startswith('DRYRUN-'):
+            return {
+                self._DRY_RUN_SENTINEL: 'trades_query',
+                'broker_ref': broker_ref,
+            }
+
+        # Step 1 — get trade IDs from QueryOrders(trades=true)
+        order_resp = self._fetch_private(
+            '/0/private/QueryOrders',
+            {'txid': broker_ref, 'trades': 'true'},
+        )
+        order_data = order_resp.get(broker_ref, {})
+        trade_ids: List[str] = order_data.get('trades', []) or []
+        if not trade_ids:
+            return {'broker_ref': broker_ref, 'trades_raw': {}}
+
+        # Step 2 — get full trade detail from QueryTrades (comma-separated ids)
+        trades_resp = self._fetch_private(
+            '/0/private/QueryTrades',
+            {'txid': ','.join(trade_ids)},
+        )
+        return {'broker_ref': broker_ref, 'trades_raw': trades_resp}
 
     # --- Parse responses (pure) ---
 
@@ -885,6 +944,67 @@ class KrakenAdapter(AbstractAdapter):
             raw_response=raw,
         )
 
+    def _parse_trades_query_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        order_id: str,
+    ) -> List[BrokerTrade]:
+        """
+        Parse Kraken QueryTrades response into List[BrokerTrade] (#326).
+
+        Pure w.r.t. broker payload. Maps each tradeid → BrokerTrade. Kraken
+        fields: ordertxid (parent), pair, time (Unix seconds), type
+        (buy/sell), ordertype (limit-class = maker), price, vol, fee.
+
+        Dry-run sentinel returns an empty list — synthetic dry-run orders
+        do not produce real per-execution detail. Documented limitation.
+
+        Args:
+            raw: Raw Kraken result dict (output of _do_request_trades_query)
+            broker_ref: The order's broker_ref (cross-checked against ordertxid)
+            order_id: OUR internal order_id (injected into every BrokerTrade)
+
+        Returns:
+            List of BrokerTrade records, empty if order produced no trades
+            (or dry-run path)
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) == 'trades_query':
+            return []
+
+        trades_raw: Dict[str, Any] = raw.get('trades_raw', {}) or {}
+        out: List[BrokerTrade] = []
+        for trade_id, trade_data in trades_raw.items():
+            ordertype = str(trade_data.get('ordertype', ''))
+            is_maker = (
+                ordertype.startswith('limit')
+                or ordertype in ('take-profit-limit', 'stop-loss-limit')
+            )
+            side = (
+                OrderDirection.LONG
+                if trade_data.get('type') == 'buy'
+                else OrderDirection.SHORT
+            )
+            fee_currency = self._resolve_quote_currency_from_pair(
+                trade_data.get('pair', '')
+            )
+            out.append(BrokerTrade(
+                trade_id=trade_id,
+                parent_broker_ref=trade_data.get('ordertxid', broker_ref),
+                order_id=order_id,
+                volume=float(trade_data.get('vol', 0.0)),
+                price=float(trade_data.get('price', 0.0)),
+                fee=float(trade_data.get('fee', 0.0)),
+                fee_currency=fee_currency,
+                timestamp=datetime.fromtimestamp(
+                    float(trade_data.get('time', 0.0)),
+                    tz=timezone.utc,
+                ),
+                side=side,
+                is_maker=is_maker,
+            ))
+        return out
+
     # ============================================
     # Kraken REST API — HTTP + Signing
     # ============================================
@@ -984,6 +1104,28 @@ class KrakenAdapter(AbstractAdapter):
 
         # Last resort: return symbol as-is
         return symbol
+
+    def _resolve_quote_currency_from_pair(self, pair: str) -> str:
+        """
+        Resolve a Kraken pair string to the quote currency from broker config.
+
+        Used by _parse_trades_query_response to fill BrokerTrade.fee_currency.
+        Iterates broker_config symbols looking for a kraken_pair_name match.
+        Falls back to 'USD' if no match (most spot pairs are USD-quoted).
+
+        Args:
+            pair: Kraken pair string (e.g., 'XBTUSD', 'XETHZUSD')
+
+        Returns:
+            Quote currency code (e.g., 'USD', 'EUR')
+        """
+        if not pair:
+            return 'USD'
+        symbols = self.broker_config.get('symbols', {}) or {}
+        for symbol_info in symbols.values():
+            if symbol_info.get('kraken_pair_name') == pair:
+                return symbol_info.get('quote_currency', 'USD')
+        return 'USD'
 
     # ============================================
     # Credentials Loading

@@ -49,6 +49,7 @@ from python.framework.types.live_types.live_execution_types import (
     BrokerResponse,
     TimeoutConfig,
 )
+from python.framework.types.live_types.live_request_types import TradesQueryResponse
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
@@ -171,6 +172,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             modify_response=self._handle_modify_response,
             cancel_response=self._handle_cancel_response,
             position_modify_response=self._handle_position_modify_response,
+            trades_response=self._handle_trades_response,
         )
 
         # Start the processor's worker thread.
@@ -263,7 +265,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._request_processor.record_outcome(
                 filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
 
-            # Call inherited fill processing
+            # Call inherited fill processing (synthesizes pending.trades
+            # entry inside _fill_open_order/close_order if not yet populated)
             if filled.order_action == PendingOrderAction.OPEN:
                 self._fill_open_order(filled, fill_price=response.fill_price)
             elif filled.order_action == PendingOrderAction.CLOSE:
@@ -585,6 +588,79 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
     # ============================================
+    # Trade Records Drain Handler (#326)
+    # ============================================
+
+    def _handle_trades_response(self, response: TradesQueryResponse) -> None:
+        """
+        Drain-inbox hook for TradesQueryResponse (#326) — the post-drain
+        distribution flow anchor (see ISSUE_326 §8).
+
+        Appends per-execution BrokerTrade records to the parent
+        PendingOrder.trades, updates cumulative_* aggregates. If the order
+        is still in _active_limit_orders, finalizes the fill via
+        _fill_open_order with the cumulative truth.
+
+        In V1, the polling paths (_handle_broker_response, _process_active_orders)
+        synthesize a single BrokerTrade inline before _fill_open_order, so the
+        order is already removed from active state by the time async trades_query
+        responses arrive (if any). The drain handler then logs and skips.
+
+        Tests bypass polling and use the async path directly, which lands here
+        with the order still in _active_limit_orders — the full §8 distribution
+        runs in that case.
+
+        Args:
+            response: TradesQueryResponse from the worker thread
+        """
+        if not response.success:
+            self.logger.warning(
+                f"TradesQueryResponse error for {response.order_id}: "
+                f"{response.error_message or 'unknown'}"
+            )
+            return
+
+        pending = self._find_active_order(response.order_id)
+        if pending is None:
+            # Order likely already finalized via sync polling path. The trades
+            # data arrived too late to influence the fill. Future #320 async
+            # polling will keep the order alive until trades arrive.
+            self.logger.debug(
+                f"drain_inbox: TradesQueryResponse for {response.order_id} "
+                f"(order already finalized — V1 sync polling path)"
+            )
+            return
+
+        # Stale-response guard — broker_ref may have flipped via EditOrder
+        if pending.broker_ref != response.broker_ref:
+            self.logger.debug(
+                f"Discarding stale trades response for {response.order_id} "
+                f"(response.broker_ref={response.broker_ref} != "
+                f"pending.broker_ref={pending.broker_ref})"
+            )
+            return
+
+        # Append each broker trade — updates cumulative_*
+        for trade in response.trades:
+            pending.append_trade(trade)
+
+        # Finalize the fill if cumulative volume populated (post-§8 distribution)
+        if pending.cumulative_filled_lots > 0:
+            self._active_limit_orders.remove(pending)
+            self._fill_open_order(
+                pending,
+                fill_price=pending.cumulative_avg_price,
+                entry_type=EntryType.LIMIT,
+                fill_type=FillType.LIMIT,
+            )
+            self.logger.info(
+                f"🎯 Order {pending.pending_order_id} filled via trades drain "
+                f"at avg {pending.cumulative_avg_price:.5f} "
+                f"({len(pending.trades)} trade(s), "
+                f"cumulative_lots={pending.cumulative_filled_lots})"
+            )
+
+    # ============================================
     # Active Order Processing (broker-accepted, waiting for trigger)
     # ============================================
 
@@ -609,6 +685,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending.broker_ref, self.broker.adapter)
 
             if response.status == BrokerOrderStatus.FILLED:
+                # _fill_open_order synthesizes a BrokerTrade into pending.trades
+                # before the portfolio open call when pending.trades is empty.
                 self._fill_open_order(
                     pending, fill_price=response.fill_price,
                     entry_type=EntryType.LIMIT, fill_type=FillType.LIMIT)
@@ -720,7 +798,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
-                broker_order_id=None,
+                position_id=None,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction.value,
@@ -771,7 +849,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         result = OrderResult(
             order_id=order_id,
             status=OrderStatus.PENDING,
-            broker_order_id=None,
+            position_id=None,
             metadata={
                 "symbol": request.symbol,
                 "direction": request.direction.value,
@@ -837,7 +915,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         return OrderResult(
             order_id=position_id,
             status=OrderStatus.PENDING,
-            broker_order_id=None,
+            position_id=None,
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
             metadata={"awaiting_fill": True, "broker_ref": None},

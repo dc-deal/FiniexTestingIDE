@@ -6,7 +6,7 @@ test_live_executor_mock.py covers outcomes — these tests assert the lifecycle
 itself so a regression to a sync-via-shortcut (which would pass outcome tests)
 cannot slip through:
 
-- open_order() returns PENDING immediately, broker_order_id is None
+- open_order() returns PENDING immediately, position_id is None
 - pending exists in the processor with broker_ref=None during the in-flight window
 - drain_inbox() on the next tick confirms broker_ref and dispatches the fill
 - The multi-listener outcome chain runs on the main thread post-drain
@@ -33,7 +33,7 @@ class TestAsyncSubmitInstantFill:
     """Initial submit returns PENDING; fill arrives via drain_inbox on next tick."""
 
     def test_async_submit_instant_fill_returns_pending(self, mock_instant, executor_instant):
-        """Initial open_order() returns PENDING with broker_order_id=None even in INSTANT_FILL mode.
+        """Initial open_order() returns PENDING with position_id=None even in INSTANT_FILL mode.
 
         The fill is synthesized by the worker but only applied to the executor
         state by drain_inbox on the next tick. Until then, the caller sees the
@@ -47,7 +47,7 @@ class TestAsyncSubmitInstantFill:
         ))
 
         assert result.status == OrderStatus.PENDING
-        assert result.broker_order_id is None
+        assert result.position_id is None
         assert executor_instant.has_pending_orders()
 
     def test_async_submit_instant_fill_creates_position_after_tick(self, mock_instant, executor_instant):
@@ -198,7 +198,7 @@ class TestAsyncSubmitClose:
 
         close_result = executor_instant.close_position(position_id)
         assert close_result.status == OrderStatus.PENDING
-        assert close_result.broker_order_id is None
+        assert close_result.position_id is None
         assert executor_instant.has_pending_orders()
 
         mock_instant.feed_tick(executor_instant, bid=50100.0, ask=50102.0)
@@ -279,7 +279,7 @@ class TestAsyncSubmitMultiple:
                 comment=f"order_{i}",
             ))
             assert result.status == OrderStatus.PENDING
-            assert result.broker_order_id is None
+            assert result.position_id is None
 
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 

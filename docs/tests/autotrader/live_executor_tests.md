@@ -32,7 +32,8 @@ tests/autotrader/live_executor/
 ├── test_live_executor_modify.py        ← Level 4: Limit order modification via broker
 ├── test_async_submit.py                ← Level 5: Async submit lifecycle regressions (#321)
 ├── test_async_modify.py                ← Level 6: Async modify lifecycle regressions (#318)
-└── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
+├── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
+└── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
 ```
 
 **Why this pattern?**
@@ -278,7 +279,7 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 Locks down the SHAPE of the async submit lifecycle introduced by #319 step 6. The other test files cover outcomes; this file specifically asserts the lifecycle itself so a regression to a sync-via-shortcut (which would pass outcome tests) cannot slip through.
 
 Asserts that are unique to this file:
-- `result.broker_order_id is None` immediately after `open_order()`
+- `result.position_id is None` immediately after `open_order()`
 - `pending.broker_ref is None` in the in-flight window between submit and drain
 - `pending.broker_ref` confirmed to `MOCK-NNNNNN` after `await_submit_confirmation` drains
 - The multi-listener outcome chain fires on the main thread post-drain
@@ -288,7 +289,7 @@ Asserts that are unique to this file:
 
 | Test | Description |
 |------|-------------|
-| `test_async_submit_instant_fill_returns_pending` | Initial `open_order()` returns PENDING + `broker_order_id=None` even in INSTANT_FILL mode |
+| `test_async_submit_instant_fill_returns_pending` | Initial `open_order()` returns PENDING + `position_id=None` even in INSTANT_FILL mode |
 | `test_async_submit_instant_fill_creates_position_after_tick` | Second `feed_tick` drains the inbox: position appears, history has EXECUTED |
 
 #### TestAsyncSubmitRejection
@@ -501,7 +502,7 @@ MockOrderExecution
 
 ### Async Submit Pattern (#319 step 6)
 
-Every `open_order()` and `close_position()` call now returns PENDING with `broker_order_id=None`. The actual broker submission happens asynchronously on a worker thread. The next `feed_tick()` triggers `drain_inbox()` (Phase 0), which:
+Every `open_order()` and `close_position()` call now returns PENDING with `position_id=None`. The actual broker submission happens asynchronously on a worker thread. The next `feed_tick()` triggers `drain_inbox()` (Phase 0), which:
 1. Confirms `broker_ref` if the response is PENDING
 2. Calls `mark_filled` + executor hook if the response is FILLED (rare for non-mock brokers)
 3. Calls rejection hook + increments `orders_rejected` if the response is REJECTED
@@ -509,3 +510,41 @@ Every `open_order()` and `close_position()` call now returns PENDING with `broke
 For test isolation, `MockOrderExecution` provides two drain helpers:
 - `feed_tick(executor, ...)` — flushes outbox, triggers `on_tick` (Phase 0 drain + Phase 1+2 polling)
 - `await_submit_confirmation(executor)` — flushes outbox, calls `drain_inbox` only (no `on_tick`, no polling) — used when a test needs broker_ref confirmation without racing the Phase-1 fill
+
+### test_broker_trade_records.py (9 Tests) — #326 BrokerTrade Layer
+
+Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `PendingOrder`, the polling-path synthesis baseline, the async `submit_trades_query_async` roundtrip via worker + drain, the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
+
+#### TestPendingOrderAppendTrade
+
+| Test | Description |
+|---|---|
+| `test_empty_pending_has_zero_cumulatives` | Default `PendingOrder` has empty `trades` and zero `cumulative_*` |
+| `test_single_trade_sets_cumulatives` | One `append_trade` populates cumulative_filled_lots / fee / avg_price |
+| `test_three_trades_weighted_avg_price` | Three trades at different prices → weighted average price computed correctly |
+
+#### TestPollingPathSynthesizesTrade
+
+| Test | Description |
+|---|---|
+| `test_market_fill_creates_one_synthetic_trade` | MARKET fill triggers shared `_synthesize_pending_trade` once; position is created in portfolio |
+
+#### TestTradesQueryAsyncRoundtrip
+
+| Test | Description |
+|---|---|
+| `test_submit_trades_query_async_returns_records_via_drain` | Enqueue `TradesQueryJob` → worker dispatches → `TradesQueryResponse` arrives via `drain_inbox` → `trades_response_hook` fires with parsed `List[BrokerTrade]` |
+| `test_multi_trade_mock_yields_n_records` | `trades_per_fill=3` on the mock → drain delivers 3 records with total volume preserved |
+| `test_unknown_broker_ref_yields_empty_trades` | Querying an unrecorded broker_ref returns success=True with empty trades list (graceful) |
+
+#### TestStaleResponseGuard
+
+| Test | Description |
+|---|---|
+| `test_stale_trades_response_does_not_remove_pending` | Drain handler discards response when `response.broker_ref != pending.broker_ref` — order stays in `_active_limit_orders`, no trades appended |
+
+#### TestCapabilityFlag
+
+| Test | Description |
+|---|---|
+| `test_mock_reports_trade_level_capability` | `MockBrokerAdapter.get_order_capabilities().trade_level_reporting is True` |
