@@ -13,7 +13,11 @@
                 "import",
                 "--override"
             ],
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 1
+            }
         },
         {
             "name": "📥 Bar Render kraken_spot --clean",
@@ -26,7 +30,11 @@
                 "--clean"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 2
+            }
         },
         {
             "name": "📥 Bar Render --all",
@@ -39,7 +47,11 @@
                 "--clean"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 3
+            }
         },
         {
             "name": "📊 Tick Data Report: mt5",
@@ -51,7 +63,11 @@
                 "mt5"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 4
+            }
         },
         {
             "name": "📊 Tick Data Report: kraken_spot",
@@ -63,7 +79,11 @@
                 "kraken_spot"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 5
+            }
         },
         {
             "name": "🛠️ Inspect Ticks&Bars: mt5",
@@ -77,7 +97,11 @@
                 "M30"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 6
+            }
         },
         {
             "name": "🛠️ Inspect Ticks&Bars: kraken_spot",
@@ -91,14 +115,22 @@
                 "M30"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 7
+            }
         },
         {
             "name": "🧩 Pytest: Run All Core Tests",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/test_runner_cli.py",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 8
+            }
         },
         // ====================================================
         // 📚 INDEX MANAGEMENT
@@ -112,7 +144,11 @@
                 "rebuild"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 1
+            }
         },
         {
             "name": "📚 Tick Index: Status",
@@ -123,7 +159,11 @@
                 "status"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 2
+            }
         },
         {
             "name": "📚 File Coverage: mt5/EURUSD",
@@ -136,7 +176,11 @@
                 "EURUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 3
+            }
         },
         {
             "name": "📈 Bar Index: Rebuild",
@@ -147,7 +191,11 @@
                 "rebuild"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 4
+            }
         },
         {
             "name": "📈 Bar Index: Status",
@@ -158,7 +206,11 @@
                 "status"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 5
+            }
         },
         {
             "name": "📈 Bar Index: Report",
@@ -169,7 +221,11 @@
                 "report"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 6
+            }
         },
         {
             "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
@@ -186,7 +242,11 @@
                 "2025-09-25T23:59:00+00:00"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 7
+            }
         },
         // ====================================================
         // 🔬 STRATEGY RUNNER
@@ -201,7 +261,11 @@
                 "${input:userScenarioSet}"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 1
+            }
         },
         {
             "name": "🔬🧪 Run User Scenario Set - ALL CONTINUOUS (prompt)",
@@ -215,7 +279,11 @@
                 "${workspaceFolder}/configs/generator_profiles/continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 2
+            }
         },
         {
             "name": "🤖🧪 AutoTrader: User Config (prompt)",
@@ -229,7 +297,11 @@
                 "--display"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 3
+            }
         },
         {
             "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
@@ -241,7 +313,11 @@
                 "cautious_macd_sandbox.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 4
+            }
         },
         {
             "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
@@ -253,7 +329,11 @@
                 "eurusd_3_windows_sandbox.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 5
+            }
         },
         {
             "name": "🔬 Run BTCUSD_sandbox - algo:simple_consensus",
@@ -265,7 +345,11 @@
                 "BTCUSD_sandbox.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 6
+            }
         },
         {
             "name": "🔬 Run DASHUSD_sandbox - algo:simple_consensus",
@@ -277,7 +361,11 @@
                 "DASHUSD_sandbox.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 7
+            }
         },
         {
             "name": "🔬 Run eurusd_3_windows_reference",
@@ -289,7 +377,11 @@
                 "eurusd_3_windows_reference.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 8
+            }
         },
         {
             "name": "🔬 Run EURGBP_stress_test_config - stress test",
@@ -301,7 +393,11 @@
                 "EURGBP_stress_test_config.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 9
+            }
         },
         {
             "name": "📙 List Scenarios",
@@ -313,7 +409,11 @@
                 "--full-details"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 10
+            }
         },
         // ====================================================
         // 🔧 BROKER CONFIG
@@ -327,7 +427,11 @@
                 "sync"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "05_broker_config",
+                "order": 1
+            }
         },
         // ====================================================
         // 🤖 AUTOTRADER
@@ -346,7 +450,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 1
+            }
         },
         {
             "name": "🤖 AutoTrader: BTCUSD Mock - Cautious MACD (MARKET TYPE NOT SUPPORTET)",
@@ -362,7 +470,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 2
+            }
         },
         {
             "name": "🤖 AutoTrader: ETHUSD Live",
@@ -375,7 +487,11 @@
                 "configs/autotrader_profiles/ethusd_live.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 3
+            }
         },
         {
             "name": "🤖 AutoTrader: SOLUSD Live",
@@ -388,7 +504,11 @@
                 "configs/autotrader_profiles/solusd_live.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 4
+            }
         },
         {
             "name": "🤖 AutoTrader: DOTUSD Live (no index data)",
@@ -401,7 +521,11 @@
                 "configs/autotrader_profiles/dotusd_live.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 5
+            }
         },
         {
             "name": "🤖 AutoTrader: DASHUSD Live",
@@ -414,7 +538,11 @@
                 "configs/autotrader_profiles/dashusd_live.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 6
+            }
         },
         // ====================================================
         // 🔍 DISCOVERIES
@@ -431,7 +559,11 @@
                 "--force"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 1
+            }
         },
         {
             "name": "🔍 Disc - Cache: Status",
@@ -443,7 +575,11 @@
                 "status"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 2
+            }
         },
         // --- Volatility Profile ---
         {
@@ -457,7 +593,11 @@
                 "USDJPY"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 3
+            }
         },
         {
             "name": "🔍 Disc - Volatility Profile: mt5/EURUSD",
@@ -470,7 +610,11 @@
                 "EURUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 4
+            }
         },
         {
             "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
@@ -483,7 +627,11 @@
                 "BTCUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 5
+            }
         },
         // --- Extreme Moves ---
         {
@@ -499,7 +647,11 @@
                 "100"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 6
+            }
         },
         {
             "name": "🔍 Disc - Extreme Moves: kraken_spot/BTCUSD",
@@ -514,7 +666,11 @@
                 "100"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 7
+            }
         },
         // --- Data Coverage ---
         {
@@ -527,7 +683,11 @@
                 "status"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 8
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: Validate All",
@@ -539,7 +699,11 @@
                 "validate"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 9
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: mt5/EURUSD",
@@ -553,7 +717,11 @@
                 "EURUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 10
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: mt5/USDJPY",
@@ -567,7 +735,11 @@
                 "USDJPY"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 11
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: kraken_spot/BTCUSD",
@@ -581,7 +753,11 @@
                 "BTCUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 12
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: kraken_spot/ADAUSD",
@@ -595,7 +771,11 @@
                 "ADAUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 13
+            }
         },
         {
             "name": "🔍 Disc - Data Coverage: kraken_spot/DASHUSD",
@@ -609,7 +789,11 @@
                 "DASHUSD"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_discoveries",
+                "order": 14
+            }
         },
         // ====================================================
         // 🚀 API SERVER
@@ -623,7 +807,11 @@
                 "--reload"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_api_server",
+                "order": 1
+            }
         },
         // ====================================================
         // ⚡ SCENARIO GENERATION
@@ -643,7 +831,11 @@
                 "40"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 1
+            }
         },
         {
             "name": "⚡ Generator - 8 Blocks kraken_spot/BTCUSD",
@@ -660,7 +852,11 @@
                 "8"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 2
+            }
         },
         {
             "name": "⚡ Generate Profile: mt5/EURUSD (volatility_split)",
@@ -679,7 +875,11 @@
                 "volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 3
+            }
         },
         {
             "name": "⚡ Generate Profile: mt5/USDJPY (volatility_split)",
@@ -698,7 +898,11 @@
                 "volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 4
+            }
         },
         {
             "name": "⚡ Generate Profile: mt5/EURUSD (continuous)",
@@ -717,7 +921,11 @@
                 "continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 5
+            }
         },
         {
             "name": "⚡ Generate Profile: mt5/USDJPY (continuous)",
@@ -736,7 +944,11 @@
                 "continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 6
+            }
         },
         {
             "name": "⚡ Generate Profile: kraken_spot/BTCUSD (volatility_split)",
@@ -755,7 +967,11 @@
                 "volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 7
+            }
         },
         {
             "name": "⚡ Generate Profile: kraken_spot/ETHUSD (volatility_split)",
@@ -774,7 +990,11 @@
                 "volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 8
+            }
         },
         {
             "name": "⚡ Generate Profile: kraken_spot/BTCUSD (continuous)",
@@ -793,7 +1013,11 @@
                 "continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 9
+            }
         },
         {
             "name": "⚡ Generate Profile: kraken_spot/ETHUSD (continuous)",
@@ -812,7 +1036,11 @@
                 "continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 10
+            }
         },
         {
             "name": "⚡ Generate All Profiles (volatility_split)",
@@ -833,7 +1061,11 @@
                 "volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 11
+            }
         },
         {
             "name": "⚡ Generate All Profiles (continuous)",
@@ -854,7 +1086,11 @@
                 "continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 12
+            }
         },
         // --- Profile Runs (multi-profile from directory) ---
         {
@@ -869,7 +1105,11 @@
                 "${workspaceFolder}/configs/generator_profiles/volatility_split"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 13
+            }
         },
         {
             "name": "🔬 Profile Run: All continuous/ - Folder",
@@ -883,7 +1123,11 @@
                 "${workspaceFolder}/configs/generator_profiles/continuous"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 14
+            }
         },
         // ====================================================
         // 🔬 FIELD STUDYS, PoC
@@ -901,7 +1145,11 @@
                 "python"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 1
+            }
         },
         {
             "name": "📊 Report collected_msc quality",
@@ -909,7 +1157,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/experiments/report_collected_msc.py",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 2
+            }
         },
         {
             "name": "🔧 Restore collected_msc (apply + force)",
@@ -921,7 +1173,11 @@
                 "--force"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 3
+            }
         },
         {
             "name": "🔬 GIL Benchmark - Threading vs Multiprocessing",
@@ -929,7 +1185,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/experiments/gil_benchmark/threading_vs_multiprocessing.py",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 4
+            }
         },
         // ====================================================
         // 🧩 PYTEST VALIDATION
@@ -944,7 +1204,11 @@
                 "backtesting/backtesting_validation_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 1
+            }
         },
         {
             "name": "🧪 Simulation: Multi Position",
@@ -956,7 +1220,11 @@
                 "backtesting/multi_position_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 2
+            }
         },
         {
             "name": "🧪 Simulation: Margin Validation",
@@ -968,7 +1236,11 @@
                 "backtesting/margin_validation_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 3
+            }
         },
         {
             "name": "🧪 Simulation: Zero Balance",
@@ -980,7 +1252,11 @@
                 "backtesting/margin_validation_zero_balance_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 4
+            }
         },
         {
             "name": "🧪 Simulation: SL/TP & Limit Validation",
@@ -992,7 +1268,11 @@
                 "backtesting/sltp_limit_validation_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 5
+            }
         },
         {
             "name": "🧪 Simulation: Active Order Display (Limit/Stop)",
@@ -1004,7 +1284,11 @@
                 "backtesting/limit_stop_order_mock_scenario_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 6
+            }
         },
         {
             "name": "🧪 Simulation: Spot SELL",
@@ -1016,7 +1300,11 @@
                 "backtesting/spot_sell_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 7
+            }
         },
         {
             "name": "🧪 Simulation: OrderGuard Cooldown",
@@ -1028,7 +1316,11 @@
                 "backtesting/order_guard_cooldown_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 8
+            }
         },
         {
             "name": "🧪 Simulation: Partial Close",
@@ -1040,7 +1332,11 @@
                 "backtesting/partial_close_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 9
+            }
         },
         {
             "name": "🧪 Simulation: Pending Stats",
@@ -1052,7 +1348,11 @@
                 "backtesting/pending_stats_validation_test.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 10
+            }
         },
         {
             "name": "🧪 AutoTrader: Safety Circuit Breaker",
@@ -1068,7 +1368,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 11
+            }
         },
         {
             "name": "🧪 AutoTrader: Margin Safety",
@@ -1084,7 +1388,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 12
+            }
         },
         {
             "name": "🧪 AutoTrader: Mock Session (Full)",
@@ -1100,7 +1408,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 13
+            }
         },
         {
             "name": "🧪 AutoTrader: Trade Lifecycle",
@@ -1116,7 +1428,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 14
+            }
         },
         {
             "name": "🧪 AutoTrader: SL Triggered",
@@ -1132,7 +1448,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 15
+            }
         },
         {
             "name": "🧪 AutoTrader: TP Triggered",
@@ -1148,7 +1468,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 16
+            }
         },
         {
             "name": "🧪 AutoTrader: Duplicate Signal Guard",
@@ -1164,7 +1488,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 17
+            }
         },
         {
             "name": "🧪 AutoTrader: Minimal Warmup",
@@ -1180,7 +1508,11 @@
                 "1"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 18
+            }
         },
         {
             "name": "🧪 Simulation: Benchmark",
@@ -1192,7 +1524,11 @@
                 "backtesting/backtesting_loadtest_40_scenarios.json"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 19
+            }
         },
         {
             "name": "🧩 Pytest: API Endpoints (All)",
@@ -1205,7 +1541,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 20
+            }
         },
         {
             "name": "🧩 Pytest: Import Pipeline (All)",
@@ -1218,7 +1558,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 21
+            }
         },
         {
             "name": "🧩 Pytest: Data Integration (All)",
@@ -1231,7 +1575,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 22
+            }
         },
         {
             "name": "🧩 Pytest: Live Executor Async Modify",
@@ -1244,7 +1592,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 23
+            }
         },
         {
             "name": "🧩 Pytest: Live Executor Async Cancel",
@@ -1257,7 +1609,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 24
+            }
         },
         {
             "name": "🧩 Pytest: Sim Modify Lifecycle",
@@ -1270,7 +1626,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 25
+            }
         },
         {
             "name": "🧩 Pytest: Baseline (All)",
@@ -1283,7 +1643,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 26
+            }
         },
         {
             "name": "🧩 Pytest: Multi Position (All)",
@@ -1297,7 +1661,11 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 27
+            }
         },
         {
             "name": "🧩 Pytest: SL/TP & Limit Validation (All)",
@@ -1310,7 +1678,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 28
+            }
         },
         {
             "name": "🧩 Pytest: Partial Close (All)",
@@ -1324,7 +1696,11 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 29
+            }
         },
         {
             "name": "🧩 Pytest: Margin Validation (All)",
@@ -1338,7 +1714,11 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 30
+            }
         },
         {
             "name": "🧩 Pytest: Trader Pending Stats (All)",
@@ -1351,7 +1731,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 31
+            }
         },
         {
             "name": "🧩 Pytest: Active Order Display (All)",
@@ -1364,7 +1748,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 32
+            }
         },
         {
             "name": "🧩 Pytest: Worker Tests (All)",
@@ -1377,7 +1765,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 33
+            }
         },
         {
             "name": "🧩 Pytest: Bar Rendering (All)",
@@ -1390,7 +1782,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 34
+            }
         },
         {
             "name": "🧩 Pytest: Tick Parquet Reader (All)",
@@ -1403,7 +1799,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 35
+            }
         },
         {
             "name": "🧩 Pytest: USER Namespace",
@@ -1414,7 +1814,11 @@
                 "tests/framework/user_namespace/",
                 "-v"
             ],
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 36
+            }
         },
         {
             "name": "🧩 Pytest: Market Compatibility (All)",
@@ -1427,7 +1831,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 37
+            }
         },
         {
             "name": "🧩 Pytest: Inter Tick Interval (All)",
@@ -1440,7 +1848,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 38
+            }
         },
         {
             "name": "🧩 Pytest: Tick Processing Budget (All)",
@@ -1453,7 +1865,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 39
+            }
         },
         {
             "name": "🧩 Pytest: Tick Clipping Bar Regression (All)",
@@ -1466,7 +1882,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 40
+            }
         },
         {
             "name": "🧩 Pytest: Live Trading Executor (All)",
@@ -1479,7 +1899,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 41
+            }
         },
         {
             "name": "🧩 Pytest: Scenario Generator (All)",
@@ -1492,7 +1916,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42
+            }
         },
         {
             "name": "🧩 Pytest: AutoTrader Integration (All)",
@@ -1505,7 +1933,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 43
+            }
         },
         {
             "name": "🧩 Pytest: Safety Circuit Breaker (All)",
@@ -1518,7 +1950,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 44
+            }
         },
         {
             "name": "🧩 Pytest: Safety Circuit Breaker Integration (AutoTrader only)",
@@ -1531,7 +1967,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 45
+            }
         },
         {
             "name": "🧩 Pytest: Order Guard (All)",
@@ -1544,7 +1984,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 46
+            }
         },
         {
             "name": "🧩 Pytest: Spot Trading (All)",
@@ -1557,7 +2001,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 47
+            }
         },
         {
             "name": "🧩 Pytest: Benchmark (All)",
@@ -1572,7 +2020,11 @@
                 "dev"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 48
+            }
         },
         {
             "name": "🧩 Pytest: Parity (All)",
@@ -1585,7 +2037,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 49
+            }
         },
         {
             "name": "🧩 Pytest: Batch Validations (All)",
@@ -1598,7 +2054,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 50
+            }
         },
         {
             "name": "🧩 Pytest: Live Adapters (All)",
@@ -1611,7 +2071,11 @@
                 "--tb=short"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 51
+            }
         },
     ],
     "inputs": [

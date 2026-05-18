@@ -166,6 +166,7 @@ ehthumbs.db
 # IDE files
 .idea/
 .vscode/
+*.code-workspace
 *.swp
 *.swo
 *~
