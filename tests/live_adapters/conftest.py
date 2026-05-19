@@ -21,7 +21,7 @@ from tests.shared.report_utils import get_git_commit
 
 _REPORTS_DIR = Path('tests/live_adapters/reports')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
-_REPORT_FIELDS_FROM_SETTINGS = ('api_base_url', 'dry_run', 'rate_limit_interval_s', 'request_timeout_s')
+_REPORT_FIELDS_FROM_TRANSPORT = ('api_base_url', 'rate_limit_interval_s', 'request_timeout_s', 'poll_interval_ms')
 
 
 class _ResultCollector:
@@ -105,7 +105,11 @@ def _write_report(
         try:
             with open(_BROKER_SETTINGS_PATH, 'r') as f:
                 raw = json.load(f)
-            broker_settings_snapshot = {k: raw[k] for k in _REPORT_FIELDS_FROM_SETTINGS if k in raw}
+            transport = raw.get('broker_transport', {})
+            broker_settings_snapshot = {'dry_run': raw.get('dry_run')} if 'dry_run' in raw else {}
+            broker_settings_snapshot.update(
+                {k: transport[k] for k in _REPORT_FIELDS_FROM_TRANSPORT if k in transport}
+            )
         except Exception:
             pass
 

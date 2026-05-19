@@ -537,7 +537,7 @@ For `adapter_type='live'`, AutoTrader fetches broker config and account balance 
 _create_broker_config(config, logger)
   → config_mode=DYNAMIC (from market_config.json)
   → entry = MarketConfigManager().get_broker_entry(broker_type)
-  → KrakenConfigFetcher(entry.credentials_file, entry.api_base_url)
+  → KrakenConfigFetcher(entry.credentials_file, entry.broker_transport.api_base_url)
   → fetch_broker_config_with_cache(symbol, broker_type)
        cache < 7 days old  → use silently, no API call
        cache 7–30 days     → try GET /0/public/AssetPairs; on failure: warn + use cache
@@ -545,7 +545,7 @@ _create_broker_config(config, logger)
        no cache at all     → GET /0/public/AssetPairs; on failure: hard error (first run)
   → POST /0/private/Balance → account balance (overrides profile balances)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
-  → adapter.enable_live(credentials_file, api_base_url, dry_run, ...)  ← Tier 3 activation
+  → adapter.enable_live(credentials_file, dry_run, transport)  ← Tier 3 activation
   → return BrokerConfig with live-enabled KrakenAdapter
 ```
 
@@ -591,7 +591,7 @@ Profile (ethusd_live.json)           ← Algorithm config (strategy, workers, sy
   "broker_type": "kraken_spot"
         |
 market_config.json → kraken_spot     ← Broker connection config
-  "credentials_file", "dry_run", "api_base_url", "rate_limit_interval_s"
+  "credentials_file", "dry_run", "broker_transport.{api_base_url, rate_limit_interval_s, ...}"
         |
 Credentials (kraken_credentials.json) ← Only API keys
 ```
@@ -617,7 +617,7 @@ Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rat
 
 ## KrakenAdapter Tier 3 — Live Order Execution (#133 Step 3)
 
-Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(credentials_file, api_base_url, dry_run, ...)` — without it, the adapter works in Tier 1+2 mode (backtesting only).
+Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(credentials_file, dry_run, transport)` — without it, the adapter works in Tier 1+2 mode (backtesting only). `transport` is a `BrokerTransportConfig` (api_base_url, rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 
 ### Adapter Tiers
 
@@ -652,7 +652,7 @@ Kraken's EditOrder replaces the order entirely — the old txid becomes invalid 
 
 ### Rate Limiting
 
-Configurable via `rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
+Configurable via `broker_transport.rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
 
 ### Symbol Mapping
 

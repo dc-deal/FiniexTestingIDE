@@ -44,7 +44,7 @@ class BrokerConfigFetcherFactory:
             return KrakenConfigFetcher(
                 credentials_path=entry.credentials_file,
                 logger=logger,
-                api_base_url=entry.api_base_url or None,
+                api_base_url=entry.broker_transport.api_base_url or None,
             )
 
         raise NotImplementedError(

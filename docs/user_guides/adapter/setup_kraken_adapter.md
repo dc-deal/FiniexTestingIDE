@@ -45,9 +45,12 @@ Connection settings for `kraken_spot` live in `configs/market_config.json` under
   "broker_type": "kraken_spot",
   "credentials_file": "kraken_credentials.json",
   "dry_run": true,
-  "api_base_url": "https://api.kraken.com",
-  "rate_limit_interval_s": 1.0,
-  "request_timeout_s": 15
+  "broker_transport": {
+    "api_base_url": "https://api.kraken.com",
+    "rate_limit_interval_s": 1.0,
+    "request_timeout_s": 15,
+    "poll_interval_ms": 5000
+  }
 }
 ```
 
@@ -55,9 +58,10 @@ Connection settings for `kraken_spot` live in `configs/market_config.json` under
 |-------|-------------|---------|
 | `credentials_file` | Credentials filename (resolved via cascade) | `kraken_credentials.json` |
 | `dry_run` | Validate orders without executing (`validate=true`) | `true` |
-| `api_base_url` | Kraken REST API base URL | `https://api.kraken.com` |
-| `rate_limit_interval_s` | Minimum seconds between private API calls | `1.0` |
-| `request_timeout_s` | HTTP request timeout in seconds | `15` |
+| `broker_transport.api_base_url` | Kraken REST API base URL | `https://api.kraken.com` |
+| `broker_transport.rate_limit_interval_s` | Minimum seconds between private API calls | `1.0` |
+| `broker_transport.request_timeout_s` | HTTP request timeout in seconds | `15` |
+| `broker_transport.poll_interval_ms` | Minimum interval between per-order status polls (live LIMIT orders) | `5000` |
 
 To override any field, create `user_configs/market_config.json` with only the changed values:
 

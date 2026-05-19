@@ -20,6 +20,7 @@ import pytest
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
@@ -49,10 +50,14 @@ def live_adapter():
     # Always enforce dry_run in test context — never place real orders
     broker_settings['dry_run'] = True
     # Reduce rate limit for test speed — validate=true calls are lenient
-    broker_settings['rate_limit_interval_s'] = 0.5
+    broker_settings['broker_transport']['rate_limit_interval_s'] = 0.5
 
     adapter = KrakenAdapter(broker_config)
-    adapter.enable_live(**broker_settings)
+    adapter.enable_live(
+        credentials_file=broker_settings['credentials_file'],
+        dry_run=broker_settings['dry_run'],
+        transport=BrokerTransportConfig(**broker_settings['broker_transport']),
+    )
     return adapter
 
 

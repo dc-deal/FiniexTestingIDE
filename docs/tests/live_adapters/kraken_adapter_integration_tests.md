@@ -132,10 +132,11 @@ On completion, a JSON receipt is written to `tests/live_adapters/reports/`:
   "tests_skipped": 0,
   "tests_run": ["test_market_buy_dryrun", "...", "test_limit_order_lifecycle"],
   "connection_settings": {
-    "api_base_url": "https://api.kraken.com",
     "dry_run": true,
+    "api_base_url": "https://api.kraken.com",
     "rate_limit_interval_s": 1.0,
-    "request_timeout_s": 15
+    "request_timeout_s": 15,
+    "poll_interval_ms": 5000
   }
 }
 ```

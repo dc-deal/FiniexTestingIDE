@@ -253,9 +253,12 @@ Full schema for a dynamic broker entry (all connection fields are relevant to li
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
   "credentials_file": "kraken_credentials.json",
   "dry_run": true,
-  "api_base_url": "https://api.kraken.com",
-  "rate_limit_interval_s": 1.0,
-  "request_timeout_s": 15
+  "broker_transport": {
+    "api_base_url": "https://api.kraken.com",
+    "rate_limit_interval_s": 1.0,
+    "request_timeout_s": 15,
+    "poll_interval_ms": 5000
+  }
 }
 ```
 
@@ -268,9 +271,10 @@ Full schema for a dynamic broker entry (all connection fields are relevant to li
 | `broker_config_path` | All | Path to git-tracked broker config JSON (static seed) |
 | `credentials_file` | Live only | Credentials filename, resolved via `user_configs/credentials/` cascade |
 | `dry_run` | Live only | `true` = validate orders, no execution. Safe default. |
-| `api_base_url` | Live only | Broker REST API base URL |
-| `rate_limit_interval_s` | Live only | Minimum interval between private API calls (seconds) |
-| `request_timeout_s` | Live only | HTTP request timeout (seconds) |
+| `broker_transport.api_base_url` | Live only | Broker REST API base URL |
+| `broker_transport.rate_limit_interval_s` | Live only | Minimum interval between private API calls (seconds) |
+| `broker_transport.request_timeout_s` | Live only | HTTP request timeout (seconds) |
+| `broker_transport.poll_interval_ms` | Live only | Minimum interval between per-order status polls (milliseconds, default 5000) |
 
 To override any live setting (e.g., disable dry-run for production), create `user_configs/market_config.json`:
 

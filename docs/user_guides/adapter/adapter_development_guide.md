@@ -91,7 +91,7 @@ python/framework/trading_env/adapters/example_adapter.py     ← adapter class
 configs/brokers/example/example_broker_config.json           ← static symbol/broker specs
 configs/credentials/example_credentials.json                 ← placeholder
 user_configs/credentials/example_credentials.json            ← real credentials (gitignored)
-configs/broker_settings/example_spot.json                    ← live connection settings (credentials_file, api_base_url, dry_run, rate_limit_interval_s, request_timeout_s)
+configs/broker_settings/example_spot.json                    ← live connection settings (credentials_file, dry_run, broker_transport.{api_base_url, rate_limit_interval_s, request_timeout_s, poll_interval_ms})
 configs/autotrader_profiles/live/example_ethusd.json         ← AutoTrader profile
 tests/live_adapters/test_example_adapter_order_lifecycle_dry.py
 tests/live_adapters/test_example_adapter_order_lifecycle_live.py
@@ -128,7 +128,7 @@ docs/tests/live_adapters/example_adapter_integration_tests.md
 | Method | Purpose |
 |--------|---------|
 | `is_live_capable()` | Return `True` after `enable_live()` succeeded |
-| `enable_live(credentials_file, api_base_url, dry_run, rate_limit_interval_s, request_timeout_s)` | Load credentials, store config, set `_live_enabled = True` |
+| `enable_live(credentials_file, dry_run, transport: BrokerTransportConfig)` | Load credentials, store config, set `_live_enabled = True` |
 | `_build_submit_payload(symbol, direction, lots, order_type, **kwargs)` | Build broker-specific submit payload |
 | `_do_request_submit(payload)` | Send submit request; **raises on error** |
 | `_parse_submit_response(raw, timestamp)` | Raw → `BrokerResponse` |
@@ -194,14 +194,25 @@ Required per-symbol fields: `volume_min`, `volume_max`, `volume_step`, `contract
 ```json
 {
   "credentials_file": "example_credentials.json",
-  "api_base_url": "https://api.example.com",
   "dry_run": true,
-  "rate_limit_interval_s": 1.0,
-  "request_timeout_s": 15
+  "broker_transport": {
+    "api_base_url": "https://api.example.com",
+    "rate_limit_interval_s": 1.0,
+    "request_timeout_s": 15,
+    "poll_interval_ms": 5000
+  }
 }
 ```
 
-The five fields above correspond 1:1 to `enable_live`'s parameter list. Pass them via `adapter.enable_live(**broker_settings)`.
+`credentials_file` and `dry_run` are passed flat to `enable_live`; the four `broker_transport` fields are bundled into a `BrokerTransportConfig` Pydantic object and passed as `transport=`. Construct explicitly:
+
+```python
+adapter.enable_live(
+    credentials_file=broker_settings['credentials_file'],
+    dry_run=broker_settings['dry_run'],
+    transport=BrokerTransportConfig(**broker_settings['broker_transport']),
+)
+```
 
 ---
 
@@ -234,16 +245,14 @@ def __init__(self, broker_config):
 def enable_live(
     self,
     credentials_file: str,
-    api_base_url: str,
     dry_run: bool,
-    rate_limit_interval_s: float,
-    request_timeout_s: int,
+    transport: BrokerTransportConfig,
 ) -> None:
     self._api_key, self._api_secret = self._load_credentials(credentials_file)
-    self._api_base_url = api_base_url
+    self._api_base_url = transport.api_base_url
     self._dry_run = dry_run
-    self._rate_limit_interval_s = rate_limit_interval_s
-    self._request_timeout_s = request_timeout_s
+    self._rate_limit_interval_s = transport.rate_limit_interval_s
+    self._request_timeout_s = transport.request_timeout_s
     self._live_enabled = True
 
 def is_live_capable(self) -> bool:

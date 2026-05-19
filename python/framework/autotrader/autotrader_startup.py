@@ -456,10 +456,8 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
     # === Enable live execution on adapter ===
     broker_config.adapter.enable_live(
         credentials_file=entry.credentials_file,
-        api_base_url=entry.api_base_url,
         dry_run=entry.dry_run,
-        rate_limit_interval_s=entry.rate_limit_interval_s,
-        request_timeout_s=entry.request_timeout_s,
+        transport=entry.broker_transport,
     )
     mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
     logger.info(f"🚀 Mode: {mode_label}")

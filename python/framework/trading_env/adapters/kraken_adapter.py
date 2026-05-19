@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
@@ -478,26 +479,24 @@ class KrakenAdapter(AbstractAdapter):
     def enable_live(
         self,
         credentials_file: str,
-        api_base_url: str,
         dry_run: bool,
-        rate_limit_interval_s: float,
-        request_timeout_s: int,
+        transport: BrokerTransportConfig,
     ) -> None:
         """
         Enable Tier 3 live execution by loading credentials and broker settings.
 
         Args:
             credentials_file: Credentials filename (resolved via cascade)
-            api_base_url: Broker API base URL
             dry_run: True = validate only, no real orders placed
-            rate_limit_interval_s: Minimum seconds between API requests
-            request_timeout_s: HTTP request timeout in seconds
+            transport: Per-broker transport tuning (api_base_url, rate_limit_interval_s,
+                       request_timeout_s, poll_interval_ms). poll_interval_ms is read
+                       by LiveTradeExecutor, not the adapter itself.
         """
         self._api_key, self._api_secret = self._load_credentials(credentials_file)
-        self._api_base_url = api_base_url
+        self._api_base_url = transport.api_base_url
         self._dry_run = dry_run
-        self._rate_limit_interval_s = rate_limit_interval_s
-        self._request_timeout_s = request_timeout_s
+        self._rate_limit_interval_s = transport.rate_limit_interval_s
+        self._request_timeout_s = transport.request_timeout_s
         self._live_enabled = True
 
     def is_live_capable(self) -> bool:
