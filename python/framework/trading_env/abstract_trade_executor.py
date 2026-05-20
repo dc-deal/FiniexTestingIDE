@@ -242,6 +242,25 @@ class AbstractTradeExecutor(ABC):
         """
         pass
 
+    def heartbeat(self) -> None:
+        """
+        Side-effect-free drain routine for idle periods (#320).
+
+        Called from the AutoTrader tick loop's queue.Empty branch (no tick
+        available) so async worker responses don't sit in the inbox until
+        the next real tick arrives.
+
+        Subclasses MUST NOT mutate tick state from here. That means: no
+        _tick_counter increment, no portfolio.mark_dirty, no _current_prices
+        update, no _current_tick reassignment, no algo dispatch, no SL/TP
+        check, no display state mutation tied to a synthetic tick. Display
+        push of a "last-known-state pulse frame" is allowed — it is a view
+        update, not a model mutation.
+
+        Default no-op for executors without a transport layer (TradeSimulator).
+        """
+        return
+
     # ============================================
     # SL/TP Trigger Detection (per-tick, simulation only)
     # ============================================

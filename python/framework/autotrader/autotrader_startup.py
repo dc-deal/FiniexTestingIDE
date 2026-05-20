@@ -200,12 +200,14 @@ def setup_pipeline(
         account_currency = list(config.account.balances.keys())[0]
 
     # === Phase 4: LiveTradeExecutor ===
+    broker_entry = market_config_manager.get_broker_entry(config.broker_type)
     executor = build_live_executor(
         broker_config=broker_config,
         balances=config.account.balances,
         account_currency=account_currency,
         logger=logger,
         spot_mode=spot_mode,
+        poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
     )
     logger.info(
         f"💱 LiveTradeExecutor created: balances={config.account.balances}"

@@ -151,6 +151,15 @@ class PendingOrder:
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
 
+    # === Async status polling state (#320, live-only) ===
+    # in_flight_query: True while a QueryJob for this order is en route to
+    #   the broker (skip-flag for the next throttle cycle). Cleared by the
+    #   QueryResponse drain handler regardless of stale-broker_ref outcome.
+    # last_polled_at_ms: wall-clock ms (time.time() * 1000.0) when the last
+    #   QueryJob was dispatched. Throttle gate in _process_active_orders.
+    in_flight_query: bool = False
+    last_polled_at_ms: float = 0.0
+
     # === Order ↔ Executions pairing (#326) ===
     # trades: per-execution BrokerTrade records produced by this order.
     #   Single fill orders typically produce 1 record; partial fills produce N.

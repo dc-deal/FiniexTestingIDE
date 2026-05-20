@@ -33,7 +33,8 @@ tests/autotrader/live_executor/
 ├── test_async_submit.py                ← Level 5: Async submit lifecycle regressions (#321)
 ├── test_async_modify.py                ← Level 6: Async modify lifecycle regressions (#318)
 ├── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
-└── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
+├── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
+└── test_polling_cadence.py             ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
 ```
 
 **Why this pattern?**
@@ -548,3 +549,44 @@ Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `
 | Test | Description |
 |---|---|
 | `test_mock_reports_trade_level_capability` | `MockBrokerAdapter.get_order_capabilities().trade_level_reporting is True` |
+
+### test_polling_cadence.py (12 Tests) — #320 Live Polling Cadence
+
+Validates the three coordinated fixes introduced by #320: side-effect-free `heartbeat()` for idle ticks, async per-order polling via the worker thread, and the in-flight guard + wall-clock throttle on `_process_active_orders`. All tests exercise the LIMIT-order polling path; MARKET stays sync (out of scope).
+
+#### TestHeartbeat
+
+| Test | Description |
+|---|---|
+| `test_heartbeat_drains_inbox_without_tick_state` | `heartbeat()` drains async responses without bumping `_tick_counter` or replacing `_current_tick` |
+| `test_heartbeat_processes_timeouts` | A pending order whose `timeout_at` is in the past becomes REJECTED on the next `heartbeat()` |
+| `test_heartbeat_sim_is_noop` | `TradeSimulator` inherits the default no-op `heartbeat()` — no errors, no state mutation |
+
+#### TestThrottle
+
+| Test | Description |
+|---|---|
+| `test_active_limit_polled_at_most_once_per_interval` | 50 scheduler calls within `poll_interval_ms=1000` → exactly 1 dispatch |
+| `test_throttle_interval_configurable` | `poll_interval_ms=200` → second dispatch only after sleeping past the window |
+| `test_throttle_uses_wall_clock_not_tick_time` | A 7-day-future tick must not bypass the wall-clock throttle gate |
+
+#### TestInFlightGuard
+
+| Test | Description |
+|---|---|
+| `test_in_flight_query_blocks_concurrent_dispatch` | `pending.in_flight_query=True` → scheduler skips silently, no second dispatch |
+| `test_in_flight_cleared_on_pending_response` | PENDING response clears `in_flight_query`; order stays in `_active_limit_orders` |
+| `test_in_flight_cleared_on_filled` | FILLED response clears `in_flight_query` as a side effect; order removed, position opened |
+| `test_in_flight_cleared_on_stale_response` | Stale broker_ref response clears `in_flight_query` but leaves state untouched |
+
+#### TestStaleResponseGuard
+
+| Test | Description |
+|---|---|
+| `test_stale_query_after_modify_discarded` | After a modify swaps `broker_ref` A→B, a FILLED response against A does NOT remove the order |
+
+#### TestPartialFillPreservedBehavior
+
+| Test | Description |
+|---|---|
+| `test_partially_filled_keeps_polling` | PARTIALLY_FILLED → no state mutation, order stays active, `in_flight_query` cleared. Per-execution accumulation lands with #326's async `trades_query`. |

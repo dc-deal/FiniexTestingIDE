@@ -165,8 +165,11 @@ class AutoTraderLiveDisplay:
             stats = self._stats
 
         if stats is None:
+            # Race-window only: tick loop pushes a startup pulse before its
+            # while-loop, so the display has a frame from t=0. This empty
+            # panel is visible at most one refresh cycle, if at all.
             return Panel(
-                '[dim]Waiting for first tick...[/dim]',
+                '',
                 title=self._build_header_title(),
                 border_style='cyan',
                 box=box.ROUNDED,
@@ -308,9 +311,22 @@ class AutoTraderLiveDisplay:
         config_file = self._config.config_path.name if self._config.config_path else ''
         config_str = f'{config_name}  [dim]({config_file})[/dim]' if config_file else config_name
 
+        # #320 — Status stays RUNNING during heartbeat pulses. The pulse adds
+        # a "💓 Ns since last tick" suffix (or "since startup" before the
+        # first real tick) so the operator sees the loop is alive without the
+        # status switching to a misleading IDLE.
+        if stats.is_pulse and stats.seconds_since_last_tick > 0:
+            since_label = 'since startup' if stats.ticks_processed == 0 else 'since last tick'
+            status_str = (
+                f'[green]● RUNNING[/green]  '
+                f'[dim]💓 {stats.seconds_since_last_tick:.1f}s {since_label}[/dim]'
+            )
+        else:
+            status_str = '[green]● RUNNING[/green]'
+
         lines = [
             f'Uptime:  {uptime_str}',
-            f'Status:  [green]● RUNNING[/green]',
+            f'Status:  {status_str}',
             f'Processed: {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
             f'Trades:  {stats.total_trades}  (Win: {win_rate:.1f}%)',
             f'Mode:    {mode}',

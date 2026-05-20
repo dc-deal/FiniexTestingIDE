@@ -160,6 +160,14 @@ Each tick follows the same 5-step path as backtesting:
 
 After each tick: `clipping_monitor.record_tick()` measures processing time.
 
+When the tick queue times out (1 s with no tick), the loop fires
+`executor.heartbeat()` instead of falling through silently. Heartbeat drains
+async worker responses (submit, edit, cancel, query, trades) and processes
+order timeouts without mutating tick state (no `_tick_counter` bump, no
+portfolio mark-dirty, no algo dispatch). It also pushes a *pulse* display
+frame so the dashboard shows `💓 N s since last tick` instead of freezing.
+See "Polling Cadence" below.
+
 ### Shutdown
 
 Two modes:
@@ -653,6 +661,26 @@ Kraken's EditOrder replaces the order entirely — the old txid becomes invalid 
 ### Rate Limiting
 
 Configurable via `broker_transport.rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
+
+Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Because all broker I/O is funneled through a single worker thread, this gate also serializes async polling against submits/edits/cancels — no risk of two private API calls landing under the rate window.
+
+### Polling Cadence (#320)
+
+Active LIMIT orders are polled asynchronously through the same worker-thread pattern as submit/edit/cancel/trades_query. `LiveTradeExecutor._process_active_orders` is a non-blocking scheduler: for each `_active_limit_orders` entry it either skips (no broker_ref yet, in-flight query, or inside throttle window) or enqueues a `QueryJob` to the worker. The response is consumed on the main thread via `drain_inbox` → `_handle_query_response`.
+
+Three gates on the scheduler, all silent skips:
+
+| Gate | Reason |
+|------|--------|
+| `broker_ref is None` | Submit still in flight at the broker — wait for `_handle_limit_submit_response` |
+| `pending.in_flight_query is True` | A previous QueryJob has not returned yet |
+| `now_ms - pending.last_polled_at_ms < poll_interval_ms` | Inside the per-order throttle window |
+
+Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
+
+`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard exists because Kraken's EditOrder flips the txid: a QueryJob dispatched before the swap returns a response carrying the OLD ref, while `pending.broker_ref` has already been updated to the new one. State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
+
+`poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
 
 ### Symbol Mapping
 

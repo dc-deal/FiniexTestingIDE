@@ -152,4 +152,13 @@ class MockOrderExecution:
         executor._request_processor.flush_outbox()
 
         executor.on_tick(tick)
+
+        # #320 — _process_active_orders dispatches QueryJobs to the worker
+        # DURING on_tick; the responses arrive after on_tick returns and would
+        # otherwise wait for the next tick to drain. Tests that expect a fill
+        # within the same feed_tick call (legacy "1-tick fill" pattern) need
+        # the responses absorbed here. In production this latency is absorbed
+        # by heartbeat between ticks; the mock helper mimics that.
+        executor._request_processor.flush_outbox()
+        executor._request_processor.drain_inbox()
         return tick

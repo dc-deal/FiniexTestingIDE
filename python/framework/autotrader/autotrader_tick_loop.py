@@ -115,6 +115,14 @@ class AutotraderTickLoop:
         # Initial spot equity baseline — set on first tick (first live price)
         self._initial_spot_equity: float = 0.0
 
+        # #320 — Last real-tick state for heartbeat pulse frames. Updated only
+        # when a tick is actually processed, NOT during heartbeat. Used to
+        # build pulse snapshots that show last-known portfolio state plus a
+        # "Ns since last tick" idle indicator.
+        self._last_real_tick: Optional[TickData] = None
+        self._last_real_decision: Optional[Decision] = None
+        self._last_real_tick_wall_time: float = 0.0
+
         # Daily rotation state
         self._current_log_date: Optional[str] = None
         # Track placeholder file for cleanup on first tick
@@ -154,6 +162,11 @@ class AutotraderTickLoop:
         # timestamps differ from current date.
         self._current_log_date = None
 
+        # #320 — Push an initial startup pulse frame so the display renders
+        # the full dashboard from t=0 instead of falling back to a wait
+        # placeholder. Subsequent pulses fire from queue.Empty heartbeats.
+        self._push_pulse_frame(ticks_processed)
+
         while self._running:
             try:
                 tick = self._tick_queue.get(timeout=1.0)
@@ -163,6 +176,10 @@ class AutotraderTickLoop:
                     self._logger.info(
                         '📭 Tick source exhausted — ending session')
                     break
+                # #320: drain async worker responses + check timeouts
+                # without bumping tick state. Display pulse follows below.
+                self._executor.heartbeat()
+                self._push_pulse_frame(ticks_processed)
                 continue
 
             # Sentinel value: None = tick source finished
@@ -266,8 +283,12 @@ class AutotraderTickLoop:
                     pass  # Display will use last known state
 
             # Track last valid tick/decision for the final shutdown snapshot
+            # and heartbeat pulse frames (#320).
             last_tick = tick
             last_decision = decision
+            self._last_real_tick = tick
+            self._last_real_decision = decision
+            self._last_real_tick_wall_time = time.time()
 
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.
@@ -290,6 +311,74 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _push_pulse_frame(self, ticks_processed: int) -> None:
+        """
+        Push a heartbeat pulse frame to the display queue (#320).
+
+        Pulse frames carry the last-known portfolio snapshot plus a wall-clock
+        delta so the dashboard shows "💓 Ns since last tick" instead of going
+        stale during idle.
+
+        Before the first real tick, a slim startup snapshot is pushed instead
+        so the operator sees the session is alive (`💓 Ns since startup`)
+        rather than the display's default "Waiting for first tick..." text.
+        """
+        if self._display_queue is None:
+            return
+
+        if self._last_real_tick is None or self._last_real_decision is None:
+            seconds_since = (datetime.now(timezone.utc) - self._session_start).total_seconds()
+            stats = self._build_startup_pulse_stats(seconds_since)
+        else:
+            seconds_since = time.time() - self._last_real_tick_wall_time
+            stats = self._build_display_stats(
+                self._last_real_decision, ticks_processed, self._last_real_tick)
+            stats.is_pulse = True
+            stats.seconds_since_last_tick = seconds_since
+
+        try:
+            self._display_queue.put_nowait(stats)
+        except queue.Full:
+            pass  # Display will use last known state
+
+    def _build_startup_pulse_stats(self, seconds_since_start: float) -> AutoTraderDisplayStats:
+        """
+        Build a slim pre-first-tick pulse frame (#320).
+
+        Carries only what's known before any market data has arrived: session
+        identity, configured account, and the wall-clock delta since session
+        start. The renderer flags the `ticks_processed == 0 + is_pulse` combo
+        and shows `💓 Ns since startup` instead of the default wait label.
+
+        Args:
+            seconds_since_start: Wall-clock seconds since session_start
+
+        Returns:
+            Minimal AutoTraderDisplayStats with is_pulse=True
+        """
+        portfolio = self._executor.portfolio
+        return AutoTraderDisplayStats(
+            session_start=self._session_start,
+            dry_run=self._dry_run,
+            symbol=self._config.symbol,
+            broker_type=self._config.broker_type,
+            ticks_processed=0,
+            config_hash=self._executor.broker.config_hash,
+            balance=portfolio.balance,
+            initial_balance=portfolio.initial_balance,
+            total_trades=0,
+            winning_trades=0,
+            losing_trades=0,
+            equity=portfolio.balance,
+            spot_balances=portfolio.get_balances() if self._trading_model == TradingModel.SPOT else None,
+            account_currency=self._executor.account_currency,
+            base_currency=self._base_currency,
+            quote_currency=self._quote_currency,
+            trading_model=self._trading_model.value,
+            is_pulse=True,
+            seconds_since_last_tick=seconds_since_start,
+        )
 
     def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
         """

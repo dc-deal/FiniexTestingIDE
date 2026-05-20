@@ -28,8 +28,9 @@ The base class handles: portfolio updates, fee calculations, statistics, PnL.
 Feature gating: MARKET + LIMIT orders supported. Limit order modification is broker-side (future).
 """
 
+import time
 from datetime import datetime, timezone
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -49,7 +50,7 @@ from python.framework.types.live_types.live_execution_types import (
     BrokerResponse,
     TimeoutConfig,
 )
-from python.framework.types.live_types.live_request_types import TradesQueryResponse
+from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
@@ -99,6 +100,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         trade_history_max: int = 5000,
         spot_mode: bool = False,
         initial_balances: Optional[dict[str, float]] = None,
+        poll_interval_ms: int = 5000,
     ):
         """
         Initialize live trade executor.
@@ -113,6 +115,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             trade_history_max: Max trade history entries (0=unlimited)
             spot_mode: Enable spot trading mode
             initial_balances: Asset inventory for spot mode
+            poll_interval_ms: Minimum wall-clock interval between consecutive
+                status polls for the same active LIMIT order. Throttle
+                for #320's async polling scheduler. Default 5000 ms.
         """
         super().__init__(
             broker_config=broker_config,
@@ -133,6 +138,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
 
         self._timeout_config = timeout_config or TimeoutConfig()
+        self._poll_interval_ms = poll_interval_ms
 
         # Live order tracker with broker ref tracking
         self._request_processor = LiveRequestProcessor(
@@ -173,6 +179,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             cancel_response=self._handle_cancel_response,
             position_modify_response=self._handle_position_modify_response,
             trades_response=self._handle_trades_response,
+            query_response=self._handle_query_response,
         )
 
         # Start the processor's worker thread.
@@ -200,6 +207,20 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # ============================================
     # Pending Order Processing (live-specific)
     # ============================================
+
+    def heartbeat(self) -> None:
+        """
+        Side-effect-free drain for idle ticks (#320 override).
+
+        Drains async worker responses (fills, edits, cancels, query results,
+        trades) and processes timeouts. Called by the AutoTrader tick loop
+        on queue.Empty so the live pipeline stays responsive even when the
+        market is quiet. Does NOT touch tick state — see the abstract
+        contract in AbstractTradeExecutor.heartbeat.
+        """
+        self._request_processor.drain_inbox()
+        for pending in self._request_processor.check_timeouts():
+            self._handle_timeout(pending)
 
     def _process_pending_orders(self) -> None:
         """
@@ -666,54 +687,109 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def _process_active_orders(self) -> None:
         """
-        Poll broker for active limit order fills.
+        Schedule async status polls for active LIMIT orders.
 
         Active limit orders are broker-accepted orders waiting for a price
-        trigger (shadow state). Each tick, we poll the broker to check if
-        the order has been filled, rejected, cancelled, or expired.
+        trigger (shadow state). For each order whose throttle window has
+        elapsed and that has no in-flight query, this enqueues a QueryJob
+        to the worker thread. The worker performs the broker roundtrip;
+        the response is consumed on the main thread in _handle_query_response
+        (via drain_inbox / heartbeat).
+
+        Three gates, all silent skips:
+          - no broker_ref yet (submit-in-flight window)
+          - in_flight_query (a previous poll has not returned yet)
+          - inside throttle window (last_polled_at_ms + poll_interval_ms > now)
+
+        Pathological "stuck in-flight" cases are caught by check_timeouts().
         """
         if not self._active_limit_orders:
             return
 
-        remaining: List[PendingOrder] = []
+        now_ms = time.time() * 1000.0
         for pending in self._active_limit_orders:
             if not pending.broker_ref:
-                remaining.append(pending)
+                continue
+            if pending.in_flight_query:
+                continue
+            if now_ms - pending.last_polled_at_ms < self._poll_interval_ms:
                 continue
 
-            response = self._request_processor.query_order_sync(
-                pending.broker_ref, self.broker.adapter)
+            pending.last_polled_at_ms = now_ms
+            pending.in_flight_query = True
+            self._request_processor.submit_query_order_async(
+                order_id=pending.pending_order_id,
+                broker_ref=pending.broker_ref,
+                adapter=self.broker.adapter,
+            )
 
-            if response.status == BrokerOrderStatus.FILLED:
-                # _fill_open_order synthesizes a BrokerTrade into pending.trades
-                # before the portfolio open call when pending.trades is empty.
-                self._fill_open_order(
-                    pending, fill_price=response.fill_price,
-                    entry_type=EntryType.LIMIT, fill_type=FillType.LIMIT)
-                self.logger.info(
-                    f"🎯 Active limit order {pending.pending_order_id} "
-                    f"filled at {response.fill_price} "
-                    f"(broker_ref={pending.broker_ref})")
-            elif response.is_terminal:
-                # REJECTED / CANCELLED / EXPIRED by broker
-                self._orders_rejected += 1
-                rejection = create_rejection_result(
-                    order_id=pending.pending_order_id,
-                    reason=RejectionReason.BROKER_ERROR,
-                    message=f"Broker {response.status.value}: "
-                            f"{response.rejection_reason or 'unknown'}",
-                )
-                self._order_history.append(rejection)
-                self._notify_outcome(pending.direction, rejection)
-                self.logger.warning(
-                    f"Active limit order {pending.pending_order_id} "
-                    f"{response.status.value} by broker "
-                    f"(broker_ref={pending.broker_ref})")
-            else:
-                # Still PENDING at broker — keep polling
-                remaining.append(pending)
+    def _handle_query_response(self, response: QueryResponse) -> None:
+        """
+        Drain-inbox hook for QueryResponse (#320).
 
-        self._active_limit_orders = remaining
+        Always clears pending.in_flight_query first — the dispatched query is
+        resolved regardless of the next steps. Then applies the stale-broker_ref
+        guard (broker_ref may have flipped via EditOrder while the query was
+        in flight); on stale, returns silently without state mutation. Otherwise
+        branches on broker status:
+          - FILLED          → _fill_open_order + remove from _active_limit_orders
+          - terminal        → rejection + remove
+          - PENDING / PARTIALLY_FILLED → keep in list (next throttle cycle re-polls)
+        """
+        order_id = response.order_id
+        broker_response = response.broker_response
+
+        pending = self._find_active_order(order_id)
+        if pending is None:
+            self.logger.warning(
+                f"drain_inbox: QueryResponse for unknown order_id {order_id}"
+            )
+            return
+
+        # ALWAYS clear in_flight_query — query is resolved
+        pending.in_flight_query = False
+
+        # Stale-broker_ref guard: response is against a ref that's no longer
+        # the authoritative one (Kraken EditOrder flipped it). Skip state
+        # mutation; next throttle cycle will fire a fresh query against the
+        # current ref.
+        if pending.broker_ref != broker_response.broker_ref:
+            self.logger.debug(
+                f"QueryResponse stale broker_ref for {order_id}: "
+                f"response={broker_response.broker_ref} current={pending.broker_ref}"
+            )
+            return
+
+        if broker_response.status == BrokerOrderStatus.FILLED:
+            self._active_limit_orders.remove(pending)
+            self._fill_open_order(
+                pending,
+                fill_price=broker_response.fill_price,
+                entry_type=EntryType.LIMIT,
+                fill_type=FillType.LIMIT,
+            )
+            self.logger.info(
+                f"🎯 Active limit order {order_id} filled at "
+                f"{broker_response.fill_price} (broker_ref={pending.broker_ref})"
+            )
+        elif broker_response.is_terminal:
+            # REJECTED / CANCELLED / EXPIRED by broker
+            self._active_limit_orders.remove(pending)
+            self._orders_rejected += 1
+            rejection = create_rejection_result(
+                order_id=order_id,
+                reason=RejectionReason.BROKER_ERROR,
+                message=f"Broker {broker_response.status.value}: "
+                        f"{broker_response.rejection_reason or 'unknown'}",
+            )
+            self._order_history.append(rejection)
+            self._notify_outcome(pending.direction, rejection)
+            self.logger.warning(
+                f"Active limit order {order_id} "
+                f"{broker_response.status.value} by broker "
+                f"(broker_ref={pending.broker_ref})"
+            )
+        # else: PENDING / PARTIALLY_FILLED — no state change, next cycle re-polls
 
     # ============================================
     # Order Submission (live-specific)
@@ -1291,6 +1367,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             PendingOrderStats with ms-based latency metrics + active order snapshots
         """
         stats = self._request_processor.get_pending_stats()
+        # latency_queue_count must reflect orders currently in the live
+        # pipeline (registered locally, awaiting broker confirmation or fill)
+        # so the display's "■ N PENDING" indicator appears between submit and
+        # fill. Sim populates this from latency_simulator.get_pending_count();
+        # the live equivalent is the processor's _pending_orders dict size.
+        stats.latency_queue_count = self._request_processor.get_pending_count()
         self._populate_active_order_snapshots(stats)
         return stats
 
