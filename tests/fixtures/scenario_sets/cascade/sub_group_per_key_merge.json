@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "cascade_sub_group_per_key_merge",
+  "description": "Cascade test fixture (#137) — performance_tracking nested sub-group. Global sets both switches, scenario overrides only one. The non-overridden key must be inherited from global, not silently dropped.",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi"
+      },
+      "workers": {
+        "rsi_fast": {"periods": {"M5": 14}}
+      },
+      "decision_logic_config": {}
+    },
+    "execution_config": {
+      "performance_tracking": {
+        "tick_loop_profiling": true,
+        "worker_decision_tracking": false
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {"USD": 10000}
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "test_scenario",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-09-23T00:00:00+00:00",
+      "end_date": "2025-09-23T01:00:00+00:00",
+      "max_ticks": 100,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {
+        "performance_tracking": {
+          "worker_decision_tracking": true
+        }
+      },
+      "trade_simulator_config": {}
+    }
+  ]
+}

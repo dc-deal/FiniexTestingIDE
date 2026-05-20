@@ -1548,6 +1548,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Config Cascade (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/config/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 21
+            }
+        },
+        {
             "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",

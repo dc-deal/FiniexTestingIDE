@@ -1,5 +1,5 @@
 {
   "excluded": ["simulation/benchmark", "live_adapters"],
-  "ignored": ["shared"],
+  "ignored": ["shared", "fixtures"],
   "fail_fast": true
 }

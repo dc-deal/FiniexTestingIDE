@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "cascade_scenario_overrides_global",
+  "description": "Cascade test fixture — scenario overrides global which already overrides app (Level 3 wins over Level 2 wins over Level 1).",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi"
+      },
+      "workers": {
+        "rsi_fast": {"periods": {"M5": 14}}
+      },
+      "decision_logic_config": {}
+    },
+    "execution_config": {
+      "parallel_workers": true,
+      "tick_processing_budget_ms": 0.5
+    },
+    "trade_simulator_config": {
+      "balances": {"USD": 10000}
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "test_scenario",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-09-23T00:00:00+00:00",
+      "end_date": "2025-09-23T01:00:00+00:00",
+      "max_ticks": 100,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {
+        "parallel_workers": false
+      },
+      "trade_simulator_config": {}
+    }
+  ]
+}

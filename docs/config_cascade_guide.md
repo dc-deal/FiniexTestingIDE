@@ -52,6 +52,22 @@
 
 ---
 
+## 🧪 Test Coverage
+
+The `execution_config` lane is regression-protected by a dedicated test suite —
+black-box loader tests with JSON fixtures, covering all three cascade levels, the
+nested `performance_tracking` sub-group merge, and the unknown-key safety net.
+
+→ **[Config Cascade Tests](tests/framework/config_cascade_tests.md)** —
+when you change anything that touches the cascade machinery (`deep_merge`,
+loader merge logic, Pydantic schemas, known-key sets), re-run this suite first.
+
+Other cascade lanes (`trade_simulator_config`, `order_guard`, `stress_test_config`,
+`strategy_config.workers`) are not yet covered by dedicated tests and rely on E2E
+coverage in the simulation suites.
+
+---
+
 ## 🎯 Overview
 
 FiniexTestingIDE uses a **three-level configuration hierarchy** to manage parameters:

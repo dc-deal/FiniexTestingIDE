@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "cascade_no_overrides",
+  "description": "Cascade test fixture — neither global nor scenario overrides execution_config. App defaults must apply (Level 1 only).",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi"
+      },
+      "workers": {
+        "rsi_fast": {"periods": {"M5": 14}}
+      },
+      "decision_logic_config": {}
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "balances": {"USD": 10000}
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "test_scenario",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-09-23T00:00:00+00:00",
+      "end_date": "2025-09-23T01:00:00+00:00",
+      "max_ticks": 100,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    }
+  ]
+}
