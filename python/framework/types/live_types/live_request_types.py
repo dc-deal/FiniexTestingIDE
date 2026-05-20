@@ -17,12 +17,16 @@ Job types (outbox, main → worker):
     CancelJob              cancel a pending order (#318)
     PositionModifyJob      modify open-position SL/TP (#318, gated by
                            OrderCapabilities.native_position_sl_tp)
+    TradesQueryJob         pull per-execution detail after FILLED (#326)
+    QueryJob               poll an active LIMIT order's status (#320)
 
 Response types (inbox, worker → main):
     SubmitResponse         result of a SubmitJob
     EditResponse           result of an EditJob (#318)
     CancelResponse         result of a CancelJob (#318)
     PositionModifyResponse result of a PositionModifyJob (#318)
+    TradesQueryResponse    result of a TradesQueryJob (#326)
+    QueryResponse          result of a QueryJob (#320)
 """
 
 from dataclasses import dataclass, field
@@ -268,6 +272,62 @@ class TradesQueryJob:
     order_id: str
     broker_ref: str
     adapter: AbstractAdapter
+
+
+# ============================================
+# #320 — Async Polling for Active LIMIT Orders
+# ============================================
+# Replaces the legacy synchronous query_order_sync per-tick-per-order pattern.
+# The scheduler in LiveTradeExecutor._process_active_orders enqueues a QueryJob
+# at most once per poll_interval_ms per active LIMIT order, gated by an
+# in_flight_query flag. The worker performs the broker roundtrip; drain_inbox
+# routes the response to LiveTradeExecutor._handle_query_response.
+
+
+@dataclass
+class QueryJob:
+    """
+    Status-poll job for an active LIMIT order — used by #320 scheduler.
+
+    The worker uses the adapter's Tier-3 query layer:
+        adapter._build_query_payload(broker_ref)
+        adapter._do_request_query(payload) → raw
+        adapter._parse_query_response(raw, broker_ref, timestamp) → BrokerResponse
+
+    Args:
+        order_id: Internal order identifier (primary routing key in drain)
+        broker_ref: Broker order reference at dispatch time. May be stale by
+                    the time the response arrives (Kraken EditOrder flips
+                    refs) — the executor guards via broker_ref comparison.
+        adapter: Live-capable adapter
+    """
+    order_id: str
+    broker_ref: str
+    adapter: AbstractAdapter
+
+
+@dataclass
+class QueryResponse:
+    """
+    Result of a QueryJob carried via _http_inbox to the main thread.
+
+    drain_inbox routes this to LiveTradeExecutor._handle_query_response,
+    which clears in_flight_query (always) and then branches on status:
+    FILLED → _fill_open_order, terminal (REJECTED/CANCELLED/EXPIRED) →
+    rejection, PENDING/PARTIALLY_FILLED → no state change (next throttle
+    cycle re-polls).
+
+    Stale-response guard: if broker_response.broker_ref != pending.broker_ref
+    (e.g. after EditOrder flipped the ref), the state mutation is skipped.
+
+    Args:
+        order_id: Internal order identifier (matches QueryJob.order_id)
+        broker_response: Parsed BrokerResponse from the adapter (carries
+                         status, fill_price, filled_lots, rejection_reason,
+                         and the broker_ref captured at query time)
+    """
+    order_id: str
+    broker_response: BrokerResponse
 
 
 @dataclass

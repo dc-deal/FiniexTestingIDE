@@ -57,6 +57,8 @@ from python.framework.types.live_types.live_request_types import (
     EditResponse,
     PositionModifyJob,
     PositionModifyResponse,
+    QueryJob,
+    QueryResponse,
     SubmitJob,
     SubmitResponse,
     TradesQueryJob,
@@ -135,6 +137,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # the parsed TradesQueryResponse so the executor can append trades to
         # pending.trades and trigger _fill_open_order with cumulative truth.
         self._trades_response_hook: Optional[Callable[[TradesQueryResponse], None]] = None
+        # #320: status-poll drain handler — main-thread callback receiving the
+        # parsed QueryResponse so the executor can clear in_flight_query, run
+        # the stale-broker_ref guard, and resolve FILLED / terminal / pending
+        # states from the broker's authoritative view.
+        self._query_response_hook: Optional[Callable[[QueryResponse], None]] = None
 
     # ============================================
     # High-Level Orchestrators (sync in V1, async post-step-6)
@@ -573,6 +580,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         position_modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         trades_response: Optional[Callable[[TradesQueryResponse], None]] = None,
+        query_response: Optional[Callable[[QueryResponse], None]] = None,
     ) -> None:
         """
         Register executor callbacks for async outcomes.
@@ -612,6 +620,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                             append per-execution BrokerTrade records to the
                             parent PendingOrder and finalize the fill with
                             cumulative truth (price + fee).
+            query_response: Optional (#320) — _handle_query_response(response).
+                            Invoked for QueryResponse so the executor can clear
+                            in_flight_query on the polled PendingOrder, apply
+                            the stale-broker_ref guard, and react to FILLED /
+                            terminal / pending broker outcomes.
         """
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
@@ -621,6 +634,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._cancel_response_hook = cancel_response
         self._position_modify_response_hook = position_modify_response
         self._trades_response_hook = trades_response
+        self._query_response_hook = query_response
 
     def start_worker(self) -> None:
         """
@@ -687,6 +701,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._dispatch_position_modify_job(job)
             elif isinstance(job, TradesQueryJob):
                 self._dispatch_trades_query_job(job)
+            elif isinstance(job, QueryJob):
+                self._dispatch_query_job(job)
             else:
                 self.logger.warning(
                     f'Unknown job type in outbox: {type(job).__name__}'
@@ -829,6 +845,36 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_response=response,
         ))
 
+    def _dispatch_query_job(self, job: QueryJob) -> None:
+        """
+        Worker-thread handler for QueryJob (#320).
+
+        Composes adapter Tier-3 query layer:
+            _build_query_payload → _do_request_query → _parse_query_response
+
+        Transport errors are surfaced as a REJECTED BrokerResponse — the main
+        thread's drain handler clears in_flight_query regardless and decides
+        whether the order should be removed (rejected) or simply re-polled on
+        the next throttle cycle.
+        """
+        now = datetime.now(timezone.utc)
+        try:
+            payload = job.adapter._build_query_payload(job.broker_ref)
+            raw = job.adapter._do_request_query(payload)
+            response = job.adapter._parse_query_response(raw, job.broker_ref, now)
+        except Exception as e:
+            response = BrokerResponse(
+                broker_ref=job.broker_ref,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=str(e),
+                timestamp=now,
+            )
+
+        self._http_inbox.put(QueryResponse(
+            order_id=job.order_id,
+            broker_response=response,
+        ))
+
     def _dispatch_trades_query_job(self, job: TradesQueryJob) -> None:
         """
         Worker-thread handler for TradesQueryJob (#326).
@@ -917,6 +963,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._handle_position_modify_response(item)
             elif isinstance(item, TradesQueryResponse):
                 self._handle_trades_query_response(item)
+            elif isinstance(item, QueryResponse):
+                self._handle_query_response(item)
             else:
                 self.logger.warning(
                     f'Unknown response type in inbox: {type(item).__name__}'
@@ -1052,6 +1100,24 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self.logger.warning(
                 f"drain_inbox: PositionModifyResponse for {item.position_id} "
                 f"but no position_modify_response_hook registered"
+            )
+
+    def _handle_query_response(self, item: QueryResponse) -> None:
+        """
+        Main-thread handler for a QueryResponse (#320).
+
+        Delegates to the executor's _query_response_hook. The hook ALWAYS
+        clears pending.in_flight_query (the dispatched query is resolved
+        either way), then applies the stale-broker_ref guard before any
+        state mutation. Branches on broker status: FILLED → fill, terminal
+        → rejection, PENDING/PARTIALLY_FILLED → no state change.
+        """
+        if self._query_response_hook is not None:
+            self._query_response_hook(item)
+        else:
+            self.logger.warning(
+                f"drain_inbox: QueryResponse for {item.order_id} "
+                f"but no query_response_hook registered"
             )
 
     def _handle_trades_query_response(self, item: TradesQueryResponse) -> None:
@@ -1264,6 +1330,36 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol=symbol,
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit,
+            adapter=adapter,
+        ))
+
+    def submit_query_order_async(
+        self,
+        order_id: str,
+        broker_ref: str,
+        adapter: AbstractAdapter,
+    ) -> None:
+        """
+        Enqueue a QueryJob for the worker thread (#320).
+
+        Triggered by LiveTradeExecutor._process_active_orders for every active
+        LIMIT order whose throttle window has elapsed and whose in_flight_query
+        is False. The caller is responsible for setting in_flight_query = True
+        and updating last_polled_at_ms BEFORE invoking this method — that keeps
+        the scheduler state visible to subsequent throttle checks even before
+        the job hits the worker.
+
+        Args:
+            order_id: Internal order identifier (primary routing key)
+            broker_ref: Broker order reference at dispatch time. May be stale
+                        by response time (Kraken EditOrder flips refs) — the
+                        executor's _handle_query_response applies the
+                        stale-broker_ref guard.
+            adapter: Live-capable adapter
+        """
+        self._http_outbox.put(QueryJob(
+            order_id=order_id,
+            broker_ref=broker_ref,
             adapter=adapter,
         ))
 

@@ -198,3 +198,12 @@ class AutoTraderDisplayStats:
     event_history: List[StrategyEvent] = field(default_factory=list)
     total_events_emitted: int = 0
     last_tick_time: Optional[datetime] = None
+
+    # #320 — Heartbeat pulse frame
+    # is_pulse: True if this frame was pushed by AbstractTradeExecutor.heartbeat
+    #   during idle (no real tick processed). Renderer uses this to show a
+    #   "💓 Ns since last tick" indicator instead of suggesting a fresh tick.
+    # seconds_since_last_tick: wall-clock seconds since the most recent real
+    #   tick was processed. 0.0 on regular frames.
+    is_pulse: bool = False
+    seconds_since_last_tick: float = 0.0

@@ -57,7 +57,7 @@ tests/
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
-│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query (#319, #321, #318, #326)
+│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence (#319, #321, #318, #326, #320)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   └── safety/            unit — circuit breaker (margin + spot)
 │

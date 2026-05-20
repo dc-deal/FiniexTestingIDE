@@ -160,6 +160,14 @@ Each tick follows the same 5-step path as backtesting:
 
 After each tick: `clipping_monitor.record_tick()` measures processing time.
 
+When the tick queue times out (1 s with no tick), the loop fires
+`executor.heartbeat()` instead of falling through silently. Heartbeat drains
+async worker responses (submit, edit, cancel, query, trades) and processes
+order timeouts without mutating tick state (no `_tick_counter` bump, no
+portfolio mark-dirty, no algo dispatch). It also pushes a *pulse* display
+frame so the dashboard shows `💓 N s since last tick` instead of freezing.
+See "Polling Cadence" below.
+
 ### Shutdown
 
 Two modes:
@@ -537,7 +545,7 @@ For `adapter_type='live'`, AutoTrader fetches broker config and account balance 
 _create_broker_config(config, logger)
   → config_mode=DYNAMIC (from market_config.json)
   → entry = MarketConfigManager().get_broker_entry(broker_type)
-  → KrakenConfigFetcher(entry.credentials_file, entry.api_base_url)
+  → KrakenConfigFetcher(entry.credentials_file, entry.broker_transport.api_base_url)
   → fetch_broker_config_with_cache(symbol, broker_type)
        cache < 7 days old  → use silently, no API call
        cache 7–30 days     → try GET /0/public/AssetPairs; on failure: warn + use cache
@@ -545,7 +553,7 @@ _create_broker_config(config, logger)
        no cache at all     → GET /0/public/AssetPairs; on failure: hard error (first run)
   → POST /0/private/Balance → account balance (overrides profile balances)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
-  → adapter.enable_live(credentials_file, api_base_url, dry_run, ...)  ← Tier 3 activation
+  → adapter.enable_live(credentials_file, dry_run, transport)  ← Tier 3 activation
   → return BrokerConfig with live-enabled KrakenAdapter
 ```
 
@@ -591,7 +599,7 @@ Profile (ethusd_live.json)           ← Algorithm config (strategy, workers, sy
   "broker_type": "kraken_spot"
         |
 market_config.json → kraken_spot     ← Broker connection config
-  "credentials_file", "dry_run", "api_base_url", "rate_limit_interval_s"
+  "credentials_file", "dry_run", "broker_transport.{api_base_url, rate_limit_interval_s, ...}"
         |
 Credentials (kraken_credentials.json) ← Only API keys
 ```
@@ -617,7 +625,7 @@ Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rat
 
 ## KrakenAdapter Tier 3 — Live Order Execution (#133 Step 3)
 
-Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(credentials_file, api_base_url, dry_run, ...)` — without it, the adapter works in Tier 1+2 mode (backtesting only).
+Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(credentials_file, dry_run, transport)` — without it, the adapter works in Tier 1+2 mode (backtesting only). `transport` is a `BrokerTransportConfig` (api_base_url, rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 
 ### Adapter Tiers
 
@@ -652,7 +660,27 @@ Kraken's EditOrder replaces the order entirely — the old txid becomes invalid 
 
 ### Rate Limiting
 
-Configurable via `rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
+Configurable via `broker_transport.rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
+
+Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Because all broker I/O is funneled through a single worker thread, this gate also serializes async polling against submits/edits/cancels — no risk of two private API calls landing under the rate window.
+
+### Polling Cadence (#320)
+
+Active LIMIT orders are polled asynchronously through the same worker-thread pattern as submit/edit/cancel/trades_query. `LiveTradeExecutor._process_active_orders` is a non-blocking scheduler: for each `_active_limit_orders` entry it either skips (no broker_ref yet, in-flight query, or inside throttle window) or enqueues a `QueryJob` to the worker. The response is consumed on the main thread via `drain_inbox` → `_handle_query_response`.
+
+Three gates on the scheduler, all silent skips:
+
+| Gate | Reason |
+|------|--------|
+| `broker_ref is None` | Submit still in flight at the broker — wait for `_handle_limit_submit_response` |
+| `pending.in_flight_query is True` | A previous QueryJob has not returned yet |
+| `now_ms - pending.last_polled_at_ms < poll_interval_ms` | Inside the per-order throttle window |
+
+Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
+
+`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard exists because Kraken's EditOrder flips the txid: a QueryJob dispatched before the swap returns a response carrying the OLD ref, while `pending.broker_ref` has already been updated to the new one. State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
+
+`poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
 
 ### Symbol Mapping
 

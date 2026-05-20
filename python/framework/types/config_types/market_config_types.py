@@ -41,6 +41,14 @@ class MarketRulesConfig(BaseModel):
     generator_profile_defaults: Optional[ProfileDefaultsConfig] = None
 
 
+class BrokerTransportConfig(BaseModel):
+    """Per-broker transport-layer tuning (HTTP endpoint, rate limits, polling cadence)."""
+    api_base_url: str = ''
+    rate_limit_interval_s: float = 1.0
+    request_timeout_s: int = 15
+    poll_interval_ms: int = 5000
+
+
 class BrokerEntryConfig(BaseModel):
     """Broker entry as loaded from JSON."""
     broker_type: str
@@ -50,9 +58,7 @@ class BrokerEntryConfig(BaseModel):
     config_mode: ConfigMode = ConfigMode.STATIC
     credentials_file: str = ''
     dry_run: bool = True
-    api_base_url: str = ''
-    rate_limit_interval_s: float = 1.0
-    request_timeout_s: int = 15
+    broker_transport: BrokerTransportConfig = BrokerTransportConfig()
 
 
 class MarketConfigModel(BaseModel):

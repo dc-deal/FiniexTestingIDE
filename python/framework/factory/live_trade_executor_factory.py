@@ -23,6 +23,7 @@ def build_live_executor(
     logger: AbstractLogger,
     timeout_config: Optional[TimeoutConfig] = None,
     spot_mode: bool = False,
+    poll_interval_ms: int = 5000,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -36,6 +37,9 @@ def build_live_executor(
         logger: Logger instance
         timeout_config: Order timeout thresholds (default: 30s timeout)
         spot_mode: Enable spot trading mode
+        poll_interval_ms: Per-order async poll throttle in ms (#320, default 5000).
+            Sourced from BrokerTransportConfig.poll_interval_ms when wired
+            from autotrader_startup.
 
     Returns:
         LiveTradeExecutor ready for live trading
@@ -60,4 +64,5 @@ def build_live_executor(
         timeout_config=config,
         spot_mode=spot_mode,
         initial_balances=initial_balances,
+        poll_interval_ms=poll_interval_ms,
     )

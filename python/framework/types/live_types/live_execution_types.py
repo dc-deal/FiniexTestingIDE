@@ -87,12 +87,7 @@ class TimeoutConfig:
     """
     Timeout configuration for live order monitoring.
 
-    Controls how long LiveTradeExecutor waits for broker responses
-    and how frequently it polls for updates.
-
     Args:
         order_timeout_seconds: Max wait time for broker fill/rejection
-        poll_interval_seconds: Interval between broker status checks
     """
     order_timeout_seconds: float = 30.0
-    poll_interval_seconds: float = 1.0
