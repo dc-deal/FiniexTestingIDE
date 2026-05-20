@@ -47,7 +47,7 @@
             "parallel_workers": false,
             "bar_max_history": 1000,
             "performance_tracking": {
-                "worker_decision_tracking": false
+                "worker_decision_tracking": true
             }
         },
         "clipping_monitor": {

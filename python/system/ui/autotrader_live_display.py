@@ -218,12 +218,15 @@ class AutoTraderLiveDisplay:
             Layout(name='right', ratio=1),
         )
 
-        # Left: Session + Connection + Worker Performance
-        layout['left'].split_column(
+        # Left: Session + Connection + Worker Performance (optional — hidden if tracking off)
+        left_panels = [
             Layout(self._build_session_panel(stats), name='session'),
             Layout(self._build_connection_panel(stats), name='connection'),
-            Layout(self._build_worker_perf_panel(stats), name='worker_perf'),
-        )
+        ]
+        worker_perf = self._build_worker_perf_panel(stats)
+        if worker_perf is not None:
+            left_panels.append(Layout(worker_perf, name='worker_perf'))
+        layout['left'].split_column(*left_panels)
 
         # Center: Portfolio + Tick Processing + Clipping
         layout['center'].split_column(
@@ -652,10 +655,10 @@ class AutoTraderLiveDisplay:
         ]
         return Panel('\n'.join(lines), title='[bold]TICK PROCESSING[/bold]', box=box.ROUNDED)
 
-    def _build_worker_perf_panel(self, stats: AutoTraderDisplayStats) -> Panel:
-        """Per-worker performance bars."""
+    def _build_worker_perf_panel(self, stats: AutoTraderDisplayStats) -> Optional[Panel]:
+        """Per-worker performance bars. Returns None when Layer-A tracking is disabled (#137)."""
         if not stats.worker_times_ms:
-            return Panel('[dim]No worker data[/dim]', title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
+            return None
 
         lines = []
         # Scale: max bar = 50ms (typical tick budget for 20 ticks/sec)

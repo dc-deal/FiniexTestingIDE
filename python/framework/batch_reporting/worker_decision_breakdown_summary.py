@@ -36,8 +36,24 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         self._process_results = batch_execution_summary.process_result_list
         self.breakdowns = self._build_breakdowns()
 
+    def _layer_a_has_data(self) -> bool:
+        """
+        Returns True if at least one scenario produced per-worker statistics.
+        The breakdown depends on both Layer A (worker_statistics) and Layer B
+        (profile_times['worker_decision']) — when Layer A is off, the section
+        is suppressed because the split (Workers / Decision / Overhead) is
+        meaningless without component data (#137).
+        """
+        for scenario in self._process_results:
+            if scenario.tick_loop_results and scenario.tick_loop_results.worker_statistics:
+                return True
+        return False
+
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """Render per scenario breakdown."""
+        if not self._layer_a_has_data():
+            return
+
         self._render_section_header(renderer)
 
         if not self.breakdowns:
@@ -53,6 +69,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
     def render_aggregated(self):
         """Render aggregated breakdown."""
+        if not self._layer_a_has_data():
+            return
+
         if not self.breakdowns:
             print("No data")
             return
@@ -68,6 +87,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
             compact: If True, truncate high-overhead list to threshold entries
             threshold: Max entries to display before collapsing
         """
+        if not self._layer_a_has_data():
+            return
+
         print()
         renderer.section_separator()
         renderer.print_bold("🔥 OVERHEAD ANALYSIS")

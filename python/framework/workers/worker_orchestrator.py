@@ -39,7 +39,8 @@ class WorkerOrchestrator:
         decision_logic: AbstractDecisionLogic,
         strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
-        parallel_threshold_ms: float = 1.0
+        parallel_threshold_ms: float = 1.0,
+        worker_decision_tracking: bool = True
     ):
         """
         Initialize coordinator with injected workers and decision logic.
@@ -49,7 +50,9 @@ class WorkerOrchestrator:
             decision_logic: Decision logic instance (e.g., SimpleConsensus)
             parallel_workers: Enable parallel worker execution (None = auto-detect)
             parallel_threshold_ms: Min worker time to activate parallel (default: 1.0ms)
-            scenario_name: Name of the scenario being executed
+            worker_decision_tracking: Create per-worker / decision performance trackers (Layer A).
+                                      When False, no trackers are created and all .record() sites
+                                      become no-ops via existing null-guards.
         """
         # ============================================
         # Injected dependencies
@@ -93,22 +96,24 @@ class WorkerOrchestrator:
         self._coordination_stats = WorkerCoordinatorPerformanceStats(
             parallel_workers=parallel_workers)
 
-        # Create performance trackers for each worker
-        for worker_name, worker in self.workers.items():
-            worker_type = self._extract_worker_type(worker)
-            perf_tracker = WorkerPerformanceTracker(
-                worker_type=worker_type,
-                worker_name=worker_name
-            )
-            worker.set_performance_logger(perf_tracker)
+        # Create performance trackers (Layer A) — skipped entirely when
+        # worker_decision_tracking is False. Worker / decision logic keep
+        # performance_logger = None, all .record() sites are no-ops via null-guards.
+        if worker_decision_tracking:
+            for worker_name, worker in self.workers.items():
+                worker_type = self._extract_worker_type(worker)
+                perf_tracker = WorkerPerformanceTracker(
+                    worker_type=worker_type,
+                    worker_name=worker_name
+                )
+                worker.set_performance_logger(perf_tracker)
 
-        # Create performance tracker for decision logic
-        decision_logic_type = self._extract_decision_logic_type(decision_logic)
-        decision_perf_tracker = DecisionLogicPerformanceTracker(
-            decision_logic_type=decision_logic_type,
-            decision_logic_name=decision_logic.name
-        )
-        decision_logic.set_performance_logger(decision_perf_tracker)
+            decision_logic_type = self._extract_decision_logic_type(decision_logic)
+            decision_perf_tracker = DecisionLogicPerformanceTracker(
+                decision_logic_type=decision_logic_type,
+                decision_logic_name=decision_logic.name
+            )
+            decision_logic.set_performance_logger(decision_perf_tracker)
 
         # Log configuration
         decision_logic.logger.debug(

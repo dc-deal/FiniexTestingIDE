@@ -185,6 +185,12 @@ class ProcessScenarioConfig:
     parallel_threshold: float = 1.0
     strict_parameter_validation: bool = True
 
+    # === PERFORMANCE TRACKING (#137) ===
+    # Layer A — per-worker / decision trackers in WorkerOrchestrator
+    worker_decision_tracking: bool = False
+    # Layer B — operation-level timers in the tick loop (process_tick_loop)
+    tick_loop_profiling: bool = True
+
     # === LOGGER METADATA ===
     # For ScenarioLogger initialization
     scenario_set_name: str = ""
@@ -276,6 +282,16 @@ class ProcessScenarioConfig:
             "strict_parameter_validation", True
         )
 
+        # Performance tracking sub-group (#137) — both switches default to
+        # the app-level defaults when the scenario does not override them.
+        perf_tracking = exec_config.get('performance_tracking', {})
+        worker_decision_tracking = perf_tracking.get(
+            'worker_decision_tracking', app_config_loader.get_default_worker_decision_tracking()
+        )
+        tick_loop_profiling = perf_tracking.get(
+            'tick_loop_profiling', app_config_loader.get_default_tick_loop_profiling()
+        )
+
         # account currency is derived from balances by ScenarioValidator
         account_currency = scenario.account_currency
         balances = scenario.trade_simulator_config.get('balances', {})
@@ -336,6 +352,8 @@ class ProcessScenarioConfig:
             parallel_workers=parallel_workers,
             parallel_threshold=parallel_threshold,
             strict_parameter_validation=strict_parameter_validation,
+            worker_decision_tracking=worker_decision_tracking,
+            tick_loop_profiling=tick_loop_profiling,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
             live_stats_config=live_stats_config,
