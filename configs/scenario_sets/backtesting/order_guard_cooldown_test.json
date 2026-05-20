@@ -57,8 +57,7 @@
             }
         },
         "execution_config": {
-            "parallel_workers": false,
-            "log_performance_stats": true
+            "parallel_workers": false
         },
         "trade_simulator_config": {
             "balances": { "JPY": 80000 },

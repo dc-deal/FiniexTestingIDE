@@ -45,7 +45,10 @@
     "autotrader": {
         "execution": {
             "parallel_workers": false,
-            "bar_max_history": 1000
+            "bar_max_history": 1000,
+            "performance_tracking": {
+                "worker_decision_tracking": true
+            }
         },
         "clipping_monitor": {
             "report_interval_s": 60.0,
@@ -68,7 +71,10 @@
                 "parallel_workers": false,
                 "worker_parallel_threshold_ms": 1.0,
                 "adaptive_parallelization": true,
-                "log_performance_stats": true,
+                "performance_tracking": {
+                    "tick_loop_profiling": true,
+                    "worker_decision_tracking": false
+                },
                 "strict_parameter_validation": true,
                 "tick_processing_budget_ms": 0.0
             }

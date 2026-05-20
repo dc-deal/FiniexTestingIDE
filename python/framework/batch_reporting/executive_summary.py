@@ -144,6 +144,12 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         else:
             print(f"Source:             Scenario Set")
 
+        # Performance tracking status (#137) — surface when at least one
+        # tracking layer is off so the user knows why summary sections are missing
+        tracking_line = self._format_tracking_status_line(renderer)
+        if tracking_line:
+            print(tracking_line)
+
     def _render_data_sources(self, renderer: ConsoleRenderer):
         """Render data sources summary section."""
         scenarios = self._batch_summary.single_scenario_list
@@ -631,6 +637,46 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
         line = f"Order Pipeline:     {pending} pending | {limits} active limits | {stops} active stops"
         print(renderer.cyan(line))
+
+    def _format_tracking_status_line(self, renderer: ConsoleRenderer) -> str:
+        """
+        Build performance-tracking status line for executive summary (#137).
+
+        Layer A = worker_statistics populated for any scenario.
+        Layer B = profile_times populated for any scenario.
+
+        Returns:
+            Formatted line ('Tracking:           ⚠️ ...') when at least one
+            layer is off, empty string when both layers are on (default case
+            — no friction).
+        """
+        layer_a_on = False
+        layer_b_on = False
+        for r in self._batch_summary.process_result_list:
+            if not r.tick_loop_results:
+                continue
+            if r.tick_loop_results.worker_statistics:
+                layer_a_on = True
+            profiling = r.tick_loop_results.profiling_data
+            if profiling and profiling.profile_times:
+                layer_b_on = True
+            if layer_a_on and layer_b_on:
+                break
+
+        if layer_a_on and layer_b_on:
+            return ''
+
+        if not layer_a_on and not layer_b_on:
+            msg = ('⚠️  All performance tracking OFF '
+                   '(no per-component or operation-level diagnostics)')
+        elif not layer_a_on:
+            msg = ('⚠️  Worker tracking OFF '
+                   '(per-worker / decision breakdowns unavailable)')
+        else:
+            msg = ('⚠️  Tick-loop profiling OFF '
+                   '(operation hotspot analysis unavailable)')
+
+        return f"Tracking:           {renderer.yellow(msg)}"
 
     def _format_warmup_hotspot(self, renderer: ConsoleRenderer) -> str:
         """

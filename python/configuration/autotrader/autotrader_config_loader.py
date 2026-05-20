@@ -20,6 +20,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DisplayDefaults,
     OrderGuardDefaults,
 )
+from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
 
 # ============================================
 # Known config keys per profile section
@@ -30,11 +31,12 @@ _KNOWN_PROFILE_TOP_KEYS: frozenset = frozenset({
     'strategy_config', 'account', 'tick_source',
     'execution', 'clipping_monitor', 'display', 'safety', 'order_guard',
 })
-_KNOWN_EXECUTION_KEYS: frozenset = frozenset({'parallel_workers', 'bar_max_history'})
+_KNOWN_EXECUTION_KEYS: frozenset = frozenset({'parallel_workers', 'bar_max_history', 'performance_tracking'})
 _KNOWN_CLIPPING_KEYS: frozenset  = frozenset({'report_interval_s', 'strategy'})
 _KNOWN_DISPLAY_KEYS: frozenset   = frozenset({'enabled', 'update_interval_ms'})
 _KNOWN_SAFETY_KEYS: frozenset    = frozenset({'enabled', 'min_balance', 'min_equity', 'max_drawdown_pct'})
 _KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({'cooldown_seconds', 'max_consecutive_rejections'})
+_KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = frozenset({'worker_decision_tracking'})
 _KNOWN_ACCOUNT_KEYS: frozenset   = frozenset({'balances', 'account_currency'})
 _KNOWN_TICK_SOURCE_KEYS: frozenset = frozenset({
     'type', 'parquet_path', 'max_ticks', 'tick_delay_ms',
@@ -73,10 +75,12 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     display_raw = raw.get('display', {})
     safety_raw = raw.get('safety', {})
     order_guard_raw = raw.get('order_guard', {})
+    performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
     check_unknown_keys('profile (top level)', raw,              _KNOWN_PROFILE_TOP_KEYS)
     check_unknown_keys('execution',           execution_raw,    _KNOWN_EXECUTION_KEYS)
+    check_unknown_keys('execution.performance_tracking', performance_tracking_raw, _KNOWN_PERFORMANCE_TRACKING_KEYS)
     check_unknown_keys('clipping_monitor',    clipping_raw,     _KNOWN_CLIPPING_KEYS)
     check_unknown_keys('display',             display_raw,      _KNOWN_DISPLAY_KEYS)
     check_unknown_keys('safety',              safety_raw,       _KNOWN_SAFETY_KEYS)
@@ -102,6 +106,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),
             bar_max_history=execution_raw.get('bar_max_history', 1000),
+            performance_tracking=AutoTraderPerformanceTrackingConfig(
+                worker_decision_tracking=performance_tracking_raw.get('worker_decision_tracking', False),
+            ),
         ),
         clipping_monitor=ClippingMonitorDefaults(
             report_interval_s=clipping_raw.get('report_interval_s', 60.0),

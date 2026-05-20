@@ -36,8 +36,34 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         self._process_results = batch_execution_summary.process_result_list
         self.breakdowns = self._build_breakdowns()
 
+    def _both_layers_have_data(self) -> bool:
+        """
+        Returns True only when at least one scenario has BOTH Layer A
+        (worker_statistics populated) and Layer B (profile_times populated).
+        The breakdown's components (Worker Execution / Decision Logic /
+        Coordination Overhead) need both data sources — Layer A provides the
+        per-component split, Layer B provides the operation top-line. If
+        either is missing the section becomes meaningless and is suppressed (#137).
+        """
+        layer_a = False
+        layer_b = False
+        for scenario in self._process_results:
+            if not scenario.tick_loop_results:
+                continue
+            if scenario.tick_loop_results.worker_statistics:
+                layer_a = True
+            profiling = scenario.tick_loop_results.profiling_data
+            if profiling and profiling.profile_times:
+                layer_b = True
+            if layer_a and layer_b:
+                return True
+        return False
+
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """Render per scenario breakdown."""
+        if not self._both_layers_have_data():
+            return
+
         self._render_section_header(renderer)
 
         if not self.breakdowns:
@@ -53,6 +79,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
     def render_aggregated(self):
         """Render aggregated breakdown."""
+        if not self._both_layers_have_data():
+            return
+
         if not self.breakdowns:
             print("No data")
             return
@@ -68,6 +97,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
             compact: If True, truncate high-overhead list to threshold entries
             threshold: Max entries to display before collapsing
         """
+        if not self._both_layers_have_data():
+            return
+
         print()
         renderer.section_separator()
         renderer.print_bold("🔥 OVERHEAD ANALYSIS")

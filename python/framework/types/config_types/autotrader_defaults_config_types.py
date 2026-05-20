@@ -7,11 +7,14 @@ AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from pydantic import BaseModel
 
+from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
+
 
 class AutotraderExecutionDefaults(BaseModel):
     """AutoTrader tick-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
+    performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 
 class ClippingMonitorDefaults(BaseModel):

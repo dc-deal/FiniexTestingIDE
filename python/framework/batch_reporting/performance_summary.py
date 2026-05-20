@@ -45,6 +45,17 @@ class PerformanceSummary(AbstractBatchSummarySection):
         self.batch_execution_summary: BatchExecutionSummary = batch_execution_summary
         self._process_results: List[ProcessResult] = batch_execution_summary.process_result_list
 
+    def _layer_a_has_data(self) -> bool:
+        """
+        Returns True if at least one scenario produced per-worker statistics.
+        When Layer A (worker_decision_tracking) is off, all scenarios have
+        empty worker_statistics and this summary's sections are suppressed (#137).
+        """
+        for scenario in self._process_results:
+            if scenario.tick_loop_results and scenario.tick_loop_results.worker_statistics:
+                return True
+        return False
+
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """
         Render profiling breakdown per scenario.
@@ -57,6 +68,9 @@ class PerformanceSummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
+        if not self._layer_a_has_data():
+            return
+
         self._render_section_header(renderer)
 
         if not self._process_results:
@@ -79,6 +93,8 @@ class PerformanceSummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
+        if not self._layer_a_has_data():
+            return
 
         # Aggregate statistics
         aggregated: AggregatedPerformanceStats = self._aggregate_performance_stats()
@@ -98,6 +114,8 @@ class PerformanceSummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
+        if not self._layer_a_has_data():
+            return
 
         # Analyze bottlenecks
         bottlenecks: PerformanceBottlenecks = self._analyze_bottlenecks()

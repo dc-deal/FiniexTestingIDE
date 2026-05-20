@@ -55,7 +55,10 @@
         },
         "execution_config": {
             "parallel_workers": false,
-            "log_performance_stats": true
+            "performance_tracking": {
+                "tick_loop_profiling": true,
+                "worker_decision_tracking": true
+            }
         },
         "trade_simulator_config": {
             "balances": { "JPY": 100000 },

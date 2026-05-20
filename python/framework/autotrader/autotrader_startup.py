@@ -252,6 +252,7 @@ def setup_pipeline(
         strategy_config=config.strategy_config,
         workers=workers,
         parallel_workers=config.execution.parallel_workers,
+        worker_decision_tracking=config.execution.performance_tracking.worker_decision_tracking,
     )
     worker_orchestrator.initialize()
     logger.debug(f"✅ Orchestrator initialized: {len(workers)} workers")

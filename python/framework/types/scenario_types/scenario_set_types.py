@@ -93,7 +93,6 @@ class SingleScenario:
                 "worker_parallel_threshold_ms": 1.0,  # Only parallelize when worker takes >1ms
                 # Performance Tuning
                 "adaptive_parallelization": True,  # Auto-detect optimal mode
-                "log_performance_stats": True,  # Log timing statistics
                 # Parameter Validation
                 # True = abort on boundary violations, False = warn only
                 "strict_parameter_validation": True,

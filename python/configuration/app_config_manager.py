@@ -168,6 +168,35 @@ class AppConfigManager:
         """
         return self._app_config.backtesting.execution.default_scenario_execution_config.parallel_workers
 
+    def get_default_tick_loop_profiling(self) -> bool:
+        """
+        Get default tick-loop profiling setting (Layer B).
+
+        Returns:
+            True if operation-level timers in the tick loop are enabled by default
+        """
+        return self._app_config.backtesting.execution.default_scenario_execution_config.performance_tracking.tick_loop_profiling
+
+    def get_default_worker_decision_tracking(self) -> bool:
+        """
+        Get default per-worker / decision tracking setting (Layer A) for Backtesting.
+
+        Returns:
+            True if per-component performance trackers are created by default
+        """
+        return self._app_config.backtesting.execution.default_scenario_execution_config.performance_tracking.worker_decision_tracking
+
+    def get_autotrader_worker_decision_tracking(self) -> bool:
+        """
+        Get default per-worker / decision tracking setting (Layer A) for AutoTrader.
+
+        AutoTrader has no Layer-B equivalent, so only Layer A is exposed.
+
+        Returns:
+            True if per-component performance trackers are created by default
+        """
+        return self._app_config.autotrader.execution.performance_tracking.worker_decision_tracking
+
     def should_warn_on_override(self) -> bool:
         """
         Check if parameter override warnings are enabled.

@@ -5,6 +5,8 @@ Pydantic models for the app_config.json::backtesting section.
 from typing import Dict, List
 from pydantic import BaseModel, ConfigDict
 
+from python.framework.types.config_types.performance_tracking_config_types import PerformanceTrackingConfig
+
 
 class DefaultScenarioExecutionConfig(BaseModel):
     """Per-scenario execution defaults (base layer of 3-level cascade)."""
@@ -12,7 +14,7 @@ class DefaultScenarioExecutionConfig(BaseModel):
     parallel_workers: bool = False
     worker_parallel_threshold_ms: float = 1.0
     adaptive_parallelization: bool = True
-    log_performance_stats: bool = True
+    performance_tracking: PerformanceTrackingConfig = PerformanceTrackingConfig()
     strict_parameter_validation: bool = True
     tick_processing_budget_ms: float = 0.0
 

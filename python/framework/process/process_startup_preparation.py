@@ -110,7 +110,8 @@ def process_startup_preparation(
         strategy_config=config.strategy_config,
         workers=workers,
         parallel_workers=config.parallel_workers,
-        parallel_threshold_ms=config.parallel_threshold
+        parallel_threshold_ms=config.parallel_threshold,
+        worker_decision_tracking=config.worker_decision_tracking
     )
     worker_coordinator.initialize()
 
