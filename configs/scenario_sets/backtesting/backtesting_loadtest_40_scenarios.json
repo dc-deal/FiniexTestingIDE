@@ -29,7 +29,12 @@
         "min_confidence": 0.6
       }
     },
-    "execution_config": {},
+    "execution_config": {
+      "performance_tracking": {
+        "tick_loop_profiling": true,
+        "worker_decision_tracking": true
+      }
+    },
     "trade_simulator_config": {
       "balances": {
         "USD": 10000

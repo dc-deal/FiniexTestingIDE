@@ -30,7 +30,7 @@ vLog = get_global_logger()
 
 _KNOWN_EXECUTION_KEYS: frozenset = frozenset({
     'parallel_workers', 'worker_parallel_threshold_ms',
-    'adaptive_parallelization', 'log_performance_stats',
+    'adaptive_parallelization', 'performance_tracking',
     'strict_parameter_validation', 'tick_processing_budget_ms',
 })
 _KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
