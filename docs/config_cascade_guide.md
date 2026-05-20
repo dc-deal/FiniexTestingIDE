@@ -388,24 +388,33 @@ Execution settings cascade individually, allowing performance testing with diffe
   "parallel_workers": true,
   "worker_parallel_threshold_ms": 1.0,
   "adaptive_parallelization": true,
-  "log_performance_stats": true
+  "performance_tracking": {
+    "tick_loop_profiling": true,
+    "worker_decision_tracking": false
+  }
 }
 ```
 
 **Scenario Override:**
 ```json
 "execution_config": {
-  "parallel_workers": false
+  "parallel_workers": false,
+  "performance_tracking": {
+    "worker_decision_tracking": true
+  }
 }
 ```
 
 **Result (Merged):**
 ```json
 "execution_config": {
-  "parallel_workers": false,           // ← FROM SCENARIO
-  "worker_parallel_threshold_ms": 1.0, // ← FROM GLOBAL
-  "adaptive_parallelization": true,    // ← FROM GLOBAL
-  "log_performance_stats": true        // ← FROM GLOBAL
+  "parallel_workers": false,             // ← FROM SCENARIO
+  "worker_parallel_threshold_ms": 1.0,   // ← FROM GLOBAL
+  "adaptive_parallelization": true,      // ← FROM GLOBAL
+  "performance_tracking": {
+    "tick_loop_profiling": true,         // ← FROM GLOBAL (sub-group key-merged)
+    "worker_decision_tracking": true     // ← FROM SCENARIO
+  }
 }
 ```
 
@@ -413,7 +422,10 @@ Execution settings cascade individually, allowing performance testing with diffe
 ```
 ⚠️  Parameter overrides in scenario 'EURUSD_window_02':
    └─ execution_config.parallel_workers: true → false
+   └─ execution_config.performance_tracking.worker_decision_tracking: false → true
 ```
+
+> **Note:** `performance_tracking` is a **nested sub-group** validated by its own Pydantic model with `extra='forbid'`. Both switches inside the sub-group cascade independently — a scenario can flip one while inheriting the other from global. Architecture and reasoning: see [performance_tracking_layers.md](architecture/performance_tracking_layers.md).
 
 ---
 

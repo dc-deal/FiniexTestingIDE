@@ -293,7 +293,7 @@ Three layouts based on terminal width:
 |-------|---------|---------|
 | SESSION | Left | Uptime, status, tick rate (`X.X/min (N total)`), trade count + win rate, mode |
 | CONNECTION | Left | Stream health (WS message age), Last Tick (actual trade tick age), reconnect count, emitted tick rate |
-| WORKER PERFORMANCE | Left | Per-worker avg processing time with bar chart (scale: 50ms = full bar) |
+| WORKER PERFORMANCE | Left | Per-worker avg processing time with bar chart (scale: 50ms = full bar). Hidden completely when `execution.performance_tracking.worker_decision_tracking` is `false` — see [performance_tracking_layers.md](../architecture/performance_tracking_layers.md) |
 | PORTFOLIO | Center | Balance with quote equivalent (`≈ X.XX USD`), net P&L, W/L count |
 | TICK PROCESSING | Center | Avg/max processing ms, p50/p95/p99 percentiles, clipping bar + ratio, queue depth |
 | OPEN POSITIONS | Right | Live positions: ID, direction, lots, entry price, unrealized P&L |

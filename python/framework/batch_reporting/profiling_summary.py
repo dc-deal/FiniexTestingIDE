@@ -45,6 +45,20 @@ class ProfilingSummary(AbstractBatchSummarySection):
         # Build profiling metrics from scenarios
         self.profiling_metrics = self._build_profiling_metrics()
 
+    def _layer_b_has_data(self) -> bool:
+        """
+        Returns True if at least one scenario produced tick-loop profiling data.
+        When Layer B (tick_loop_profiling) is off, profile_times stays empty and
+        this summary's sections are suppressed (#137).
+        """
+        for scenario in self._process_results:
+            if not scenario.tick_loop_results:
+                continue
+            profiling = scenario.tick_loop_results.profiling_data
+            if profiling and profiling.profile_times:
+                return True
+        return False
+
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """
         Render profiling breakdown per scenario.
@@ -57,6 +71,9 @@ class ProfilingSummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
+        if not self._layer_b_has_data():
+            return
+
         self._render_section_header(renderer)
 
         if not self._process_results:
@@ -94,6 +111,9 @@ class ProfilingSummary(AbstractBatchSummarySection):
             compact: If True, truncate budget warnings list to threshold entries
             threshold: Max entries to show before truncating
         """
+        if not self._layer_b_has_data():
+            return
+
         if not self.profiling_metrics.scenario_profiles:
             print("No aggregated profiling data available")
             return
@@ -118,6 +138,9 @@ class ProfilingSummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
+        if not self._layer_b_has_data():
+            return
+
         print()
         renderer.section_separator()
         print(f"{renderer.bold(renderer.red('🔥 BOTTLENECK ANALYSIS'))} "

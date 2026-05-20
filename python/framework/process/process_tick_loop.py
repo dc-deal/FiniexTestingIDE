@@ -75,9 +75,11 @@ def execute_tick_loop(
     try:
         portfolio = trade_simulator.portfolio
 
-        # Performance profiling
-        profile_times = defaultdict(float)
-        profile_counts = defaultdict(int)
+        # Performance profiling (Layer B — #137).
+        # When disabled, profile dicts stay empty and inter-tick collection skipped.
+        profiling_enabled = config.tick_loop_profiling
+        profile_times = defaultdict(float) if profiling_enabled else {}
+        profile_counts = defaultdict(int) if profiling_enabled else {}
 
         # Inter-tick interval collection (collected_msc preferred, time_msc fallback)
         inter_tick_intervals: List[float] = []
@@ -113,14 +115,14 @@ def execute_tick_loop(
         for tick_idx, tick in enumerate(ticks):
             scenario_logger.set_current_tick(
                 tick_idx + 1, tick)
-            tick_start = time.perf_counter()
+            if profiling_enabled: tick_start = time.perf_counter()
             current_tick = tick
             current_index = tick_idx
 
             # Inter-tick interval: use collected_msc (monotonic) when available,
             # fall back to time_msc for pre-V1.3.0 data (with negative-diff skip)
             current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
-            if prev_interval_msc > 0 and current_msc > 0:
+            if profiling_enabled and prev_interval_msc > 0 and current_msc > 0:
                 delta = current_msc - prev_interval_msc
                 if tick.collected_msc > 0 or delta >= 0:
                     inter_tick_intervals.append(float(delta))
@@ -130,21 +132,21 @@ def execute_tick_loop(
             # Broker sees every tick regardless of algo processing budget.
             # Pending order fills, SL/TP triggers, limit/stop monitoring
             # all operate on the full tick stream.
-            t1 = time.perf_counter()
+            if profiling_enabled: t1 = time.perf_counter()
             trade_simulator.on_tick(tick)
-            t2 = time.perf_counter()
-            profile_times['trade_simulator'] += (t2 - t1) * 1000
-            profile_counts['trade_simulator'] += 1
+            if profiling_enabled:
+                profile_times['trade_simulator'] += (time.perf_counter() - t1) * 1000
+                profile_counts['trade_simulator'] += 1
 
             # === 2. Bar Rendering (all ticks) ===
             # Bars must reflect the complete market data stream — including
             # clipped ticks. Clipping simulates "algo was too slow to react",
             # NOT "market data was incomplete". Same ordering as AutoTrader.
-            t3 = time.perf_counter()
+            if profiling_enabled: t3 = time.perf_counter()
             current_bars = bar_rendering_controller.process_tick(tick)
-            t4 = time.perf_counter()
-            profile_times['bar_rendering'] += (t4 - t3) * 1000
-            profile_counts['bar_rendering'] += 1
+            if profiling_enabled:
+                profile_times['bar_rendering'] += (time.perf_counter() - t3) * 1000
+                profile_counts['bar_rendering'] += 1
 
             # === CLIPPING GATE ===
             # Ticks flagged by tick processing budget skip the algo path.
@@ -155,50 +157,50 @@ def execute_tick_loop(
             # === ALGO PATH (non-clipped ticks only) ===
 
             # === 3. Bar History Retrieval ===
-            t5 = time.perf_counter()
+            if profiling_enabled: t5 = time.perf_counter()
             bar_history = bar_rendering_controller.get_all_bar_history(
                 symbol=config.symbol
             )
-            t6 = time.perf_counter()
-            profile_times['bar_history'] += (t6 - t5) * 1000
-            profile_counts['bar_history'] += 1
+            if profiling_enabled:
+                profile_times['bar_history'] += (time.perf_counter() - t5) * 1000
+                profile_counts['bar_history'] += 1
 
             # === 4. Worker Processing + Decision ===
-            t7 = time.perf_counter()
+            if profiling_enabled: t7 = time.perf_counter()
             decision = worker_coordinator.process_tick(
                 tick=tick,
                 current_bars=current_bars,
                 bar_history=bar_history
             )
-            t8 = time.perf_counter()
-            profile_times['worker_decision'] += (t8 - t7) * 1000
-            profile_counts['worker_decision'] += 1
+            if profiling_enabled:
+                profile_times['worker_decision'] += (time.perf_counter() - t7) * 1000
+                profile_counts['worker_decision'] += 1
 
             # === 5. Order Execution ===
-            t9 = time.perf_counter()
+            if profiling_enabled: t9 = time.perf_counter()
             try:
                 decision_logic.execute_decision(decision, tick)
             except Exception as e:
                 raise RuntimeError(
                     f"Order execution failed: {e} \n{traceback.format_exc()}")
 
-            t10 = time.perf_counter()
-            profile_times['order_execution'] += (t10 - t9) * 1000
-            profile_counts['order_execution'] += 1
+            if profiling_enabled:
+                profile_times['order_execution'] += (time.perf_counter() - t9) * 1000
+                profile_counts['order_execution'] += 1
 
             # === 6. LIVE UPDATES (Time-based) ===
-            t11 = time.perf_counter()
+            if profiling_enabled: t11 = time.perf_counter()
             live_updated = process_live_export(
                 live_setup, config, tick_idx, tick, portfolio, worker_coordinator, current_bars)
             if (live_updated):
                 live_update_count += 1
-            t12 = time.perf_counter()
-            profile_times['live_update'] += (t12 - t11) * 1000
-            profile_counts['live_update'] += 1
+            if profiling_enabled:
+                profile_times['live_update'] += (time.perf_counter() - t11) * 1000
+                profile_counts['live_update'] += 1
 
             # Total tick time
-            tick_end = time.perf_counter()
-            profile_times['total_per_tick'] += (tick_end - tick_start) * 1000
+            if profiling_enabled:
+                profile_times['total_per_tick'] += (time.perf_counter() - tick_start) * 1000
 
         scenario_logger.set_tick_loop_started(False)
         if has_clipping:
