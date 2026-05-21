@@ -100,7 +100,7 @@ class TestAsyncSubmitRejection:
         """
         guard = OrderGuard(cooldown_seconds=60.0, max_consecutive_rejections=1)
 
-        def listener(direction, result):
+        def listener(direction, result, pending=None):
             if result.is_rejected and result.rejection_reason == RejectionReason.BROKER_ERROR:
                 guard.record_rejection(direction, datetime.now(timezone.utc))
 

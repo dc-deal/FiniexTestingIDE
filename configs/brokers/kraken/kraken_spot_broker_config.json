@@ -17,8 +17,8 @@
   },
   "fee_structure": {
     "model": "maker_taker",
-    "maker_fee": 0.16,
-    "taker_fee": 0.26,
+    "maker_fee": 0.25,
+    "taker_fee": 0.40,
     "fee_currency": "quote"
   },
   "trading_permissions": {

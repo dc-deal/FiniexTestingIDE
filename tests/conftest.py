@@ -14,7 +14,17 @@ Mark taxonomy (see docs/tests/test_taxonomy.md):
 - benchmark     tests/simulation/benchmark/
 - integration   tests with 'integration' in their path
 - unit          order_guard, live_executor, safety, bar_rendering, workers, etc.
+
+Config isolation: FINIEX_CONFIG_ISOLATION=1 is set at module import (before any
+configuration loaders run) so user_configs/*.json overrides are skipped during
+pytest. Tests must be deterministic across developers — the personal workspace
+must not bleed in. setdefault() allows manual override (e.g. for debugging a
+specific failing test against a user config).
 """
+
+import os
+
+os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 
 import pytest
 

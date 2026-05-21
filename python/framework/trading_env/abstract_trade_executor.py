@@ -156,7 +156,7 @@ class AbstractTradeExecutor(ABC):
         # and other consumers of async fill/rejection outcomes (e.g. margin
         # check at fill time). Signature: (direction, result) -> None.
         # Multi-slot: any number of listeners can register independently.
-        self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult], None]] = []
+        self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]] = []
 
     def _check_order_history_limit(self) -> None:
         """Emit one-time warning when order history reaches capacity."""
@@ -175,26 +175,30 @@ class AbstractTradeExecutor(ABC):
 
     def add_order_outcome_listener(
         self,
-        listener: Callable[[OrderDirection, OrderResult], None]
+        listener: Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]
     ) -> None:
         """
         Register a listener for async order outcomes.
 
-        Called by DecisionTradingApi (OrderGuard), the Reconciliation Layer,
-        and any other consumer that needs fill/rejection notifications after
-        the initial open_order() returns PENDING. Listeners are notified in
-        registration order. Multi-slot — registering does not replace existing
-        listeners.
+        Called by DecisionTradingApi (OrderGuard), the DriftAuditor (#327),
+        the Reconciliation Layer, and any other consumer that needs
+        fill/rejection notifications after the initial open_order() returns
+        PENDING. Listeners are notified in registration order. Multi-slot —
+        registering does not replace existing listeners.
 
         Args:
-            listener: Function receiving (direction, result) for each outcome
+            listener: Function receiving (direction, result, pending) for each outcome.
+                pending is None for pre-submit rejections that never produced a
+                PendingOrder; otherwise the PendingOrder reference at the moment
+                of the outcome (synthetic state intact for snapshot consumers).
         """
         self._order_outcome_listeners.append(listener)
 
     def _notify_outcome(
         self,
         direction: OrderDirection,
-        result: OrderResult
+        result: OrderResult,
+        pending: Optional[PendingOrder] = None,
     ) -> None:
         """
         Notify all registered listeners of an async order outcome.
@@ -206,9 +210,11 @@ class AbstractTradeExecutor(ABC):
         Args:
             direction: Order direction (LONG/SHORT)
             result: The terminal OrderResult (EXECUTED or REJECTED)
+            pending: The PendingOrder reference at the outcome moment, or None
+                for pre-submit rejections (no PendingOrder existed yet).
         """
         for listener in self._order_outcome_listeners:
-            listener(direction, result)
+            listener(direction, result, pending)
 
     # ============================================
     # Tick Lifecycle (called by process_tick_loop)
@@ -472,7 +478,7 @@ class AbstractTradeExecutor(ABC):
                 )
                 self._check_order_history_limit()
                 self._order_history.append(rejection)
-                self._notify_outcome(pending_order.direction, rejection)
+                self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
                     f"Order {pending_order.pending_order_id} rejected: "
                     f"margin {margin_required:.2f} > free {free_margin:.2f}"
@@ -496,7 +502,7 @@ class AbstractTradeExecutor(ABC):
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
-                    self._notify_outcome(pending_order.direction, rejection)
+                    self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f"Order {pending_order.pending_order_id} rejected: "
                         f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
@@ -517,7 +523,7 @@ class AbstractTradeExecutor(ABC):
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
-                    self._notify_outcome(pending_order.direction, rejection)
+                    self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
                         f"Order {pending_order.pending_order_id} rejected: "
                         f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
@@ -587,7 +593,7 @@ class AbstractTradeExecutor(ABC):
         self._total_spread_cost += entry_fee.cost
         self._check_order_history_limit()
         self._order_history.append(result)
-        self._notify_outcome(pending_order.direction, result)
+        self._notify_outcome(pending_order.direction, result, pending_order)
 
     def _fill_close_order(
         self,

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.utils.config_merge_utils import deep_merge
+from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 from python.framework.types.market_types.market_volatility_profile_types import (
     CrossInstrumentRankingConfig,
     VolatilityProfileConfig,
@@ -95,8 +95,10 @@ class DiscoveriesConfigLoader:
             vLog.error(f"Failed to load discoveries_config: {e}")
             raise e
 
-        # Try to load user override configuration
-        if self.user_config_path.exists():
+        # Try to load user override configuration.
+        # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
+        # user workspace must never bleed into the test suite (non-determinism).
+        if self.user_config_path.exists() and not is_config_isolation_active():
             try:
                 with open(self.user_config_path, 'r') as f:
                     user_override = json.load(f)

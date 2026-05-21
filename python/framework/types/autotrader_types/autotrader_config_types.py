@@ -11,6 +11,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
     DisplayDefaults,
+    DriftAuditConfig,
     OrderGuardDefaults,
 )
 
@@ -108,4 +109,5 @@ class AutoTraderConfig:
     display: DisplayDefaults = field(default_factory=DisplayDefaults)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     order_guard: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
+    drift_audit: DriftAuditConfig = field(default_factory=DriftAuditConfig)
     config_path: Optional[Path] = None

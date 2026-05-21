@@ -682,6 +682,14 @@ Pathological "stuck in-flight" cases (worker dead, network hung) are caught by t
 
 `poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
 
+### Drift Audit (#327)
+
+After every EXECUTED outcome the `DriftAuditor` (wired in `autotrader_main.py` when `drift_audit.enabled=True`) captures a snapshot of the synthetic state (`pending.cumulative_fee` / `cumulative_avg_price` / `cumulative_filled_lots`) and fires a one-shot `submit_trades_query_async()` against the broker. When the per-execution `TradesQueryResponse` arrives via `drain_inbox`, the executor's `_handle_trades_response` fan-outs to all registered `_trades_response_consumers` — including DriftAuditor — which then compares snapshot vs. broker truth across FEE / VOLUME / PRICE dimensions, logs drift events above their thresholds, and surfaces counters in the SESSION panel `Audit:` line.
+
+Strict read-only — no state mutation, no portfolio adjustment. Correction is deferred to the future Reconciliation Layer (#151). Detailed architecture: [architecture/drift_audit.md](../architecture/drift_audit.md).
+
+The listener signature `add_order_outcome_listener(callback)` was extended to `Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]` to give consumers the pending reference at outcome time. OrderGuard's adapter accepts the new arg and ignores it. Pre-submit rejections (no PendingOrder yet) pass `pending=None` explicitly at the single relevant call site (`_record_async_rejection` in `live_trade_executor.py`).
+
 ### Symbol Mapping
 
 Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XBTUSD`) for order API calls via the `kraken_pair_name` field in the broker config JSON (static seed or runtime cache). If the field is absent, the symbol key is used as-is.

@@ -466,7 +466,10 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
     logger.info(f"🚀 Mode: {mode_label}")
     print(f"  ▸ Mode: {mode_label}")
 
-    _log_broker_config_loaded(broker_config, 'data/runtime/brokers (cached)', logger)
+    # Pass the actual runtime cache file path so _log_broker_config_loaded can
+    # surface cache age in the startup output (helps diagnose stale-fee issues).
+    cache_path = f'data/runtime/brokers/{config.broker_type}/{config.broker_type}_broker_config.json'
+    _log_broker_config_loaded(broker_config, cache_path, logger)
     return broker_config
 
 
@@ -501,7 +504,10 @@ def _create_live_broker_config_static(config: AutoTraderConfig, logger: Scenario
 
 def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: ScenarioLogger) -> None:
     """
-    Log broker config load event with config hash and active symbol count.
+    Log broker config load event with config hash, active symbol count, and
+    fee rates currently in effect. For runtime-cached configs the cache file
+    age is surfaced — makes stale-fee scenarios visible at first glance
+    (diagnoses cases where a stale cache silently overrides updated defaults).
 
     Args:
         broker_config: Loaded BrokerConfig
@@ -509,18 +515,40 @@ def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: 
         logger: ScenarioLogger for status messages
     """
     config_hash = broker_config.config_hash
-    symbols = broker_config.adapter.broker_config.get('symbols', {})
+    raw_config = broker_config.adapter.broker_config
+    symbols = raw_config.get('symbols', {})
     active_count = sum(
         1 for s in symbols.values()
         if s.get('_active', True)  # missing _active defaults to active (legacy format)
     )
     hash_tag = f' [{config_hash}]' if config_hash else ''
+
+    # Fee rates currently in effect (drift-audit empirics revealed cache-vs-actual
+    # mismatches were silent before this line existed).
+    fee_structure = raw_config.get('fee_structure', {})
+    maker = fee_structure.get('maker_fee')
+    taker = fee_structure.get('taker_fee')
+    fee_line = (
+        f'maker={maker}% / taker={taker}%'
+        if maker is not None and taker is not None
+        else 'no fee_structure block'
+    )
+
+    # Cache age — visible only if source resolves to an existing file
+    source_path = Path(source) if source else None
+    age_part = ''
+    if source_path and source_path.exists():
+        age_days = (datetime.now(timezone.utc).timestamp() - source_path.stat().st_mtime) / 86400.0
+        age_part = f'  [cache age={age_days:.1f}d]'
+
     logger.info(
         f"🗄  Broker config loaded: {broker_config.broker_type.value}{hash_tag}\n"
-        f"    Source:  {source}\n"
-        f"    Symbols: {active_count} active"
+        f"    Source:    {source}{age_part}\n"
+        f"    Symbols:   {active_count} active\n"
+        f"    Fee rates: {fee_line}"
     )
     print(f"  ▸ Broker config: {broker_config.broker_type.value}{hash_tag} — {active_count} active symbols")
+    print(f"  ▸ Fee rates:     {fee_line}{age_part}")
 
 
 def _resolve_ws_pair(symbol: str, base_currency: str, quote_currency: str) -> str:
