@@ -359,6 +359,31 @@ class AutoTraderLiveDisplay:
                 dd_part = 'dd: off'
 
             lines.append(f'         [dim]{min_part}  |  {dd_part}[/dim]')
+
+        # #327 — Drift Audit footer. Width-aware so the SESSION column doesn't
+        # wrap in three-col layout. PRICE counter rendered dim — structural,
+        # not actionable (see #244).
+        if stats.drift_enabled:
+            width = self._console.size.width
+            if width < 120:
+                audit_str = (
+                    f'[green]✓{stats.drift_audited:d}[/green] │ '
+                    f'[yellow]⚠{stats.drift_fee_events:d}F[/yellow] │ '
+                    f'⚠{stats.drift_volume_events:d}V │ '
+                    f'[dim]{stats.drift_price_events:d}P[/dim]'
+                )
+            else:
+                max_part = (
+                    f' [yellow](max {stats.drift_max_fee_pct:.1f}%)[/yellow]'
+                    if stats.drift_fee_events > 0 else ''
+                )
+                audit_str = (
+                    f'[green]✓{stats.drift_audited:d}[/green] │ '
+                    f'[yellow]⚠{stats.drift_fee_events:d} fee[/yellow]{max_part} │ '
+                    f'⚠{stats.drift_volume_events:d} vol │ '
+                    f'[dim]{stats.drift_price_events:d} price↘#244[/dim]'
+                )
+            lines.append(f'Audit:   {audit_str}')
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:

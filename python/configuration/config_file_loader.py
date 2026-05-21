@@ -4,7 +4,7 @@ from threading import Lock
 import traceback
 from typing import Any, Dict, Optional, Tuple
 
-from python.framework.utils.config_merge_utils import deep_merge
+from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 
 class ConfigFileLoader:
@@ -85,9 +85,11 @@ class ConfigFileLoader:
                 f"   Error: {e}"
             )
 
-        # Try to load user override configuration
+        # Try to load user override configuration.
+        # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
+        # user workspace must never bleed into the test suite (non-determinism).
         user_config_path = ConfigFileLoader._user_config_path
-        if user_config_path and Path(user_config_path).exists():
+        if user_config_path and Path(user_config_path).exists() and not is_config_isolation_active():
             try:
                 with open(user_config_path, "r") as f:
                     user_override = json.load(f)

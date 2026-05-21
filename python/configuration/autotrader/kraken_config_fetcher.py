@@ -382,8 +382,9 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         """
         Build complete broker config dict from fetched symbol data.
 
-        Uses hardcoded fee structure (maker 0.16%, taker 0.26%) — Kraken
-        fee tiers depend on 30-day rolling volume, static default is safer.
+        Uses hardcoded fee structure (maker 0.25%, taker 0.40%) — Kraken
+        Tier-0 published rates. Account-tier auto-detection via
+        /0/private/TradeVolume is tracked in a separate issue.
 
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
@@ -415,8 +416,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             },
             'fee_structure': {
                 'model': 'maker_taker',
-                'maker_fee': 0.16,
-                'taker_fee': 0.26,
+                'maker_fee': 0.25,
+                'taker_fee': 0.40,
                 'fee_currency': 'quote',
             },
             'trading_permissions': {
@@ -650,14 +651,16 @@ def _merge_with_cache(fresh_dict: Dict[str, Any], cache_path: Path) -> Dict[str,
     """
     merged_symbols: Dict[str, Any] = {}
 
-    # Load existing cache symbols if present — keep their current state
-    if cache_path.exists():
-        try:
-            existing = _load_json(cache_path)
-            for sym, spec in existing.get('symbols', {}).items():
-                merged_symbols[sym] = dict(spec)
-        except Exception:
-            pass  # corrupted cache: start fresh
+    # Load existing cache symbols if present — keep their current state.
+    # The try/except handles both missing files and corrupted JSON in one
+    # branch; an explicit exists() check is redundant and made the function
+    # depend on filesystem state when callers mock _load_json directly.
+    try:
+        existing = _load_json(cache_path)
+        for sym, spec in existing.get('symbols', {}).items():
+            merged_symbols[sym] = dict(spec)
+    except Exception:
+        pass  # no existing cache (or corrupted): start fresh
 
     # Add / update fresh API symbols (always active)
     now_str = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')

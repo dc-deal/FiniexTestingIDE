@@ -38,6 +38,7 @@ from .order_guard import OrderGuard
 from .portfolio_manager import UNSET, _UnsetType
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
@@ -249,7 +250,8 @@ class DecisionTradingApi:
     def _on_order_outcome(
         self,
         direction: OrderDirection,
-        result: OrderResult
+        result: OrderResult,
+        pending: Optional[PendingOrder] = None,
     ) -> None:
         """
         Handle async order outcomes from the executor.
@@ -262,6 +264,9 @@ class DecisionTradingApi:
         Args:
             direction: Order direction (LONG/SHORT)
             result: Terminal OrderResult (EXECUTED or REJECTED)
+            pending: PendingOrder reference (unused — OrderGuard is stateless
+                w.r.t. order context; param exists for listener-signature
+                compatibility with #327 DriftAuditor)
         """
         if result.is_rejected:
             if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:

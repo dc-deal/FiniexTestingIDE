@@ -18,6 +18,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
     DisplayDefaults,
+    DriftAuditConfig,
     OrderGuardDefaults,
 )
 from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
@@ -30,12 +31,17 @@ _KNOWN_PROFILE_TOP_KEYS: frozenset = frozenset({
     'name', 'symbol', 'broker_type', 'adapter_type',
     'strategy_config', 'account', 'tick_source',
     'execution', 'clipping_monitor', 'display', 'safety', 'order_guard',
+    'drift_audit',
 })
 _KNOWN_EXECUTION_KEYS: frozenset = frozenset({'parallel_workers', 'bar_max_history', 'performance_tracking'})
 _KNOWN_CLIPPING_KEYS: frozenset  = frozenset({'report_interval_s', 'strategy'})
 _KNOWN_DISPLAY_KEYS: frozenset   = frozenset({'enabled', 'update_interval_ms'})
 _KNOWN_SAFETY_KEYS: frozenset    = frozenset({'enabled', 'min_balance', 'min_equity', 'max_drawdown_pct'})
 _KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({'cooldown_seconds', 'max_consecutive_rejections'})
+_KNOWN_DRIFT_AUDIT_KEYS: frozenset = frozenset({
+    'enabled', 'fee_threshold_pct', 'volume_threshold_pct', 'price_threshold_pct',
+    'log_all', 'sample_rate',
+})
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = frozenset({'worker_decision_tracking'})
 _KNOWN_ACCOUNT_KEYS: frozenset   = frozenset({'balances', 'account_currency'})
 _KNOWN_TICK_SOURCE_KEYS: frozenset = frozenset({
@@ -75,6 +81,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     display_raw = raw.get('display', {})
     safety_raw = raw.get('safety', {})
     order_guard_raw = raw.get('order_guard', {})
+    drift_audit_raw = raw.get('drift_audit', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -85,6 +92,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('display',             display_raw,      _KNOWN_DISPLAY_KEYS)
     check_unknown_keys('safety',              safety_raw,       _KNOWN_SAFETY_KEYS)
     check_unknown_keys('order_guard',         order_guard_raw,  _KNOWN_ORDER_GUARD_KEYS)
+    check_unknown_keys('drift_audit',         drift_audit_raw,  _KNOWN_DRIFT_AUDIT_KEYS)
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
@@ -127,6 +135,14 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         order_guard=OrderGuardDefaults(
             cooldown_seconds=order_guard_raw.get('cooldown_seconds', 60.0),
             max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
+        ),
+        drift_audit=DriftAuditConfig(
+            enabled=drift_audit_raw.get('enabled', True),
+            fee_threshold_pct=drift_audit_raw.get('fee_threshold_pct', 0.5),
+            volume_threshold_pct=drift_audit_raw.get('volume_threshold_pct', 0.1),
+            price_threshold_pct=drift_audit_raw.get('price_threshold_pct', 1.0),
+            log_all=drift_audit_raw.get('log_all', False),
+            sample_rate=drift_audit_raw.get('sample_rate', 1.0),
         ),
         config_path=path,
     )

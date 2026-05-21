@@ -21,6 +21,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -76,6 +77,7 @@ class AutotraderTickLoop:
         session_start: Optional[datetime] = None,
         dry_run: bool = True,
         display_label_cache: Optional[DisplayLabelCache] = None,
+        drift_auditor: Optional[DriftAuditor] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -92,6 +94,7 @@ class AutotraderTickLoop:
         self._session_start = session_start or datetime.now(timezone.utc)
         self._dry_run = dry_run
         self._display_label_cache = display_label_cache or DisplayLabelCache()
+        self._drift_auditor = drift_auditor
         self._running = False
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
@@ -378,6 +381,7 @@ class AutotraderTickLoop:
             trading_model=self._trading_model.value,
             is_pulse=True,
             seconds_since_last_tick=seconds_since_start,
+            **self._drift_display_counters(),
         )
 
     def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
@@ -552,7 +556,25 @@ class AutotraderTickLoop:
             event_history=self._decision_logic.get_event_history(),
             total_events_emitted=self._decision_logic.get_total_events_emitted(),
             last_tick_time=self._executor.get_current_time(),
+            **self._drift_display_counters(),
         )
+
+    def _drift_display_counters(self) -> Dict[str, object]:
+        """
+        Build drift_* kwargs for AutoTraderDisplayStats. Returns empty dict
+        (uses dataclass defaults) when no DriftAuditor is wired. #327.
+        """
+        if self._drift_auditor is None:
+            return {}
+        counters = self._drift_auditor.get_display_counters()
+        return {
+            'drift_enabled': bool(counters.get('drift_enabled', False)),
+            'drift_audited': int(counters.get('drift_audited', 0)),
+            'drift_fee_events': int(counters.get('drift_fee_events', 0)),
+            'drift_volume_events': int(counters.get('drift_volume_events', 0)),
+            'drift_price_events': int(counters.get('drift_price_events', 0)),
+            'drift_max_fee_pct': float(counters.get('drift_max_fee_pct', 0.0)),
+        }
 
     def _check_new_maxes(self) -> None:
         """Log new all-time max execution times for workers and decision logic."""

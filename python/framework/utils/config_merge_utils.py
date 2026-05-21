@@ -4,9 +4,30 @@ Shared deep merge helper for all configuration loaders.
 """
 
 import copy
+import os
 from typing import Any, Dict, Optional, Set, Type
 
 from pydantic import BaseModel, ValidationError
+
+
+_CONFIG_ISOLATION_ENV: str = 'FINIEX_CONFIG_ISOLATION'
+
+
+def is_config_isolation_active() -> bool:
+    """
+    Returns True when user_configs/ overrides must be skipped.
+
+    Tests must be deterministic across developers — the test runner's
+    conftest.py sets FINIEX_CONFIG_ISOLATION=1 at session start so no
+    loader pulls in personal workspace overrides during pytest.
+
+    Production runs leave the env var unset and the normal cascade
+    (base config → user_configs/* override) applies as designed.
+
+    Returns:
+        True if the env var FINIEX_CONFIG_ISOLATION is set to a truthy value
+    """
+    return os.environ.get(_CONFIG_ISOLATION_ENV, '').lower() in ('1', 'true', 'yes')
 
 
 def deep_merge(

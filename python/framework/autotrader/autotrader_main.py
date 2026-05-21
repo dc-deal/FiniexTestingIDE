@@ -28,6 +28,8 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.live.drift_auditor import DriftAuditor
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
@@ -78,6 +80,9 @@ class AutotraderMain:
         self._decision_logic: Optional[AbstractDecisionLogic] = None
         self._clipping_monitor: Optional[LiveClippingMonitor] = None
         self._display_label_cache: Optional[DisplayLabelCache] = None
+
+        # #327 — Drift audit (live-only, gated by config.drift_audit.enabled)
+        self._drift_auditor: Optional[DriftAuditor] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -143,6 +148,16 @@ class AutotraderMain:
              self._display_label_cache) = setup_pipeline(self._config, self._session_logger)
             self._print_startup_phase('Pipeline created successfully')
 
+            # === DRIFT AUDIT (#327) ===
+            # Gated by config; live-only by design — DRYRUN orders auto-skipped
+            # inside the auditor. MOCK orders are audited (useful for tests).
+            if self._config.drift_audit.enabled and isinstance(self._executor, LiveTradeExecutor):
+                self._drift_auditor = DriftAuditor(
+                    executor=self._executor,
+                    config=self._config.drift_audit,
+                    logger=self._session_logger,
+                )
+
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
             _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
@@ -192,6 +207,7 @@ class AutotraderMain:
                 session_start=run_timestamp,
                 dry_run=dry_run,
                 display_label_cache=self._display_label_cache,
+                drift_auditor=self._drift_auditor,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
@@ -269,6 +285,13 @@ class AutotraderMain:
                 self._executor.check_clean_shutdown()
             except Exception as e:
                 self._global_logger.error(f"Error during position cleanup: {e}")
+
+        # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
+        if self._drift_auditor:
+            try:
+                self._drift_auditor.shutdown()
+            except Exception as e:
+                self._global_logger.error(f"Error during drift auditor shutdown: {e}")
 
         # Collect statistics and produce reports
         return self._collect_results(ticks_processed, ticks_clipped)

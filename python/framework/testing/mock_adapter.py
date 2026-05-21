@@ -728,7 +728,11 @@ class MockBrokerAdapter(AbstractAdapter):
             .get(symbol, {})
             .get('quote_currency', 'USD')
         )
-        fee_rate = 0.0016 if is_maker else 0.0026
+        # Read fee rate from the same broker_config the executor uses (MakerTakerFee).
+        # Hardcoding here caused drift vs. the executor's synthesis whenever the
+        # broker config rates changed (e.g. fee-tier update). #327 surfaced this.
+        fee_pct = self.get_maker_fee() if is_maker else self.get_taker_fee()
+        fee_rate = fee_pct / 100.0
         records: List[Dict[str, Any]] = []
         for i in range(n):
             self._trade_counter += 1
