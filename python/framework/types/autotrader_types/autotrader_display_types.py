@@ -207,3 +207,14 @@ class AutoTraderDisplayStats:
     #   tick was processed. 0.0 on regular frames.
     is_pulse: bool = False
     seconds_since_last_tick: float = 0.0
+
+    # #327 — Drift Audit footer counters
+    # Populated from DriftAuditor.get_display_counters() during _build_display_stats.
+    # Renderer conditionally appends an "Audit:" line to the SESSION panel when
+    # drift_enabled is True. PRICE counter is structural (see #244) and rendered dim.
+    drift_enabled: bool = False
+    drift_audited: int = 0
+    drift_fee_events: int = 0
+    drift_volume_events: int = 0
+    drift_price_events: int = 0
+    drift_max_fee_pct: float = 0.0

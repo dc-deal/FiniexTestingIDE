@@ -30,7 +30,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -154,6 +154,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # #209). For Kraken-style adapters the modify_position path falls back
         # to instant portfolio.modify_position and this tracker stays empty.
         self._pending_position_modifications: Dict[str, ModificationRequest] = {}
+
+        # #327 — Multi-consumer fan-out for TradesQueryResponse. Consumers
+        # (DriftAuditor, future Reconciliation #151) register via
+        # add_trades_response_consumer(). The executor's own
+        # _handle_trades_response runs first; consumers receive a copy of the
+        # response regardless of success/failure or executor's resolution path.
+        self._trades_response_consumers: List[Callable[[TradesQueryResponse], None]] = []
 
         self.logger.info(
             f"LiveTradeExecutor initialized with broker: "
@@ -314,7 +321,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
             )
             self._order_history.append(rejection)
-            self._notify_outcome(rejected.direction, rejection)
+            self._notify_outcome(rejected.direction, rejection, rejected)
 
         # PENDING / PARTIALLY_FILLED: no action, keep polling
 
@@ -356,7 +363,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             message=f"Order timed out after {self._timeout_config.order_timeout_seconds}s",
         )
         self._order_history.append(rejection)
-        self._notify_outcome(pending.direction, rejection)
+        self._notify_outcome(pending.direction, rejection, pending)
 
         self.logger.warning(
             f"Order {pending.pending_order_id} timed out "
@@ -378,7 +385,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Runs on the main thread when the worker reports a broker-side
         rejection for an async submit. Updates the rejection counter,
         appends to order history, and notifies registered listeners
-        (OrderGuard, future Reconciliation #151).
+        (OrderGuard, DriftAuditor #327, future Reconciliation #151).
+
+        Pre-submit / pre-broker-ref rejections have no PendingOrder context,
+        so the listener pending param is None at this site.
 
         Args:
             direction: Order direction (LONG/SHORT) of the rejected order
@@ -386,7 +396,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         self._orders_rejected += 1
         self._order_history.append(rejection)
-        self._notify_outcome(direction, rejection)
+        self._notify_outcome(direction, rejection, None)
 
     def _handle_limit_submit_response(
         self,
@@ -493,7 +503,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # working at the broker, just the modify failed.
             self._orders_rejected += 1
             self._order_history.append(rejection)
-            self._notify_outcome(pending.direction, rejection)
+            self._notify_outcome(pending.direction, rejection, pending)
         else:
             # Success — apply provisional values to local shadow state
             if mod is not None:
@@ -612,6 +622,58 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # Trade Records Drain Handler (#326)
     # ============================================
 
+    def submit_trades_query_async(
+        self,
+        order_id: str,
+        broker_ref: str,
+    ) -> None:
+        """
+        Trigger an async per-execution trades query (#326) for a filled order.
+
+        Public delegating wrapper around the request processor's async path.
+        Used by DriftAuditor (#327) and future Reconciliation consumers (#151)
+        that need broker-truth per-execution detail after a fill.
+
+        The roundtrip runs on the worker thread; the response surfaces via
+        drain_inbox to _handle_trades_response which then fans out to all
+        registered consumers.
+
+        Args:
+            order_id: Internal order_id (matches PendingOrder.pending_order_id)
+            broker_ref: Broker-side order reference (Kraken txid, MT5 ticket)
+        """
+        self._request_processor.submit_trades_query_async(
+            order_id=order_id,
+            broker_ref=broker_ref,
+            adapter=self.broker.adapter,
+        )
+
+    def add_trades_response_consumer(
+        self,
+        consumer: Callable[[TradesQueryResponse], None],
+    ) -> None:
+        """
+        Register an additional consumer for TradesQueryResponse fan-out (#327).
+
+        Called by DriftAuditor and future Reconciliation (#151) to observe
+        every trades-query response that arrives in the inbox. Fan-out runs
+        AFTER the executor's own resolution logic (append trades to pending,
+        finalize fill if applicable) and is executed inside a try/except so
+        that one bad consumer cannot break the chain or kill the executor.
+
+        Consumers receive a copy of the response on success AND failure paths
+        — failure visibility is required so post-fill state-trackers (e.g.
+        DriftAuditor's pending_audits dict) can clean up entries that will
+        never be resolved.
+
+        Args:
+            consumer: Function receiving (TradesQueryResponse). Read-only
+                contract — consumers MUST read from response.trades (immutable),
+                NOT from pending.trades (mutation-order-sensitive across the
+                executor's own logic).
+        """
+        self._trades_response_consumers.append(consumer)
+
     def _handle_trades_response(self, response: TradesQueryResponse) -> None:
         """
         Drain-inbox hook for TradesQueryResponse (#326) — the post-drain
@@ -631,55 +693,73 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         with the order still in _active_limit_orders — the full §8 distribution
         runs in that case.
 
+        #327 — fan-out to registered consumers runs in finally so consumers
+        see every response (including failures and stale-broker_ref discards)
+        regardless of which executor branch was taken. One bad consumer must
+        not kill the chain.
+
         Args:
             response: TradesQueryResponse from the worker thread
         """
-        if not response.success:
-            self.logger.warning(
-                f"TradesQueryResponse error for {response.order_id}: "
-                f"{response.error_message or 'unknown'}"
-            )
-            return
+        try:
+            if not response.success:
+                self.logger.warning(
+                    f"TradesQueryResponse error for {response.order_id}: "
+                    f"{response.error_message or 'unknown'}"
+                )
+                return
 
-        pending = self._find_active_order(response.order_id)
-        if pending is None:
-            # Order likely already finalized via sync polling path. The trades
-            # data arrived too late to influence the fill. Future #320 async
-            # polling will keep the order alive until trades arrive.
-            self.logger.debug(
-                f"drain_inbox: TradesQueryResponse for {response.order_id} "
-                f"(order already finalized — V1 sync polling path)"
-            )
-            return
+            pending = self._find_active_order(response.order_id)
+            if pending is None:
+                # Order likely already finalized via sync polling path. The trades
+                # data arrived too late to influence the fill. Future #320 async
+                # polling will keep the order alive until trades arrive.
+                self.logger.debug(
+                    f"drain_inbox: TradesQueryResponse for {response.order_id} "
+                    f"(order already finalized — V1 sync polling path)"
+                )
+                return
 
-        # Stale-response guard — broker_ref may have flipped via EditOrder
-        if pending.broker_ref != response.broker_ref:
-            self.logger.debug(
-                f"Discarding stale trades response for {response.order_id} "
-                f"(response.broker_ref={response.broker_ref} != "
-                f"pending.broker_ref={pending.broker_ref})"
-            )
-            return
+            # Stale-response guard — broker_ref may have flipped via EditOrder
+            if pending.broker_ref != response.broker_ref:
+                self.logger.debug(
+                    f"Discarding stale trades response for {response.order_id} "
+                    f"(response.broker_ref={response.broker_ref} != "
+                    f"pending.broker_ref={pending.broker_ref})"
+                )
+                return
 
-        # Append each broker trade — updates cumulative_*
-        for trade in response.trades:
-            pending.append_trade(trade)
+            # Append each broker trade — updates cumulative_*
+            for trade in response.trades:
+                pending.append_trade(trade)
 
-        # Finalize the fill if cumulative volume populated (post-§8 distribution)
-        if pending.cumulative_filled_lots > 0:
-            self._active_limit_orders.remove(pending)
-            self._fill_open_order(
-                pending,
-                fill_price=pending.cumulative_avg_price,
-                entry_type=EntryType.LIMIT,
-                fill_type=FillType.LIMIT,
-            )
-            self.logger.info(
-                f"🎯 Order {pending.pending_order_id} filled via trades drain "
-                f"at avg {pending.cumulative_avg_price:.5f} "
-                f"({len(pending.trades)} trade(s), "
-                f"cumulative_lots={pending.cumulative_filled_lots})"
-            )
+            # Finalize the fill if cumulative volume populated (post-§8 distribution)
+            if pending.cumulative_filled_lots > 0:
+                self._active_limit_orders.remove(pending)
+                self._fill_open_order(
+                    pending,
+                    fill_price=pending.cumulative_avg_price,
+                    entry_type=EntryType.LIMIT,
+                    fill_type=FillType.LIMIT,
+                )
+                self.logger.info(
+                    f"🎯 Order {pending.pending_order_id} filled via trades drain "
+                    f"at avg {pending.cumulative_avg_price:.5f} "
+                    f"({len(pending.trades)} trade(s), "
+                    f"cumulative_lots={pending.cumulative_filled_lots})"
+                )
+        finally:
+            # #327 — Multi-consumer fan-out. Always runs, regardless of
+            # success/failure or executor's resolution path. Consumers see
+            # every response so they can clean up their own tracking state.
+            for consumer in self._trades_response_consumers:
+                try:
+                    consumer(response)
+                except Exception as e:
+                    self.logger.error(
+                        f"trades_response consumer raised: {e}",
+                        exc_info=True,
+                    )
 
     # ============================================
     # Active Order Processing (broker-accepted, waiting for trigger)
@@ -783,7 +863,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                         f"{broker_response.rejection_reason or 'unknown'}",
             )
             self._order_history.append(rejection)
-            self._notify_outcome(pending.direction, rejection)
+            self._notify_outcome(pending.direction, rejection, pending)
             self.logger.warning(
                 f"Active limit order {order_id} "
                 f"{broker_response.status.value} by broker "

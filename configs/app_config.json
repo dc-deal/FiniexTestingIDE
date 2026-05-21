@@ -61,6 +61,14 @@
         "order_guard": {
             "cooldown_seconds": 60.0,
             "max_consecutive_rejections": 2
+        },
+        "drift_audit": {
+            "enabled": true,
+            "fee_threshold_pct": 0.5,
+            "volume_threshold_pct": 0.1,
+            "price_threshold_pct": 1.0,
+            "log_all": false,
+            "sample_rate": 1.0
         }
     },
     "backtesting": {
