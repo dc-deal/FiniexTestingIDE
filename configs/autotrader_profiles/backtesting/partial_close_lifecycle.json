@@ -1,0 +1,67 @@
+{
+  "name": "partial_close_lifecycle",
+  "symbol": "USDJPY",
+  "broker_type": "mt5",
+  "adapter_type": "mock",
+  "strategy_config": {
+    "decision_logic_type": "CORE/backtesting/backtesting_multi_position",
+    "worker_instances": {
+      "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+    },
+    "workers": {
+      "backtesting_worker": {
+        "periods": {
+          "M5": 14,
+          "M30": 20
+        },
+        "bar_snapshot_checks": []
+      }
+    },
+    "decision_logic_config": {
+      "trade_sequence": [
+        {
+          "tick_number": 100,
+          "direction": "LONG",
+          "hold_ticks": 8000,
+          "lot_size": 0.03,
+          "_comment": "Trade #0: LONG 0.03 — partially closed twice, remainder closed by hold_ticks. Produces 3 TradeRecords with shared entry_trades."
+        },
+        {
+          "tick_number": 200,
+          "direction": "SHORT",
+          "hold_ticks": 5000,
+          "lot_size": 0.02,
+          "_comment": "Trade #1: SHORT 0.02 — full close only (no partial). Isolation check — separate from the partial-close chain."
+        }
+      ],
+      "partial_close_sequence": [
+        {
+          "tick_number": 2000,
+          "position_index": 0,
+          "close_lots": 0.01,
+          "_comment": "Partial #0: Close 0.01 of 0.03 → remaining 0.02"
+        },
+        {
+          "tick_number": 4000,
+          "position_index": 0,
+          "close_lots": 0.01,
+          "_comment": "Partial #1: Close 0.01 of 0.02 → remaining 0.01"
+        }
+      ],
+      "lot_size": 0.1
+    }
+  },
+  "account": {
+    "balances": {
+      "JPY": 100000.0
+    }
+  },
+  "tick_source": {
+    "type": "mock",
+    "parquet_path": "data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet",
+    "max_ticks": 12000
+  },
+  "display": {
+    "enabled": false
+  }
+}

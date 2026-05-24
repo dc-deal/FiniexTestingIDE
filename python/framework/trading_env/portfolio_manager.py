@@ -14,6 +14,7 @@ from python.framework.types.trading_env_types.broker_types import FeeType, Symbo
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, CloseReason, EntryType, TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 
 from python.framework.types.trading_env_types.order_types import ModificationRejectionReason, ModificationResult, OrderDirection
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
@@ -210,12 +211,18 @@ class PortfolioManager:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = "",
-        entry_type: EntryType = EntryType.MARKET
+        entry_type: EntryType = EntryType.MARKET,
+        broker_ref: Optional[str] = None,
+        entry_trades: Optional[List[BrokerTrade]] = None,
     ) -> Position:
         """
         Open new position.
 
         Accepts entry_fee (typically SpreadFee).
+
+        Args:
+            broker_ref: External broker reference from PendingOrder (#330)
+            entry_trades: Per-execution BrokerTrade list from PendingOrder.trades (#330)
         """
         # order_id becomes position id.
         position_id = order_id
@@ -239,7 +246,9 @@ class PortfolioManager:
             entry_ask=entry_ask,
             digits=digits,
             contract_size=contract_size,
-            entry_tick_index=entry_tick_index
+            entry_tick_index=entry_tick_index,
+            broker_ref=broker_ref,
+            entry_trades=list(entry_trades) if entry_trades else [],
         )
 
         # Attach entry fee
@@ -283,7 +292,8 @@ class PortfolioManager:
         exit_tick_value: float,
         exit_tick_index: int,
         exit_fee: Optional[AbstractTradingFee] = None,
-        close_reason: CloseReason = CloseReason.MANUAL
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_trades: Optional[List[BrokerTrade]] = None,
     ) -> float:
         """
         Close position and realize P&L.
@@ -295,6 +305,7 @@ class PortfolioManager:
             exit_tick_index: Tick counter at close time
             exit_fee: Optional exit fee (commission or final swap)
             close_reason: Why the position was closed
+            exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
 
         Returns:
             Realized P&L amount
@@ -358,7 +369,7 @@ class PortfolioManager:
 
         # Create TradeRecord from closed position
         trade_record = self._create_trade_record(
-            position, CloseType.FULL, close_reason)
+            position, CloseType.FULL, close_reason, exit_trades=exit_trades)
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
                 and len(self._trade_history) >= self._trade_history_max):
@@ -384,7 +395,8 @@ class PortfolioManager:
         exit_tick_value: float,
         exit_tick_index: int,
         exit_fee: Optional[AbstractTradingFee] = None,
-        close_reason: CloseReason = CloseReason.MANUAL
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_trades: Optional[List[BrokerTrade]] = None,
     ) -> float:
         """
         Partially close a position: realize P&L on closed lots, keep remainder open.
@@ -397,6 +409,7 @@ class PortfolioManager:
             exit_tick_index: Tick counter at close time
             exit_fee: Optional exit fee (proportional to close_lots)
             close_reason: Why the partial close happened
+            exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
 
         Returns:
             Realized P&L for the closed portion
@@ -482,7 +495,9 @@ class PortfolioManager:
             close_reason=close_reason,
             entry_type=position.entry_type,
             comment=position.comment,
-            account_currency=self.account_currency
+            account_currency=self.account_currency,
+            entry_trades=list(position.entry_trades),
+            exit_trades=list(exit_trades) if exit_trades else [],
         )
 
         # Append to trade history (with limit warning)
@@ -518,7 +533,8 @@ class PortfolioManager:
         self,
         position: Position,
         close_type: CloseType,
-        close_reason: CloseReason = CloseReason.MANUAL
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_trades: Optional[List[BrokerTrade]] = None,
     ) -> TradeRecord:
         """
         Convert closed Position to TradeRecord.
@@ -527,6 +543,7 @@ class PortfolioManager:
             position: Closed position with all data
             close_type: FULL or PARTIAL close
             close_reason: Why the position was closed
+            exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
 
         Returns:
             TradeRecord with all fields for P&L verification
@@ -560,7 +577,9 @@ class PortfolioManager:
             close_reason=close_reason,
             entry_type=position.entry_type,
             comment=position.comment,
-            account_currency=self.account_currency
+            account_currency=self.account_currency,
+            entry_trades=list(position.entry_trades),
+            exit_trades=list(exit_trades) if exit_trades else [],
         )
 
     # ============================================

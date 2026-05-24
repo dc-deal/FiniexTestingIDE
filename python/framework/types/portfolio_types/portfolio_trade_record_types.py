@@ -7,11 +7,12 @@ Architecture:
 - TradeRecord: Flat, serializable record of completed trade with all calculation inputs
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
 
@@ -119,3 +120,11 @@ class TradeRecord:
 
     # === Account Context ===
     account_currency: str = ""
+
+    # === Per-Execution Detail (#330) ===
+    # Shallow copy of Position.entry_trades (shared across all derived
+    # TradeRecords of a partially-closed position — renderer detects shared
+    # trade_id) and a shallow copy of the close PendingOrder.trades (distinct
+    # per partial close). Single-fill case → lists of length 1.
+    entry_trades: List[BrokerTrade] = field(default_factory=list)
+    exit_trades: List[BrokerTrade] = field(default_factory=list)

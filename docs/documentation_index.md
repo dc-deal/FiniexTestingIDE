@@ -41,6 +41,7 @@
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
+| [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |

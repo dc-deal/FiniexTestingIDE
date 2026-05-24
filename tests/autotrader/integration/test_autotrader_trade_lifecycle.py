@@ -169,8 +169,7 @@ class TestLogFiles:
         assert run_dir.exists()
         assert (run_dir / 'autotrader_global.log').exists()
         assert (run_dir / 'autotrader_summary.log').exists()
-        assert (run_dir / 'autotrader_trades.csv').exists()
-        assert (run_dir / 'autotrader_orders.csv').exists()
+        assert (run_dir / 'events.csv').exists()
         assert (run_dir / 'session_logs').is_dir()
         session_logs = list((run_dir / 'session_logs').glob('autotrader_session_*.log'))
         assert len(session_logs) >= 1

@@ -22,8 +22,8 @@ from python.framework.autotrader.autotrader_startup import (
     setup_tick_source,
 )
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.reporting.autotrader_csv_file_report import AutotraderCsvFileReport
 from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
+from python.framework.reporting.trade_log_csv_writer import EventStreamWriter
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -347,8 +347,14 @@ class AutotraderMain:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
 
         # === REPORTS ===
-        csv_report = AutotraderCsvFileReport(self._run_dir)
-        csv_report.write(result)
+        # Long-format event-stream CSV (#330) — replaces the previous
+        # autotrader_orders.csv + autotrader_trades.csv pair with a single
+        # chronological events.csv (FIX ExecutionReport style).
+        EventStreamWriter.from_autotrader_result(
+            trade_history=result.trade_history or [],
+            order_history=result.order_history or [],
+            run_dir=self._run_dir,
+        ).flush('events.csv')
 
         post_session_report = AutotraderPostSessionReport(
             summary_logger=self._summary_logger,

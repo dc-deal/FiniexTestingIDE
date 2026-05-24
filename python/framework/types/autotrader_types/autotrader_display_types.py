@@ -12,7 +12,8 @@ from typing import Dict, List, Optional
 
 from python.framework.types.decision_logic_types import DecisionAwareness, DecisionLogicAction, StrategyEvent
 from python.framework.types.parameter_types import OutputValue
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, CloseType
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
@@ -32,6 +33,9 @@ class PositionSnapshot:
         lots: Position size
         entry_price: Entry price
         unrealized_pnl: Current unrealized P&L
+        entry_trades: Per-execution BrokerTrade list from Position.entry_trades (#330).
+            Single-fill → length 1; multi-fill (live, after #342) → length N.
+            Renderer emits a multi-fill sub-line when len > 1.
     """
     position_id: str
     symbol: str
@@ -39,6 +43,7 @@ class PositionSnapshot:
     lots: float
     entry_price: float
     unrealized_pnl: float
+    entry_trades: List[BrokerTrade] = field(default_factory=list)
 
 
 @dataclass
@@ -57,6 +62,10 @@ class TradeHistoryEntry:
         exit_price: Exit price
         net_pnl: Net P&L after fees
         close_reason: How the trade was closed
+        entry_trades: Per-execution BrokerTrade list from TradeRecord.entry_trades (#330).
+            Shared across all derived TradeRecords on a partially-closed position.
+        exit_trades: Per-execution BrokerTrade list from TradeRecord.exit_trades (#330).
+            Distinct per close event.
     """
     trade_id: str
     symbol: str
@@ -66,6 +75,9 @@ class TradeHistoryEntry:
     exit_price: float
     net_pnl: float
     close_reason: CloseReason
+    close_type: CloseType = CloseType.FULL
+    entry_trades: List[BrokerTrade] = field(default_factory=list)
+    exit_trades: List[BrokerTrade] = field(default_factory=list)
 
 
 @dataclass

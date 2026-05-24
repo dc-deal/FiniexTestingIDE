@@ -178,6 +178,48 @@ Partial-close specific tests organized in 7 groups.
 
 Generic P&L validation from `tests/shared/shared_pnl.py`. Validates formulas, fee breakdowns, trade completeness across all 4 trade records.
 
+### test_event_stream_csv.py (14 Tests) — Event-Stream CSV (#330)
+
+Builds the long-format event-stream CSV from the partial_close scenario's terminal state and verifies the chronological event sequence. Uses `EventStreamWriter.from_sim_result` directly (writes to tempdir — the partial_close test fixtures don't go through `BatchReportCoordinator`).
+
+#### TestCsvShape (2 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_header_is_canonical` | Header row matches `EVENT_FIELDS` tuple contract |
+| `test_has_data_rows` | At least one event emitted |
+
+#### TestEventTaxonomy (5 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_order_submit_present` | ORDER_SUBMIT events emitted for opens |
+| `test_close_submit_present` | CLOSE_SUBMIT events emitted (distinct from ORDER_SUBMIT) |
+| `test_position_open_present` | POSITION_OPEN events emitted |
+| `test_position_close_present` | POSITION_CLOSE events emitted |
+| `test_fill_present` | Per-execution FILL events emitted |
+
+#### TestEventCounts (3 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_two_positions_opened` | 1 POSITION_OPEN per unique position (= 2) |
+| `test_four_positions_closed` | 4 POSITION_CLOSE — 3 partials of pos_1 + 1 full of pos_2 |
+| `test_close_submit_per_close_event` | 4 CLOSE_SUBMIT (one per close, no dedup collapse) |
+
+#### TestChronologicalOrdering (1 Test)
+
+| Test | Description |
+|------|-------------|
+| `test_timestamps_monotonic` | Sort enforced by `flush()` — naive-vs-aware-safe |
+
+#### TestCloseSubmitDistinctFromOrderSubmit (2 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_both_event_types_emitted` | ORDER_SUBMIT and CLOSE_SUBMIT both appear |
+| `test_open_and_close_share_order_id_but_different_events` | Same `order_id` produces both event types (close keyed on metadata.action='close') |
+
 ---
 
 ## Running the Tests

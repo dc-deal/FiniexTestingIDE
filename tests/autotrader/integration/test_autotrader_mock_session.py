@@ -96,8 +96,7 @@ class TestAutotraderMockSession:
         assert (run_dir / 'autotrader_global.log').exists()
         assert (run_dir / 'autotrader_summary.log').exists()
         assert (run_dir / 'session_logs').is_dir()
-        assert (run_dir / 'autotrader_trades.csv').exists()
-        assert (run_dir / 'autotrader_orders.csv').exists()
+        assert (run_dir / 'events.csv').exists()
 
         # Session logs in subdirectory (tick-date based, not wall clock)
         session_logs = list((run_dir / 'session_logs').glob('autotrader_session_*.log'))

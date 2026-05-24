@@ -527,8 +527,10 @@ logs/autotrader/btcusd_mock/20260328_105127/
   session_logs/
     autotrader_session_20260328.log  Day 1 tick processing
     autotrader_session_20260329.log  Day 2 (if session spans midnight)
-  autotrader_trades.csv           Completed trades (P&L, fees)
-  autotrader_orders.csv           All order results (fills, rejections)
+  events.csv                      Long-format trade-event stream — one row per
+                                  event (ORDER_SUBMIT / CLOSE_SUBMIT / FILL /
+                                  POSITION_OPEN / POSITION_CLOSE / ORDER_REJECT).
+                                  See trade_execution_visibility.md for schema.
 ```
 
 ### Warning/Error Summary

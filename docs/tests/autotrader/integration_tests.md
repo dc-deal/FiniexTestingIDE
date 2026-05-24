@@ -13,7 +13,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | Test | What it validates |
 |------|-------------------|
 | `test_full_mock_session` | Normal shutdown, tick count (29780), 0 clipping, 0 warnings/errors, trades produced, stats collected |
-| `test_log_files_created` | Log directory structure: global, summary, session_logs/, trades CSV, orders CSV |
+| `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
@@ -56,6 +56,21 @@ Each class runs an independent session from its own profile. Sessions are module
 
 **Runtime:** ~6 seconds total across all 4 sessions.
 
+### test_partial_close_live_pipeline.py (15 Tests)
+
+Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter) end-to-end and verifies the multi-fill visibility paradigm (#330) on the live-pipeline side. Mirrors what the sim partial_close suite validates for the sim path.
+
+| Class | Tests | What it validates |
+|-------|-------|-------------------|
+| `TestSessionCompletes` | 3 | Normal shutdown, no errors, 4 expected TradeRecords (3 partials of pos_usdjpy_1 + 1 full of pos_usdjpy_2) |
+| `TestEntryTradesSharedAcrossPartials` | 4 | All 3 partial-close records share the same `entry_trades[0].trade_id`; entry-trade volume reflects the original open (0.03), not the per-record close share (0.01); exit trade_ids are distinct per record; close_type split is 2 PARTIAL + 1 FULL (remainder) |
+| `TestSinglePositionIsolation` | 2 | pos_usdjpy_2 is a single FULL record; its entry trade_id does NOT appear in the pos_usdjpy_1 chain (no false-shared contamination) |
+| `TestEventStreamCsv` | 6 | events.csv exists; header matches `EVENT_FIELDS`; 2 ORDER_SUBMIT (one per open) + 4 CLOSE_SUBMIT (one per close) + 2 POSITION_OPEN + 4 POSITION_CLOSE; FILL count matches sum of entry_trades + exit_trades across all TradeRecords |
+
+**Data Dependency:** `configs/autotrader_profiles/backtesting/partial_close_lifecycle.json` — USDJPY+mt5+mock, parquet `data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet`, max_ticks 12000, display off.
+
+**Runtime:** ~2 seconds (single session via `scope='module'`).
+
 ### test_live_clipping_monitor.py (22 Tests)
 
 Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data, no time dependency (mocked where needed).
@@ -87,6 +102,7 @@ pytest tests/autotrader/integration/test_live_clipping_monitor.py -v
 pytest tests/autotrader/integration/test_autotrader_trade_scenarios.py -v
 ```
 
-VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all four files.
+VS Code: `🧩 Pytest: AutoTrader Integration (All)` — runs all five files.
 VS Code: `🧩 Pytest: AutoTrader Trade Lifecycle` — trade lifecycle only.
-VS Code: `🧪 AutoTrader: SL Triggered` / `TP Triggered` / `Duplicate Signal Guard` / `Minimal Warmup` — individual scenario CLI runs with live display.
+VS Code: `🧩 Pytest: Multi-Fill Visibility (#330)` — partial_close_live_pipeline + sim event-stream CSV checks.
+VS Code: `🧪 AutoTrader: SL Triggered` / `TP Triggered` / `Duplicate Signal Guard` / `Minimal Warmup` / `Partial Close Lifecycle` — individual scenario CLI runs with live display.

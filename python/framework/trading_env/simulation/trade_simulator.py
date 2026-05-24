@@ -33,6 +33,7 @@ from python.framework.types.trading_env_types.stress_test_types import StressTes
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -411,6 +412,7 @@ class TradeSimulator(AbstractTradeExecutor):
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
+                action=OrderAction.OPEN,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction,
@@ -440,6 +442,7 @@ class TradeSimulator(AbstractTradeExecutor):
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
+                action=OrderAction.OPEN,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction,
@@ -469,6 +472,7 @@ class TradeSimulator(AbstractTradeExecutor):
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
+                action=OrderAction.OPEN,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction,
@@ -507,6 +511,7 @@ class TradeSimulator(AbstractTradeExecutor):
             result = OrderResult(
                 order_id=order_id,
                 status=OrderStatus.PENDING,
+                action=OrderAction.OPEN,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction,
@@ -575,6 +580,7 @@ class TradeSimulator(AbstractTradeExecutor):
             executed_lots=lots if lots else position.lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
+            action=OrderAction.CLOSE,
             metadata={
                 "position_id": position_id,
                 "awaiting_fill": True

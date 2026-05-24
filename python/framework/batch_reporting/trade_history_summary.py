@@ -8,11 +8,12 @@ Renders:
 - Aggregated trade statistics
 """
 
-from typing import List
+from typing import Dict, List
 
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
@@ -130,12 +131,20 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"📋 {renderer.bold(scenario.scenario_name)}: {trade_count} trades | Total P&L: {pnl_str}")
         print()
 
+        # Pre-compute entry trade_id frequency for shared(Nx) annotation (#330).
+        # When a position is partially closed N times, all derived TradeRecords
+        # carry the SAME entry_trades list — the renderer flags the duplicates.
+        shared_counts: Dict[str, int] = {}
+        for t in sorted_trades:
+            for bt in t.entry_trades:
+                shared_counts[bt.trade_id] = shared_counts.get(bt.trade_id, 0) + 1
+
         # Table header
         self._print_table_header(renderer)
 
         # Table rows
         for idx, trade in enumerate(sorted_trades, 1):
-            self._print_trade_row(idx, trade, renderer)
+            self._print_trade_row(idx, trade, renderer, shared_counts)
 
         # Table footer
         self._print_table_footer(sorted_trades, renderer)
@@ -189,15 +198,18 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self,
         idx: int,
         trade: TradeRecord,
-        renderer: ConsoleRenderer
+        renderer: ConsoleRenderer,
+        shared_counts: Dict[str, int]
     ) -> None:
         """
-        Print single trade row.
+        Print single trade row plus per-execution sub-lines (#330).
 
         Args:
             idx: Trade number
             trade: TradeRecord to display
             renderer: ConsoleRenderer instance
+            shared_counts: trade_id frequency map across the scenario, used
+                for the shared(Nx) annotation on shared entry executions
         """
         # Direction with color
         if trade.direction == OrderDirection.LONG:
@@ -237,6 +249,58 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"{gross_str:>10} | {trade.total_fees:>8.2f} | {net_str:>10} | {reason_str:>14}"
         )
         print(row)
+
+        # Per-execution sub-lines (#330) — render the underlying BrokerTrades
+        # that produced this aggregate row. Single-fill case is still emitted
+        # (1+1) so the format is consistent across single- and multi-fill records.
+        for bt in trade.entry_trades:
+            self._render_subline(
+                'in', bt, shared_counts.get(bt.trade_id, 1), renderer,
+                trade_record_lots=trade.lots,
+            )
+        for bt in trade.exit_trades:
+            self._render_subline('out', bt, 1, renderer)
+
+    def _render_subline(
+        self,
+        side: str,
+        broker_trade: BrokerTrade,
+        shared_count: int,
+        renderer: ConsoleRenderer,
+        trade_record_lots: float = None,
+    ) -> None:
+        """
+        Render one per-execution sub-line under an aggregate trade row (#330).
+
+        Args:
+            side: 'in' (entry side) or 'out' (exit side)
+            broker_trade: Atomic execution to render
+            shared_count: How many TradeRecords share this entry trade_id.
+                Exit side passes 1 (no sharing on close side by construction).
+            renderer: ConsoleRenderer instance
+            trade_record_lots: TradeRecord.lots (this close-event's share). When
+                shared > 1 and differs from broker_trade.volume, the renderer
+                appends "this trade: X of Y" to clarify the partial-close share
+                vs. the full original entry execution.
+        """
+        maker_taker = 'maker' if broker_trade.is_maker else 'taker'
+        side_label = 'in ' if side == 'in' else 'out'
+
+        suffix = ""
+        if shared_count > 1:
+            suffix = f"  shared({shared_count}x)"
+            if trade_record_lots is not None and trade_record_lots != broker_trade.volume:
+                suffix += f"  (this trade: {trade_record_lots:g} of {broker_trade.volume:g})"
+
+        text = (
+            f"     └─ {side_label}  {broker_trade.trade_id:<24}  "
+            f"vol {broker_trade.volume:>7.5f}  "
+            f"price {broker_trade.price:>12.5f}  "
+            f"fee {broker_trade.fee:>7.4f}  "
+            f"{maker_taker}"
+            f"{suffix}"
+        )
+        print(renderer.gray(text))
 
     def _print_table_footer(
         self,

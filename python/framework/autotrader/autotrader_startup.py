@@ -56,8 +56,7 @@ def create_autotrader_loggers(
             autotrader_summary.log
             session_logs/
                 autotrader_session_YYYYMMDD.log
-            autotrader_trades.csv
-            autotrader_orders.csv
+            events.csv
 
     Args:
         config: AutoTrader configuration

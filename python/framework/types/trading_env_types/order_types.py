@@ -68,6 +68,22 @@ class OrderSide(StrEnum):
     SELL = "sell"
 
 
+class OrderAction(Enum):
+    """
+    What the order is doing in the position lifecycle.
+
+    OPEN: order creates or extends a position
+    CLOSE: order reduces or closes a position (full or partial)
+
+    First-class field on OrderResult (#330). Distinguishes open- and close-side
+    OrderResults that share the same order_id (= position_id) — the
+    EventStreamWriter needs this to emit distinct ORDER_SUBMIT / CLOSE_SUBMIT
+    events for opens vs closes on the same position.
+    """
+    OPEN = "open"
+    CLOSE = "close"
+
+
 class OrderStatus(Enum):
     """Order execution status"""
     PENDING = "pending"          # Order created, not yet sent
@@ -304,6 +320,14 @@ class OrderResult:
     rejection_message: str = ""
 
     position_id: Optional[str] = None
+
+    # First-class action discriminator (#330). Distinguishes open and close
+    # OrderResults that share the same order_id (= position_id). The
+    # EventStreamWriter routes ORDER_SUBMIT vs CLOSE_SUBMIT based on this.
+    # Defaults to None for legacy / EXPIRED / rejection paths where the
+    # distinction does not apply.
+    action: Optional[OrderAction] = None
+
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property

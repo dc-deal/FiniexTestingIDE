@@ -5,6 +5,7 @@ from typing import List, Optional
 
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
@@ -55,6 +56,17 @@ class Position:
     comment: str = ""
     close_time: Optional[datetime] = None
     close_price: Optional[float] = None
+
+    # === External Broker Reference (#330) ===
+    # Carried over from PendingOrder.broker_ref at fill time. Empty for sim,
+    # populated for live (Kraken txid / MT5 ticket). Consumed by #151 Reconciler.
+    broker_ref: Optional[str] = None
+
+    # === Per-Execution Detail (#330) ===
+    # Shallow copy of PendingOrder.trades at fill time. Each BrokerTrade is one
+    # atomic execution. Single-fill MARKET → list length 1. Multi-fill LIMIT
+    # (live, after #342) or order-book sim (#143) → list length N.
+    entry_trades: List[BrokerTrade] = field(default_factory=list)
 
     # === Trade Record Fields (for P&L verification) ===
     entry_tick_value: float = 0.0

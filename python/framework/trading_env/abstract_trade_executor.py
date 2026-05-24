@@ -52,6 +52,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
     OrderType,
     OrderDirection,
     OrderSide,
@@ -157,6 +158,13 @@ class AbstractTradeExecutor(ABC):
         # check at fill time). Signature: (direction, result) -> None.
         # Multi-slot: any number of listeners can register independently.
         self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]] = []
+
+        # Monotonic counter for synthetic BrokerTrade IDs (#330). Ensures each
+        # _synthesize_pending_trade() call produces a unique trade_id, so that
+        # the open and the N partial closes of one position get distinct IDs
+        # in the entry_trades / exit_trades lists. Real brokers assign unique
+        # trade IDs; the synthetic path must match that invariant.
+        self._synth_trade_seq: int = 0
 
     def _check_order_history_limit(self) -> None:
         """Emit one-time warning when order history reaches capacity."""
@@ -561,7 +569,9 @@ class AbstractTradeExecutor(ABC):
             stop_loss=pending_order.order_kwargs.get('stop_loss'),
             take_profit=pending_order.order_kwargs.get('take_profit'),
             comment=pending_order.order_kwargs.get('comment', ''),
-            entry_type=entry_type
+            entry_type=entry_type,
+            broker_ref=pending_order.broker_ref,
+            entry_trades=list(pending_order.trades),
         )
 
         # Create order result for history
@@ -573,6 +583,7 @@ class AbstractTradeExecutor(ABC):
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
             position_id=position.position_id,
+            action=OrderAction.OPEN,
             metadata={
                 "symbol": pending_order.symbol,
                 "direction": pending_order.direction,
@@ -705,7 +716,8 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
-                close_reason=close_reason
+                close_reason=close_reason,
+                exit_trades=list(pending_order.trades),
             )
             self.logger.debug(
                 f"📊 Partial close: {pending_order.pending_order_id} "
@@ -718,7 +730,8 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
-                close_reason=close_reason
+                close_reason=close_reason,
+                exit_trades=list(pending_order.trades),
             )
             self.logger.debug(
                 f"💰 Position closed: {pending_order.pending_order_id} "
@@ -733,6 +746,7 @@ class AbstractTradeExecutor(ABC):
             executed_lots=executed_lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
+            action=OrderAction.CLOSE,
             metadata={
                 "realized_pnl": realized_pnl,
                 "position_id": pending_order.pending_order_id,
@@ -1128,6 +1142,7 @@ class AbstractTradeExecutor(ABC):
                 order_id=pending.pending_order_id,
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
+                action=OrderAction.OPEN,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'limit',
@@ -1141,6 +1156,7 @@ class AbstractTradeExecutor(ABC):
                 order_id=pending.pending_order_id,
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
+                action=OrderAction.OPEN,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'stop',
@@ -1345,8 +1361,9 @@ class AbstractTradeExecutor(ABC):
             fee_cost: Locally-computed entry fee in account currency
         """
         is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
+        self._synth_trade_seq += 1
         trade = BrokerTrade(
-            trade_id=f'SYNTH-{pending_order.pending_order_id}',
+            trade_id=f'SYNTH-{pending_order.pending_order_id}-{self._synth_trade_seq:06d}',
             parent_broker_ref=pending_order.broker_ref or '',
             order_id=pending_order.pending_order_id,
             volume=filled_lots,

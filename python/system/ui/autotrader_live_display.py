@@ -33,6 +33,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
@@ -523,6 +524,22 @@ class AutoTraderLiveDisplay:
                 f'[{pnl_color}]{pnl_sign}{pos.unrealized_pnl:.4f}[/{pnl_color}]',
             )
 
+            # Multi-fill sub-row (#330) — only when the entry was matched
+            # across multiple broker executions. V1.3 always single-fill;
+            # surfaces once #342 (live partial fills) or #143 (order-book sim)
+            # produce real multi-element entry_trades lists.
+            if len(pos.entry_trades) > 1:
+                first_price = pos.entry_trades[0].price
+                last_price = pos.entry_trades[-1].price
+                table.add_row(
+                    '',
+                    f'[dim]└─ {len(pos.entry_trades)} fills[/dim]',
+                    '',
+                    '',
+                    f'[dim]{first_price:.2f}→{last_price:.2f}[/dim]',
+                    '',
+                )
+
         return Panel(table, title='[bold]OPEN POSITIONS[/bold]', box=box.ROUNDED)
 
     def _build_orders_panel(self, stats: AutoTraderDisplayStats) -> Panel:
@@ -554,6 +571,16 @@ class AutoTraderLiveDisplay:
                 'WATCHING',
             )
 
+            # Partial-fill sub-row (#330) — latent path. Activates once #342
+            # surfaces PARTIALLY_FILLED state from the Kraken parser, which
+            # populates cumulative_filled_lots on the snapshot. V1.3 always 0.
+            if order.cumulative_filled_lots > 0 and order.cumulative_filled_lots < order.requested_lots:
+                progress = (
+                    f'[dim]└─ PARTIAL  '
+                    f'{order.cumulative_filled_lots:.4f}/{order.requested_lots:.4f} filled[/dim]'
+                )
+                table.add_row('', '', '', '', '', progress)
+
         # Pipeline count (pending, in transit)
         if stats.pipeline_count > 0:
             table.add_row(
@@ -584,14 +611,54 @@ class AutoTraderLiveDisplay:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
             pnl_sign = '+' if trade.net_pnl >= 0 else ''
             dir_color = 'green' if trade.direction == OrderDirection.LONG else 'red'
+
+            # Reason column doubles as close_type marker (#330): when the
+            # real close_reason is MANUAL (empty string), surface the partial
+            # nature so a sequence of N closes on one position is visually
+            # connected. Non-MANUAL reasons (SL/TP/scenario_end) keep their
+            # value — close_type is then deducible from the lots column.
+            #   PARTIAL              → 'partial'
+            #   FULL remainder of a  → 'remain'   (entry volume > this close)
+            #     partial chain
+            #   FULL standalone      → empty (today's behavior)
+            reason_text = trade.close_reason.value[:8]
+            if not reason_text:
+                if trade.close_type == CloseType.PARTIAL:
+                    reason_text = 'partial'
+                elif trade.entry_trades and trade.entry_trades[0].volume > trade.lots:
+                    reason_text = 'remain'
+
             table.add_row(
                 f'[{dir_color}]{trade.direction.value}[/{dir_color}]',
                 f'{trade.lots:.4f}',
                 f'{trade.entry_price:.2f}',
                 f'{trade.exit_price:.2f}',
                 f'[{pnl_color}]{pnl_sign}{trade.net_pnl:.4f}[/{pnl_color}]',
-                trade.close_reason.value[:8],
+                reason_text,
             )
+
+            # Per-side multi-fill sub-rows (#330) — only when broker produced
+            # more than one execution on the entry or exit side. V1.3 always
+            # single-fill in both directions; activates with #342 / #143.
+            if len(trade.entry_trades) > 1:
+                first_p = trade.entry_trades[0].price
+                last_p = trade.entry_trades[-1].price
+                table.add_row(
+                    '',
+                    f'[dim]└─ in {len(trade.entry_trades)}[/dim]',
+                    f'[dim]{first_p:.2f}→{last_p:.2f}[/dim]',
+                    '', '', '',
+                )
+            if len(trade.exit_trades) > 1:
+                first_p = trade.exit_trades[0].price
+                last_p = trade.exit_trades[-1].price
+                table.add_row(
+                    '',
+                    f'[dim]└─ out {len(trade.exit_trades)}[/dim]',
+                    '',
+                    f'[dim]{first_p:.2f}→{last_p:.2f}[/dim]',
+                    '', '',
+                )
 
         return Panel(table, title='[bold]TRADE HISTORY[/bold]', box=box.ROUNDED)
 

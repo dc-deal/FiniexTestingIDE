@@ -1,5 +1,7 @@
 # Broker Trade Record Model — Order ↔ Executions Pairing
 
+> See [Trade Execution Visibility](trade_execution_visibility.md) for how `BrokerTrade` records propagate through `Position.entry_trades` / `TradeRecord.entry_trades` / `exit_trades`, how the renderers surface them, and the long-format event-stream CSV.
+
 ## Concept
 
 Every order placed at a broker eventually produces one or more **executions** (also called trades, fills, or deals). The order is the instruction; executions are the realizations. The relationship is always 1:N — one order, many executions — and is universal across institutional and retail brokers (FIX ExecutionReports, IBKR `execDetails`, Binance `myTrades`, Kraken `QueryTrades`, MT5 deals).

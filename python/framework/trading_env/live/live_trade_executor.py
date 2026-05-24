@@ -52,6 +52,7 @@ from python.framework.types.live_types.live_execution_types import (
 )
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
     OrderType,
     OrderDirection,
     OrderStatus,
@@ -955,6 +956,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.PENDING,
                 position_id=None,
+                action=OrderAction.OPEN,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction.value,
@@ -1006,6 +1008,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id=order_id,
             status=OrderStatus.PENDING,
             position_id=None,
+            action=OrderAction.OPEN,
             metadata={
                 "symbol": request.symbol,
                 "direction": request.direction.value,
@@ -1074,6 +1077,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             position_id=None,
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
+            action=OrderAction.CLOSE,
             metadata={"awaiting_fill": True, "broker_ref": None},
         )
 
