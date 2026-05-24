@@ -126,3 +126,71 @@ class TestCloseSubmitDistinctFromOrderSubmit:
             evs == {'ORDER_SUBMIT', 'CLOSE_SUBMIT'}
             for evs in order_id_to_events.values()
         )
+
+
+class TestSideAndDirectionColumns:
+    """`side` and `direction` are distinct CSV columns — FIX-style separation
+    of OrdSide (BUY/SELL, per-trade operation) from PositionSide (LONG/SHORT,
+    position view). FILL rows carry side; POSITION_OPEN/CLOSE rows carry direction."""
+
+    def _col_indices(self):
+        return EVENT_FIELDS.index('direction'), EVENT_FIELDS.index('side'), EVENT_FIELDS.index('event_type')
+
+    def test_side_column_present_in_header(self, events_csv_rows):
+        assert 'side' in EVENT_FIELDS
+        assert events_csv_rows[0][EVENT_FIELDS.index('side')] == 'side'
+
+    def test_fill_rows_carry_side_not_direction(self, events_csv_rows):
+        dir_idx, side_idx, type_idx = self._col_indices()
+        fill_rows = [r for r in events_csv_rows[1:] if r[type_idx] == 'FILL']
+        assert len(fill_rows) > 0
+        for row in fill_rows:
+            assert row[dir_idx] == '', f"FILL row has direction={row[dir_idx]!r}"
+            assert row[side_idx] in ('buy', 'sell'), f"FILL row side={row[side_idx]!r}"
+
+    def test_position_rows_carry_direction_not_side(self, events_csv_rows):
+        dir_idx, side_idx, type_idx = self._col_indices()
+        pos_rows = [r for r in events_csv_rows[1:] if r[type_idx] in ('POSITION_OPEN', 'POSITION_CLOSE')]
+        assert len(pos_rows) > 0
+        for row in pos_rows:
+            assert row[dir_idx] in ('long', 'short'), f"position row direction={row[dir_idx]!r}"
+            assert row[side_idx] == '', f"position row has side={row[side_idx]!r}"
+
+    def test_fill_side_matches_position_direction_semantically(self, events_csv_rows):
+        """A FILL row's side must be consistent with the position direction
+        learned from POSITION_OPEN: LONG positions have entry BUY + close SELL,
+        SHORT positions have entry SELL + close BUY. This catches the latent
+        Sim close-pending bug where direction=None defaulted into the wrong
+        helper branch (regression guard against re-emergence)."""
+        dir_idx, side_idx, type_idx = self._col_indices()
+        pos_idx = EVENT_FIELDS.index('position_id')
+
+        # Learn position direction from POSITION_OPEN events
+        position_direction = {}
+        for row in events_csv_rows[1:]:
+            if row[type_idx] == 'POSITION_OPEN':
+                position_direction[row[pos_idx]] = row[dir_idx]
+
+        # For each FILL, verify side matches the (direction, action) mapping
+        seen_open = set()
+        for row in events_csv_rows[1:]:
+            if row[type_idx] != 'FILL':
+                continue
+            pid = row[pos_idx]
+            side = row[side_idx]
+            if pid not in position_direction:
+                continue  # FILL before POSITION_OPEN — skip
+            direction = position_direction[pid]
+
+            # First FILL per position = entry; subsequent = exits
+            is_entry = pid not in seen_open
+            if is_entry:
+                seen_open.add(pid)
+                expected = 'buy' if direction == 'long' else 'sell'
+            else:
+                expected = 'sell' if direction == 'long' else 'buy'
+
+            assert side == expected, (
+                f"FILL pos={pid} direction={direction} is_entry={is_entry} "
+                f"expected side={expected!r}, got {side!r}"
+            )

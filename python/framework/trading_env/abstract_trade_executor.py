@@ -64,6 +64,7 @@ from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
     ModificationResult,
     OpenOrderRequest,
+    direction_to_side,
     create_rejection_result,
 )
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
@@ -1362,6 +1363,20 @@ class AbstractTradeExecutor(ABC):
         """
         is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         self._synth_trade_seq += 1
+        # Map (position direction, pending lifecycle action) → execution side.
+        # Open LONG → BUY, close LONG → SELL, open SHORT → SELL, close SHORT → BUY.
+        # Close-side pendings are created without a `direction` (default None),
+        # because they reference a position that the executor identifies by
+        # position_id; the actual direction lives on the Position. Look it up
+        # for close pendings; use pending.direction directly for opens.
+        if pending_order.order_action == PendingOrderAction.CLOSE:
+            order_action = OrderAction.CLOSE
+            position = self.portfolio.get_position(pending_order.pending_order_id)
+            ref_direction = position.direction if position is not None else pending_order.direction
+        else:
+            order_action = OrderAction.OPEN
+            ref_direction = pending_order.direction
+        trade_side = direction_to_side(ref_direction, order_action)
         trade = BrokerTrade(
             trade_id=f'SYNTH-{pending_order.pending_order_id}-{self._synth_trade_seq:06d}',
             parent_broker_ref=pending_order.broker_ref or '',
@@ -1371,7 +1386,7 @@ class AbstractTradeExecutor(ABC):
             fee=fee_cost,
             fee_currency=symbol_spec.quote_currency,
             timestamp=datetime.now(timezone.utc),
-            side=pending_order.direction,
+            side=trade_side,
             is_maker=is_maker,
         )
         pending_order.append_trade(trade)

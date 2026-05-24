@@ -453,6 +453,7 @@ class AutotraderTickLoop:
                 close_type=trade.close_type,
                 entry_trades=list(trade.entry_trades),
                 exit_trades=list(trade.exit_trades),
+                exit_side=trade.exit_side,
             ))
 
         # Clipping — lightweight snapshot (avoids full session summary construction)

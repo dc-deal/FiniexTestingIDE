@@ -40,6 +40,7 @@ from python.framework.types.trading_env_types.order_types import (
     StopLimitOrder,
     IcebergOrder,
     OrderDirection,
+    OrderSide,
 )
 
 
@@ -979,10 +980,11 @@ class KrakenAdapter(AbstractAdapter):
                 ordertype.startswith('limit')
                 or ordertype in ('take-profit-limit', 'stop-loss-limit')
             )
+            # Kraken returns 'buy'/'sell' natively — direct mapping to OrderSide.
             side = (
-                OrderDirection.LONG
+                OrderSide.BUY
                 if trade_data.get('type') == 'buy'
-                else OrderDirection.SHORT
+                else OrderSide.SELL
             )
             fee_currency = self._resolve_quote_currency_from_pair(
                 trade_data.get('pair', '')

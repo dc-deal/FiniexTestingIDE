@@ -19,6 +19,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.trade_log_csv_writer import EVENT_FIELDS
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType
+from python.framework.types.trading_env_types.order_types import OrderSide
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/partial_close_lifecycle.json'
@@ -102,6 +103,35 @@ class TestEntryTradesSharedAcrossPartials:
         full_count = sum(1 for tr in partials_pos1 if tr.close_type == CloseType.FULL)
         assert partial_count == 2
         assert full_count == 1
+
+
+class TestExecutionSides:
+    """Trade-event side (BUY/SELL) is populated on TradeRecord per the BUY/SELL refactor."""
+
+    def test_long_position_records_have_buy_entry_sell_exit(self, session_result):
+        """pos_usdjpy_1 is LONG — open via BUY, close via SELL on every record."""
+        result, _ = session_result
+        for tr in (t for t in result.trade_history if t.position_id == 'pos_usdjpy_1'):
+            assert tr.entry_side == OrderSide.BUY, f"entry_side {tr.entry_side}"
+            assert tr.exit_side == OrderSide.SELL, f"exit_side {tr.exit_side}"
+
+    def test_short_position_records_have_sell_entry_buy_exit(self, session_result):
+        """pos_usdjpy_2 is SHORT — open via SELL, close via BUY."""
+        result, _ = session_result
+        shorts = [t for t in result.trade_history if t.position_id == 'pos_usdjpy_2']
+        assert len(shorts) == 1
+        assert shorts[0].entry_side == OrderSide.SELL
+        assert shorts[0].exit_side == OrderSide.BUY
+
+    def test_entry_trades_carry_buy_sell_not_long_short(self, session_result):
+        """BrokerTrade.side on entry_trades is now OrderSide (BUY/SELL),
+        independent of the position direction it derives from."""
+        result, _ = session_result
+        for tr in result.trade_history:
+            for bt in tr.entry_trades:
+                assert isinstance(bt.side, OrderSide), f"got {type(bt.side)}"
+            for bt in tr.exit_trades:
+                assert isinstance(bt.side, OrderSide), f"got {type(bt.side)}"
 
 
 class TestSinglePositionIsolation:

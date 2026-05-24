@@ -74,6 +74,49 @@ For a partial-close TradeRecord, the aggregate `lots` field and the underlying `
 
 The sub-line `entry` shows the **broker-truth** of the original execution; the aggregate row shows the per-record share. Both numbers are correct; they describe different things.
 
+## Trade-Event Side vs Position Direction (BUY/SELL vs LONG/SHORT)
+
+Two distinct concepts the industry has standardised on:
+
+- **`OrderSide` (BUY/SELL)** — what the execution did. Per-fill view. FIX `Side(54)`, IBKR Action (`BOT`/`SLD`), Binance/Kraken/MT5 Side column.
+- **`OrderDirection` (LONG/SHORT)** — what the position looks like. Per-position view.
+
+The mapping is deterministic:
+
+| Position direction | Action | Execution side |
+|---|---|---|
+| LONG | OPEN  | BUY  |
+| LONG | CLOSE | SELL |
+| SHORT | OPEN  | SELL |
+| SHORT | CLOSE | BUY  |
+
+Single source of truth: helper `direction_to_side(direction, action) → OrderSide` in `order_types.py`. Used by every BrokerTrade construction site and by TradeRecord builders.
+
+Where each concept lives in the data model:
+
+| Field | Type | View | Populated for |
+|---|---|---|---|
+| `BrokerTrade.side` | `OrderSide` | per-execution | every BrokerTrade |
+| `TradeRecord.entry_side` | `OrderSide` | open-event view | every TradeRecord |
+| `TradeRecord.exit_side` | `OrderSide` | close-event view | every TradeRecord |
+| `Position.direction` | `OrderDirection` | position view | every Position |
+| `TradeRecord.direction` | `OrderDirection` | position view (kept for aggregate views) | every TradeRecord |
+| `OrderResult.action` | `OrderAction` | lifecycle (OPEN/CLOSE) — not a side concept | every OrderResult |
+
+**Where each is rendered:**
+
+| Surface | Column | Value source |
+|---|---|---|
+| Live OPEN POSITIONS panel | `Dir` | `Position.direction.value` → `long`/`short` |
+| Live TRADE HISTORY panel | `Side` | `TradeHistoryEntry.exit_side.value` → `buy`/`sell` (color stays by direction) |
+| Sim trade-history log | `Side` | `TradeRecord.exit_side.value` → `BUY`/`SELL` (color by direction) |
+| events.csv FILL rows | `side` column | `BrokerTrade.side.value` → `buy`/`sell`. `direction` column empty. |
+| events.csv POSITION_OPEN/CLOSE rows | `direction` column | `TradeRecord.direction.value` → `long`/`short`. `side` column empty. |
+
+The events.csv treats `side` and `direction` as **mutually exclusive per row** — FIX-style separation of OrdSide (per-trade operation) from PositionSide (position view). A FILL is an execution operation; a POSITION_OPEN/CLOSE is a position-view aggregate.
+
+**Color-by-direction, text-by-side** convention in the Live panel keeps the visual link to "what kind of position is this trade affecting?" (green = closed-LONG, red = closed-SHORT) while the text accurately labels the algo operation (BUY/SELL).
+
 ## Cardinality Independence — Entry vs Exit
 
 The number of `entry_trades` and `exit_trades` on a TradeRecord are unrelated to each other:
@@ -91,7 +134,8 @@ In V1.3 sim and current Kraken live, both lists are 1-element. The data model is
 
 | Path | Where | Detail |
 |---|---|---|
-| `pending.trades` ← synthesize | `AbstractTradeExecutor._synthesize_pending_trade` | Single BrokerTrade with `trade_id=f'SYNTH-{pending_order_id}-{seq:06d}'`. Monotonic per-executor counter prevents id collisions across open / partial closes |
+| `pending.trades` ← synthesize | `AbstractTradeExecutor._synthesize_pending_trade` | Single BrokerTrade with `trade_id=f'SYNTH-{pending_order_id}-{seq:06d}'`. Monotonic per-executor counter prevents id collisions across open / partial closes. `BrokerTrade.side` derived via `direction_to_side(pending.direction, OrderAction.OPEN/CLOSE)` from the pending's lifecycle action. |
+| `TradeRecord.entry_side` / `exit_side` | `PortfolioManager._create_trade_record` + `partial_close_position` | `direction_to_side(position.direction, OPEN)` and `direction_to_side(position.direction, CLOSE)` — same helper, single source of truth. |
 | `Position.entry_trades` ← shallow copy | `AbstractTradeExecutor._fill_open_order` → `portfolio.open_position(entry_trades=...)` | `list(pending.trades)` |
 | `TradeRecord.entry_trades` ← shallow copy | `PortfolioManager.partial_close_position` + `_create_trade_record` | `list(position.entry_trades)` (same list on every derived record) |
 | `TradeRecord.exit_trades` ← shallow copy | `AbstractTradeExecutor._fill_close_order` → portfolio methods | `list(pending_order.trades)` (distinct per close event) |
@@ -132,6 +176,8 @@ Compact — sub-rows fire only when non-trivial:
 
 In V1.3 multi-fill data does not yet flow from the broker side, so most sub-rows stay invisible. The display path is ready the moment the data does.
 
+The TRADE HISTORY column header reads **`Side`** (not `Dir`) — the value is the close operation (`buy` or `sell`), color-coded by the underlying position direction (green for closed-LONG, red for closed-SHORT). See the "Trade-Event Side vs Position Direction" section for the full rationale.
+
 ## Event-Stream CSV (`events.csv`)
 
 Replaces the previous two-file format (`autotrader_orders.csv` + `autotrader_trades.csv`). Long-format / FIX-`ExecutionReport`-style — one row per event, `event_type` as discriminator. One file per AutoTrader session, one per scenario in sim (`events_<scenario>.csv` inside an `events/` subfolder of the scenario-set log dir).
@@ -140,9 +186,14 @@ Canonical column order ([trade_log_csv_writer.py:EVENT_FIELDS](../../python/fram
 
 ```
 ts, event_type, order_id, position_id, trade_id,
-broker_ref, direction, lots, price, fee, fee_currency,
+broker_ref, direction, side, lots, price, fee, fee_currency,
 status, close_type, close_reason, is_maker, notes
 ```
+
+`direction` and `side` are mutually exclusive per row (see "Trade-Event Side vs Position Direction" above):
+- POSITION_OPEN / POSITION_CLOSE rows carry `direction` (long/short), `side` is empty
+- FILL rows carry `side` (buy/sell), `direction` is empty
+- ORDER_SUBMIT / CLOSE_SUBMIT / ORDER_REJECT rows carry neither (algo lifecycle markers, no per-execution payload)
 
 ### Event Types
 

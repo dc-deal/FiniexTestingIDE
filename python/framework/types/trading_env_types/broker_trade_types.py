@@ -11,7 +11,7 @@ See docs/architecture/broker_trade_records.md for the order ↔ executions model
 from dataclasses import dataclass
 from datetime import datetime
 
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderSide
 
 
 @dataclass
@@ -32,7 +32,11 @@ class BrokerTrade:
         fee: Broker-reported fee for THIS execution
         fee_currency: Fee currency (e.g. 'USD', 'EUR')
         timestamp: UTC timezone-aware execution time
-        side: LONG / SHORT (matches parent order direction)
+        side: BUY / SELL — the execution operation (what this trade did).
+            Distinct from Position.direction (LONG/SHORT, position view) by
+            design — every institutional broker shows BUY/SELL per fill.
+            Open LONG → BUY, close LONG → SELL, open SHORT → SELL, close SHORT → BUY.
+            Use `direction_to_side(direction, action)` helper at construction.
         is_maker: True for LIMIT/maker fills, False for taker (market)
     """
     trade_id: str
@@ -43,7 +47,7 @@ class BrokerTrade:
     fee: float
     fee_currency: str
     timestamp: datetime
-    side: OrderDirection
+    side: OrderSide
     is_maker: bool
 
     def to_dict(self) -> dict:

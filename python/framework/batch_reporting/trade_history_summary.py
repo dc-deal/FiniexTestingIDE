@@ -185,7 +185,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
     def _print_table_header(self, renderer: ConsoleRenderer) -> None:
         """Print trade table header."""
         header = (
-            f"   {'#':>3} | {'Dir':^5} | {'ET':>2} | {'Lots':>5} | "
+            f"   {'#':>3} | {'Side':^5} | {'ET':>2} | {'Lots':>5} | "
             f"{'Entry Price':>12} | {'Exit Price':>12} | "
             f"{'SL':>12} | {'TP':>12} | "
             f"{'Entry Tick':>10} | {'Exit Tick':>10} | {'Duration':>8} | "
@@ -211,11 +211,17 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             shared_counts: trade_id frequency map across the scenario, used
                 for the shared(Nx) annotation on shared entry executions
         """
-        # Direction with color
-        if trade.direction == OrderDirection.LONG:
-            dir_str = renderer.green("LONG ")
+        # Trade-event side (BUY/SELL — what the close operation was), colored
+        # by the underlying position direction. Falls back to the position
+        # direction string for legacy TradeRecords without exit_side populated.
+        if trade.exit_side is not None:
+            side_text = trade.exit_side.value.upper().ljust(5)
         else:
-            dir_str = renderer.red("SHORT")
+            side_text = ('LONG ' if trade.direction == OrderDirection.LONG else 'SHORT')
+        if trade.direction == OrderDirection.LONG:
+            dir_str = renderer.green(side_text)
+        else:
+            dir_str = renderer.red(side_text)
 
         # Entry type (M=Market, L=Limit, S=Stop, SL=Stop-Limit)
         entry_type_map = {

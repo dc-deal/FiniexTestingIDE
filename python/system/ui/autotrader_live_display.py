@@ -600,7 +600,7 @@ class AutoTraderLiveDisplay:
             return Panel('[dim]No trades yet[/dim]', title='[bold]TRADE HISTORY[/bold]', box=box.ROUNDED)
 
         table = Table(show_header=True, box=None, padding=(0, 1))
-        table.add_column('Dir', width=6)
+        table.add_column('Side', width=6)
         table.add_column('Lots', width=8, justify='right')
         table.add_column('Entry', width=10, justify='right')
         table.add_column('Exit', width=10, justify='right')
@@ -610,7 +610,11 @@ class AutoTraderLiveDisplay:
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
             pnl_sign = '+' if trade.net_pnl >= 0 else ''
+            # Color by underlying position direction (so a LONG-close and a
+            # SHORT-close keep their identity in the panel); text shows the
+            # trade-event side (BUY/SELL — what the close operation was).
             dir_color = 'green' if trade.direction == OrderDirection.LONG else 'red'
+            side_text = trade.exit_side.value if trade.exit_side else trade.direction.value
 
             # Reason column doubles as close_type marker (#330): when the
             # real close_reason is MANUAL (empty string), surface the partial
@@ -629,7 +633,7 @@ class AutoTraderLiveDisplay:
                     reason_text = 'remain'
 
             table.add_row(
-                f'[{dir_color}]{trade.direction.value}[/{dir_color}]',
+                f'[{dir_color}]{side_text}[/{dir_color}]',
                 f'{trade.lots:.4f}',
                 f'{trade.entry_price:.2f}',
                 f'{trade.exit_price:.2f}',

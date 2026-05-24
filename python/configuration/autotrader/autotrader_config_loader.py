@@ -96,11 +96,19 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
+    # Drift-audit default depends on adapter_type. Mock adapters produce
+    # synthetic fee/volume figures that don't reflect any real broker —
+    # the FEE-drift comparison would always raise huge deltas (noise, not
+    # actionable). Auto-disable for mock unless the profile sets it
+    # explicitly. Live runs keep the default-on behaviour from #327.
+    adapter_type_resolved = raw.get('adapter_type', 'mock')
+    drift_audit_default_enabled = adapter_type_resolved != 'mock'
+
     return AutoTraderConfig(
         name=raw.get('name', ''),
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
-        adapter_type=raw.get('adapter_type', 'mock'),
+        adapter_type=adapter_type_resolved,
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             balances=account_raw.get('balances', {}),
@@ -137,7 +145,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
         ),
         drift_audit=DriftAuditConfig(
-            enabled=drift_audit_raw.get('enabled', True),
+            enabled=drift_audit_raw.get('enabled', drift_audit_default_enabled),
             fee_threshold_pct=drift_audit_raw.get('fee_threshold_pct', 0.5),
             volume_threshold_pct=drift_audit_raw.get('volume_threshold_pct', 0.1),
             price_threshold_pct=drift_audit_raw.get('price_threshold_pct', 1.0),

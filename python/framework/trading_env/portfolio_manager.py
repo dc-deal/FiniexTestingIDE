@@ -16,7 +16,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 
-from python.framework.types.trading_env_types.order_types import ModificationRejectionReason, ModificationResult, OrderDirection
+from python.framework.types.trading_env_types.order_types import ModificationRejectionReason, ModificationResult, OrderAction, OrderDirection, OrderSide, direction_to_side
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_types.market_data_types import TickData
@@ -498,6 +498,8 @@ class PortfolioManager:
             account_currency=self.account_currency,
             entry_trades=list(position.entry_trades),
             exit_trades=list(exit_trades) if exit_trades else [],
+            entry_side=direction_to_side(position.direction, OrderAction.OPEN),
+            exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
         )
 
         # Append to trade history (with limit warning)
@@ -580,6 +582,8 @@ class PortfolioManager:
             account_currency=self.account_currency,
             entry_trades=list(position.entry_trades),
             exit_trades=list(exit_trades) if exit_trades else [],
+            entry_side=direction_to_side(position.direction, OrderAction.OPEN),
+            exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
         )
 
     # ============================================

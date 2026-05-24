@@ -14,7 +14,7 @@ from python.framework.types.decision_logic_types import DecisionAwareness, Decis
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, CloseType
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 
@@ -78,6 +78,9 @@ class TradeHistoryEntry:
     close_type: CloseType = CloseType.FULL
     entry_trades: List[BrokerTrade] = field(default_factory=list)
     exit_trades: List[BrokerTrade] = field(default_factory=list)
+    # Trade-event side (BUY/SELL) for the close — used by Live TRADE HISTORY
+    # column 'Side'. Default None for legacy / pre-#330 records.
+    exit_side: Optional[OrderSide] = None
 
 
 @dataclass

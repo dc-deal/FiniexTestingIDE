@@ -25,7 +25,7 @@ from typing import List, Optional
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderAction, OrderDirection, OrderResult, OrderStatus
+from python.framework.types.trading_env_types.order_types import OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
 
 
 class EventType(Enum):
@@ -44,14 +44,21 @@ class EventType(Enum):
 # Canonical column order. Stable contract for downstream consumers.
 EVENT_FIELDS = (
     'ts', 'event_type', 'order_id', 'position_id', 'trade_id',
-    'broker_ref', 'direction', 'lots', 'price', 'fee', 'fee_currency',
+    'broker_ref', 'direction', 'side', 'lots', 'price', 'fee', 'fee_currency',
     'status', 'close_type', 'close_reason', 'is_maker', 'notes',
 )
 
 
 @dataclass
 class TradeEvent:
-    """One event row in the long-format CSV. Optional fields stay empty per type."""
+    """
+    One event row in the long-format CSV. Optional fields stay empty per type.
+
+    direction (LONG/SHORT) is the *position view* — populated on POSITION_OPEN
+    and POSITION_CLOSE events. side (BUY/SELL) is the *trade-event view* —
+    populated on FILL events (one row per BrokerTrade). The two columns are
+    mutually exclusive per row: FIX-style separation of OrdSide vs PositionSide.
+    """
     ts: datetime
     event_type: EventType
     order_id: str = ''
@@ -59,6 +66,7 @@ class TradeEvent:
     trade_id: str = ''
     broker_ref: str = ''
     direction: Optional[OrderDirection] = None
+    side: Optional[OrderSide] = None
     lots: Optional[float] = None
     price: Optional[float] = None
     fee: Optional[float] = None
@@ -311,7 +319,14 @@ def _build_events(
 
 
 def _fill_event(bt: BrokerTrade, position_id: str) -> TradeEvent:
-    """Build a FILL event row from one atomic BrokerTrade."""
+    """
+    Build a FILL event row from one atomic BrokerTrade.
+
+    bt.side is OrderSide (BUY/SELL) — populates the `side` column. The
+    `direction` column stays empty on FILL rows (FIX-style: OrdSide vs
+    PositionSide are distinct fields). POSITION_OPEN / POSITION_CLOSE rows
+    carry `direction` (LONG/SHORT, position view) instead.
+    """
     return TradeEvent(
         ts=bt.timestamp,
         event_type=EventType.FILL,
@@ -319,7 +334,7 @@ def _fill_event(bt: BrokerTrade, position_id: str) -> TradeEvent:
         position_id=position_id,
         trade_id=bt.trade_id,
         broker_ref=bt.parent_broker_ref or '',
-        direction=bt.side,
+        side=bt.side,
         lots=bt.volume,
         price=bt.price,
         fee=bt.fee,
@@ -343,6 +358,7 @@ def _event_to_row(event: TradeEvent) -> List[str]:
         event.trade_id,
         event.broker_ref,
         event.direction.value if event.direction else '',
+        event.side.value if event.side else '',
         f'{event.lots:.8f}' if event.lots is not None else '',
         f'{event.price:.5f}' if event.price is not None else '',
         f'{event.fee:.8f}' if event.fee is not None else '',

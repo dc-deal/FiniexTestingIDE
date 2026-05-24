@@ -13,7 +13,7 @@ from enum import Enum
 from typing import List, Optional
 
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 
 
 class CloseType(Enum):
@@ -128,3 +128,11 @@ class TradeRecord:
     # per partial close). Single-fill case → lists of length 1.
     entry_trades: List[BrokerTrade] = field(default_factory=list)
     exit_trades: List[BrokerTrade] = field(default_factory=list)
+
+    # === Execution Side (BUY/SELL) ===
+    # Trade-event view — what the algo actually did. Distinct from `direction`
+    # (position view, LONG/SHORT). Industry standard for trade history columns.
+    #   LONG  + OPEN  → entry_side=BUY,  close → exit_side=SELL
+    #   SHORT + OPEN  → entry_side=SELL, close → exit_side=BUY
+    entry_side: Optional[OrderSide] = None
+    exit_side: Optional[OrderSide] = None
