@@ -68,6 +68,43 @@ class OrderSide(StrEnum):
     SELL = "sell"
 
 
+class OrderAction(Enum):
+    """
+    What the order is doing in the position lifecycle.
+
+    OPEN: order creates or extends a position
+    CLOSE: order reduces or closes a position (full or partial)
+
+    First-class field on OrderResult (#330). Distinguishes open- and close-side
+    OrderResults that share the same order_id (= position_id) — the
+    EventStreamWriter needs this to emit distinct ORDER_SUBMIT / CLOSE_SUBMIT
+    events for opens vs closes on the same position.
+    """
+    OPEN = "open"
+    CLOSE = "close"
+
+
+def direction_to_side(direction: 'OrderDirection', action: OrderAction) -> 'OrderSide':
+    """
+    Map (position direction, lifecycle action) → execution side.
+
+    Single source of truth for the BUY/SELL ↔ LONG/SHORT mapping. Used by
+    every BrokerTrade construction site and by every TradeRecord builder that
+    needs entry_side / exit_side derived from the position direction.
+
+    Args:
+        direction: Position direction (LONG/SHORT)
+        action: Lifecycle action (OPEN/CLOSE)
+
+    Returns:
+        OrderSide.BUY  — open LONG, or close SHORT (buying back)
+        OrderSide.SELL — close LONG, or open SHORT (short-sell)
+    """
+    if direction == OrderDirection.LONG:
+        return OrderSide.BUY if action == OrderAction.OPEN else OrderSide.SELL
+    return OrderSide.SELL if action == OrderAction.OPEN else OrderSide.BUY
+
+
 class OrderStatus(Enum):
     """Order execution status"""
     PENDING = "pending"          # Order created, not yet sent
@@ -304,6 +341,14 @@ class OrderResult:
     rejection_message: str = ""
 
     position_id: Optional[str] = None
+
+    # First-class action discriminator (#330). Distinguishes open and close
+    # OrderResults that share the same order_id (= position_id). The
+    # EventStreamWriter routes ORDER_SUBMIT vs CLOSE_SUBMIT based on this.
+    # Defaults to None for legacy / EXPIRED / rejection paths where the
+    # distinction does not apply.
+    action: Optional[OrderAction] = None
+
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property

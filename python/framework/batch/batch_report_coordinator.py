@@ -8,6 +8,7 @@ This is the coordination layer - actual rendering logic stays in framework/batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
+from python.framework.reporting.trade_log_csv_writer import EventStreamWriter
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
@@ -88,3 +89,20 @@ class BatchReportCoordinator:
         # Log to file (without colors) — always full detail
         summary_clean = re.sub(r'\033\[[0-9;]+m', '', full_output)
         self._scenario_set.printed_summary_logger.info(summary_clean)
+
+        # Long-format event-stream CSV per scenario (#330 / #233).
+        # Writes one events_<scenario>.csv per scenario into an events/
+        # subfolder of the scenario set's log dir — keeps the run dir tidy
+        # when many scenarios produce many CSVs.
+        run_dir = self._scenario_set.logger.get_log_dir()
+        events_dir = run_dir / 'events'
+        events_dir.mkdir(exist_ok=True)
+        for process_result in self._batch_execution_summary.process_result_list:
+            tlr = process_result.tick_loop_results
+            if tlr is None:
+                continue
+            EventStreamWriter.from_sim_result(
+                trade_history=tlr.trade_history or [],
+                order_history=tlr.order_history or [],
+                run_dir=events_dir,
+            ).flush(f'events_{process_result.scenario_name}.csv')

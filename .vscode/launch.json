@@ -457,6 +457,26 @@
             }
         },
         {
+            "name": "🤖 AutoTrader: BTCUSD Mock -  Aggressive Trend",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/aggressive_trend_mock.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 2
+            }
+        },
+        {
             "name": "🤖 AutoTrader: BTCUSD Mock - Cautious MACD (MARKET TYPE NOT SUPPORTET)",
             "type": "debugpy",
             "request": "launch",
@@ -473,7 +493,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_autotrader",
-                "order": 2
+                "order": 3
             }
         },
         {
@@ -490,7 +510,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_autotrader",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -507,7 +527,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_autotrader",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -524,7 +544,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_autotrader",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -541,7 +561,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "06_autotrader",
-                "order": 6
+                "order": 7
             }
         },
         // ====================================================
@@ -1435,6 +1455,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Partial Close Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/partial_close_lifecycle.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 14
+            }
+        },
+        {
             "name": "🧪 AutoTrader: SL Triggered",
             "type": "debugpy",
             "request": "launch",
@@ -1683,6 +1723,42 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 27
+            }
+        },
+        {
+            "name": "🧩 Pytest: Drift Auditor (#327)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_drift_auditor.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 28
+            }
+        },
+        {
+            "name": "🧩 Pytest: Multi-Fill Visibility (#330)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/partial_close/test_event_stream_csv.py",
+                "tests/simulation/baseline/test_event_stream_minimal.py",
+                "tests/autotrader/integration/test_partial_close_live_pipeline.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 29
             }
         },
         {

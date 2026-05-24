@@ -150,16 +150,12 @@ class AutotraderPostSessionReport:
         self._summary_logger.info('-' * 60)
         self._summary_logger.info(f"  Log directory:  {run_dir}")
 
-        if result.trade_history:
+        if result.trade_history or result.order_history:
+            trades_n = len(result.trade_history) if result.trade_history else 0
+            orders_n = len(result.order_history) if result.order_history else 0
             self._summary_logger.info(
-                f"  Trade log:      autotrader_trades.csv "
-                f"({len(result.trade_history)} trades)"
-            )
-
-        if result.order_history:
-            self._summary_logger.info(
-                f"  Order log:      autotrader_orders.csv "
-                f"({len(result.order_history)} orders)"
+                f"  Event log:      events.csv "
+                f"({trades_n} trades, {orders_n} orders)"
             )
 
         self._summary_logger.info('=' * 60)

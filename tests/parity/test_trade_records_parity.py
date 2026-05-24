@@ -29,6 +29,7 @@ from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderSide,
     OrderStatus,
     OrderType,
 )
@@ -126,6 +127,10 @@ class TestTradeSynthesisParity:
 
         def _record(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost):
             original(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost)
+            # Capture from the just-appended BrokerTrade so `side` reflects
+            # the new OrderSide (BUY/SELL) typing — not the OrderDirection
+            # of the pending order (which is the position view).
+            last_trade = pending_order.trades[-1] if pending_order.trades else None
             captured.append({
                 'order_id': pending_order.pending_order_id,
                 'volume': filled_lots,
@@ -133,7 +138,7 @@ class TestTradeSynthesisParity:
                 'entry_type': entry_type.value,
                 'trades_count_after': len(pending_order.trades),
                 'cumulative_lots': pending_order.cumulative_filled_lots,
-                'side': pending_order.direction,
+                'side': last_trade.side if last_trade else None,
             })
 
         executor._synthesize_pending_trade = _record
@@ -196,4 +201,7 @@ class TestTradeSynthesisParity:
 
         sim_opens = [s for s in sim_captured if s['entry_type'] in ('market', 'limit')]
         live_opens = [s for s in live_captured if s['entry_type'] in ('market', 'limit')]
-        assert sim_opens[0]['side'] == live_opens[0]['side'] == OrderDirection.LONG
+        # BrokerTrade.side is now OrderSide (BUY/SELL — trade-event view)
+        # rather than OrderDirection (LONG/SHORT — position view). Open LONG
+        # produces a BUY trade in both pipelines.
+        assert sim_opens[0]['side'] == live_opens[0]['side'] == OrderSide.BUY

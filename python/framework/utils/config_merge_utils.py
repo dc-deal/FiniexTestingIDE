@@ -34,33 +34,93 @@ def deep_merge(
     base: Dict[str, Any],
     override: Dict[str, Any],
     atomic_keys: Optional[Set[str]] = None,
+    list_merge_keys: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
     Recursively merge override dict into base dict.
 
-    Nested dicts are merged deeply. Atomic keys are replaced entirely, never
-    deep-merged. All other values (primitives, lists) are replaced by override.
+    Nested dicts are merged deeply. Atomic keys are replaced entirely. Lists
+    whose containing key appears in list_merge_keys are merged element-wise via
+    an identifier field (matching entries deep-merged, base-only kept,
+    override-only appended). All other values (primitives, plain lists) are
+    replaced by override.
 
     Args:
         base: Base configuration dict
         override: Override dict — takes precedence over base
         atomic_keys: Keys replaced entirely, never deep-merged (e.g. {'balances'})
+        list_merge_keys: Maps list-field name → identifier key for element-wise
+            merge (e.g. {'brokers': 'broker_type'}). Each override entry in such
+            a list must declare its identifier field.
 
     Returns:
         New merged dict — inputs are not mutated
     """
     _atomic = atomic_keys or set()
+    _list_keys = list_merge_keys or {}
     result = copy.deepcopy(base)
 
     for key, override_value in override.items():
         if key in _atomic:
             result[key] = copy.deepcopy(override_value)
+        elif (
+            key in _list_keys
+            and key in result
+            and isinstance(result[key], list)
+            and isinstance(override_value, list)
+        ):
+            result[key] = _merge_lists_by_key(
+                result[key], override_value, _list_keys[key], _atomic, _list_keys
+            )
         elif key in result and isinstance(result[key], dict) and isinstance(override_value, dict):
-            result[key] = deep_merge(result[key], override_value, _atomic)
+            result[key] = deep_merge(result[key], override_value, _atomic, _list_keys)
         else:
             result[key] = copy.deepcopy(override_value)
 
     return result
+
+
+def _merge_lists_by_key(
+    base_list: list,
+    override_list: list,
+    id_key: str,
+    atomic_keys: Set[str],
+    list_merge_keys: Dict[str, str],
+) -> list:
+    """
+    Merge two lists of dicts element-wise by an identifier field.
+
+    Entries are matched by id_key value. Matching entries are deep-merged,
+    base-only entries are preserved in their original order, override-only
+    entries are appended at the end.
+
+    Args:
+        base_list: List from base config
+        override_list: List from override
+        id_key: Field name used to match entries (e.g. 'broker_type')
+        atomic_keys: Forwarded to nested deep_merge calls
+        list_merge_keys: Forwarded to nested deep_merge calls
+
+    Returns:
+        New merged list of dicts
+    """
+    by_id: Dict[Any, Dict[str, Any]] = {entry[id_key]: copy.deepcopy(entry) for entry in base_list}
+
+    for override_entry in override_list:
+        if id_key not in override_entry:
+            raise ValueError(
+                f"List-merge override entry missing required '{id_key}' identifier — "
+                f"each entry in a list-merge field must declare its identifier"
+            )
+        entry_id = override_entry[id_key]
+        if entry_id in by_id:
+            by_id[entry_id] = deep_merge(
+                by_id[entry_id], override_entry, atomic_keys, list_merge_keys
+            )
+        else:
+            by_id[entry_id] = copy.deepcopy(override_entry)
+
+    return list(by_id.values())
 
 
 # Keys allowed in any config section — JSON documentation convention.

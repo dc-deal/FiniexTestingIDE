@@ -39,7 +39,8 @@ tests/
 │   ├── test_pnl_calculation.py
 │   ├── test_tick_count.py
 │   ├── test_trade_execution.py
-│   └── test_warmup_validation.py
+│   ├── test_warmup_validation.py
+│   └── test_event_stream_minimal.py   ← Smoke-level event-stream CSV check (#330)
 └── multi_position/             ← Separate suite, same fixture pattern
     ├── conftest.py             ← MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
     └── ...

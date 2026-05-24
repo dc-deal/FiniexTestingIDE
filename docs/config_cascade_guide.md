@@ -43,10 +43,10 @@
 >
 > The AutoTrader pipeline has its own 2-level cascade (`app_config.autotrader` → profile) — documented in [autotrader_architecture.md](autotrader/autotrader_architecture.md).
 >
-> For **application-level configuration overrides** (app_config.json, market_config.json), see the `user_configs/` folder system described in the main [README](../Readme.md#configuration).
+> For **application-level configuration overrides** (app_config.json, market_config.json, etc.), see the dedicated [user_configs/ Override System](user_configs_override_system.md) doc.
 >
 > These are three separate systems:
-> - **user_configs/** - Override base application settings (gitignored, personal)
+> - **user_configs/** - Override base application settings (gitignored, personal) — see [user_configs_override_system.md](user_configs_override_system.md)
 > - **Scenario cascade** - Backtesting scenario configuration inheritance (this document)
 > - **AutoTrader cascade** - AutoTrader profile defaults inheritance
 

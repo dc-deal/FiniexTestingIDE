@@ -590,3 +590,67 @@ Validates the three coordinated fixes introduced by #320: side-effect-free `hear
 | Test | Description |
 |---|---|
 | `test_partially_filled_keeps_polling` | PARTIALLY_FILLED → no state mutation, order stays active, `in_flight_query` cleared. Per-execution accumulation lands with #326's async `trades_query`. |
+
+---
+
+### test_drift_auditor.py (10 Tests) — #327 Drift Audit
+
+Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling, and consumer-exception isolation.
+
+Uses a `_FakeExecutor` stub that records listener / consumer registrations and lets tests drive `fire_outcome()` / `fire_trades_response()` directly — no worker thread, no real adapter.
+
+#### TestDisabledAudit
+
+| Test | Description |
+|---|---|
+| `test_disabled_audit_is_noop` | `DriftAuditConfig(enabled=False)` → listener fires but produces no `submit_trades_query_async` call |
+
+#### TestThresholdBehaviour
+
+| Test | Description |
+|---|---|
+| `test_no_drift_within_threshold` | Synthetic == broker → `total_orders_audited=1`, all event counters stay at 0 |
+| `test_fee_drift_above_threshold_logged` | Local fee 5 % below broker → `fee_events=1`, FEE record marked `threshold_exceeded=True` |
+
+#### TestPartialFill
+
+| Test | Description |
+|---|---|
+| `test_volume_drift_partial_fill` | Broker filled 0.05 of requested 0.10 → 50 % VOLUME drift, `volume_events=1` |
+
+#### TestPriceDriftStructural
+
+| Test | Description |
+|---|---|
+| `test_price_drift_marked_structural` | Broker avg-price 5 % off local → PRICE record carries `is_structural=True`, counter increments above 1 % threshold |
+
+#### TestDryRunSkipped
+
+| Test | Description |
+|---|---|
+| `test_dryrun_orders_skipped` | `pending.broker_ref` starting `DRYRUN-` → no trades-query triggered, no snapshot stored |
+
+#### TestFeeCurrencyMismatch
+
+| Test | Description |
+|---|---|
+| `test_fee_currency_mismatch_skips_comparison` | Local USD vs. broker EUR → FEE compare skipped (warning logged), VOLUME and PRICE still recorded |
+
+#### TestCoexistenceWithOrderGuard
+
+| Test | Description |
+|---|---|
+| `test_drift_auditor_coexists_with_order_guard` | Both DriftAuditor and a guard-style listener register on the executor → both fire on outcome (#319 multi-listener regression guard) |
+
+#### TestFailedTradesResponseNoLeak
+
+| Test | Description |
+|---|---|
+| `test_failed_trades_response_no_leak` | `response.success=False` → snapshot is still popped from `_pending_audits` (no leak, Risk 4 regression guard) |
+| `test_shutdown_clears_unfinished_audits` | `shutdown()` clears any unfinished entries and emits the final summary log line |
+
+#### TestConsumerExceptionIsolation
+
+| Test | Description |
+|---|---|
+| `test_consumer_exception_isolated` | A bad consumer that raises does NOT prevent subsequent consumers from running (Risk 2 regression guard — validates the `try/except` fan-out pattern in `_handle_trades_response`) |

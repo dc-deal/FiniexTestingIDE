@@ -1,15 +1,21 @@
-# Config Cascade Tests
+# Config Tests (Cascade + Merge Utility)
 
-Black-box coverage of the 3-level scenario-set configuration cascade. Drives
-`ScenarioConfigLoader.load_config()` against JSON fixtures and asserts the
-merged result on the produced `SingleScenario`.
+The `tests/framework/config/` suite holds two complementary test files:
+
+- **`test_execution_config_cascade.py`** — black-box coverage of the 3-level
+  scenario-set cascade. Drives `ScenarioConfigLoader.load_config()` against
+  JSON fixtures and asserts the merged result on the produced `SingleScenario`.
+- **`test_deep_merge_list_merge.py`** — unit coverage of the `list_merge_keys`
+  feature in `deep_merge()`. Drives the helper directly with in-memory dicts —
+  no fixtures, no loader involvement. See [Deep Merge List-Merge Tests](#deep-merge-list-merge-tests) below.
 
 | Item | Value |
 |---|---|
 | Suite path | [tests/framework/config/](../../../tests/framework/config/) |
-| Fixtures | [tests/fixtures/scenario_sets/cascade/](../../../tests/fixtures/scenario_sets/cascade/) |
+| Cascade fixtures | [tests/fixtures/scenario_sets/cascade/](../../../tests/fixtures/scenario_sets/cascade/) |
 | Pytest mark | `framework` (auto-applied via path) |
-| Companion doc | [config_cascade_guide.md](../../config_cascade_guide.md) — cascade architecture |
+| Cascade doc | [config_cascade_guide.md](../../config_cascade_guide.md) — cascade architecture |
+| user_configs/ doc | [user_configs_override_system.md](../../user_configs_override_system.md) — content-merge vs file-replace, list_merge_keys |
 | Tracking layers doc | [performance_tracking_layers.md](../../architecture/performance_tracking_layers.md) — context for the sub-group case |
 
 ---
@@ -71,3 +77,27 @@ These lanes are equally critical but not exercised here. A follow-up suite
 
 If you change the cascade and these tests stay green, the merge mechanic is intact.
 If they fail, the failure message points at the exact level + key that broke.
+
+---
+
+## Deep Merge List-Merge Tests
+
+Unit-style coverage of `deep_merge(..., list_merge_keys={...})` — the
+identifier-based list-merging feature used by the market config loader to
+key broker entries by `broker_type`. Tests live in
+[`test_deep_merge_list_merge.py`](../../../tests/framework/config/test_deep_merge_list_merge.py).
+
+| Test | What it verifies |
+|---|---|
+| `test_atomic_replace_when_no_list_merge_keys` | Backward compat — without the parameter, lists are replaced wholesale (old default) |
+| `test_list_merge_by_id_overrides_matching_field` | Matching entries are deep-merged per field — base fields preserved when override is partial |
+| `test_list_merge_preserves_base_only_entries` | Base entries with no override match stay intact |
+| `test_list_merge_appends_override_only_entries` | New entries declared only in override are appended |
+| `test_missing_identifier_in_override_raises` | Override entry missing the identifier hard-fails with a `ValueError` |
+| `test_nested_dict_inside_list_entry_deep_merges` | Nested dicts inside a matched entry merge per-key (e.g. `broker_transport.poll_interval_ms`) |
+| `test_atomic_keys_still_works_alongside_list_merge_keys` | `atomic_keys` and `list_merge_keys` parameters compose cleanly |
+| `test_inputs_are_not_mutated` | `deep_merge` contract — base and override dicts are not modified |
+
+If `deep_merge` is touched and these stay green, the list-merge feature is intact.
+When `list_merge_keys` is extended to new configs in the future, add a fixture-free
+unit test here mirroring the brokers pattern.

@@ -428,6 +428,7 @@ class AutotraderTickLoop:
                 lots=pos.lots,
                 entry_price=pos.entry_price,
                 unrealized_pnl=pos.unrealized_pnl,
+                entry_trades=list(pos.entry_trades),
             ))
 
         # Active orders (limit + stop) from pending stats
@@ -449,6 +450,10 @@ class AutotraderTickLoop:
                 exit_price=trade.exit_price,
                 net_pnl=trade.net_pnl,
                 close_reason=trade.close_reason,
+                close_type=trade.close_type,
+                entry_trades=list(trade.entry_trades),
+                exit_trades=list(trade.exit_trades),
+                exit_side=trade.exit_side,
             ))
 
         # Clipping — lightweight snapshot (avoids full session summary construction)

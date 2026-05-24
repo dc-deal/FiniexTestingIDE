@@ -527,8 +527,10 @@ logs/autotrader/btcusd_mock/20260328_105127/
   session_logs/
     autotrader_session_20260328.log  Day 1 tick processing
     autotrader_session_20260329.log  Day 2 (if session spans midnight)
-  autotrader_trades.csv           Completed trades (P&L, fees)
-  autotrader_orders.csv           All order results (fills, rejections)
+  events.csv                      Long-format trade-event stream — one row per
+                                  event (ORDER_SUBMIT / CLOSE_SUBMIT / FILL /
+                                  POSITION_OPEN / POSITION_CLOSE / ORDER_REJECT).
+                                  See trade_execution_visibility.md for schema.
 ```
 
 ### Warning/Error Summary
@@ -681,6 +683,14 @@ Pathological "stuck in-flight" cases (worker dead, network hung) are caught by t
 `_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard exists because Kraken's EditOrder flips the txid: a QueryJob dispatched before the swap returns a response carrying the OLD ref, while `pending.broker_ref` has already been updated to the new one. State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
 
 `poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
+
+### Drift Audit (#327)
+
+After every EXECUTED outcome the `DriftAuditor` (wired in `autotrader_main.py` when `drift_audit.enabled=True`) captures a snapshot of the synthetic state (`pending.cumulative_fee` / `cumulative_avg_price` / `cumulative_filled_lots`) and fires a one-shot `submit_trades_query_async()` against the broker. When the per-execution `TradesQueryResponse` arrives via `drain_inbox`, the executor's `_handle_trades_response` fan-outs to all registered `_trades_response_consumers` — including DriftAuditor — which then compares snapshot vs. broker truth across FEE / VOLUME / PRICE dimensions, logs drift events above their thresholds, and surfaces counters in the SESSION panel `Audit:` line.
+
+Strict read-only — no state mutation, no portfolio adjustment. Correction is deferred to the future Reconciliation Layer (#151). Detailed architecture: [architecture/drift_audit.md](../architecture/drift_audit.md).
+
+The listener signature `add_order_outcome_listener(callback)` was extended to `Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]` to give consumers the pending reference at outcome time. OrderGuard's adapter accepts the new arg and ignores it. Pre-submit rejections (no PendingOrder yet) pass `pending=None` explicitly at the single relevant call site (`_record_async_rejection` in `live_trade_executor.py`).
 
 ### Symbol Mapping
 

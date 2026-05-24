@@ -38,6 +38,13 @@ class ActiveOrderSnapshot:
         limit_price: Limit fill price (only for STOP_LIMIT, None otherwise)
         stop_loss: Stop loss price (from order_kwargs, None if not set)
         take_profit: Take profit price (from order_kwargs, None if not set)
+        cumulative_filled_lots: Progressive partial-fill state (#330). V1.3 always
+            0.0 because Kraken status parser does not surface PARTIALLY_FILLED yet
+            (#342 closes that gap). ORDERS panel BrokerOrder sub-row stays dormant
+            until non-zero values arrive from the parser.
+        requested_lots: Originally submitted lots (#330). Populated whenever the
+            executor builds the snapshot from a PendingOrder; pairs with
+            cumulative_filled_lots for "filled / requested" rendering.
     """
     order_id: str
     order_type: OrderType
@@ -48,6 +55,8 @@ class ActiveOrderSnapshot:
     limit_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    cumulative_filled_lots: float = 0.0
+    requested_lots: float = 0.0
 
 
 @dataclass

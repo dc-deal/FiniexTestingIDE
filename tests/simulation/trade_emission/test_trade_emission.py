@@ -16,6 +16,7 @@ same data-population contract — see ISSUE_326 §10 Sim/Live parity.
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
+    OrderSide,
     OrderType,
 )
 
@@ -96,7 +97,9 @@ class TestSimSyntheticTradeShape:
         assert len(trades_at_fill) == 1
         t = trades_at_fill[0]
         assert t.volume == 0.001
-        assert t.side == OrderDirection.LONG
+        # BrokerTrade.side is OrderSide now (BUY/SELL — trade-event view);
+        # opening a LONG position produces a BUY trade.
+        assert t.side == OrderSide.BUY
         assert t.is_maker is False  # MARKET = taker
         assert t.fee_currency == 'USD'
 

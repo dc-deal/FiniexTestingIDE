@@ -14,6 +14,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 from tests.shared.fixture_helpers import (
@@ -23,6 +24,7 @@ from tests.shared.fixture_helpers import (
     extract_backtesting_metadata,
     extract_portfolio_stats,
     extract_trade_history,
+    extract_order_history,
     load_scenario_config,
     extract_trade_sequence,
     extract_seeds_config,
@@ -72,6 +74,12 @@ def portfolio_stats(tick_loop_results: ProcessTickLoopResult) -> PortfolioStats:
 def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
     return extract_trade_history(tick_loop_results)
+
+
+@pytest.fixture(scope="session")
+def order_history(tick_loop_results: ProcessTickLoopResult) -> List[OrderResult]:
+    """Extract order history (executed + rejected orders)."""
+    return extract_order_history(tick_loop_results)
 
 
 # =============================================================================

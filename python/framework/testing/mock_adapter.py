@@ -44,6 +44,7 @@ from python.framework.types.live_types.live_execution_types import BrokerOrderSt
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderDirection,
+    OrderSide,
     OrderType,
     MarketOrder,
     LimitOrder,
@@ -733,6 +734,10 @@ class MockBrokerAdapter(AbstractAdapter):
         # broker config rates changed (e.g. fee-tier update). #327 surfaced this.
         fee_pct = self.get_maker_fee() if is_maker else self.get_taker_fee()
         fee_rate = fee_pct / 100.0
+        # Adapter receives `direction` as the OUTBOUND trade operation —
+        # the executor already reversed it for close orders. Direct mapping
+        # LONG → BUY, SHORT → SELL (no action lookup needed at this layer).
+        side = OrderSide.BUY if direction == OrderDirection.LONG else OrderSide.SELL
         records: List[Dict[str, Any]] = []
         for i in range(n):
             self._trade_counter += 1
@@ -749,7 +754,7 @@ class MockBrokerAdapter(AbstractAdapter):
                 'fee': volume * price * fee_rate,
                 'fee_currency': quote_currency,
                 'timestamp': datetime.now(timezone.utc),
-                'side': direction,
+                'side': side,
                 'is_maker': is_maker,
             })
         self._mock_trades[broker_ref] = records

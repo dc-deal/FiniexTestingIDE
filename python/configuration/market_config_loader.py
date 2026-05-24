@@ -120,4 +120,17 @@ class MarketConfigFileLoader:
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        return deep_merge(base, override)
+        """
+        Merge user override into base market config.
+
+        The 'brokers' list is matched per 'broker_type' identifier via the shared
+        list-merge mechanism — base brokers stay intact unless explicitly overridden.
+
+        Args:
+            base: Base market config dict
+            override: User override dict from user_configs/
+
+        Returns:
+            New merged config dict
+        """
+        return deep_merge(base, override, list_merge_keys={'brokers': 'broker_type'})
