@@ -85,17 +85,22 @@ def _make_pending(
     synthetic_fee: float = 0.0026,
     synthetic_avg_price: float = 100.0,
     fee_currency: str = 'USD',
+    submission_tick_mid_price: Optional[float] = None,
+    submission_tick_time_msc: Optional[int] = None,
+    order_action: PendingOrderAction = PendingOrderAction.OPEN,
 ) -> PendingOrder:
     """Build a PendingOrder with a single synthetic trade already populated."""
     pending = PendingOrder(
         pending_order_id=order_id,
-        order_action=PendingOrderAction.OPEN,
+        order_action=order_action,
         order_type=OrderType.MARKET,
         symbol=symbol,
         direction=OrderDirection.LONG,
         lots=lots,
         entry_price=synthetic_avg_price,
         order_kwargs={},
+        submission_tick_mid_price=submission_tick_mid_price,
+        submission_tick_time_msc=submission_tick_time_msc,
     )
     pending.broker_ref = broker_ref
     # Populate synthetic state — mirrors what _synthesize_pending_trade produces
@@ -425,3 +430,166 @@ class TestConsumerExceptionIsolation:
         assert survivor_calls == ['ORD-1']
         # DriftAuditor itself processed the response
         assert auditor.get_summary().total_orders_audited == 1
+
+
+class TestSlippageAudit:
+    """SLIPPAGE channel (#340) — submission tick mid vs broker fill price.
+
+    The auditor captures pending.submission_tick_mid_price at outcome time and
+    compares it against the volume-weighted mean of broker trades. Always
+    structural — slippage is a market reality, not a bug signal.
+    """
+
+    def test_slippage_recorded_when_tick_differs_from_fill(self, fake_executor, enabled_config, logger):
+        """Sub-threshold case from the V1.3 Pilot Run hypothesis: $2110.91 → $2110.95 ≈ 0.0019%."""
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        pending = _make_pending(
+            order_id='ORD-1',
+            synthetic_avg_price=2110.95,
+            submission_tick_mid_price=2110.91,
+            submission_tick_time_msc=1716220981000,
+        )
+        result = _make_executed_result('ORD-1')
+
+        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        response = _make_trades_response(
+            order_id='ORD-1', real_fee=0.0026, real_volume=0.1, real_price=2110.95,
+        )
+        fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 1
+        assert slip_records[0].local_value == 2110.91
+        assert slip_records[0].broker_value == 2110.95
+        assert slip_records[0].is_structural is True
+        assert slip_records[0].threshold_exceeded is False
+        # Under threshold → counter stays 0, but max-tracker reflects the magnitude
+        assert summary.slippage_events == 0
+        assert summary.max_slippage_drift_pct > 0.0
+
+    def test_slippage_above_threshold_increments_counter(self, fake_executor, enabled_config, logger):
+        """Synthetic 1%+ delta → counter increments, threshold flag set, is_structural stays True."""
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        pending = _make_pending(
+            order_id='ORD-2',
+            synthetic_avg_price=2120.0,
+            submission_tick_mid_price=2100.0,  # ~0.94% delta vs fill
+            submission_tick_time_msc=1716220981000,
+        )
+        result = _make_executed_result('ORD-2')
+
+        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        response = _make_trades_response(
+            order_id='ORD-2', real_fee=0.0026, real_volume=0.1, real_price=2120.0,
+        )
+        fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 1
+        assert slip_records[0].threshold_exceeded is True
+        assert slip_records[0].is_structural is True
+        assert summary.slippage_events == 1
+        assert summary.max_slippage_drift_pct > enabled_config.slippage_threshold_pct
+
+    def test_missing_submission_tick_gracefully_skips(self, fake_executor, enabled_config, logger):
+        """Cold-start edge case — no submission tick captured → SLIPPAGE compare skipped."""
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        pending = _make_pending(
+            order_id='ORD-3',
+            synthetic_avg_price=100.0,
+            submission_tick_mid_price=None,  # explicit cold-start
+        )
+        result = _make_executed_result('ORD-3')
+
+        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        response = _make_trades_response(order_id='ORD-3', real_price=100.0)
+        fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 0
+        assert summary.slippage_events == 0
+        assert summary.max_slippage_drift_pct == 0.0
+        # The other dimensions still ran — no leak in the snapshot dict
+        assert summary.total_orders_audited == 1
+
+    def test_slippage_always_marked_structural(self, fake_executor, enabled_config, logger):
+        """Every SLIPPAGE record carries is_structural=True regardless of threshold breach."""
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+
+        # Two orders: one sub-threshold, one over
+        pending1 = _make_pending(
+            order_id='ORD-4',
+            synthetic_avg_price=100.0,
+            submission_tick_mid_price=100.001,  # ~0.001% — sub-threshold
+        )
+        pending2 = _make_pending(
+            order_id='ORD-5',
+            synthetic_avg_price=100.0,
+            submission_tick_mid_price=90.0,  # 10% — well over threshold
+        )
+
+        for pend in (pending1, pending2):
+            result = _make_executed_result(pend.pending_order_id)
+            fake_executor.fire_outcome(OrderDirection.LONG, result, pend)
+            response = _make_trades_response(
+                order_id=pend.pending_order_id, real_price=100.0,
+            )
+            fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 2
+        assert all(r.is_structural for r in slip_records)
+
+    def test_slippage_zero_when_tick_matches_fill(self, fake_executor, enabled_config, logger):
+        """Exact match — record present (compare ran), counter stays 0, delta is 0."""
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        pending = _make_pending(
+            order_id='ORD-6',
+            synthetic_avg_price=100.0,
+            submission_tick_mid_price=100.0,  # exact match
+        )
+        result = _make_executed_result('ORD-6')
+
+        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        response = _make_trades_response(order_id='ORD-6', real_price=100.0)
+        fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 1
+        assert slip_records[0].relative_delta_pct == 0.0
+        assert slip_records[0].threshold_exceeded is False
+        assert summary.slippage_events == 0
+        assert summary.max_slippage_drift_pct == 0.0
+
+    def test_slippage_captured_on_close_order(self, fake_executor, enabled_config, logger):
+        """Close-action pending with submission_tick set → SLIPPAGE record produced.
+
+        Action-agnostic compare: the auditor pipeline does not differentiate
+        OPEN/CLOSE — both produce a SLIPPAGE record if the submission tick is
+        present. Validates that partial-close slippage flows through the same path.
+        """
+        auditor = DriftAuditor(executor=fake_executor, config=enabled_config, logger=logger)
+        pending = _make_pending(
+            order_id='POS-1',
+            synthetic_avg_price=2120.0,
+            submission_tick_mid_price=2118.0,
+            submission_tick_time_msc=1716220985000,
+            order_action=PendingOrderAction.CLOSE,
+        )
+        result = _make_executed_result('POS-1')
+
+        fake_executor.fire_outcome(OrderDirection.LONG, result, pending)
+        response = _make_trades_response(order_id='POS-1', real_price=2120.0)
+        fake_executor.fire_trades_response(response)
+
+        summary = auditor.get_summary()
+        slip_records = [r for r in summary.records if r.drift_type is DriftType.SLIPPAGE]
+        assert len(slip_records) == 1
+        assert slip_records[0].local_value == 2118.0
+        assert slip_records[0].broker_value == 2120.0
+        assert slip_records[0].is_structural is True

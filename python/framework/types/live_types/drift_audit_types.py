@@ -20,7 +20,8 @@ class DriftType(Enum):
     """Drift category. Each fully-filled order may produce up to one record per type."""
     FEE = 'fee'
     VOLUME = 'volume'
-    PRICE = 'price'   # Structural — non-zero by design on crypto trade-channel data (see #244)
+    PRICE = 'price'      # Kraken-intra-reporting consistency (QueryOrder vs QueryTrades)
+    SLIPPAGE = 'slippage'  # Trade-channel mid at submission vs broker fill price (#340)
 
 
 @dataclass
@@ -76,6 +77,8 @@ class AuditContext:
         synthetic_cumulative_avg_price: pending.cumulative_avg_price at outcome time
         synthetic_cumulative_filled_lots: pending.cumulative_filled_lots at outcome time
         fee_currency: Currency of the synthetic fee (from pending.trades[0].fee_currency)
+        submission_tick_mid_price: Trade-channel mid price observed at submission
+            (None for synthetic cleanup pendings — SLIPPAGE compare is skipped). #340
     """
     order_id: str
     broker_ref: str
@@ -86,6 +89,7 @@ class AuditContext:
     synthetic_cumulative_avg_price: float
     synthetic_cumulative_filled_lots: float
     fee_currency: Optional[str] = None
+    submission_tick_mid_price: Optional[float] = None
 
 
 @dataclass
@@ -100,17 +104,21 @@ class DriftAuditSummary:
         total_orders_audited: Number of orders that completed audit comparison
         fee_events: Count of FEE drift records that exceeded threshold
         volume_events: Count of VOLUME drift records that exceeded threshold
-        price_events: Count of PRICE drift records (always counted — structural)
+        price_events: Count of PRICE drift records that exceeded threshold
+        slippage_events: Count of SLIPPAGE drift records that exceeded threshold (#340)
         max_fee_drift_pct: Largest observed FEE drift relative delta
         max_volume_drift_pct: Largest observed VOLUME drift relative delta
         max_price_drift_pct: Largest observed PRICE drift relative delta
+        max_slippage_drift_pct: Largest observed SLIPPAGE drift relative delta (#340)
         records: All DriftRecord instances produced this session
     """
     total_orders_audited: int = 0
     fee_events: int = 0
     volume_events: int = 0
     price_events: int = 0
+    slippage_events: int = 0
     max_fee_drift_pct: float = 0.0
     max_volume_drift_pct: float = 0.0
     max_price_drift_pct: float = 0.0
+    max_slippage_drift_pct: float = 0.0
     records: List[DriftRecord] = field(default_factory=list)

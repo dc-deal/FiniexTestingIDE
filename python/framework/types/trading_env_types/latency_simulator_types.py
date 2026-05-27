@@ -171,6 +171,18 @@ class PendingOrder:
     cumulative_fee: float = 0.0
     cumulative_avg_price: float = 0.0
 
+    # === Submission Slippage Audit (#340) ===
+    # submission_tick_mid_price: trade-channel mid price observed at the moment
+    #   the order left the algo. For crypto trade-channel feeds bid==ask==last,
+    #   so mid collapses to the last trade price — same single observable.
+    # submission_tick_time_msc: tick time_msc at submission, for latency
+    #   correlation in post-hoc analysis (#332 Field Study JSONL).
+    # Both fields are None for synthetic cleanup pendings (scenario-end
+    #   force-close has no algo submission moment — DriftAuditor skips the
+    #   SLIPPAGE compare automatically).
+    submission_tick_mid_price: Optional[float] = None
+    submission_tick_time_msc: Optional[int] = None
+
     def append_trade(self, trade: BrokerTrade) -> None:
         """
         Append an execution record and recompute cumulative aggregates.
@@ -210,4 +222,7 @@ class PendingOrder:
             'cumulative_filled_lots': self.cumulative_filled_lots,
             'cumulative_fee': self.cumulative_fee,
             'cumulative_avg_price': self.cumulative_avg_price,
+            # Submission slippage audit (#340)
+            'submission_tick_mid_price': self.submission_tick_mid_price,
+            'submission_tick_time_msc': self.submission_tick_time_msc,
         }

@@ -68,6 +68,14 @@ class Position:
     # (live, after #342) or order-book sim (#143) → list length N.
     entry_trades: List[BrokerTrade] = field(default_factory=list)
 
+    # === Submission Slippage Audit (#340) ===
+    # Carried over from PendingOrder.submission_tick_mid_price at fill time.
+    # Trade-channel mid price at the entry submission moment. Used by the
+    # SLIPPAGE audit channel (live) and by post-run analysis (sim) to compute
+    # entry slippage = entry_price - entry_submission_tick_mid_price.
+    entry_submission_tick_mid_price: Optional[float] = None
+    entry_submission_tick_time_msc: Optional[int] = None
+
     # === Trade Record Fields (for P&L verification) ===
     entry_tick_value: float = 0.0
     entry_bid: float = 0.0

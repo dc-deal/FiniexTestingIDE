@@ -197,7 +197,9 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             lots=request.lots,
             entry_price=entry_price,
             entry_time=datetime.now(timezone.utc),
-            order_kwargs=order_kwargs
+            order_kwargs=order_kwargs,
+            submission_tick_mid_price=tick.mid,
+            submission_tick_time_msc=tick.time_msc,
         ))
 
         # Log order reception
@@ -244,7 +246,9 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             placed_at_msc=current_msc,
             broker_fill_msc=broker_fill_msc,
             order_action=PendingOrderAction.CLOSE,
-            close_lots=close_lots
+            close_lots=close_lots,
+            submission_tick_mid_price=tick.mid,
+            submission_tick_time_msc=tick.time_msc,
         ))
 
         # Log close order reception

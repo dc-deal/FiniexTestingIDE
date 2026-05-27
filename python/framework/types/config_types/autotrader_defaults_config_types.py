@@ -46,7 +46,8 @@ class DriftAuditConfig(BaseModel):
     enabled: bool = True
     fee_threshold_pct: float = 0.5       # Bug-signal threshold for fee drift
     volume_threshold_pct: float = 0.1    # Partial-fill signal
-    price_threshold_pct: float = 1.0     # Looser — PRICE drift is structural on trade-channel data (#244)
+    price_threshold_pct: float = 1.0     # Kraken-intra-reporting consistency (QueryOrder vs QueryTrades)
+    slippage_threshold_pct: float = 0.5  # Submission tick mid vs broker fill price (#340)
     log_all: bool = False                # If True, log every event (not just threshold breaches)
     sample_rate: float = 1.0             # Reserved notausgang; V1.3 default = audit every fill
 

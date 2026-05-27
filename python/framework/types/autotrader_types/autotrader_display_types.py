@@ -226,10 +226,14 @@ class AutoTraderDisplayStats:
     # #327 — Drift Audit footer counters
     # Populated from DriftAuditor.get_display_counters() during _build_display_stats.
     # Renderer conditionally appends an "Audit:" line to the SESSION panel when
-    # drift_enabled is True. PRICE counter is structural (see #244) and rendered dim.
+    # drift_enabled is True. PRICE counter measures Kraken-intra-reporting
+    # consistency (dim). SLIPPAGE counter (#340) measures the real submission-tick
+    # vs broker-fill price gap (cyan).
     drift_enabled: bool = False
     drift_audited: int = 0
     drift_fee_events: int = 0
     drift_volume_events: int = 0
     drift_price_events: int = 0
+    drift_slippage_events: int = 0
     drift_max_fee_pct: float = 0.0
+    drift_max_slippage_pct: float = 0.0

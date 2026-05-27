@@ -67,6 +67,7 @@
             "fee_threshold_pct": 0.5,
             "volume_threshold_pct": 0.1,
             "price_threshold_pct": 1.0,
+            "slippage_threshold_pct": 0.5,
             "log_all": false,
             "sample_rate": 1.0
         }

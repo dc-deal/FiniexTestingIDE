@@ -15,7 +15,7 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
 from python.framework.types.process_data_types import ProcessResult
 
@@ -419,9 +419,96 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(
             f"      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}")
 
+        # Slippage statistics (#340) — sim-side equivalent of the live audit
+        # SLIPPAGE counter. Same field source (TradeRecord.entry_submission_tick_*
+        # / exit_submission_tick_*) and direction-aware sign convention.
+        self._render_slippage_stats(trades, renderer)
+
         # Rejection breakdown (if any)
         if rejections:
             self._render_aggregated_rejections(rejections, renderer)
+
+    def _render_slippage_stats(
+        self,
+        trades: List[TradeRecord],
+        renderer: ConsoleRenderer
+    ) -> None:
+        """
+        Render submission-tick-vs-fill-price slippage statistics (#340).
+
+        Sign convention is direction-aware:
+            BUY  fill: adverse = fill_price - submission_tick_mid_price
+            SELL fill: adverse = submission_tick_mid_price - fill_price
+        Positive = paid worse than the mid the algo saw at submission
+        (typical: half-spread + latency drift). Negative = price improvement.
+
+        Args:
+            trades: All TradeRecord across scenarios
+            renderer: ConsoleRenderer instance
+        """
+        entry_samples = [
+            self._adverse_slippage(t.entry_price, t.entry_submission_tick_mid_price, t.entry_side)
+            for t in trades
+            if t.entry_submission_tick_mid_price is not None and t.entry_side is not None
+        ]
+        exit_samples = [
+            self._adverse_slippage(t.exit_price, t.exit_submission_tick_mid_price, t.exit_side)
+            for t in trades
+            if t.exit_submission_tick_mid_price is not None and t.exit_side is not None
+        ]
+
+        if not entry_samples and not exit_samples:
+            return  # No submission-tick data captured (e.g. legacy run, sim cleanup-only)
+
+        print(f"\n   {renderer.bold('📐 SLIPPAGE (submission tick vs fill):')}")
+        print(f"      Samples: {len(entry_samples)} entry / {len(exit_samples)} exit "
+              f"(of {len(trades)} trades)")
+
+        if entry_samples:
+            avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(
+                entry_samples,
+                ref_prices=[t.entry_submission_tick_mid_price for t in trades
+                            if t.entry_submission_tick_mid_price is not None and t.entry_side is not None],
+            )
+            print(f"      Entry:  avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
+                  f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")
+
+        if exit_samples:
+            avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(
+                exit_samples,
+                ref_prices=[t.exit_submission_tick_mid_price for t in trades
+                            if t.exit_submission_tick_mid_price is not None and t.exit_side is not None],
+            )
+            print(f"      Exit:   avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
+                  f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")
+
+        print(f"      Sign convention: positive = paid worse than submission mid (adverse).")
+
+    @staticmethod
+    def _adverse_slippage(fill_price: float, submission_mid: float, side: OrderSide) -> float:
+        """Direction-aware adverse slippage delta (positive = worse than mid)."""
+        if side is OrderSide.BUY:
+            return fill_price - submission_mid
+        return submission_mid - fill_price
+
+    @staticmethod
+    def _slippage_aggregates(samples: List[float], ref_prices: List[float]):
+        """Compute avg/p50/p95/max in price units and avg/p95 in percent vs the ref mid prices."""
+        sorted_samples = sorted(samples)
+        n = len(sorted_samples)
+        avg = sum(sorted_samples) / n
+        p50 = sorted_samples[n // 2]
+        p95 = sorted_samples[min(n - 1, int(n * 0.95))]
+        max_v = max(sorted_samples, key=abs)
+        # Percent values: each sample normalised by its own ref price, then
+        # aggregate. Cross-symbol robust (different magnitudes).
+        pct_samples = sorted(
+            (s / r * 100.0 if r else 0.0)
+            for s, r in zip(samples, ref_prices)
+        )
+        avg_pct = sum(pct_samples) / n
+        p95_pct = pct_samples[min(n - 1, int(n * 0.95))]
+        return avg, p50, p95, max_v, avg_pct, p95_pct
 
     def _render_aggregated_rejections(
         self,

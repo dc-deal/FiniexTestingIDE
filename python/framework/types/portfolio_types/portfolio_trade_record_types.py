@@ -136,3 +136,14 @@ class TradeRecord:
     #   SHORT + OPEN  → entry_side=SELL, close → exit_side=BUY
     entry_side: Optional[OrderSide] = None
     exit_side: Optional[OrderSide] = None
+
+    # === Submission Slippage Audit (#340) ===
+    # Trade-channel mid price at the entry / exit submission moment. Shared
+    # entry on all partial closes of the same position (single submission);
+    # distinct exit per close event. Used by post-run analysis to compute
+    # slippage = entry_price - entry_submission_tick_mid_price (BUY) and
+    # exit_price - exit_submission_tick_mid_price (with direction-aware sign).
+    entry_submission_tick_mid_price: Optional[float] = None
+    entry_submission_tick_time_msc: Optional[int] = None
+    exit_submission_tick_mid_price: Optional[float] = None
+    exit_submission_tick_time_msc: Optional[int] = None

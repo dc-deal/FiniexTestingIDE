@@ -349,6 +349,14 @@ class OrderResult:
     # distinction does not apply.
     action: Optional[OrderAction] = None
 
+    # Submission slippage audit (#340) — algo's trade-channel mid price at
+    # the submission moment, propagated from PendingOrder. Surfaced in the
+    # event-stream CSV (ORDER_SUBMIT / CLOSE_SUBMIT rows) so downstream
+    # analysis can compute the per-fill slippage delta without rejoining
+    # against the live audit pipeline. None for pre-tick rejections.
+    submission_tick_mid_price: Optional[float] = None
+    submission_tick_time_msc: Optional[int] = None
+
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
