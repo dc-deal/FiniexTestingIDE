@@ -3,6 +3,7 @@ FiniexTestingIDE - AutoTrader Config Loader
 Loads AutoTraderConfig from JSON file.
 """
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -23,32 +24,36 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
 
+
 # ============================================
 # Known config keys per profile section
 # ============================================
+# Derived directly from the backing schema classes — single source of truth.
+# Adding a field to a Pydantic model or @dataclass automatically extends the
+# allowlist; no parallel hardcoded list to forget. Mixed support for both
+# Pydantic BaseModel (model_fields) and @dataclass (dataclasses.fields).
 
-_KNOWN_PROFILE_TOP_KEYS: frozenset = frozenset({
-    'name', 'symbol', 'broker_type', 'adapter_type',
-    'strategy_config', 'account', 'tick_source',
-    'execution', 'clipping_monitor', 'display', 'safety', 'order_guard',
-    'drift_audit',
-})
-_KNOWN_EXECUTION_KEYS: frozenset = frozenset({'parallel_workers', 'bar_max_history', 'performance_tracking'})
-_KNOWN_CLIPPING_KEYS: frozenset  = frozenset({'report_interval_s', 'strategy'})
-_KNOWN_DISPLAY_KEYS: frozenset   = frozenset({'enabled', 'update_interval_ms'})
-_KNOWN_SAFETY_KEYS: frozenset    = frozenset({'enabled', 'min_balance', 'min_equity', 'max_drawdown_pct'})
-_KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({'cooldown_seconds', 'max_consecutive_rejections'})
-_KNOWN_DRIFT_AUDIT_KEYS: frozenset = frozenset({
-    'enabled', 'fee_threshold_pct', 'volume_threshold_pct', 'price_threshold_pct',
-    'log_all', 'sample_rate',
-})
-_KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = frozenset({'worker_decision_tracking'})
-_KNOWN_ACCOUNT_KEYS: frozenset   = frozenset({'balances', 'account_currency'})
-_KNOWN_TICK_SOURCE_KEYS: frozenset = frozenset({
-    'type', 'parquet_path', 'max_ticks', 'tick_delay_ms',
-    'ws_url', 'reconnect_initial_delay_s', 'reconnect_max_delay_s',
-    'heartbeat_interval_s', 'heartbeat_dead_s',
-})
+def _allowlist_from(cls) -> frozenset:
+    """Field-name allowlist derived from a Pydantic model or @dataclass."""
+    if hasattr(cls, 'model_fields'):
+        return frozenset(cls.model_fields.keys())
+    return frozenset(f.name for f in dataclasses.fields(cls))
+
+
+# Top-level keys include load-time meta (`config_path`) that must NOT appear
+# in profile JSON. Filter that out so the allowlist matches the JSON surface.
+_KNOWN_PROFILE_TOP_KEYS: frozenset = (
+    _allowlist_from(AutoTraderConfig) - {'config_path'}
+)
+_KNOWN_EXECUTION_KEYS: frozenset            = _allowlist_from(AutotraderExecutionDefaults)
+_KNOWN_CLIPPING_KEYS: frozenset             = _allowlist_from(ClippingMonitorDefaults)
+_KNOWN_DISPLAY_KEYS: frozenset              = _allowlist_from(DisplayDefaults)
+_KNOWN_SAFETY_KEYS: frozenset               = _allowlist_from(SafetyConfig)
+_KNOWN_ORDER_GUARD_KEYS: frozenset          = _allowlist_from(OrderGuardDefaults)
+_KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
+_KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
+_KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
+_KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
 
 
 def load_autotrader_config(config_path: str) -> AutoTraderConfig:
@@ -66,12 +71,24 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         raise FileNotFoundError(f"AutoTrader config not found: {config_path}")
 
     with open(path, 'r') as f:
-        raw = json.load(f)
+        raw_profile_only = json.load(f)
+
+    # Capture pre-merge provenance signals — needed by the mock auto-disable
+    # logic below. After deep_merge() injects app_config defaults, the merged
+    # `raw` can no longer distinguish between "profile explicitly set X" and
+    # "X came from app_config defaults". Resolve those checks here against
+    # the untouched profile dict.
+    profile_adapter_type = raw_profile_only.get('adapter_type', 'mock')
+    profile_explicitly_set_drift_enabled = (
+        'enabled' in raw_profile_only.get('drift_audit', {})
+    )
 
     # Cascade: app_config.autotrader defaults → profile (profile wins)
     app_defaults = AppConfigManager().get_autotrader_defaults()
     if app_defaults:
-        raw = deep_merge(app_defaults, raw, atomic_keys={'balances'})
+        raw = deep_merge(app_defaults, raw_profile_only, atomic_keys={'balances'})
+    else:
+        raw = raw_profile_only
 
     # Parse nested config sections
     account_raw = raw.get('account', {})
@@ -97,12 +114,17 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
     # Drift-audit default depends on adapter_type. Mock adapters produce
-    # synthetic fee/volume figures that don't reflect any real broker —
-    # the FEE-drift comparison would always raise huge deltas (noise, not
-    # actionable). Auto-disable for mock unless the profile sets it
-    # explicitly. Live runs keep the default-on behaviour from #327.
+    # synthetic fee/volume figures that don't reflect any real broker — the
+    # FEE-drift comparison would always raise huge deltas (noise, not
+    # actionable). Auto-disable for mock UNLESS the profile sets `enabled`
+    # explicitly. The provenance check uses the pre-merge profile dict
+    # captured above — `raw['drift_audit']['enabled']` would always be `true`
+    # post-merge because app_config.json sets the global default that way.
     adapter_type_resolved = raw.get('adapter_type', 'mock')
-    drift_audit_default_enabled = adapter_type_resolved != 'mock'
+    if adapter_type_resolved == 'mock' and not profile_explicitly_set_drift_enabled:
+        drift_audit_enabled_resolved = False
+    else:
+        drift_audit_enabled_resolved = drift_audit_raw.get('enabled', True)
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -145,10 +167,11 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
         ),
         drift_audit=DriftAuditConfig(
-            enabled=drift_audit_raw.get('enabled', drift_audit_default_enabled),
+            enabled=drift_audit_enabled_resolved,
             fee_threshold_pct=drift_audit_raw.get('fee_threshold_pct', 0.5),
             volume_threshold_pct=drift_audit_raw.get('volume_threshold_pct', 0.1),
             price_threshold_pct=drift_audit_raw.get('price_threshold_pct', 1.0),
+            slippage_threshold_pct=drift_audit_raw.get('slippage_threshold_pct', 0.5),
             log_all=drift_audit_raw.get('log_all', False),
             sample_rate=drift_audit_raw.get('sample_rate', 1.0),
         ),

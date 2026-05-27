@@ -942,6 +942,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 lots=request.lots,
                 broker_ref=None,
                 order_kwargs=order_kwargs,
+                submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+                submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
             )
             self._request_processor.submit_open_order_async(
                 order_id=order_id,
@@ -957,6 +959,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 status=OrderStatus.PENDING,
                 position_id=None,
                 action=OrderAction.OPEN,
+                submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+                submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
                 metadata={
                     "symbol": request.symbol,
                     "direction": request.direction.value,
@@ -988,6 +992,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             entry_price=request.price,
             entry_time=datetime.now(timezone.utc),
             order_kwargs=order_kwargs,
+            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
         )
         self._active_limit_orders.append(pending)
 
@@ -1009,6 +1015,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             status=OrderStatus.PENDING,
             position_id=None,
             action=OrderAction.OPEN,
+            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
             metadata={
                 "symbol": request.symbol,
                 "direction": request.direction.value,
@@ -1062,6 +1070,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             position_id=position_id,
             broker_ref=None,
             close_lots=close_lots,
+            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
         )
         self._request_processor.submit_close_order_async(
             position_id=position_id,
@@ -1078,6 +1088,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
             action=OrderAction.CLOSE,
+            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
+            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
             metadata={"awaiting_fill": True, "broker_ref": None},
         )
 

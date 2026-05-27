@@ -184,9 +184,23 @@ The processor's single-hook contract stays unchanged — multi-consumer logic li
 |---|---|---|
 | `FEE` | `pending.cumulative_fee` (local) vs. `sum(BrokerTrade.fee)` (broker) | 0.5 % |
 | `VOLUME` | `pending.requested_lots` (local) vs. `sum(BrokerTrade.volume)` (broker) | 0.1 % |
-| `PRICE` | `pending.cumulative_avg_price` (local) vs. volume-weighted mean of broker trades | 1.0 % (looser — structural noise expected) |
+| `PRICE` | `pending.cumulative_avg_price` (local) vs. volume-weighted mean of broker trades | 1.0 % |
+| `SLIPPAGE` | `pending.submission_tick_mid_price` (local) vs. volume-weighted mean of broker trades | 0.5 % |
 
-**PRICE caveat (V1.3):** the current PRICE counter compares Kraken's QueryOrder summary price against Kraken's QueryTrades per-execution average. Both come from the broker, so the comparison detects only Kraken-internal-reporting inconsistencies — not the actual spread/slippage cost (trade-channel tick price vs. broker fill price). The empirical spread that #244 needs for calibration enters via #339 (Submission Slippage Audit) once that lands.
+**PRICE channel scope.** The PRICE counter compares Kraken's QueryOrder summary price against Kraken's QueryTrades per-execution average — both come from the broker. It detects broker-internal-reporting inconsistencies (one-off rounding edge cases between the two Kraken endpoints), not market-reality cost. Useful as a sanity check; do not interpret a sustained PRICE count as an action signal.
+
+**SLIPPAGE channel scope.** The SLIPPAGE counter compares the trade-channel tick mid-price captured at submission (`PendingOrder.submission_tick_mid_price`) against the volume-weighted mean of broker trades. Both sides come from *independent* sources — our tick feed and the broker's matching engine — so the delta is the **real cost the operator paid** (spread + intra-latency market drift + book-walking on larger orders). This is the empirical baseline that #244 (Crypto Spread Simulation) consumes for spread reconstruction.
+
+## Slippage vs. Spread — Conceptual Clarity
+
+Two distinct concepts that get conflated easily:
+
+| Concept | Definition | Layer |
+|---|---|---|
+| **Spread** | Bid-Ask gap at a single moment | Quote / order-book property |
+| **Slippage** | Expected (reference) price vs. actual fill price | Execution-event property — broader |
+
+Slippage is the broader concept and **contains** the spread effect, **plus** any market movement during the submission-to-fill window, **plus** book-walking on larger orders. For Crypto trade-channel feeds (Kraken `bid == ask == last`) slippage is dominated by the spread component but the metric remains event-based and post-fill. MT5-style brokers with real bid/ask in the tick data still feed the same formula — `submission_tick_mid_price = (bid + ask) / 2` — and the audit value-add is the latency-window drift component on top of what `SpreadFee` already accounts for.
 
 ## Configuration
 
@@ -197,7 +211,8 @@ class DriftAuditConfig(BaseModel):
     enabled: bool = True
     fee_threshold_pct: float = 0.5       # bug-signal threshold for fee drift
     volume_threshold_pct: float = 0.1    # partial-fill signal
-    price_threshold_pct: float = 1.0     # looser — V1.3 tautological, real measurement via #339
+    price_threshold_pct: float = 1.0     # Kraken-intra-reporting consistency check
+    slippage_threshold_pct: float = 0.5  # real submission-to-fill cost (market reality)
     log_all: bool = False                # if True, log every event (not just threshold breaches)
     sample_rate: float = 1.0             # reserved notausgang; V1.3 default = audit every fill
 ```
@@ -214,9 +229,11 @@ The `_pending_audits` dict carries `AuditContext` snapshots between the outcome 
 - **Always popped** on `_on_trades_response`, regardless of `response.success` — prevents leaks (Risk 4)
 - On `shutdown()`: any unfinished entries are logged as a warning and the dict is cleared
 
+The `AuditContext.submission_tick_mid_price` field is `None` for synthetic cleanup pendings (scenario-end force-close — see `architecture_execution_layer.md` *End-of-scenario cleanup*). The SLIPPAGE comparison branch checks `if not None` and skips automatically — a force-close liquidation has no algo-initiated submission moment, so there is no slippage to measure.
+
 ## Live Display Footer
 
-`AutoTraderDisplayStats` carries six new fields (populated from `DriftAuditor.get_display_counters()` in `_build_display_stats`):
+`AutoTraderDisplayStats` carries the audit counter fields (populated from `DriftAuditor.get_display_counters()` in `_build_display_stats`):
 
 ```python
 drift_enabled: bool = False
@@ -224,20 +241,23 @@ drift_audited: int = 0
 drift_fee_events: int = 0
 drift_volume_events: int = 0
 drift_price_events: int = 0
+drift_slippage_events: int = 0
 drift_max_fee_pct: float = 0.0
+drift_max_slippage_pct: float = 0.0
 ```
 
 Renderer adds a conditional line to the SESSION panel, width-aware:
 
 ```
-Audit:   ✓47 │ ⚠3 fee (max 4.8%) │ ⚠0 vol │ 47 price↘#244           (wide, ≥120 cols)
-Audit:   ✓47 │ ⚠3F │ ⚠0V │ 47P                                       (compact, <120 cols)
+Audit:   ✓47 │ ⚠3 fee (max 4.8%) │ ⚠0 vol │ 47 price │ ◇47 slip (max 0.05%)   (wide, ≥120 cols)
+Audit:   ✓47 │ ⚠3F │ ⚠0V │ 47P │ ◇47S                                          (compact, <120 cols)
 ```
 
 Styling:
 - `[green]` for ✓ healthy audit counter
 - `[yellow]` for FEE / VOLUME drift (actionable bug signal)
-- `[dim]` for PRICE counter — V1.3 tautological, marked structurally non-actionable with the `#244` suffix
+- `[dim]` for PRICE counter (Kraken-intra-reporting consistency check)
+- `[cyan]` for SLIPPAGE counter (real submission-to-fill cost — structural, market-reality measurement)
 
 ## Performance Budget
 
@@ -255,21 +275,29 @@ If rate-limit pressure ever becomes a concern (very-high-frequency strategies), 
 - `python/framework/trading_env/live/drift_auditor.py` — DriftAuditor class
 - `python/framework/types/live_types/drift_audit_types.py` — `DriftType`, `DriftRecord`, `AuditContext`, `DriftAuditSummary`
 - `python/framework/types/config_types/autotrader_defaults_config_types.py` — `DriftAuditConfig`
-- `python/framework/trading_env/abstract_trade_executor.py` — listener signature extension
-- `python/framework/trading_env/live/live_trade_executor.py` — `submit_trades_query_async()` delegating method, `add_trades_response_consumer()`, fan-out in `_handle_trades_response`
+- `python/framework/types/trading_env_types/latency_simulator_types.py` — `PendingOrder.submission_tick_mid_price` / `submission_tick_time_msc`
+- `python/framework/types/trading_env_types/order_types.py` — `OrderResult.submission_tick_mid_price` / `submission_tick_time_msc`
+- `python/framework/types/portfolio_types/portfolio_types.py` — `Position.entry_submission_tick_mid_price` / `entry_submission_tick_time_msc`
+- `python/framework/types/portfolio_types/portfolio_trade_record_types.py` — `TradeRecord.entry_submission_tick_*` / `exit_submission_tick_*`
+- `python/framework/trading_env/portfolio_manager.py` — propagation through `open_position` / `close_position_portfolio` / `partial_close_position` / `_create_trade_record`
+- `python/framework/trading_env/abstract_trade_executor.py` — listener signature extension; submission-tick capture in `_fill_open_order` / `_fill_close_order`
+- `python/framework/trading_env/live/live_trade_executor.py` — `submit_trades_query_async()` delegating method, `add_trades_response_consumer()`, fan-out in `_handle_trades_response`; submission-tick capture at MARKET/LIMIT-open and close submission gates
+- `python/framework/trading_env/live/live_request_processor.py` — `register_pending_open` / `register_pending_close` accept `submission_tick_*` parameters
+- `python/framework/trading_env/simulation/order_latency_simulator.py` — submission-tick capture at sim open/close submission
 - `python/framework/autotrader/autotrader_main.py` — DriftAuditor instantiation gated by config + isinstance(LiveTradeExecutor) + shutdown hook
 - `python/framework/autotrader/autotrader_tick_loop.py` — display-stats population via `_drift_display_counters()`
-- `python/system/ui/autotrader_live_display.py` — Audit footer in SESSION panel
+- `python/system/ui/autotrader_live_display.py` — Audit footer in SESSION panel (4 counters incl. SLIPPAGE)
+- `python/framework/reporting/trade_log_csv_writer.py` — `EVENT_FIELDS` extended with `submission_tick_mid_price` / `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows
 
 ## Related
 
 - **#326 Broker Trade Record Model** — provides the `BrokerTrade` per-execution detail that DriftAuditor compares against. The async pipeline (`submit_trades_query_async` → drain → `_handle_trades_response`) was wired in #326; #327 is its first productive consumer.
 - **#319 Multi-listener foundation** — DriftAuditor uses `add_order_outcome_listener` and mirrors the pattern with `add_trades_response_consumer`.
-- **#320 Polling Cadence** — orthogonal. #320 manages order-status polling (every 5 s); #327 triggers a one-shot post-fill trades-query (per filled order, not periodic).
-- **#244 Crypto Spread Simulation** — the PRICE counter does NOT currently measure spread cost; #339 introduces the dedicated audit channel that delivers empirical spread data for #244 calibration.
-- **#332 Live Field Study** — runs the full DriftAuditor pipeline end-to-end against a real broker, captures drift events in JSONL for forensic analysis.
+- **#320 Polling Cadence** — orthogonal. #320 manages order-status polling (every 5 s); the audit triggers a one-shot post-fill trades-query (per filled order, not periodic).
+- **#244 Crypto Spread Simulation** — the direct beneficiary of the SLIPPAGE channel. Per-trade slippage records become the empirical calibration baseline for the volatility-factor spread reconstruction model.
+- **#330 Multi-Fill Visibility** — the SLIPPAGE channel writes through the same `Position`/`TradeRecord` propagation path established for `entry_trades`/`exit_trades`. The event-stream CSV (`events.csv`) carries the `submission_tick_mid_price` / `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows.
+- **#332 Live Field Study** — runs the full DriftAuditor pipeline end-to-end against a real broker, captures all four drift types (FEE / VOLUME / PRICE / SLIPPAGE) in the JSONL artifact. The `slippage` block is the first concrete production data for #244 calibration.
 - **#337 Kraken Fee Tier Auto-Detection** — closes the loop on FEE drift root cause when DriftAuditor surfaces a tier mismatch.
-- **#339 Submission Slippage Audit** — extends the audit pipeline with a SLIPPAGE channel (trade-channel mid vs. broker fill price) — the real spread measurement.
 - **#151 Reconciliation Layer (V1.4)** — drift audit is observability; reconciliation is correction. Audit feeds #151's design.
 
 ---

@@ -593,9 +593,9 @@ Validates the three coordinated fixes introduced by #320: side-effect-free `hear
 
 ---
 
-### test_drift_auditor.py (10 Tests) — #327 Drift Audit
+### test_drift_auditor.py (17 Tests) — #327 Drift Audit + #340 Slippage
 
-Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling, and consumer-exception isolation.
+Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling, and consumer-exception isolation. The SLIPPAGE channel added by #340 reuses the same pipeline pattern with a fourth `DriftType` comparison branch.
 
 Uses a `_FakeExecutor` stub that records listener / consumer registrations and lets tests drive `fire_outcome()` / `fire_trades_response()` directly — no worker thread, no real adapter.
 
@@ -654,3 +654,16 @@ Uses a `_FakeExecutor` stub that records listener / consumer registrations and l
 | Test | Description |
 |---|---|
 | `test_consumer_exception_isolated` | A bad consumer that raises does NOT prevent subsequent consumers from running (Risk 2 regression guard — validates the `try/except` fan-out pattern in `_handle_trades_response`) |
+
+#### TestSlippageAudit — #340
+
+Validates the fourth audit channel: trade-channel tick mid-price captured at submission vs. broker's actual fill price. Always structural (slippage is market reality, not a bug). Threshold-gated counter, max-tracked magnitude. Action-agnostic — fires for both open and close orders. Snapshots with `submission_tick_mid_price=None` (synthetic cleanup pendings, cold-start paths) are skipped gracefully.
+
+| Test | Description |
+|---|---|
+| `test_slippage_recorded_when_tick_differs_from_fill` | Sub-threshold case (Pilot-Run baseline $2110.91 → $2110.95 ≈ 0.0019 %) → SLIPPAGE record present, `threshold_exceeded=False`, counter stays 0, max-tracker reflects magnitude |
+| `test_slippage_above_threshold_increments_counter` | ~0.94 % delta → `slippage_events=1`, `is_structural=True`, threshold flag set |
+| `test_missing_submission_tick_gracefully_skips` | `submission_tick_mid_price=None` → no SLIPPAGE record, no exception, other dimensions still ran (no leak) |
+| `test_slippage_always_marked_structural` | Every SLIPPAGE record carries `is_structural=True` regardless of threshold breach (sub + over case) |
+| `test_slippage_zero_when_tick_matches_fill` | Exact match → `relative_delta_pct=0`, counter stays 0, record still appended as evidence-of-compare |
+| `test_slippage_captured_on_close_order` | `PendingOrderAction.CLOSE` pending with submission_tick set → SLIPPAGE record produced (action-agnostic compare verification — partial-close slippage path) |

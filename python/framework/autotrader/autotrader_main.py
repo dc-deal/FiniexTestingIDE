@@ -23,7 +23,7 @@ from python.framework.autotrader.autotrader_startup import (
 )
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
-from python.framework.reporting.trade_log_csv_writer import EventStreamWriter
+from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger

@@ -13,7 +13,7 @@ from typing import List
 
 import pytest
 
-from python.framework.reporting.trade_log_csv_writer import EVENT_FIELDS, EventStreamWriter
+from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS, EventStreamWriter
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderResult
 

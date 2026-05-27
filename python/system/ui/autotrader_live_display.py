@@ -362,8 +362,9 @@ class AutoTraderLiveDisplay:
             lines.append(f'         [dim]{min_part}  |  {dd_part}[/dim]')
 
         # #327 — Drift Audit footer. Width-aware so the SESSION column doesn't
-        # wrap in three-col layout. PRICE counter rendered dim — structural,
-        # not actionable (see #244).
+        # wrap in three-col layout. PRICE counter rendered dim (Kraken-intra-
+        # reporting consistency check). SLIPPAGE counter (#340) rendered cyan —
+        # structural market-reality measurement (real submission-to-fill cost).
         if stats.drift_enabled:
             width = self._console.size.width
             if width < 120:
@@ -371,18 +372,27 @@ class AutoTraderLiveDisplay:
                     f'[green]✓{stats.drift_audited:d}[/green] │ '
                     f'[yellow]⚠{stats.drift_fee_events:d}F[/yellow] │ '
                     f'⚠{stats.drift_volume_events:d}V │ '
-                    f'[dim]{stats.drift_price_events:d}P[/dim]'
+                    f'[dim]{stats.drift_price_events:d}P[/dim] │ '
+                    f'[cyan]◇{stats.drift_slippage_events:d}S[/cyan]'
                 )
             else:
                 max_part = (
                     f' [yellow](max {stats.drift_max_fee_pct:.1f}%)[/yellow]'
                     if stats.drift_fee_events > 0 else ''
                 )
+                # Slippage is structural — show max whenever audits ran, not
+                # only on threshold breaches. Operator sees that measurement
+                # happened even when all samples were sub-threshold.
+                slip_part = (
+                    f' [cyan](max {stats.drift_max_slippage_pct:.2f}%)[/cyan]'
+                    if stats.drift_audited > 0 else ''
+                )
                 audit_str = (
                     f'[green]✓{stats.drift_audited:d}[/green] │ '
                     f'[yellow]⚠{stats.drift_fee_events:d} fee[/yellow]{max_part} │ '
                     f'⚠{stats.drift_volume_events:d} vol │ '
-                    f'[dim]{stats.drift_price_events:d} price↘#244[/dim]'
+                    f'[dim]{stats.drift_price_events:d} price[/dim] │ '
+                    f'[cyan]◇{stats.drift_slippage_events:d} slip[/cyan]{slip_part}'
                 )
             lines.append(f'Audit:   {audit_str}')
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)

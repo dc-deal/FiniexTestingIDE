@@ -8,7 +8,7 @@ This is the coordination layer - actual rendering logic stays in framework/batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
-from python.framework.reporting.trade_log_csv_writer import EventStreamWriter
+from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io

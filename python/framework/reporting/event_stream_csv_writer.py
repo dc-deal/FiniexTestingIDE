@@ -45,7 +45,9 @@ class EventType(Enum):
 EVENT_FIELDS = (
     'ts', 'event_type', 'order_id', 'position_id', 'trade_id',
     'broker_ref', 'direction', 'side', 'lots', 'price', 'fee', 'fee_currency',
-    'status', 'close_type', 'close_reason', 'is_maker', 'notes',
+    'status', 'close_type', 'close_reason', 'is_maker',
+    'submission_tick_mid_price', 'submission_tick_time_msc',  # #340
+    'notes',
 )
 
 
@@ -75,6 +77,10 @@ class TradeEvent:
     close_type: str = ''
     close_reason: str = ''
     is_maker: Optional[bool] = None
+    # #340 — Submission slippage. Populated on ORDER_SUBMIT and CLOSE_SUBMIT
+    # rows (the algo decision moments). Empty on FILL / POSITION_* rows.
+    submission_tick_mid_price: Optional[float] = None
+    submission_tick_time_msc: Optional[int] = None
     notes: str = ''
 
 
@@ -247,6 +253,17 @@ def _build_events(
             continue
 
         rep = orders[0]
+        # Pull submission tick from any OrderResult in the group that has it set
+        # (typically the EXECUTED stage carries it via _fill_open_order). The
+        # PENDING placeholder in live may have it set too — first-match wins.
+        sub_mid = next(
+            (o.submission_tick_mid_price for o in orders if o.submission_tick_mid_price is not None),
+            None,
+        )
+        sub_msc = next(
+            (o.submission_tick_time_msc for o in orders if o.submission_tick_time_msc is not None),
+            None,
+        )
         events.append(TradeEvent(
             ts=ts,
             event_type=EventType.ORDER_SUBMIT,
@@ -255,6 +272,8 @@ def _build_events(
             lots=rep.executed_lots,
             price=rep.executed_price,
             status=OrderStatus.PENDING.value,
+            submission_tick_mid_price=sub_mid,
+            submission_tick_time_msc=sub_msc,
         ))
 
     # Trade-history walk — POSITION_OPEN + FILL + POSITION_CLOSE events
@@ -278,6 +297,8 @@ def _build_events(
                 lots=_sum_volume(trade.entry_trades) or trade.lots,
                 price=trade.entry_price,
                 status='filled',
+                submission_tick_mid_price=trade.entry_submission_tick_mid_price,
+                submission_tick_time_msc=trade.entry_submission_tick_time_msc,
                 notes='vwap' if len(trade.entry_trades) > 1 else '',
             ))
 
@@ -293,6 +314,8 @@ def _build_events(
             lots=trade.lots,
             status=OrderStatus.PENDING.value,
             close_type=trade.close_type.value if isinstance(trade.close_type, CloseType) else str(trade.close_type),
+            submission_tick_mid_price=trade.exit_submission_tick_mid_price,
+            submission_tick_time_msc=trade.exit_submission_tick_time_msc,
         ))
 
         # Per-close FILL events + POSITION_CLOSE
@@ -367,5 +390,7 @@ def _event_to_row(event: TradeEvent) -> List[str]:
         event.close_type,
         event.close_reason,
         '' if event.is_maker is None else ('true' if event.is_maker else 'false'),
+        f'{event.submission_tick_mid_price:.5f}' if event.submission_tick_mid_price is not None else '',
+        str(event.submission_tick_time_msc) if event.submission_tick_time_msc is not None else '',
         event.notes,
     ]

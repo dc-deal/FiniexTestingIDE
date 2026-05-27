@@ -573,6 +573,8 @@ class AbstractTradeExecutor(ABC):
             entry_type=entry_type,
             broker_ref=pending_order.broker_ref,
             entry_trades=list(pending_order.trades),
+            entry_submission_tick_mid_price=pending_order.submission_tick_mid_price,
+            entry_submission_tick_time_msc=pending_order.submission_tick_time_msc,
         )
 
         # Create order result for history
@@ -585,6 +587,8 @@ class AbstractTradeExecutor(ABC):
             commission=0.0,
             position_id=position.position_id,
             action=OrderAction.OPEN,
+            submission_tick_mid_price=pending_order.submission_tick_mid_price,
+            submission_tick_time_msc=pending_order.submission_tick_time_msc,
             metadata={
                 "symbol": pending_order.symbol,
                 "direction": pending_order.direction,
@@ -719,6 +723,8 @@ class AbstractTradeExecutor(ABC):
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
                 exit_trades=list(pending_order.trades),
+                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
+                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
             )
             self.logger.debug(
                 f"📊 Partial close: {pending_order.pending_order_id} "
@@ -733,6 +739,8 @@ class AbstractTradeExecutor(ABC):
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
                 exit_trades=list(pending_order.trades),
+                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
+                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
             )
             self.logger.debug(
                 f"💰 Position closed: {pending_order.pending_order_id} "
@@ -748,6 +756,8 @@ class AbstractTradeExecutor(ABC):
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
             action=OrderAction.CLOSE,
+            submission_tick_mid_price=pending_order.submission_tick_mid_price,
+            submission_tick_time_msc=pending_order.submission_tick_time_msc,
             metadata={
                 "realized_pnl": realized_pnl,
                 "position_id": pending_order.pending_order_id,

@@ -578,7 +578,9 @@ class AutotraderTickLoop:
             'drift_fee_events': int(counters.get('drift_fee_events', 0)),
             'drift_volume_events': int(counters.get('drift_volume_events', 0)),
             'drift_price_events': int(counters.get('drift_price_events', 0)),
+            'drift_slippage_events': int(counters.get('drift_slippage_events', 0)),
             'drift_max_fee_pct': float(counters.get('drift_max_fee_pct', 0.0)),
+            'drift_max_slippage_pct': float(counters.get('drift_max_slippage_pct', 0.0)),
         }
 
     def _check_new_maxes(self) -> None:

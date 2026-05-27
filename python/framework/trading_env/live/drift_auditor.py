@@ -87,7 +87,8 @@ class DriftAuditor:
         self._logger.info(
             f"📊 DriftAuditor active — thresholds: "
             f"fee={config.fee_threshold_pct}%, vol={config.volume_threshold_pct}%, "
-            f"price={config.price_threshold_pct}% (structural — see #244)"
+            f"price={config.price_threshold_pct}%, "
+            f"slippage={config.slippage_threshold_pct}% (structural)"
         )
 
     # ============================================
@@ -130,6 +131,7 @@ class DriftAuditor:
             synthetic_cumulative_avg_price=pending.cumulative_avg_price,
             synthetic_cumulative_filled_lots=pending.cumulative_filled_lots,
             fee_currency=pending.trades[0].fee_currency if pending.trades else None,
+            submission_tick_mid_price=pending.submission_tick_mid_price,
         )
         self._pending_audits[result.order_id] = snapshot
 
@@ -209,7 +211,7 @@ class DriftAuditor:
             threshold_pct=self._config.volume_threshold_pct,
         )
 
-        # PRICE drift — structural on crypto trade-channel data (#244)
+        # PRICE drift — Kraken-intra-reporting consistency (QueryOrder vs QueryTrades)
         self._compare_and_record(
             drift_type=DriftType.PRICE,
             local=snapshot.synthetic_cumulative_avg_price,
@@ -218,6 +220,19 @@ class DriftAuditor:
             threshold_pct=self._config.price_threshold_pct,
             is_structural=True,
         )
+
+        # SLIPPAGE drift — trade-channel mid at submission vs broker fill price (#340).
+        # Always structural — slippage is a market reality, not a bug. Skipped when
+        # the snapshot has no submission tick (cold-start / synthetic cleanup pending).
+        if snapshot.submission_tick_mid_price is not None:
+            self._compare_and_record(
+                drift_type=DriftType.SLIPPAGE,
+                local=snapshot.submission_tick_mid_price,
+                broker=real_price,
+                snapshot=snapshot,
+                threshold_pct=self._config.slippage_threshold_pct,
+                is_structural=True,
+            )
 
     # ============================================
     # Comparison + Logging
@@ -292,6 +307,15 @@ class DriftAuditor:
                 self._summary.price_events += 1
             if relative_delta_pct > self._summary.max_price_drift_pct:
                 self._summary.max_price_drift_pct = relative_delta_pct
+        elif drift_type is DriftType.SLIPPAGE:
+            # Structural — same semantic as PRICE: every comparison appends a
+            # record (evidence the measurement happened), but the headline
+            # counter only increments on threshold breach. The max-tracker
+            # always reflects the largest observed magnitude for #244 calibration.
+            if threshold_exceeded:
+                self._summary.slippage_events += 1
+            if relative_delta_pct > self._summary.max_slippage_drift_pct:
+                self._summary.max_slippage_drift_pct = relative_delta_pct
 
         if threshold_exceeded or self._config.log_all:
             structural_tag = ' [STRUCTURAL]' if is_structural else ''
@@ -325,7 +349,9 @@ class DriftAuditor:
             'drift_fee_events': self._summary.fee_events,
             'drift_volume_events': self._summary.volume_events,
             'drift_price_events': self._summary.price_events,
+            'drift_slippage_events': self._summary.slippage_events,
             'drift_max_fee_pct': self._summary.max_fee_drift_pct,
+            'drift_max_slippage_pct': self._summary.max_slippage_drift_pct,
         }
 
     # ============================================
@@ -351,6 +377,6 @@ class DriftAuditor:
             f"📊 DriftAudit final: {self._summary.total_orders_audited} orders audited | "
             f"FEE: {self._summary.fee_events} events (max {self._summary.max_fee_drift_pct:.2f}%) | "
             f"VOL: {self._summary.volume_events} events (max {self._summary.max_volume_drift_pct:.2f}%) | "
-            f"PRICE: {self._summary.price_events} events (max {self._summary.max_price_drift_pct:.2f}%) "
-            f"[structural — see #244]"
+            f"PRICE: {self._summary.price_events} events (max {self._summary.max_price_drift_pct:.2f}%) | "
+            f"SLIP: {self._summary.slippage_events} events (max {self._summary.max_slippage_drift_pct:.2f}%)"
         )
