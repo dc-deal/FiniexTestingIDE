@@ -1359,6 +1359,22 @@
             }
         },
         {
+            "name": "🧪 Simulation: Event Channel",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/event_channel_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 9
+            }
+        },
+        {
             "name": "🧪 Simulation: Pending Stats",
             "type": "debugpy",
             "request": "launch",
@@ -1463,6 +1479,26 @@
                 "run",
                 "--config",
                 "configs/autotrader_profiles/backtesting/partial_close_lifecycle.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 14
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Event Channel",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/event_channel_lifecycle.json",
                 "--display",
                 "--delay",
                 "1"
@@ -1820,6 +1856,42 @@
             "module": "pytest",
             "args": [
                 "tests/simulation/partial_close/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 29
+            }
+        },
+        {
+            "name": "🧩 Pytest: Event Channel (Sim)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/event_channel/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 29
+            }
+        },
+        {
+            "name": "🧩 Pytest: Decision Event Channel (#348)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/live_executor/test_decision_event_dispatcher.py",
                 "-v",
                 "--tb=short"
             ],

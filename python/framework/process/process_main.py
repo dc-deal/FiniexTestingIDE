@@ -6,6 +6,7 @@ import traceback
 from typing import Optional
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_preparation import process_startup_preparation
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
@@ -60,6 +61,14 @@ def process_main(
         scenario_logger.debug(
             f"🔄 Process preparation finished")
 
+        # === DECISION EVENT CHANNEL (#348) ===
+        # Built only when the active decision logic subscribes to events.
+        decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
+            decision_logic=decision_logic,
+            executor=trade_simulator,
+            logger=scenario_logger,
+        )
+
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
@@ -67,7 +76,8 @@ def process_main(
         tick_loop_results = execute_tick_loop(
             config, worker_coordinator, trade_simulator,
             bar_rendering_controller, decision_logic,
-            scenario_logger, ticks, live_queue)
+            scenario_logger, ticks, live_queue,
+            decision_event_dispatcher)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
 

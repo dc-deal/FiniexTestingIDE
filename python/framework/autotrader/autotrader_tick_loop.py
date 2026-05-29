@@ -21,6 +21,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
@@ -31,6 +32,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     TradeHistoryEntry,
 )
+from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.parameter_types import OutputValue
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -78,6 +80,7 @@ class AutotraderTickLoop:
         dry_run: bool = True,
         display_label_cache: Optional[DisplayLabelCache] = None,
         drift_auditor: Optional[DriftAuditor] = None,
+        decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -95,6 +98,7 @@ class AutotraderTickLoop:
         self._dry_run = dry_run
         self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._drift_auditor = drift_auditor
+        self._decision_event_dispatcher = decision_event_dispatcher
         self._running = False
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
@@ -182,6 +186,9 @@ class AutotraderTickLoop:
                 # #320: drain async worker responses + check timeouts
                 # without bumping tick state. Display pulse follows below.
                 self._executor.heartbeat()
+                # #348: deliver events surfaced by the heartbeat drain
+                # (idle-time fills via poll/push) to the algo hooks.
+                self._drain_decision_events()
                 self._push_pulse_frame(ticks_processed)
                 continue
 
@@ -257,6 +264,16 @@ class AutotraderTickLoop:
                 reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
                 self._last_rejection = f'{reason} — {order_result.rejection_message} ({decision.action.value})'
 
+            # === 6b. Decision event drain (#348) ===
+            # Events buffered during on_tick (fills, partial closes, cancels)
+            # are delivered to the algo hooks here — after compute/execute and
+            # before the next tick. A hook may request session end.
+            self._drain_decision_events()
+            if self._executor.is_session_end_requested():
+                self._logger.info(
+                    f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
+                break
+
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
 
@@ -293,6 +310,22 @@ class AutotraderTickLoop:
             self._last_real_decision = decision
             self._last_real_tick_wall_time = time.time()
 
+        # === Session end event (#348) — emitted once the loop ends, whether by
+        # request, tick-source exhaustion, or stop(). Delivered before teardown.
+        if self._decision_event_dispatcher is not None:
+            if self._executor.is_session_end_requested():
+                end_reason = self._executor.get_session_end_reason()
+                end_severity = self._executor.get_session_end_severity()
+            else:
+                end_reason = 'tick source exhausted'
+                end_severity = SessionEndSeverity.NORMAL
+            self._decision_event_dispatcher.submit(SessionEndEvent(
+                reason=end_reason,
+                severity=end_severity,
+                tick_time=self._executor.get_current_time(),
+            ))
+            self._decision_event_dispatcher.drain()
+
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.
         # The queue (maxsize=10) is likely full from high-speed tick replay,
@@ -314,6 +347,11 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _drain_decision_events(self) -> None:
+        """Drain buffered decision events to the algo hooks, if a dispatcher is active (#348)."""
+        if self._decision_event_dispatcher is not None:
+            self._decision_event_dispatcher.drain()
 
     def _push_pulse_frame(self, ticks_processed: int) -> None:
         """

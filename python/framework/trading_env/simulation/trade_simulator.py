@@ -1143,6 +1143,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     f"❌ {list_name.capitalize()} order {pending.pending_order_id} "
                     f"cancellation resolved"
                 )
+                self._emit_order_cancelled(pending)
 
         # Position-level: SL/TP modifications (when native_position_sl_tp=True)
         for position_id in list(self._pending_position_modifications.keys()):

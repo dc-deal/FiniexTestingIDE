@@ -70,6 +70,12 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, ExecutionStats
+from python.framework.types.decision_event_types import (
+    DecisionEvent,
+    OrderCancelledEvent,
+    PartialCloseEvent,
+    SessionEndSeverity,
+)
 
 
 class ExecutorMode(Enum):
@@ -160,6 +166,19 @@ class AbstractTradeExecutor(ABC):
         # Multi-slot: any number of listeners can register independently.
         self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]] = []
 
+        # Decision Event Channel sink (#348) — single optional consumer (the
+        # DecisionEventDispatcher) for decision events the order-outcome
+        # listeners do not carry: partial closes, cancellations, session end.
+        # None when the active decision logic subscribes to no events.
+        self._decision_event_sink: Optional[Callable[[DecisionEvent], None]] = None
+
+        # Session-end request (#348) — set by DecisionTradingApi.request_session_end.
+        # The tick loop reads it at the loop boundary, emits SESSION_END, and ends
+        # the session. Shared mechanism for sim and live.
+        self._session_end_requested: bool = False
+        self._session_end_reason: str = ''
+        self._session_end_severity: SessionEndSeverity = SessionEndSeverity.NORMAL
+
         # Monotonic counter for synthetic BrokerTrade IDs (#330). Ensures each
         # _synthesize_pending_trade() call produces a unique trade_id, so that
         # the open and the N partial closes of one position get distinct IDs
@@ -224,6 +243,86 @@ class AbstractTradeExecutor(ABC):
         """
         for listener in self._order_outcome_listeners:
             listener(direction, result, pending)
+
+    def set_decision_event_sink(
+        self,
+        sink: Callable[[DecisionEvent], None]
+    ) -> None:
+        """
+        Register the single decision-event consumer (#348).
+
+        Set by the DecisionEventDispatcher at startup when the active decision
+        logic subscribes to one or more events. Carries the events the
+        order-outcome listeners do not: partial closes, cancellations, session
+        end. ORDER_FILLED / ORDER_REJECTED ride the outcome-listener path.
+
+        Args:
+            sink: Callable receiving each DecisionEvent
+        """
+        self._decision_event_sink = sink
+
+    def _emit_decision_event(self, event: DecisionEvent) -> None:
+        """
+        Forward a decision event to the sink, if one is registered.
+
+        Early-exits when no sink is set (no subscribing decision logic) — the
+        channel costs nothing when unused.
+
+        Args:
+            event: The decision event to forward
+        """
+        if self._decision_event_sink is None:
+            return
+        self._decision_event_sink(event)
+
+    def _emit_order_cancelled(self, pending: PendingOrder) -> None:
+        """
+        Emit an ORDER_CANCELLED decision event for a resolved cancellation (#348).
+
+        Called by subclasses at their cancel-confirmation point (sim Phase-0
+        resolve, live cancel-response). Keeps event-type construction in the
+        base class so subclasses only call this helper.
+
+        Args:
+            pending: The cancelled PendingOrder
+        """
+        self._emit_decision_event(OrderCancelledEvent(
+            order_id=pending.pending_order_id,
+            direction=pending.direction,
+            tick_time=self.get_current_time(),
+        ))
+
+    def request_session_end(
+        self,
+        reason: str,
+        severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
+    ) -> None:
+        """
+        Request the tick loop to end the session (#348).
+
+        Set by DecisionTradingApi.request_session_end. The tick loop checks the
+        request at the loop boundary, emits a SESSION_END event, and ends the
+        session — NORMAL runs the graceful shutdown, EMERGENCY exits immediately.
+
+        Args:
+            reason: Human-readable reason, logged and carried in the event
+            severity: NORMAL (graceful) or EMERGENCY (immediate)
+        """
+        self._session_end_requested = True
+        self._session_end_reason = reason
+        self._session_end_severity = severity
+
+    def is_session_end_requested(self) -> bool:
+        """Whether a session-end has been requested via request_session_end."""
+        return self._session_end_requested
+
+    def get_session_end_reason(self) -> str:
+        """The reason supplied with the session-end request (empty if none)."""
+        return self._session_end_reason
+
+    def get_session_end_severity(self) -> SessionEndSeverity:
+        """The severity supplied with the session-end request."""
+        return self._session_end_severity
 
     # ============================================
     # Tick Lifecycle (called by process_tick_loop)
@@ -698,6 +797,10 @@ class AbstractTradeExecutor(ABC):
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots
 
+        # Pre-close total — captured before the portfolio reduces position.lots
+        # in place, so the partial-close event (#348) reports remaining correctly.
+        pre_close_total_lots = position.lots
+
         # #326: synthesize a BrokerTrade for the close execution if not yet
         # populated. Exit fee is 0.0 in V1 (no exit commission), matching the
         # portfolio call below; real broker exit fees become available via
@@ -771,6 +874,19 @@ class AbstractTradeExecutor(ABC):
 
         self._check_order_history_limit()
         self._order_history.append(result)
+
+        # Partial-close event (#348) — full closes do not emit (the algo sees
+        # the position gone via get_open_positions); partials carry the delta.
+        if is_partial:
+            self._emit_decision_event(PartialCloseEvent(
+                position_id=pending_order.pending_order_id,
+                direction=position.direction,
+                closed_lots=executed_lots,
+                remaining_lots=pre_close_total_lots - executed_lots,
+                fill_price=close_price,
+                result=result,
+                tick_time=self.get_current_time(),
+            ))
 
     # ============================================
     # Position Management

@@ -29,7 +29,9 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -51,7 +53,8 @@ def execute_tick_loop(
     decision_logic: AbstractDecisionLogic,
     scenario_logger: ScenarioLogger,
     ticks: Tuple[TickData, ...],
-    live_queue: Optional[Queue] = None
+    live_queue: Optional[Queue] = None,
+    decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -188,6 +191,20 @@ def execute_tick_loop(
                 profile_times['order_execution'] += (time.perf_counter() - t9) * 1000
                 profile_counts['order_execution'] += 1
 
+            # === 5b. Decision Event Drain (#348) ===
+            # Events buffered during on_tick (fills, partial closes, cancels)
+            # are delivered to the algo hooks here, before the next tick.
+            if decision_event_dispatcher is not None:
+                if profiling_enabled: t13 = time.perf_counter()
+                decision_event_dispatcher.drain()
+                if profiling_enabled:
+                    profile_times['decision_events'] += (time.perf_counter() - t13) * 1000
+                    profile_counts['decision_events'] += 1
+                if trade_simulator.is_session_end_requested():
+                    scenario_logger.info(
+                        f"🛑 Session end requested: {trade_simulator.get_session_end_reason()}")
+                    break
+
             # === 6. LIVE UPDATES (Time-based) ===
             if profiling_enabled: t11 = time.perf_counter()
             live_updated = process_live_export(
@@ -201,6 +218,22 @@ def execute_tick_loop(
             # Total tick time
             if profiling_enabled:
                 profile_times['total_per_tick'] += (time.perf_counter() - tick_start) * 1000
+
+        # === Session end event (#348) — emitted once the loop ends (tick
+        # exhaustion or session-end request). Delivered before reporting.
+        if decision_event_dispatcher is not None:
+            if trade_simulator.is_session_end_requested():
+                end_reason = trade_simulator.get_session_end_reason()
+                end_severity = trade_simulator.get_session_end_severity()
+            else:
+                end_reason = 'tick source exhausted'
+                end_severity = SessionEndSeverity.NORMAL
+            decision_event_dispatcher.submit(SessionEndEvent(
+                reason=end_reason,
+                severity=end_severity,
+                tick_time=trade_simulator.get_current_time(),
+            ))
+            decision_event_dispatcher.drain()
 
         scenario_logger.set_tick_loop_started(False)
         if has_clipping:

@@ -65,6 +65,10 @@ class BacktestingMetadata:
     bar_snapshots: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     expected_trades: List[Dict[str, Any]] = field(default_factory=list)
     tick_count: int = 0
+    # Decision event channel (#348) — ordered event-type log received by a
+    # subscribing decision logic (e.g. the event-probe DL). Empty for logics
+    # that do not subscribe. Cross-process channel for sim-side event tests.
+    received_events: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -83,7 +87,8 @@ class BacktestingMetadata:
             'warmup_errors': self.warmup_errors,
             'bar_snapshots': self.bar_snapshots,
             'expected_trades': self.expected_trades,
-            'tick_count': self.tick_count
+            'tick_count': self.tick_count,
+            'received_events': self.received_events
         }
     
     @classmethod
@@ -103,7 +108,8 @@ class BacktestingMetadata:
             warmup_errors=data.get('warmup_errors', []),
             bar_snapshots=data.get('bar_snapshots', {}),
             expected_trades=data.get('expected_trades', []),
-            tick_count=data.get('tick_count', 0)
+            tick_count=data.get('tick_count', 0),
+            received_events=data.get('received_events', [])
         )
     
     def has_warmup_errors(self) -> bool:
