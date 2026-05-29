@@ -580,6 +580,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self.logger.info(
             f"❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})"
         )
+        self._emit_order_cancelled(pending)
 
     def _handle_position_modify_response(
         self,

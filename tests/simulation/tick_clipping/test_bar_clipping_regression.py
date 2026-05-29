@@ -249,6 +249,9 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     symbol_spec.base_currency = 'BTC'
     symbol_spec.quote_currency = 'USD'
     executor.broker.adapter.get_symbol_specification.return_value = symbol_spec
+    # No session-end request in this fixture — a bare MagicMock would return a
+    # truthy mock and break the loop after the first tick (#348).
+    executor.is_session_end_requested.return_value = False
 
     # execute_decision must return an object whose .is_rejected is False,
     # otherwise the rejection branch triggers attribute access on MagicMock.

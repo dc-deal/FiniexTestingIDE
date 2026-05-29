@@ -10,13 +10,21 @@ on decision-making strategy AND trade execution, not on worker management.
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness, StrategyEvent
+from python.framework.types.decision_event_types import (
+    DecisionEventType,
+    OrderCancelledEvent,
+    OrderFilledEvent,
+    OrderRejectedEvent,
+    PartialCloseEvent,
+    SessionEndEvent,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
@@ -382,6 +390,74 @@ class AbstractDecisionLogic(ABC):
             Cumulative event count
         """
         return self._total_events_emitted
+
+    # ============================================
+    # Decision Event Channel (#348)
+    # ============================================
+
+    @classmethod
+    def get_subscribed_events(cls) -> Set[DecisionEventType]:
+        """
+        Declare which decision events this logic wants to receive.
+
+        Override in subclass to subscribe to order/lifecycle events delivered
+        between ticks via the on_* hooks. Default: no subscriptions (most
+        logics react only in compute()). The DecisionEventDispatcher only
+        buffers and delivers the subscribed types — unsubscribed events cost
+        nothing.
+
+        Returns:
+            Set of DecisionEventType to subscribe to
+        """
+        return set()
+
+    def on_order_filled(self, event: OrderFilledEvent) -> None:
+        """
+        React to an order fill. No-op unless overridden.
+
+        Called at the tick-loop boundary after the fill resolved (sim latency
+        path or live poll/push). Subscribe via get_subscribed_events().
+
+        Args:
+            event: Fill detail (order/position id, price, lots, full result)
+        """
+        pass
+
+    def on_order_rejected(self, event: OrderRejectedEvent) -> None:
+        """
+        React to an order rejection. No-op unless overridden.
+
+        Args:
+            event: Rejection detail (order id, reason, message, full result)
+        """
+        pass
+
+    def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
+        """
+        React to an order cancellation. No-op unless overridden.
+
+        Args:
+            event: Cancellation detail (order id, direction)
+        """
+        pass
+
+    def on_partial_close(self, event: PartialCloseEvent) -> None:
+        """
+        React to a partial position close. No-op unless overridden.
+
+        Args:
+            event: Partial-close detail (position id, closed/remaining lots, price)
+        """
+        pass
+
+    def on_session_end(self, event: SessionEndEvent) -> None:
+        """
+        React to the session ending. No-op unless overridden.
+
+        Args:
+            event: Session-end detail (reason, severity)
+        """
+        pass
 
     # ============================================
     # API Injection

@@ -1,0 +1,41 @@
+{
+  "name": "event_channel_lifecycle",
+  "symbol": "USDJPY",
+  "broker_type": "mt5",
+  "adapter_type": "mock",
+  "strategy_config": {
+    "decision_logic_type": "CORE/backtesting/backtesting_event_probe",
+    "worker_instances": {
+      "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+    },
+    "workers": {
+      "backtesting_worker": {
+        "periods": {
+          "M5": 14,
+          "M30": 20
+        },
+        "bar_snapshot_checks": []
+      }
+    },
+    "decision_logic_config": {
+      "open_tick": 100,
+      "lot_size": 0.02,
+      "partial_close_tick": 2000,
+      "partial_close_lots": 0.01,
+      "session_end_tick": 5000
+    }
+  },
+  "account": {
+    "balances": {
+      "JPY": 100000.0
+    }
+  },
+  "tick_source": {
+    "type": "mock",
+    "parquet_path": "data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet",
+    "max_ticks": 12000
+  },
+  "display": {
+    "enabled": false
+  }
+}

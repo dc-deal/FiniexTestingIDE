@@ -53,11 +53,12 @@ tests/
 │   ├── modify_lifecycle/  unit — async modify/cancel scheduling + resolution (#318)
 │   ├── trade_emission/    unit — sim BrokerTrade emission via shared _fill_open_order (#326)
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)
+│   ├── event_channel/     integration — decision event channel dual-world parity (#348)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
-│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit (#319, #321, #318, #326, #320, #327)
+│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   └── safety/            unit — circuit breaker (margin + spot)
 │

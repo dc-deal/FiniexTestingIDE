@@ -27,6 +27,7 @@ from python.framework.decision_logic.core.aggressive_trend import AggressiveTren
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
+from python.framework.decision_logic.core.backtesting.backtesting_event_probe import BacktestingEventProbe
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -78,6 +79,7 @@ class DecisionLogicFactory:
             self._registry['CORE/backtesting/backtesting_deterministic'] = (BacktestingDeterministic, None)
             self._registry['CORE/backtesting/backtesting_margin_stress'] = (BacktestingMarginStress, None)
             self._registry['CORE/backtesting/backtesting_multi_position'] = (BacktestingMultiPosition, None)
+            self._registry['CORE/backtesting/backtesting_event_probe'] = (BacktestingEventProbe, None)
 
             self.logger.debug(
                 f"Core decision logics registered: {list(self._registry.keys())}"

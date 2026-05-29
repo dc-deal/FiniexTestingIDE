@@ -28,9 +28,11 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.configuration.market_config_manager import MarketConfigManager
@@ -83,6 +85,9 @@ class AutotraderMain:
 
         # #327 — Drift audit (live-only, gated by config.drift_audit.enabled)
         self._drift_auditor: Optional[DriftAuditor] = None
+
+        # #348 — Decision event channel (None when the decision logic subscribes to no events)
+        self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -158,6 +163,14 @@ class AutotraderMain:
                     logger=self._session_logger,
                 )
 
+            # === DECISION EVENT CHANNEL (#348) ===
+            # Built only when the active decision logic subscribes to events.
+            self._decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
+                decision_logic=self._decision_logic,
+                executor=self._executor,
+                logger=self._session_logger,
+            )
+
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
             _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
@@ -208,8 +221,14 @@ class AutotraderMain:
                 dry_run=dry_run,
                 display_label_cache=self._display_label_cache,
                 drift_auditor=self._drift_auditor,
+                decision_event_dispatcher=self._decision_event_dispatcher,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
+
+            # #348: an EMERGENCY session-end request escalates the shutdown mode.
+            if (self._executor.is_session_end_requested()
+                    and self._executor.get_session_end_severity() == SessionEndSeverity.EMERGENCY):
+                self._shutdown_mode = 'emergency'
 
         except Exception as e:
             self._global_logger.error(f"❌ AutoTrader error during setup/loop: {e}")

@@ -37,6 +37,7 @@ from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
 from .portfolio_manager import UNSET, _UnsetType
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
@@ -541,6 +542,30 @@ class DecisionTradingApi:
         if symbol:
             return self._executor.broker.get_symbol_leverage(symbol)
         return self._executor.broker.get_max_leverage()
+
+    # ============================================
+    # Session Control
+    # ============================================
+
+    def request_session_end(
+        self,
+        reason: str,
+        severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
+    ) -> None:
+        """
+        Signal the runner to end the trading session (#348).
+
+        The tick loop ends the session at the next loop boundary: NORMAL runs the
+        graceful shutdown (close remaining orders, final stats, clean exit),
+        EMERGENCY exits immediately. Works in both pipelines — in backtesting it
+        ends the scenario early; in live it shuts the AutoTrader down. A
+        SESSION_END decision event is delivered before teardown.
+
+        Args:
+            reason: Human-readable reason, logged and shown in the shutdown banner
+            severity: NORMAL (graceful, default) or EMERGENCY (immediate)
+        """
+        self._executor.request_session_end(reason, severity)
 
     # ============================================
     # Position Modification
