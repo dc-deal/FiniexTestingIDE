@@ -4,7 +4,7 @@ How to implement a new broker adapter from scratch.
 
 **Reference implementations:**
 - `python/framework/trading_env/adapters/kraken_adapter.py` — real HTTPS broker (Kraken Spot REST API)
-- `python/framework/testing/mock_adapter.py` — in-process mock; the cleanest end-to-end template
+- `python/framework/testing/mock_broker_adapter.py` — in-process mock; the cleanest end-to-end template
 
 Read either alongside this guide.
 
@@ -410,7 +410,7 @@ Key rules:
 
 ## MockBrokerAdapter — The Template Reference
 
-`python/framework/testing/mock_adapter.py` is the cleanest end-to-end reference for the Tier-3 layer pattern. It satisfies the full 12-method contract with **no network**, no credentials, no config files. Use it as the structural template when implementing a new adapter:
+`python/framework/testing/mock_broker_adapter.py` is the cleanest end-to-end reference for the Tier-3 layer pattern. It satisfies the full 12-method contract with **no network**, no credentials, no config files. Use it as the structural template when implementing a new adapter:
 
 - `_build_*_payload`: pure parameter packing, dictionary-only
 - `_do_request_*`: in-memory state mutation (mock-as-transport — counter, `_mock_pending`)
@@ -443,7 +443,7 @@ The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py
 
 - `python/framework/trading_env/adapters/abstract_adapter.py` — full interface
 - `python/framework/trading_env/adapters/kraken_adapter.py` — real HTTPS reference
-- `python/framework/testing/mock_adapter.py` — in-process template (cleanest read)
+- `python/framework/testing/mock_broker_adapter.py` — in-process template (cleanest read)
 - `python/framework/trading_env/adapters/dry_run_simulator.py` — shared dry-run lifecycle utility
 - `python/framework/trading_env/live/live_request_processor.py` — Tier-3 composition (sync + async orchestrators, worker thread, drain_inbox)
 - `tests/live_adapters/` — reference test suite

@@ -6,7 +6,7 @@ portfolio-level consistency checks. These scenarios validate
 that the full pipeline handles realistic order sequences.
 """
 
-from python.framework.testing.mock_adapter import MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.trading_env_types.order_types import (
     OrderType,

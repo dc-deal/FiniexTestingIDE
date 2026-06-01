@@ -292,6 +292,12 @@ class AutoTraderLiveDisplay:
     # PANEL BUILDERS
     # =========================================================================
 
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        """Compact duration label: '4m12s' for >=60s, else '38s'."""
+        s = int(seconds)
+        return f'{s // 60}m{s % 60:02d}s' if s >= 60 else f'{s}s'
+
     def _build_session_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Session overview: uptime, tick rate, trades, mode."""
         now = datetime.now(timezone.utc)
@@ -395,6 +401,27 @@ class AutoTraderLiveDisplay:
                     f'[cyan]◇{stats.drift_slippage_events:d} slip[/cyan]{slip_part}'
                 )
             lines.append(f'Audit:   {audit_str}')
+
+        # #151 — Reconciliation status line (ALERT_ONLY). Shows the CURRENT state +
+        # how long it has held: "clean Xs" (stability streak) when ok, "for Xs"
+        # (persistence) when divergent. "next ≤" is the time-based bound — a
+        # reconcile may fire sooner on the interval_ticks threshold.
+        if stats.reconcile_enabled:
+            next_in = stats.reconcile_next_in_s
+            if stats.reconcile_count == 0:
+                lines.append(f'Reconcile: [dim]awaiting first check (≤{next_in:.0f}s)[/dim]')
+            elif stats.reconcile_clean:
+                age = self._fmt_duration(stats.reconcile_state_age_s)
+                lines.append(
+                    f'Reconcile: [green]● ok[/green]  [dim]clean {age} · next ≤{next_in:.0f}s[/dim]'
+                )
+            else:
+                age = self._fmt_duration(stats.reconcile_state_age_s)
+                lines.append(
+                    f'Reconcile: [yellow]⚠️ {stats.reconcile_divergences} divergence(s)[/yellow]  '
+                    f'[dim]for {age} · next ≤{next_in:.0f}s[/dim]'
+                )
+
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)
 
     def _build_portfolio_panel(self, stats: AutoTraderDisplayStats) -> Panel:

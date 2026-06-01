@@ -314,7 +314,7 @@ Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
-Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three tiers with configurable behavior (INSTANT_FILL, DELAYED_FILL, REJECT_ALL, TIMEOUT). Used by `MockOrderExecution` for testing LiveTradeExecutor without a real broker.
+Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with configurable behavior (INSTANT_FILL, DELAYED_FILL, REJECT_ALL, TIMEOUT). Used by `MockOrderExecution` for testing LiveTradeExecutor without a real broker.
 
 ### DecisionTradingApi
 The gatekeeper. DecisionLogic interacts *only* through this API. It provides:

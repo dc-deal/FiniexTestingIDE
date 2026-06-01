@@ -23,6 +23,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
+from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -81,6 +82,7 @@ class AutotraderTickLoop:
         display_label_cache: Optional[DisplayLabelCache] = None,
         drift_auditor: Optional[DriftAuditor] = None,
         decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
+        reconciler: Optional[Reconciler] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -99,6 +101,7 @@ class AutotraderTickLoop:
         self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._drift_auditor = drift_auditor
         self._decision_event_dispatcher = decision_event_dispatcher
+        self._reconciler = reconciler
         self._running = False
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
@@ -274,6 +277,12 @@ class AutotraderTickLoop:
                     f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
                 break
 
+            # === 6c. Reconciliation (#151, hybrid cadence, ALERT_ONLY) ===
+            # Broker truth-pull every N ticks OR M seconds. Sync (like the #320
+            # polling path); infrequent, so the periodic block is bounded.
+            if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
+                self._reconciler.reconcile(ticks_processed)
+
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
 
@@ -420,6 +429,7 @@ class AutotraderTickLoop:
             is_pulse=True,
             seconds_since_last_tick=seconds_since_start,
             **self._drift_display_counters(),
+            **self._reconcile_display_counters(),
         )
 
     def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
@@ -600,6 +610,7 @@ class AutotraderTickLoop:
             total_events_emitted=self._decision_logic.get_total_events_emitted(),
             last_tick_time=self._executor.get_current_time(),
             **self._drift_display_counters(),
+            **self._reconcile_display_counters(),
         )
 
     def _drift_display_counters(self) -> Dict[str, object]:
@@ -619,6 +630,23 @@ class AutotraderTickLoop:
             'drift_slippage_events': int(counters.get('drift_slippage_events', 0)),
             'drift_max_fee_pct': float(counters.get('drift_max_fee_pct', 0.0)),
             'drift_max_slippage_pct': float(counters.get('drift_max_slippage_pct', 0.0)),
+        }
+
+    def _reconcile_display_counters(self) -> Dict[str, object]:
+        """
+        Build reconcile_* kwargs for AutoTraderDisplayStats. Returns empty dict
+        (uses dataclass defaults) when no Reconciler is wired. #151.
+        """
+        if self._reconciler is None:
+            return {}
+        counters = self._reconciler.get_display_counters()
+        return {
+            'reconcile_enabled': bool(counters.get('reconcile_enabled', False)),
+            'reconcile_divergences': int(counters.get('reconcile_divergences', 0)),
+            'reconcile_clean': bool(counters.get('reconcile_clean', True)),
+            'reconcile_count': int(counters.get('reconcile_count', 0)),
+            'reconcile_state_age_s': float(counters.get('reconcile_state_age_s', 0.0)),
+            'reconcile_next_in_s': float(counters.get('reconcile_next_in_s', 0.0)),
         }
 
     def _check_new_maxes(self) -> None:

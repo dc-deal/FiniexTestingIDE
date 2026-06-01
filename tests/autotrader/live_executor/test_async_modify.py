@@ -14,7 +14,7 @@ asserts the in-flight state transitions so a regression to sync-modify
 cannot slip through outcome-only assertions.
 """
 
-from python.framework.testing.mock_adapter import MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,

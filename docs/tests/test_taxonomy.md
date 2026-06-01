@@ -60,7 +60,8 @@ tests/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
-│   └── safety/            unit — circuit breaker (margin + spot)
+│   ├── safety/            unit — circuit breaker (margin + spot)
+│   └── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326)
 │

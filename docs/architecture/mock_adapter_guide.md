@@ -19,9 +19,9 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `MockBrokerAdapter` | `python/framework/testing/mock_adapter.py` | Simulates broker API responses |
+| `MockBrokerAdapter` | `python/framework/testing/mock_broker_adapter.py` | Simulates broker API responses |
 | `MockOrderExecution` | `python/framework/testing/mock_order_execution.py` | Test utility: creates executor + feeds ticks |
-| `MockExecutionMode` | `python/framework/testing/mock_adapter.py` | Enum: execution behavior modes |
+| `MockExecutionMode` | `python/framework/testing/mock_broker_adapter.py` | Enum: execution behavior modes |
 | `BrokerResponse` | `python/framework/types/live_types/live_execution_types.py` | Standardized broker reply |
 | `TimeoutConfig` | `python/framework/types/live_types/live_execution_types.py` | Timeout thresholds |
 
@@ -59,7 +59,7 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 
 ```python
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.testing.mock_adapter import MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderType, OrderDirection
 
 mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL, initial_balance=10000.0)
@@ -137,7 +137,7 @@ stats = executor.get_execution_stats()
 For lower-level control (changing mode mid-test, slippage simulation):
 
 ```python
-from python.framework.testing.mock_adapter import MockBrokerAdapter, MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -227,7 +227,7 @@ Full test documentation: `docs/tests/autotrader/live_executor_tests.md`
 ```
 python/framework/
   testing/
-    mock_adapter.py              ← MockBrokerAdapter, MockExecutionMode
+    mock_broker_adapter.py              ← MockBrokerAdapter, MockExecutionMode
     mock_order_execution.py      ← MockOrderExecution utility
   trading_env/
     live/

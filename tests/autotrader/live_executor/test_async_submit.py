@@ -16,7 +16,7 @@ Tracked by #321.
 
 from datetime import datetime, timezone
 
-from python.framework.testing.mock_adapter import MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.order_guard import OrderGuard
 from python.framework.types.live_types.live_execution_types import TimeoutConfig

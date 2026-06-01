@@ -13,6 +13,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DisplayDefaults,
     DriftAuditConfig,
     OrderGuardDefaults,
+    ReconciliationDefaults,
 )
 
 
@@ -110,4 +111,5 @@ class AutoTraderConfig:
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     order_guard: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
     drift_audit: DriftAuditConfig = field(default_factory=DriftAuditConfig)
+    reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     config_path: Optional[Path] = None

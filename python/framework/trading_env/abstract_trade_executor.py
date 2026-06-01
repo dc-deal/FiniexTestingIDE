@@ -1011,6 +1011,19 @@ class AbstractTradeExecutor(ABC):
             'active_stops': len(self._active_stop_orders),
         }
 
+    def get_active_orders(self) -> List[PendingOrder]:
+        """
+        Return resting (active) orders — limit + stop — for broker reconciliation (#151).
+
+        These are the orders expected to be live at the broker (e.g. Kraken
+        OpenOrders). In-flight MARKET orders (the processor's _pending_orders) are
+        excluded — they are transient and do not rest broker-side.
+
+        Returns:
+            Combined list of active limit and stop PendingOrders
+        """
+        return self._active_limit_orders + self._active_stop_orders
+
     # ============================================
     # Queries (concrete - same for all executors)
     # ============================================

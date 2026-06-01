@@ -31,6 +31,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -85,6 +86,9 @@ class AutotraderMain:
 
         # #327 — Drift audit (live-only, gated by config.drift_audit.enabled)
         self._drift_auditor: Optional[DriftAuditor] = None
+
+        # #151 — Reconciler (live-only, gated by config.reconciliation.enabled)
+        self._reconciler: Optional[Reconciler] = None
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
@@ -163,6 +167,17 @@ class AutotraderMain:
                     logger=self._session_logger,
                 )
 
+            # === RECONCILIATION (#151, ALERT_ONLY) ===
+            # Gated by config; live-only. Polled on a hybrid cadence by the tick loop.
+            if self._config.reconciliation.enabled and isinstance(self._executor, LiveTradeExecutor):
+                self._reconciler = Reconciler(
+                    executor=self._executor,
+                    config=self._config.reconciliation,
+                    logger=self._session_logger,
+                    trading_model=self._trading_model,
+                    symbol=self._config.symbol,
+                )
+
             # === DECISION EVENT CHANNEL (#348) ===
             # Built only when the active decision logic subscribes to events.
             self._decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
@@ -222,6 +237,7 @@ class AutotraderMain:
                 display_label_cache=self._display_label_cache,
                 drift_auditor=self._drift_auditor,
                 decision_event_dispatcher=self._decision_event_dispatcher,
+                reconciler=self._reconciler,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
@@ -311,6 +327,13 @@ class AutotraderMain:
                 self._drift_auditor.shutdown()
             except Exception as e:
                 self._global_logger.error(f"Error during drift auditor shutdown: {e}")
+
+        # #151 — Reconciler cleanup (final summary)
+        if self._reconciler:
+            try:
+                self._reconciler.shutdown()
+            except Exception as e:
+                self._global_logger.error(f"Error during reconciler shutdown: {e}")
 
         # Collect statistics and produce reports
         return self._collect_results(ticks_processed, ticks_clipped)

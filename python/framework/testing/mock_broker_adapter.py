@@ -1,6 +1,3 @@
-# ============================================
-# python/framework/testing/mock_adapter.py
-# ============================================
 """
 FiniexTestingIDE - Mock Broker Adapter
 Simulates broker responses for testing LiveTradeExecutor without a real broker.
@@ -41,6 +38,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SymbolSpecification,
 )
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
+from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderDirection,
@@ -57,6 +55,20 @@ class MockExecutionMode(Enum):
     DELAYED_FILL = "delayed_fill"
     REJECT_ALL = "reject_all"
     TIMEOUT = "timeout"
+
+
+class MockDivergenceMode(Enum):
+    """
+    Broker-truth divergence injection for reconciliation tests (#151).
+
+    Perturbs the broker truth-pull return values so the Reconciler can be
+    exercised against ghost / orphan / stale scenarios deterministically.
+    """
+    NONE = "none"
+    DROP_ORDERS = "drop_orders"            # broker reports no open orders → local pendings become orphans
+    PHANTOM_POSITION = "phantom_position"  # broker reports an extra position → ghost (MARGIN)
+    STALE_PRICE = "stale_price"            # broker entry price differs → stale (MARGIN)
+    DROP_BALANCE = "drop_balance"          # broker reports no asset balances → spot orphan signal
 
 
 # ============================================
@@ -160,6 +172,15 @@ class MockBrokerAdapter(AbstractAdapter):
         self._trades_per_fill: int = trades_per_fill
         self._mock_trades: Dict[str, List[Dict[str, Any]]] = {}
         self._trade_counter: int = 0
+
+        # === #151 Broker Truth-Pull state ===
+        # Settable broker-side truth for reconciliation tests, returned by the
+        # get_broker_* pulls (perturbed by _divergence_mode). Seeded directly by
+        # tests via set_broker_* — independent of the local shadow side.
+        self._divergence_mode: MockDivergenceMode = MockDivergenceMode.NONE
+        self._broker_orders: List[BrokerOrder] = []
+        self._broker_positions: List[BrokerPosition] = []
+        self._broker_balances: Dict[str, float] = {}
 
     # ============================================
     # Configuration (required by AbstractAdapter)
@@ -776,3 +797,102 @@ class MockBrokerAdapter(AbstractAdapter):
     def get_taker_fee(self) -> float:
         """Get mock taker fee percentage."""
         return self._get_config_value("fee_structure.taker_fee", 0.26)
+
+    # ============================================
+    # Broker Truth-Pull (#151) — settable test state + divergence injection
+    # ============================================
+    #
+    # The pulls override the public AbstractAdapter methods directly (no
+    # transport for a test double). Tests seed broker truth via the setters and
+    # choose a MockDivergenceMode; the Reconciler reconciles this against the
+    # local shadow state.
+
+    def set_broker_orders(self, orders: List[BrokerOrder]) -> None:
+        """
+        Seed the broker-side open orders returned by get_broker_orders.
+
+        Args:
+            orders: Broker open-order truth for the next reconcile
+        """
+        self._broker_orders = list(orders)
+
+    def set_broker_positions(self, positions: List[BrokerPosition]) -> None:
+        """
+        Seed the broker-side positions returned by get_broker_positions.
+
+        Args:
+            positions: Broker position truth for the next reconcile (MARGIN)
+        """
+        self._broker_positions = list(positions)
+
+    def set_broker_balances(self, balances: Dict[str, float]) -> None:
+        """
+        Seed the broker-side balances returned by get_broker_balances.
+
+        Args:
+            balances: Asset → amount truth for the next reconcile / flat-check
+        """
+        self._broker_balances = dict(balances)
+
+    def set_divergence_mode(self, mode: MockDivergenceMode) -> None:
+        """
+        Select the divergence perturbation applied to the broker truth-pulls.
+
+        Args:
+            mode: MockDivergenceMode to apply
+        """
+        self._divergence_mode = mode
+
+    def get_broker_orders(self) -> List[BrokerOrder]:
+        """
+        Return seeded broker open orders, perturbed by the divergence mode.
+
+        Returns:
+            List of BrokerOrder ([] under DROP_ORDERS)
+        """
+        if self._divergence_mode == MockDivergenceMode.DROP_ORDERS:
+            return []
+        return list(self._broker_orders)
+
+    def get_broker_balances(self) -> Dict[str, float]:
+        """
+        Return seeded broker balances, perturbed by the divergence mode.
+
+        Returns:
+            Asset → amount dict ({} under DROP_BALANCE)
+        """
+        if self._divergence_mode == MockDivergenceMode.DROP_BALANCE:
+            return {}
+        return dict(self._broker_balances)
+
+    def get_broker_positions(self) -> List[BrokerPosition]:
+        """
+        Return seeded broker positions, perturbed by the divergence mode.
+
+        PHANTOM_POSITION appends a ghost; STALE_PRICE shifts each entry price.
+
+        Returns:
+            List of BrokerPosition
+        """
+        if self._divergence_mode == MockDivergenceMode.PHANTOM_POSITION:
+            return list(self._broker_positions) + [
+                BrokerPosition(
+                    symbol='BTCUSD',
+                    direction=OrderDirection.LONG,
+                    lots=0.001,
+                    entry_price=50000.0,
+                    broker_ref='MOCK-GHOST-001',
+                )
+            ]
+        if self._divergence_mode == MockDivergenceMode.STALE_PRICE:
+            return [
+                BrokerPosition(
+                    symbol=p.symbol,
+                    direction=p.direction,
+                    lots=p.lots,
+                    entry_price=p.entry_price * 1.01,
+                    broker_ref=p.broker_ref,
+                )
+                for p in self._broker_positions
+            ]
+        return list(self._broker_positions)
