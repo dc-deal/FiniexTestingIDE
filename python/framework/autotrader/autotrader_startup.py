@@ -23,7 +23,7 @@ from python.framework.factory.live_trade_executor_factory import build_live_exec
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.testing.mock_adapter import MockBrokerAdapter
+from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor

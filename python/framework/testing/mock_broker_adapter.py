@@ -1,6 +1,3 @@
-# ============================================
-# python/framework/testing/mock_adapter.py
-# ============================================
 """
 FiniexTestingIDE - Mock Broker Adapter
 Simulates broker responses for testing LiveTradeExecutor without a real broker.

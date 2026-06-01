@@ -160,7 +160,7 @@ Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 
 
 ### MockBrokerAdapter (extends AbstractAdapter, for testing)
 
-Mock adapter in `python/framework/testing/mock_adapter.py`. Implements all three tiers with configurable behavior. Uses real Kraken BTCUSD symbol specification.
+Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with configurable behavior. Uses real Kraken BTCUSD symbol specification.
 
 **Execution modes (MockExecutionMode):**
 - `INSTANT_FILL` — `execute_order()` returns FILLED immediately
