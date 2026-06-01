@@ -30,6 +30,7 @@ from python.framework.types.trading_env_types.broker_trade_types import BrokerTr
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
+from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from .abstract_adapter import AbstractAdapter
 from .dry_run_simulator import DryRunOrderSimulator
 from python.framework.types.trading_env_types.order_types import (
@@ -66,6 +67,16 @@ class KrakenAdapter(AbstractAdapter):
         'closed': BrokerOrderStatus.FILLED,
         'canceled': BrokerOrderStatus.CANCELLED,
         'expired': BrokerOrderStatus.EXPIRED,
+    }
+
+    # Kraken descr.ordertype → OrderType (broker truth-pull, #151)
+    _ORDERTYPE_MAP: Dict[str, OrderType] = {
+        'market': OrderType.MARKET,
+        'limit': OrderType.LIMIT,
+        'stop-loss': OrderType.STOP,
+        'stop-loss-limit': OrderType.STOP_LIMIT,
+        'take-profit': OrderType.STOP,
+        'take-profit-limit': OrderType.STOP_LIMIT,
     }
 
     # Sentinel key marking a raw response as a dry-run handoff. The
@@ -1005,6 +1016,206 @@ class KrakenAdapter(AbstractAdapter):
                 is_maker=is_maker,
             ))
         return out
+
+    # ============================================
+    # Tier 3 — Broker Truth-Pull (#151 Reconciliation)
+    # ============================================
+    #
+    # In dry-run, the pulls return empty (a sentinel-tagged dict the parser maps
+    # to []/{}): synthetic dry-run state has no symbol/direction detail to
+    # reconstruct broker truth, and the Reconciler skips DRYRUN-* refs anyway.
+    # OpenPositions is margin-only — empty on Kraken spot.
+    # ============================================
+
+    def _build_openorders_payload(self) -> Dict[str, str]:
+        """
+        Build Kraken OpenOrders payload. Pure.
+
+        Returns:
+            POST data dict (no required params)
+        """
+        return {}
+
+    def _build_balance_payload(self) -> Dict[str, str]:
+        """
+        Build Kraken Balance payload. Pure.
+
+        Returns:
+            POST data dict (no required params)
+        """
+        return {}
+
+    def _build_openpositions_payload(self) -> Dict[str, str]:
+        """
+        Build Kraken OpenPositions payload. Pure.
+
+        Returns:
+            POST data dict (docalcs=true → broker computes net P&L)
+        """
+        return {'docalcs': 'true'}
+
+    def _do_request_openorders(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fetch open (resting) orders from Kraken. Raises on HTTP/API error.
+
+        Dry-run returns a sentinel-tagged dict → empty parse.
+
+        Args:
+            payload: Pre-built OpenOrders payload
+
+        Returns:
+            Raw Kraken result dict (sentinel-tagged in dry-run)
+        """
+        if self._dry_run:
+            return {self._DRY_RUN_SENTINEL: 'openorders'}
+        return self._fetch_private('/0/private/OpenOrders', payload)
+
+    def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fetch account balances from Kraken. Raises on HTTP/API error.
+
+        Dry-run returns a sentinel-tagged dict → empty parse.
+
+        Args:
+            payload: Pre-built Balance payload
+
+        Returns:
+            Raw Kraken result dict (sentinel-tagged in dry-run)
+        """
+        if self._dry_run:
+            return {self._DRY_RUN_SENTINEL: 'balance'}
+        return self._fetch_private('/0/private/Balance', payload)
+
+    def _do_request_openpositions(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fetch open positions from Kraken (margin only). Raises on HTTP/API error.
+
+        Dry-run returns a sentinel-tagged dict → empty parse.
+
+        Args:
+            payload: Pre-built OpenPositions payload
+
+        Returns:
+            Raw Kraken result dict (sentinel-tagged in dry-run; empty on spot)
+        """
+        if self._dry_run:
+            return {self._DRY_RUN_SENTINEL: 'openpositions'}
+        return self._fetch_private('/0/private/OpenPositions', payload)
+
+    def _parse_openorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
+        """
+        Parse Kraken OpenOrders response into List[BrokerOrder]. Pure.
+
+        Kraken shape: {'open': {txid: {status, descr:{pair,type,ordertype,price}, vol, ...}}}.
+
+        Args:
+            raw: Raw Kraken result dict (output of _do_request_openorders)
+
+        Returns:
+            List of BrokerOrder (empty in dry-run / when none open)
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return []
+
+        out: List[BrokerOrder] = []
+        for txid, info in (raw.get('open', {}) or {}).items():
+            descr = info.get('descr', {}) or {}
+            kraken_type = descr.get('type', 'buy')
+            kraken_ordertype = descr.get('ordertype', 'limit')
+            status = self._STATUS_MAP.get(info.get('status', 'open'), BrokerOrderStatus.PENDING)
+            price = float(descr.get('price', 0.0) or 0.0) or None
+            out.append(BrokerOrder(
+                broker_ref=txid,
+                symbol=self._resolve_symbol_from_pair(descr.get('pair', '')),
+                direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
+                order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.LIMIT),
+                lots=float(info.get('vol', 0.0)),
+                status=status,
+                price=price,
+                raw=info,
+            ))
+        return out
+
+    def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Parse Kraken Balance response into an asset → amount dict. Pure.
+
+        Kraken shape: {asset_code: amount_str}. Zero balances are dropped.
+        Asset codes stay in Kraken form (e.g. 'ZUSD', 'XETH') — normalization
+        to standard codes is the Reconciler's concern.
+
+        Args:
+            raw: Raw Kraken result dict (output of _do_request_balance)
+
+        Returns:
+            Balance dict (empty in dry-run)
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return {}
+
+        out: Dict[str, float] = {}
+        for asset, amount_str in (raw or {}).items():
+            try:
+                amount = float(amount_str)
+            except (TypeError, ValueError):
+                continue
+            if amount != 0.0:
+                out[asset] = amount
+        return out
+
+    def _parse_openpositions_response(self, raw: Dict[str, Any]) -> List[BrokerPosition]:
+        """
+        Parse Kraken OpenPositions response into List[BrokerPosition]. Pure.
+
+        Margin only — empty on Kraken spot. Kraken shape:
+        {txid: {pair, type, vol, cost, net, ...}}. entry_price = cost / vol.
+
+        Args:
+            raw: Raw Kraken result dict (output of _do_request_openpositions)
+
+        Returns:
+            List of BrokerPosition (empty in dry-run / on spot)
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return []
+
+        out: List[BrokerPosition] = []
+        for txid, info in (raw or {}).items():
+            kraken_type = info.get('type', 'buy')
+            vol = float(info.get('vol', 0.0))
+            cost = float(info.get('cost', 0.0))
+            out.append(BrokerPosition(
+                symbol=self._resolve_symbol_from_pair(info.get('pair', '')),
+                direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
+                lots=vol,
+                entry_price=(cost / vol) if vol else 0.0,
+                broker_ref=txid,
+                unrealized_pnl=float(info['net']) if 'net' in info else None,
+                margin_used=float(info['margin']) if 'margin' in info else None,
+                raw=info,
+            ))
+        return out
+
+    def _resolve_symbol_from_pair(self, pair: str) -> str:
+        """
+        Resolve a Kraken pair string back to the standard symbol from broker config.
+
+        Reverse of _resolve_kraken_pair. Falls back to the pair string itself
+        when no kraken_pair_name match is found.
+
+        Args:
+            pair: Kraken pair string (e.g., 'XETHZUSD')
+
+        Returns:
+            Standard symbol (e.g., 'ETHUSD') or the pair string on no match
+        """
+        if not pair:
+            return ''
+        symbols = self.broker_config.get('symbols', {}) or {}
+        for symbol, symbol_info in symbols.items():
+            if symbol_info.get('kraken_pair_name') == pair:
+                return symbol
+        return pair
 
     # ============================================
     # Kraken REST API — HTTP + Signing

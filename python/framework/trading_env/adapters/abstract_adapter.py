@@ -13,6 +13,7 @@ from python.framework.types.trading_env_types.broker_trade_types import BrokerTr
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerResponse
+from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderType,
@@ -664,6 +665,170 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f"{self.get_broker_name()} does not implement _parse_trades_query_response"
+        )
+
+    # ============================================
+    # Tier 3 — Broker Truth-Pull (#151 Reconciliation)
+    # ============================================
+    #
+    # Read the broker's actual open orders / balances / positions for the
+    # reconciliation layer. Same three-layer split as the lifecycle ops; the
+    # public method composes build → do_request → parse. Live-capable adapters
+    # override the three layers. get_broker_positions is MARGIN-relevant — spot
+    # adapters return an empty list (cash markets have no broker position object).
+    # ============================================
+
+    def get_broker_orders(self) -> List[BrokerOrder]:
+        """
+        Pull the broker's open (resting) orders. World-agnostic.
+
+        Returns:
+            List of BrokerOrder (empty when the broker reports none)
+        """
+        raw = self._do_request_openorders(self._build_openorders_payload())
+        return self._parse_openorders_response(raw)
+
+    def get_broker_balances(self) -> Dict[str, float]:
+        """
+        Pull the broker's account balances (asset → amount).
+
+        Returns:
+            Balance dict keyed by asset (empty when none / not implemented)
+        """
+        raw = self._do_request_balance(self._build_balance_payload())
+        return self._parse_balance_response(raw)
+
+    def get_broker_positions(self) -> List[BrokerPosition]:
+        """
+        Pull the broker's open positions (MARGIN only — empty on spot).
+
+        Returns:
+            List of BrokerPosition (empty on spot / when none reported)
+        """
+        raw = self._do_request_openpositions(self._build_openpositions_payload())
+        return self._parse_openpositions_response(raw)
+
+    # --- Build payloads (pure) ---
+
+    def _build_openorders_payload(self) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an open-orders pull. Pure.
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_openorders)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_openorders_payload"
+        )
+
+    def _build_balance_payload(self) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for a balance pull. Pure.
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_balance)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_balance_payload"
+        )
+
+    def _build_openpositions_payload(self) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for an open-positions pull. Pure.
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_openpositions)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _build_openpositions_payload"
+        )
+
+    # --- Transport (broker-side I/O, raises on error) ---
+
+    def _do_request_openorders(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an open-orders pull to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built open-orders payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_openorders"
+        )
+
+    def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send a balance pull to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built balance payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_balance"
+        )
+
+    def _do_request_openpositions(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send an open-positions pull to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built open-positions payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _do_request_openpositions"
+        )
+
+    # --- Parse responses (pure) ---
+
+    def _parse_openorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
+        """
+        Convert a raw open-orders response into a list of BrokerOrder. Pure.
+
+        Args:
+            raw: Raw broker response dict
+
+        Returns:
+            List of BrokerOrder (empty list = none reported)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_openorders_response"
+        )
+
+    def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Convert a raw balance response into an asset → amount dict. Pure.
+
+        Args:
+            raw: Raw broker response dict
+
+        Returns:
+            Balance dict keyed by asset
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_balance_response"
+        )
+
+    def _parse_openpositions_response(self, raw: Dict[str, Any]) -> List[BrokerPosition]:
+        """
+        Convert a raw open-positions response into a list of BrokerPosition. Pure.
+
+        Args:
+            raw: Raw broker response dict
+
+        Returns:
+            List of BrokerPosition (empty list = none reported / spot)
+        """
+        raise NotImplementedError(
+            f"{self.get_broker_name()} does not implement _parse_openpositions_response"
         )
 
     # ============================================

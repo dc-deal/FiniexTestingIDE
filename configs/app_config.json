@@ -70,6 +70,12 @@
             "slippage_threshold_pct": 0.5,
             "log_all": false,
             "sample_rate": 1.0
+        },
+        "reconciliation": {
+            "enabled": true,
+            "mode": "alert_only",
+            "interval_ticks": 100,
+            "min_interval_seconds": 60.0
         }
     },
     "backtesting": {

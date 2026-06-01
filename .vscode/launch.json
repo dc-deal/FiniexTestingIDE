@@ -1798,6 +1798,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Reconciliation (#151)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/reconciliation",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 30
+            }
+        },
+        {
             "name": "🧩 Pytest: Baseline (All)",
             "type": "debugpy",
             "request": "launch",

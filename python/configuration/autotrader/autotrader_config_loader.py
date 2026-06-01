@@ -21,6 +21,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DisplayDefaults,
     DriftAuditConfig,
     OrderGuardDefaults,
+    ReconciliationDefaults,
 )
 from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
 
@@ -51,6 +52,7 @@ _KNOWN_DISPLAY_KEYS: frozenset              = _allowlist_from(DisplayDefaults)
 _KNOWN_SAFETY_KEYS: frozenset               = _allowlist_from(SafetyConfig)
 _KNOWN_ORDER_GUARD_KEYS: frozenset          = _allowlist_from(OrderGuardDefaults)
 _KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
+_KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
@@ -82,6 +84,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     profile_explicitly_set_drift_enabled = (
         'enabled' in raw_profile_only.get('drift_audit', {})
     )
+    profile_explicitly_set_reconciliation_enabled = (
+        'enabled' in raw_profile_only.get('reconciliation', {})
+    )
 
     # Cascade: app_config.autotrader defaults → profile (profile wins)
     app_defaults = AppConfigManager().get_autotrader_defaults()
@@ -99,6 +104,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     safety_raw = raw.get('safety', {})
     order_guard_raw = raw.get('order_guard', {})
     drift_audit_raw = raw.get('drift_audit', {})
+    reconciliation_raw = raw.get('reconciliation', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -110,6 +116,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('safety',              safety_raw,       _KNOWN_SAFETY_KEYS)
     check_unknown_keys('order_guard',         order_guard_raw,  _KNOWN_ORDER_GUARD_KEYS)
     check_unknown_keys('drift_audit',         drift_audit_raw,  _KNOWN_DRIFT_AUDIT_KEYS)
+    check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
@@ -125,6 +132,16 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         drift_audit_enabled_resolved = False
     else:
         drift_audit_enabled_resolved = drift_audit_raw.get('enabled', True)
+
+    # Reconciliation auto-disables for mock adapters too: the MockBrokerAdapter
+    # does not track submitted orders into its broker-truth state, so any resting
+    # order would read as a false orphan. Auto-disable for mock UNLESS the profile
+    # sets `enabled` explicitly (same provenance pattern as drift_audit). Live
+    # adapters inherit the app_config default (enabled).
+    if adapter_type_resolved == 'mock' and not profile_explicitly_set_reconciliation_enabled:
+        reconciliation_enabled_resolved = False
+    else:
+        reconciliation_enabled_resolved = reconciliation_raw.get('enabled', False)
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -174,6 +191,12 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             slippage_threshold_pct=drift_audit_raw.get('slippage_threshold_pct', 0.5),
             log_all=drift_audit_raw.get('log_all', False),
             sample_rate=drift_audit_raw.get('sample_rate', 1.0),
+        ),
+        reconciliation=ReconciliationDefaults(
+            enabled=reconciliation_enabled_resolved,
+            mode=reconciliation_raw.get('mode', 'alert_only'),
+            interval_ticks=reconciliation_raw.get('interval_ticks', 100),
+            min_interval_seconds=reconciliation_raw.get('min_interval_seconds', 60.0),
         ),
         config_path=path,
     )

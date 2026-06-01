@@ -237,3 +237,16 @@ class AutoTraderDisplayStats:
     drift_slippage_events: int = 0
     drift_max_fee_pct: float = 0.0
     drift_max_slippage_pct: float = 0.0
+
+    # #151 — Reconciliation status (ALERT_ONLY)
+    # Populated from Reconciler.get_display_counters(). Renderer appends a
+    # one-line "Reconcile:" status to the SESSION panel when reconcile_enabled.
+    # divergences = current cycle; count = cycles run (0 = no check yet);
+    # state_age_s = seconds in the current clean/divergent state ("clean for Xs");
+    # next_in_s = time-based bound to the next reconcile (may fire sooner on ticks).
+    reconcile_enabled: bool = False
+    reconcile_divergences: int = 0
+    reconcile_clean: bool = True
+    reconcile_count: int = 0
+    reconcile_state_age_s: float = 0.0
+    reconcile_next_in_s: float = 0.0
