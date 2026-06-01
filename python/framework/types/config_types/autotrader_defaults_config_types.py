@@ -68,6 +68,18 @@ class ReconciliationDefaults(BaseModel):
     min_interval_seconds: float = 60.0  # ... OR every M wall-clock seconds (hybrid)
 
 
+class ApiMonitorConfig(BaseModel):
+    """
+    Broker REST transport-latency monitor defaults (#351).
+
+    Per-endpoint latency + error/reject telemetry, own live panel, plus logging
+    of the abnormal (failed calls + calls slower than slow_call_threshold_ms).
+    Live-only; default ON for live (mock auto-disabled in the loader).
+    """
+    enabled: bool = True
+    slow_call_threshold_ms: float = 3000.0  # calls slower than this are logged + flagged
+
+
 class AutotraderDefaultsConfig(BaseModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -79,3 +91,4 @@ class AutotraderDefaultsConfig(BaseModel):
     order_guard: OrderGuardDefaults = OrderGuardDefaults()
     drift_audit: DriftAuditConfig = DriftAuditConfig()
     reconciliation: ReconciliationDefaults = ReconciliationDefaults()
+    api_monitor: ApiMonitorConfig = ApiMonitorConfig()

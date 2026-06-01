@@ -76,6 +76,10 @@
             "mode": "alert_only",
             "interval_ticks": 100,
             "min_interval_seconds": 60.0
+        },
+        "api_monitor": {
+            "enabled": true,
+            "slow_call_threshold_ms": 3000.0
         }
     },
     "backtesting": {

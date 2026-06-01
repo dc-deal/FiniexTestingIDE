@@ -16,6 +16,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     TickSourceConfig,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ApiMonitorConfig,
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
     DisplayDefaults,
@@ -53,6 +54,7 @@ _KNOWN_SAFETY_KEYS: frozenset               = _allowlist_from(SafetyConfig)
 _KNOWN_ORDER_GUARD_KEYS: frozenset          = _allowlist_from(OrderGuardDefaults)
 _KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
 _KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefaults)
+_KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
@@ -87,6 +89,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     profile_explicitly_set_reconciliation_enabled = (
         'enabled' in raw_profile_only.get('reconciliation', {})
     )
+    profile_explicitly_set_api_monitor_enabled = (
+        'enabled' in raw_profile_only.get('api_monitor', {})
+    )
 
     # Cascade: app_config.autotrader defaults → profile (profile wins)
     app_defaults = AppConfigManager().get_autotrader_defaults()
@@ -105,6 +110,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     order_guard_raw = raw.get('order_guard', {})
     drift_audit_raw = raw.get('drift_audit', {})
     reconciliation_raw = raw.get('reconciliation', {})
+    api_monitor_raw = raw.get('api_monitor', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -117,6 +123,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('order_guard',         order_guard_raw,  _KNOWN_ORDER_GUARD_KEYS)
     check_unknown_keys('drift_audit',         drift_audit_raw,  _KNOWN_DRIFT_AUDIT_KEYS)
     check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
+    check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
@@ -142,6 +149,13 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         reconciliation_enabled_resolved = False
     else:
         reconciliation_enabled_resolved = reconciliation_raw.get('enabled', False)
+
+    # API monitor: same mock-auto-disable rationale — a mock adapter has no real
+    # _fetch_private transport, so the monitor would record nothing useful.
+    if adapter_type_resolved == 'mock' and not profile_explicitly_set_api_monitor_enabled:
+        api_monitor_enabled_resolved = False
+    else:
+        api_monitor_enabled_resolved = api_monitor_raw.get('enabled', True)
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -197,6 +211,10 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             mode=reconciliation_raw.get('mode', 'alert_only'),
             interval_ticks=reconciliation_raw.get('interval_ticks', 100),
             min_interval_seconds=reconciliation_raw.get('min_interval_seconds', 60.0),
+        ),
+        api_monitor=ApiMonitorConfig(
+            enabled=api_monitor_enabled_resolved,
+            slow_call_threshold_ms=api_monitor_raw.get('slow_call_threshold_ms', 3000.0),
         ),
         config_path=path,
     )

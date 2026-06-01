@@ -6,14 +6,16 @@ All broker adapters (MT5, Kraken, etc.) must implement this interface.
 Ensures consistent order creation API across different broker types.
 """
 
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.trading_env_types.order_types import (
     OrderCapabilities,
     OrderType,
@@ -62,6 +64,55 @@ class AbstractAdapter(ABC):
             'broker_info.company', 'unknown')
         self._hedging_allowed = self._get_config_value(
             'broker_info.hedging_allowed', False)
+
+        # #351 — optional API performance monitor, injected by AutoTraderMain for
+        # live adapters. None → no recording (zero overhead).
+        self._api_monitor: Optional[ApiPerfMonitor] = None
+
+    def set_api_monitor(self, monitor: ApiPerfMonitor) -> None:
+        """
+        Attach an API performance monitor (#351). Adapter transport layers record
+        per-endpoint latency/errors to it when set.
+
+        Args:
+            monitor: ApiPerfMonitor instance (or None to detach)
+        """
+        self._api_monitor = monitor
+
+    def get_api_monitor(self) -> Optional[ApiPerfMonitor]:
+        """Return the attached ApiPerfMonitor, or None if not instrumented."""
+        return self._api_monitor
+
+    def _timed_call(self, endpoint: str, fn: Callable[[], Any]) -> Any:
+        """
+        Time a broker transport call and record it to the API monitor (#351).
+
+        The single, broker-agnostic instrumentation point: concrete adapters wrap
+        each transport call in `self._timed_call(endpoint, lambda: <transport>)`.
+        When no monitor is attached it just calls fn() (zero overhead). Failures
+        are recorded then re-raised — never swallowed. The measured time includes
+        whatever fn() does (e.g. rate-limit throttle), i.e. the real call cost.
+
+        Args:
+            endpoint: Endpoint identifier for the monitor (e.g. '/0/private/OpenOrders')
+            fn: Zero-arg callable performing the actual broker transport call
+
+        Returns:
+            Whatever fn() returns
+        """
+        if self._api_monitor is None:
+            return fn()
+        t0 = time.perf_counter()
+        try:
+            result = fn()
+        except Exception as e:
+            self._api_monitor.record(
+                endpoint, (time.perf_counter() - t0) * 1000.0,
+                success=False, error=str(e),
+            )
+            raise
+        self._api_monitor.record(endpoint, (time.perf_counter() - t0) * 1000.0)
+        return result
 
     # ============================================
     # Common Configuration Validation

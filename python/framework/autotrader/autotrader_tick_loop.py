@@ -24,6 +24,8 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -83,6 +85,7 @@ class AutotraderTickLoop:
         drift_auditor: Optional[DriftAuditor] = None,
         decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
         reconciler: Optional[Reconciler] = None,
+        api_monitor: Optional[ApiPerfMonitor] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -102,6 +105,7 @@ class AutotraderTickLoop:
         self._drift_auditor = drift_auditor
         self._decision_event_dispatcher = decision_event_dispatcher
         self._reconciler = reconciler
+        self._api_monitor = api_monitor
         self._running = False
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
@@ -430,6 +434,7 @@ class AutotraderTickLoop:
             seconds_since_last_tick=seconds_since_start,
             **self._drift_display_counters(),
             **self._reconcile_display_counters(),
+            api_perf=self._api_perf_snapshot(),
         )
 
     def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
@@ -611,6 +616,7 @@ class AutotraderTickLoop:
             last_tick_time=self._executor.get_current_time(),
             **self._drift_display_counters(),
             **self._reconcile_display_counters(),
+            api_perf=self._api_perf_snapshot(),
         )
 
     def _drift_display_counters(self) -> Dict[str, object]:
@@ -648,6 +654,12 @@ class AutotraderTickLoop:
             'reconcile_state_age_s': float(counters.get('reconcile_state_age_s', 0.0)),
             'reconcile_next_in_s': float(counters.get('reconcile_next_in_s', 0.0)),
         }
+
+    def _api_perf_snapshot(self) -> Optional[ApiPerfSnapshot]:
+        """Return the API monitor snapshot for the display, or None if not wired (#351)."""
+        if self._api_monitor is None:
+            return None
+        return self._api_monitor.get_snapshot()
 
     def _check_new_maxes(self) -> None:
         """Log new all-time max execution times for workers and decision logic."""

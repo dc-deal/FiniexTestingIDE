@@ -227,6 +227,9 @@ class AutoTraderLiveDisplay:
         worker_perf = self._build_worker_perf_panel(stats)
         if worker_perf is not None:
             left_panels.append(Layout(worker_perf, name='worker_perf'))
+        api_perf = self._build_api_perf_panel(stats)
+        if api_perf is not None:
+            left_panels.append(Layout(api_perf, name='api_perf'))
         layout['left'].split_column(*left_panels)
 
         # Center: Portfolio + Tick Processing + Clipping
@@ -257,13 +260,17 @@ class AutoTraderLiveDisplay:
             Layout(name='right', ratio=1),
         )
 
-        # Left: Session + Portfolio + Algo State
-        layout['left'].split_column(
+        # Left: Session + Portfolio + Algo State + Connection (+ API perf)
+        left_panels = [
             Layout(self._build_session_panel(stats), name='session'),
             Layout(self._build_portfolio_panel(stats), name='portfolio'),
             Layout(self._build_algo_state_panel(stats), name='algo'),
             Layout(self._build_connection_panel(stats), name='connection'),
-        )
+        ]
+        api_perf = self._build_api_perf_panel(stats)
+        if api_perf is not None:
+            left_panels.append(Layout(api_perf, name='api_perf'))
+        layout['left'].split_column(*left_panels)
 
         # Right: Positions + Orders + Trade History
         right_panels = [
@@ -280,12 +287,16 @@ class AutoTraderLiveDisplay:
     def _render_single_col(self, stats: AutoTraderDisplayStats) -> Layout:
         """Single-column layout for narrow terminals (<120 cols)."""
         layout = Layout()
-        layout.split_column(
+        panels = [
             Layout(self._build_session_panel(stats), name='session'),
             Layout(self._build_portfolio_panel(stats), name='portfolio'),
             Layout(self._build_positions_panel(stats), name='positions'),
             Layout(self._build_orders_panel(stats), name='orders'),
-        )
+        ]
+        api_perf = self._build_api_perf_panel(stats)
+        if api_perf is not None:
+            panels.append(Layout(api_perf, name='api_perf'))
+        layout.split_column(*panels)
         return layout
 
     # =========================================================================
@@ -821,6 +832,34 @@ class AutoTraderLiveDisplay:
             lines.append(f'{name:<16s} {bar} avg={display_ms:.2f}ms  [dim]max {max_ms:.2f}ms[/dim]')
 
         return Panel('\n'.join(lines), title='[bold]WORKER PERFORMANCE[/bold]', box=box.ROUNDED)
+
+    def _build_api_perf_panel(self, stats: AutoTraderDisplayStats) -> Optional[Panel]:
+        """
+        Per-endpoint broker REST latency + errors (#351). One row per endpoint
+        (a new endpoint adds a row; repeat calls update it). Returns None when no
+        monitor is wired / no calls yet. Rows over the slow threshold are red.
+        """
+        snap = stats.api_perf
+        if snap is None or not snap.endpoints:
+            return None
+
+        threshold = self._config.api_monitor.slow_call_threshold_ms
+        now = datetime.now(timezone.utc)
+        lines = []
+        for s in snap.endpoints:
+            name = s.endpoint.rsplit('/', 1)[-1][:16]   # /0/private/OpenOrders → OpenOrders
+            age = (f'{self._fmt_duration((now - s.last_fired_at).total_seconds())} ago'
+                   if s.last_fired_at else '—')
+            max_str = f'{s.max_ms:.0f}ms'
+            if s.max_ms > threshold:
+                max_str = f'[red]{max_str}[/red]'
+            err = f'  [yellow]⚠{s.error_count}[/yellow]' if s.error_count else ''
+            lines.append(
+                f'{name:<16s} {s.count:>3}× avg {s.avg_ms:.0f}ms · max {max_str} · {age}{err}')
+        lines.append('─' * 50)
+        lines.append(
+            f'[dim]slow >{threshold:.0f}ms: {snap.slow_count} · errors: {snap.total_errors}[/dim]')
+        return Panel('\n'.join(lines), title='[bold]API PERFORMANCE[/bold]', box=box.ROUNDED)
 
     def _build_algo_state_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Worker display=True outputs, last decision, and static config params."""

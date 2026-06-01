@@ -420,6 +420,34 @@ The mock's `MockExecutionMode` (`INSTANT_FILL`, `DELAYED_FILL`, `REJECT_ALL`, `T
 
 ---
 
+## API Performance Monitoring (#351)
+
+The API Performance Monitor (`ApiPerfMonitor`) and its `set_api_monitor()` hook
+live in `AbstractAdapter` — broker-agnostic, shared by every adapter. Only the
+**measurement point is per-adapter**, because the transport differs per broker.
+Wrap each broker transport call in the broker-agnostic `AbstractAdapter._timed_call`:
+
+```python
+# Kraken funnels ALL private calls through one method → one wrap:
+def _fetch_private(self, endpoint, data=None):
+    return self._timed_call(endpoint, lambda: self._do_fetch_private(endpoint, data))
+
+# An adapter with several distinct transport calls (e.g. MT5) wraps each:
+def _send_order(self, request):
+    return self._timed_call('order_send', lambda: mt5.order_send(request))
+```
+
+- `_timed_call(endpoint, fn)` times `fn()` (including any rate-limit throttle — the
+  real call cost), records `(endpoint, ms, success/error)`, and re-raises on
+  failure. With no monitor attached it just calls `fn()` (zero overhead).
+- `endpoint` becomes the live-panel row label — use a stable, human-readable id
+  (the REST path tail like `/0/private/OpenOrders`, or the bridge method name).
+- You do NOT wire the monitor: `AutoTraderMain` builds + injects it for live
+  adapters (`config.api_monitor.enabled`, mock auto-disabled). Just call
+  `_timed_call` at your transport boundary and the panel + logging come for free.
+
+---
+
 ## AutoTrader Wiring
 
 AutoTrader profile references only the broker type and adapter type:
@@ -445,6 +473,7 @@ The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py
 - `python/framework/trading_env/adapters/kraken_adapter.py` — real HTTPS reference
 - `python/framework/testing/mock_broker_adapter.py` — in-process template (cleanest read)
 - `python/framework/trading_env/adapters/dry_run_simulator.py` — shared dry-run lifecycle utility
+- `python/framework/reporting/api_perf_monitor.py` — API performance monitor (#351), instrumented via `_timed_call`
 - `python/framework/trading_env/live/live_request_processor.py` — Tier-3 composition (sync + async orchestrators, worker thread, drain_inbox)
 - `tests/live_adapters/` — reference test suite
 - `docs/tests/live_adapters/kraken_adapter_integration_tests.md` — test pattern reference

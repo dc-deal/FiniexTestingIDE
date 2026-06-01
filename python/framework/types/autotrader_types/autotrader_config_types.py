@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ApiMonitorConfig,
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
     DisplayDefaults,
@@ -112,4 +113,5 @@ class AutoTraderConfig:
     order_guard: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
     drift_audit: DriftAuditConfig = field(default_factory=DriftAuditConfig)
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
+    api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     config_path: Optional[Path] = None

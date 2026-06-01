@@ -32,6 +32,7 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -89,6 +90,9 @@ class AutotraderMain:
 
         # #151 — Reconciler (live-only, gated by config.reconciliation.enabled)
         self._reconciler: Optional[Reconciler] = None
+
+        # #351 — API performance monitor (live-only, gated by config.api_monitor.enabled)
+        self._api_monitor: Optional[ApiPerfMonitor] = None
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
@@ -178,6 +182,16 @@ class AutotraderMain:
                     symbol=self._config.symbol,
                 )
 
+            # === API PERFORMANCE MONITOR (#351) ===
+            # Per-endpoint REST latency/error telemetry; injected into the adapter
+            # so its transport layer records to it. Live-only.
+            if self._config.api_monitor.enabled and isinstance(self._executor, LiveTradeExecutor):
+                self._api_monitor = ApiPerfMonitor(
+                    config=self._config.api_monitor,
+                    logger=self._session_logger,
+                )
+                self._executor.broker.adapter.set_api_monitor(self._api_monitor)
+
             # === DECISION EVENT CHANNEL (#348) ===
             # Built only when the active decision logic subscribes to events.
             self._decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
@@ -238,6 +252,7 @@ class AutotraderMain:
                 drift_auditor=self._drift_auditor,
                 decision_event_dispatcher=self._decision_event_dispatcher,
                 reconciler=self._reconciler,
+                api_monitor=self._api_monitor,
             )
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
@@ -334,6 +349,13 @@ class AutotraderMain:
                 self._reconciler.shutdown()
             except Exception as e:
                 self._global_logger.error(f"Error during reconciler shutdown: {e}")
+
+        # #351 — API monitor cleanup (final per-endpoint summary)
+        if self._api_monitor:
+            try:
+                self._api_monitor.shutdown()
+            except Exception as e:
+                self._global_logger.error(f"Error during API monitor shutdown: {e}")
 
         # Collect statistics and produce reports
         return self._collect_results(ticks_processed, ticks_clipped)
