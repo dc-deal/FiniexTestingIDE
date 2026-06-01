@@ -16,6 +16,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
+from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 
 
 @dataclass
@@ -250,3 +251,7 @@ class AutoTraderDisplayStats:
     reconcile_count: int = 0
     reconcile_state_age_s: float = 0.0
     reconcile_next_in_s: float = 0.0
+
+    # #351 — API performance monitor snapshot (None when not wired / disabled).
+    # Renderer adds an "API PERFORMANCE" panel when present + non-empty.
+    api_perf: Optional[ApiPerfSnapshot] = None

@@ -1223,6 +1223,23 @@ class KrakenAdapter(AbstractAdapter):
 
     def _fetch_private(self, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
         """
+        Signed POST to Kraken private API — every private call funnels through here.
+
+        Delegates to _do_fetch_private via the broker-agnostic _timed_call wrapper
+        so the API monitor (#351) records per-endpoint latency/errors. The timing
+        includes the rate-limit throttle (the real tick-loop-blocking cost).
+
+        Args:
+            endpoint: API path (e.g., '/0/private/AddOrder')
+            data: Optional POST data
+
+        Returns:
+            API result dict
+        """
+        return self._timed_call(endpoint, lambda: self._do_fetch_private(endpoint, data))
+
+    def _do_fetch_private(self, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+        """
         POST request to Kraken private API with HMAC-SHA512 signing.
 
         Args:

@@ -86,6 +86,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
+| [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
 | [Margin Validation](tests/simulation/margin_validation_tests.md) | Margin rejection, fill timing |
 | [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
