@@ -15,6 +15,7 @@ All tests are classified by **pipeline domain** and **test type**. pytest marks 
 | `data` | `tests/data/` | `pytest -m data` |
 | `benchmark` | `tests/simulation/benchmark/` | excluded from normal runner |
 | `live_adapter` | `tests/live_adapters/` | excluded from normal runner — requires real account |
+| `live_field_study` | `tests/live_field_study/` | excluded from normal runner — operator-driven live release gate (#332) |
 | `integration` | any path containing `/integration/` | `pytest -m integration` |
 | `unit` | order_guard, live_executor, safety, bar_rendering, workers, etc. | `pytest -m unit` |
 
@@ -53,6 +54,7 @@ tests/
 │   ├── modify_lifecycle/  unit — async modify/cancel scheduling + resolution (#318)
 │   ├── trade_emission/    unit — sim BrokerTrade emission via shared _fill_open_order (#326)
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)
+│   ├── order_precision/   unit — order price → digits normalization (#332)
 │   ├── event_channel/     integration — decision event channel dual-world parity (#348)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
@@ -62,7 +64,9 @@ tests/
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
-│   └── api_monitor/       unit — broker REST latency/error telemetry (#351)
+│   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
+│   ├── field_study_machine/  unit — Field Study phase state machine (#332)
+│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326)
 │
@@ -74,7 +78,9 @@ tests/
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── user_namespace/    unit — USER worker/decision discovery
-│   └── api/               unit — REST API endpoints
+│   ├── api/               unit — REST API endpoints
+│   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
+│   └── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers); runtime validator → #359
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection
@@ -83,11 +89,15 @@ tests/
 │   ├── scenario_generator/    unit — block generation
 │   └── tick_processing_budget/ unit — budget filtering
 │
-└── live_adapters/         live-api — real broker API validation (excluded from runner)
-    ├── test_kraken_adapter_order_lifecycle_dry.py    AddOrder dry-run (validate=true), no funds
-    ├── test_kraken_adapter_order_lifecycle_live.py   Full lifecycle, real orders, no fills
-    └── test_kraken_adapter_order_lifecycle_fill.py   Fill validation, real MARKET execution
-    └── reports/           release receipt JSON files (committed per release)
+├── live_adapters/         live-api — real broker API validation (excluded from runner)
+│   ├── test_kraken_adapter_order_lifecycle_dry.py    AddOrder dry-run (validate=true), no funds
+│   ├── test_kraken_adapter_order_lifecycle_live.py   Full lifecycle, real orders, no fills
+│   ├── test_kraken_adapter_order_lifecycle_fill.py   Fill validation, real MARKET execution
+│   └── reports/           release receipt JSON files (committed per release)
+│
+└── live_field_study/      acceptance — operator-driven live release gate (excluded from runner) (#332)
+    ├── test_field_study_certificate.py  CI-friendly committed-certificate validation
+    └── reports/           PASS/FAIL acceptance certificates (committed per release)
 ```
 
 ---

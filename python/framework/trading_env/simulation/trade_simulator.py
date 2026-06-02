@@ -368,6 +368,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Returns:
             OrderResult with PENDING status (or rejection)
         """
+        request = self._normalize_order_request(request)
         self._orders_sent += 1
 
         # Generate order ID
@@ -765,6 +766,12 @@ class TradeSimulator(AbstractTradeExecutor):
         effective_tp = current_tp if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(pending.symbol).digits
+        effective_price = self._round_price(effective_price, digits)
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         # Validate SL/TP against limit price (not current tick).
         # Validation happens AT SCHEDULING time — algo gets immediate rejection
         # if the modification is invalid. Only the application is deferred.
@@ -982,6 +989,13 @@ class TradeSimulator(AbstractTradeExecutor):
         effective_tp = current_tp if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(pending.symbol).digits
+        effective_stop = self._round_price(effective_stop, digits)
+        effective_limit = self._round_price(effective_limit, digits)
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         # Validate SL/TP against reference price
         # STOP: validate against stop_price (market fill approximation)
         # STOP_LIMIT: validate against limit_price (actual fill price)
@@ -1074,6 +1088,11 @@ class TradeSimulator(AbstractTradeExecutor):
         # Capture effective SL/TP — UNSET → current position value
         effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(position.symbol).digits
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
 
         current_msc = self._get_current_msc()
         self._pending_position_modifications[position_id] = ModificationRequest(

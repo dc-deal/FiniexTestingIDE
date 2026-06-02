@@ -494,6 +494,62 @@ class AbstractTradeExecutor(ABC):
         pass
 
     # ============================================
+    # Order Normalization (concrete — shared by all modes)
+    # ============================================
+
+    @staticmethod
+    def _round_price(price: Optional[float], digits: int) -> Optional[float]:
+        """
+        Round a price to the symbol's decimal precision.
+
+        Args:
+            price: Price value, or None (passes through unchanged)
+            digits: Decimal places the broker allows for this symbol
+
+        Returns:
+            Price rounded to digits decimals, or None
+        """
+        if price is None:
+            return None
+        return round(price, digits)
+
+    def _normalize_order_request(self, request: OpenOrderRequest) -> OpenOrderRequest:
+        """
+        Snap an order's price fields to the symbol's broker precision.
+
+        Brokers enforce a price tick (digits); a raw computed float — e.g. a limit
+        price derived from an offset percentage — is rejected by the broker
+        (Kraken: "price can only be specified up to N decimals"). Normalizing on
+        the shared executor layer, before the local portfolio records the order and
+        before the adapter submits it, keeps the local book and the broker in
+        agreement and makes simulation and live round identically. Subclasses call
+        this first in open_order().
+
+        Volume is deliberately NOT snapped: a lot change is a position-size change,
+        so a step-misaligned volume is left for validate_order to reject as
+        INVALID_LOT_SIZE (broker-accurate) rather than silently resized.
+
+        Args:
+            request: Incoming order request; price/stop fields may be raw floats
+
+        Returns:
+            The same request with price-like fields rounded to the symbol's digits
+        """
+        # Unknown symbol → skip; open_order's validation rejects it gracefully
+        # (get_symbol_specification would otherwise raise on a missing spec).
+        if request.symbol not in self.broker.get_all_aviable_symbols():
+            return request
+
+        symbol_spec = self.broker.get_symbol_specification(request.symbol)
+        digits = symbol_spec.digits
+
+        request.price = self._round_price(request.price, digits)
+        request.stop_price = self._round_price(request.stop_price, digits)
+        request.stop_loss = self._round_price(request.stop_loss, digits)
+        request.take_profit = self._round_price(request.take_profit, digits)
+        return request
+
+    # ============================================
     # Fill Processing (concrete — shared by all modes)
     # ============================================
 
@@ -1248,6 +1304,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
+                submitted_at=p.submitted_at,
             )
             for p in self._active_limit_orders
         ]
@@ -1265,6 +1322,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
+                submitted_at=p.submitted_at,
             )
             for p in self._active_stop_orders
         ]

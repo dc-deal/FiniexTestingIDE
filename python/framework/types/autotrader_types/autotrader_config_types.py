@@ -98,6 +98,9 @@ class AutoTraderConfig:
         tick_source: Tick source configuration
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
+        dry_run: Optional per-profile dry-run override. None = use the broker's
+            market_config default. Setting it (especially False = live) overrides the
+            global default for THIS profile only; the startup logs a loud warning.
     """
     name: str = ''
     symbol: str = ''
@@ -115,3 +118,4 @@ class AutoTraderConfig:
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     config_path: Optional[Path] = None
+    dry_run: Optional[bool] = None

@@ -459,6 +459,34 @@ All methods delegate through DecisionTradingApi → AbstractTradeExecutor → th
 
 ---
 
+## Order Normalization: The Shared Core
+
+Before an order is recorded locally or sent to the broker, its price fields are snapped to the symbol's precision. This runs on the shared executor layer — `AbstractTradeExecutor._normalize_order_request(request)` — and both `TradeSimulator.open_order()` and `LiveTradeExecutor.open_order()` call it as their first step.
+
+**Why here and not in `DecisionTradingApi`:** broker price precision (`digits` / tick size) is an execution/broker concern, not an algo-API concern. Normalizing on the executor layer guarantees two things:
+
+1. **Local book == broker truth** — the PortfolioManager records the *same* rounded price the adapter sends, so reconciliation does not see a phantom divergence.
+2. **Sim == Live parity** — both executors round identically, so a backtest and a live run produce the same prices.
+
+A raw computed float (e.g. a limit price from an offset percentage: `1900.53 × 0.998 = 1896.7294…`) is otherwise rejected by the broker — Kraken: `EOrder:Invalid price: ETH/USD price can only be specified up to 2 decimals`. The normalization rounds `price`, `stop_price`, `stop_loss`, and `take_profit` to the symbol's `digits` (from `SymbolSpecification`).
+
+The **modify paths carry prices too** and use the same `_round_price` helper at the point each value is prepared for the broker: `modify_limit_order` (new limit price), `modify_stop_order` (new trigger + limit price), and the native-SL/TP `modify_position`. Both executors round identically (sim/live parity). The Kraken-style local-only position SL/TP (capability `native_position_sl_tp=False`) is left unrounded — it is a local trigger threshold, never submitted to the broker.
+
+`round(price, digits)` is correct for **decimal-priced** markets, where `tick_size == 10^(-digits)` — true for every Kraken spot pair (BTCUSD `digits=1`, ETHUSD `2`, ADAUSD `6`, …) and MT5 forex/CFD (EURUSD `5`, JPY pairs `3`). A market with a **non-decimal tick** (futures / indices with a tick like `0.25` or `0.05`) must snap to the tick instead — a one-line change in `_round_price`:
+
+```python
+# decimal markets (current): round to digits
+return round(price, digits)
+# non-decimal tick (futures/indices): snap to tick_size, then clean float artifacts
+return round(round(price / tick_size) * tick_size, digits)
+```
+
+No such market is in scope, so the simpler decimal rounding is used (YAGNI).
+
+**Volume is deliberately NOT normalized here.** Unlike price (a sub-tick change is economically negligible and broker-aligned), a lot change is a *position-size* change — silently snapping `0.015 → 0.02` would alter exposure by a third. Mainstream exchange clients reject a step-misaligned volume, or require the caller to round it explicitly (CCXT `amount_to_precision`); `validate_order` already rejects it as `INVALID_LOT_SIZE`. A strategy that computes a fractional lot must floor it to `volume_step` itself.
+
+---
+
 ## Fill Processing: The Shared Core
 
 The fill methods (`_fill_open_order`, `_fill_close_order`) are the heart of the hybrid architecture. They contain the most complex and critical logic:
@@ -570,7 +598,7 @@ In live mode, the broker handles limit order matching server-side. `LiveTradeExe
 - **Terminal** (REJECTED/CANCELLED/EXPIRED) → rejection recorded in `_order_history`
 - **PENDING** → keep polling
 
-`modify_limit_order()` updates both the broker (via `adapter.modify_order()`) and the local shadow state (price, SL, TP). If the broker returns a new `broker_ref` (e.g. Kraken `EditOrder`), the local `PendingOrder.broker_ref` is updated.
+`modify_limit_order()` updates both the broker (via `adapter.modify_order()`) and the local shadow state (price, SL, TP). Kraken uses `AmendOrder` — an in-place amend that keeps the same `broker_ref` (no cancel-replace). The local `PendingOrder.broker_ref` is only swapped if a broker returns a new ref on modify (defensive path, not triggered by Kraken).
 
 ### Cleanup
 

@@ -10,9 +10,10 @@ Session log rotates daily: session_logs/autotrader_session_YYYYMMDD.log
 
 import queue
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
@@ -33,6 +34,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
     PositionSnapshot,
+    RejectionEntry,
     TradeHistoryEntry,
 )
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
@@ -120,7 +122,8 @@ class AutotraderTickLoop:
         self._safety_drawdown_pct: float = 0.0
 
         # Last rejection (displayed until overwritten by next rejection)
-        self._last_rejection = ''
+        self._recent_rejections: Deque[RejectionEntry] = deque(maxlen=5)
+        self._rejection_count: int = 0
 
         # New-max tracking for debug logging
         self._known_worker_maxes: Dict[str, float] = {}
@@ -269,7 +272,14 @@ class AutotraderTickLoop:
             order_result = self._decision_logic.execute_decision(decision, tick)
             if order_result and order_result.is_rejected:
                 reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
-                self._last_rejection = f'{reason} — {order_result.rejection_message} ({decision.action.value})'
+                self._rejection_count += 1
+                self._recent_rejections.append(RejectionEntry(
+                    seq=self._rejection_count,
+                    reason=reason,
+                    message=order_result.rejection_message or '',
+                    side=decision.action.value,
+                    tick_time=self._executor.get_current_time(),
+                ))
 
             # === 6b. Decision event drain (#348) ===
             # Events buffered during on_tick (fills, partial closes, cancels)
@@ -507,6 +517,7 @@ class AutotraderTickLoop:
                 entry_trades=list(trade.entry_trades),
                 exit_trades=list(trade.exit_trades),
                 exit_side=trade.exit_side,
+                exit_time=trade.exit_time,
             ))
 
         # Clipping — lightweight snapshot (avoids full session summary construction)
@@ -609,7 +620,8 @@ class AutotraderTickLoop:
             safety_reason=self._safety_reason,
             safety_current_value=self._safety_current_value,
             safety_drawdown_pct=self._safety_drawdown_pct,
-            last_rejection=self._last_rejection,
+            recent_rejections=list(self._recent_rejections),
+            total_rejections=self._rejection_count,
             last_awareness=self._decision_logic.get_last_awareness(),
             event_history=self._decision_logic.get_event_history(),
             total_events_emitted=self._decision_logic.get_total_events_emitted(),

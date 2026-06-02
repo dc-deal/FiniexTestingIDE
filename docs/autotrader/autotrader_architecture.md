@@ -204,6 +204,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
+| `dry_run` | `true` / `false` / omit | Optional per-profile override of the global `market_config` dry_run. Omit = inherit the broker default. Setting it (especially `false` = live) overrides the global default for this profile only and logs a loud override warning at startup |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
@@ -446,6 +447,22 @@ WARNING | ⛔ Safety circuit breaker triggered: min_equity (4.8000 < 5.0000)
 INFO    | ✅ Safety circuit breaker cleared
 ```
 
+## Acceptance Testing — Live Field Study (#332)
+
+The Live Field Study is the live acceptance gate: an operator-driven, deterministic phase
+sequence (`CORE/live_field_study/live_field_study`) that drives the full live pipeline
+through every order type, modify/cancel path, rejection battery, partial close, and idle
+heartbeat against real Kraken Spot at min-lot. It records the run as analysis-ready JSONL
+(two planes — bot-observed via #348 + broker-truth via #151) and a post-run analyzer emits
+a PASS/FAIL acceptance certificate (mirroring the benchmark / live-adapter certificates).
+
+It reuses the existing `request_session_end` API (#348) for a clean exit, asserts the
+account is flat before trading (`Reconciler.is_account_flat()`, #151), and self-aborts on
+a budget (`max_session_cost_usd`) or wall-clock (`session_timeout_s`) breach.
+
+Operator guide: [field_study_guide.md](../tests/live_field_study/field_study_guide.md).
+The certificate is a release-gate item (see the Release Checklist).
+
 ## File Structure
 
 ```
@@ -635,7 +652,7 @@ Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are
 |------|-------|---------------------|---------|
 | 1 | Config validation, broker/symbol specs | No | Backtesting + AutoTrader |
 | 2 | Order creation (MarketOrder, LimitOrder, etc.) | No | Backtesting + AutoTrader |
-| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, EditOrder) | Yes | AutoTrader (live mode) |
+| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, AmendOrder) | Yes | AutoTrader (live mode) |
 
 ### Tier 3 API Mapping
 
@@ -644,7 +661,7 @@ Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are
 | `execute_order()` | `POST /0/private/AddOrder` | pair, type, ordertype, volume, price, validate |
 | `check_order_status()` | `POST /0/private/QueryOrders` | txid |
 | `cancel_order()` | `POST /0/private/CancelOrder` | txid |
-| `modify_order()` | `POST /0/private/EditOrder` | txid, price |
+| `modify_order()` | `POST /0/private/AmendOrder` | txid, limit_price |
 
 ### Dry-Run Mode
 
@@ -656,9 +673,9 @@ Dry-run behavior:
 - `execute_order()`: sends `validate=true`, returns synthetic `DRYRUN-NNNNNN` broker_ref
 - `check_order_status()` / `cancel_order()` / `modify_order()`: return synthetic responses (order doesn't exist at broker)
 
-### EditOrder and Broker Reference Swap
+### AmendOrder — In-Place Modify
 
-Kraken's EditOrder replaces the order entirely — the old txid becomes invalid and a **new txid** is returned. `LiveOrderTracker.update_broker_ref()` swaps the reference in the tracking index. `LiveTradeExecutor.modify_limit_order()` triggers this automatically when the returned broker_ref differs from the original.
+Kraken's `AmendOrder` amends the order **in place** — the txid (and any client order id) stay the same, so there is no cancel-replace and no broker_ref swap. `_parse_modify_response` returns the unchanged `broker_ref`; the response carries an `amend_id` for auditing. The `update_broker_ref(old, new)` swap path remains as a defensive net for brokers that *do* return a new ref on modify, but it is not exercised by Kraken.
 
 ### Rate Limiting
 
@@ -680,7 +697,7 @@ Three gates on the scheduler, all silent skips:
 
 Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
 
-`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard exists because Kraken's EditOrder flips the txid: a QueryJob dispatched before the swap returns a response carrying the OLD ref, while `pending.broker_ref` has already been updated to the new one. State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
+`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard was built for the legacy EditOrder flip (a QueryJob dispatched before the swap returned the OLD ref while `pending.broker_ref` already held the NEW one). With in-place `AmendOrder` the txid is stable across a modify, so the guard no longer fires in normal Kraken flow; it stays as a defensive net (e.g. brokers that cancel-replace). State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
 
 `poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
 

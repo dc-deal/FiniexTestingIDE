@@ -6,6 +6,32 @@ Requires a real Kraken account with API credentials.
 **Excluded from the unified test runner** (like `simulation/benchmark`).
 Run explicitly, or as part of the release checklist.
 
+## Layer & Relation to the Live Field Study (#332)
+
+This suite is the **adapter-integration layer** of the test pyramid:
+
+```
+Unit / mock          → code correctness
+Adapter integration  → broker transport, isolated   ← THIS suite
+UAT (full pipeline)  → Live Field Study (#332)
+Soak / endurance     → long-running stability (out of scope)
+```
+
+**What only this layer proves:** the **raw `BrokerResponse` contract** at the adapter
+boundary — `status`, `broker_ref` (real vs. `DRYRUN-`), `rejection_reason`,
+`executed_price`, `filled_lots` — asserted *directly*. The Field Study observes outcomes
+through the *pipeline* (positions/orders via the #348 event channel); it does **not**
+assert the raw adapter response. A bug in the executor's response→state translation is
+therefore masked in the Field Study but **caught here** (especially `_fill`).
+
+**Diagnostic value:** a red Field Study → run this suite to localize (adapter transport
+vs. bot logic). **Cost ladder:** `_dry` (free) → `_live` (~free, no fills) → `_fill`
+(fees only).
+
+**Per-adapter mandate:** every new adapter ships this suite (release-gate). The granular
+adapter contract scales *per broker*; the Field Study (#332) is the integrated gate on
+top, and the account-protection guards are certified separately (#358) — also per adapter.
+
 ## Location
 
 ```
@@ -25,7 +51,7 @@ require a real order reference and therefore real funds (Phase 2).
 | `AddOrder` MARKET | ✅ validates syntax + margin | ✅ places order |
 | `AddOrder` LIMIT | ✅ validates syntax + margin | ✅ places order |
 | `QueryOrders` | ❌ DRYRUN ref doesn't exist | ✅ returns status |
-| `EditOrder` | ❌ short-circuited | ✅ modifies + returns new txid |
+| `AmendOrder` | ❌ short-circuited | ✅ amends in-place (same txid) |
 | `CancelOrder` | ❌ short-circuited | ✅ cancels |
 
 ## Requirements
@@ -84,9 +110,9 @@ as `BrokerOrderStatus.REJECTED`.
 |------|--------|----------|
 | 1 | `execute_order` LIMIT 0.1 ETH @ $100 | `PENDING`, real txid (not `DRYRUN-*`) |
 | 2 | `check_order_status(txid)` | `PENDING` (Kraken `open` → PENDING) |
-| 3 | `modify_order(txid, new_price=110.0)` | `PENDING`, new txid (Kraken replaces order) |
-| 4 | `check_order_status(new_txid)` | `PENDING` |
-| 5 | `cancel_order(new_txid)` | `CANCELLED` |
+| 3 | `modify_order(txid, new_price=110.0)` | `PENDING`, same txid (Kraken AmendOrder amends in-place) |
+| 4 | `check_order_status(txid)` | `PENDING` |
+| 5 | `cancel_order(txid)` | `CANCELLED` |
 
 Lot size 0.1 ETH × $100 = $10 meets Kraken's ~$5 cost minimum. The order is placed
 far below market (~$2000+) and is never filled. A `try/finally` block in the test
@@ -102,7 +128,7 @@ cancels the order even if an assertion fails mid-way.
 | LIMIT + SL/TP kwargs | ✅ | — | — |
 | `QueryOrders` → PENDING | — | ✅ (×2) | — |
 | `QueryOrders` → FILLED + fill_price + filled_lots | — | — | ✅ (×2) |
-| `EditOrder` → new txid | — | ✅ | — |
+| `AmendOrder` → same txid | — | ✅ | — |
 | `CancelOrder` | — | ✅ | — |
 | Invalid symbol → REJECTED | ✅ | — | — |
 | Below `volume_min` → REJECTED | ✅ | — | — |
@@ -151,6 +177,13 @@ Commit this report alongside the benchmark report as release artifacts.
 This Kraken suite is the **reference implementation** for all future live adapter test suites.
 When adding a new broker (e.g. MT5, #209), mirror this three-file structure exactly:
 
+> **§26 note (docs):** the broker-agnostic methodology (this section + *Layer & Relation
+> to the Live Field Study* above) currently lives in this Kraken doc. When the **2nd
+> adapter (MT5, #209)** lands, extract it into
+> `docs/tests/live_adapters/adapter_integration_overview.md` (a wrapper/overview doc) and
+> leave thin per-broker docs (`kraken_…`, `mt5_…`) that reference it; cross-link
+> `adapter_development_guide.md` + #238. Do not create the wrapper prematurely (1 adapter today).
+
 ```
 tests/live_adapters/
 ├── test_kraken_adapter_order_lifecycle_dry.py    ← reference: dry-run template
@@ -168,7 +201,7 @@ tests/live_adapters/
 
 **Checklist per new adapter (_live):**
 - Full lifecycle: place LIMIT far below market → query → modify (if supported) → cancel
-- Verify `modify_order` returns a new `broker_ref` (some brokers replace the order)
+- Verify `modify_order` returns the expected `broker_ref` (Kraken `AmendOrder` keeps it; cancel-replace brokers return a new one)
 - `try/finally` block cancels the order on assertion failure — no open orders left
 
 **Checklist per new adapter (_fill):**

@@ -1,0 +1,11 @@
+{"record_kind": "header", "schema_version": "1.0", "started_utc": "2026-06-02T12:00:00+00:00", "profile": "kraken_spot_ethusd_field_study", "symbol": "ETHUSD", "release_target": "dev", "phases": ["market_long_open", "market_long_close", "final_summary"]}
+{"ts_utc": "2026-06-02T12:00:01+00:00", "seq": 1, "plane": "bot", "event_type": "phase_start", "phase": "market_long_open", "phase_index": 0, "side": "LONG"}
+{"ts_utc": "2026-06-02T12:00:02+00:00", "seq": 2, "plane": "bot", "event_type": "order_filled", "phase": "market_long_open", "phase_index": 0, "order_id": "e1", "side": "LONG", "lots": 0.01, "price": 2000.0, "status": "filled", "slippage": {"slippage_points": 1.2}, "extra": {"commission": 0.004}}
+{"ts_utc": "2026-06-02T12:00:03+00:00", "seq": 3, "plane": "bot", "event_type": "phase_result", "phase": "market_long_open", "phase_index": 0, "status": "pass", "extra": {"reason": "filled"}}
+{"ts_utc": "2026-06-02T12:00:04+00:00", "seq": 4, "plane": "bot", "event_type": "phase_start", "phase": "market_long_close", "phase_index": 1}
+{"ts_utc": "2026-06-02T12:00:05+00:00", "seq": 5, "plane": "bot", "event_type": "order_filled", "phase": "market_long_close", "phase_index": 1, "order_id": "e1", "side": "LONG", "lots": 0.01, "price": 2001.0, "status": "filled", "extra": {"commission": 0.004}}
+{"ts_utc": "2026-06-02T12:00:06+00:00", "seq": 6, "plane": "bot", "event_type": "phase_result", "phase": "market_long_close", "phase_index": 1, "status": "pass", "extra": {"reason": "flat"}}
+{"ts_utc": "2026-06-02T12:00:07+00:00", "seq": 7, "plane": "bot", "event_type": "phase_start", "phase": "final_summary", "phase_index": 2}
+{"ts_utc": "2026-06-02T12:00:08+00:00", "seq": 8, "plane": "bot", "event_type": "phase_result", "phase": "final_summary", "phase_index": 2, "status": "pass", "extra": {"reason": "session end requested"}}
+{"ts_utc": "2026-06-02T12:00:09+00:00", "seq": 9, "plane": "broker_truth", "event_type": "broker_snapshot", "phase": "session_end", "phase_index": -1, "status": "flat", "extra": {"order_count": 0, "balances": {"USD": 100.0, "ETH": 0.0}}}
+{"ts_utc": "2026-06-02T12:00:10+00:00", "seq": 10, "plane": "bot", "event_type": "session_end", "phase": "session_end", "phase_index": -1, "status": "field study complete"}

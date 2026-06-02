@@ -309,9 +309,9 @@ def _parse_submit_response(self, raw, timestamp):
 
 The same pattern repeats for query / cancel / modify. The MockBrokerAdapter's implementation is identical in shape (just with mock-state mutation in place of HTTP).
 
-### `modify_order` — broker_ref replacement semantics
+### `modify_order` — broker_ref semantics
 
-Some brokers (Kraken `EditOrder`) replace the order on modify and return a **new** broker_ref; the old one is invalidated. `_parse_modify_response` must surface this via `BrokerResponse.broker_ref` set to the new ref. `LiveRequestProcessor.update_broker_ref(old, new)` handles the index swap downstream.
+Kraken uses `AmendOrder` — an **in-place** amend: the order keeps the same broker_ref (no cancel-replace), so `_parse_modify_response` returns `original_broker_ref` unchanged. Some brokers instead cancel-replace and return a **new** broker_ref; for those, surface it via `BrokerResponse.broker_ref` and `LiveRequestProcessor.update_broker_ref(old, new)` swaps the index downstream (a defensive path, not exercised by Kraken).
 
 ```python
 def _parse_modify_response(self, raw, original_broker_ref, timestamp):
@@ -319,9 +319,8 @@ def _parse_modify_response(self, raw, original_broker_ref, timestamp):
         return self._dry_run_simulator.modify(
             broker_ref=raw['broker_ref'], new_price=raw['new_price'], timestamp=timestamp,
         )
-    new_txid = raw.get('txid', original_broker_ref)
     return BrokerResponse(
-        broker_ref=new_txid,                       # may differ from original
+        broker_ref=original_broker_ref,            # AmendOrder is in-place — ref unchanged
         status=BrokerOrderStatus.PENDING,
         timestamp=timestamp,
         raw_response=raw,
@@ -332,9 +331,9 @@ If your broker keeps the same ref on modify, return it unchanged. Either works �
 
 ### `modify` parameter contract
 
-`_build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` — the SL/TP parameters are part of the contract even if your broker doesn't support modifying them (Kraken `EditOrder` only changes price). In that case accept them and silently ignore — keeps the contract uniform across adapters.
+`_build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` — the SL/TP parameters are part of the contract even if your broker doesn't support modifying them (Kraken `AmendOrder` changes limit price / quantity, not SL/TP). In that case accept them and silently ignore — keeps the contract uniform across adapters.
 
-`symbol` is required because some brokers need the trading pair alongside the broker_ref (Kraken: `EditOrder` requires `pair`). Resolve it to the broker's pair format inside the build layer.
+`symbol` is in the contract because some brokers need the trading pair alongside the broker_ref. Kraken's `AmendOrder` targets by txid and needs **no** pair, so its build layer ignores `symbol`; brokers that require the pair resolve it to their pair format inside the build layer.
 
 ### Rate limiting
 
@@ -361,7 +360,7 @@ class DryRunOrderSimulator:
     def submit(self, lots, price, timestamp) -> BrokerResponse:    # PENDING + DRYRUN-NNNNNN ref
     def query(self, broker_ref, timestamp) -> BrokerResponse:      # PENDING while remaining_polls > 0, then FILLED
     def cancel(self, broker_ref, timestamp) -> BrokerResponse:     # CANCELLED, idempotent
-    def modify(self, broker_ref, new_price, timestamp) -> BrokerResponse  # NEW ref, mimics EditOrder
+    def modify(self, broker_ref, new_price, timestamp) -> BrokerResponse  # same ref, mimics AmendOrder (in-place)
 ```
 
 Default `polls_until_fill=2` matches the typical tick-loop cadence (one tick → poll → still pending → next tick → poll → fill). Configurable per adapter if needed.

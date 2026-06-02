@@ -339,7 +339,7 @@ Locks down the shape of the async modify lifecycle introduced by #318:
 - `modify_limit_order` returns `success=True, status=PENDING` immediately
 - `target.in_flight_operation = PENDING_MODIFY` during the in-flight window
 - `drain_inbox` applies the modification on next tick (entry_price, SL, TP)
-- broker_ref swap (Kraken EditOrder semantic) is handled in drain
+- broker_ref swap (defensive cancel-replace path; Kraken `AmendOrder` keeps the ref) is handled in drain
 - Busy / not-confirmed / not-found / unsupported-capability reject paths
 
 Uses `await_submit_confirmation` for drain isolation (no Phase-2 polling that would fill the order in DELAYED_FILL mode).

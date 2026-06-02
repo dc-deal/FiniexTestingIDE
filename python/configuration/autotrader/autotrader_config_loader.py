@@ -162,6 +162,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,
+        dry_run=raw.get('dry_run', None),
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             balances=account_raw.get('balances', {}),

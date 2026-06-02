@@ -890,6 +890,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             OrderResult with PENDING, EXECUTED, or REJECTED status
         """
+        request = self._normalize_order_request(request)
         self._orders_sent += 1
         self._order_counter += 1
         order_id = self.portfolio.get_next_position_id(request.symbol)
@@ -1142,6 +1143,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(position.symbol).digits
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         self._pending_position_modifications[position_id] = ModificationRequest(
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
@@ -1231,6 +1237,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_price = None if isinstance(new_price, _UnsetType) else new_price
         adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(target_pending.symbol).digits
+        adapter_price = self._round_price(adapter_price, digits)
+        adapter_sl = self._round_price(adapter_sl, digits)
+        adapter_tp = self._round_price(adapter_tp, digits)
 
         # Mark in-flight on the target and store provisional values.
         # The drain handler (_handle_modify_response) consumes these on
@@ -1324,6 +1336,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_limit = None if isinstance(new_limit_price, _UnsetType) else new_limit_price
         adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(target_pending.symbol).digits
+        adapter_stop = self._round_price(adapter_stop, digits)
+        adapter_limit = self._round_price(adapter_limit, digits)
+        adapter_sl = self._round_price(adapter_sl, digits)
+        adapter_tp = self._round_price(adapter_tp, digits)
 
         # Note: the EditJob currently carries only new_price/new_sl/new_tp.
         # For STOP modify, new_price maps to the stop trigger price; the

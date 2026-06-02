@@ -35,6 +35,7 @@ class AutoTraderResult:
         shutdown_mode: How the session ended ('normal' or 'emergency')
         warning_messages: Warning messages from session logger buffer
         error_messages: Error messages from session logger buffer
+        emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -47,5 +48,6 @@ class AutoTraderResult:
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     shutdown_mode: str = 'normal'
+    emergency_reason: Optional[str] = None
     warning_messages: List[str] = field(default_factory=list)
     error_messages: List[str] = field(default_factory=list)

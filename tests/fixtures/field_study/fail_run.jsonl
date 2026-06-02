@@ -1,0 +1,10 @@
+{"record_kind": "header", "schema_version": "1.0", "started_utc": "2026-06-02T13:00:00+00:00", "profile": "kraken_spot_ethusd_field_study", "symbol": "ETHUSD", "release_target": "dev", "phases": ["market_long_open", "limit_modify_test", "final_summary"]}
+{"ts_utc": "2026-06-02T13:00:01+00:00", "seq": 1, "plane": "bot", "event_type": "phase_start", "phase": "market_long_open", "phase_index": 0, "side": "LONG"}
+{"ts_utc": "2026-06-02T13:00:02+00:00", "seq": 2, "plane": "bot", "event_type": "order_filled", "phase": "market_long_open", "phase_index": 0, "order_id": "e1", "side": "LONG", "lots": 0.01, "price": 2000.0, "status": "filled", "extra": {"commission": 0.004}}
+{"ts_utc": "2026-06-02T13:00:03+00:00", "seq": 3, "plane": "bot", "event_type": "phase_result", "phase": "market_long_open", "phase_index": 0, "status": "pass", "extra": {"reason": "filled"}}
+{"ts_utc": "2026-06-02T13:00:04+00:00", "seq": 4, "plane": "bot", "event_type": "phase_start", "phase": "limit_modify_test", "phase_index": 1, "side": "LONG"}
+{"ts_utc": "2026-06-02T13:00:05+00:00", "seq": 5, "plane": "bot", "event_type": "phase_result", "phase": "limit_modify_test", "phase_index": 1, "status": "fail", "extra": {"reason": "never rested"}}
+{"ts_utc": "2026-06-02T13:00:06+00:00", "seq": 6, "plane": "bot", "event_type": "phase_start", "phase": "final_summary", "phase_index": 2}
+{"ts_utc": "2026-06-02T13:00:07+00:00", "seq": 7, "plane": "bot", "event_type": "phase_result", "phase": "final_summary", "phase_index": 2, "status": "pass", "extra": {"reason": "session end requested"}}
+{"ts_utc": "2026-06-02T13:00:08+00:00", "seq": 8, "plane": "broker_truth", "event_type": "broker_snapshot", "phase": "session_end", "phase_index": -1, "status": "not_flat", "extra": {"order_count": 1, "balances": {"USD": 100.0, "ETH": 0.005}}}
+{"ts_utc": "2026-06-02T13:00:09+00:00", "seq": 9, "plane": "bot", "event_type": "session_end", "phase": "session_end", "phase_index": -1, "status": "field study complete"}

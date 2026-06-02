@@ -60,6 +60,8 @@ class AutoTraderLiveDisplay:
 
     # Trade history display limit
     _MAX_RECENT_TRADES = 8
+    # Active orders display limit
+    _MAX_ACTIVE_ORDERS = 8
 
     def __init__(
         self,
@@ -243,6 +245,9 @@ class AutoTraderLiveDisplay:
             Layout(self._build_positions_panel(stats), name='positions'),
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
+        if stats.recent_rejections:
+            right_panels.append(
+                Layout(self._build_rejections_panel(stats), name='rejections'))
         if stats.recent_trades:
             right_panels.append(
                 Layout(self._build_trade_history_panel(stats), name='trades'))
@@ -277,6 +282,9 @@ class AutoTraderLiveDisplay:
             Layout(self._build_positions_panel(stats), name='positions'),
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
+        if stats.recent_rejections:
+            right_panels.append(
+                Layout(self._build_rejections_panel(stats), name='rejections'))
         if width >= self._WIDTH_TRADE_HISTORY and stats.recent_trades:
             right_panels.append(
                 Layout(self._build_trade_history_panel(stats), name='trades'))
@@ -293,6 +301,9 @@ class AutoTraderLiveDisplay:
             Layout(self._build_positions_panel(stats), name='positions'),
             Layout(self._build_orders_panel(stats), name='orders'),
         ]
+        if stats.recent_rejections:
+            panels.append(
+                Layout(self._build_rejections_panel(stats), name='rejections'))
         api_perf = self._build_api_perf_panel(stats)
         if api_perf is not None:
             panels.append(Layout(api_perf, name='api_perf'))
@@ -593,11 +604,6 @@ class AutoTraderLiveDisplay:
     def _build_orders_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Active/pending orders table."""
         if not stats.active_orders and stats.pipeline_count == 0:
-            if stats.last_rejection:
-                return Panel(
-                    f'[yellow]⚠  Last rejection: {stats.last_rejection}[/yellow]',
-                    title='[bold]ORDERS[/bold]', box=box.ROUNDED,
-                )
             return Panel('[dim]No active orders[/dim]', title='[bold]ORDERS[/bold]', box=box.ROUNDED)
 
         table = Table(show_header=True, box=None, padding=(0, 1))
@@ -607,9 +613,11 @@ class AutoTraderLiveDisplay:
         table.add_column('Dir', width=6)
         table.add_column('Price', width=10, justify='right')
         table.add_column('Status', width=10)
+        table.add_column('Age', width=9)
 
-        # Active limit/stop orders (broker-accepted, watching)
-        for idx, order in enumerate(stats.active_orders, 1):
+        # Active limit/stop orders (broker-accepted, watching) — newest first
+        ordered_active = list(reversed(stats.active_orders))
+        for idx, order in enumerate(ordered_active[:self._MAX_ACTIVE_ORDERS], 1):
             table.add_row(
                 str(idx),
                 order.order_id[:16],
@@ -617,6 +625,7 @@ class AutoTraderLiveDisplay:
                 order.direction.value,
                 f'{order.entry_price:.2f}',
                 'WATCHING',
+                self._format_time_ago(order.submitted_at, stats.last_tick_time) if order.submitted_at else '',
             )
 
             # Partial-fill sub-row (#330) — latent path. Activates once #342
@@ -628,6 +637,10 @@ class AutoTraderLiveDisplay:
                     f'{order.cumulative_filled_lots:.4f}/{order.requested_lots:.4f} filled[/dim]'
                 )
                 table.add_row('', '', '', '', '', progress)
+
+        hidden_orders = len(ordered_active) - self._MAX_ACTIVE_ORDERS
+        if hidden_orders > 0:
+            table.add_row('', f'[dim]… +{hidden_orders} more[/dim]', '', '', '', '')
 
         # Pipeline count (pending, in transit)
         if stats.pipeline_count > 0:
@@ -642,6 +655,32 @@ class AutoTraderLiveDisplay:
 
         return Panel(table, title='[bold]ORDERS[/bold]', box=box.ROUNDED)
 
+    def _build_rejections_panel(self, stats: AutoTraderDisplayStats) -> Panel:
+        """
+        Order rejections — its own panel, included only when at least one occurred.
+
+        Newest first; each row carries a running #N (so a NEW rejection is
+        distinguishable from an old one persisting on screen) and an age. Kept
+        separate from the ORDERS panel so order display and rejection status no
+        longer flicker against each other.
+        """
+        lines = []
+        for rej in reversed(stats.recent_rejections):
+            ago = self._format_time_ago(rej.tick_time, stats.last_tick_time) if rej.tick_time else ''
+            ago_suffix = f' ({ago})' if ago else ''
+            msg = f' — {rej.message}' if rej.message else ''
+            lines.append(
+                f'[yellow]  ⚠ #{rej.seq}{ago_suffix}  {rej.reason}{msg} ({rej.side})[/yellow]'
+            )
+        hidden = stats.total_rejections - len(stats.recent_rejections)
+        if hidden > 0:
+            lines.append(f'[dim]  … +{hidden} earlier[/dim]')
+        return Panel(
+            '\n'.join(lines),
+            title=f'[bold]REJECTIONS ({stats.total_rejections})[/bold]',
+            box=box.ROUNDED,
+        )
+
     def _build_trade_history_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Recent completed trades."""
         if not stats.recent_trades:
@@ -654,6 +693,7 @@ class AutoTraderLiveDisplay:
         table.add_column('Exit', width=10, justify='right')
         table.add_column('P&L', width=12, justify='right')
         table.add_column('Reason', width=8)
+        table.add_column('Age', width=9)
 
         for trade in stats.recent_trades[:self._MAX_RECENT_TRADES]:
             pnl_color = 'green' if trade.net_pnl >= 0 else 'red'
@@ -687,6 +727,7 @@ class AutoTraderLiveDisplay:
                 f'{trade.exit_price:.2f}',
                 f'[{pnl_color}]{pnl_sign}{trade.net_pnl:.4f}[/{pnl_color}]',
                 reason_text,
+                self._format_time_ago(trade.exit_time, stats.last_tick_time) if trade.exit_time else '',
             )
 
             # Per-side multi-fill sub-rows (#330) — only when broker produced
@@ -711,6 +752,10 @@ class AutoTraderLiveDisplay:
                     f'[dim]{first_p:.2f}→{last_p:.2f}[/dim]',
                     '', '',
                 )
+
+        hidden_trades = stats.total_trades - self._MAX_RECENT_TRADES
+        if hidden_trades > 0:
+            table.add_row('', f'[dim]… +{hidden_trades} more[/dim]', '', '', '', '')
 
         return Panel(table, title='[bold]TRADE HISTORY[/bold]', box=box.ROUNDED)
 
@@ -757,9 +802,17 @@ class AutoTraderLiveDisplay:
         reconnect_str = f'[{reconnect_color}]{reconnects}[/{reconnect_color}]' if reconnect_color else str(
             reconnects)
 
+        # Current market price (mid of last tick) — lets the operator see where
+        # the market stands vs. a resting limit order's price.
+        if stats and stats.last_price > 0:
+            price_str = f'{stats.last_price:.2f}'
+        else:
+            price_str = '[dim]—[/dim]'
+
         lines = [
             f'Stream:         {stream_str}',
             f'Last Tick:      {tick_age_str}',
+            f'Last Price:     {price_str}',
             f'Reconnects:     {reconnect_str}',
             f'Emitted Ticks:  {emit_rate_str}',
         ]
@@ -908,11 +961,11 @@ class AutoTraderLiveDisplay:
                 a_icon = 'i'
             lines.append(f'[{a_color}]  {a_icon} {awareness.message}[/{a_color}]')
 
-        # Event tape — last N strategy moments
+        # Event tape — last N strategy moments, newest first
         if stats.event_history:
             lines.append('')
             lines.append('Events:')
-            for event in stats.event_history:
+            for event in reversed(stats.event_history):
                 if event.level == AwarenessLevel.ALERT:
                     e_color = 'bold red'
                 elif event.level == AwarenessLevel.NOTICE:

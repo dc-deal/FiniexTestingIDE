@@ -30,6 +30,7 @@ from python.framework.decision_logic.core.simple_consensus import SimpleConsensu
 from python.framework.decision_logic.core.backtesting.backtesting_event_probe import BacktestingEventProbe
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
+from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -80,6 +81,7 @@ class DecisionLogicFactory:
             self._registry['CORE/backtesting/backtesting_margin_stress'] = (BacktestingMarginStress, None)
             self._registry['CORE/backtesting/backtesting_multi_position'] = (BacktestingMultiPosition, None)
             self._registry['CORE/backtesting/backtesting_event_probe'] = (BacktestingEventProbe, None)
+            self._registry['CORE/live_field_study/live_field_study'] = (LiveFieldStudy, None)
 
             self.logger.debug(
                 f"Core decision logics registered: {list(self._registry.keys())}"

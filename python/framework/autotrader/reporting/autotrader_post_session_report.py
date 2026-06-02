@@ -61,6 +61,10 @@ class AutotraderPostSessionReport:
         self._summary_logger.info(f"  Ticks:          {result.ticks_processed:,}")
         self._summary_logger.info(f"  Clipped:        {result.ticks_clipped:,}")
         self._summary_logger.info(f"  Shutdown:       {result.shutdown_mode}")
+        if result.shutdown_mode == 'emergency' and result.emergency_reason:
+            self._summary_logger.error(
+                f"  ❌ EMERGENCY CAUSE: {result.emergency_reason}"
+            )
 
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
