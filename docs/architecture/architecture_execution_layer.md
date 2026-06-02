@@ -583,9 +583,9 @@ At scenario end, `close_all_remaining_orders()` expires unfilled active orders:
 
 ## Open Issues
 
-### Tick-Based → Millisecond-Based Latency
-**Problem:** OrderLatencySimulator models delays as tick counts. Real broker latency is time-based. Tick-counting is meaningless in live trading where ticks arrive at irregular intervals.
-- Affects: OrderLatencySimulator, SeededDelayGenerator (`utils/seeded_generators/`), PendingOrder
+### Tick-Based → Millisecond-Based Latency (Resolved, #144)
+**Resolved:** OrderLatencySimulator models delays as ms-timestamps (`broker_fill_msc`), compared against the tick's `collected_msc`. Latency is time-based and consistent across simulation and live.
+- Affected: OrderLatencySimulator, SeededDelayGenerator (`utils/seeded_generators/`), PendingOrder
 
 ### Error Handling in Execution Chain (Partially Resolved)
 **Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in `_order_history` instead of returned. Margin rejections and stress test rejections follow the same pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
@@ -601,7 +601,7 @@ At scenario end, `close_all_remaining_orders()` expires unfilled active orders:
 - Affects: Baseline test suite, test fixtures
 
 ### Live-Specific Open Issues
-See [live_execution_architecture.md](live_execution_architecture.md): Reconciliation Layer.
+See [live_execution_architecture.md](live_execution_architecture.md): Reconciliation Layer (#151 Phase 1–2 shipped in ALERT_ONLY; resolution + push → #349, V1.4) and push-based order status (#331, V1.4).
 
 ---
 

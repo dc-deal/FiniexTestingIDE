@@ -218,16 +218,33 @@ Mock behavior:
 
 ## PortfolioManager in Live Mode
 
-Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have. Reconciliation between shadow state and actual broker state is an open issue (see below).
+Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have. The shadow state is kept current by the fast fill path; the Reconciler (#151) verifies it against broker truth on a separate cadence (see *Fill Detection & Reconciliation* below).
+
+---
+
+## Fill Detection & Reconciliation (Two Layers)
+
+Live state stays correct through two distinct layers — do not conflate them:
+
+**Layer 1 — Fast fill path (primary truth source).** A fill is detected via the executor's order path: the broker response (poll today, #320 cadence) marks the order filled (`mark_filled` → `_fill_open_order`) and updates the shadow state. The fill is then delivered to the decision logic **immediately** through the #348 Decision Event Channel — drained each tick and during idle heartbeats. This is where the bot learns the truth and the algo reacts.
+
+**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders` / `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY** (detect + log + SESSION panel), validated on real money.
+
+**Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks and the same #348 channel, so the decision logic reacts identically regardless of source.
+
+**Correction is V1.4 (#349).** `AUTO_CORRECT` (stale-field + partial-fill delta-apply) and `HALT_TRADING` (with operator-confirm-to-resume). Ghost/orphan positions always escalate to HALT — adopting an unknown position with a synthetic entry price corrupts P&L permanently.
 
 ---
 
 ## Open Issues (Live-Specific)
 
-### Reconciliation Layer for Live Trading (#151)
-**Problem:** Local portfolio and active order shadow state can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes fully operational.
-- Affects: LiveTradeExecutor, PortfolioManager, `_active_limit_orders` shadow state
-- Shadow state is authoritative-by-assumption until #151 is implemented
+### Reconciliation Layer — Resolution + Push (#349, V1.4)
+**Shipped (#151, Phase 1–2):** broker truth-pull + Reconciler in ALERT_ONLY — detects and reports divergence (ghost / orphan / stale), validated on real money. The shadow state is verified, not yet auto-corrected.
+**Pending (#349, Phase 3–5):** `AUTO_CORRECT` + `HALT_TRADING` (+ operator-confirm-to-resume) + real-time push via #331. Ghost/orphan always escalate to HALT.
+- Affects: Reconciler, SafetyCircuitBreaker, LiveTradeExecutor, PortfolioManager shadow state
+
+### Push-Based Order Status (#331, V1.4)
+**Today:** REST polling (#320) detects fills with 1–5 s latency. **Planned:** Kraken WebSocket Private `executions` channel as the primary push source (sub-second); polling demoted to resilience fallback. Feeds the same #348 channel.
 
 ---
 
