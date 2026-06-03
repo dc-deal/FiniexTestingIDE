@@ -39,7 +39,7 @@ class KrakenTickSource(AbstractTickSource):
 
     Features:
     - Endless reconnect with exponential backoff (1s -> 60s cap)
-    - Heartbeat monitoring (configurable interval, dead threshold)
+    - Connection-liveness monitoring (configurable interval, dead threshold)
     - SSL via certifi (cross-platform, Windows + Linux)
     - Single symbol per session
 
@@ -50,8 +50,8 @@ class KrakenTickSource(AbstractTickSource):
         ws_url: WebSocket URL
         reconnect_initial_delay_s: Initial backoff delay
         reconnect_max_delay_s: Maximum backoff delay cap
-        heartbeat_interval_s: Heartbeat check interval
-        heartbeat_dead_s: Silence threshold to force reconnect
+        connection_check_interval_s: WS connection-liveness check interval
+        connection_dead_s: Silence threshold to force reconnect
         logger: ScenarioLogger instance
     """
 
@@ -63,8 +63,8 @@ class KrakenTickSource(AbstractTickSource):
         ws_url: str = 'wss://ws.kraken.com/v2',
         reconnect_initial_delay_s: float = 1.0,
         reconnect_max_delay_s: float = 60.0,
-        heartbeat_interval_s: float = 30.0,
-        heartbeat_dead_s: float = 90.0,
+        connection_check_interval_s: float = 30.0,
+        connection_dead_s: float = 90.0,
         logger: Optional[ScenarioLogger] = None,
     ):
         self._symbol = symbol
@@ -73,8 +73,8 @@ class KrakenTickSource(AbstractTickSource):
         self._ws_url = ws_url
         self._reconnect_initial_delay_s = reconnect_initial_delay_s
         self._reconnect_max_delay_s = reconnect_max_delay_s
-        self._heartbeat_interval_s = heartbeat_interval_s
-        self._heartbeat_dead_s = heartbeat_dead_s
+        self._connection_check_interval_s = connection_check_interval_s
+        self._connection_dead_s = connection_dead_s
         self._logger = logger
 
         self._running = False
@@ -182,7 +182,7 @@ class KrakenTickSource(AbstractTickSource):
         """
         Main WebSocket loop with reconnection.
 
-        Outer loop: connect -> subscribe -> receive/heartbeat concurrent tasks.
+        Outer loop: connect -> subscribe -> receive/connection-monitor concurrent tasks.
         On disconnect/error: log, backoff, reconnect.
         Runs until self._running is False.
         """
@@ -194,12 +194,12 @@ class KrakenTickSource(AbstractTickSource):
                 ws = await self._connect_and_subscribe()
                 reconnect_attempt = 0
 
-                # Run receive + heartbeat concurrently
+                # Run receive + connection-monitor concurrently
                 receive_task = asyncio.create_task(self._receive_loop(ws))
-                heartbeat_task = asyncio.create_task(self._heartbeat_monitor(ws))
+                connection_monitor_task = asyncio.create_task(self._connection_monitor(ws))
 
                 done, pending = await asyncio.wait(
-                    [receive_task, heartbeat_task],
+                    [receive_task, connection_monitor_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
@@ -330,19 +330,19 @@ class KrakenTickSource(AbstractTickSource):
                     self._ticks_emitted += 1
                 self._last_tick_time = datetime.now(timezone.utc)
 
-    async def _heartbeat_monitor(self, ws) -> None:
+    async def _connection_monitor(self, ws) -> None:
         """
         Monitor connection health via message timing.
 
         Checks _last_message_time periodically. If silence exceeds
-        heartbeat_dead_s, closes the WebSocket to trigger reconnect
+        connection_dead_s, closes the WebSocket to trigger reconnect
         in _ws_loop.
 
         Args:
             ws: Active WebSocket connection
         """
         while self._running:
-            await asyncio.sleep(self._heartbeat_interval_s)
+            await asyncio.sleep(self._connection_check_interval_s)
 
             if not self._last_message_time:
                 continue
@@ -351,17 +351,17 @@ class KrakenTickSource(AbstractTickSource):
                 datetime.now(timezone.utc) - self._last_message_time
             ).total_seconds()
 
-            if silence > self._heartbeat_dead_s:
+            if silence > self._connection_dead_s:
                 if self._logger:
                     self._logger.warning(
                         f"📡 No messages for {silence:.0f}s "
-                        f"(threshold: {self._heartbeat_dead_s:.0f}s), "
+                        f"(threshold: {self._connection_dead_s:.0f}s), "
                         f"forcing reconnect"
                     )
                 await ws.close()
                 break
 
-            elif silence > self._heartbeat_interval_s * 2:
+            elif silence > self._connection_check_interval_s * 2:
                 if self._logger:
                     self._logger.warning(
                         f"📡 No messages for {silence:.0f}s, "

@@ -109,6 +109,14 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._last_phase_id: Optional[str] = None
         self._logged_results: int = 0
 
+        # Symbol + last-known mid — resolved from the trading context at init and
+        # refreshed on each real tick. Used on a ghost-pass (tick=None) where no
+        # fresh market data is available (#360).
+        self._symbol: Optional[str] = (
+            trading_context.symbol if trading_context is not None else None
+        )
+        self._last_mid: Optional[float] = None
+
         # Event observation flags (set by the #348 hooks, reset on each new submit / phase).
         self._filled_flag = False
         self._rejected_flag = False
@@ -218,6 +226,12 @@ class LiveFieldStudy(AbstractDecisionLogic):
             DecisionEventType.PARTIAL_CLOSE,
         }
 
+    def wants_heartbeat(self) -> bool:
+        # The phase machine is wall-clock / state driven — it must advance between
+        # ticks (cancel-confirm, phase-advance, re-arm) on the idle heartbeat (#360),
+        # not only when a real market tick arrives.
+        return True
+
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._filled_flag = True
         self._realized_cost += event.result.commission
@@ -266,28 +280,42 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def compute(
         self,
-        tick: TickData,
+        tick: Optional[TickData],
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         self._ensure_machine()
 
-        mid = (tick.bid + tick.ask) / 2.0
+        # Resolve symbol + mid: from the tick on a real pass, from last-known
+        # state on a ghost-pass (tick=None, #360). A ghost-pass that lands before
+        # the first real tick has no market data — skip it.
+        if tick is not None:
+            self._symbol = tick.symbol
+            self._last_mid = (tick.bid + tick.ask) / 2.0
+        elif self._last_mid is None:
+            return Decision(
+                action=DecisionLogicAction.FLAT,
+                outputs={'phase_id': 'heartbeat', 'phase_action': 'none',
+                         'reason': 'heartbeat before first tick', 'price': 0.0},
+            )
+        mid = self._last_mid
+        symbol = self._symbol
+
         now = self.trading_api.get_current_time()
         if self._session_started_at is None:
             self._session_started_at = now
 
         # Session guards — safe-abort once on a budget or wall-clock breach.
         if not self._safe_abort_active and self._session_guard_breached(now):
-            self._trigger_safe_abort(tick)
+            self._trigger_safe_abort()
         if self._safe_abort_active:
-            self._close_all(tick)
+            self._close_all()
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 outputs={'phase_id': 'aborted', 'phase_action': 'close_all',
                          'reason': self._abort_reason, 'price': mid},
             )
 
-        positions = self.trading_api.get_open_positions(tick.symbol)
+        positions = self.trading_api.get_open_positions(symbol)
         counts = self.trading_api.get_active_order_counts()
 
         ctx = PhaseContext(
@@ -339,7 +367,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData,
+        tick: Optional[TickData],
     ) -> Optional[OrderResult]:
         if not self.trading_api or self._pending_action is None:
             return None
@@ -355,14 +383,14 @@ class LiveFieldStudy(AbstractDecisionLogic):
                     f"(phase {action.phase_id})"
                 )
                 return None
-            return self._submit(action, tick)
+            return self._submit(action)
 
         if action.kind == PhaseActionKind.CLOSE_ALL:
-            self._close_all(tick)
+            self._close_all()
             return None
 
         if action.kind == PhaseActionKind.CLOSE_PARTIAL:
-            self._close_partial(action, tick)
+            self._close_partial(action)
             return None
 
         if action.kind in (PhaseActionKind.CANCEL, PhaseActionKind.CANCEL_ALL):
@@ -385,7 +413,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     # Action dispatch helpers
     # ============================================
 
-    def _submit(self, action: PhaseAction, tick: TickData) -> Optional[OrderResult]:
+    def _submit(self, action: PhaseAction) -> Optional[OrderResult]:
         side = OrderSide.BUY if action.side == PhaseSide.LONG else OrderSide.SELL
         order_type = (
             OrderType.MARKET if action.kind == PhaseActionKind.SUBMIT_MARKET
@@ -395,7 +423,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # must not leak into this phase's observation.
         self._reset_flags()
         result = self.trading_api.send_order(
-            symbol=tick.symbol,
+            symbol=self._symbol,
             order_type=order_type,
             side=side,
             lots=action.lots,
@@ -410,13 +438,13 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._phase_order_ids.append(result.order_id)
         return result
 
-    def _close_all(self, tick: TickData) -> None:
-        for pos in self.trading_api.get_open_positions(tick.symbol):
+    def _close_all(self) -> None:
+        for pos in self.trading_api.get_open_positions(self._symbol):
             if not self.trading_api.is_pending_close(pos.position_id):
                 self.trading_api.close_position(pos.position_id)
 
-    def _close_partial(self, action: PhaseAction, tick: TickData) -> None:
-        positions = self.trading_api.get_open_positions(tick.symbol)
+    def _close_partial(self, action: PhaseAction) -> None:
+        positions = self.trading_api.get_open_positions(self._symbol)
         if not positions:
             return
         pos = positions[0]
@@ -504,7 +532,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             return True
         return False
 
-    def _trigger_safe_abort(self, tick: TickData) -> None:
+    def _trigger_safe_abort(self) -> None:
         """Cancel resting orders, close all positions, and request a graceful session end."""
         self.logger.warning(f"⛔ Field Study safe-abort: {self._abort_reason}")
         self.emit_event(
@@ -512,7 +540,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             level=AwarenessLevel.ALERT, reason_key='field_study_abort',
         )
         self._cancel_resting()
-        self._close_all(tick)
+        self._close_all()
         self.trading_api.request_session_end(
             f'field study safe-abort: {self._abort_reason}', SessionEndSeverity.NORMAL
         )

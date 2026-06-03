@@ -20,6 +20,7 @@ from threading import BrokenBarrierError
 import time
 import traceback
 from collections import defaultdict
+from datetime import datetime, timezone
 from multiprocessing import Queue
 from typing import Any, List, Optional, Tuple
 
@@ -43,6 +44,64 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+
+
+def _run_sim_heartbeats(
+    prev_msc: int,
+    current_msc: int,
+    config: ProcessScenarioConfig,
+    trade_simulator: AbstractTradeExecutor,
+    worker_coordinator: WorkerOrchestrator,
+    decision_logic: AbstractDecisionLogic,
+    decision_event_dispatcher: Optional[DecisionEventDispatcher],
+) -> bool:
+    """
+    Drive decision ghost-passes in the simulated-time gap between two data ticks (#360).
+
+    Hard-gated by the caller on decision_logic.wants_heartbeat(). Fires a ghost-pass
+    every config.heartbeat_interval_ms of simulated time strictly inside
+    (prev_msc, current_msc), resolving broker fills at each ghost moment via
+    TradeSimulator.heartbeat() so an opt-in algo reacts between ticks at the same
+    relative point as live. No bar render, no tick counter — tick state untouched.
+
+    Correctness gate (#208): no ghost-passes across a gap longer than
+    inter_tick_gap_threshold_s — across a data/weekend gap the market says nothing,
+    so synthesizing heartbeats there would fabricate activity.
+
+    Args:
+        prev_msc: Previous data tick timestamp (ms)
+        current_msc: Current data tick timestamp (ms)
+        config: Scenario config (heartbeat_interval_ms, inter_tick_gap_threshold_s)
+        trade_simulator: Executor (clock injection + ghost broker resolution)
+        worker_coordinator: Orchestrator (process_heartbeat → cached worker results)
+        decision_logic: Opt-in decision (executes the ghost action)
+        decision_event_dispatcher: #348 channel (drained around the ghost compute)
+
+    Returns:
+        True if the algo requested session end during a ghost-pass (caller stops)
+    """
+    interval_ms = config.heartbeat_interval_ms
+    gap_ms = current_msc - prev_msc
+    if gap_ms <= interval_ms or gap_ms > config.inter_tick_gap_threshold_s * 1000.0:
+        return False
+
+    k = 1
+    while prev_msc + k * interval_ms < current_msc:
+        ghost_msc = prev_msc + k * interval_ms
+        trade_simulator.set_current_time(
+            datetime.fromtimestamp(ghost_msc / 1000.0, tz=timezone.utc))
+        trade_simulator.heartbeat()
+        if decision_event_dispatcher is not None:
+            decision_event_dispatcher.drain()
+        decision = worker_coordinator.process_heartbeat()
+        if decision is not None:
+            decision_logic.execute_decision(decision, tick=None)
+        if decision_event_dispatcher is not None:
+            decision_event_dispatcher.drain()
+        if trade_simulator.is_session_end_requested():
+            return True
+        k += 1
+    return False
 
 
 def execute_tick_loop(
@@ -129,6 +188,20 @@ def execute_tick_loop(
                 delta = current_msc - prev_interval_msc
                 if tick.collected_msc > 0 or delta >= 0:
                     inter_tick_intervals.append(float(delta))
+
+            # #360: drive decision ghost-passes across the simulated gap to the
+            # previous tick — opt-in algos only (hard-gated, absent otherwise).
+            # prev_interval_msc still holds the previous tick here (updated below).
+            if (decision_logic.wants_heartbeat()
+                    and config.heartbeat_interval_ms > 0
+                    and prev_interval_msc > 0 and current_msc > 0):
+                if _run_sim_heartbeats(
+                        prev_interval_msc, current_msc, config, trade_simulator,
+                        worker_coordinator, decision_logic, decision_event_dispatcher):
+                    scenario_logger.info(
+                        f"🛑 Session end requested: {trade_simulator.get_session_end_reason()}")
+                    break
+
             prev_interval_msc = current_msc
 
             # === 1. Trade Executor (BROKER PATH — all ticks) ===

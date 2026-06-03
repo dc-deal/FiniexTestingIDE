@@ -222,6 +222,11 @@ class ProcessScenarioConfig:
     # === INTER-TICK PROFILING ===
     inter_tick_gap_threshold_s: float = 300.0
 
+    # === IDLE HEARTBEAT (#360 sim ghost-pass cadence) ===
+    # Simulated-time interval between ghost-passes within a sub-threshold tick
+    # gap. Only active for an opt-in decision (wants_heartbeat); 0 = disabled.
+    heartbeat_interval_ms: int = 1000
+
     # === TICK PROCESSING BUDGET ===
     tick_processing_budget_ms: float = 0.0  # 0 = disabled (no clipping)
 
@@ -320,6 +325,9 @@ class ProcessScenarioConfig:
             'tick_processing_budget_ms', 0.0
         )
 
+        # Idle-heartbeat cadence for the sim ghost-pass (#360)
+        heartbeat_interval_ms = exec_config.get('heartbeat_interval_ms', 1000)
+
         # Parse stress test config from scenario
         stress_test_config = StressTestConfig.from_dict(
             scenario.stress_test_config)
@@ -369,6 +377,7 @@ class ProcessScenarioConfig:
             order_history_max=app_config_loader.get_order_history_max(),
             trade_history_max=app_config_loader.get_trade_history_max(),
             inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
+            heartbeat_interval_ms=heartbeat_interval_ms,
             tick_processing_budget_ms=tick_processing_budget_ms,
             inbound_latency_min_ms=inbound_latency_min_ms,
             inbound_latency_max_ms=inbound_latency_max_ms,

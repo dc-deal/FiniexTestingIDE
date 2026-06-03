@@ -67,6 +67,7 @@ def pytest_collection_modifyitems(items):
         _UNIT_PATHS = (
             '/tests/autotrader/order_guard/',
             '/tests/autotrader/live_executor/',
+            '/tests/autotrader/loop_cadence/',
             '/tests/autotrader/safety/',
             '/tests/framework/bar_rendering/',
             '/tests/framework/batch_validations/',

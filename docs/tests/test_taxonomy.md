@@ -61,6 +61,7 @@ tests/
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
+│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
@@ -68,7 +69,7 @@ tests/
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332)
 │
-├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326)
+├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326, #360 sim ghost-pass)
 │
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency

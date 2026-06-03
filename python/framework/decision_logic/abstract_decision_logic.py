@@ -194,10 +194,13 @@ class AbstractDecisionLogic(ABC):
     def execute_decision(
         self,
         decision: Decision,
-        tick: TickData
+        tick: Optional[TickData]
     ) -> Optional[OrderResult]:
         """
         Execute trading decision via DecisionTradingApi (Template Method).
+
+        On a ghost-pass (#360) tick is None — only logics that opt in via
+        wants_heartbeat() are dispatched this way.
 
         This is a template method that:
         1. Calls _execute_decision_impl() (implemented by subclass)
@@ -227,7 +230,7 @@ class AbstractDecisionLogic(ABC):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: Optional[TickData]
     ) -> Optional[OrderResult]:
         """
         Implementation of decision execution (to be overridden by subclass).
@@ -279,7 +282,7 @@ class AbstractDecisionLogic(ABC):
     @abstractmethod
     def compute(
         self,
-        tick: TickData,
+        tick: Optional[TickData],
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -410,6 +413,22 @@ class AbstractDecisionLogic(ABC):
             Set of DecisionEventType to subscribe to
         """
         return set()
+
+    def wants_heartbeat(self) -> bool:
+        """
+        Whether this logic should run a ghost-pass on the idle heartbeat (#360).
+
+        Default False: the orchestrator skips the ghost-pass and the logic only
+        runs on real ticks (existing behavior, never called with tick=None).
+        Override to True for logics that must act between ticks — advance internal
+        state, react to drained events, issue follow-up orders. A ghost-pass calls
+        compute()/_execute_decision_impl() with tick=None and cached worker results;
+        such a logic MUST handle tick=None (no fresh market data).
+
+        Returns:
+            True to receive idle-heartbeat ghost-passes
+        """
+        return False
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         """

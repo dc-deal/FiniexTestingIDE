@@ -338,8 +338,8 @@ def setup_tick_source(
             ws_url=config.tick_source.ws_url,
             reconnect_initial_delay_s=config.tick_source.reconnect_initial_delay_s,
             reconnect_max_delay_s=config.tick_source.reconnect_max_delay_s,
-            heartbeat_interval_s=config.tick_source.heartbeat_interval_s,
-            heartbeat_dead_s=config.tick_source.heartbeat_dead_s,
+            connection_check_interval_s=config.tick_source.connection_check_interval_s,
+            connection_dead_s=config.tick_source.connection_dead_s,
             logger=logger,
         )
     else:

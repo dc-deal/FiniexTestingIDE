@@ -17,6 +17,7 @@ class DefaultScenarioExecutionConfig(BaseModel):
     performance_tracking: PerformanceTrackingConfig = PerformanceTrackingConfig()
     strict_parameter_validation: bool = True
     tick_processing_budget_ms: float = 0.0
+    heartbeat_interval_ms: int = 1000  # sim ghost-pass cadence (#360); 0 = disabled
 
 
 class BacktestingExecutionConfig(BaseModel):

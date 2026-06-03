@@ -31,8 +31,8 @@ class TickSourceConfig:
         ws_url: WebSocket URL (kraken mode)
         reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
         reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
-        heartbeat_interval_s: Heartbeat check interval in seconds (kraken mode)
-        heartbeat_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
+        connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
+        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
     """
     type: str = 'mock'
     parquet_path: str = ''
@@ -42,8 +42,8 @@ class TickSourceConfig:
     ws_url: str = 'wss://ws.kraken.com/v2'
     reconnect_initial_delay_s: float = 1.0
     reconnect_max_delay_s: float = 60.0
-    heartbeat_interval_s: float = 30.0
-    heartbeat_dead_s: float = 90.0
+    connection_check_interval_s: float = 30.0
+    connection_dead_s: float = 90.0
 
 
 @dataclass

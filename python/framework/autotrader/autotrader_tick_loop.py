@@ -40,6 +40,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.parameter_types import OutputValue
+from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -109,6 +110,11 @@ class AutotraderTickLoop:
         self._reconciler = reconciler
         self._api_monitor = api_monitor
         self._running = False
+
+        # #360: idle-heartbeat cadence — max wait for a real tick before the loop
+        # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
+        # Config is in ms; queue.get() wants seconds.
+        self._heartbeat_interval_s = config.execution.heartbeat_interval_ms / 1000.0
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
         symbol_spec = executor.broker.adapter.get_symbol_specification(config.symbol)
@@ -186,19 +192,36 @@ class AutotraderTickLoop:
 
         while self._running:
             try:
-                tick = self._tick_queue.get(timeout=1.0)
+                tick = self._tick_queue.get(timeout=self._heartbeat_interval_s)
             except queue.Empty:
                 # No tick within timeout — check if source is exhausted
                 if self._tick_source and self._tick_source.is_exhausted():
                     self._logger.info(
                         '📭 Tick source exhausted — ending session')
                     break
-                # #320: drain async worker responses + check timeouts
-                # without bumping tick state. Display pulse follows below.
+                # #360: timer event. Inject the wall-clock so the canonical clock
+                # advances during idle (phase/op timeouts track real elapsed time),
+                # then run the side-effect-free cadence — no tick state mutation.
+                self._executor.set_current_time(datetime.now(timezone.utc))
+                # #320 + #360: drain async responses + check timeouts + re-poll
+                # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
+                # #151 + #360: reconcile on the timer too (was tick-only). Time-bounded
+                # by min_interval_seconds → self-throttled, no API storm during idle.
+                if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
+                    self._reconciler.reconcile(ticks_processed)
                 # #348: deliver events surfaced by the heartbeat drain
-                # (idle-time fills via poll/push) to the algo hooks.
+                # (idle-time fills/cancels) to the algo hooks — before the ghost-pass
+                # so the decision observes them this pass.
                 self._drain_decision_events()
+                # #360 ghost-pass: let an opt-in decision act between ticks (advance
+                # phases, react to drained events, issue follow-up orders) with no
+                # synthetic tick and no tick-state mutation.
+                self._run_decision_heartbeat(ticks_processed)
+                if self._executor.is_session_end_requested():
+                    self._logger.info(
+                        f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
+                    break
                 self._push_pulse_frame(ticks_processed)
                 continue
 
@@ -270,16 +293,7 @@ class AutotraderTickLoop:
             if self._safety_blocked:
                 decision.action = DecisionLogicAction.FLAT
             order_result = self._decision_logic.execute_decision(decision, tick)
-            if order_result and order_result.is_rejected:
-                reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
-                self._rejection_count += 1
-                self._recent_rejections.append(RejectionEntry(
-                    seq=self._rejection_count,
-                    reason=reason,
-                    message=order_result.rejection_message or '',
-                    side=decision.action.value,
-                    tick_time=self._executor.get_current_time(),
-                ))
+            self._record_rejection(order_result, decision)
 
             # === 6b. Decision event drain (#348) ===
             # Events buffered during on_tick (fills, partial closes, cancels)
@@ -375,6 +389,47 @@ class AutotraderTickLoop:
         """Drain buffered decision events to the algo hooks, if a dispatcher is active (#348)."""
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.drain()
+
+    def _record_rejection(self, order_result: Optional[OrderResult], decision: Decision) -> None:
+        """
+        Record a rejected order into the rolling rejection buffer (display + count).
+
+        Args:
+            order_result: Result of the executed decision (may be None / non-rejected)
+            decision: The decision that produced the order (for the side label)
+        """
+        if not (order_result and order_result.is_rejected):
+            return
+        reason = order_result.rejection_reason.value if order_result.rejection_reason else 'unknown'
+        self._rejection_count += 1
+        self._recent_rejections.append(RejectionEntry(
+            seq=self._rejection_count,
+            reason=reason,
+            message=order_result.rejection_message or '',
+            side=decision.action.value,
+            tick_time=self._executor.get_current_time(),
+        ))
+
+    def _run_decision_heartbeat(self, ticks_processed: int) -> None:
+        """
+        #360 ghost-pass: run an opt-in decision between ticks without a synthetic tick.
+
+        Workers do not recompute — the orchestrator serves their cached results. The
+        decision runs with tick=None so it can advance internal state (e.g. field-study
+        phases), react to drained #348 events, and issue follow-up orders (re-arm /
+        cancel / confirm). No tick state is mutated (no counter, no mark_dirty, no bar
+        render). Safety reuses the last evaluated block state (no fresh price on idle).
+
+        Args:
+            ticks_processed: Current tick counter (unchanged on a ghost-pass)
+        """
+        decision = self._worker_orchestrator.process_heartbeat()
+        if decision is None:
+            return
+        if self._safety_blocked:
+            decision.action = DecisionLogicAction.FLAT
+        order_result = self._decision_logic.execute_decision(decision, tick=None)
+        self._record_rejection(order_result, decision)
 
     def _push_pulse_frame(self, ticks_processed: int) -> None:
         """

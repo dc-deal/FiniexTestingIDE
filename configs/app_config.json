@@ -46,6 +46,7 @@
         "execution": {
             "parallel_workers": false,
             "bar_max_history": 1000,
+            "heartbeat_interval_ms": 1000,
             "performance_tracking": {
                 "worker_decision_tracking": true
             }
@@ -95,7 +96,8 @@
                     "worker_decision_tracking": false
                 },
                 "strict_parameter_validation": true,
-                "tick_processing_budget_ms": 0.0
+                "tick_processing_budget_ms": 0.0,
+                "heartbeat_interval_ms": 1000
             }
         },
         "default_trade_simulator_config": {

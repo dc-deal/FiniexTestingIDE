@@ -236,6 +236,28 @@ Live state stays correct through two distinct layers — do not conflate them:
 
 ---
 
+## Canonical Clock & Idle Cadence (#360)
+
+`get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets
+the clock from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
+`set_current_time()`. The clock therefore advances continuously — it never freezes to the
+last tick and then jumps by the full gap — so phase/op timeouts track real elapsed time. This
+is the single place wall-clock is read in live; decision logic and workers only ever call
+`get_current_time()` (§9). In simulation the injected time is the simulated tick time, keeping
+backtests reproducible.
+
+The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 1000 ms)
+runs the cadence work on the **single main-loop consumer** — no second mutating thread:
+`heartbeat()` drains the inbox, checks timeouts, and **re-polls active orders** (the
+fill/cancel-confirm query fires during idle, not only on a tick); the Reconciler pulls broker
+truth if due; and a decision **ghost-pass** runs (`tick=None`, cached worker results) for logics
+that opt in via `wants_heartbeat()`. No synthetic market tick is fed into the pipeline and no
+tick state is mutated (the #320 contract). The per-order `poll_interval_ms` and the reconcile
+`min_interval_seconds` still gate the actual broker I/O, so a faster heartbeat does not multiply
+API calls.
+
+---
+
 ## Open Issues (Live-Specific)
 
 ### Reconciliation Layer — Resolution + Push (#349, V1.4)

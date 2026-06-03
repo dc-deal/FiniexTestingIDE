@@ -16,6 +16,11 @@ class AutotraderExecutionDefaults(BaseModel):
     """AutoTrader tick-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
+    # Idle-heartbeat cadence (#360): max wait for a real tick before the loop
+    # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
+    # Governs the live idle wake only; does not multiply broker I/O (re-poll is
+    # gated by poll_interval_ms, reconcile by min_interval_seconds).
+    heartbeat_interval_ms: int = 1000
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 

@@ -194,41 +194,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.start_worker()
 
     # ============================================
-    # Clock
-    # ============================================
-
-    def get_current_time(self) -> datetime:
-        """
-        Broker-delivered tick timestamp — the wall-clock time anchor for
-        downstream timing logic. In live mode this matches real time
-        (no simulation drift).
-
-        Raises:
-            RuntimeError: If called before the first tick has arrived
-        """
-        if self._current_tick is None:
-            raise RuntimeError(
-                'LiveTradeExecutor.get_current_time() called before first tick'
-            )
-        return self._current_tick.timestamp
-
-    # ============================================
     # Pending Order Processing (live-specific)
     # ============================================
 
     def heartbeat(self) -> None:
         """
-        Side-effect-free drain for idle ticks (#320 override).
+        Side-effect-free drain for idle ticks (#320 override, #360 re-poll).
 
         Drains async worker responses (fills, edits, cancels, query results,
-        trades) and processes timeouts. Called by the AutoTrader tick loop
-        on queue.Empty so the live pipeline stays responsive even when the
-        market is quiet. Does NOT touch tick state — see the abstract
-        contract in AbstractTradeExecutor.heartbeat.
+        trades), processes timeouts, and re-polls active limit orders. Called by
+        the AutoTrader tick loop on queue.Empty so the live pipeline stays
+        responsive even when the market is quiet — the fill/cancel-confirm query
+        now fires during idle, not only on a real tick (#360). Does NOT touch
+        tick state — see the abstract contract in AbstractTradeExecutor.heartbeat.
         """
         self._request_processor.drain_inbox()
         for pending in self._request_processor.check_timeouts():
             self._handle_timeout(pending)
+        # #360: re-poll active limit orders on the timer too (was on_tick-only).
+        # Per-order throttle (poll_interval_ms) still gates the actual broker I/O.
+        self._process_active_orders()
 
     def _process_pending_orders(self) -> None:
         """

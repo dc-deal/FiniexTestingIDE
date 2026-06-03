@@ -135,6 +135,11 @@ class AbstractTradeExecutor(ABC):
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
+        # Canonical clock — injected by the tick loop (real-tick timestamp or,
+        # on a ghost-pass/heartbeat, the timer time). Decoupled from _current_tick
+        # so the clock advances during idle periods (#360).
+        self._clock_time: Optional[datetime] = None
+
         # Order tracking with configurable limit
         self._order_counter = 0
         self._order_history_max = order_history_max
@@ -337,6 +342,9 @@ class AbstractTradeExecutor(ABC):
         """
         self._current_tick = tick
         self._tick_counter += 1
+        # Real-tick clock: the tick carries its own time. The loop injects the
+        # between-tick (ghost/heartbeat) time separately via set_current_time (#360).
+        self._clock_time = tick.timestamp
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         # Forward tick to broker adapter — mock/simulation adapters need
@@ -1195,21 +1203,39 @@ class AbstractTradeExecutor(ABC):
             raise ValueError(f"No current price data for {symbol}")
         return self._current_tick.bid, self._current_tick.ask
 
-    @abstractmethod
+    def set_current_time(self, now: datetime) -> None:
+        """
+        Inject the canonical clock for a between-tick pass (#360).
+
+        Real ticks set the clock from the tick timestamp inside on_tick. This
+        setter is the loop's hook for advancing time when there is NO tick — a
+        ghost-pass/heartbeat — so phase/op timeouts track real elapsed time
+        instead of freezing to the last tick:
+        - Live: wall-clock at the heartbeat.
+        - Sim: the simulated resolution time of a between-tick fill (Stage 2).
+
+        Args:
+            now: Timezone-aware UTC datetime for the current pass
+        """
+        self._clock_time = now
+
     def get_current_time(self) -> datetime:
         """
         Canonical clock for downstream timing logic (guard cooldowns,
-        rate limiters, etc).
-
-        Implementation per executor mode:
-        - TradeSimulator: current tick timestamp (simulated time — keeps
-          cooldowns deterministic and sim-correct).
-        - LiveTradeExecutor: broker-delivered tick timestamp (wall-clock).
+        rate limiters, phase/op timeouts, event timestamps). The single time
+        source for both pipelines — injected by the loop via set_current_time.
 
         Returns:
             Timezone-aware datetime
+
+        Raises:
+            RuntimeError: If called before the loop injected a time
         """
-        pass
+        if self._clock_time is None:
+            raise RuntimeError(
+                'get_current_time() called before the tick loop injected a time'
+            )
+        return self._clock_time
 
     # ============================================
     # Post-Run (Framework statistics collection)
