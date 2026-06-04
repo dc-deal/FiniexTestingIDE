@@ -19,8 +19,9 @@ class AutotraderExecutionDefaults(BaseModel):
     # Idle-heartbeat cadence (#360): max wait for a real tick before the loop
     # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
     # Governs the live idle wake only; does not multiply broker I/O (re-poll is
-    # gated by poll_interval_ms, reconcile by min_interval_seconds).
-    heartbeat_interval_ms: int = 1000
+    # gated by poll_interval_ms, reconcile by min_interval_seconds). 500 ms for
+    # snappier between-tick reaction; event-driven wake-on-arrival is #331.
+    heartbeat_interval_ms: int = 500
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 

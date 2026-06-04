@@ -46,7 +46,7 @@
         "execution": {
             "parallel_workers": false,
             "bar_max_history": 1000,
-            "heartbeat_interval_ms": 1000,
+            "heartbeat_interval_ms": 500,
             "performance_tracking": {
                 "worker_decision_tracking": true
             }

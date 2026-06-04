@@ -11,12 +11,18 @@ unconditionally, so the phase machine's CANCEL_ALL retries found an empty list
 and never reached active_limit_count == 0.
 """
 
+from unittest.mock import MagicMock
+
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 
 
 class _Order:
-    def __init__(self, order_id: str):
+    def __init__(self, order_id: str, broker_ref: str = 'REF'):
         self.pending_order_id = order_id
+        self.broker_ref = broker_ref
+        self.in_flight_operation = PendingOperation.NONE
+        self.in_flight_query = False
 
 
 class _FakeApi:
@@ -43,6 +49,7 @@ def _bare_field_study(api) -> LiveFieldStudy:
     """LiveFieldStudy instance with only the attrs _cancel_resting needs."""
     fs = object.__new__(LiveFieldStudy)           # bypass full __init__
     fs.trading_api = api
+    fs.logger = MagicMock()                       # diagnostic [FS_CANCEL] logging → no-op here
     fs._phase_order_ids = ['L1', 'L2']
     return fs
 

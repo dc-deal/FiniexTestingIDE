@@ -116,6 +116,11 @@ class AutotraderTickLoop:
         # Config is in ms; queue.get() wants seconds.
         self._heartbeat_interval_s = config.execution.heartbeat_interval_ms / 1000.0
 
+        # #360 ghost-pass observability — proves the heartbeat decision pass fires
+        # (and how often it acts), reported once at session end.
+        self._ghost_pass_count: int = 0
+        self._ghost_action_count: int = 0
+
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
         symbol_spec = executor.broker.adapter.get_symbol_specification(config.symbol)
         self._base_currency = symbol_spec.base_currency
@@ -382,6 +387,12 @@ class AutotraderTickLoop:
             except queue.Full:
                 pass
 
+        # #360 ghost-pass observability — proves the idle decision pass fired
+        # (and acted) over the session. Machine-parseable.
+        self._logger.info(
+            f"[GHOST] ghost_passes={self._ghost_pass_count} "
+            f"ghost_actions={self._ghost_action_count} ticks={ticks_processed}")
+
         self._running = False
         return ticks_processed, ticks_clipped
 
@@ -426,9 +437,12 @@ class AutotraderTickLoop:
         decision = self._worker_orchestrator.process_heartbeat()
         if decision is None:
             return
+        self._ghost_pass_count += 1
         if self._safety_blocked:
             decision.action = DecisionLogicAction.FLAT
         order_result = self._decision_logic.execute_decision(decision, tick=None)
+        if order_result is not None:
+            self._ghost_action_count += 1
         self._record_rejection(order_result, decision)
 
     def _push_pulse_frame(self, ticks_processed: int) -> None:

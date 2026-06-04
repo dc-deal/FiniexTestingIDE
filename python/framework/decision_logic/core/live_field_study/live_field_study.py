@@ -41,6 +41,7 @@ from python.framework.types.decision_event_types import (
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
 from python.framework.types.worker_types import WorkerResult
@@ -116,6 +117,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
             trading_context.symbol if trading_context is not None else None
         )
         self._last_mid: Optional[float] = None
+
+        # Diagnostic trace state (#360/#13/#15 forensics) — DEBUG emits only on
+        # change (state / active-limit count / action / phase); VERBOSE = per-advance.
+        self._last_trace_state = None
+        self._last_trace_limits: int = -1
 
         # Event observation flags (set by the #348 hooks, reset on each new submit / phase).
         self._filled_flag = False
@@ -335,6 +341,9 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._pending_action = action
         cur_phase = self._machine.get_current_phase_id()
 
+        # Diagnostic trace (#13/#15 forensics): per-advance, tick vs ghost source.
+        self._trace_advance(tick, ctx, action, cur_phase)
+
         self._log_new_results()
 
         if cur_phase != self._last_phase_id:
@@ -343,6 +352,9 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._reset_flags()
             self._record_phase_start(cur_phase)
             self._last_phase_id = cur_phase
+            self.logger.debug(
+                f"[FS_RESTING] event=phase_start phase={cur_phase} "
+                f"{self._resting_snapshot_str()}")
 
         # Submits route through the standard BUY/SELL action so the safety circuit
         # breaker can suppress them (it overrides BUY/SELL → FLAT when blocked).
@@ -436,6 +448,12 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._rejected_flag = True
         elif order_type == OrderType.LIMIT and result is not None and result.order_id:
             self._phase_order_ids.append(result.order_id)
+        # Submit trace — pins which order each phase actually placed (#13/#15 forensics).
+        oid = result.order_id if result is not None else None
+        status = result.status.value if result is not None and result.status else 'none'
+        self.logger.debug(
+            f"[FS_SUBMIT] phase={action.phase_id} type={order_type.value} side={side.value} "
+            f"lots={action.lots} price={action.price} order_id={oid} status={status}")
         return result
 
     def _close_all(self) -> None:
@@ -460,8 +478,17 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # still submit-in-flight) is retried naturally on the next call — never
         # dropped. This also makes force_close a true safety-net: it clears every
         # resting order, including any leaked from an earlier phase.
-        for order in self.trading_api.get_active_orders():
-            self.trading_api.cancel_limit_order(order.pending_order_id)
+        resting = self.trading_api.get_active_orders()
+        self.logger.debug(
+            f"[FS_CANCEL] event=cancel_all {self._resting_snapshot_str(resting)}")
+        for order in resting:
+            scheduled = self.trading_api.cancel_limit_order(order.pending_order_id)
+            # scheduled=0 with ref=NONE → the cancel was dropped (broker_ref in-flight);
+            # limit_cancel/multi_cancel do NOT re-issue, so this order orphans (#13/#15).
+            self.logger.debug(
+                f"[FS_CANCEL] order={order.pending_order_id} ref={order.broker_ref or 'NONE'} "
+                f"op={order.in_flight_operation.name} q={int(order.in_flight_query)} "
+                f"scheduled={int(scheduled)}")
         self._phase_order_ids = []
 
     def _modify_resting(self, action: PhaseAction) -> None:
@@ -469,6 +496,76 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self.trading_api.modify_limit_order(
                 order_id=self._phase_order_ids[-1], price=action.price
             )
+
+    # ============================================
+    # Diagnostic trace (#13/#15 forensics — machine-parseable key=value)
+    # ============================================
+
+    def _resting_snapshot_str(self, orders: Optional[List[PendingOrder]] = None) -> str:
+        """
+        Compact snapshot of the currently resting orders (id | broker_ref | in-flight op
+        | in-flight query). A phase that fails with n>0 here is leaking/orphaning an order.
+
+        Args:
+            orders: Pre-fetched resting orders (re-queried when None)
+
+        Returns:
+            Machine-parseable 'n=K orders=[id|ref=…|op=…|q=…,…]' string
+        """
+        if orders is None:
+            orders = self.trading_api.get_active_orders()
+        parts = [
+            f"{o.pending_order_id}|ref={o.broker_ref or 'NONE'}"
+            f"|op={o.in_flight_operation.name}|q={int(o.in_flight_query)}"
+            for o in orders
+        ]
+        return f"n={len(orders)} orders=[{','.join(parts)}]"
+
+    def _trace_advance(
+        self,
+        tick: Optional[TickData],
+        ctx: PhaseContext,
+        action: PhaseAction,
+        cur_phase: Optional[str],
+    ) -> None:
+        """
+        Emit one machine-parseable phase-advance trace line per advance (#13/#15 forensics).
+
+        VERBOSE: every advance (tick AND ghost) — the firehose.
+        DEBUG: only when something changes (state / active-limit count / non-NONE action /
+        phase) — controlled, no per-pass spam.
+
+        Args:
+            tick: The market tick (None = ghost-pass / heartbeat advance)
+            ctx: The PhaseContext the machine just consumed
+            action: The PhaseAction the machine returned
+            cur_phase: Current phase id after the advance
+        """
+        src = 'ghost' if tick is None else 'tick'
+        state = self._machine.get_state()
+        submit_time = self._machine.get_submit_time()
+        age = f"{(ctx.now - submit_time).total_seconds():.1f}" if submit_time else "-1"
+        idx = self._machine.get_current_phase_index()
+        line = (
+            f"[FS_PHASE] src={src} phase={cur_phase or 'done'} idx={idx} "
+            f"state={state.name} action={action.kind.value} submit_age_s={age} "
+            f"active_limits={ctx.active_limit_count} open_pos={ctx.open_position_count} "
+            f"has_pending={int(ctx.has_pending)} filled={int(ctx.filled_since_submit)} "
+            f"rejected={int(ctx.rejected_since_submit)} cancelled={int(ctx.cancelled_since_submit)} "
+            f"now={ctx.now.isoformat()}"
+        )
+        self.logger.verbose(line)
+
+        changed = (
+            state != self._last_trace_state
+            or ctx.active_limit_count != self._last_trace_limits
+            or action.kind != PhaseActionKind.NONE
+            or cur_phase != self._last_phase_id
+        )
+        if changed:
+            self.logger.debug(line)
+        self._last_trace_state = state
+        self._last_trace_limits = ctx.active_limit_count
 
     # ============================================
     # Internal helpers
@@ -563,6 +660,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 level=level,
                 reason_key='field_study_phase',
             )
+            # Resting-order snapshot at phase end — a fail with n>0 is the orphan/leak.
+            self.logger.debug(
+                f"[FS_RESTING] event=phase_end phase={result.phase_id} "
+                f"outcome={result.outcome.value} {self._resting_snapshot_str()}")
             if self._recorder:
                 self._recorder.record_phase_result(result)
             if self._halt_after_phase and result.phase_id == self._halt_after_phase:

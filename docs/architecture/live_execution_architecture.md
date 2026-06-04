@@ -258,6 +258,61 @@ API calls.
 
 ---
 
+## Deferred Cancel — cancel-vs-submit-in-flight (#361)
+
+A cancel can be requested while the order's submit is still in-flight (`broker_ref=None`). The
+cancel cannot be dispatched yet (no broker reference), but it must **not** be dropped — dropping it
+orphans the order (the order rests once the submit confirms, with no cancel ever issued; proven as
+the Field Study `#13`/`#15` cert blocker).
+
+`cancel_limit_order` therefore **defers** such a cancel: it parks the intent on the PendingOrder
+(`cancel_requested=True`) and returns `True` (accepted). When `_handle_limit_submit_response`
+confirms the `broker_ref`, it auto-issues the parked cancel (`PENDING_CANCEL` → `submit_cancel_order_async`),
+which resolves via `_handle_cancel_response` and removes the order. **FILLED-precedence:** if the
+submit response is a sync-fill, the fill wins and the deferred cancel is discarded (a filled order
+is never cancelled). The deferred cancel fires inside `drain_inbox` on the main loop — single
+consumer, no race. This is one concrete slice of the broader #361 order-lifecycle state machine.
+
+---
+
+## Order Lifecycle Matrix — submit → cancel (incl. failure cases)
+
+The map of every step a LIMIT order can pass through with a cancel in play. Two planes:
+**local** = `_active_limit_orders` + the worker queues (what we believe); **broker** = what is
+actually live at Kraken. The cancel needs the broker's `broker_ref` (txid), which arrives only with
+the submit response — so during submit-in-flight the order is locally visible but un-actionable.
+
+| # | Step / event | Local state | Broker state (probable) | Handling (issue) |
+|---|---|---|---|---|
+| **Submit** | | | | |
+| 1 | Submit in-flight | in list, `broker_ref=None`, `PENDING_SUBMIT` | maybe not received yet | counts as active; **not cancellable**; a cancel here → **deferred** (parked, fired on confirm) ✓ |
+| 2 | Submit resp = PENDING + txid | `broker_ref` set, RESTING; a parked cancel **fires now** | order resting (open) | normal; poll for fills |
+| 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone) |
+| 4 | Submit TIMEOUT (no resp) | in list, `broker_ref=None`, timed out | **UNKNOWN** — may exist | `_handle_timeout` → BROKER_ERROR; risk: order rests at broker → orphan; **Reconciler #151** backstop; `cl_ord_id` would allow query-by-own-id (#355) |
+| **Resting** | | | | |
+| 5 | Resting, no cancel | RESTING, polled | resting, may fill anytime | poll → fill |
+| 6 | Fill detected (poll/push) | removed as FILLED, position, `on_order_filled` #348 | closed (filled) | algo reacts to the position |
+| **Cancel** | | | | |
+| 7 | Cancel sent (with txid) | `in_flight_operation=PENDING_CANCEL` | cancel processing | await CancelResponse |
+| 8 | Cancel resp = SUCCESS | removed, `on_order_cancelled` #348 | open order gone | clean; `active_limits → 0` ✓ |
+| 9 | Cancel resp = "already filled" | stays in list, in-flight cleared → query → FILLED | filled (cancel too late) | FILLED-precedence → `on_order_filled` #348; cancel-vs-fill (**#361**) |
+| 10 | Cancel resp = "unknown order" | in-flight cleared, stays for poll | not (yet) existing / already terminal | poll resolves real state; benign (the stale-QueryResponse warnings) |
+| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | `check_timeouts` net; **Reconciler #151** backstop |
+| **Partial** | | | | |
+| 12 | Partial fill then cancel | filled portion = position, remainder | part filled, part resting → cancel kills the remainder | **#342** surfaces `PARTIALLY_FILLED`; today partly via volume reconcile |
+
+**Implemented + live-green:** #1 (defer) + #2 (fire on confirm). **Works today poll/reconcile-based,
+explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout, #4 submit-timeout orphan
+(#151 backstop; `cl_ord_id` cleaner, #355), #12 partial (#342). The common thread: wherever the
+broker state is "UNKNOWN", the **Reconciler (#151)** is the net and the **algo reacts** to the
+resolved event — it never pre-empts the race.
+
+**Testing:** these cases are driven against `MockBrokerAdapter` (controllable: `INSTANT_FILL` /
+`DELAYED_FILL` / `REJECT_ALL` / `TIMEOUT`; extend for already-filled / unknown / partial), not real
+Kraken. The real-broker contract is the separate `tests/live_adapters/` release gate.
+
+---
+
 ## Open Issues (Live-Specific)
 
 ### Reconciliation Layer — Resolution + Push (#349, V1.4)

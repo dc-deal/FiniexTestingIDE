@@ -178,7 +178,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),
             bar_max_history=execution_raw.get('bar_max_history', 1000),
-            heartbeat_interval_ms=execution_raw.get('heartbeat_interval_ms', 1000),
+            heartbeat_interval_ms=execution_raw.get('heartbeat_interval_ms', 500),
             performance_tracking=AutoTraderPerformanceTrackingConfig(
                 worker_decision_tracking=performance_tracking_raw.get('worker_decision_tracking', False),
             ),

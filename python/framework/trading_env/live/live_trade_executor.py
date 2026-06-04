@@ -431,9 +431,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending.broker_ref = response.broker_ref
 
         if response.is_filled:
-            # Sync-fill LIMIT (rare — e.g. price already crossed at submit)
+            # Sync-fill LIMIT (rare — e.g. price already crossed at submit).
+            # FILLED-precedence: a fill wins over any deferred cancel (#361).
             self._active_limit_orders.remove(pending)
             self._fill_open_order(pending, fill_price=response.fill_price)
+        elif pending.cancel_requested:
+            # Deferred cancel (#361): a cancel was requested while this submit was
+            # in-flight (broker_ref=None). Now confirmed → issue it. The CancelResponse
+            # resolves via _handle_cancel_response (removes from _active_limit_orders).
+            pending.cancel_requested = False
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            self._request_processor.submit_cancel_order_async(
+                order_id=order_id,
+                broker_ref=pending.broker_ref,
+                adapter=self.broker.adapter,
+            )
+            self.logger.info(
+                f"❌ Limit order {order_id} deferred cancel issued "
+                f"(broker_ref={pending.broker_ref})"
+            )
         # else: PENDING — pending stays in _active_limit_orders,
         # _process_active_orders Phase 2 polls it for fills.
 
@@ -1386,9 +1402,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if pending.pending_order_id != order_id:
                 continue
             if pending.broker_ref is None:
-                # Option A: reject cancel-on-unconfirmed-submit
-                return False
+                # Submit still in-flight: defer the cancel (#361) — park the intent and
+                # auto-issue it once _handle_limit_submit_response confirms the broker_ref.
+                # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
+                pending.cancel_requested = True
+                self.logger.debug(
+                    f"[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight")
+                return True
             if pending.in_flight_operation != PendingOperation.NONE:
+                self.logger.debug(
+                    f"[CANCEL_SKIP] order={order_id} reason=busy "
+                    f"op={pending.in_flight_operation.name} scheduled=0")
                 return False  # busy
 
             pending.in_flight_operation = PendingOperation.PENDING_CANCEL
@@ -1402,6 +1426,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"(broker_ref={pending.broker_ref})"
             )
             return True
+        self.logger.debug(
+            f"[CANCEL_SKIP] order={order_id} reason=not_in_active_limits scheduled=0")
         return False
 
     def cancel_stop_order(self, order_id: str) -> bool:

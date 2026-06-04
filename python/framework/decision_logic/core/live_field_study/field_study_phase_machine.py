@@ -141,6 +141,14 @@ class FieldStudyPhaseMachine:
             return None
         return self._idx
 
+    def get_state(self) -> PhaseState:
+        """Current per-phase sub-state (PENDING/AWAIT_FILL/POST_CLOSE_WAIT/…) — for tracing."""
+        return self._state
+
+    def get_submit_time(self) -> Optional[datetime]:
+        """Wall/tick time the current wait clock started (last issued op) — for tracing."""
+        return self._submit_time
+
     # ============================================
     # Transition helpers
     # ============================================
