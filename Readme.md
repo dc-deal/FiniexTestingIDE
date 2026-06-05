@@ -4,21 +4,24 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.2.3
+> **Version:** 1.3.0
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.2.3
+## What's New in 1.3.0
 
-- **Live Execution Architecture Refactor** — `LiveRequestProcessor` introduces symmetric sim/live pipelines, a multi-listener foundation for order outcomes, async HTTP dispatch via a worker thread, and a Tier-3-decoupled adapter contract (build payload / send request / parse response per operation). Removes the synchronous HTTP bottleneck on the main thread.
-- **Async Modify, Cancel, and Position-Modify** — All order lifecycle operations now run through the worker thread with a `PendingOperation` state machine on the order itself. `has_in_flight_operation(order_id)` lets algos wait for resolution. Position-level SL/TP modify is capability-gated (Kraken Spot uses local fallback; MT5 will use async when added).
-- **Broker Trade Record Model — Order ↔ Executions Pairing** — Per-execution data model (`BrokerTrade`) mirrors what every institutional broker provides: each order produces one or more execution records with their own price, volume, fee, and timestamp. `pending.trades` plus cumulative aggregates (filled lots, avg price, fee) flow through the shared fill path. Tier-3 trades-query layer on every adapter; Kraken implementation uses the two-call `QueryOrders+QueryTrades` pattern. Mock supports configurable multi-trade emission for partial-fill regression testing.
-- **Test Suite Expansion** — Async submit regression tests (#321), async modify/cancel parity tests, sim modify lifecycle, broker trade records, sim trade emission, trade records parity. 1041 tests total.
+- **Live Field Study — Real-Money Acceptance Certificate** — A deterministic, operator-driven end-to-end run against real Kraken Spot drives the full live pipeline through every order type, the modify/cancel paths, a rejection battery, deterministic partial-close, and idle-heartbeat phases. Everything is captured as machine-analyzable JSONL and distilled into a PASS/FAIL acceptance certificate — the V1.3 live-acceptance gate.
+- **Reconciliation Foundation** — Broker truth-pull (orders, balances, positions) plus a Reconciler running in ALERT_ONLY: the live session gets a real flat-preflight and a continuous broker-truth observation plane, validated on a real account (clean → active → clean).
+- **Decision Event Channel** — A typed, ordered, drain-guaranteed event stream lets decision logic react to order, fill, and lifecycle events between ticks, not only on the next market tick.
+- **Live Loop Clock & Cadence** — Reconciliation, active-order re-poll, and the decision/phase clock are now timer-driven and tick-sourced rather than gated on the arrival of a market tick. On an illiquid pair (30–60 s between ticks) cadence work and phase timeouts keep running. Includes a heartbeat "ghost-pass" for between-tick decision reaction, mirrored in the simulation pipeline.
+- **Order-Lifecycle Hardening** — A cancel requested while an order's submit is still in-flight is now deferred and auto-issued once the broker confirms, instead of being silently dropped — with FILLED-precedence when a fill and a cancel race.
+- **Audit Telemetry & API Performance Monitor** — Read-only local-vs-broker drift and submission-slippage audit, a uniform three-level execution model (Trigger → BrokerOrder → Fills), and per-endpoint broker REST latency telemetry with its own console panel.
 
 ### Previous Releases
 
+- **1.2.3** — Live execution architecture refactor (symmetric sim/live pipelines, async HTTP dispatch), async modify/cancel/position-modify, broker trade record model (order ↔ executions pairing)
 - **1.2.2** — FiniexAutoTrader Live Trading Pipeline, Live Console UI, Spot Trading Model, Order Guard, AwarenessChannel, REST API Foundation, Dual-Pipeline Parity Tests, User Algo Workspace
 - **1.2.1** — Millisecond-based latency timing, inbound-only fill semantics, tick processing budget, generator profile system
 - **1.2.0** — USER Namespace, trading core completion (all order types), tick data trimming, unified test runner, discovery cache
@@ -41,6 +44,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - ✅ Live trading via FiniexAutoTrader (Kraken Spot, production-validated)
 - ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites
 - ✅ Validated performance — standardized benchmark certificate with regression detection
+- ✅ Validated live execution — real-money end-to-end acceptance certificate (Field Study)
 
 ---
 
@@ -119,7 +123,7 @@ Two-tier system: **default configs** (`configs/`, version controlled) and **user
 
 ## Sample Data
 
-A sample dataset is available for testing and learning:
+A sample dataset is available for testing and learning (updated 2026-05-09):
 
 **Download:** [download link](https://drive.google.com/file/d/1GEdkwWDWKV5n7hUoRALvSB2PR7olkUjR/view?usp=sharing)
 
@@ -129,8 +133,8 @@ Extract the ZIP contents to `data/processed/`:
 
 ```
 data/processed/
-├── .parquet_tick_index.json
-├── .parquet_bars_index.json
+├── .parquet_tick_index.parquet
+├── .parquet_bars_index.parquet
 ├── mt5/
 │   ├── ticks/
 │   │   ├── AUDUSD/ ... USDJPY/
@@ -145,10 +149,10 @@ data/processed/
 
 | Broker | Symbols | Time Range | Ticks |
 |--------|---------|------------|-------|
-| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → Mar 2026 | ~96M |
-| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → Mar 2026 | ~8M |
+| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → May 2026 | ~150M |
+| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → May 2026 | ~16M |
 
-**Total: ~104M ticks across 16 instruments (8 Forex pairs + 8 Crypto)**
+**Total: ~166M ticks across 16 instruments (8 Forex pairs + 8 Crypto), with auto-rendered M1–D1 bars**
 
 > ⚠️ **Data Disclaimer:** The provided dataset consists of historical tick and bar data
 collected locally via MetaTrader 5 and processed into Parquet format.
@@ -190,6 +194,8 @@ live trading or commercial redistribution.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+→ See the [Execution Layer](docs/architecture/architecture_execution_layer.md) and [Live Execution](docs/architecture/live_execution_architecture.md) architecture docs for the full Sim/Live hybrid design.
+
 ---
 
 ## Quality Assurance
@@ -208,6 +214,8 @@ Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior).
 
 **Live Adapter Certificate:** Each release includes a live adapter report validating the full Kraken API contract — dry-run order validation, limit order lifecycle (place → modify → cancel), and market order round-trip (buy + sell with real fills). Requires a Kraken account with API key; no funds consumed beyond minimal trading fees. See [`docs/tests/live_adapters/kraken_adapter_integration_tests.md`](docs/tests/live_adapters/kraken_adapter_integration_tests.md) for details.
 
+**Live Field Study Certificate:** The live-acceptance gate — a deterministic, operator-driven end-to-end run against real Kraken Spot that drives the full live pipeline through every order type, the modify/cancel paths, a rejection battery, deterministic partial-close, and idle-heartbeat phases, while the Reconciler observes the broker-truth plane. Every step is captured as machine-analyzable JSONL and distilled into a PASS/FAIL certificate (90-day validity). Required for every minor release; runs on a real account at the broker's minimum lot size (a few cents in fees). See [`docs/tests/live_field_study/field_study_guide.md`](docs/tests/live_field_study/field_study_guide.md) for details.
+
 ---
 
 ## Documentation
@@ -219,7 +227,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 ## Current Limitations
 
 - **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
-- **No Partial Fills on Live** - Partial position close supported in backtesting; live execution planned
+- **No Broker-Side Partial-Fill Detection on Live** - A live order is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and live.
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
 > **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests. No core decision logic actively uses it yet — example development is planned. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
@@ -234,10 +242,11 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - Multi-market data pipeline (MT5 Forex + Kraken Spot, 16 instruments)
 - Unified test infrastructure and discovery cache management
 
-**Horizon 2 — Live Trading: In Progress (V1.3)**
+**Horizon 2 — Live Trading: Released (V1.3)**
 - FiniexAutoTrader pipeline with Kraken Spot, production-validated (V1.2.2)
 - Live execution refactor with async dispatch and broker trade record model (V1.2.3)
-- Remaining: Reconciliation Layer, Config Architecture Unification, Production Bot
+- Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
+- Next: production-bot case study and restart-safe algo memory (V1.3.1), then state recovery and push-based execution stream (V1.4)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 
