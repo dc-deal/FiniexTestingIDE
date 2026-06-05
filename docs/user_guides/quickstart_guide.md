@@ -388,6 +388,12 @@ class AggressiveTrend(AbstractDecisionLogic):
 | `compute()` | Analyze workers, return `Decision(action=..., outputs={...})` |
 | `_execute_decision_impl()` | Execute trades via `trading_api` |
 
+> **⏱ Time:** Need the current time in your decision logic? Use
+> `self.trading_api.get_current_time()` — **never** `datetime.now()`. It is the single
+> canonical clock the framework owns: simulated tick time in backtests (so runs are
+> reproducible) and the executor clock in live. Reading wall-clock directly breaks
+> backtest reproducibility and decouples your timing from the tick cadence.
+
 ### AwarenessChannel — Narrate Your Algo
 
 The AwarenessChannel lets your decision logic narrate what it's thinking.

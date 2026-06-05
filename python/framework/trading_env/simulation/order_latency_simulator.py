@@ -281,8 +281,22 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         Returns:
             List of PendingOrder objects ready to be filled
         """
-        current_msc = self._get_tick_msc(tick)
+        return self.process_up_to_msc(self._get_tick_msc(tick))
 
+    def process_up_to_msc(self, current_msc: int) -> List[PendingOrder]:
+        """
+        Resolve and return orders whose broker_fill_msc is at or before current_msc.
+
+        Tick-independent variant of process_tick: keyed on an explicit simulated
+        timestamp so the AutoTrader/sim heartbeat (#360 ghost-pass) can resolve
+        fills that land BETWEEN two replayed data ticks, not only on a tick.
+
+        Args:
+            current_msc: Simulated wall-clock in ms to resolve against
+
+        Returns:
+            List of PendingOrder objects ready to be filled
+        """
         to_fill = []
         to_remove = []
 

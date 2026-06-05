@@ -686,6 +686,19 @@ class DecisionTradingApi:
         """
         return self._executor.get_active_order_counts()
 
+    def get_active_orders(self) -> List[PendingOrder]:
+        """
+        Get the currently resting (active) orders — limit + stop.
+
+        These are the orders live at the broker (e.g. Kraken OpenOrders);
+        in-flight MARKET orders are excluded. Lets an algo cancel exactly what
+        is resting (broker-aligned), rather than relying on its own bookkeeping.
+
+        Returns:
+            List of active limit + stop PendingOrders
+        """
+        return self._executor.get_active_orders()
+
     def get_order_history(self, symbol: Optional[str] = None) -> List[OrderResult]:
         """
         Get historical orders (executed + rejected).

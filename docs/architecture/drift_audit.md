@@ -53,7 +53,7 @@ Async dispatch + worker thread + drain consumer = multiple hops where the respon
 | ID | Owner | Lifetime | Used for |
 |---|---|---|---|
 | `PendingOrder.pending_order_id` | **Us** — assigned at submission, e.g. `pos_ethusd_3` | Order lifetime | Primary routing key. DriftAuditor's `_pending_audits` dict key. Listener correlation. Log identifier. |
-| `PendingOrder.broker_ref` | **Broker** — Kraken txid (e.g. `OPRSKJ-IAYTG-T5VB2M`), MT5 ticket | Order lifetime, **may flip via EditOrder** (#320 stale-ref guard) | The handle the API call needs (`POST /0/private/QueryOrders` with `txid=<broker_ref>`). |
+| `PendingOrder.broker_ref` | **Broker** — Kraken txid (e.g. `OPRSKJ-IAYTG-T5VB2M`), MT5 ticket | Order lifetime, **stable across modify** (Kraken `AmendOrder` is in-place; #320 stale-ref guard now defensive) | The handle the API call needs (`POST /0/private/QueryOrders` with `txid=<broker_ref>`). |
 | `BrokerTrade.trade_id` | **Broker** — Kraken tradeid (e.g. `TKH2SE-M7IF5-CFI7LT`), MT5 deal ticket | Permanent | Per-execution receipt. Persists in trade history, never reused. |
 | `BrokerTrade.parent_broker_ref` | **Broker** — copy of the parent order's `broker_ref` | Permanent | Trade → parent order link on the broker side. |
 | `BrokerTrade.order_id` | **Us** — written by the adapter's `_parse_trades_query_response` | Permanent | Trade → internal order link. The bridge that makes drain-side routing possible without re-lookups. |
@@ -113,7 +113,7 @@ DriftAuditor._on_order_outcome
 
 The split is deliberate and non-removable:
 
-- **`broker_ref` alone is not stable enough** for routing. Kraken's EditOrder flips the txid — a query dispatched before the modify returns a response carrying the OLD ref while the in-flight pending now holds the NEW ref. The #320 stale-ref guard relies on detecting this mismatch.
+- **`broker_ref` is broker-assigned, not ours.** We cannot choose it, and historically it could even change mid-life — the legacy EditOrder was cancel-replace and flipped the txid, which the #320 stale-ref guard was built to absorb (a query dispatched before the modify returned the OLD ref while the in-flight pending already held the NEW one). Since the switch to in-place `AmendOrder` the txid is stable across a modify, so the guard no longer fires in normal Kraken flow — it stays as a defensive net for brokers that do cancel-replace.
 - **Our `order_id` alone cannot drive the broker API.** Kraken does not know our internal naming — it needs its own txid.
 - **The bridge is written by the adapter** in `_parse_trades_query_response`. The adapter receives our `order_id` as input to the parse step (carried through the worker dispatch), embeds it in every `BrokerTrade` it produces, and threads it into the `TradesQueryResponse`. From that moment on, the response is fully routable on the drain side without re-looking-up anything.
 

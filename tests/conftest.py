@@ -12,6 +12,7 @@ Mark taxonomy (see docs/tests/test_taxonomy.md):
 - data          tests/data/
 - live_adapter  tests/live_adapters/
 - benchmark     tests/simulation/benchmark/
+- live_field_study tests/live_field_study/
 - integration   tests with 'integration' in their path
 - unit          order_guard, live_executor, safety, bar_rendering, workers, etc.
 
@@ -54,6 +55,10 @@ def pytest_collection_modifyitems(items):
         if '/tests/simulation/benchmark/' in path:
             item.add_marker(pytest.mark.benchmark)
 
+        # Live Field Study (excluded from normal runner — operator-driven live release gate)
+        if '/tests/live_field_study/' in path:
+            item.add_marker(pytest.mark.live_field_study)
+
         # Integration: full-pipeline end-to-end runs
         if '/integration/' in path:
             item.add_marker(pytest.mark.integration)
@@ -62,6 +67,7 @@ def pytest_collection_modifyitems(items):
         _UNIT_PATHS = (
             '/tests/autotrader/order_guard/',
             '/tests/autotrader/live_executor/',
+            '/tests/autotrader/loop_cadence/',
             '/tests/autotrader/safety/',
             '/tests/framework/bar_rendering/',
             '/tests/framework/batch_validations/',

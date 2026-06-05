@@ -88,21 +88,42 @@ class TestCancelLimitOrderBusy:
         assert cancel_scheduled is False
 
 
-class TestCancelLimitOrderNotConfirmed:
-    """Option A: cancel on submit-in-flight order returns False (broker_ref=None)."""
+class TestCancelLimitOrderDeferred:
+    """Cancel on a submit-in-flight order (broker_ref=None) is DEFERRED, not dropped (#361)."""
 
-    def test_cancel_before_broker_ref_confirmed(self, mock_delayed, executor_delayed):
-        """Order in _active_limit_orders with broker_ref=None → False."""
+    def test_cancel_before_broker_ref_is_deferred(self, mock_delayed, executor_delayed):
+        """broker_ref=None → cancel returns True and parks the intent (no CancelJob yet)."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
         result = executor_delayed.open_order(OpenOrderRequest(
             symbol="BTCUSD", order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0,
         ))
         order_id = result.order_id
-        # Do NOT call await_submit_confirmation — broker_ref still None
+        # Do NOT confirm — broker_ref still None
+        pending = executor_delayed._active_limit_orders[0]
+        assert pending.broker_ref is None
 
         scheduled = executor_delayed.cancel_limit_order(order_id=order_id)
-        assert scheduled is False
+        assert scheduled is True                       # accepted (deferred), not dropped
+        assert pending.cancel_requested is True
+        assert pending.in_flight_operation == PendingOperation.NONE  # not dispatched yet
+
+    def test_deferred_cancel_auto_issues_on_confirm_and_removes(self, mock_delayed, executor_delayed):
+        """After the submit confirms, the parked cancel auto-fires and the order is removed."""
+        mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
+        result = executor_delayed.open_order(OpenOrderRequest(
+            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=49000.0,
+        ))
+        order_id = result.order_id
+        executor_delayed.cancel_limit_order(order_id=order_id)  # deferred (broker_ref None)
+
+        # Submit confirms → broker_ref set → deferred cancel auto-issued (CancelJob enqueued)
+        mock_delayed.await_submit_confirmation(executor_delayed)
+        # CancelResponse drains → order removed from _active_limit_orders
+        mock_delayed.await_submit_confirmation(executor_delayed)
+
+        assert all(o.pending_order_id != order_id for o in executor_delayed._active_limit_orders)
 
 
 class TestCancelLimitOrderNotFound:

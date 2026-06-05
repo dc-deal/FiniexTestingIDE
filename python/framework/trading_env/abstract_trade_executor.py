@@ -135,6 +135,11 @@ class AbstractTradeExecutor(ABC):
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
+        # Canonical clock — injected by the tick loop (real-tick timestamp or,
+        # on a ghost-pass/heartbeat, the timer time). Decoupled from _current_tick
+        # so the clock advances during idle periods (#360).
+        self._clock_time: Optional[datetime] = None
+
         # Order tracking with configurable limit
         self._order_counter = 0
         self._order_history_max = order_history_max
@@ -337,6 +342,9 @@ class AbstractTradeExecutor(ABC):
         """
         self._current_tick = tick
         self._tick_counter += 1
+        # Real-tick clock: the tick carries its own time. The loop injects the
+        # between-tick (ghost/heartbeat) time separately via set_current_time (#360).
+        self._clock_time = tick.timestamp
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         # Forward tick to broker adapter — mock/simulation adapters need
@@ -492,6 +500,62 @@ class AbstractTradeExecutor(ABC):
         LiveTradeExecutor: Sends close to broker API
         """
         pass
+
+    # ============================================
+    # Order Normalization (concrete — shared by all modes)
+    # ============================================
+
+    @staticmethod
+    def _round_price(price: Optional[float], digits: int) -> Optional[float]:
+        """
+        Round a price to the symbol's decimal precision.
+
+        Args:
+            price: Price value, or None (passes through unchanged)
+            digits: Decimal places the broker allows for this symbol
+
+        Returns:
+            Price rounded to digits decimals, or None
+        """
+        if price is None:
+            return None
+        return round(price, digits)
+
+    def _normalize_order_request(self, request: OpenOrderRequest) -> OpenOrderRequest:
+        """
+        Snap an order's price fields to the symbol's broker precision.
+
+        Brokers enforce a price tick (digits); a raw computed float — e.g. a limit
+        price derived from an offset percentage — is rejected by the broker
+        (Kraken: "price can only be specified up to N decimals"). Normalizing on
+        the shared executor layer, before the local portfolio records the order and
+        before the adapter submits it, keeps the local book and the broker in
+        agreement and makes simulation and live round identically. Subclasses call
+        this first in open_order().
+
+        Volume is deliberately NOT snapped: a lot change is a position-size change,
+        so a step-misaligned volume is left for validate_order to reject as
+        INVALID_LOT_SIZE (broker-accurate) rather than silently resized.
+
+        Args:
+            request: Incoming order request; price/stop fields may be raw floats
+
+        Returns:
+            The same request with price-like fields rounded to the symbol's digits
+        """
+        # Unknown symbol → skip; open_order's validation rejects it gracefully
+        # (get_symbol_specification would otherwise raise on a missing spec).
+        if request.symbol not in self.broker.get_all_aviable_symbols():
+            return request
+
+        symbol_spec = self.broker.get_symbol_specification(request.symbol)
+        digits = symbol_spec.digits
+
+        request.price = self._round_price(request.price, digits)
+        request.stop_price = self._round_price(request.stop_price, digits)
+        request.stop_loss = self._round_price(request.stop_loss, digits)
+        request.take_profit = self._round_price(request.take_profit, digits)
+        return request
 
     # ============================================
     # Fill Processing (concrete — shared by all modes)
@@ -1139,21 +1203,39 @@ class AbstractTradeExecutor(ABC):
             raise ValueError(f"No current price data for {symbol}")
         return self._current_tick.bid, self._current_tick.ask
 
-    @abstractmethod
+    def set_current_time(self, now: datetime) -> None:
+        """
+        Inject the canonical clock for a between-tick pass (#360).
+
+        Real ticks set the clock from the tick timestamp inside on_tick. This
+        setter is the loop's hook for advancing time when there is NO tick — a
+        ghost-pass/heartbeat — so phase/op timeouts track real elapsed time
+        instead of freezing to the last tick:
+        - Live: wall-clock at the heartbeat.
+        - Sim: the simulated resolution time of a between-tick fill (Stage 2).
+
+        Args:
+            now: Timezone-aware UTC datetime for the current pass
+        """
+        self._clock_time = now
+
     def get_current_time(self) -> datetime:
         """
         Canonical clock for downstream timing logic (guard cooldowns,
-        rate limiters, etc).
-
-        Implementation per executor mode:
-        - TradeSimulator: current tick timestamp (simulated time — keeps
-          cooldowns deterministic and sim-correct).
-        - LiveTradeExecutor: broker-delivered tick timestamp (wall-clock).
+        rate limiters, phase/op timeouts, event timestamps). The single time
+        source for both pipelines — injected by the loop via set_current_time.
 
         Returns:
             Timezone-aware datetime
+
+        Raises:
+            RuntimeError: If called before the loop injected a time
         """
-        pass
+        if self._clock_time is None:
+            raise RuntimeError(
+                'get_current_time() called before the tick loop injected a time'
+            )
+        return self._clock_time
 
     # ============================================
     # Post-Run (Framework statistics collection)
@@ -1248,6 +1330,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
+                submitted_at=p.submitted_at,
             )
             for p in self._active_limit_orders
         ]
@@ -1265,6 +1348,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
+                submitted_at=p.submitted_at,
             )
             for p in self._active_stop_orders
         ]

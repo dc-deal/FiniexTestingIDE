@@ -110,7 +110,7 @@ class TestKrakenAdapterOrderLifecyclePhase2:
                 f"Expected PENDING for open order, got: {status_response.status}"
             )
 
-            # 3. Modify price — Kraken EditOrder returns a new txid
+            # 3. Modify price — Kraken AmendOrder amends in-place (same txid)
             modify_response = processor.modify_order_sync(
                 broker_ref=txid,
                 symbol='ETHUSD',
@@ -123,9 +123,9 @@ class TestKrakenAdapterOrderLifecyclePhase2:
                 f"Expected PENDING after modify, got: {modify_response.status}"
                 f" — {modify_response.rejection_reason}"
             )
-            new_txid = modify_response.broker_ref
-            assert new_txid != txid, 'Expected new txid from Kraken EditOrder'
-            txid = new_txid
+            assert modify_response.broker_ref == txid, (
+                'Expected unchanged txid from Kraken AmendOrder (in-place amend)'
+            )
 
             # 4. Query modified order — should still be open
             modified_status = processor.query_order_sync(txid, live_adapter_real)

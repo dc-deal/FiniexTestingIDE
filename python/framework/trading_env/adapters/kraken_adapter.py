@@ -17,6 +17,7 @@ import base64
 import hashlib
 import hmac
 import json
+import threading
 import time
 import urllib.parse
 from datetime import datetime, timezone
@@ -109,6 +110,9 @@ class KrakenAdapter(AbstractAdapter):
         self._rate_limit_interval_s: float = 1.0
         self._request_timeout_s: int = 15
         self._last_request_time: float = 0.0
+        # Serialize private API calls + strictly-monotone nonce (see _do_fetch_private)
+        self._private_lock = threading.Lock()
+        self._last_nonce: int = 0
 
         # Dry-run lifecycle simulator. Always instantiated so DRYRUN-*
         # refs remain queryable even if dry_run is toggled off mid-run.
@@ -629,27 +633,27 @@ class KrakenAdapter(AbstractAdapter):
         new_take_profit: Optional[float] = None,
     ) -> Dict[str, str]:
         """
-        Build Kraken EditOrder payload.
+        Build Kraken AmendOrder payload.
 
-        Pure — no I/O, no state. Kraken EditOrder requires the pair name
-        alongside the txid. Kraken EditOrder does not support SL/TP
-        modification — those kwargs are accepted for interface symmetry
-        and silently ignored here.
+        Pure — no I/O, no state. Kraken AmendOrder modifies the order
+        in-place (no cancel-replace): it targets the order by txid and
+        keeps the same order identifiers. No pair is required. AmendOrder
+        does not modify SL/TP — those kwargs are accepted for interface
+        symmetry and silently ignored here.
 
         Args:
-            broker_ref: Current Kraken txid
-            symbol: Trading symbol (resolved to Kraken pair internally)
+            broker_ref: Current Kraken txid (the order to amend)
+            symbol: Trading symbol — unused (AmendOrder targets by txid)
             new_price: New limit price (None=no change)
-            new_stop_loss: Ignored — Kraken EditOrder does not modify SL
-            new_take_profit: Ignored — Kraken EditOrder does not modify TP
+            new_stop_loss: Ignored — Kraken AmendOrder does not modify SL
+            new_take_profit: Ignored — Kraken AmendOrder does not modify TP
 
         Returns:
             POST data dict
         """
-        pair = self._resolve_kraken_pair(symbol)
-        data: Dict[str, str] = {'txid': broker_ref, 'pair': pair}
+        data: Dict[str, str] = {'txid': broker_ref}
         if new_price is not None:
-            data['price'] = str(new_price)
+            data['limit_price'] = str(new_price)
         return data
 
     def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, str]:
@@ -743,14 +747,14 @@ class KrakenAdapter(AbstractAdapter):
 
     def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Send EditOrder request to Kraken. Raises on HTTP/API error.
+        Send AmendOrder request to Kraken. Raises on HTTP/API error.
 
         Dry-run orders (DRYRUN-* refs) do not exist at the broker —
         delegate to the simulator via a sentinel-tagged dict that
-        carries new_price for ref replacement.
+        carries new_price for the in-place amend.
 
         Args:
-            payload: Pre-built EditOrder payload
+            payload: Pre-built AmendOrder payload
 
         Returns:
             Raw Kraken result dict (sentinel-tagged in dry-run)
@@ -760,9 +764,9 @@ class KrakenAdapter(AbstractAdapter):
             return {
                 self._DRY_RUN_SENTINEL: 'modify',
                 'broker_ref': broker_ref,
-                'new_price': float(payload['price']) if 'price' in payload else None,
+                'new_price': float(payload['limit_price']) if 'limit_price' in payload else None,
             }
-        return self._fetch_private('/0/private/EditOrder', payload)
+        return self._fetch_private('/0/private/AmendOrder', payload)
 
     def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -924,21 +928,21 @@ class KrakenAdapter(AbstractAdapter):
         timestamp: datetime,
     ) -> BrokerResponse:
         """
-        Parse Kraken EditOrder response into BrokerResponse.
+        Parse Kraken AmendOrder response into BrokerResponse.
 
-        Pure w.r.t. broker payload. EditOrder replaces the order — Kraken
-        returns a NEW txid that must replace the original in any tracking
-        index; the caller is responsible for that swap. Dry-run path
-        delegates to the simulator which carries internal state across
-        the ref replacement.
+        Pure w.r.t. broker payload. AmendOrder modifies the order in-place:
+        the order identifiers stay the same, so the broker_ref is unchanged
+        (the response carries an amend_id in raw_response for auditing). No
+        index swap is required. Dry-run path delegates to the simulator,
+        which applies the new price in-place under the same ref.
 
         Args:
             raw: Raw Kraken result dict
-            original_broker_ref: The old txid (used as fallback if new txid missing)
+            original_broker_ref: The order's txid (unchanged by the amend)
             timestamp: Response receipt timestamp (UTC)
 
         Returns:
-            BrokerResponse with NEW broker_ref
+            BrokerResponse with the unchanged broker_ref
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
             return self._dry_run_simulator.modify(
@@ -947,9 +951,8 @@ class KrakenAdapter(AbstractAdapter):
                 timestamp=timestamp,
             )
 
-        new_txid = raw.get('txid', original_broker_ref)
         return BrokerResponse(
-            broker_ref=new_txid,
+            broker_ref=original_broker_ref,
             status=BrokerOrderStatus.PENDING,
             timestamp=timestamp,
             raw_response=raw,
@@ -1252,18 +1255,21 @@ class KrakenAdapter(AbstractAdapter):
         if data is None:
             data = {}
 
-        # Rate limiting
-        self._enforce_rate_limit()
-
-        headers = self._sign_request(endpoint, data)
-        url = f"{self._api_base_url}{endpoint}"
-
-        response = requests.post(
-            url,
-            headers=headers,
-            data=data,
-            timeout=self._request_timeout_s,
-        )
+        # Serialize private calls under one lock: Kraken requires a strictly
+        # increasing nonce PER API key. Concurrent calls (worker thread +
+        # reconciler) would otherwise collide on the same millisecond or reach
+        # Kraken out of nonce order → "Invalid nonce". Holding the lock through
+        # the POST guarantees unique nonces AND in-order delivery.
+        with self._private_lock:
+            self._enforce_rate_limit()
+            headers = self._sign_request(endpoint, data)
+            url = f"{self._api_base_url}{endpoint}"
+            response = requests.post(
+                url,
+                headers=headers,
+                data=data,
+                timeout=self._request_timeout_s,
+            )
         response.raise_for_status()
 
         result = response.json()
@@ -1284,7 +1290,13 @@ class KrakenAdapter(AbstractAdapter):
         Returns:
             Headers dict with API-Key and API-Sign
         """
-        nonce = str(int(time.time() * 1000))
+        # Strictly increasing per API key: the time component keeps the nonce
+        # above the previous session's last value (across restarts); max(.., +1)
+        # guarantees a strict increase within this process (same-ms / concurrency).
+        # Called only under self._private_lock, so the _last_nonce update is safe.
+        nonce_int = max(int(time.time() * 1000), self._last_nonce + 1)
+        self._last_nonce = nonce_int
+        nonce = str(nonce_int)
         data['nonce'] = nonce
 
         post_data = urllib.parse.urlencode(data)

@@ -1,0 +1,66 @@
+{
+  "name": "kraken_spot_btcusd_field_study",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "dry_run": false,
+  "strategy_config": {
+    "decision_logic_type": "CORE/live_field_study/live_field_study",
+    "worker_instances": {
+      "pipeline_rsi": "CORE/rsi"
+    },
+    "workers": {
+      "pipeline_rsi": {
+        "periods": {
+          "M5": 14
+        }
+      }
+    },
+    "decision_logic_config": {
+      "lot_size": 0.0001,
+      "limit_offset_pct": 0.002,
+      "max_session_cost_usd": 0.5,
+      "max_rearm_attempts": 6,
+      "rearm_offset_pct": 0.25,
+      "session_timeout_s": 1800,
+      "halt_after_phase": "",
+      "phase_sequence": [
+        {"phase_id": "market_long_open", "phase_type": "market_open", "side": "long", "fill_timeout_s": 30},
+        {"phase_id": "market_long_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
+        {"phase_id": "market_short_open", "phase_type": "market_open", "side": "short", "fill_timeout_s": 30},
+        {"phase_id": "market_short_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
+        {"phase_id": "reject_below_min", "phase_type": "market_open", "side": "long", "lots": 0.0000001, "expect_rejection": true, "fill_timeout_s": 30},
+        {"phase_id": "reject_oversized", "phase_type": "market_open", "side": "long", "lots": 100000, "expect_rejection": true, "fill_timeout_s": 30},
+        {"phase_id": "limit_long_near_price", "phase_type": "limit_open", "side": "long", "rearm": true, "limit_offset_pct": 0.002, "fill_timeout_s": 25},
+        {"phase_id": "limit_long_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
+        {"phase_id": "limit_short_near_price", "phase_type": "limit_open", "side": "short", "rearm": true, "limit_offset_pct": 0.002, "fill_timeout_s": 25},
+        {"phase_id": "limit_short_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
+        {"phase_id": "limit_modify_test", "phase_type": "limit_modify", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 45},
+        {"phase_id": "limit_modify_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
+        {"phase_id": "limit_cancel_test", "phase_type": "limit_cancel", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 30},
+        {"phase_id": "multi_concurrent_limits", "phase_type": "multi_limit", "side": "long", "order_count": 3, "limit_offset_pct": 0.005, "fill_timeout_s": 30},
+        {"phase_id": "multi_cancel_all", "phase_type": "multi_cancel", "fill_timeout_s": 30},
+        {"phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "fill_timeout_s": 30},
+        {"phase_id": "idle_heartbeat_test", "phase_type": "idle", "idle_seconds": 20},
+        {"phase_id": "force_close_all", "phase_type": "force_close", "fill_timeout_s": 30},
+        {"phase_id": "final_summary", "phase_type": "final_summary"}
+      ]
+    }
+  },
+  "account": {
+    "balances": {
+      "USD": 0.0,
+      "BTC": 0.0
+    },
+    "account_currency": "USD"
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "enabled": true,
+    "min_balance": 5.0,
+    "min_equity": 5.0,
+    "max_drawdown_pct": 50.0
+  }
+}

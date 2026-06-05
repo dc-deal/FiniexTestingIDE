@@ -194,41 +194,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.start_worker()
 
     # ============================================
-    # Clock
-    # ============================================
-
-    def get_current_time(self) -> datetime:
-        """
-        Broker-delivered tick timestamp — the wall-clock time anchor for
-        downstream timing logic. In live mode this matches real time
-        (no simulation drift).
-
-        Raises:
-            RuntimeError: If called before the first tick has arrived
-        """
-        if self._current_tick is None:
-            raise RuntimeError(
-                'LiveTradeExecutor.get_current_time() called before first tick'
-            )
-        return self._current_tick.timestamp
-
-    # ============================================
     # Pending Order Processing (live-specific)
     # ============================================
 
     def heartbeat(self) -> None:
         """
-        Side-effect-free drain for idle ticks (#320 override).
+        Side-effect-free drain for idle ticks (#320 override, #360 re-poll).
 
         Drains async worker responses (fills, edits, cancels, query results,
-        trades) and processes timeouts. Called by the AutoTrader tick loop
-        on queue.Empty so the live pipeline stays responsive even when the
-        market is quiet. Does NOT touch tick state — see the abstract
-        contract in AbstractTradeExecutor.heartbeat.
+        trades), processes timeouts, and re-polls active limit orders. Called by
+        the AutoTrader tick loop on queue.Empty so the live pipeline stays
+        responsive even when the market is quiet — the fill/cancel-confirm query
+        now fires during idle, not only on a real tick (#360). Does NOT touch
+        tick state — see the abstract contract in AbstractTradeExecutor.heartbeat.
         """
         self._request_processor.drain_inbox()
         for pending in self._request_processor.check_timeouts():
             self._handle_timeout(pending)
+        # #360: re-poll active limit orders on the timer too (was on_tick-only).
+        # Per-order throttle (poll_interval_ms) still gates the actual broker I/O.
+        self._process_active_orders()
 
     def _process_pending_orders(self) -> None:
         """
@@ -446,9 +431,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending.broker_ref = response.broker_ref
 
         if response.is_filled:
-            # Sync-fill LIMIT (rare — e.g. price already crossed at submit)
+            # Sync-fill LIMIT (rare — e.g. price already crossed at submit).
+            # FILLED-precedence: a fill wins over any deferred cancel (#361).
             self._active_limit_orders.remove(pending)
             self._fill_open_order(pending, fill_price=response.fill_price)
+        elif pending.cancel_requested:
+            # Deferred cancel (#361): a cancel was requested while this submit was
+            # in-flight (broker_ref=None). Now confirmed → issue it. The CancelResponse
+            # resolves via _handle_cancel_response (removes from _active_limit_orders).
+            pending.cancel_requested = False
+            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            self._request_processor.submit_cancel_order_async(
+                order_id=order_id,
+                broker_ref=pending.broker_ref,
+                adapter=self.broker.adapter,
+            )
+            self.logger.info(
+                f"❌ Limit order {order_id} deferred cancel issued "
+                f"(broker_ref={pending.broker_ref})"
+            )
         # else: PENDING — pending stays in _active_limit_orders,
         # _process_active_orders Phase 2 polls it for fills.
 
@@ -890,6 +891,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             OrderResult with PENDING, EXECUTED, or REJECTED status
         """
+        request = self._normalize_order_request(request)
         self._orders_sent += 1
         self._order_counter += 1
         order_id = self.portfolio.get_next_position_id(request.symbol)
@@ -1142,6 +1144,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(position.symbol).digits
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         self._pending_position_modifications[position_id] = ModificationRequest(
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
@@ -1231,6 +1238,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_price = None if isinstance(new_price, _UnsetType) else new_price
         adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(target_pending.symbol).digits
+        adapter_price = self._round_price(adapter_price, digits)
+        adapter_sl = self._round_price(adapter_sl, digits)
+        adapter_tp = self._round_price(adapter_tp, digits)
 
         # Mark in-flight on the target and store provisional values.
         # The drain handler (_handle_modify_response) consumes these on
@@ -1325,6 +1338,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_sl = None if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         adapter_tp = None if isinstance(new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision before broker submit + local apply.
+        digits = self.broker.get_symbol_specification(target_pending.symbol).digits
+        adapter_stop = self._round_price(adapter_stop, digits)
+        adapter_limit = self._round_price(adapter_limit, digits)
+        adapter_sl = self._round_price(adapter_sl, digits)
+        adapter_tp = self._round_price(adapter_tp, digits)
+
         # Note: the EditJob currently carries only new_price/new_sl/new_tp.
         # For STOP modify, new_price maps to the stop trigger price; the
         # new_limit_price is stored in pending_modification.new_limit_price
@@ -1382,9 +1402,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if pending.pending_order_id != order_id:
                 continue
             if pending.broker_ref is None:
-                # Option A: reject cancel-on-unconfirmed-submit
-                return False
+                # Submit still in-flight: defer the cancel (#361) — park the intent and
+                # auto-issue it once _handle_limit_submit_response confirms the broker_ref.
+                # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
+                pending.cancel_requested = True
+                self.logger.debug(
+                    f"[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight")
+                return True
             if pending.in_flight_operation != PendingOperation.NONE:
+                self.logger.debug(
+                    f"[CANCEL_SKIP] order={order_id} reason=busy "
+                    f"op={pending.in_flight_operation.name} scheduled=0")
                 return False  # busy
 
             pending.in_flight_operation = PendingOperation.PENDING_CANCEL
@@ -1398,6 +1426,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"(broker_ref={pending.broker_ref})"
             )
             return True
+        self.logger.debug(
+            f"[CANCEL_SKIP] order={order_id} reason=not_in_active_limits scheduled=0")
         return False
 
     def cancel_stop_order(self, order_id: str) -> bool:

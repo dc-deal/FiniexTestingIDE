@@ -160,13 +160,31 @@ Each tick follows the same 5-step path as backtesting:
 
 After each tick: `clipping_monitor.record_tick()` measures processing time.
 
-When the tick queue times out (1 s with no tick), the loop fires
-`executor.heartbeat()` instead of falling through silently. Heartbeat drains
-async worker responses (submit, edit, cancel, query, trades) and processes
-order timeouts without mutating tick state (no `_tick_counter` bump, no
-portfolio mark-dirty, no algo dispatch). It also pushes a *pulse* display
-frame so the dashboard shows `💓 N s since last tick` instead of freezing.
-See "Polling Cadence" below.
+When the tick queue times out (no tick within `heartbeat_interval_ms`, default
+1000 ms), the loop fires a **timer event** instead of falling through silently —
+the single main-loop consumer runs the cadence work without a second thread (#360):
+
+1. `executor.set_current_time(now)` — inject the wall-clock so the canonical clock
+   advances during idle (phase/op timeouts track real elapsed time, not a frozen tick).
+2. `executor.heartbeat()` — drain async worker responses (submit, edit, cancel,
+   query, trades), process order timeouts, **and re-poll active orders** so the
+   fill/cancel-confirm query fires during idle (not only on a real tick).
+3. `reconciler.reconcile()` if due — broker truth-pull on the timer too (was tick-only),
+   self-throttled by `min_interval_seconds`.
+4. `orchestrator.process_heartbeat()` — a **decision ghost-pass**: for a logic that
+   opts in via `wants_heartbeat()`, the decision runs with `tick=None` and the cached
+   worker results (workers do not recompute) so it can advance internal state, react to
+   drained events, and issue follow-up orders. No tick state is mutated (no `_tick_counter`
+   bump, no portfolio mark-dirty, no bar render).
+
+It also pushes a *pulse* display frame so the dashboard shows `💓 N s since last tick`
+instead of freezing. See "Polling Cadence" below.
+
+**Canonical clock (#360):** `get_current_time()` returns a loop-injected time — set from
+the tick timestamp in `on_tick`, and from the wall-clock on the heartbeat. The loop owns
+the between-tick time source, so the clock never freezes to the last tick. This is the one
+place wall-clock is read in live (decision logic / workers only call `get_current_time()`,
+§9). In sim the injected time is the simulated tick time (reproducible).
 
 ### Shutdown
 
@@ -204,6 +222,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
+| `dry_run` | `true` / `false` / omit | Optional per-profile override of the global `market_config` dry_run. Omit = inherit the broker default. Setting it (especially `false` = live) overrides the global default for this profile only and logs a loud override warning at startup |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
@@ -236,10 +255,10 @@ Live tick stream from the Kraken WebSocket v2 trade channel. Runs `asyncio.run()
 
 **Key features:**
 - Endless reconnect with exponential backoff (1s → 60s cap)
-- Heartbeat monitoring: checks message silence every 30s, forces reconnect after 90s silence
+- Connection-liveness monitoring: checks message silence every 30s, forces reconnect after 90s silence
 - SSL via certifi (cross-platform: Linux Docker + Windows server)
 - Single symbol per session (matches bot architecture)
-- Concurrent asyncio tasks: `_receive_loop` + `_heartbeat_monitor` via `asyncio.wait(FIRST_COMPLETED)`
+- Concurrent asyncio tasks: `_receive_loop` + `_connection_monitor` via `asyncio.wait(FIRST_COMPLETED)`
 
 **Data Consistency Principle:** KrakenTickSource uses the **same trade channel** as DataCollector, ensuring backtesting data matches live data format. `bid=ask=trade_price` (spread=0) — crypto fees are handled by `MakerTakerFee`, not by spread.
 
@@ -265,8 +284,8 @@ JSON → Parquet           Queue → Algo
     "ws_url": "wss://ws.kraken.com/v2",
     "reconnect_initial_delay_s": 1.0,
     "reconnect_max_delay_s": 60.0,
-    "heartbeat_interval_s": 30.0,
-    "heartbeat_dead_s": 90.0
+    "connection_check_interval_s": 30.0,
+    "connection_dead_s": 90.0
   }
 }
 ```
@@ -445,6 +464,22 @@ Trigger and clear events are logged:
 WARNING | ⛔ Safety circuit breaker triggered: min_equity (4.8000 < 5.0000)
 INFO    | ✅ Safety circuit breaker cleared
 ```
+
+## Acceptance Testing — Live Field Study (#332)
+
+The Live Field Study is the live acceptance gate: an operator-driven, deterministic phase
+sequence (`CORE/live_field_study/live_field_study`) that drives the full live pipeline
+through every order type, modify/cancel path, rejection battery, partial close, and idle
+heartbeat against real Kraken Spot at min-lot. It records the run as analysis-ready JSONL
+(two planes — bot-observed via #348 + broker-truth via #151) and a post-run analyzer emits
+a PASS/FAIL acceptance certificate (mirroring the benchmark / live-adapter certificates).
+
+It reuses the existing `request_session_end` API (#348) for a clean exit, asserts the
+account is flat before trading (`Reconciler.is_account_flat()`, #151), and self-aborts on
+a budget (`max_session_cost_usd`) or wall-clock (`session_timeout_s`) breach.
+
+Operator guide: [field_study_guide.md](../tests/live_field_study/field_study_guide.md).
+The certificate is a release-gate item (see the Release Checklist).
 
 ## File Structure
 
@@ -635,7 +670,7 @@ Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are
 |------|-------|---------------------|---------|
 | 1 | Config validation, broker/symbol specs | No | Backtesting + AutoTrader |
 | 2 | Order creation (MarketOrder, LimitOrder, etc.) | No | Backtesting + AutoTrader |
-| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, EditOrder) | Yes | AutoTrader (live mode) |
+| 3 | Live execution (AddOrder, QueryOrders, CancelOrder, AmendOrder) | Yes | AutoTrader (live mode) |
 
 ### Tier 3 API Mapping
 
@@ -644,7 +679,7 @@ Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are
 | `execute_order()` | `POST /0/private/AddOrder` | pair, type, ordertype, volume, price, validate |
 | `check_order_status()` | `POST /0/private/QueryOrders` | txid |
 | `cancel_order()` | `POST /0/private/CancelOrder` | txid |
-| `modify_order()` | `POST /0/private/EditOrder` | txid, price |
+| `modify_order()` | `POST /0/private/AmendOrder` | txid, limit_price |
 
 ### Dry-Run Mode
 
@@ -656,9 +691,9 @@ Dry-run behavior:
 - `execute_order()`: sends `validate=true`, returns synthetic `DRYRUN-NNNNNN` broker_ref
 - `check_order_status()` / `cancel_order()` / `modify_order()`: return synthetic responses (order doesn't exist at broker)
 
-### EditOrder and Broker Reference Swap
+### AmendOrder — In-Place Modify
 
-Kraken's EditOrder replaces the order entirely — the old txid becomes invalid and a **new txid** is returned. `LiveOrderTracker.update_broker_ref()` swaps the reference in the tracking index. `LiveTradeExecutor.modify_limit_order()` triggers this automatically when the returned broker_ref differs from the original.
+Kraken's `AmendOrder` amends the order **in place** — the txid (and any client order id) stay the same, so there is no cancel-replace and no broker_ref swap. `_parse_modify_response` returns the unchanged `broker_ref`; the response carries an `amend_id` for auditing. The `update_broker_ref(old, new)` swap path remains as a defensive net for brokers that *do* return a new ref on modify, but it is not exercised by Kraken.
 
 ### Rate Limiting
 
@@ -670,6 +705,8 @@ Enforced inside the adapter's `_enforce_rate_limit()` (called from every private
 
 Active LIMIT orders are polled asynchronously through the same worker-thread pattern as submit/edit/cancel/trades_query. `LiveTradeExecutor._process_active_orders` is a non-blocking scheduler: for each `_active_limit_orders` entry it either skips (no broker_ref yet, in-flight query, or inside throttle window) or enqueues a `QueryJob` to the worker. The response is consumed on the main thread via `drain_inbox` → `_handle_query_response`.
 
+The scheduler runs on the tick path (`on_tick`) **and** on the idle heartbeat (`heartbeat()`, #360) — so the fill/cancel-confirm query fires during a quiet stretch too, not only when a real tick arrives. The per-order throttle (`poll_interval_ms`) still gates the actual broker I/O, so a faster heartbeat does not multiply API calls.
+
 Three gates on the scheduler, all silent skips:
 
 | Gate | Reason |
@@ -680,7 +717,7 @@ Three gates on the scheduler, all silent skips:
 
 Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
 
-`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard exists because Kraken's EditOrder flips the txid: a QueryJob dispatched before the swap returns a response carrying the OLD ref, while `pending.broker_ref` has already been updated to the new one. State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
+`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard was built for the legacy EditOrder flip (a QueryJob dispatched before the swap returned the OLD ref while `pending.broker_ref` already held the NEW one). With in-place `AmendOrder` the txid is stable across a modify, so the guard no longer fires in normal Kraken flow; it stays as a defensive net (e.g. brokers that cancel-replace). State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
 
 `poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
 

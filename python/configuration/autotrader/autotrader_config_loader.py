@@ -162,6 +162,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,
+        dry_run=raw.get('dry_run', None),
         strategy_config=raw.get('strategy_config', {}),
         account=AccountConfig(
             balances=account_raw.get('balances', {}),
@@ -171,10 +172,13 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             type=tick_source_raw.get('type', 'mock'),
             parquet_path=tick_source_raw.get('parquet_path', ''),
             max_ticks=tick_source_raw.get('max_ticks', 0),
+            connection_check_interval_s=tick_source_raw.get('connection_check_interval_s', 30.0),
+            connection_dead_s=tick_source_raw.get('connection_dead_s', 90.0),
         ),
         execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),
             bar_max_history=execution_raw.get('bar_max_history', 1000),
+            heartbeat_interval_ms=execution_raw.get('heartbeat_interval_ms', 500),
             performance_tracking=AutoTraderPerformanceTrackingConfig(
                 worker_decision_tracking=performance_tracking_raw.get('worker_decision_tracking', False),
             ),

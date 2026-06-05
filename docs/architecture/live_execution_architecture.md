@@ -194,7 +194,7 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
     │
     ├── 5. Update local shadow state (entry_price, order_kwargs SL/TP)
     │
-    ├── 6. Update broker_ref if broker returns new ref (Kraken EditOrder)
+    ├── 6. Update broker_ref if broker returns new ref (defensive; Kraken AmendOrder keeps it)
     │
     └── 7. Success → ModificationResult(success=True)
 ```
@@ -203,7 +203,7 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
 
 - **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
 - **Local shadow state update** — after successful broker modify, the `PendingOrder` in `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
-- **Broker ref update** — some brokers (Kraken `EditOrder`) return a new `broker_ref` when modifying. The local `PendingOrder.broker_ref` is updated accordingly.
+- **Broker ref update** — Kraken uses `AmendOrder` (in-place), so the `broker_ref` stays the same across a modify. The swap path remains defensive for brokers that return a new ref on modify.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
 - **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveOrderTracker` is no longer involved in LIMIT order tracking.
 
@@ -218,16 +218,110 @@ Mock behavior:
 
 ## PortfolioManager in Live Mode
 
-Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have. Reconciliation between shadow state and actual broker state is an open issue (see below).
+Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have. The shadow state is kept current by the fast fill path; the Reconciler (#151) verifies it against broker truth on a separate cadence (see *Fill Detection & Reconciliation* below).
+
+---
+
+## Fill Detection & Reconciliation (Two Layers)
+
+Live state stays correct through two distinct layers — do not conflate them:
+
+**Layer 1 — Fast fill path (primary truth source).** A fill is detected via the executor's order path: the broker response (poll today, #320 cadence) marks the order filled (`mark_filled` → `_fill_open_order`) and updates the shadow state. The fill is then delivered to the decision logic **immediately** through the #348 Decision Event Channel — drained each tick and during idle heartbeats. This is where the bot learns the truth and the algo reacts.
+
+**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders` / `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY** (detect + log + SESSION panel), validated on real money.
+
+**Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks and the same #348 channel, so the decision logic reacts identically regardless of source.
+
+**Correction is V1.4 (#349).** `AUTO_CORRECT` (stale-field + partial-fill delta-apply) and `HALT_TRADING` (with operator-confirm-to-resume). Ghost/orphan positions always escalate to HALT — adopting an unknown position with a synthetic entry price corrupts P&L permanently.
+
+---
+
+## Canonical Clock & Idle Cadence (#360)
+
+`get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets
+the clock from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
+`set_current_time()`. The clock therefore advances continuously — it never freezes to the
+last tick and then jumps by the full gap — so phase/op timeouts track real elapsed time. This
+is the single place wall-clock is read in live; decision logic and workers only ever call
+`get_current_time()` (§9). In simulation the injected time is the simulated tick time, keeping
+backtests reproducible.
+
+The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 1000 ms)
+runs the cadence work on the **single main-loop consumer** — no second mutating thread:
+`heartbeat()` drains the inbox, checks timeouts, and **re-polls active orders** (the
+fill/cancel-confirm query fires during idle, not only on a tick); the Reconciler pulls broker
+truth if due; and a decision **ghost-pass** runs (`tick=None`, cached worker results) for logics
+that opt in via `wants_heartbeat()`. No synthetic market tick is fed into the pipeline and no
+tick state is mutated (the #320 contract). The per-order `poll_interval_ms` and the reconcile
+`min_interval_seconds` still gate the actual broker I/O, so a faster heartbeat does not multiply
+API calls.
+
+---
+
+## Deferred Cancel — cancel-vs-submit-in-flight (#361)
+
+A cancel can be requested while the order's submit is still in-flight (`broker_ref=None`). The
+cancel cannot be dispatched yet (no broker reference), but it must **not** be dropped — dropping it
+orphans the order (the order rests once the submit confirms, with no cancel ever issued; proven as
+the Field Study `#13`/`#15` cert blocker).
+
+`cancel_limit_order` therefore **defers** such a cancel: it parks the intent on the PendingOrder
+(`cancel_requested=True`) and returns `True` (accepted). When `_handle_limit_submit_response`
+confirms the `broker_ref`, it auto-issues the parked cancel (`PENDING_CANCEL` → `submit_cancel_order_async`),
+which resolves via `_handle_cancel_response` and removes the order. **FILLED-precedence:** if the
+submit response is a sync-fill, the fill wins and the deferred cancel is discarded (a filled order
+is never cancelled). The deferred cancel fires inside `drain_inbox` on the main loop — single
+consumer, no race. This is one concrete slice of the broader #361 order-lifecycle state machine.
+
+---
+
+## Order Lifecycle Matrix — submit → cancel (incl. failure cases)
+
+The map of every step a LIMIT order can pass through with a cancel in play. Two planes:
+**local** = `_active_limit_orders` + the worker queues (what we believe); **broker** = what is
+actually live at Kraken. The cancel needs the broker's `broker_ref` (txid), which arrives only with
+the submit response — so during submit-in-flight the order is locally visible but un-actionable.
+
+| # | Step / event | Local state | Broker state (probable) | Handling (issue) |
+|---|---|---|---|---|
+| **Submit** | | | | |
+| 1 | Submit in-flight | in list, `broker_ref=None`, `PENDING_SUBMIT` | maybe not received yet | counts as active; **not cancellable**; a cancel here → **deferred** (parked, fired on confirm) ✓ |
+| 2 | Submit resp = PENDING + txid | `broker_ref` set, RESTING; a parked cancel **fires now** | order resting (open) | normal; poll for fills |
+| 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone) |
+| 4 | Submit TIMEOUT (no resp) | in list, `broker_ref=None`, timed out | **UNKNOWN** — may exist | `_handle_timeout` → BROKER_ERROR; risk: order rests at broker → orphan; **Reconciler #151** backstop; `cl_ord_id` would allow query-by-own-id (#355) |
+| **Resting** | | | | |
+| 5 | Resting, no cancel | RESTING, polled | resting, may fill anytime | poll → fill |
+| 6 | Fill detected (poll/push) | removed as FILLED, position, `on_order_filled` #348 | closed (filled) | algo reacts to the position |
+| **Cancel** | | | | |
+| 7 | Cancel sent (with txid) | `in_flight_operation=PENDING_CANCEL` | cancel processing | await CancelResponse |
+| 8 | Cancel resp = SUCCESS | removed, `on_order_cancelled` #348 | open order gone | clean; `active_limits → 0` ✓ |
+| 9 | Cancel resp = "already filled" | stays in list, in-flight cleared → query → FILLED | filled (cancel too late) | FILLED-precedence → `on_order_filled` #348; cancel-vs-fill (**#361**) |
+| 10 | Cancel resp = "unknown order" | in-flight cleared, stays for poll | not (yet) existing / already terminal | poll resolves real state; benign (the stale-QueryResponse warnings) |
+| 11 | Cancel TIMEOUT | stuck in `PENDING_CANCEL` | **UNKNOWN** — cancel may/may not have applied | `check_timeouts` net; **Reconciler #151** backstop |
+| **Partial** | | | | |
+| 12 | Partial fill then cancel | filled portion = position, remainder | part filled, part resting → cancel kills the remainder | **#342** surfaces `PARTIALLY_FILLED`; today partly via volume reconcile |
+
+**Implemented + live-green:** #1 (defer) + #2 (fire on confirm). **Works today poll/reconcile-based,
+explicit machine pending:** #9 cancel-vs-fill (#361), #11 cancel-timeout, #4 submit-timeout orphan
+(#151 backstop; `cl_ord_id` cleaner, #355), #12 partial (#342). The common thread: wherever the
+broker state is "UNKNOWN", the **Reconciler (#151)** is the net and the **algo reacts** to the
+resolved event — it never pre-empts the race.
+
+**Testing:** these cases are driven against `MockBrokerAdapter` (controllable: `INSTANT_FILL` /
+`DELAYED_FILL` / `REJECT_ALL` / `TIMEOUT`; extend for already-filled / unknown / partial), not real
+Kraken. The real-broker contract is the separate `tests/live_adapters/` release gate.
 
 ---
 
 ## Open Issues (Live-Specific)
 
-### Reconciliation Layer for Live Trading (#151)
-**Problem:** Local portfolio and active order shadow state can diverge from broker's actual state. No mechanism to detect or correct divergence. Required before live trading goes fully operational.
-- Affects: LiveTradeExecutor, PortfolioManager, `_active_limit_orders` shadow state
-- Shadow state is authoritative-by-assumption until #151 is implemented
+### Reconciliation Layer — Resolution + Push (#349, V1.4)
+**Shipped (#151, Phase 1–2):** broker truth-pull + Reconciler in ALERT_ONLY — detects and reports divergence (ghost / orphan / stale), validated on real money. The shadow state is verified, not yet auto-corrected.
+**Pending (#349, Phase 3–5):** `AUTO_CORRECT` + `HALT_TRADING` (+ operator-confirm-to-resume) + real-time push via #331. Ghost/orphan always escalate to HALT.
+- Affects: Reconciler, SafetyCircuitBreaker, LiveTradeExecutor, PortfolioManager shadow state
+
+### Push-Based Order Status (#331, V1.4)
+**Today:** REST polling (#320) detects fills with 1–5 s latency. **Planned:** Kraken WebSocket Private `executions` channel as the primary push source (sub-second); polling demoted to resilience fallback. Feeds the same #348 channel.
 
 ---
 

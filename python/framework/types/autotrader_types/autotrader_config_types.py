@@ -31,8 +31,8 @@ class TickSourceConfig:
         ws_url: WebSocket URL (kraken mode)
         reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
         reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
-        heartbeat_interval_s: Heartbeat check interval in seconds (kraken mode)
-        heartbeat_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
+        connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
+        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
     """
     type: str = 'mock'
     parquet_path: str = ''
@@ -42,8 +42,8 @@ class TickSourceConfig:
     ws_url: str = 'wss://ws.kraken.com/v2'
     reconnect_initial_delay_s: float = 1.0
     reconnect_max_delay_s: float = 60.0
-    heartbeat_interval_s: float = 30.0
-    heartbeat_dead_s: float = 90.0
+    connection_check_interval_s: float = 30.0
+    connection_dead_s: float = 90.0
 
 
 @dataclass
@@ -98,6 +98,9 @@ class AutoTraderConfig:
         tick_source: Tick source configuration
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
+        dry_run: Optional per-profile dry-run override. None = use the broker's
+            market_config default. Setting it (especially False = live) overrides the
+            global default for THIS profile only; the startup logs a loud warning.
     """
     name: str = ''
     symbol: str = ''
@@ -115,3 +118,4 @@ class AutoTraderConfig:
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     config_path: Optional[Path] = None
+    dry_run: Optional[bool] = None

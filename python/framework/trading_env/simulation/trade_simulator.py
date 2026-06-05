@@ -140,25 +140,6 @@ class TradeSimulator(AbstractTradeExecutor):
         self._modify_cancel_delay_msc: int = 1  # cosmetic single-msc delay default
 
     # ============================================
-    # Clock
-    # ============================================
-
-    def get_current_time(self) -> datetime:
-        """
-        Simulated tick time — the timestamp of the tick currently being
-        processed. Keeps downstream timing (guard cooldowns etc.)
-        deterministic and aligned with simulated market time.
-
-        Raises:
-            RuntimeError: If called before the first tick has arrived
-        """
-        if self._current_tick is None:
-            raise RuntimeError(
-                'TradeSimulator.get_current_time() called before first tick'
-            )
-        return self._current_tick.timestamp
-
-    # ============================================
     # Pending Order Processing (simulation-specific)
     # ============================================
 
@@ -193,8 +174,76 @@ class TradeSimulator(AbstractTradeExecutor):
         self._resolve_pending_operations()
 
         # === Phase 1: Latency queue drain ===
-        filled_orders = self.latency_simulator.process_tick(self._current_tick)
+        self._fill_resolved_orders(
+            self.latency_simulator.process_tick(self._current_tick))
 
+        # === Phase 2: Active limit order price monitoring ===
+        if self._active_limit_orders and self._current_tick:
+            remaining: List[PendingOrder] = []
+            for pending in self._active_limit_orders:
+                if pending.symbol != self._current_tick.symbol:
+                    remaining.append(pending)
+                    continue
+
+                if self._is_limit_price_reached(pending):
+                    # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
+                    is_from_stop = pending.order_kwargs.get(
+                        "_from_stop_limit", False)
+                    entry_type = EntryType.STOP_LIMIT if is_from_stop else EntryType.LIMIT
+                    fill_type = FillType.STOP_LIMIT if is_from_stop else FillType.LIMIT
+                    self._fill_open_order(
+                        pending,
+                        fill_price=pending.entry_price,
+                        entry_type=entry_type,
+                        fill_type=fill_type
+                    )
+                    self.logger.info(
+                        f"🎯 {'Stop-Limit' if is_from_stop else 'Limit'} order "
+                        f"{pending.pending_order_id} triggered "
+                        f"at {pending.entry_price:.5f} "
+                        f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
+                else:
+                    remaining.append(pending)
+            self._active_limit_orders = remaining
+
+        # === Phase 3: Active stop order trigger monitoring ===
+        if self._active_stop_orders and self._current_tick:
+            remaining_stops: List[PendingOrder] = []
+            for pending in self._active_stop_orders:
+                if pending.symbol != self._current_tick.symbol:
+                    remaining_stops.append(pending)
+                    continue
+
+                if self._is_stop_price_reached(pending):
+                    if pending.order_type == OrderType.STOP:
+                        # STOP triggered → fill at current market price
+                        self._fill_open_order(
+                            pending,
+                            entry_type=EntryType.STOP,
+                            fill_type=FillType.STOP
+                        )
+                        self.logger.info(
+                            f"🛑 Stop order {pending.pending_order_id} triggered "
+                            f"at market price "
+                            f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
+                    elif pending.order_type == OrderType.STOP_LIMIT:
+                        # STOP_LIMIT triggered → convert to limit order
+                        self._convert_stop_limit_to_limit(pending)
+                else:
+                    remaining_stops.append(pending)
+            self._active_stop_orders = remaining_stops
+
+    def _fill_resolved_orders(self, filled_orders: List[PendingOrder]) -> None:
+        """
+        Fill / queue orders the latency simulator has resolved (Phase 1 body).
+
+        Shared by on_tick (resolved at the tick msc) and the heartbeat ghost-pass
+        (resolved at an intermediate simulated msc, #360). Fills use the current
+        tick price (last-known on a ghost-pass).
+
+        Args:
+            filled_orders: PendingOrders whose latency delay has elapsed
+        """
         for pending_order in filled_orders:
             # Latency = broker_fill_msc - placed_at_msc (planned delay in ms)
             latency_ms = None
@@ -276,61 +325,24 @@ class TradeSimulator(AbstractTradeExecutor):
                         pending_order, PendingOrderOutcome.FILLED,
                         latency_ms=latency_ms)
 
-        # === Phase 2: Active limit order price monitoring ===
-        if self._active_limit_orders and self._current_tick:
-            remaining: List[PendingOrder] = []
-            for pending in self._active_limit_orders:
-                if pending.symbol != self._current_tick.symbol:
-                    remaining.append(pending)
-                    continue
+    def heartbeat(self) -> None:
+        """
+        Ghost-pass broker resolution at the injected simulated clock (#360).
 
-                if self._is_limit_price_reached(pending):
-                    # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
-                    is_from_stop = pending.order_kwargs.get(
-                        "_from_stop_limit", False)
-                    entry_type = EntryType.STOP_LIMIT if is_from_stop else EntryType.LIMIT
-                    fill_type = FillType.STOP_LIMIT if is_from_stop else FillType.LIMIT
-                    self._fill_open_order(
-                        pending,
-                        fill_price=pending.entry_price,
-                        entry_type=entry_type,
-                        fill_type=fill_type
-                    )
-                    self.logger.info(
-                        f"🎯 {'Stop-Limit' if is_from_stop else 'Limit'} order "
-                        f"{pending.pending_order_id} triggered "
-                        f"at {pending.entry_price:.5f} "
-                        f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
-                else:
-                    remaining.append(pending)
-            self._active_limit_orders = remaining
-
-        # === Phase 3: Active stop order trigger monitoring ===
-        if self._active_stop_orders and self._current_tick:
-            remaining_stops: List[PendingOrder] = []
-            for pending in self._active_stop_orders:
-                if pending.symbol != self._current_tick.symbol:
-                    remaining_stops.append(pending)
-                    continue
-
-                if self._is_stop_price_reached(pending):
-                    if pending.order_type == OrderType.STOP:
-                        # STOP triggered → fill at current market price
-                        self._fill_open_order(
-                            pending,
-                            entry_type=EntryType.STOP,
-                            fill_type=FillType.STOP
-                        )
-                        self.logger.info(
-                            f"🛑 Stop order {pending.pending_order_id} triggered "
-                            f"at market price "
-                            f"(bid={self._current_tick.bid:.5f}, ask={self._current_tick.ask:.5f})")
-                    elif pending.order_type == OrderType.STOP_LIMIT:
-                        # STOP_LIMIT triggered → convert to limit order
-                        self._convert_stop_limit_to_limit(pending)
-                else:
-                    remaining_stops.append(pending)
-            self._active_stop_orders = remaining_stops
+        Mirror of the live heartbeat for the sim pipeline: resolves scheduled
+        modify/cancel ops and the latency queue up to the current `_clock_time`
+        (an intermediate moment BETWEEN two replayed data ticks), so a fill that
+        lands in a gap reaches the decision on a ghost-pass — not only at the next
+        data tick. Fills use the last-known tick price (`_current_tick`). Price
+        triggers (limit/stop) are NOT re-checked here — no new market data between
+        ticks. Does NOT mutate tick state (see AbstractTradeExecutor.heartbeat).
+        """
+        if self._current_tick is None or self._clock_time is None:
+            return
+        self._resolve_pending_operations()
+        ghost_msc = int(self._clock_time.timestamp() * 1000)
+        self._fill_resolved_orders(
+            self.latency_simulator.process_up_to_msc(ghost_msc))
 
     # ============================================
     # Stress Test: Seeded Rejection (config-driven)
@@ -368,6 +380,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Returns:
             OrderResult with PENDING status (or rejection)
         """
+        request = self._normalize_order_request(request)
         self._orders_sent += 1
 
         # Generate order ID
@@ -765,6 +778,12 @@ class TradeSimulator(AbstractTradeExecutor):
         effective_tp = current_tp if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(pending.symbol).digits
+        effective_price = self._round_price(effective_price, digits)
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         # Validate SL/TP against limit price (not current tick).
         # Validation happens AT SCHEDULING time — algo gets immediate rejection
         # if the modification is invalid. Only the application is deferred.
@@ -982,6 +1001,13 @@ class TradeSimulator(AbstractTradeExecutor):
         effective_tp = current_tp if isinstance(
             new_take_profit, _UnsetType) else new_take_profit
 
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(pending.symbol).digits
+        effective_stop = self._round_price(effective_stop, digits)
+        effective_limit = self._round_price(effective_limit, digits)
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
+
         # Validate SL/TP against reference price
         # STOP: validate against stop_price (market fill approximation)
         # STOP_LIMIT: validate against limit_price (actual fill price)
@@ -1074,6 +1100,11 @@ class TradeSimulator(AbstractTradeExecutor):
         # Capture effective SL/TP — UNSET → current position value
         effective_sl = position.stop_loss if isinstance(new_stop_loss, _UnsetType) else new_stop_loss
         effective_tp = position.take_profit if isinstance(new_take_profit, _UnsetType) else new_take_profit
+
+        # Snap to the symbol's price precision (parity with live: round identically).
+        digits = self.broker.get_symbol_specification(position.symbol).digits
+        effective_sl = self._round_price(effective_sl, digits)
+        effective_tp = self._round_price(effective_tp, digits)
 
         current_msc = self._get_current_msc()
         self._pending_position_modifications[position_id] = ModificationRequest(

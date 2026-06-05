@@ -45,6 +45,7 @@ class ActiveOrderSnapshot:
         requested_lots: Originally submitted lots (#330). Populated whenever the
             executor builds the snapshot from a PendingOrder; pairs with
             cumulative_filled_lots for "filled / requested" rendering.
+        submitted_at: When the order entered pending (live) — for resting-age display.
     """
     order_id: str
     order_type: OrderType
@@ -57,6 +58,7 @@ class ActiveOrderSnapshot:
     take_profit: Optional[float] = None
     cumulative_filled_lots: float = 0.0
     requested_lots: float = 0.0
+    submitted_at: Optional[datetime] = None
 
 
 @dataclass

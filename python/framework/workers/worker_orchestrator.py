@@ -355,6 +355,42 @@ class WorkerOrchestrator:
 
         return decision
 
+    def process_heartbeat(self) -> Optional[Decision]:
+        """
+        Run a decision ghost-pass for the idle heartbeat (#360).
+
+        Workers do NOT recompute — their cached last results (_worker_results)
+        are forwarded as-is. The decision runs with tick=None so it can act
+        between ticks (advance state, react to drained events, issue follow-up
+        orders). Only logics that opt in via wants_heartbeat() are run; others
+        return None (no ghost-pass).
+
+        Extension seam (#141): an API/EVENT worker that produces results off the
+        tick signal (HTTP poll, WebSocket news) would refresh its result on the
+        heartbeat here instead of forwarding the cache. Default today: cache
+        forward — tick-driven workers have no fresh input between ticks.
+
+        Returns:
+            The ghost-pass Decision, or None if the logic does not opt in
+        """
+        if not self.is_initialized:
+            raise RuntimeError("Coordinator not initialized")
+        if not self.decision_logic.wants_heartbeat():
+            return None
+
+        decision_start = time.perf_counter()
+        decision = self.decision_logic.compute(
+            tick=None,
+            worker_results=self._worker_results
+        )
+        decision_time_ms = (time.perf_counter() - decision_start) * 1000
+
+        if self.decision_logic.performance_logger:
+            self.decision_logic.performance_logger.record(
+                decision_time_ms, decision)
+
+        return decision
+
     def _process_workers_sequential(
         self,
         tick: TickData,

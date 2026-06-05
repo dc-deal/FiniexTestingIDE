@@ -338,8 +338,8 @@ def setup_tick_source(
             ws_url=config.tick_source.ws_url,
             reconnect_initial_delay_s=config.tick_source.reconnect_initial_delay_s,
             reconnect_max_delay_s=config.tick_source.reconnect_max_delay_s,
-            heartbeat_interval_s=config.tick_source.heartbeat_interval_s,
-            heartbeat_dead_s=config.tick_source.heartbeat_dead_s,
+            connection_check_interval_s=config.tick_source.connection_check_interval_s,
+            connection_dead_s=config.tick_source.connection_dead_s,
             logger=logger,
         )
     else:
@@ -417,7 +417,22 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
         BrokerConfig with live-enabled KrakenAdapter
     """
     entry = MarketConfigManager().get_broker_entry(config.broker_type)
-    dry_run = entry.dry_run
+
+    # Profile-level dry_run override (#332): a profile may scope dry_run to itself
+    # instead of relying on the global market_config default. Deliberately LOUD —
+    # overriding (especially forcing LIVE) reintroduces the forget-risk we originally
+    # avoided by keeping dry_run global, so it is never silent.
+    dry_run = config.dry_run if config.dry_run is not None else entry.dry_run
+    if config.dry_run is not None and config.dry_run != entry.dry_run:
+        note = (
+            'LIVE TRADING — real orders will be placed'
+            if not config.dry_run else 'validate-only'
+        )
+        logger.warning(
+            f"⚠️ dry_run OVERRIDE by profile '{config.name}': dry_run={config.dry_run} "
+            f"(market_config default={entry.dry_run}) → {note}"
+        )
+        print(f"  ⚠️  dry_run OVERRIDE by profile → dry_run={config.dry_run} ({note})")
 
     logger.info(f"🔧 Broker config: {config.broker_type} (dry_run={dry_run})")
     print(f"  ▸ Broker: {config.broker_type} (dry_run={dry_run})")
@@ -458,7 +473,7 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
     # === Enable live execution on adapter ===
     broker_config.adapter.enable_live(
         credentials_file=entry.credentials_file,
-        dry_run=entry.dry_run,
+        dry_run=dry_run,
         transport=entry.broker_transport,
     )
     mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'

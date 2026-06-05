@@ -150,6 +150,10 @@ class PendingOrder:
     in_flight_operation: PendingOperation = PendingOperation.NONE
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
+    # cancel_requested: a cancel asked for while broker_ref was still None
+    #   (submit in-flight) is parked here and auto-issued once the submit
+    #   confirms (live; #361 cancel-vs-submit-in-flight) — never dropped.
+    cancel_requested: bool = False
 
     # === Async status polling state (#320, live-only) ===
     # in_flight_query: True while a QueryJob for this order is en route to

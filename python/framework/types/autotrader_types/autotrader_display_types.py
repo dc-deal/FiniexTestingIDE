@@ -82,6 +82,28 @@ class TradeHistoryEntry:
     # Trade-event side (BUY/SELL) for the close — used by Live TRADE HISTORY
     # column 'Side'. Default None for legacy / pre-#330 records.
     exit_side: Optional[OrderSide] = None
+    # Close timestamp (from TradeRecord.exit_time) — for the 'Age' column.
+    exit_time: Optional[datetime] = None
+
+
+@dataclass
+class RejectionEntry:
+    """
+    A single order rejection — fed to the dedicated REJECTIONS panel.
+
+    Args:
+        seq: Monotonic rejection number (#1, #2, …) — makes a NEW rejection
+            recognizable from an old one persisting on screen.
+        reason: Rejection reason code (e.g. 'invalid_lot_size')
+        message: Human-readable broker/guard message
+        side: The attempted action (BUY/SELL/…)
+        tick_time: Tick clock at rejection — for the age display
+    """
+    seq: int
+    reason: str
+    message: str
+    side: str
+    tick_time: Optional[datetime] = None
 
 
 @dataclass
@@ -186,8 +208,10 @@ class AutoTraderDisplayStats:
     safety_current_value: float = 0.0
     safety_drawdown_pct: float = 0.0
 
-    # Last order rejection (persists until session end or next successful trade)
-    last_rejection: str = ''
+    # Order rejections — own panel, pops up only when non-empty (newest first,
+    # bounded). total_rejections is the running count (for the #N badge).
+    recent_rejections: List[RejectionEntry] = field(default_factory=list)
+    total_rejections: int = 0
 
     # Worker Performance
     worker_times_ms: Dict[str, float] = field(default_factory=dict)

@@ -33,6 +33,9 @@ from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -69,6 +72,8 @@ class AutotraderMain:
         self._config = config
         self._running = False
         self._shutdown_mode = 'normal'
+        self._tick_loop_started = False
+        self._emergency_reason: Optional[str] = None
         self._session_start: Optional[float] = None
 
         # Tick communication (Threading model 8.a)
@@ -96,6 +101,9 @@ class AutotraderMain:
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
+
+        # #332 — Field Study recorder (set when the decision logic is LiveFieldStudy)
+        self._field_study_recorder: Optional[FieldStudyRecorder] = None
 
         # Loggers (created during run())
         self._global_logger: Optional[ScenarioLogger] = None
@@ -200,6 +208,35 @@ class AutotraderMain:
                 logger=self._session_logger,
             )
 
+            # === FIELD STUDY RECORDER + FLAT-PREFLIGHT (#332) ===
+            # When the active decision logic is the Live Field Study, wire its JSONL
+            # recorder and assert the account is flat (broker truth) before any phase runs.
+            if isinstance(self._decision_logic, LiveFieldStudy):
+                if self._trading_model != TradingModel.SPOT:
+                    # The Field Study assumes SPOT semantics (sell held base, 50/50 funding,
+                    # order-book flat-preflight). The MARGIN variant (short = margin position,
+                    # flat = no positions + free margin) lands with #209 — fail fast until then.
+                    banner = (
+                        f"FIELD STUDY ABORTED — trading_model '{self._trading_model.value}' "
+                        f"is not supported. The Live Field Study currently supports SPOT only "
+                        f"(Kraken); the MARGIN variant lands with #209."
+                    )
+                    self._global_logger.error(banner)
+                    print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
+                    return self._shutdown(0, 0)
+                self._field_study_recorder = FieldStudyRecorder(
+                    output_path=str(self._run_dir / 'field_study.jsonl'),
+                    profile=self._config.name or self._config.symbol,
+                    symbol=self._config.symbol,
+                    release_target='dev',
+                    phase_ids=self._decision_logic.get_phase_ids(),
+                    logger=self._session_logger,
+                )
+                self._decision_logic.set_recorder(self._field_study_recorder)
+                if not self._field_study_preflight():
+                    # Resting orders present — abort before trading (loud banner already printed).
+                    return self._shutdown(0, 0)
+
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
             _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
@@ -254,6 +291,7 @@ class AutotraderMain:
                 reconciler=self._reconciler,
                 api_monitor=self._api_monitor,
             )
+            self._tick_loop_started = True
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
             # #348: an EMERGENCY session-end request escalates the shutdown mode.
@@ -262,8 +300,14 @@ class AutotraderMain:
                 self._shutdown_mode = 'emergency'
 
         except Exception as e:
-            self._global_logger.error(f"❌ AutoTrader error during setup/loop: {e}")
-            self._print_startup_error(str(e))
+            self._emergency_reason = str(e)
+            if self._tick_loop_started:
+                # Runtime error inside the tick loop — NOT a startup failure.
+                self._global_logger.error(f"❌ AutoTrader runtime error in tick loop: {e}")
+                self._print_runtime_error(str(e))
+            else:
+                self._global_logger.error(f"❌ AutoTrader startup error: {e}")
+                self._print_startup_error(str(e))
             self._shutdown_mode = 'emergency'
             ticks_processed = 0
             ticks_clipped = 0
@@ -294,6 +338,13 @@ class AutotraderMain:
         """Print startup error to console. Startup errors abort the session."""
         print(f"\n{'=' * 60}")
         print(f"  ❌ STARTUP FAILED")
+        print(f"  {message}")
+        print(f"{'=' * 60}\n")
+
+    def _print_runtime_error(self, message: str) -> None:
+        """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
+        print(f"\n{'=' * 60}")
+        print(f"  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)")
         print(f"  {message}")
         print(f"{'=' * 60}\n")
 
@@ -334,28 +385,52 @@ class AutotraderMain:
                 self._executor.close_all_remaining_orders()
                 self._executor.check_clean_shutdown()
             except Exception as e:
-                self._global_logger.error(f"Error during position cleanup: {e}")
+                self._session_logger.error(f"Error during position cleanup: {e}")
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
             try:
                 self._drift_auditor.shutdown()
             except Exception as e:
-                self._global_logger.error(f"Error during drift auditor shutdown: {e}")
+                self._session_logger.error(f"Error during drift auditor shutdown: {e}")
 
         # #151 — Reconciler cleanup (final summary)
         if self._reconciler:
             try:
                 self._reconciler.shutdown()
             except Exception as e:
-                self._global_logger.error(f"Error during reconciler shutdown: {e}")
+                self._session_logger.error(f"Error during reconciler shutdown: {e}")
 
         # #351 — API monitor cleanup (final per-endpoint summary)
         if self._api_monitor:
             try:
                 self._api_monitor.shutdown()
             except Exception as e:
-                self._global_logger.error(f"Error during API monitor shutdown: {e}")
+                self._session_logger.error(f"Error during API monitor shutdown: {e}")
+
+        # #332 — Field Study recorder: final broker-truth snapshot + close
+        if self._field_study_recorder:
+            try:
+                if self._reconciler:
+                    flat = self._reconciler.is_account_flat()
+                    self._field_study_recorder.set_phase('session_end', -1)
+                    self._field_study_recorder.record_broker_truth(
+                        order_count=len(flat.open_orders),
+                        balances=flat.asset_balances,
+                        is_flat=flat.is_flat,
+                    )
+                else:
+                    # No reconciler (e.g. mock dress-rehearsal) — record the executor's own
+                    # order-book view so the certificate's end-criterion still resolves.
+                    counts = self._executor.get_active_order_counts()
+                    resting = counts.get('active_limits', 0) + counts.get('active_stops', 0)
+                    self._field_study_recorder.set_phase('session_end', -1)
+                    self._field_study_recorder.record_broker_truth(
+                        order_count=resting, balances={}, is_flat=(resting == 0),
+                    )
+                self._field_study_recorder.close('session end')
+            except Exception as e:
+                self._session_logger.error(f"Error during Field Study recorder shutdown: {e}")
 
         # Collect statistics and produce reports
         return self._collect_results(ticks_processed, ticks_clipped)
@@ -382,6 +457,7 @@ class AutotraderMain:
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
             shutdown_mode=self._shutdown_mode,
+            emergency_reason=self._emergency_reason,
             warning_messages=[line for _, line in warnings],
             error_messages=[line for _, line in errors],
         )
@@ -485,6 +561,50 @@ class AutotraderMain:
     # =========================================================================
     # HELPERS
     # =========================================================================
+
+    def _field_study_preflight(self) -> bool:
+        """
+        Pre-flight the account before the Field Study trades (broker truth).
+
+        Records the start-of-run broker-truth snapshot. The Field Study is funded with
+        assets on both sides (e.g. ~50/50 base/quote) so the SELL phases sell held base
+        — a non-quote balance is therefore EXPECTED, not a contaminant. The hard
+        requirement is only: no resting broker orders (those would contaminate the run).
+        Aborts loudly if any resting order is present (#332 / #151).
+
+        Returns:
+            True if clear (or reconciliation disabled), False to abort the run
+        """
+        if self._reconciler is None:
+            self._global_logger.warning(
+                'Field Study preflight skipped — reconciliation is disabled'
+            )
+            return True
+
+        flat = self._reconciler.is_account_flat()
+        if self._field_study_recorder:
+            self._field_study_recorder.set_phase('preflight', -1)
+            self._field_study_recorder.record_broker_truth(
+                order_count=len(flat.open_orders),
+                balances=flat.asset_balances,
+                is_flat=flat.is_flat,
+            )
+
+        if flat.open_orders:
+            banner = (
+                f"FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) "
+                f"present; cancel them before the run"
+            )
+            self._global_logger.error(banner)
+            print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
+            return False
+
+        self._global_logger.info(
+            f"✅ Field Study preflight: no resting orders "
+            f"(starting balances: {flat.asset_balances or 'quote-only'})"
+        )
+        print('  ▸ Field Study preflight: no resting orders (starting balances recorded)')
+        return True
 
     def _is_dry_run(self) -> bool:
         """

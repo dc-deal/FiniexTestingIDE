@@ -164,28 +164,23 @@ class DryRunOrderSimulator:
         timestamp: datetime,
     ) -> BrokerResponse:
         """
-        Modify a dry-run order. Mirrors Kraken EditOrder semantics —
-        the old ref is invalidated and a NEW synthetic ref is issued.
-        The per-order state is carried over (lots, remaining_polls)
-        with new_price applied if provided.
+        Modify a dry-run order in-place. Mirrors Kraken AmendOrder
+        semantics — the order keeps the SAME ref; only the price is
+        applied (per-order state lots/remaining_polls is preserved).
 
         Args:
-            broker_ref: Original synthetic DRYRUN-* reference
+            broker_ref: Synthetic DRYRUN-* reference (unchanged by the amend)
             new_price: New limit price (None = keep current)
             timestamp: Response timestamp (UTC)
 
         Returns:
-            BrokerResponse(status=PENDING, broker_ref=NEW DRYRUN-*)
+            BrokerResponse(status=PENDING, broker_ref unchanged)
         """
-        order = self._orders.pop(broker_ref, None)
-        self._counter += 1
-        new_ref = f'DRYRUN-{self._counter:06d}'
-        if order is not None:
-            if new_price is not None:
-                order.price = new_price
-            self._orders[new_ref] = order
+        order = self._orders.get(broker_ref)
+        if order is not None and new_price is not None:
+            order.price = new_price
         return BrokerResponse(
-            broker_ref=new_ref,
+            broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
             timestamp=timestamp,
         )

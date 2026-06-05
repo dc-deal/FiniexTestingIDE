@@ -80,13 +80,17 @@ Each test suite has its own documentation in [`tests/`](tests/).
 |----------|-------------|
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
+| [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Dry-run order lifecycle against real Kraken API — real account required, release-gate |
+| [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end live acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
+| [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
+| [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
 | [Margin Validation](tests/simulation/margin_validation_tests.md) | Margin rejection, fill timing |
 | [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
@@ -97,6 +101,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Spot SELL](tests/simulation/spot_sell_tests.md) | Spot BUY/SELL execution, insufficient base balance rejection |
 | [Tick Clipping](tests/simulation/tick_clipping_tests.md) | Bar rendering correctness under tick processing budget clipping |
 | [Event Channel](tests/simulation/event_channel_tests.md) | Decision event channel dual-world parity (#348) |
+| [Order Precision](tests/simulation/order_precision_tests.md) | Order price → digits normalization (#332) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
 | [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |
@@ -111,3 +116,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
+| [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers); runtime validator → #359 |

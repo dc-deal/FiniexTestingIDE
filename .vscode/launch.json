@@ -1491,6 +1491,62 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Field Study (Mock dress-rehearsal)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/field_study_mock.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 14
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Field Study (Kraken Spot ETHUSD)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/field_study/kraken_spot_ethusd_field_study.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 15
+            }
+        },
+        {
+            "name": "📜 Field Study: Certificate (latest run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/field_study_certificate_cli.py",
+            "args": [
+                "generate",
+                "--latest"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 16
+            }
+        },
+        {
             "name": "🧪 AutoTrader: Event Channel",
             "type": "debugpy",
             "request": "launch",
@@ -1638,6 +1694,40 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 21
+            }
+        },
+        {
+            "name": "🧩 Pytest: Algo Clock Convention (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/algo_clock/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 28
+            }
+        },
+        {
+            "name": "🧩 Pytest: Loop Cadence (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/loop_cadence/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 29
             }
         },
         {
@@ -1815,6 +1905,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Kraken Adapter (#332 nonce)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/kraken_adapter",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 30
+            }
+        },
+        {
             "name": "🧩 Pytest: API Monitor (#351)",
             "type": "debugpy",
             "request": "launch",
@@ -1899,6 +2006,24 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 29
+            }
+        },
+        {
+            "name": "🧩 Pytest: Order Precision (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/order_precision/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 30
             }
         },
         {
