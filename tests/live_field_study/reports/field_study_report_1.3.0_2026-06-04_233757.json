@@ -1,0 +1,124 @@
+{
+  "record_kind": "certificate",
+  "release_version": "1.3.0",
+  "git_commit": "967ba21",
+  "timestamp": "2026-06-04T23:37:57.386170+00:00",
+  "valid_until": "2026-09-02T23:37:57.386170+00:00",
+  "comment": "",
+  "source_jsonl": "logs/autotrader/kraken_spot_ethusd_field_study/20260604_232452/field_study.jsonl",
+  "profile": "kraken_spot_ethusd_field_study",
+  "symbol": "ETHUSD",
+  "started_utc": "2026-06-04T23:24:52.926892+00:00",
+  "overall_status": "PASSED",
+  "phase_count": 19,
+  "phases": [
+    {
+      "phase": "market_long_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "market_short_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "reject_below_min",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "reject_oversized",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "limit_long_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_short_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_modify_test",
+      "outcome": "inconclusive",
+      "reason": "no fill after modify"
+    },
+    {
+      "phase": "limit_modify_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "multi_concurrent_limits",
+      "outcome": "pass",
+      "reason": "all watching"
+    },
+    {
+      "phase": "multi_cancel_all",
+      "outcome": "pass",
+      "reason": "all cancelled"
+    },
+    {
+      "phase": "partial_close_test",
+      "outcome": "pass",
+      "reason": "half then flat"
+    },
+    {
+      "phase": "idle_heartbeat_test",
+      "outcome": "pass",
+      "reason": "idle complete"
+    },
+    {
+      "phase": "force_close_all",
+      "outcome": "skipped",
+      "reason": "already flat"
+    },
+    {
+      "phase": "final_summary",
+      "outcome": "pass",
+      "reason": "session end requested"
+    }
+  ],
+  "failed_phases": [],
+  "missing_phases": [],
+  "flat_at_session_end": true,
+  "realized_cost": 0,
+  "slippage_points": {
+    "count": 5,
+    "max": 0.0,
+    "avg": 0.0
+  },
+  "detected_via": {
+    "poll": 23
+  },
+  "reconcile_alert_count": 0
+}
