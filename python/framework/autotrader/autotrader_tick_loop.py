@@ -25,6 +25,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -89,6 +90,7 @@ class AutotraderTickLoop:
         decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
+        state_store: Optional[AlgoStateStore] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -109,6 +111,7 @@ class AutotraderTickLoop:
         self._decision_event_dispatcher = decision_event_dispatcher
         self._reconciler = reconciler
         self._api_monitor = api_monitor
+        self._state_store = state_store
         self._running = False
 
         # #360: idle-heartbeat cadence — max wait for a real tick before the loop
@@ -223,6 +226,8 @@ class AutotraderTickLoop:
                 # phases, react to drained events, issue follow-up orders) with no
                 # synthetic tick and no tick-state mutation.
                 self._run_decision_heartbeat(ticks_processed)
+                # #354: persist algo state on the idle timer too (hybrid cadence).
+                self._persist_state_if_due(ticks_processed)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
                         f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
@@ -315,6 +320,10 @@ class AutotraderTickLoop:
             # polling path); infrequent, so the periodic block is bounded.
             if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
                 self._reconciler.reconcile(ticks_processed)
+
+            # === 6d. Algo State Persistence (#354, hybrid cadence) ===
+            # Restart-safe algo memory (Category B). Save every N ticks OR M seconds.
+            self._persist_state_if_due(ticks_processed)
 
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
@@ -420,6 +429,25 @@ class AutotraderTickLoop:
             side=decision.action.value,
             tick_time=self._executor.get_current_time(),
         ))
+
+    def _persist_state_if_due(self, ticks_processed: int) -> None:
+        """
+        Save the algo state snapshot if the persistence cadence is due (#354).
+
+        No-op when no state store is wired (algo did not opt in). Mid-session save
+        failures are logged (error pot, §35) and swallowed — a persistence problem
+        must never abort a live trading session.
+
+        Args:
+            ticks_processed: Current tick counter (drives the hybrid cadence)
+        """
+        if self._state_store is None or not self._state_store.is_due(ticks_processed):
+            return
+        try:
+            self._state_store.save(
+                self._decision_logic.get_state_snapshot(), ticks_processed)
+        except Exception as e:
+            self._logger.error(f"Algo state save failed (continuing): {e}")
 
     def _run_decision_heartbeat(self, ticks_processed: int) -> None:
         """

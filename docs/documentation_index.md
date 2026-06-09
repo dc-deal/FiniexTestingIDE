@@ -7,6 +7,7 @@
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first trading bot (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
+| [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
 
 ## User Algo Workspace
 
@@ -87,6 +88,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
+| [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |

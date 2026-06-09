@@ -86,6 +86,25 @@ class ApiMonitorConfig(BaseModel):
     slow_call_threshold_ms: float = 3000.0  # calls slower than this are logged + flagged
 
 
+class StatePersistenceDefaults(BaseModel):
+    """
+    Algo state persistence defaults (#354) — restart-safe algo memory (Category B).
+
+    Live-only; mock auto-disabled in the loader. Opt-in per algo via
+    AbstractDecisionLogic.uses_state_persistence() — the whole subsystem (store,
+    restore, stale-check, boot pre-flight) is skipped for algos that do not declare it.
+    Staleness is weekend-aware (trading days via MarketCalendar) so a Friday-night
+    snapshot is not counted as 3 days old on Monday.
+    """
+    enabled: bool = True
+    path: str = 'data/runtime/session_state'
+    save_interval_ticks: int = 500           # save every N ticks ...
+    save_interval_seconds: float = 60.0      # ... OR every M wall-clock seconds (hybrid)
+    max_age_trading_days: int = 5            # discard restored state older than this (0 = no guard)
+    on_corrupt: Literal['warn_reset', 'fail'] = 'warn_reset'   # corrupt file: reset fresh or refuse to start
+    on_stale: Literal['warn_reset', 'halt'] = 'warn_reset'     # too-old state: reset fresh or halt boot
+
+
 class AutotraderDefaultsConfig(BaseModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -98,3 +117,4 @@ class AutotraderDefaultsConfig(BaseModel):
     drift_audit: DriftAuditConfig = DriftAuditConfig()
     reconciliation: ReconciliationDefaults = ReconciliationDefaults()
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
+    state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()

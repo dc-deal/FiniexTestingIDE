@@ -465,6 +465,40 @@ WARNING | ⛔ Safety circuit breaker triggered: min_equity (4.8000 < 5.0000)
 INFO    | ✅ Safety circuit breaker cleared
 ```
 
+## State Persistence (#354)
+
+Restart-safe algo memory (Category B): an algo's own internal state — counters, regime
+flags, "already entered today", risk high-water-marks — snapshotted to disk and restored on
+restart. Live-only; opt-in per algo via `AbstractDecisionLogic.uses_state_persistence()`; mock
+auto-disabled. The store mirrors the Reconciler's optional-component shape (config gate +
+`isinstance(LiveTradeExecutor)` + algo opt-in).
+
+`AlgoStateStore` (`python/framework/persistence/algo_state_store.py`) writes atomic JSON
+(temp file + `os.replace`) keyed by `<profile>_<symbol>` under `data/runtime/session_state/`
+(stable across runs). Envelope: `{schema_version, saved_at_utc, profile, symbol, snapshot}`. The
+store is decoupled — it knows only a JSON dict plus the bot identity; orchestration
+(restore / snapshot / freshness gate) lives in `AutotraderMain`.
+
+Lifecycle: restore runs after warmup and before the first decision; saves fire on a hybrid
+cadence (every N ticks OR M seconds) from the tick loop — both the per-tick and the idle
+heartbeat branch — plus a final save on shutdown. An empty snapshot writes no file; a
+mid-session save failure is logged (error pot) but never aborts the session.
+
+Two load-time policies. **Corrupt** (`on_corrupt`: `warn_reset` / `fail`) handles an unreadable
+or wrong-schema file. **Stale** (`on_stale`: `warn_reset` / `halt`) handles a snapshot older than
+`max_age_trading_days` — weekend-aware via the `MarketCalendar` (Forex skips weekends; crypto
+counts calendar days). The coarse age guard runs first; an algo can refine it via
+`accepts_restored_state(snapshot, ctx)`.
+
+A pre-flight (the first member of the algo pre-flight check family,
+`python/framework/validators/algo_state_preflight.py`) asserts the snapshot is JSON-serializable.
+In live it runs at boot → hard `STARTUP FAILED`. In Simulation it runs centrally in the batch
+`RequirementsCollector` (Phase 3, cached per distinct decision logic) → a non-serializable
+snapshot marks the scenario invalid and excludes it before data loading, so a broken algo
+surfaces once, not as N failed runs.
+
+Authoring guide: `docs/user_guides/algo_state_persistence_guide.md`.
+
 ## Acceptance Testing — Live Field Study (#332)
 
 The Live Field Study is the live acceptance gate: an operator-driven, deterministic phase

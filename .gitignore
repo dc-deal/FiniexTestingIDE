@@ -203,5 +203,8 @@ export_github_issues.sh
 # Generated project analysis snapshot (local only, regenerate on demand)
 project_analysis_detailed.txt
 SUMMARY_*.md
+
+# Internal working docs (private — may reference user_algos / private bots)
+INTERNAL_*.md
 ISSUE_*.md
 SESSION_*.md

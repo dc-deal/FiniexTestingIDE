@@ -27,6 +27,7 @@ from python.framework.types.decision_event_types import (
 )
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -477,6 +478,72 @@ class AbstractDecisionLogic(ABC):
             event: Session-end detail (reason, severity)
         """
         pass
+
+    # ============================================
+    # State Persistence (#354) — restart-safe algo memory (Category B)
+    # ============================================
+
+    def uses_state_persistence(self) -> bool:
+        """
+        Opt into restart-safe state persistence (#354).
+
+        Default False: the whole persistence subsystem (store, restore, staleness
+        check, boot pre-flight) is skipped — most algos (CORE demos, backtest
+        showcases) hold no restart-relevant memory and need nothing. Override to
+        True for a live bot that must survive restarts (e.g. a swing-state counter,
+        "already entered today" flag, risk high-water-mark). A True here means the
+        algo also implements get_state_snapshot/restore_state.
+
+        Returns:
+            True to enable persistence for this algo
+        """
+        return False
+
+    def get_state_snapshot(self) -> Dict[str, Any]:
+        """
+        Return the algo's internal state for persistence (#354).
+
+        Must be JSON-serializable — use only primitives (str/int/float/bool/
+        list/dict/None); store timestamps as ISO strings. Category B only: persist
+        position-independent memory (counters, regime, risk HWM, daily flags), NOT
+        live-position references (those return on boot via Cold-Start Recovery, #355).
+
+        Returns:
+            JSON-serializable state dict (empty default → nothing persisted)
+        """
+        return {}
+
+    def restore_state(self, snapshot: Dict[str, Any]) -> None:
+        """
+        Restore algo internal state from a persisted snapshot (#354).
+
+        Called once after warmup and before the first decision, only if the
+        framework staleness guard and accepts_restored_state() both pass. No-op default.
+
+        Args:
+            snapshot: The previously persisted state dict
+        """
+        return None
+
+    def accepts_restored_state(self, snapshot: Dict[str, Any], ctx: RestoreContext) -> bool:
+        """
+        Algo-level freshness gate for a persisted snapshot (#354).
+
+        Runs AFTER the coarse framework max-age guard passes and BEFORE
+        restore_state(). Default True → only the framework's max_age_trading_days
+        policy decides. Override to apply algo-specific freshness rules — e.g. a
+        daily "already entered today" flag is stale across a date boundary even when
+        the coarse guard would keep it. Timing is provided via ctx (the algo must not
+        read wall-clock itself — §9).
+
+        Args:
+            snapshot: The persisted snapshot (not yet applied)
+            ctx: Restore context (saved-at / now / age / trading-day age / weekend-aware)
+
+        Returns:
+            True to proceed with restore_state(snapshot); False to discard + start fresh
+        """
+        return True
 
     # ============================================
     # API Injection

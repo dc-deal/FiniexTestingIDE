@@ -32,6 +32,8 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
+from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
@@ -98,6 +100,9 @@ class AutotraderMain:
 
         # #351 — API performance monitor (live-only, gated by config.api_monitor.enabled)
         self._api_monitor: Optional[ApiPerfMonitor] = None
+
+        # #354 — Algo state store (live-only, gated by config + algo opt-in)
+        self._state_store: Optional[AlgoStateStore] = None
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
@@ -200,6 +205,35 @@ class AutotraderMain:
                 )
                 self._executor.broker.adapter.set_api_monitor(self._api_monitor)
 
+            # === ALGO STATE PERSISTENCE (#354) ===
+            # Gated by config + live executor + algo opt-in. Restore-after-warmup,
+            # before the first decision (warmup already ran in setup_pipeline).
+            if (self._config.state_persistence.enabled
+                    and isinstance(self._executor, LiveTradeExecutor)
+                    and self._decision_logic.uses_state_persistence()):
+                # Boot pre-flight: a non-serializable snapshot must fail loudly NOW
+                # (startup), not after hours of live trading.
+                validate_state_snapshot_serializable(self._decision_logic)
+                weekend_aware = MarketConfigManager().has_weekend_closure(self._config.broker_type)
+                self._state_store = AlgoStateStore(
+                    config=self._config.state_persistence,
+                    profile=self._config.name or self._config.symbol,
+                    symbol=self._config.symbol,
+                    weekend_aware=weekend_aware,
+                    logger=self._session_logger,
+                )
+                loaded = self._state_store.load()
+                if loaded is not None:
+                    snapshot, restore_ctx = loaded
+                    if self._decision_logic.accepts_restored_state(snapshot, restore_ctx):
+                        self._decision_logic.restore_state(snapshot)
+                        self._session_logger.info(
+                            f"💾 Algo state restored "
+                            f"({restore_ctx.trading_days} trading day(s) old)")
+                    else:
+                        self._session_logger.info(
+                            '💾 Algo rejected restored state — starting fresh')
+
             # === DECISION EVENT CHANNEL (#348) ===
             # Built only when the active decision logic subscribes to events.
             self._decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
@@ -290,6 +324,7 @@ class AutotraderMain:
                 decision_event_dispatcher=self._decision_event_dispatcher,
                 reconciler=self._reconciler,
                 api_monitor=self._api_monitor,
+                state_store=self._state_store,
             )
             self._tick_loop_started = True
             ticks_processed, ticks_clipped = self._tick_loop.run()
@@ -407,6 +442,15 @@ class AutotraderMain:
                 self._api_monitor.shutdown()
             except Exception as e:
                 self._session_logger.error(f"Error during API monitor shutdown: {e}")
+
+        # #354 — Algo state: final snapshot on clean exit, then summary. Algo memory
+        # is position-independent, so saving after the order cleanup above is fine.
+        if self._state_store and self._decision_logic:
+            try:
+                self._state_store.save(self._decision_logic.get_state_snapshot())
+                self._state_store.shutdown()
+            except Exception as e:
+                self._session_logger.error(f"Error during algo state shutdown: {e}")
 
         # #332 — Field Study recorder: final broker-truth snapshot + close
         if self._field_study_recorder:
