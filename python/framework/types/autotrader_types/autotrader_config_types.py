@@ -15,6 +15,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    StatePersistenceDefaults,
 )
 
 
@@ -117,5 +118,6 @@ class AutoTraderConfig:
     drift_audit: DriftAuditConfig = field(default_factory=DriftAuditConfig)
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
+    state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None

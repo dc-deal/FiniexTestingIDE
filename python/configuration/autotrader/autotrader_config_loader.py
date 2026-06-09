@@ -23,6 +23,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    StatePersistenceDefaults,
 )
 from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
 
@@ -55,6 +56,7 @@ _KNOWN_ORDER_GUARD_KEYS: frozenset          = _allowlist_from(OrderGuardDefaults
 _KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
 _KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefaults)
 _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
+_KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
@@ -92,6 +94,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     profile_explicitly_set_api_monitor_enabled = (
         'enabled' in raw_profile_only.get('api_monitor', {})
     )
+    profile_explicitly_set_state_persistence_enabled = (
+        'enabled' in raw_profile_only.get('state_persistence', {})
+    )
 
     # Cascade: app_config.autotrader defaults → profile (profile wins)
     app_defaults = AppConfigManager().get_autotrader_defaults()
@@ -111,6 +116,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     drift_audit_raw = raw.get('drift_audit', {})
     reconciliation_raw = raw.get('reconciliation', {})
     api_monitor_raw = raw.get('api_monitor', {})
+    state_persistence_raw = raw.get('state_persistence', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -124,6 +130,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('drift_audit',         drift_audit_raw,  _KNOWN_DRIFT_AUDIT_KEYS)
     check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
+    check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
 
@@ -156,6 +163,15 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         api_monitor_enabled_resolved = False
     else:
         api_monitor_enabled_resolved = api_monitor_raw.get('enabled', True)
+
+    # State persistence auto-disables for mock adapters too: a mock session is a
+    # dress-rehearsal, not a real restart context, and would otherwise write a
+    # state file for a test profile. Auto-disable for mock UNLESS the profile sets
+    # `enabled` explicitly (same provenance pattern as drift_audit/reconciliation).
+    if adapter_type_resolved == 'mock' and not profile_explicitly_set_state_persistence_enabled:
+        state_persistence_enabled_resolved = False
+    else:
+        state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
@@ -219,6 +235,15 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         api_monitor=ApiMonitorConfig(
             enabled=api_monitor_enabled_resolved,
             slow_call_threshold_ms=api_monitor_raw.get('slow_call_threshold_ms', 3000.0),
+        ),
+        state_persistence=StatePersistenceDefaults(
+            enabled=state_persistence_enabled_resolved,
+            path=state_persistence_raw.get('path', 'data/runtime/session_state'),
+            save_interval_ticks=state_persistence_raw.get('save_interval_ticks', 500),
+            save_interval_seconds=state_persistence_raw.get('save_interval_seconds', 60.0),
+            max_age_trading_days=state_persistence_raw.get('max_age_trading_days', 5),
+            on_corrupt=state_persistence_raw.get('on_corrupt', 'warn_reset'),
+            on_stale=state_persistence_raw.get('on_stale', 'warn_reset'),
         ),
         config_path=path,
     )

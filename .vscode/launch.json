@@ -1731,6 +1731,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Algo State Persistence (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/state_persistence/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 30
+            }
+        },
+        {
             "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",

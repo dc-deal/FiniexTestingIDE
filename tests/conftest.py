@@ -69,6 +69,7 @@ def pytest_collection_modifyitems(items):
             '/tests/autotrader/live_executor/',
             '/tests/autotrader/loop_cadence/',
             '/tests/autotrader/safety/',
+            '/tests/autotrader/state_persistence/',
             '/tests/framework/bar_rendering/',
             '/tests/framework/batch_validations/',
             '/tests/framework/worker_tests/',

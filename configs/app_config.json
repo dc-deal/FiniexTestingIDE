@@ -81,6 +81,15 @@
         "api_monitor": {
             "enabled": true,
             "slow_call_threshold_ms": 3000.0
+        },
+        "state_persistence": {
+            "enabled": true,
+            "path": "data/runtime/session_state",
+            "save_interval_ticks": 500,
+            "save_interval_seconds": 60.0,
+            "max_age_trading_days": 5,
+            "on_corrupt": "warn_reset",
+            "on_stale": "warn_reset"
         }
     },
     "backtesting": {
