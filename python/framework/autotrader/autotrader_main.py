@@ -33,6 +33,7 @@ from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
@@ -173,6 +174,17 @@ class AutotraderMain:
              self._trading_model,
              self._display_label_cache) = setup_pipeline(self._config, self._session_logger)
             self._print_startup_phase('Pipeline created successfully')
+
+            # === ALGO CLOCK VALIDATION (#359) ===
+            # §9: decision logic & workers must never read wall-clock — the
+            # canonical clock is get_current_time(). Scans the loaded algo
+            # sources (CORE + USER; the only path that sees gitignored
+            # user_algos/). A violation aborts the session at startup (§35),
+            # before any tick is processed.
+            validate_algo_clock(
+                [type(self._decision_logic)]
+                + [type(worker) for worker in self._worker_orchestrator.workers.values()]
+            )
 
             # === DRIFT AUDIT (#327) ===
             # Gated by config; live-only by design — DRYRUN orders auto-skipped

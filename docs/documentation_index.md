@@ -118,4 +118,5 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
-| [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers); runtime validator → #359 |
+| [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers, CI plane) |
+| [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | §9 runtime startup validator — AST scan of loaded algos (CORE + USER) + batch pre-flight |

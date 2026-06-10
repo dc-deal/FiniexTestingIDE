@@ -150,7 +150,7 @@ class WorkerFactory:
         """
         worker_config = worker_config or {}
 
-        worker_class, _ = self._resolve_worker_class(worker_type, base_path)
+        worker_class, _ = self.resolve_worker_class(worker_type, base_path)
 
         worker_class.validate_config(worker_config)
 
@@ -258,7 +258,7 @@ class WorkerFactory:
             return str((base_path / p).resolve())
         return str((Path.cwd() / p).resolve())
 
-    def _resolve_worker_class(
+    def resolve_worker_class(
         self,
         worker_type: str,
         base_path: Optional[Path] = None,

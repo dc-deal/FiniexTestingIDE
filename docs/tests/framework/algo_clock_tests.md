@@ -19,8 +19,10 @@ AST-based (not text grep) — no false positives from comments, strings, or docs
 
 This is the **CI plane**: it covers the shipped CORE algo surface in the repository.
 USER algos live in `user_algos/` (gitignored) and never reach CI — they are covered at
-**runtime** by the startup validator tracked in **#359**, which scans every algo the
-factories actually load (CORE + USER) before the run starts.
+**runtime** by the startup validator (#359, `algo_clock_validator.py`), which scans every
+algo actually loaded for the run (CORE + USER) before it starts. Both planes share the
+same AST core (`find_wall_clock_calls`). See
+[algo_clock_validator_tests.md](algo_clock_validator_tests.md).
 
 ## Run
 

@@ -393,6 +393,9 @@ class AggressiveTrend(AbstractDecisionLogic):
 > canonical clock the framework owns: simulated tick time in backtests (so runs are
 > reproducible) and the executor clock in live. Reading wall-clock directly breaks
 > backtest reproducibility and decouples your timing from the tick cadence.
+> The rule is enforced at startup: every loaded decision logic and worker is scanned
+> for `datetime.now()` / `datetime.utcnow()` / `time.time()` — a violation excludes the
+> scenario (backtest) or aborts the session (AutoTrader) with the offending `file:line`.
 
 ### AwarenessChannel — Narrate Your Algo
 
