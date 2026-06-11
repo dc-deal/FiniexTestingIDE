@@ -52,6 +52,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
     OrderAction,
     OrderType,
     OrderDirection,
@@ -736,8 +737,7 @@ class AbstractTradeExecutor(ABC):
             entry_type=entry_type,
             broker_ref=pending_order.broker_ref,
             entry_trades=list(pending_order.trades),
-            entry_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            entry_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            entry_submission=pending_order.submission,
         )
 
         # Create order result for history
@@ -750,12 +750,11 @@ class AbstractTradeExecutor(ABC):
             commission=0.0,
             position_id=position.position_id,
             action=OrderAction.OPEN,
-            submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            symbol=pending_order.symbol,
+            direction=pending_order.direction,
+            requested_lots=pending_order.lots,
+            submission=pending_order.submission,
             metadata={
-                "symbol": pending_order.symbol,
-                "direction": pending_order.direction,
-                "position_id": position.position_id,
                 "fee_cost": entry_fee.cost,
                 "fee_type": entry_fee.fee_type.value,
                 "fill_type": fill_type.value,
@@ -890,8 +889,7 @@ class AbstractTradeExecutor(ABC):
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
                 exit_trades=list(pending_order.trades),
-                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+                exit_submission=pending_order.submission,
             )
             self.logger.debug(
                 f"📊 Partial close: {pending_order.pending_order_id} "
@@ -906,8 +904,7 @@ class AbstractTradeExecutor(ABC):
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
                 exit_trades=list(pending_order.trades),
-                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+                exit_submission=pending_order.submission,
             )
             self.logger.debug(
                 f"💰 Position closed: {pending_order.pending_order_id} "
@@ -922,13 +919,14 @@ class AbstractTradeExecutor(ABC):
             executed_lots=executed_lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
+            position_id=pending_order.pending_order_id,
             action=OrderAction.CLOSE,
-            submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            symbol=position.symbol,
+            direction=position.direction,
+            close_type=CloseType.PARTIAL if is_partial else CloseType.FULL,
+            submission=pending_order.submission,
             metadata={
                 "realized_pnl": realized_pnl,
-                "position_id": pending_order.pending_order_id,
-                "close_type": "partial" if is_partial else "full"
             }
         )
 
@@ -1367,11 +1365,11 @@ class AbstractTradeExecutor(ABC):
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
                 action=OrderAction.OPEN,
+                symbol=pending.symbol,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'limit',
                     'entry_price': pending.entry_price,
-                    'symbol': pending.symbol,
                 }
             )
             self._order_history.append(result)
@@ -1381,11 +1379,11 @@ class AbstractTradeExecutor(ABC):
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
                 action=OrderAction.OPEN,
+                symbol=pending.symbol,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'stop',
                     'entry_price': pending.entry_price,
-                    'symbol': pending.symbol,
                 }
             )
             self._order_history.append(result)

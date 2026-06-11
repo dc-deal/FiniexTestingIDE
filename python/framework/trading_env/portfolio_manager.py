@@ -12,11 +12,12 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, CloseReason, EntryType, TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 
-from python.framework.types.trading_env_types.order_types import ModificationRejectionReason, ModificationResult, OrderAction, OrderDirection, OrderSide, direction_to_side
+from python.framework.types.trading_env_types.order_types import CloseType, ModificationRejectionReason, ModificationResult, OrderAction, OrderDirection, OrderSide, direction_to_side
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_types.market_data_types import TickData
@@ -214,8 +215,7 @@ class PortfolioManager:
         entry_type: EntryType = EntryType.MARKET,
         broker_ref: Optional[str] = None,
         entry_trades: Optional[List[BrokerTrade]] = None,
-        entry_submission_tick_mid_price: Optional[float] = None,
-        entry_submission_tick_time_msc: Optional[int] = None,
+        entry_submission: Optional[SubmissionMetadata] = None,
     ) -> Position:
         """
         Open new position.
@@ -225,8 +225,7 @@ class PortfolioManager:
         Args:
             broker_ref: External broker reference from PendingOrder (#330)
             entry_trades: Per-execution BrokerTrade list from PendingOrder.trades (#330)
-            entry_submission_tick_mid_price: Trade-channel mid at submission (#340)
-            entry_submission_tick_time_msc: Tick time_msc at submission (#340)
+            entry_submission: Submission-moment snapshot from PendingOrder (#340/#345)
         """
         # order_id becomes position id.
         position_id = order_id
@@ -253,8 +252,7 @@ class PortfolioManager:
             entry_tick_index=entry_tick_index,
             broker_ref=broker_ref,
             entry_trades=list(entry_trades) if entry_trades else [],
-            entry_submission_tick_mid_price=entry_submission_tick_mid_price,
-            entry_submission_tick_time_msc=entry_submission_tick_time_msc,
+            entry_submission=entry_submission if entry_submission else SubmissionMetadata(),
         )
 
         # Attach entry fee
@@ -300,8 +298,7 @@ class PortfolioManager:
         exit_fee: Optional[AbstractTradingFee] = None,
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
-        exit_submission_tick_mid_price: Optional[float] = None,
-        exit_submission_tick_time_msc: Optional[int] = None,
+        exit_submission: Optional[SubmissionMetadata] = None,
     ) -> float:
         """
         Close position and realize P&L.
@@ -314,8 +311,7 @@ class PortfolioManager:
             exit_fee: Optional exit fee (commission or final swap)
             close_reason: Why the position was closed
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
-            exit_submission_tick_mid_price: Trade-channel mid at close submission (#340)
-            exit_submission_tick_time_msc: Tick time_msc at close submission (#340)
+            exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
 
         Returns:
             Realized P&L amount
@@ -381,8 +377,7 @@ class PortfolioManager:
         trade_record = self._create_trade_record(
             position, CloseType.FULL, close_reason,
             exit_trades=exit_trades,
-            exit_submission_tick_mid_price=exit_submission_tick_mid_price,
-            exit_submission_tick_time_msc=exit_submission_tick_time_msc,
+            exit_submission=exit_submission,
         )
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
@@ -411,8 +406,7 @@ class PortfolioManager:
         exit_fee: Optional[AbstractTradingFee] = None,
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
-        exit_submission_tick_mid_price: Optional[float] = None,
-        exit_submission_tick_time_msc: Optional[int] = None,
+        exit_submission: Optional[SubmissionMetadata] = None,
     ) -> float:
         """
         Partially close a position: realize P&L on closed lots, keep remainder open.
@@ -426,8 +420,7 @@ class PortfolioManager:
             exit_fee: Optional exit fee (proportional to close_lots)
             close_reason: Why the partial close happened
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
-            exit_submission_tick_mid_price: Trade-channel mid at close submission (#340)
-            exit_submission_tick_time_msc: Tick time_msc at close submission (#340)
+            exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
 
         Returns:
             Realized P&L for the closed portion
@@ -518,10 +511,8 @@ class PortfolioManager:
             exit_trades=list(exit_trades) if exit_trades else [],
             entry_side=direction_to_side(position.direction, OrderAction.OPEN),
             exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
-            entry_submission_tick_mid_price=position.entry_submission_tick_mid_price,
-            entry_submission_tick_time_msc=position.entry_submission_tick_time_msc,
-            exit_submission_tick_mid_price=exit_submission_tick_mid_price,
-            exit_submission_tick_time_msc=exit_submission_tick_time_msc,
+            entry_submission=position.entry_submission,
+            exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
         )
 
         # Append to trade history (with limit warning)
@@ -559,8 +550,7 @@ class PortfolioManager:
         close_type: CloseType,
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
-        exit_submission_tick_mid_price: Optional[float] = None,
-        exit_submission_tick_time_msc: Optional[int] = None,
+        exit_submission: Optional[SubmissionMetadata] = None,
     ) -> TradeRecord:
         """
         Convert closed Position to TradeRecord.
@@ -570,8 +560,7 @@ class PortfolioManager:
             close_type: FULL or PARTIAL close
             close_reason: Why the position was closed
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
-            exit_submission_tick_mid_price: Trade-channel mid at close submission (#340)
-            exit_submission_tick_time_msc: Tick time_msc at close submission (#340)
+            exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
 
         Returns:
             TradeRecord with all fields for P&L verification
@@ -610,10 +599,8 @@ class PortfolioManager:
             exit_trades=list(exit_trades) if exit_trades else [],
             entry_side=direction_to_side(position.direction, OrderAction.OPEN),
             exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
-            entry_submission_tick_mid_price=position.entry_submission_tick_mid_price,
-            entry_submission_tick_time_msc=position.entry_submission_tick_time_msc,
-            exit_submission_tick_mid_price=exit_submission_tick_mid_price,
-            exit_submission_tick_time_msc=exit_submission_tick_time_msc,
+            entry_submission=position.entry_submission,
+            exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
         )
 
     # ============================================

@@ -23,9 +23,9 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
+from python.framework.types.trading_env_types.order_types import CloseType, OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
 
 
 class EventType(Enum):

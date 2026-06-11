@@ -1120,7 +1120,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "BTCUSD_sandbox.json",
+                "eurusd_3_windows_sandbox.json",
                 "--generator-profile",
                 "${workspaceFolder}/configs/generator_profiles/volatility_split"
             ],
@@ -1138,7 +1138,7 @@
             "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
             "args": [
                 "run",
-                "BTCUSD_sandbox.json",
+                "eurusd_3_windows_sandbox.json",
                 "--generator-profile",
                 "${workspaceFolder}/configs/generator_profiles/continuous"
             ],

@@ -227,6 +227,16 @@ class AppConfigManager:
         logging_config = self.get_console_logging_config_object()
         return logging_config.global_log_level
 
+    def get_version(self) -> str:
+        """
+        Get the application version.
+
+        Returns:
+            Version string from app_config.json (single source — release
+            checklist updates it there; never hardcode versions in code)
+        """
+        return self._app_config.version
+
     # ============================================
     # Development Config
     # ============================================

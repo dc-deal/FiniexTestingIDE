@@ -182,7 +182,7 @@ The TRADE HISTORY column header reads **`Side`** (not `Dir`) — the value is th
 
 Replaces the previous two-file format (`autotrader_orders.csv` + `autotrader_trades.csv`). Long-format / FIX-`ExecutionReport`-style — one row per event, `event_type` as discriminator. One file per AutoTrader session, one per scenario in sim (`events_<scenario>.csv` inside an `events/` subfolder of the scenario-set log dir).
 
-Canonical column order ([trade_log_csv_writer.py:EVENT_FIELDS](../../python/framework/reporting/trade_log_csv_writer.py)):
+Canonical column order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/framework/reporting/event_stream_csv_writer.py)):
 
 ```
 ts, event_type, order_id, position_id, trade_id,
@@ -199,7 +199,7 @@ status, close_type, close_reason, is_maker, notes
 
 | Event | When | Source |
 |---|---|---|
-| `ORDER_SUBMIT` | Algo sent an OPEN trigger | `order_history` walk (`metadata['action']='open'`) |
+| `ORDER_SUBMIT` | Algo sent an OPEN trigger | `order_history` walk (`action=OPEN`) |
 | `ORDER_REJECT` | Broker / guard rejected pre-submit | `order_history` walk |
 | `CLOSE_SUBMIT` | Algo sent a CLOSE trigger (one per TradeRecord) | `trade_history` walk — 1:1 with TradeRecord |
 | `FILL` | One `BrokerTrade` (atomic execution) | `entry_trades` + `exit_trades` on each TradeRecord |
@@ -210,9 +210,18 @@ status, close_type, close_reason, is_maker, notes
 
 OrderResults for opens and closes share the same `order_id` by design (= `position_id`). If CLOSE_SUBMIT were keyed on `(order_id, action='close')` and emitted from `order_history`, three partial closes of the same position would collapse to one CLOSE_SUBMIT. Building CLOSE_SUBMIT from `trade_history` gives a clean 1:1 mapping per close event regardless of position re-use.
 
-### Action discriminator on OrderResult.metadata
+### First-class fields vs the metadata bag on OrderResult
 
-Every OrderResult construction site sets `metadata['action'] = 'open' | 'close'`. The writer reads this to route between ORDER_SUBMIT and CLOSE_SUBMIT events. Sites are inventoried at:
+The genuine order dimensions are typed first-class fields (`action` since #330; `symbol`,
+`direction`, `requested_lots`, `close_type` since #343) — consumers read `order.symbol`
+instead of `order.metadata.get('symbol')`, and presence is consistent across all
+construction sites. The writer routes ORDER_SUBMIT vs CLOSE_SUBMIT on `order.action`.
+
+`metadata` retains only diagnostic / order-type-specific keys: `fee_cost`, `fee_type`,
+`fill_type`, `submitted_at_tick`, `filled_at_tick`, `realized_pnl`, `awaiting_fill`,
+`broker_ref`, `reason` (EXPIRED), `order_type` (EXPIRED), `limit_price`, `stop_price`.
+
+Construction sites are inventoried at:
 
 - `live_trade_executor.py` — 3 sites (MARKET open, LIMIT open, close)
 - `trade_simulator.py` — 5 sites (MARKET, LIMIT, STOP, STOP_LIMIT opens + close)
@@ -226,7 +235,7 @@ Every OrderResult construction site sets `metadata['action'] = 'open' | 'close'`
 | `python/framework/types/portfolio_types/portfolio_trade_record_types.py` | `TradeRecord.entry_trades`, `TradeRecord.exit_trades` |
 | `python/framework/trading_env/abstract_trade_executor.py` | Propagation at `_fill_open_order` + `_fill_close_order`; `_synthesize_pending_trade` |
 | `python/framework/trading_env/portfolio_manager.py` | Signature extensions on `open_position`, `close_position_portfolio`, `partial_close_position`, `_create_trade_record` |
-| `python/framework/reporting/trade_log_csv_writer.py` | `EventStreamWriter`, `EventType` enum, `TradeEvent`, `EVENT_FIELDS` |
+| `python/framework/reporting/event_stream_csv_writer.py` | `EventStreamWriter`, `EventType` enum, `TradeEvent`, `EVENT_FIELDS` |
 | `python/framework/batch_reporting/trade_history_summary.py` | Sim sub-line renderer + `shared(Nx)` + `(this trade: X of Y)` |
 | `python/system/ui/autotrader_live_display.py` | Live panel sub-rows + `partial` / `remain` reason markers |
 | `python/framework/autotrader/autotrader_main.py` | AutoTrader-side `EventStreamWriter.from_autotrader_result(...).flush('events.csv')` |

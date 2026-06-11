@@ -75,6 +75,7 @@ from python.framework.types.trading_env_types.order_types import (
     RejectionReason,
     create_rejection_result,
 )
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 
 class LiveRequestProcessor(AbstractPendingOrderManager):
@@ -259,8 +260,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         lots: float,
         broker_ref: Optional[str],
         order_kwargs: Optional[Dict] = None,
-        submission_tick_mid_price: Optional[float] = None,
-        submission_tick_time_msc: Optional[int] = None,
+        submission: Optional[SubmissionMetadata] = None,
     ) -> str:
         """
         Track a submitted OPEN order with broker reference.
@@ -279,11 +279,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref: Broker's order reference ID, or None during the
                         async submit-in-flight window
             order_kwargs: Optional order parameters (stop_loss, take_profit, comment)
-            submission_tick_mid_price: Trade-channel mid price at submission
-                        moment for the SLIPPAGE audit channel (#340). None when
-                        no tick is in scope (cold-start, heartbeat-only path).
-            submission_tick_time_msc: Tick time_msc at submission for latency
-                        correlation in post-hoc analysis (#340).
+            submission: Submission-moment snapshot for the SLIPPAGE audit
+                        channel (#340/#345). None when no tick is in scope
+                        (cold-start, heartbeat-only path).
 
         Returns:
             order_id for chaining
@@ -302,8 +300,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             lots=lots,
             entry_time=now,
             order_kwargs=order_kwargs or {},
-            submission_tick_mid_price=submission_tick_mid_price,
-            submission_tick_time_msc=submission_tick_time_msc,
+            submission=submission if submission else SubmissionMetadata(),
         )
 
         self.store_order(pending)
@@ -323,8 +320,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         position_id: str,
         broker_ref: Optional[str],
         close_lots: Optional[float] = None,
-        submission_tick_mid_price: Optional[float] = None,
-        submission_tick_time_msc: Optional[int] = None,
+        submission: Optional[SubmissionMetadata] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -337,11 +333,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             position_id: Position to close (used as order_id)
             broker_ref: Broker's order reference ID, or None pre-confirmation
             close_lots: Lots to close (None = close all)
-            submission_tick_mid_price: Trade-channel mid price at submission
-                        moment for the SLIPPAGE audit channel (#340). Each
-                        partial close captures its own submission tick.
-            submission_tick_time_msc: Tick time_msc at submission for latency
-                        correlation in post-hoc analysis (#340).
+            submission: Submission-moment snapshot for the SLIPPAGE audit
+                        channel (#340/#345). Each partial close captures its
+                        own submission tick.
 
         Returns:
             position_id for chaining
@@ -356,8 +350,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref=broker_ref,
             timeout_at=timeout_at,
             close_lots=close_lots,
-            submission_tick_mid_price=submission_tick_mid_price,
-            submission_tick_time_msc=submission_tick_time_msc,
+            submission=submission if submission else SubmissionMetadata(),
         )
 
         self.store_order(pending)

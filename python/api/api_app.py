@@ -19,11 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from python.api.endpoints import bars_router, broker_router
+from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.api.api_types import ApiException, BrokerListResponse, HealthResponse, TimeframeInfo, TimeframeListResponse
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-
-APP_VERSION = '1.2.1'
 
 
 def create_app() -> FastAPI:
@@ -33,9 +32,11 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI instance with CORS, error handler, and routes registered.
     """
+    app_version = AppConfigManager().get_version()
+
     app = FastAPI(
         title='FiniexTestingIDE API',
-        version=APP_VERSION,
+        version=app_version,
         description='Read-only HTTP interface for tick and bar data.',
     )
 
@@ -60,7 +61,7 @@ def create_app() -> FastAPI:
 
     @app.get('/api/v1/health', response_model=HealthResponse)
     def health() -> HealthResponse:
-        return HealthResponse(status='ok', version=APP_VERSION)
+        return HealthResponse(status='ok', version=app_version)
 
     @app.get('/api/v1/timeframes', response_model=TimeframeListResponse)
     def list_timeframes() -> TimeframeListResponse:

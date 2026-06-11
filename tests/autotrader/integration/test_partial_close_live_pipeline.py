@@ -18,8 +18,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType
-from python.framework.types.trading_env_types.order_types import OrderSide
+from python.framework.types.trading_env_types.order_types import CloseType, OrderSide
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/partial_close_lifecycle.json'
