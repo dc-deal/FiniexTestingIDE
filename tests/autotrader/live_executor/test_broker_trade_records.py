@@ -3,7 +3,7 @@ Broker Trade Record Tests — Order ↔ Executions Pairing (#326)
 
 Validates the BrokerTrade data model and the trades-query async path:
 - PendingOrder.append_trade aggregates cumulative_* correctly
-- After a fill, pending.trades is populated (synthesized in V1)
+- After a fill, pending.fills.trades is populated (synthesized in V1)
 - The async trades_query path (submit_trades_query_async → drain) wires through
   the LiveRequestProcessor worker and into _handle_trades_response
 - Stale-response guard discards responses with mismatched broker_ref
@@ -54,30 +54,30 @@ class TestPendingOrderAppendTrade:
 
     def test_empty_pending_has_zero_cumulatives(self):
         p = PendingOrder(pending_order_id='ORD-1')
-        assert p.trades == []
-        assert p.cumulative_filled_lots == 0.0
-        assert p.cumulative_fee == 0.0
-        assert p.cumulative_avg_price == 0.0
+        assert p.fills.trades == []
+        assert p.fills.cumulative_filled_lots == 0.0
+        assert p.fills.cumulative_fee == 0.0
+        assert p.fills.cumulative_avg_price == 0.0
 
     def test_single_trade_sets_cumulatives(self):
         p = PendingOrder(pending_order_id='ORD-1')
-        p.append_trade(self._make_trade(volume=0.1, price=100.0, fee=0.26))
-        assert len(p.trades) == 1
-        assert p.cumulative_filled_lots == 0.1
-        assert p.cumulative_fee == 0.26
-        assert p.cumulative_avg_price == 100.0
+        p.fills.append_trade(self._make_trade(volume=0.1, price=100.0, fee=0.26))
+        assert len(p.fills.trades) == 1
+        assert p.fills.cumulative_filled_lots == 0.1
+        assert p.fills.cumulative_fee == 0.26
+        assert p.fills.cumulative_avg_price == 100.0
 
     def test_three_trades_weighted_avg_price(self):
         """0.04 @100.10 + 0.03 @100.20 + 0.03 @100.15 → weighted avg ≈ 100.146"""
         p = PendingOrder(pending_order_id='ORD-1')
-        p.append_trade(self._make_trade(volume=0.04, price=100.10, fee=0.4))
-        p.append_trade(self._make_trade(volume=0.03, price=100.20, fee=0.3))
-        p.append_trade(self._make_trade(volume=0.03, price=100.15, fee=0.3))
-        assert len(p.trades) == 3
-        assert p.cumulative_filled_lots == 0.10
-        assert p.cumulative_fee == 1.0
+        p.fills.append_trade(self._make_trade(volume=0.04, price=100.10, fee=0.4))
+        p.fills.append_trade(self._make_trade(volume=0.03, price=100.20, fee=0.3))
+        p.fills.append_trade(self._make_trade(volume=0.03, price=100.15, fee=0.3))
+        assert len(p.fills.trades) == 3
+        assert p.fills.cumulative_filled_lots == 0.10
+        assert p.fills.cumulative_fee == 1.0
         expected_avg = (0.04 * 100.10 + 0.03 * 100.20 + 0.03 * 100.15) / 0.10
-        assert abs(p.cumulative_avg_price - expected_avg) < 1e-9
+        assert abs(p.fills.cumulative_avg_price - expected_avg) < 1e-9
 
 
 # =============================================================================
@@ -85,7 +85,7 @@ class TestPendingOrderAppendTrade:
 # =============================================================================
 
 class TestPollingPathSynthesizesTrade:
-    """After a MARKET fill, pending.trades is populated by the inherited
+    """After a MARKET fill, pending.fills.trades is populated by the inherited
     _fill_open_order synthesis (V1 — single synthetic trade)."""
 
     def test_market_fill_creates_one_synthetic_trade(self, mock_instant, executor_instant):
@@ -250,7 +250,7 @@ class TestStaleResponseGuard:
 
         # Order is still in active list, no trades appended (stale discarded)
         assert active in executor_instant._active_limit_orders
-        assert active.trades == []
+        assert active.fills.trades == []
 
 
 # =============================================================================

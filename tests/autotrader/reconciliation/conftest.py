@@ -22,7 +22,7 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderFills
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
@@ -49,7 +49,7 @@ def make_pending(
         direction=direction,
         lots=lots,
         order_kwargs={'limit_price': limit_price},
-        cumulative_filled_lots=cumulative_filled_lots,
+        fills=PendingOrderFills(cumulative_filled_lots=cumulative_filled_lots),
     )
 
 

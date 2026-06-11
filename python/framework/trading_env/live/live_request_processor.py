@@ -67,6 +67,7 @@ from python.framework.types.live_types.live_request_types import (
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
+    PendingOrderTiming,
 )
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
@@ -136,7 +137,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._position_modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         # #326: trades-query drain handler — main-thread callback receiving
         # the parsed TradesQueryResponse so the executor can append trades to
-        # pending.trades and trigger _fill_open_order with cumulative truth.
+        # pending.fills.trades and trigger _fill_open_order with cumulative truth.
         self._trades_response_hook: Optional[Callable[[TradesQueryResponse], None]] = None
         # #320: status-poll drain handler — main-thread callback receiving the
         # parsed QueryResponse so the executor can clear in_flight_query, run
@@ -292,9 +293,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
-            submitted_at=now,
+            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
             broker_ref=broker_ref,
-            timeout_at=timeout_at,
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -346,9 +346,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=position_id,
             order_action=PendingOrderAction.CLOSE,
-            submitted_at=now,
+            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
             broker_ref=broker_ref,
-            timeout_at=timeout_at,
             close_lots=close_lots,
             submission=submission if submission else SubmissionMetadata(),
         )
@@ -477,7 +476,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         timed_out = []
 
         for pending in self._pending_orders.values():
-            if pending.timeout_at and pending.timeout_at <= now:
+            if pending.timing.timeout_at and pending.timing.timeout_at <= now:
                 timed_out.append(pending)
 
         return timed_out
@@ -1118,7 +1117,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Main-thread handler for a QueryResponse (#320).
 
         Delegates to the executor's _query_response_hook. The hook ALWAYS
-        clears pending.in_flight_query (the dispatched query is resolved
+        clears pending.execution_state.in_flight_query (the dispatched query is resolved
         either way), then applies the stale-broker_ref guard before any
         state mutation. Branches on broker status: FILLED → fill, terminal
         → rejection, PENDING/PARTIALLY_FILLED → no state change.
@@ -1136,7 +1135,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Main-thread handler for a TradesQueryResponse (#326).
 
         Delegates to the executor's _trades_response_hook. The hook appends
-        each BrokerTrade to the parent PendingOrder.trades, updates
+        each BrokerTrade to the parent PendingOrder.fills.trades, updates
         cumulative_* aggregates, and finalizes the fill via _fill_open_order.
         See ISSUE_326 §8 Post-Drain Distribution Flow for the full chain.
         """
@@ -1261,8 +1260,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Caller (LiveTradeExecutor.modify_limit_order / modify_stop_order) MUST
         already have:
           1. Resolved order_id → broker_ref via _active_*_orders lookup
-          2. Set pending.in_flight_operation = PENDING_MODIFY on the target
-          3. Stored pending.pending_modification = ModificationRequest(...)
+          2. Set pending.execution_state.in_flight_operation = PENDING_MODIFY on the target
+          3. Stored pending.execution_state.pending_modification = ModificationRequest(...)
           4. Validated that the order is not busy and not unconfirmed
 
         The worker dispatches the modify via adapter Tier-3 layers; the
@@ -1327,7 +1326,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         back to portfolio.modify_position directly and never enqueues this.
 
         Caller MUST track the in-flight state separately on the executor
-        side (positions don't have a PendingOrder.in_flight_operation flag
+        side (positions don't have a PendingOrder.execution_state.in_flight_operation flag
         since positions aren't PendingOrders).
 
         Args:
@@ -1387,7 +1386,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         The worker fetches per-execution trade records via the adapter's
         Tier-3 trades_query layer; drain_inbox routes the response to
         _handle_trades_response, which appends BrokerTrade records to
-        pending.trades and finalizes the fill.
+        pending.fills.trades and finalizes the fill.
 
         Args:
             order_id: Internal order identifier (primary routing key)

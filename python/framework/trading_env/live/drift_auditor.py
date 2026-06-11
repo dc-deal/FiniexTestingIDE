@@ -15,7 +15,7 @@ by tests until now.
 
 Architecture:
     on_outcome(EXECUTED, pending)
-        → snapshot synthetic state from pending.cumulative_*
+        → snapshot synthetic state from pending.fills.cumulative_*
         → store in self._pending_audits[order_id]
         → executor.submit_trades_query_async(order_id, broker_ref)
 
@@ -127,11 +127,11 @@ class DriftAuditor:
             symbol=pending.symbol,
             direction=direction,
             requested_lots=pending.lots,
-            synthetic_cumulative_fee=pending.cumulative_fee,
-            synthetic_cumulative_avg_price=pending.cumulative_avg_price,
-            synthetic_cumulative_filled_lots=pending.cumulative_filled_lots,
-            fee_currency=pending.trades[0].fee_currency if pending.trades else None,
-            submission_tick_mid_price=pending.submission_tick_mid_price,
+            synthetic_cumulative_fee=pending.fills.cumulative_fee,
+            synthetic_cumulative_avg_price=pending.fills.cumulative_avg_price,
+            synthetic_cumulative_filled_lots=pending.fills.cumulative_filled_lots,
+            fee_currency=pending.fills.trades[0].fee_currency if pending.fills.trades else None,
+            submission_tick_mid_price=pending.submission.tick_mid_price,
         )
         self._pending_audits[result.order_id] = snapshot
 
@@ -152,7 +152,7 @@ class DriftAuditor:
 
         Pops the snapshot unconditionally so failed responses do not leak
         into self._pending_audits. Strict read-only — reads from response.trades
-        (immutable), never from pending.trades (mutation-order-sensitive).
+        (immutable), never from pending.fills.trades (mutation-order-sensitive).
 
         Args:
             response: TradesQueryResponse from the worker thread

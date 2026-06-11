@@ -229,7 +229,7 @@ class Reconciler:
         # --- Partial fills (observation only; deterministic detection → #342) ---
         partial_fills = [
             lo for lo in local_orders
-            if lo.lots and 0.0 < lo.cumulative_filled_lots < lo.lots
+            if lo.lots and 0.0 < lo.fills.cumulative_filled_lots < lo.lots
         ]
 
         # partial_fills do NOT affect is_clean — a partial fill is a normal

@@ -16,7 +16,8 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from python.api.api_app import APP_VERSION, create_app
+from python.api.api_app import create_app
+from python.configuration.app_config_manager import AppConfigManager
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ class TestHealth:
     def test_health_ok(self, client):
         r = client.get('/api/v1/health')
         assert r.status_code == 200
-        assert r.json() == {'status': 'ok', 'version': APP_VERSION}
+        assert r.json() == {'status': 'ok', 'version': AppConfigManager().get_version()}
 
 
 # ---------------------------------------------------------------------------

@@ -205,7 +205,7 @@ class OrderCapabilities:
     # trade_level_reporting: broker exposes per-execution detail (Kraken
     # QueryTrades, MT5 HistoryDealsGet). When True, the executor queries
     # trade records on FILLED via the Tier-3 trades_query layer and
-    # populates pending.trades + cumulative_* aggregates. When False,
+    # populates pending.fills.trades + cumulative_* aggregates. When False,
     # the executor synthesizes a single aggregate BrokerTrade from the
     # query response — the data model stays consistent.
     trade_level_reporting: bool = True

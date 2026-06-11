@@ -704,10 +704,10 @@ class AbstractTradeExecutor(ABC):
                     )
                     return
 
-        # #326: ensure pending.trades is populated before portfolio open.
+        # #326: ensure pending.fills.trades is populated before portfolio open.
         # If a consumer (live polling, future async trades_query) already
         # populated it, skip synthesis to preserve the per-execution truth.
-        if not pending_order.trades:
+        if not pending_order.fills.trades:
             self._synthesize_pending_trade(
                 pending_order=pending_order,
                 fill_price=entry_price,
@@ -736,7 +736,7 @@ class AbstractTradeExecutor(ABC):
             comment=pending_order.order_kwargs.get('comment', ''),
             entry_type=entry_type,
             broker_ref=pending_order.broker_ref,
-            entry_trades=list(pending_order.trades),
+            entry_trades=list(pending_order.fills.trades),
             entry_submission=pending_order.submission,
         )
 
@@ -868,7 +868,7 @@ class AbstractTradeExecutor(ABC):
         # populated. Exit fee is 0.0 in V1 (no exit commission), matching the
         # portfolio call below; real broker exit fees become available via
         # async trades_query in a future enhancement.
-        if not pending_order.trades:
+        if not pending_order.fills.trades:
             self._synthesize_pending_trade(
                 pending_order=pending_order,
                 fill_price=close_price,
@@ -888,7 +888,7 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
-                exit_trades=list(pending_order.trades),
+                exit_trades=list(pending_order.fills.trades),
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
@@ -903,7 +903,7 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
-                exit_trades=list(pending_order.trades),
+                exit_trades=list(pending_order.fills.trades),
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
@@ -1159,10 +1159,10 @@ class AbstractTradeExecutor(ABC):
         """
         for pending in self._active_limit_orders:
             if pending.pending_order_id == order_id:
-                return pending.in_flight_operation
+                return pending.execution_state.in_flight_operation
         for pending in self._active_stop_orders:
             if pending.pending_order_id == order_id:
-                return pending.in_flight_operation
+                return pending.execution_state.in_flight_operation
         return PendingOperation.NONE
 
     @abstractmethod
@@ -1328,7 +1328,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
-                submitted_at=p.submitted_at,
+                submitted_at=p.timing.submitted_at,
             )
             for p in self._active_limit_orders
         ]
@@ -1346,7 +1346,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
-                submitted_at=p.submitted_at,
+                submitted_at=p.timing.submitted_at,
             )
             for p in self._active_stop_orders
         ]
@@ -1562,7 +1562,7 @@ class AbstractTradeExecutor(ABC):
         fee_cost: float,
     ) -> None:
         """
-        Append a synthetic BrokerTrade to pending_order.trades (#326).
+        Append a synthetic BrokerTrade to pending_order.fills.trades (#326).
 
         Shared sim/live helper invoked from _fill_open_order when the order
         hasn't yet been enriched with per-execution data (no real broker
@@ -1610,4 +1610,4 @@ class AbstractTradeExecutor(ABC):
             side=trade_side,
             is_maker=is_maker,
         )
-        pending_order.append_trade(trade)
+        pending_order.fills.append_trade(trade)

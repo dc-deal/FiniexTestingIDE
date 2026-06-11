@@ -6,7 +6,7 @@ algo-facing contract is identical in both pipelines:
 
   - position exists in portfolio
   - order_history shows EXECUTED
-  - per-execution data flowed through pending.trades + cumulative_*
+  - per-execution data flowed through pending.fills.trades + cumulative_*
 
 The sim and live emission mechanisms differ (sim: shared _fill_open_order
 synthesis on the next tick; live: same _fill_open_order called from the
@@ -130,14 +130,14 @@ class TestTradeSynthesisParity:
             # Capture from the just-appended BrokerTrade so `side` reflects
             # the new OrderSide (BUY/SELL) typing — not the OrderDirection
             # of the pending order (which is the position view).
-            last_trade = pending_order.trades[-1] if pending_order.trades else None
+            last_trade = pending_order.fills.trades[-1] if pending_order.fills.trades else None
             captured.append({
                 'order_id': pending_order.pending_order_id,
                 'volume': filled_lots,
                 'price': fill_price,
                 'entry_type': entry_type.value,
-                'trades_count_after': len(pending_order.trades),
-                'cumulative_lots': pending_order.cumulative_filled_lots,
+                'trades_count_after': len(pending_order.fills.trades),
+                'cumulative_lots': pending_order.fills.cumulative_filled_lots,
                 'side': last_trade.side if last_trade else None,
             })
 

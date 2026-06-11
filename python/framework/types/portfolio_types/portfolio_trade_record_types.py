@@ -3,8 +3,8 @@ FiniexTestingIDE - Portfolio Trade Record Types
 Types for detailed trade history with full audit trail for pen & paper verification.
 
 Architecture:
-- CloseType: Enum for full vs partial position close
 - TradeRecord: Flat, serializable record of completed trade with all calculation inputs
+  (CloseType lives in order_types.py — shared with OrderResult since #343)
 """
 
 from dataclasses import dataclass, field
@@ -13,13 +13,8 @@ from enum import Enum
 from typing import List, Optional
 
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
-
-
-class CloseType(Enum):
-    """Type of position close for trade record."""
-    FULL = "full"
-    PARTIAL = "partial"
+from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection, OrderSide
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 
 class CloseReason(Enum):
@@ -138,12 +133,10 @@ class TradeRecord:
     exit_side: Optional[OrderSide] = None
 
     # === Submission Slippage Audit (#340) ===
-    # Trade-channel mid price at the entry / exit submission moment. Shared
-    # entry on all partial closes of the same position (single submission);
-    # distinct exit per close event. Used by post-run analysis to compute
-    # slippage = entry_price - entry_submission_tick_mid_price (BUY) and
-    # exit_price - exit_submission_tick_mid_price (with direction-aware sign).
-    entry_submission_tick_mid_price: Optional[float] = None
-    entry_submission_tick_time_msc: Optional[int] = None
-    exit_submission_tick_mid_price: Optional[float] = None
-    exit_submission_tick_time_msc: Optional[int] = None
+    # Trade-channel state at the entry / exit submission moment (#345).
+    # Shared entry on all partial closes of the same position (single
+    # submission); distinct exit per close event. Used by post-run analysis
+    # to compute slippage = entry_price - entry_submission.tick_mid_price
+    # (BUY) and exit_price - exit_submission.tick_mid_price (direction-aware sign).
+    entry_submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
+    exit_submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)

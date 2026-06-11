@@ -185,11 +185,11 @@ The processor's single-hook contract stays unchanged — multi-consumer logic li
 | `FEE` | `pending.cumulative_fee` (local) vs. `sum(BrokerTrade.fee)` (broker) | 0.5 % |
 | `VOLUME` | `pending.requested_lots` (local) vs. `sum(BrokerTrade.volume)` (broker) | 0.1 % |
 | `PRICE` | `pending.cumulative_avg_price` (local) vs. volume-weighted mean of broker trades | 1.0 % |
-| `SLIPPAGE` | `pending.submission_tick_mid_price` (local) vs. volume-weighted mean of broker trades | 0.5 % |
+| `SLIPPAGE` | `pending.submission.tick_mid_price` (local) vs. volume-weighted mean of broker trades | 0.5 % |
 
 **PRICE channel scope.** The PRICE counter compares Kraken's QueryOrder summary price against Kraken's QueryTrades per-execution average — both come from the broker. It detects broker-internal-reporting inconsistencies (one-off rounding edge cases between the two Kraken endpoints), not market-reality cost. Useful as a sanity check; do not interpret a sustained PRICE count as an action signal.
 
-**SLIPPAGE channel scope.** The SLIPPAGE counter compares the trade-channel tick mid-price captured at submission (`PendingOrder.submission_tick_mid_price`) against the volume-weighted mean of broker trades. Both sides come from *independent* sources — our tick feed and the broker's matching engine — so the delta is the **real cost the operator paid** (spread + intra-latency market drift + book-walking on larger orders). This is the empirical baseline that #244 (Crypto Spread Simulation) consumes for spread reconstruction.
+**SLIPPAGE channel scope.** The SLIPPAGE counter compares the trade-channel tick mid-price captured at submission (`PendingOrder.submission.tick_mid_price`) against the volume-weighted mean of broker trades. Both sides come from *independent* sources — our tick feed and the broker's matching engine — so the delta is the **real cost the operator paid** (spread + intra-latency market drift + book-walking on larger orders). This is the empirical baseline that #244 (Crypto Spread Simulation) consumes for spread reconstruction.
 
 ## Slippage vs. Spread — Conceptual Clarity
 
@@ -200,7 +200,7 @@ Two distinct concepts that get conflated easily:
 | **Spread** | Bid-Ask gap at a single moment | Quote / order-book property |
 | **Slippage** | Expected (reference) price vs. actual fill price | Execution-event property — broader |
 
-Slippage is the broader concept and **contains** the spread effect, **plus** any market movement during the submission-to-fill window, **plus** book-walking on larger orders. For Crypto trade-channel feeds (Kraken `bid == ask == last`) slippage is dominated by the spread component but the metric remains event-based and post-fill. MT5-style brokers with real bid/ask in the tick data still feed the same formula — `submission_tick_mid_price = (bid + ask) / 2` — and the audit value-add is the latency-window drift component on top of what `SpreadFee` already accounts for.
+Slippage is the broader concept and **contains** the spread effect, **plus** any market movement during the submission-to-fill window, **plus** book-walking on larger orders. For Crypto trade-channel feeds (Kraken `bid == ask == last`) slippage is dominated by the spread component but the metric remains event-based and post-fill. MT5-style brokers with real bid/ask in the tick data still feed the same formula — `submission.tick_mid_price = (bid + ask) / 2` — and the audit value-add is the latency-window drift component on top of what `SpreadFee` already accounts for.
 
 ## Configuration
 
@@ -275,19 +275,20 @@ If rate-limit pressure ever becomes a concern (very-high-frequency strategies), 
 - `python/framework/trading_env/live/drift_auditor.py` — DriftAuditor class
 - `python/framework/types/live_types/drift_audit_types.py` — `DriftType`, `DriftRecord`, `AuditContext`, `DriftAuditSummary`
 - `python/framework/types/config_types/autotrader_defaults_config_types.py` — `DriftAuditConfig`
-- `python/framework/types/trading_env_types/latency_simulator_types.py` — `PendingOrder.submission_tick_mid_price` / `submission_tick_time_msc`
-- `python/framework/types/trading_env_types/order_types.py` — `OrderResult.submission_tick_mid_price` / `submission_tick_time_msc`
-- `python/framework/types/portfolio_types/portfolio_types.py` — `Position.entry_submission_tick_mid_price` / `entry_submission_tick_time_msc`
-- `python/framework/types/portfolio_types/portfolio_trade_record_types.py` — `TradeRecord.entry_submission_tick_*` / `exit_submission_tick_*`
+- `python/framework/types/trading_env_types/submission_metadata_types.py` — `SubmissionMetadata` (#345): the submission-moment snapshot carried as one typed field
+- `python/framework/types/trading_env_types/latency_simulator_types.py` — `PendingOrder.submission`
+- `python/framework/types/trading_env_types/order_types.py` — `OrderResult.submission`
+- `python/framework/types/portfolio_types/portfolio_types.py` — `Position.entry_submission`
+- `python/framework/types/portfolio_types/portfolio_trade_record_types.py` — `TradeRecord.entry_submission` / `exit_submission`
 - `python/framework/trading_env/portfolio_manager.py` — propagation through `open_position` / `close_position_portfolio` / `partial_close_position` / `_create_trade_record`
 - `python/framework/trading_env/abstract_trade_executor.py` — listener signature extension; submission-tick capture in `_fill_open_order` / `_fill_close_order`
 - `python/framework/trading_env/live/live_trade_executor.py` — `submit_trades_query_async()` delegating method, `add_trades_response_consumer()`, fan-out in `_handle_trades_response`; submission-tick capture at MARKET/LIMIT-open and close submission gates
-- `python/framework/trading_env/live/live_request_processor.py` — `register_pending_open` / `register_pending_close` accept `submission_tick_*` parameters
+- `python/framework/trading_env/live/live_request_processor.py` — `register_pending_open` / `register_pending_close` accept a `submission: SubmissionMetadata` parameter
 - `python/framework/trading_env/simulation/order_latency_simulator.py` — submission-tick capture at sim open/close submission
 - `python/framework/autotrader/autotrader_main.py` — DriftAuditor instantiation gated by config + isinstance(LiveTradeExecutor) + shutdown hook
 - `python/framework/autotrader/autotrader_tick_loop.py` — display-stats population via `_drift_display_counters()`
 - `python/system/ui/autotrader_live_display.py` — Audit footer in SESSION panel (4 counters incl. SLIPPAGE)
-- `python/framework/reporting/trade_log_csv_writer.py` — `EVENT_FIELDS` extended with `submission_tick_mid_price` / `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows
+- `python/framework/reporting/event_stream_csv_writer.py` — `EVENT_FIELDS` extended with `submission_tick_mid_price` / `submission_tick_time_msc` columns on `ORDER_SUBMIT` / `CLOSE_SUBMIT` / `POSITION_OPEN` rows (CSV column names unchanged by #345)
 
 ## Related
 

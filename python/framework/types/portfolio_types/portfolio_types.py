@@ -8,6 +8,7 @@ from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 
 
@@ -69,12 +70,11 @@ class Position:
     entry_trades: List[BrokerTrade] = field(default_factory=list)
 
     # === Submission Slippage Audit (#340) ===
-    # Carried over from PendingOrder.submission_tick_mid_price at fill time.
+    # Carried over from PendingOrder.submission at fill time (#345).
     # Trade-channel mid price at the entry submission moment. Used by the
     # SLIPPAGE audit channel (live) and by post-run analysis (sim) to compute
-    # entry slippage = entry_price - entry_submission_tick_mid_price.
-    entry_submission_tick_mid_price: Optional[float] = None
-    entry_submission_tick_time_msc: Optional[int] = None
+    # entry slippage = entry_price - entry_submission.tick_mid_price.
+    entry_submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
 
     # === Trade Record Fields (for P&L verification) ===
     entry_tick_value: float = 0.0

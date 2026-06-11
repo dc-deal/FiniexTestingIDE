@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
 
@@ -103,89 +104,61 @@ class ModificationRequest:
 
 
 @dataclass
-class PendingOrder:
+class PendingOrderTiming:
     """
-    Order waiting to be filled (open or close).
+    Mode-specific timing fields (#345 sub-concern).
 
-    Shared across execution modes. Contains all information needed
-    to execute the order once the fill is confirmed.
-
-    Mode-specific fields:
-        Simulation: placed_at_msc, broker_fill_msc (ms-timestamp-based delay)
-        Live:       submitted_at, broker_ref, timeout_at (time-based, broker tracking)
+    Simulation uses ms timestamps (placed_at_msc, broker_fill_msc);
+    live uses datetimes (submitted_at, timeout_at).
     """
-    pending_order_id: str
-
-    # Order type identification
-    order_action: PendingOrderAction = None  # "open" or "close"
-    order_type: Optional[OrderType] = None   # MARKET or LIMIT
-
-    # === Simulation fields (ms-timestamp-based delay) ===
     placed_at_msc: Optional[int] = None
     broker_fill_msc: Optional[int] = None
-
-    # === Live fields (broker tracking) ===
     submitted_at: Optional[datetime] = None
-    broker_ref: Optional[str] = None
     timeout_at: Optional[datetime] = None
 
-    # === For OPEN orders ===
-    symbol: Optional[str] = None
-    direction: Optional[OrderDirection] = None
-    lots: Optional[float] = None
-    entry_price: Optional[float] = None
-    entry_time: Optional[datetime] = None
-    order_kwargs: Optional[Dict] = None
 
-    # === For CLOSE orders ===
-    close_lots: Optional[float] = None
+@dataclass
+class PendingOrderExecutionState:
+    """
+    Async modify/cancel + polling state (#318, #320, #361 — #345 sub-concern).
 
-    # === Async modify/cancel state (#318) ===
-    # in_flight_operation: NONE in steady state, or PENDING_SUBMIT/MODIFY/CANCEL
-    #   while a broker-side operation is dispatched and awaiting resolve.
-    # pending_modification: provisional values during PENDING_MODIFY (applied
-    #   on resolve, discarded on reject).
-    # cancel_apply_at_msc: sim resolution trigger for PENDING_CANCEL (live
-    #   uses drain_inbox instead, so this field is sim-only).
+    in_flight_operation: NONE in steady state, or PENDING_SUBMIT/MODIFY/CANCEL
+      while a broker-side operation is dispatched and awaiting resolve.
+    pending_modification: provisional values during PENDING_MODIFY (applied
+      on resolve, discarded on reject).
+    cancel_apply_at_msc: sim resolution trigger for PENDING_CANCEL (live
+      uses drain_inbox instead, so this field is sim-only).
+    cancel_requested: a cancel asked for while broker_ref was still None
+      (submit in-flight) is parked here and auto-issued once the submit
+      confirms (live; #361 cancel-vs-submit-in-flight) — never dropped.
+    in_flight_query: True while a QueryJob for this order is en route to
+      the broker (skip-flag for the next throttle cycle, #320 live-only).
+    last_polled_at_ms: wall-clock ms when the last QueryJob was dispatched.
+      Throttle gate in _process_active_orders.
+    """
     in_flight_operation: PendingOperation = PendingOperation.NONE
     pending_modification: Optional[ModificationRequest] = None
     cancel_apply_at_msc: Optional[int] = None
-    # cancel_requested: a cancel asked for while broker_ref was still None
-    #   (submit in-flight) is parked here and auto-issued once the submit
-    #   confirms (live; #361 cancel-vs-submit-in-flight) — never dropped.
     cancel_requested: bool = False
-
-    # === Async status polling state (#320, live-only) ===
-    # in_flight_query: True while a QueryJob for this order is en route to
-    #   the broker (skip-flag for the next throttle cycle). Cleared by the
-    #   QueryResponse drain handler regardless of stale-broker_ref outcome.
-    # last_polled_at_ms: wall-clock ms (time.time() * 1000.0) when the last
-    #   QueryJob was dispatched. Throttle gate in _process_active_orders.
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
 
-    # === Order ↔ Executions pairing (#326) ===
-    # trades: per-execution BrokerTrade records produced by this order.
-    #   Single fill orders typically produce 1 record; partial fills produce N.
-    #   Live: populated by _handle_trades_response after FILLED detection.
-    #   Sim: populated by TradeSimulator._fill_open_order on synthetic fill.
-    # cumulative_*: derived aggregates over trades, cached on append_trade.
+
+@dataclass
+class PendingOrderFills:
+    """
+    Order ↔ executions pairing (#326 — #345 sub-concern).
+
+    trades: per-execution BrokerTrade records produced by this order.
+      Single fill orders typically produce 1 record; partial fills produce N.
+      Live: populated by _handle_trades_response after FILLED detection.
+      Sim: populated by TradeSimulator._fill_open_order on synthetic fill.
+    cumulative_*: derived aggregates over trades, cached on append_trade.
+    """
     trades: List[BrokerTrade] = field(default_factory=list)
     cumulative_filled_lots: float = 0.0
     cumulative_fee: float = 0.0
     cumulative_avg_price: float = 0.0
-
-    # === Submission Slippage Audit (#340) ===
-    # submission_tick_mid_price: trade-channel mid price observed at the moment
-    #   the order left the algo. For crypto trade-channel feeds bid==ask==last,
-    #   so mid collapses to the last trade price — same single observable.
-    # submission_tick_time_msc: tick time_msc at submission, for latency
-    #   correlation in post-hoc analysis (#332 Field Study JSONL).
-    # Both fields are None for synthetic cleanup pendings (scenario-end
-    #   force-close has no algo submission moment — DriftAuditor skips the
-    #   SLIPPAGE compare automatically).
-    submission_tick_mid_price: Optional[float] = None
-    submission_tick_time_msc: Optional[int] = None
 
     def append_trade(self, trade: BrokerTrade) -> None:
         """
@@ -203,15 +176,54 @@ class PendingOrder:
             volume_weighted_sum = sum(t.volume * t.price for t in self.trades)
             self.cumulative_avg_price = volume_weighted_sum / self.cumulative_filled_lots
 
+
+@dataclass
+class PendingOrder:
+    """
+    Order waiting to be filled (open or close).
+
+    Shared across execution modes. Core identity + order parameters stay
+    flat; the sub-concerns are composed as named types (#345):
+        timing          — mode-specific timestamps (sim *_msc, live datetime)
+        execution_state — async modify/cancel + polling state (#318, #320)
+        fills           — order ↔ executions pairing (#326)
+        submission      — submission-moment snapshot (#340)
+    """
+    pending_order_id: str
+
+    # Order type identification
+    order_action: PendingOrderAction = None  # "open" or "close"
+    order_type: Optional[OrderType] = None   # MARKET or LIMIT
+
+    # === Broker tracking ===
+    broker_ref: Optional[str] = None
+
+    # === For OPEN orders ===
+    symbol: Optional[str] = None
+    direction: Optional[OrderDirection] = None
+    lots: Optional[float] = None
+    entry_price: Optional[float] = None
+    entry_time: Optional[datetime] = None
+    order_kwargs: Optional[Dict] = None
+
+    # === For CLOSE orders ===
+    close_lots: Optional[float] = None
+
+    # === Composed sub-concerns (#345) ===
+    timing: PendingOrderTiming = field(default_factory=PendingOrderTiming)
+    execution_state: PendingOrderExecutionState = field(default_factory=PendingOrderExecutionState)
+    fills: PendingOrderFills = field(default_factory=PendingOrderFills)
+    submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
+
     def to_dict(self) -> dict:
         return {
             'pending_order_id': self.pending_order_id,
             'order_action': self.order_action.value if self.order_action else None,
             # Simulation
-            'placed_at_msc': self.placed_at_msc,
-            'broker_fill_msc': self.broker_fill_msc,
+            'placed_at_msc': self.timing.placed_at_msc,
+            'broker_fill_msc': self.timing.broker_fill_msc,
             # Live
-            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+            'submitted_at': self.timing.submitted_at.isoformat() if self.timing.submitted_at else None,
             'broker_ref': self.broker_ref,
             # Order details
             'symbol': self.symbol,
@@ -220,13 +232,13 @@ class PendingOrder:
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
             # Async operation state (#318)
-            'in_flight_operation': self.in_flight_operation.value if self.in_flight_operation else None,
+            'in_flight_operation': self.execution_state.in_flight_operation.value if self.execution_state.in_flight_operation else None,
             # Trade records (#326)
-            'trades': [t.to_dict() for t in self.trades],
-            'cumulative_filled_lots': self.cumulative_filled_lots,
-            'cumulative_fee': self.cumulative_fee,
-            'cumulative_avg_price': self.cumulative_avg_price,
+            'trades': [t.to_dict() for t in self.fills.trades],
+            'cumulative_filled_lots': self.fills.cumulative_filled_lots,
+            'cumulative_fee': self.fills.cumulative_fee,
+            'cumulative_avg_price': self.fills.cumulative_avg_price,
             # Submission slippage audit (#340)
-            'submission_tick_mid_price': self.submission_tick_mid_price,
-            'submission_tick_time_msc': self.submission_tick_time_msc,
+            'submission_tick_mid_price': self.submission.tick_mid_price,
+            'submission_tick_time_msc': self.submission.tick_time_msc,
         }
