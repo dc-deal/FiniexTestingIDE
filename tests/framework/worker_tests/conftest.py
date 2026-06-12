@@ -16,7 +16,7 @@ from python.framework.validators.parameter_validator import validate_parameters,
 # Worker & Logic Imports
 # ============================================
 from python.framework.workers.core.rsi_worker import RsiWorker
-from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
@@ -32,7 +32,7 @@ from python.framework.decision_logic.core.backtesting.backtesting_deterministic 
 # ============================================
 ALL_WORKERS = [
     RsiWorker,
-    EnvelopeWorker,
+    BollingerWorker,
     MacdWorker,
     ObvWorker,
     HeavyRsiWorker,

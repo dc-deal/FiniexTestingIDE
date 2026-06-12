@@ -188,7 +188,7 @@ class AbstractWorker(ABC):
         Returns:
             Metric string ('volume', 'tick_count', ...) or None if the
             worker has no activity-data dependency (pure price-based
-            workers like RSI, Envelope, MACD).
+            workers like RSI, Bollinger, MACD).
 
         Raises:
             NotImplementedError: If subclass does not override this method.
@@ -197,7 +197,7 @@ class AbstractWorker(ABC):
             f"{cls.__name__} must declare get_required_activity_metric(). "
             f"Return 'volume' if the worker consumes real trade volume, "
             f"'tick_count' if it depends on tick arrival density, or None "
-            f"if it is purely price-based (RSI, Envelope, MACD). "
+            f"if it is purely price-based (RSI, Bollinger, MACD). "
             f"See docs/architecture/market_capabilities.md."
         )
 
@@ -309,7 +309,7 @@ class AbstractWorker(ABC):
 
         Example:
             >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 2.0}
-            >>> EnvelopeWorker.calculate_requirements(config)
+            >>> BollingerWorker.calculate_requirements(config)
             {"M5": 20, "M30": 50}
         """
         # Default implementation: Use 'periods' directly for INDICATOR

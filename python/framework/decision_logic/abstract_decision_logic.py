@@ -263,13 +263,13 @@ class AbstractDecisionLogic(ABC):
         Example:
             {
                 "rsi_fast": "CORE/rsi",
-                "envelope_main": "CORE/envelope"
+                "bollinger_main": "CORE/bollinger"
             }
 
         Config must match exactly:
             "worker_instances": {
                 "rsi_fast": "CORE/rsi",        # ✅ Same key, same type
-                "envelope_main": "CORE/envelope"  # ✅ Same key, same type
+                "bollinger_main": "CORE/bollinger"  # ✅ Same key, same type
             }
 
         Type override is NOT allowed - if DecisionLogic declares

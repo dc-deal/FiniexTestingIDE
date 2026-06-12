@@ -27,7 +27,7 @@ Components are referenced by type strings in scenario configs and in `get_requir
 
 Pre-registered at factory startup. Always available.
 
-**Workers:** `CORE/rsi`, `CORE/envelope`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
+**Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
 
 **Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`
 
@@ -67,7 +67,7 @@ class MyWorker(AbstractWorker):
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:
         # Options:
-        # - None          → price-based only (RSI, Envelope, MACD, range/session workers)
+        # - None          → price-based only (RSI, Bollinger, MACD, range/session workers)
         # - 'volume'      → real trade volume (crypto only)
         # - 'tick_count'  → tick arrival density (forex only)
         return None

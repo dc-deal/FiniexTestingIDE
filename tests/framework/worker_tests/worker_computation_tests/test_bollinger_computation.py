@@ -1,7 +1,7 @@
 """
-FiniexTestingIDE - Envelope Worker Computation Tests
+FiniexTestingIDE - Bollinger Worker Computation Tests
 
-Tests the Envelope/Bollinger Band compute() method against hand-calculated values.
+Tests the Bollinger/Bollinger Band compute() method against hand-calculated values.
 
 Key implementation details (verified from source):
 - middle = np.mean(close_prices[-period:])
@@ -19,7 +19,7 @@ import math
 
 import pytest
 
-from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.types.worker_types import WorkerResult
 
 from conftest import make_bars, make_tick
@@ -37,12 +37,12 @@ EXPECTED_STD = math.sqrt(2.0)  # 1.41421356...
 STANDARD_CLOSES = [100, 101, 102, 103, 104]
 
 
-class TestEnvelopeBasicComputation:
-    """Test envelope band calculation against hand-computed values."""
+class TestBollingerBasicComputation:
+    """Test bollinger band calculation against hand-computed values."""
 
-    def test_envelope_bands_default_deviation(self, mock_logger):
+    def test_bollinger_bands_default_deviation(self, mock_logger):
         """
-        Envelope with deviation=2.0 (default).
+        Bollinger with deviation=2.0 (default).
 
         closes = [100, 101, 102, 103, 104], period = 5
         middle = 102.0
@@ -50,8 +50,8 @@ class TestEnvelopeBasicComputation:
         upper = 102.0 + 1.41421 * 2.0 = 104.82842
         lower = 102.0 - 1.41421 * 2.0 = 99.17157
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -75,15 +75,15 @@ class TestEnvelopeBasicComputation:
         assert result.get_signal('upper') == pytest.approx(expected_upper, abs=0.001)
         assert result.get_signal('lower') == pytest.approx(expected_lower, abs=0.001)
 
-    def test_envelope_bands_custom_deviation(self, mock_logger):
+    def test_bollinger_bands_custom_deviation(self, mock_logger):
         """
-        Envelope with deviation=1.0 → narrower bands.
+        Bollinger with deviation=1.0 → narrower bands.
 
         upper = 102.0 + 1.41421 * 1.0 = 103.41421
         lower = 102.0 - 1.41421 * 1.0 = 100.58578
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 1.0},
             logger=mock_logger,
         )
@@ -99,10 +99,10 @@ class TestEnvelopeBasicComputation:
         assert result.get_signal('upper') == pytest.approx(expected_upper, abs=0.001)
         assert result.get_signal('lower') == pytest.approx(expected_lower, abs=0.001)
 
-    def test_envelope_output_keys(self, mock_logger):
+    def test_bollinger_output_keys(self, mock_logger):
         """Result outputs must contain schema-declared keys."""
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -116,7 +116,7 @@ class TestEnvelopeBasicComputation:
         assert set(result.outputs.keys()) == expected_keys
 
 
-class TestEnvelopePosition:
+class TestBollingerPosition:
     """Test position calculation relative to bands."""
 
     def test_position_at_middle(self, mock_logger):
@@ -126,8 +126,8 @@ class TestEnvelopePosition:
         tick.mid = 102.0 (= middle)
         position = (102.0 - lower) / (upper - lower) = 0.5
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -146,8 +146,8 @@ class TestEnvelopePosition:
 
         upper ≈ 104.828, tick.mid = 110.0 → raw position > 1.0 → 1.0
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -165,8 +165,8 @@ class TestEnvelopePosition:
 
         lower ≈ 99.171, tick.mid = 95.0 → raw position < 0.0 → 0.0
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -179,13 +179,13 @@ class TestEnvelopePosition:
         assert result.get_signal('position') == 0.0
 
 
-class TestEnvelopeOutputFields:
-    """Test envelope output fields via get_signal()."""
+class TestBollingerOutputFields:
+    """Test bollinger output fields via get_signal()."""
 
-    def test_envelope_std_dev_output(self, mock_logger):
+    def test_bollinger_std_dev_output(self, mock_logger):
         """std_dev output must match hand-calculated population std dev."""
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -199,12 +199,12 @@ class TestEnvelopeOutputFields:
         assert result.get_signal('bars_used') == 5
 
 
-class TestEnvelopeRegression:
+class TestBollingerRegression:
     """Regression tests for the deviation bug (0.02 vs 2.0)."""
 
     def test_band_width_sanity_check(self, mock_logger):
         """
-        THE ENVELOPE BUG regression test.
+        THE BOLLINGER BUG regression test.
 
         With deviation=2.0 and std≈1.414:
             band_width = upper - lower = 2 * std * deviation
@@ -215,8 +215,8 @@ class TestEnvelopeRegression:
 
         This test ensures the band width is sensible (> 1.0).
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )
@@ -241,8 +241,8 @@ class TestEnvelopeRegression:
 
         position defaults to 0.5 when upper==lower (division by zero guard).
         """
-        worker = EnvelopeWorker(
-            name="test_envelope",
+        worker = BollingerWorker(
+            name="test_bollinger",
             parameters={"periods": {"M5": 5}, "deviation": 2.0},
             logger=mock_logger,
         )

@@ -7,7 +7,7 @@ The worker test suite validates the parameter validation system, schema integrit
 **Test Location:** `tests/framework/worker_tests/`
 
 **Components Covered:**
-- 6 Workers: RsiWorker, EnvelopeWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
+- 6 Workers: RsiWorker, BollingerWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
 **Total Tests:** 231
@@ -45,7 +45,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 |------|-------------|
 | `test_rsi_has_no_algorithm_params` | RSI schema is empty (periods handled by `validate_config()`) |
 | `test_obv_has_no_algorithm_params` | OBV schema is empty (same pattern as RSI) |
-| `test_envelope_has_deviation` | Envelope declares `deviation` with default 2.0, range 0.5–5.0 |
+| `test_bollinger_has_deviation` | Bollinger declares `deviation` with default 2.0, range 0.5–5.0 |
 | `test_macd_has_three_required_periods` | MACD declares `fast_period`, `slow_period`, `signal_period` as REQUIRED |
 | `test_heavy_rsi_has_artificial_load` | HeavyRSI declares `artificial_load_ms` with default 0 |
 
@@ -73,7 +73,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | Test | Description |
 |------|-------------|
 | `test_rsi_output_schema` | RSI declares `rsi_value` as SIGNAL with 0–100 range |
-| `test_envelope_output_schema` | Envelope declares `upper`, `lower`, `position` as SIGNAL |
+| `test_bollinger_output_schema` | Bollinger declares `upper`, `lower`, `position` as SIGNAL |
 | `test_macd_output_schema` | MACD declares `macd`, `signal`, `histogram` as SIGNAL with display |
 | `test_obv_output_schema` | OBV declares `obv_value` as SIGNAL, `trend` with choices |
 
@@ -120,7 +120,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_above_max_raises` | Value above `max_val` raises in strict mode |
 | `test_float_below_min_raises` | Float below minimum raises |
 | `test_float_above_max_raises` | Float above maximum raises |
-| `test_the_envelope_bug` | Regression test: `deviation=0.02` (below min 0.5) is caught |
+| `test_the_bollinger_bug` | Regression test: `deviation=0.02` (below min 0.5) is caught |
 
 #### TestBoundaryNonStrict (3 Tests)
 
@@ -166,7 +166,7 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
-| `test_envelope_default_deviation` | — | Envelope gets `deviation=2.0` when not provided |
+| `test_bollinger_default_deviation` | — | Bollinger gets `deviation=2.0` when not provided |
 | `test_heavy_rsi_default_load` | — | HeavyRSI gets `artificial_load_ms=0` when not provided |
 | `test_macd_no_defaults_for_required` | — | MACD gets no defaults (all params REQUIRED) |
 | `test_simple_consensus_all_defaults` | — | SimpleConsensus fills all 10 parameters from defaults |
@@ -185,8 +185,8 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | Test | Description |
 |------|-------------|
 | `test_create_rsi_worker` | RSI worker created with valid periods config |
-| `test_create_envelope_worker` | Envelope worker created with explicit deviation |
-| `test_create_envelope_worker_default_deviation` | Envelope created without deviation (default 2.0 applied) |
+| `test_create_bollinger_worker` | Bollinger worker created with explicit deviation |
+| `test_create_bollinger_worker_default_deviation` | Bollinger created without deviation (default 2.0 applied) |
 | `test_create_macd_worker` | MACD worker created with all three required periods |
 | `test_create_heavy_rsi_worker` | HeavyRSI worker created with artificial load parameter |
 | `test_create_obv_worker` | OBV worker created with valid periods config |
@@ -202,8 +202,8 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_deviation_too_low` | Factory rejects `deviation=0.1` (below min 0.5) |
-| `test_envelope_deviation_too_high` | Factory rejects `deviation=10.0` (above max 5.0) |
+| `test_bollinger_deviation_too_low` | Factory rejects `deviation=0.1` (below min 0.5) |
+| `test_bollinger_deviation_too_high` | Factory rejects `deviation=10.0` (above max 5.0) |
 | `test_macd_fast_period_zero` | Factory rejects `fast_period=0` (below min 1) |
 | `test_heavy_rsi_negative_load` | Factory rejects `artificial_load_ms=-5` (below min 0) |
 
@@ -211,7 +211,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_deviation_too_low_warns` | Non-strict mode warns but creates worker with out-of-range deviation |
+| `test_bollinger_deviation_too_low_warns` | Non-strict mode warns but creates worker with out-of-range deviation |
 
 #### TestDecisionLogicFactoryValidConfigs (4 Tests)
 
@@ -271,17 +271,17 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_envelope_computation.py (9 Tests)
+#### test_bollinger_computation.py (9 Tests)
 
-##### TestEnvelopeBasicComputation (3 Tests)
+##### TestBollingerBasicComputation (3 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_bands_default_deviation` | Bands computed with default deviation (2.0) |
-| `test_envelope_bands_custom_deviation` | Bands computed with custom deviation value |
-| `test_envelope_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `std_dev`, `bars_used` |
+| `test_bollinger_bands_default_deviation` | Bands computed with default deviation (2.0) |
+| `test_bollinger_bands_custom_deviation` | Bands computed with custom deviation value |
+| `test_bollinger_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `std_dev`, `bars_used` |
 
-##### TestEnvelopePosition (3 Tests)
+##### TestBollingerPosition (3 Tests)
 
 | Test | Description |
 |------|-------------|
@@ -289,13 +289,13 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_position_above_upper_clamped` | Price above upper band produces position clamped to 1.0 |
 | `test_position_below_lower_clamped` | Price below lower band produces position clamped to 0.0 |
 
-##### TestEnvelopeOutputFields (1 Test)
+##### TestBollingerOutputFields (1 Test)
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
+| `test_bollinger_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
 
-##### TestEnvelopeRegression (2 Tests)
+##### TestBollingerRegression (2 Tests)
 
 | Test | Description |
 |------|-------------|
@@ -396,11 +396,11 @@ All 9 components tested across schema and defaults tests:
 | Component | Type | Parameters |
 |-----------|------|------------|
 | RsiWorker | Worker | (no algorithm params) |
-| EnvelopeWorker | Worker | `deviation` |
+| BollingerWorker | Worker | `deviation` |
 | MacdWorker | Worker | `fast_period`, `slow_period`, `signal_period` |
 | ObvWorker | Worker | (no algorithm params) |
 | HeavyRsiWorker | Worker | `artificial_load_ms` |
 | BacktestingSampleWorker | Worker | `computation_weight` |
-| SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, envelope thresholds, lot_size, etc.) |
+| SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, Bollinger thresholds, lot_size, etc.) |
 | AggressiveTrend | DecisionLogic | 6 parameters (RSI thresholds, lot_size, etc.) |
 | BacktestingDeterministic | DecisionLogic | `trade_sequence`, `lot_size` |

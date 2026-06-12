@@ -14,7 +14,7 @@ A trading bot consists of three parts:
 │  (Signals)  │     │    (Trading)    │     │   (JSON)   │
 └─────────────┘     └─────────────────┘     └────────────┘
      RSI              Buy/Sell/Flat         Scenarios
-   Envelope           Position Mgmt         Parameters
+   Bollinger           Position Mgmt         Parameters
      MACD                                   Timeframes
 ```
 
@@ -118,7 +118,7 @@ This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2
 ```python
 from python.framework.types.parameter_types import InputParamDef, REQUIRED
 
-class EnvelopeWorker(AbstractWorker):
+class BollingerWorker(AbstractWorker):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
@@ -241,8 +241,8 @@ Decision Logic receives all worker results and decides: BUY, SELL, or FLAT.
 class AggressiveTrend(AbstractDecisionLogic):
     """
     Aggressive trend-following strategy.
-    BUY when RSI < 35 OR price below envelope
-    SELL when RSI > 65 OR price above envelope
+    BUY when RSI < 35 OR price below Bollinger band
+    SELL when RSI > 65 OR price above Bollinger band
     """
     
     def __init__(self, name: str, logger: ScenarioLogger, config: Dict[str, Any],
@@ -262,7 +262,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         """Declare which workers this logic needs"""
         return {
             "rsi_fast": "CORE/rsi",
-            "envelope_main": "CORE/envelope"
+            "bollinger_main": "CORE/bollinger"
         }
     
     @classmethod
@@ -294,13 +294,13 @@ class AggressiveTrend(AbstractDecisionLogic):
         """Generate trading decision from worker results"""
 
         rsi_result = worker_results.get("rsi_fast")
-        envelope_result = worker_results.get("envelope_main")
+        bollinger_result = worker_results.get("bollinger_main")
 
         rsi_value = rsi_result.get_signal('rsi_value')
-        envelope_position = envelope_result.get_signal('position')
+        bollinger_position = bollinger_result.get_signal('position')
 
         # BUY signal
-        if rsi_value < self.rsi_buy or envelope_position < 0.25:
+        if rsi_value < self.rsi_buy or bollinger_position < 0.25:
             return Decision(
                 action=DecisionLogicAction.BUY,
                 outputs={
@@ -311,7 +311,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             )
 
         # SELL signal
-        if rsi_value > self.rsi_sell or envelope_position > 0.75:
+        if rsi_value > self.rsi_sell or bollinger_position > 0.75:
             return Decision(
                 action=DecisionLogicAction.SELL,
                 outputs={
@@ -499,13 +499,13 @@ The JSON config connects everything together.
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       },
       "workers": {
         "rsi_fast": {
           "periods": { "M5": 14 }
         },
-        "envelope_main": {
+        "bollinger_main": {
           "periods": { "M30": 20 },
           "deviation": 2.0
         }
@@ -664,7 +664,7 @@ Current limitations:
 | Worker | Type | Description |
 |--------|------|-------------|
 | `CORE/rsi` | RSI | Relative Strength Index |
-| `CORE/envelope` | Envelope | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
+| `CORE/bollinger` | Bollinger | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
 | `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
 | `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
@@ -676,7 +676,7 @@ Current limitations:
 
 | Logic | Description |
 |-------|-------------|
-| `CORE/aggressive_trend` | OR-logic: RSI or Envelope triggers trade (MARKET orders) |
+| `CORE/aggressive_trend` | OR-logic: RSI or Bollinger triggers trade (MARKET orders) |
 | `CORE/simple_consensus` | AND-logic: Both indicators must agree (MARKET orders) |
 | `CORE/cautious_macd` | MACD crossover + RSI filter, STOP/STOP_LIMIT entry, SL/TP, break-even |
 | `CORE/backtesting/backtesting_deterministic` | Test-only: Trades at fixed ticks |

@@ -29,7 +29,7 @@ class WorkerOrchestrator:
     It manages worker execution (sequential or parallel) and collects their
     results, then passes those results to the DecisionLogic for decision-making.
 
-    The Coordinator has NO knowledge of specific indicators (RSI, Envelope, etc.)
+    The Coordinator has NO knowledge of specific indicators (RSI, Bollinger, etc.)
     or trading strategies - that's all delegated to Workers and DecisionLogic.
     """
 

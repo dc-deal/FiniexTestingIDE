@@ -463,7 +463,7 @@ The generator produces a JSON configuration:
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       }
     },
     "trade_simulator_config": {

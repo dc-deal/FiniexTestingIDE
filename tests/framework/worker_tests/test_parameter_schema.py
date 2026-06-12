@@ -15,7 +15,7 @@ import pytest
 
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, REQUIRED, _RequiredSentinel
 from python.framework.workers.core.rsi_worker import RsiWorker
-from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
@@ -184,9 +184,9 @@ class TestWorkerSpecificSchemas:
         schema = ObvWorker.get_parameter_schema()
         assert schema == {}
 
-    def test_envelope_has_deviation(self):
-        """EnvelopeWorker must declare deviation with sensible bounds."""
-        schema = EnvelopeWorker.get_parameter_schema()
+    def test_bollinger_has_deviation(self):
+        """BollingerWorker must declare deviation with sensible bounds."""
+        schema = BollingerWorker.get_parameter_schema()
         assert 'deviation' in schema
         dev = schema['deviation']
         assert dev.param_type == float
@@ -326,9 +326,9 @@ class TestWorkerSpecificOutputSchemas:
         assert rsi.category == 'SIGNAL'
         assert rsi.display is True
 
-    def test_envelope_output_schema(self):
-        """Envelope must declare upper, lower, position as SIGNAL."""
-        schema = EnvelopeWorker.get_output_schema()
+    def test_bollinger_output_schema(self):
+        """Bollinger must declare upper, lower, position as SIGNAL."""
+        schema = BollingerWorker.get_output_schema()
         for key in ('upper', 'lower', 'position'):
             assert key in schema, f"Missing output: {key}"
             assert schema[key].category == 'SIGNAL'

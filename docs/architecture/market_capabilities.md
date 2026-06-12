@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Workers depend on different kinds of market data. Some (RSI, Envelope, MACD) only need prices — they run on any broker. Others (OBV, VWAP) need real trade volume, which forex CFDs cannot provide in a meaningful way. This document describes how the framework declares each market's activity metric and how workers declare what they need, so incompatible combinations are rejected **before** a subprocess ever starts.
+Workers depend on different kinds of market data. Some (RSI, Bollinger, MACD) only need prices — they run on any broker. Others (OBV, VWAP) need real trade volume, which forex CFDs cannot provide in a meaningful way. This document describes how the framework declares each market's activity metric and how workers declare what they need, so incompatible combinations are rejected **before** a subprocess ever starts.
 
 ## The Single Source of Truth — `primary_activity_metric`
 
@@ -46,7 +46,7 @@ Return values:
 
 | Return | Meaning | Example |
 |--------|---------|---------|
-| `None` | Purely price-based — no activity-data dependency | `RsiWorker`, `EnvelopeWorker`, `MacdWorker`, `HeavyRsiWorker`, `BacktestingSampleWorker`, `TouchAndTurnRangeWorker` |
+| `None` | Purely price-based — no activity-data dependency | `RsiWorker`, `BollingerWorker`, `MacdWorker`, `HeavyRsiWorker`, `BacktestingSampleWorker`, `TouchAndTurnRangeWorker` |
 | `'volume'` | Requires real trade volume | `ObvWorker` |
 | `'tick_count'` | Requires tick arrival density | (none yet — reserved for future forex-native workers) |
 

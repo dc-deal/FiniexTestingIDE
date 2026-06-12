@@ -21,8 +21,8 @@ This logic is more aggressive than SimpleConsensus:
 - Generates more signals, higher risk/reward
 
 Strategy Rules:
-- BUY when RSI < 35 OR price below lower envelope
-- SELL when RSI > 65 OR price above upper envelope
+- BUY when RSI < 35 OR price below lower Bollinger band
+- SELL when RSI > 65 OR price above upper Bollinger band
 - Uses OR logic instead of AND (more aggressive)
 
 Trading Rules:
@@ -63,7 +63,7 @@ from python.framework.types.trading_env_types.order_types import (
 
 class AggressiveTrend(AbstractDecisionLogic):
     """
-    Aggressive trend-following strategy using RSI and Envelope.
+    Aggressive trend-following strategy using RSI and Bollinger.
 
     Unlike SimpleConsensus, this logic:
     - Uses OR instead of AND (single indicator can trigger)
@@ -73,7 +73,7 @@ class AggressiveTrend(AbstractDecisionLogic):
     Configuration options:
     - rsi_buy_threshold: RSI level for buy signal (default: 35)
     - rsi_sell_threshold: RSI level for sell signal (default: 65)
-    - envelope_extremes: How far from center to trigger (default: 0.25)
+    - bollinger_extremes: How far from center to trigger (default: 0.25)
     - min_confidence: Minimum confidence required (default: 0.4)
     - min_free_margin: Minimum free margin required for trades (default: 1000)
     - lot_size: Fixed lot size for orders (default: 0.1)
@@ -100,7 +100,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         # All values guaranteed present by schema defaults + Factory validation
         self.rsi_buy = self.params.get('rsi_buy_threshold')
         self.rsi_sell = self.params.get('rsi_sell_threshold')
-        self.envelope_extremes = self.params.get('envelope_extremes')
+        self.bollinger_extremes = self.params.get('bollinger_extremes')
         self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
@@ -110,7 +110,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.logger.debug(
             f"AggressiveTrend initialized: "
             f"RSI({self.rsi_buy}/{self.rsi_sell}), "
-            f"Envelope extremes({self.envelope_extremes}), "
+            f"Bollinger extremes({self.bollinger_extremes}), "
             f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
         )
 
@@ -132,9 +132,9 @@ class AggressiveTrend(AbstractDecisionLogic):
                 description="RSI threshold for sell signal (aggressive, lower than consensus)",
                 display=True, display_label='rsi_s',
             ),
-            'envelope_extremes': InputParamDef(
+            'bollinger_extremes': InputParamDef(
                 param_type=float, default=0.25, min_val=0.01, max_val=0.5,
-                description="Envelope distance from center to trigger signal",
+                description="Bollinger distance from center to trigger signal",
                 display=True, display_label='env_x',
             ),
             'min_confidence': InputParamDef(
@@ -329,14 +329,14 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         Requires:
         - rsi_fast: Fast RSI indicator for trend detection
-        - envelope_main: Envelope for price position analysis
+        - bollinger_main: Bollinger for price position analysis
 
         Returns:
             Dict[instance_name, worker_type]
         """
         return {
             "rsi_fast": "CORE/rsi",
-            "envelope_main": "CORE/envelope"
+            "bollinger_main": "CORE/bollinger"
         }
 
     def compute_tick(
@@ -352,16 +352,16 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         Args:
             tick: Current tick data
-            worker_results: Results from rsi and envelope workers
+            worker_results: Results from rsi and bollinger workers
 
         Returns:
             Decision object with action, confidence, and reason
         """
         # Extract worker results
         rsi_result = worker_results.get("rsi_fast")
-        envelope_result = worker_results.get("envelope_main")
+        bollinger_result = worker_results.get("bollinger_main")
 
-        if not rsi_result or not envelope_result:
+        if not rsi_result or not bollinger_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 outputs={
@@ -374,24 +374,24 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # Extract indicator values
         rsi_value = rsi_result.get_signal('rsi_value')
-        envelope_position = envelope_result.get_signal('position')
+        bollinger_position = bollinger_result.get_signal('position')
 
         # Check for BUY signal (OR logic - either indicator is enough)
         buy_signal_rsi = rsi_value < self.rsi_buy
-        buy_signal_envelope = envelope_position < self.envelope_extremes
+        buy_signal_bollinger = bollinger_position < self.bollinger_extremes
 
-        if buy_signal_rsi or buy_signal_envelope:
+        if buy_signal_rsi or buy_signal_bollinger:
             confidence = self._calculate_buy_confidence(
-                rsi_value, envelope_position, buy_signal_rsi, buy_signal_envelope
+                rsi_value, bollinger_position, buy_signal_rsi, buy_signal_bollinger
             )
 
             if confidence >= self.min_confidence:
                 reason = self._build_buy_reason(
-                    rsi_value, envelope_position, buy_signal_rsi, buy_signal_envelope
+                    rsi_value, bollinger_position, buy_signal_rsi, buy_signal_bollinger
                 )
 
                 self.notify_awareness(
-                    f"BUY mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+                    f"BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
@@ -413,21 +413,21 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # Check for SELL signal (OR logic - either indicator is enough)
         sell_signal_rsi = rsi_value > self.rsi_sell
-        sell_signal_envelope = envelope_position > (
-            1.0 - self.envelope_extremes)
+        sell_signal_bollinger = bollinger_position > (
+            1.0 - self.bollinger_extremes)
 
-        if sell_signal_rsi or sell_signal_envelope:
+        if sell_signal_rsi or sell_signal_bollinger:
             confidence = self._calculate_sell_confidence(
-                rsi_value, envelope_position, sell_signal_rsi, sell_signal_envelope
+                rsi_value, bollinger_position, sell_signal_rsi, sell_signal_bollinger
             )
 
             if confidence >= self.min_confidence:
                 reason = self._build_sell_reason(
-                    rsi_value, envelope_position, sell_signal_rsi, sell_signal_envelope
+                    rsi_value, bollinger_position, sell_signal_rsi, sell_signal_bollinger
                 )
 
                 self.notify_awareness(
-                    f"SELL mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+                    f"SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
@@ -443,7 +443,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # No signal
         self.notify_awareness(
-            f"No edge — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+            f"No edge — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
             AwarenessLevel.INFO,
             'no_edge'
         )
@@ -460,9 +460,9 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _calculate_buy_confidence(
         self,
         rsi_value: float,
-        envelope_position: float,
+        bollinger_position: float,
         rsi_triggered: bool,
-        envelope_triggered: bool,
+        bollinger_triggered: bool,
     ) -> float:
         """Calculate buy signal confidence (OR logic allows partial confidence)"""
         confidence = 0.4  # Base confidence for aggressive strategy
@@ -472,10 +472,10 @@ class AggressiveTrend(AbstractDecisionLogic):
             rsi_strength = (self.rsi_buy - rsi_value) / self.rsi_buy
             confidence += rsi_strength * 0.3
 
-        if envelope_triggered:
-            # More extreme envelope = higher confidence
-            env_strength = (self.envelope_extremes -
-                            envelope_position) / self.envelope_extremes
+        if bollinger_triggered:
+            # More extreme bollinger = higher confidence
+            env_strength = (self.bollinger_extremes -
+                            bollinger_position) / self.bollinger_extremes
             confidence += env_strength * 0.3
 
         return min(1.0, confidence)
@@ -483,9 +483,9 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _calculate_sell_confidence(
         self,
         rsi_value: float,
-        envelope_position: float,
+        bollinger_position: float,
         rsi_triggered: bool,
-        envelope_triggered: bool,
+        bollinger_triggered: bool,
     ) -> float:
         """Calculate sell signal confidence (OR logic allows partial confidence)"""
         confidence = 0.4  # Base confidence
@@ -494,10 +494,10 @@ class AggressiveTrend(AbstractDecisionLogic):
             rsi_strength = (rsi_value - self.rsi_sell) / (100 - self.rsi_sell)
             confidence += rsi_strength * 0.3
 
-        if envelope_triggered:
-            env_threshold = 1.0 - self.envelope_extremes
-            env_strength = (envelope_position - env_threshold) / \
-                self.envelope_extremes
+        if bollinger_triggered:
+            env_threshold = 1.0 - self.bollinger_extremes
+            env_strength = (bollinger_position - env_threshold) / \
+                self.bollinger_extremes
             confidence += env_strength * 0.3
 
         return min(1.0, confidence)
@@ -505,9 +505,9 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _build_buy_reason(
         self,
         rsi_value: float,
-        envelope_position: float,
+        bollinger_position: float,
         rsi_triggered: bool,
-        envelope_triggered: bool,
+        bollinger_triggered: bool,
     ) -> str:
         """Build explanation for buy signal"""
         reasons = []
@@ -515,17 +515,17 @@ class AggressiveTrend(AbstractDecisionLogic):
         if rsi_triggered:
             reasons.append(f"RSI={rsi_value:.1f}")
 
-        if envelope_triggered:
-            reasons.append(f"Envelope={envelope_position:.2f}")
+        if bollinger_triggered:
+            reasons.append(f"Bollinger={bollinger_position:.2f}")
 
         return " OR ".join(reasons) + " (aggressive)"
 
     def _build_sell_reason(
         self,
         rsi_value: float,
-        envelope_position: float,
+        bollinger_position: float,
         rsi_triggered: bool,
-        envelope_triggered: bool,
+        bollinger_triggered: bool,
     ) -> str:
         """Build explanation for sell signal"""
         reasons = []
@@ -533,7 +533,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         if rsi_triggered:
             reasons.append(f"RSI={rsi_value:.1f}")
 
-        if envelope_triggered:
-            reasons.append(f"Envelope={envelope_position:.2f}")
+        if bollinger_triggered:
+            reasons.append(f"Bollinger={bollinger_position:.2f}")
 
         return " OR ".join(reasons) + " (aggressive)"

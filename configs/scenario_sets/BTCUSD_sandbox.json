@@ -8,7 +8,7 @@
       "decision_logic_type": "CORE/simple_consensus",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope",
+        "bollinger_main": "CORE/bollinger",
         "obv_volume": "CORE/obv"
       },
       "workers": {
@@ -17,7 +17,7 @@
             "M5": 14
           }
         },
-        "envelope_main": {
+        "bollinger_main": {
           "periods": {
             "M30": 20
           },
@@ -32,8 +32,8 @@
       "decision_logic_config": {
         "rsi_oversold": 30,
         "rsi_overbought": 70,
-        "envelope_lower_threshold": 0.3,
-        "envelope_upper_threshold": 0.7,
+        "bollinger_lower_threshold": 0.3,
+        "bollinger_upper_threshold": 0.7,
         "min_confidence": 0.5,
         "lot_size": 0.1,
         "min_free_margin": 1000,

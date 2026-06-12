@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Envelope Worker
-Bar-based envelope/bollinger band computation
+FiniexTestingIDE - Bollinger Worker
+Bar-based Bollinger band computation
 """
 
 from typing import Any, Dict, List, Optional
@@ -15,12 +15,12 @@ from python.framework.workers.abstract_worker import \
     AbstractWorker
 
 
-class EnvelopeWorker(AbstractWorker):
-    """Envelope/Bollinger Band worker - Bar-based computation"""
+class BollingerWorker(AbstractWorker):
+    """Bollinger Band worker - Bar-based computation"""
 
     def __init__(self, name, parameters, logger, trading_context=None):
         """
-        Initialize Envelope worker.
+        Initialize Bollinger worker.
 
         CONFIG STRUCTURE:
         {
@@ -43,7 +43,7 @@ class EnvelopeWorker(AbstractWorker):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
-        """Envelope algorithm parameters with validation ranges."""
+        """Bollinger algorithm parameters with validation ranges."""
         return {
             'deviation': InputParamDef(
                 param_type=float,
@@ -56,7 +56,7 @@ class EnvelopeWorker(AbstractWorker):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        """Envelope output parameters."""
+        """Bollinger output parameters."""
         return {
             'upper': OutputParamDef(
                 param_type=float,
@@ -94,7 +94,7 @@ class EnvelopeWorker(AbstractWorker):
 
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:
-        """Envelope/Bollinger is price-based — no activity-data dependency."""
+        """Bollinger is price-based — no activity-data dependency."""
         return None
 
     # ============================================
@@ -103,7 +103,7 @@ class EnvelopeWorker(AbstractWorker):
 
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        Envelope warmup requirements from config 'periods'.
+        Bollinger warmup requirements from config 'periods'.
 
         Returns:
             Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
@@ -112,7 +112,7 @@ class EnvelopeWorker(AbstractWorker):
 
     def get_required_timeframes(self) -> List[str]:
         """
-        Envelope required timeframes from config 'periods'.
+        Bollinger required timeframes from config 'periods'.
 
         Returns:
             List of timeframes - e.g. ["M5", "M30"]
@@ -120,7 +120,7 @@ class EnvelopeWorker(AbstractWorker):
         return list(self.periods.keys())
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
-        """Envelope recomputes when bar updated"""
+        """Bollinger recomputes when bar updated"""
         return bar_updated
 
     def compute(
@@ -130,10 +130,10 @@ class EnvelopeWorker(AbstractWorker):
         current_bars: Dict[str, Bar],
     ) -> WorkerResult:
         """
-        Envelope/Bollinger Band computation using bar close prices.
+        Bollinger Band computation using bar close prices.
 
         Works with first timeframe from 'periods' config.
-        For multi-timeframe envelope, create multiple worker instances.
+        For multi-timeframe Bollinger, create multiple worker instances.
 
         Args:
             tick: Current tick (for metadata only)
@@ -141,7 +141,7 @@ class EnvelopeWorker(AbstractWorker):
             current_bars: Current bars per timeframe
 
         Returns:
-            WorkerResult with envelope bands
+            WorkerResult with Bollinger bands
         """
         # Get first timeframe from periods
         timeframe = list(self.periods.keys())[0]
@@ -156,7 +156,7 @@ class EnvelopeWorker(AbstractWorker):
         # Extract close prices from bars
         close_prices = np.array([bar.close for bar in bars[-period:]])
 
-        # Calculate envelope/bollinger bands
+        # Calculate Bollinger bands
         middle = np.mean(close_prices)
         std_dev = np.std(close_prices)
 

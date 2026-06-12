@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Simple Consensus Decision Logic (OBV Enhanced)
-Reference implementation of RSI + Envelope + OBV consensus strategy
+Reference implementation of RSI + Bollinger + OBV consensus strategy
 
 ENHANCED: OBV as confirmation filter
 - Blocks trades where volume trend opposes price signal
@@ -13,9 +13,9 @@ ENHANCED: OBV as confirmation filter
 - ONE POSITION ONLY: Closes existing position before opening new one
 
 Strategy Rules:
-- BUY when RSI oversold (≤30) AND price near lower envelope (≤30%)
+- BUY when RSI oversold (≤30) AND price near lower Bollinger band (≤30%)
         AND OBV trend is NOT bearish (volume confirmation)
-- SELL when RSI overbought (≥70) AND price near upper envelope (≥70%)
+- SELL when RSI overbought (≥70) AND price near upper Bollinger band (≥70%)
         AND OBV trend is NOT bullish (volume confirmation)
 - FLAT otherwise (no clear signal)
 
@@ -33,7 +33,7 @@ Position Management:
 
 This logic requires three workers:
 - RSI: Relative Strength Index indicator
-- Envelope: Price envelope/bollinger bands
+- Bollinger: Bollinger price bands
 - OBV: On-Balance Volume (volume confirmation)
 """
 
@@ -60,7 +60,7 @@ from python.framework.types.worker_types import WorkerResult
 
 class SimpleConsensus(AbstractDecisionLogic):
     """
-    Simple consensus strategy using RSI, Envelope, and OBV indicators.
+    Simple consensus strategy using RSI, Bollinger, and OBV indicators.
 
     This is a conservative strategy that requires confirmation from
     multiple indicators before generating buy/sell signals.
@@ -68,8 +68,8 @@ class SimpleConsensus(AbstractDecisionLogic):
     Configuration options:
     - rsi_oversold: RSI threshold for oversold (default: 30)
     - rsi_overbought: RSI threshold for overbought (default: 70)
-    - envelope_lower_threshold: Price position threshold for buy (default: 0.3)
-    - envelope_upper_threshold: Price position threshold for sell (default: 0.7)
+    - bollinger_lower_threshold: Price position threshold for buy (default: 0.3)
+    - bollinger_upper_threshold: Price position threshold for sell (default: 0.7)
     - min_confidence: Minimum confidence to generate signal (default: 0.5)
     - min_free_margin: Minimum free margin required for trades (default: 1000)
     - lot_size: Fixed lot size for orders (default: 0.1)
@@ -102,8 +102,8 @@ class SimpleConsensus(AbstractDecisionLogic):
         # All values guaranteed present by schema defaults + Factory validation
         self.rsi_oversold = self.params.get('rsi_oversold')
         self.rsi_overbought = self.params.get('rsi_overbought')
-        self.envelope_lower = self.params.get('envelope_lower_threshold')
-        self.envelope_upper = self.params.get('envelope_upper_threshold')
+        self.bollinger_lower = self.params.get('bollinger_lower_threshold')
+        self.bollinger_upper = self.params.get('bollinger_upper_threshold')
         self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
@@ -119,7 +119,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self.logger.debug(
             f"SimpleConsensus initialized: "
             f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
-            f"Envelope({self.envelope_lower}/{self.envelope_upper}), "
+            f"Bollinger({self.bollinger_lower}/{self.bollinger_upper}), "
             f"OBV(enabled={self.obv_filter_enabled}, boost={self.obv_confidence_boost}), "
             f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
         )
@@ -142,14 +142,14 @@ class SimpleConsensus(AbstractDecisionLogic):
                 description="RSI overbought threshold (sell signal)",
                 display=True, display_label='rsi_ob',
             ),
-            'envelope_lower_threshold': InputParamDef(
+            'bollinger_lower_threshold': InputParamDef(
                 param_type=float, default=0.3, min_val=0.0, max_val=1.0,
-                description="Envelope position threshold for buy signal",
+                description="Bollinger position threshold for buy signal",
                 display=True, display_label='env_l',
             ),
-            'envelope_upper_threshold': InputParamDef(
+            'bollinger_upper_threshold': InputParamDef(
                 param_type=float, default=0.7, min_val=0.0, max_val=1.0,
-                description="Envelope position threshold for sell signal",
+                description="Bollinger position threshold for sell signal",
                 display=True, display_label='env_u',
             ),
             'min_confidence': InputParamDef(
@@ -356,7 +356,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         Requires:
         - rsi_fast: Fast RSI indicator for overbought/oversold detection
-        - envelope_main: Envelope for price position analysis
+        - bollinger_main: Bollinger for price position analysis
         - obv_volume: On-Balance Volume for volume confirmation
 
         Returns:
@@ -364,7 +364,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         """
         return {
             "rsi_fast": "CORE/rsi",
-            "envelope_main": "CORE/envelope",
+            "bollinger_main": "CORE/bollinger",
             "obv_volume": "CORE/obv"
         }
 
@@ -374,29 +374,29 @@ class SimpleConsensus(AbstractDecisionLogic):
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
-        Generate trading decision based on consensus between RSI, Envelope, and OBV.
+        Generate trading decision based on consensus between RSI, Bollinger, and OBV.
 
-        This is a conservative strategy - RSI and Envelope must agree,
+        This is a conservative strategy - RSI and Bollinger must agree,
         and OBV must not oppose the signal direction.
 
         Args:
             tick: Current tick data
-            worker_results: Results from rsi, envelope, and obv workers
+            worker_results: Results from rsi, bollinger, and obv workers
 
         Returns:
             Decision object with action, confidence, and reason
         """
         # Extract worker results
         rsi_result = worker_results.get("rsi_fast")
-        envelope_result = worker_results.get("envelope_main")
+        bollinger_result = worker_results.get("bollinger_main")
         obv_result = worker_results.get("obv_volume")
 
-        if not rsi_result or not envelope_result:
+        if not rsi_result or not bollinger_result:
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 outputs={
                     'confidence': 0.0,
-                    'reason': 'Missing worker results (RSI/Envelope)',
+                    'reason': 'Missing worker results (RSI/Bollinger)',
                     'price': tick.mid,
                     'timestamp': tick.timestamp.isoformat(),
                 },
@@ -404,7 +404,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         # Extract indicator values
         rsi_value = rsi_result.get_signal('rsi_value')
-        envelope_position = envelope_result.get_signal('position')
+        bollinger_position = bollinger_result.get_signal('position')
 
         # Extract OBV trend
         obv_trend = 'neutral'
@@ -414,14 +414,14 @@ class SimpleConsensus(AbstractDecisionLogic):
             obv_has_volume = obv_result.get_signal('has_volume')
 
         self.logger.verbose(
-            f"📊 Indicators: RSI={rsi_value:.1f}, Envelope={envelope_position:.2f}, "
+            f"📊 Indicators: RSI={rsi_value:.1f}, Bollinger={bollinger_position:.2f}, "
             f"OBV trend={obv_trend}, has_volume={obv_has_volume}"
         )
 
         # Check for BUY signal (consensus required)
         if (
             rsi_value <= self.rsi_oversold
-            and envelope_position <= self.envelope_lower
+            and bollinger_position <= self.bollinger_lower
         ):
             # OBV Filter: Block if trend is bearish (volume going against us)
             obv_blocks = (
@@ -450,7 +450,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 )
 
             confidence = self._calculate_buy_confidence(
-                rsi_value, envelope_position)
+                rsi_value, bollinger_position)
 
             # OBV Confidence Boost: Add bonus if volume confirms direction
             obv_boost = 0.0
@@ -464,7 +464,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             if confidence >= self.min_confidence:
                 self.notify_awareness(
-                    f"BUY mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}, OBV {obv_trend}",
+                    f"BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}",
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
@@ -472,7 +472,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     action=DecisionLogicAction.BUY,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
+                        'reason': f"RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}",
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -481,7 +481,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Check for SELL signal (consensus required)
         if (
             rsi_value >= self.rsi_overbought
-            and envelope_position >= self.envelope_upper
+            and bollinger_position >= self.bollinger_upper
         ):
             # OBV Filter: Block if trend is bullish (volume going against us)
             obv_blocks = (
@@ -510,7 +510,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                 )
 
             confidence = self._calculate_sell_confidence(
-                rsi_value, envelope_position)
+                rsi_value, bollinger_position)
 
             # OBV Confidence Boost: Add bonus if volume confirms direction
             obv_boost = 0.0
@@ -524,7 +524,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             if confidence >= self.min_confidence:
                 self.notify_awareness(
-                    f"SELL mode — RSI {rsi_value:.1f}, env {envelope_position:.2f}, OBV {obv_trend}",
+                    f"SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}",
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
@@ -532,7 +532,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     action=DecisionLogicAction.SELL,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"RSI={rsi_value:.1f} + Envelope={envelope_position:.2f} + OBV={obv_trend}",
+                        'reason': f"RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}",
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -540,7 +540,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         # No clear signal - stay flat
         self.notify_awareness(
-            f"No consensus — RSI {rsi_value:.1f}, env {envelope_position:.2f}",
+            f"No consensus — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
             AwarenessLevel.INFO,
             'no_consensus'
         )
@@ -555,7 +555,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         )
 
     def _calculate_buy_confidence(
-        self, rsi_value: float, envelope_position: float
+        self, rsi_value: float, bollinger_position: float
     ) -> float:
         """
         Calculate buy signal confidence based on indicator extremes.
@@ -564,7 +564,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         Args:
             rsi_value: Current RSI value
-            envelope_position: Current envelope position
+            bollinger_position: Current bollinger position
 
         Returns:
             Confidence score (0.0 - 1.0)
@@ -572,18 +572,18 @@ class SimpleConsensus(AbstractDecisionLogic):
         # How far below oversold threshold (more extreme = higher confidence)
         rsi_strength = max(0, (self.rsi_oversold - rsi_value) / 30.0)
 
-        # How far below envelope threshold (more extreme = higher confidence)
-        envelope_strength = max(
-            0, (self.envelope_lower - envelope_position) / 0.3)
+        # How far below bollinger threshold (more extreme = higher confidence)
+        bollinger_strength = max(
+            0, (self.bollinger_lower - bollinger_position) / 0.3)
 
         # Average the two strengths
-        confidence = (rsi_strength + envelope_strength) / 2.0
+        confidence = (rsi_strength + bollinger_strength) / 2.0
 
         # Ensure within [0.5, 1.0] range for valid buy signals
         return max(0.5, min(1.0, 0.5 + confidence * 0.5))
 
     def _calculate_sell_confidence(
-        self, rsi_value: float, envelope_position: float
+        self, rsi_value: float, bollinger_position: float
     ) -> float:
         """
         Calculate sell signal confidence based on indicator extremes.
@@ -592,7 +592,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         Args:
             rsi_value: Current RSI value
-            envelope_position: Current envelope position
+            bollinger_position: Current bollinger position
 
         Returns:
             Confidence score (0.0 - 1.0)
@@ -600,12 +600,12 @@ class SimpleConsensus(AbstractDecisionLogic):
         # How far above overbought threshold
         rsi_strength = max(0, (rsi_value - self.rsi_overbought) / 30.0)
 
-        # How far above envelope threshold
-        envelope_strength = max(
-            0, (envelope_position - self.envelope_upper) / 0.3)
+        # How far above bollinger threshold
+        bollinger_strength = max(
+            0, (bollinger_position - self.bollinger_upper) / 0.3)
 
         # Average the two strengths
-        confidence = (rsi_strength + envelope_strength) / 2.0
+        confidence = (rsi_strength + bollinger_strength) / 2.0
 
         # Ensure within [0.5, 1.0] range for valid sell signals
         return max(0.5, min(1.0, 0.5 + confidence * 0.5))

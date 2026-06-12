@@ -8,7 +8,7 @@
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       },
       "workers": {
         "rsi_fast": {
@@ -16,7 +16,7 @@
             "M5": 14
           }
         },
-        "envelope_main": {
+        "bollinger_main": {
           "periods": {
             "M5": 20
           },

@@ -12,7 +12,7 @@ Contract-level tests on `AbstractWorker.get_required_activity_metric()`.
 
 | Test | Description |
 |------|-------------|
-| `test_core_workers_declare_activity_metric` | ×6 — Every CORE worker returns its expected metric: RSI/Envelope/MACD/HeavyRSI/BacktestingSample → `None`, OBV → `'volume'` |
+| `test_core_workers_declare_activity_metric` | ×6 — Every CORE worker returns its expected metric: RSI/Bollinger/MACD/HeavyRSI/BacktestingSample → `None`, OBV → `'volume'` |
 | `test_missing_override_raises_not_implemented` | A subclass that does not override the method raises `NotImplementedError` with an actionable message (mentions class name, method name, `'volume'`, `'tick_count'`) |
 
 ### `test_activity_metric_lookup.py`
@@ -34,7 +34,7 @@ Compatible combinations must pass validation without errors.
 | `test_rsi_on_forex_broker_passes` | RSI (metric=None) on MT5 |
 | `test_rsi_on_crypto_broker_passes` | RSI (metric=None) on kraken_spot |
 | `test_obv_on_crypto_broker_passes` | OBV (metric=volume) on kraken_spot |
-| `test_mixed_workers_on_crypto_broker_passes` | RSI + Envelope + OBV together on kraken_spot |
+| `test_mixed_workers_on_crypto_broker_passes` | RSI + Bollinger + OBV together on kraken_spot |
 | `test_empty_worker_instances_passes` | Scenario without workers does not crash the validator |
 
 ### `test_validator_skip_incompatible.py`
@@ -46,7 +46,7 @@ Incompatible combinations must produce structured errors without raising excepti
 | `test_obv_on_forex_broker_is_rejected` | OBV on MT5 → one error mentioning instance, type, required metric, broker metric, market type |
 | `test_error_message_is_actionable` | Error text contains "remove" or "switch" — tells the user how to fix the scenario |
 | `test_multiple_incompatible_workers_all_reported` | Two OBV instances on MT5 → two distinct errors, one per instance |
-| `test_mixed_valid_and_invalid_workers_only_invalid_reported` | RSI + Envelope + OBV on MT5 → only OBV reported, RSI/Envelope absent from error messages |
+| `test_mixed_valid_and_invalid_workers_only_invalid_reported` | RSI + Bollinger + OBV on MT5 → only OBV reported, RSI/Bollinger absent from error messages |
 | `test_unknown_worker_type_reported_not_raised` | Unknown `CORE/does_not_exist` surfaces as validator error, does not bubble `ValueError` out of the validator |
 | `test_unknown_broker_reports_single_error` | Unknown broker short-circuits with a single error, no per-worker iteration |
 

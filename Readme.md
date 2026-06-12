@@ -60,7 +60,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 ### Backtesting Engine
 - **Parallel Execution** - ProcessPoolExecutor for multi-scenario runs
 - **7-Phase Orchestration** - Validation → Loading → Execution → Reporting
-- **Worker System** - Modular indicator computation (RSI, Envelope, MACD, OBV, ...)
+- **Worker System** - Modular indicator computation (RSI, Bollinger, MACD, OBV, ...)
 - **Decision Logic** - Pluggable trading strategies with clear separation
 - **Parameter Validation** - Schema-based validation with strict/non-strict modes
 - **USER Namespace** - Custom workers and decision logic with auto-discovery and hot-reload
@@ -182,7 +182,7 @@ live trading or commercial redistribution.
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  BACKTESTING ENGINE                                       │  │
 │  ├───────────────────────────────────────────────────────────┤  │
-│  │  Workers (RSI, Envelope, ...)  →  Indicator Values        │  │
+│  │  Workers (RSI, Bollinger, ...)  →  Indicator Values        │  │
 │  │         ↓                                                 │  │
 │  │  Decision Logic (AggressiveTrend, ...)  →  BUY/SELL       │  │
 │  │         ↓                                                 │  │
