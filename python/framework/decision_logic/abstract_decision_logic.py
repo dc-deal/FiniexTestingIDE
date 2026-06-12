@@ -283,25 +283,45 @@ class AbstractDecisionLogic(ABC):
     @abstractmethod
     def compute(
         self,
-        tick: Optional[TickData],
+        tick: TickData,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
-        Generate trading decision based on worker results.
+        Generate trading decision for a real market tick (TICK pass-trigger).
 
         This is the core decision-making method. It receives all worker
-        outputs and must return a structured Decision object.
+        outputs and must return a structured Decision object. The tick is
+        guaranteed non-None — the heartbeat pass-trigger has its own handler
+        (compute_heartbeat), so no None-guards are needed here.
 
         Args:
-            tick: Current tick data
+            tick: Current tick data (never None)
             worker_results: Dict[worker_name, WorkerResult] - All worker outputs
-            current_bars: Current bars per timeframe
-            bar_history: Historical bars per timeframe
 
         Returns:
             Decision object with action/confidence/reason
         """
         pass
+
+    def compute_heartbeat(
+        self,
+        worker_results: Dict[str, WorkerResult],
+    ) -> Optional[Decision]:
+        """
+        Generate trading decision for an idle heartbeat (HEARTBEAT pass-trigger, #360).
+
+        Ghost-pass between ticks: workers do not recompute — worker_results
+        are their cached last outputs. No market tick exists; read time via
+        get_current_time() and prices from your own last-tick state. Only
+        called when wants_heartbeat() returns True — override both together.
+
+        Args:
+            worker_results: Cached worker outputs from the last tick pass
+
+        Returns:
+            Decision to execute with tick=None, or None for no ghost action
+        """
+        return None
 
     # ============================================
     # AwarenessChannel — ephemeral narration

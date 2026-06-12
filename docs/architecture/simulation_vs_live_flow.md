@@ -24,16 +24,15 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
         │       ├── _process_pending_orders()         # LatencySimulator: drain tick-based queue
         │       └── _check_sl_tp_triggers(tick)       # Local price check on open positions
         │
+        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303) — all ticks, BEFORE the gate
+        │       └── Aggregate tick into OHLC bars     # (#293: bars reflect the full stream)
+        │
         ├── if tick.is_clipped: continue             # Clipping gate (budget active only)
         │
         │   ═══ ALGO PATH (non-clipped ticks only) ═══
         │
-        ├── 2. bar_rendering_controller.process_tick(tick)
-        │       └── Aggregate tick into OHLC bars
-        │
-        ├── 3. bar_history = bar_rendering_controller.get_all_bar_history(symbol)
-        │
-        ├── 4. worker_coordinator.process_tick(tick, current_bars, bar_history)
+        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        │       ├── bar_history retrieval
         │       ├── Workers compute indicators
         │       └── decision_logic.compute(tick, worker_results) → Decision
         │           └── Pure analysis: BUY / SELL / HOLD + metadata (no side effects)
@@ -90,11 +89,10 @@ AutotraderTickLoop.run()
         │       ├── _process_pending_orders()         # LiveOrderTracker: poll broker for fills
         │       └── _check_sl_tp_triggers(tick)       # Live: broker handles SL/TP server-side (no-op)
         │
-        ├── 2. bar_controller.process_tick(tick)
+        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
         │
-        ├── 3. bar_history = bar_controller.get_all_bar_history(symbol)
-        │
-        ├── 4. worker_orchestrator.process_tick(tick, current_bars, bar_history)
+        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        │       ├── bar_history retrieval
         │       ├── Workers compute indicators
         │       └── decision_logic.compute(tick, worker_results) → Decision
         │
@@ -125,6 +123,23 @@ AutotraderTickLoop.run()
 - Same `compute()` → `execute_decision()` two-phase pattern
 
 ---
+
+## Shared Tick Pipeline Core (#303)
+
+The identical algo-pipeline steps live in ONE implementation —
+`python/framework/process/tick_pipeline_core.py` — called by both runners, so
+ordering divergence (the #293 bug class) is impossible by construction:
+
+| Function | Steps | Called for |
+|---|---|---|
+| `render_bars_for_tick` | 2 — bar aggregation | every tick, BEFORE any gate |
+| `execute_algo_path` | 3–4 — bar history + worker/decision compute | non-clipped ticks |
+| `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
+
+Deliberately runner-specific (NOT in the shared core): the simulation clipping
+gate + per-step profiling, the live safety override / display / clipping
+monitor, step 5 `execute_decision` with its per-runner error handling, the
+#348 event-drain boundary, and clock injection (simulated vs wall-clock, #360).
 
 ## Side-by-Side Comparison
 

@@ -37,6 +37,7 @@ from python.framework.types.live_types.live_stats_config_types import ScenarioSt
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.process.process_block_boundary import build_block_boundary_report
+from python.framework.process.tick_pipeline_core import execute_algo_path, render_bars_for_tick, run_ghost_pass
 from python.framework.types.process_data_types import (
     ProcessProfileData,
     ProcessTickLoopResult,
@@ -93,7 +94,7 @@ def _run_sim_heartbeats(
         trade_simulator.heartbeat()
         if decision_event_dispatcher is not None:
             decision_event_dispatcher.drain()
-        decision = worker_coordinator.process_heartbeat()
+        decision = run_ghost_pass(worker_coordinator)
         if decision is not None:
             decision_logic.execute_decision(decision, tick=None)
         if decision_event_dispatcher is not None:
@@ -214,12 +215,12 @@ def execute_tick_loop(
                 profile_times['trade_simulator'] += (time.perf_counter() - t1) * 1000
                 profile_counts['trade_simulator'] += 1
 
-            # === 2. Bar Rendering (all ticks) ===
+            # === 2. Bar Rendering (all ticks — shared core, #303) ===
             # Bars must reflect the complete market data stream — including
             # clipped ticks. Clipping simulates "algo was too slow to react",
             # NOT "market data was incomplete". Same ordering as AutoTrader.
             if profiling_enabled: t3 = time.perf_counter()
-            current_bars = bar_rendering_controller.process_tick(tick)
+            current_bars = render_bars_for_tick(tick, bar_rendering_controller)
             if profiling_enabled:
                 profile_times['bar_rendering'] += (time.perf_counter() - t3) * 1000
                 profile_counts['bar_rendering'] += 1
@@ -232,21 +233,16 @@ def execute_tick_loop(
 
             # === ALGO PATH (non-clipped ticks only) ===
 
-            # === 3. Bar History Retrieval ===
-            if profiling_enabled: t5 = time.perf_counter()
-            bar_history = bar_rendering_controller.get_all_bar_history(
-                symbol=config.symbol
-            )
-            if profiling_enabled:
-                profile_times['bar_history'] += (time.perf_counter() - t5) * 1000
-                profile_counts['bar_history'] += 1
-
-            # === 4. Worker Processing + Decision ===
+            # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
+            # 'worker_decision' now also covers the (tiny) bar-history
+            # retrieval — the former 'bar_history' timer had no report consumer.
             if profiling_enabled: t7 = time.perf_counter()
-            decision = worker_coordinator.process_tick(
+            decision = execute_algo_path(
                 tick=tick,
                 current_bars=current_bars,
-                bar_history=bar_history
+                bar_controller=bar_rendering_controller,
+                worker_orchestrator=worker_coordinator,
+                symbol=config.symbol,
             )
             if profiling_enabled:
                 profile_times['worker_decision'] += (time.perf_counter() - t7) * 1000

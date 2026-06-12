@@ -5,8 +5,8 @@ Part A: the live heartbeat now re-polls active limit orders (the fill/cancel-con
 query fires during idle, not only on a real tick).
 
 Part C: the WorkerOrchestrator runs a decision ghost-pass on the heartbeat only for
-logics that opt in via wants_heartbeat(), forwarding cached worker results (workers
-are never recomputed) with tick=None.
+logics that opt in via wants_heartbeat(), invoking compute_heartbeat (the HEARTBEAT
+pass-trigger handler) with cached worker results (workers are never recomputed).
 """
 
 from datetime import datetime, timezone
@@ -54,13 +54,13 @@ class _StubDecisionLogic:
     def __init__(self, wants: bool):
         self._wants = wants
         self.performance_logger = None
-        self.compute_calls = []  # (tick, worker_results) per call
+        self.heartbeat_calls = []  # worker_results per compute_heartbeat call
 
     def wants_heartbeat(self) -> bool:
         return self._wants
 
-    def compute(self, tick, worker_results: Dict[str, WorkerResult]) -> Optional[Decision]:
-        self.compute_calls.append((tick, worker_results))
+    def compute_heartbeat(self, worker_results: Dict[str, WorkerResult]) -> Optional[Decision]:
+        self.heartbeat_calls.append(worker_results)
         return Decision(action=DecisionLogicAction.FLAT, outputs={})
 
 
@@ -81,15 +81,13 @@ class TestProcessHeartbeat:
         dl = _StubDecisionLogic(wants=False)
         orch = _orchestrator_with(dl)
         assert orch.process_heartbeat() is None
-        assert dl.compute_calls == []
+        assert dl.heartbeat_calls == []
 
-    def test_opt_in_runs_compute_with_none_tick_and_cached_results(self):
-        """An opt-in logic is run with tick=None and the cached worker results."""
+    def test_opt_in_runs_compute_heartbeat_with_cached_results(self):
+        """An opt-in logic's compute_heartbeat runs with the cached worker results."""
         dl = _StubDecisionLogic(wants=True)
         orch = _orchestrator_with(dl)
         decision = orch.process_heartbeat()
         assert decision is not None
-        assert len(dl.compute_calls) == 1
-        tick_arg, results_arg = dl.compute_calls[0]
-        assert tick_arg is None  # ghost-pass signal
-        assert results_arg is orch._worker_results  # cached, not recomputed
+        assert len(dl.heartbeat_calls) == 1
+        assert dl.heartbeat_calls[0] is orch._worker_results  # cached, not recomputed
