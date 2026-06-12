@@ -3,7 +3,7 @@ Live Async Modify Path — Regression Tests (#318)
 
 Locks down the shape of the async modify lifecycle introduced by #318:
 - modify_limit_order returns PENDING with status=PENDING immediately
-- target.in_flight_operation = PENDING_MODIFY during the in-flight window
+- target.execution_state.in_flight_operation = PENDING_MODIFY during the in-flight window
 - drain_inbox applies the modification on next tick (entry_price, SL, TP)
 - broker_ref swap (Kraken EditOrder semantic) is handled in drain
 - Busy / not-confirmed / not-found / unsupported reject paths
@@ -53,16 +53,16 @@ class TestModifyLimitOrderAsyncLifecycle:
         assert mod_result.rejection_reason is None
 
     def test_in_flight_operation_set_during_window(self, mock_delayed, executor_delayed):
-        """After modify_limit_order schedule, target.in_flight_operation == PENDING_MODIFY."""
+        """After modify_limit_order schedule, target.execution_state.in_flight_operation == PENDING_MODIFY."""
         order_id = _submit_limit_and_confirm(mock_delayed, executor_delayed)
 
         executor_delayed.modify_limit_order(order_id=order_id, new_price=51000.0)
 
         target = next(p for p in executor_delayed._active_limit_orders
                       if p.pending_order_id == order_id)
-        assert target.in_flight_operation == PendingOperation.PENDING_MODIFY
-        assert target.pending_modification is not None
-        assert target.pending_modification.new_price == 51000.0
+        assert target.execution_state.in_flight_operation == PendingOperation.PENDING_MODIFY
+        assert target.execution_state.pending_modification is not None
+        assert target.execution_state.pending_modification.new_price == 51000.0
 
     def test_modification_applied_after_drain(self, mock_delayed, executor_delayed):
         """Drain inbox applies the EditResponse; entry_price reflects new value.
@@ -97,8 +97,8 @@ class TestModifyLimitOrderAsyncLifecycle:
 
         target = next(p for p in executor_delayed._active_limit_orders
                       if p.pending_order_id == order_id)
-        assert target.in_flight_operation == PendingOperation.NONE
-        assert target.pending_modification is None
+        assert target.execution_state.in_flight_operation == PendingOperation.NONE
+        assert target.execution_state.pending_modification is None
 
 
 class TestModifyLimitOrderBusy:

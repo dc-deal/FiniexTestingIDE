@@ -73,10 +73,10 @@ class AuditContext:
         symbol: Trading symbol
         direction: Order direction (LONG/SHORT)
         requested_lots: Lots requested by the algo at submit
-        synthetic_cumulative_fee: pending.cumulative_fee at outcome time (local fee model)
-        synthetic_cumulative_avg_price: pending.cumulative_avg_price at outcome time
-        synthetic_cumulative_filled_lots: pending.cumulative_filled_lots at outcome time
-        fee_currency: Currency of the synthetic fee (from pending.trades[0].fee_currency)
+        synthetic_cumulative_fee: pending.fills.cumulative_fee at outcome time (local fee model)
+        synthetic_cumulative_avg_price: pending.fills.cumulative_avg_price at outcome time
+        synthetic_cumulative_filled_lots: pending.fills.cumulative_filled_lots at outcome time
+        fee_currency: Currency of the synthetic fee (from pending.fills.trades[0].fee_currency)
         submission_tick_mid_price: Trade-channel mid price observed at submission
             (None for synthetic cleanup pendings — SLIPPAGE compare is skipped). #340
     """

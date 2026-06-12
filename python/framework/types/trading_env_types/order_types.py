@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Dict, Optional
 
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
 
@@ -82,6 +83,19 @@ class OrderAction(Enum):
     """
     OPEN = "open"
     CLOSE = "close"
+
+
+class CloseType(Enum):
+    """
+    Type of position close — full or partial.
+
+    First-class field on close-side OrderResults (#343, set once filled) and
+    on TradeRecord. Lives here (not in the trade-record types) because the
+    trade-record module imports from this one — order_types is the base
+    order-domain type module.
+    """
+    FULL = "full"
+    PARTIAL = "partial"
 
 
 def direction_to_side(direction: 'OrderDirection', action: OrderAction) -> 'OrderSide':
@@ -191,7 +205,7 @@ class OrderCapabilities:
     # trade_level_reporting: broker exposes per-execution detail (Kraken
     # QueryTrades, MT5 HistoryDealsGet). When True, the executor queries
     # trade records on FILLED via the Tier-3 trades_query layer and
-    # populates pending.trades + cumulative_* aggregates. When False,
+    # populates pending.fills.trades + cumulative_* aggregates. When False,
     # the executor synthesizes a single aggregate BrokerTrade from the
     # query response — the data model stays consistent.
     trade_level_reporting: bool = True
@@ -349,13 +363,24 @@ class OrderResult:
     # distinction does not apply.
     action: Optional[OrderAction] = None
 
+    # Order dimensions promoted from the metadata bag (#343) — typed,
+    # consistently present on PENDING/EXECUTED results. None on rejection
+    # paths where the dimension does not apply.
+    # direction: the position direction the order refers to (open: requested
+    #   direction; close: direction of the position being closed).
+    # requested_lots: lots the algo asked for (vs executed_lots = filled).
+    # close_type: full/partial — close-side only, set once filled.
+    symbol: Optional[str] = None
+    direction: Optional[OrderDirection] = None
+    requested_lots: Optional[float] = None
+    close_type: Optional[CloseType] = None
+
     # Submission slippage audit (#340) — algo's trade-channel mid price at
     # the submission moment, propagated from PendingOrder. Surfaced in the
     # event-stream CSV (ORDER_SUBMIT / CLOSE_SUBMIT rows) so downstream
     # analysis can compute the per-fill slippage delta without rejoining
-    # against the live audit pipeline. None for pre-tick rejections.
-    submission_tick_mid_price: Optional[float] = None
-    submission_tick_time_msc: Optional[int] = None
+    # against the live audit pipeline. Empty for pre-tick rejections.
+    submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
 
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -385,6 +410,13 @@ class OrderResult:
             'rejection_message': self.rejection_message,
 
             'position_id': self.position_id,
+
+            'action': self.action.value if self.action else None,
+            'symbol': self.symbol,
+            'direction': self.direction.value if self.direction else None,
+            'requested_lots': self.requested_lots,
+            'close_type': self.close_type.value if self.close_type else None,
+
             'metadata': serialize_value(self.metadata),
         }
 

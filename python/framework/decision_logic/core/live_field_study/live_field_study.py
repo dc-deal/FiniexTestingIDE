@@ -487,7 +487,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             # limit_cancel/multi_cancel do NOT re-issue, so this order orphans (#13/#15).
             self.logger.debug(
                 f"[FS_CANCEL] order={order.pending_order_id} ref={order.broker_ref or 'NONE'} "
-                f"op={order.in_flight_operation.name} q={int(order.in_flight_query)} "
+                f"op={order.execution_state.in_flight_operation.name} q={int(order.execution_state.in_flight_query)} "
                 f"scheduled={int(scheduled)}")
         self._phase_order_ids = []
 
@@ -516,7 +516,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             orders = self.trading_api.get_active_orders()
         parts = [
             f"{o.pending_order_id}|ref={o.broker_ref or 'NONE'}"
-            f"|op={o.in_flight_operation.name}|q={int(o.in_flight_query)}"
+            f"|op={o.execution_state.in_flight_operation.name}|q={int(o.execution_state.in_flight_query)}"
             for o in orders
         ]
         return f"n={len(orders)} orders=[{','.join(parts)}]"

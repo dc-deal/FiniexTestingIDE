@@ -40,15 +40,15 @@ class TestCancelLimitOrderAsyncLifecycle:
         assert scheduled is True
 
     def test_in_flight_operation_set_during_window(self, sim_executor):
-        """After cancel scheduling, target.in_flight_operation == PENDING_CANCEL."""
+        """After cancel scheduling, target.execution_state.in_flight_operation == PENDING_CANCEL."""
         order_id = _submit_limit_to_active(sim_executor)
 
         sim_executor.cancel_limit_order(order_id=order_id)
 
         target = next(p for p in sim_executor._active_limit_orders
                       if p.pending_order_id == order_id)
-        assert target.in_flight_operation == PendingOperation.PENDING_CANCEL
-        assert target.cancel_apply_at_msc is not None
+        assert target.execution_state.in_flight_operation == PendingOperation.PENDING_CANCEL
+        assert target.execution_state.cancel_apply_at_msc is not None
 
     def test_order_removed_from_active_after_resolve(self, sim_executor):
         """Next feed_tick Phase 0 removes the order from _active_limit_orders."""

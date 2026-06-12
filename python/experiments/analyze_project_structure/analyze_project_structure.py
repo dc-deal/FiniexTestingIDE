@@ -9,16 +9,19 @@ Shows:
 - Directory structure
 - All classes with inheritance
 - Module-level functions (utilities, helpers, loaders)
-- File sizes and line counts
+- Lines of code (Python production/test split + MQL5 source, with ratio)
 - Namespace issues (duplicate class names)
 
 Usage:
     python analyze_project_structure.py [--output FILE] [--detailed]
 
-    # Simple overview (recommended for refactoring)
+    # Default: scan all project hierarchies (python = app, tests, mql5 = MetaTrader)
     python analyze_project_structure.py
 
-    # Or with specific path
+    # Restrict to a single tree (e.g. lean structural snapshot of the app)
+    python analyze_project_structure.py --path python
+
+    # Or any custom path(s)
     python analyze_project_structure.py --path /path/to/your/project
 
     # Detailed view with all methods
@@ -34,6 +37,15 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 from collections import defaultdict
 import argparse
+
+
+# Project hierarchies — FiniexTestingIDE spans these top-level trees.
+# CORE/TEST are Python (AST-analyzed). MQL5 is MetaTrader 5 source: line-counted
+# only, since the Python ast parser cannot read it.
+CORE_DIRS = ['python']             # Python application / framework source (production)
+TEST_DIRS = ['tests']              # Python test suites
+MQL5_DIRS = ['mql5']               # MetaTrader 5 source (LOC only, not parsed)
+MQL5_EXTENSIONS = ['.mq5', '.mqh']
 
 
 class ClassInfo:
@@ -60,31 +72,62 @@ class FunctionInfo:
         self.docstring = docstring
 
 
+class FileInfo:
+    """Line-count and category for a single source file."""
+
+    def __init__(self, file_path: str, line_count: int, category: str):
+        self.file_path = file_path
+        self.line_count = line_count
+        self.category = category  # 'production' | 'test' | 'mql5'
+
+
 class ProjectAnalyzer:
     """Analyzes Python project structure."""
 
-    def __init__(self, root_dir: str = "."):
-        self.root_dir = Path(root_dir).resolve()
+    def __init__(self, root_dirs: List[str]):
+        self.root_dirs = [Path(r).resolve() for r in root_dirs]
+        # Common base for displaying relative paths across all scan roots
+        if len(self.root_dirs) == 1:
+            self.base_dir = self.root_dirs[0]
+        else:
+            self.base_dir = Path(os.path.commonpath(
+                [str(r) for r in self.root_dirs]))
         self.classes: List[ClassInfo] = []
         self.functions: List[FunctionInfo] = []
+        self.files: List[FileInfo] = []
         self.files_processed = 0
         self.errors: List[Tuple[str, str]] = []
 
     def analyze(self) -> Dict:
         """Analyzes the entire project."""
-        print(f"🔍 Analyzing project: {self.root_dir}")
+        print(f"🔍 Analyzing: {', '.join(str(r) for r in self.root_dirs)}")
 
-        # Find all Python files
-        python_files = list(self.root_dir.rglob("*.py"))
-        print(f"📁 Found: {len(python_files)} Python files")
+        skip_dirs = ['.venv', 'venv', '__pycache__', 'build', 'dist']
 
-        # Analyze each file
+        # Find all Python files across all scan roots (deduplicated)
+        python_files = sorted(
+            {py for root in self.root_dirs for py in root.rglob("*.py")})
+        # Find MQL5 source files — line-counted only, not AST-parsed
+        mql5_files = sorted(
+            {f for root in self.root_dirs for ext in MQL5_EXTENSIONS
+             for f in root.rglob(f"*{ext}")})
+        print(f"📁 Found: {len(python_files)} Python files, "
+              f"{len(mql5_files)} MQL5 files")
+
+        # Analyze Python files (AST: classes, methods, functions + LOC)
         for py_file in python_files:
             # Skip virtual environments and build directories
-            if any(skip in py_file.parts for skip in ['.venv', 'venv', '__pycache__', 'build', 'dist']):
+            if any(skip in py_file.parts for skip in skip_dirs):
                 continue
 
             self._analyze_file(py_file)
+
+        # Count MQL5 source LOC (no parser — different language)
+        for mql5_file in mql5_files:
+            if any(skip in mql5_file.parts for skip in skip_dirs):
+                continue
+
+            self._count_loc_only(mql5_file, 'mql5')
 
         print(f"✅ Processed: {self.files_processed} files")
         print(f"📊 Found: {len(self.classes)} classes")
@@ -103,6 +146,15 @@ class ProjectAnalyzer:
 
             tree = ast.parse(content, filename=str(file_path))
 
+            # File-level stats: relative path (shared by all items in this file),
+            # total line count, and production/test classification
+            rel_path = file_path.relative_to(self.base_dir)
+            self.files.append(FileInfo(
+                file_path=str(rel_path),
+                line_count=len(content.splitlines()),
+                category='test' if self._is_test_file(file_path) else 'production',
+            ))
+
             # Extract module-level functions (direct children of module, not inside classes)
             class_names_in_file = {
                 node.name for node in ast.walk(tree)
@@ -111,7 +163,6 @@ class ProjectAnalyzer:
             for node in tree.body:
                 if isinstance(node, ast.FunctionDef):
                     func_docstring = ast.get_docstring(node)
-                    rel_path = file_path.relative_to(self.root_dir)
                     self.functions.append(FunctionInfo(
                         name=node.name,
                         file_path=str(rel_path),
@@ -145,9 +196,6 @@ class ProjectAnalyzer:
                         elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
                             decorators.append(f"{dec.func.id}(...)")
 
-                    # Relative path to project root
-                    rel_path = file_path.relative_to(self.root_dir)
-
                     # Extract class docstring
                     class_docstring = ast.get_docstring(node)
 
@@ -175,6 +223,44 @@ class ProjectAnalyzer:
             self.errors.append((str(file_path), f"SyntaxError: {e}"))
         except Exception as e:
             self.errors.append((str(file_path), f"Error: {e}"))
+
+    def _is_test_file(self, file_path: Path) -> bool:
+        """Classifies a file as test code for the separate LOC bucket.
+
+        Membership in a TEST_DIRS directory is the only signal — checked on the
+        absolute path so it works regardless of the scan root. A `test_`
+        filename prefix is deliberately NOT used: production tooling that lives
+        outside the test tree (a test runner CLI, a test-config loader) would
+        otherwise be miscounted as test code.
+
+        Args:
+            file_path: Absolute path of the file.
+
+        Returns:
+            True if the file belongs to the test sources, else False.
+        """
+        parts = set(file_path.parts)
+        return any(d in parts for d in TEST_DIRS)
+
+    def _count_loc_only(self, file_path: Path, category: str):
+        """Counts lines for a non-Python source file (no AST parsing).
+
+        Args:
+            file_path: Absolute path of the file.
+            category: LOC bucket to assign (e.g. 'mql5').
+        """
+        try:
+            content = file_path.read_text(encoding='utf-8', errors='replace')
+        except Exception as e:
+            self.errors.append((str(file_path), f"Error: {e}"))
+            return
+
+        rel_path = file_path.relative_to(self.base_dir)
+        self.files.append(FileInfo(
+            file_path=str(rel_path),
+            line_count=len(content.splitlines()),
+            category=category,
+        ))
 
     def _generate_report(self) -> Dict:
         """Generates analysis report."""
@@ -224,11 +310,26 @@ class ProjectAnalyzer:
             directory = str(Path(fn.file_path).parent)
             functions_by_directory[directory].append(fn)
 
+        # Lines of code split by category (Python production/test + MQL5 source)
+        production_loc = sum(f.line_count for f in self.files if f.category == 'production')
+        test_loc = sum(f.line_count for f in self.files if f.category == 'test')
+        mql5_loc = sum(f.line_count for f in self.files if f.category == 'mql5')
+        production_files = sum(1 for f in self.files if f.category == 'production')
+        test_files = sum(1 for f in self.files if f.category == 'test')
+        mql5_files = sum(1 for f in self.files if f.category == 'mql5')
+
         return {
             'total_classes': len(self.classes),
             'total_files': self.files_processed,
             'total_methods': total_methods,
             'total_functions': len(self.functions),
+            'production_loc': production_loc,
+            'test_loc': test_loc,
+            'mql5_loc': mql5_loc,
+            'total_loc': production_loc + test_loc + mql5_loc,
+            'production_files': production_files,
+            'test_files': test_files,
+            'mql5_files': mql5_files,
             'documented_classes': documented_classes,
             'documented_methods': documented_methods,
             'undocumented_classes': undocumented_classes,
@@ -265,6 +366,43 @@ def format_statistics_header(report: Dict) -> str:
     avg_methods = report['total_methods'] / \
         report['total_classes'] if report['total_classes'] > 0 else 0
     lines.append(f"Avg Methods per Class:       {avg_methods:.1f}")
+
+    # Lines of code by category — Python production/test + MQL5 source.
+    # Category lines are shown only when that bucket has files (a single-tree
+    # scan stays clean, no "Tests: 0" noise). Each shows its share of total LOC.
+    total_loc = report['total_loc']
+    total_loc_files = (report['production_files'] + report['test_files']
+                       + report['mql5_files'])
+    test_prod_ratio = (report['test_loc'] / report['production_loc']
+                       ) if report['production_loc'] > 0 else 0
+    # Show the percentage column only when more than one category is present
+    # (a single-tree scan is trivially 100% — no point showing it).
+    multi_category = sum(
+        1 for n in (report['production_files'], report['test_files'],
+                    report['mql5_files']) if n) > 1
+
+    def _loc_row(label: str, loc: int, files: int) -> str:
+        left = f"  {label:<22}{loc:>9,}  ({files} files)"
+        if not multi_category:
+            return left
+        pct = (loc / total_loc * 100) if total_loc > 0 else 0
+        return f"{left:<46} {pct:5.1f}%"
+
+    lines.append(f"")
+    lines.append(f"Lines of Code:")
+    lines.append(_loc_row(
+        'Production:', report['production_loc'], report['production_files']))
+    if report['test_files']:
+        lines.append(_loc_row(
+            'Tests:', report['test_loc'], report['test_files']))
+    if report['mql5_files']:
+        lines.append(_loc_row(
+            'MQL5 (MetaTrader 5):', report['mql5_loc'], report['mql5_files']))
+    lines.append(
+        f"  {'Total:':<22}{total_loc:>9,}  ({total_loc_files} files)")
+    if report['production_loc'] > 0 and report['test_files']:
+        lines.append(
+            f"  Test/Prod Ratio:           {test_prod_ratio:.2f} : 1")
 
     # Documentation
     class_coverage = (report['documented_classes'] / report['total_classes']
@@ -565,8 +703,10 @@ def main():
     )
     parser.add_argument(
         '--path', '-p',
-        help='Project root directory (default: current directory)',
-        default='.'
+        nargs='+',
+        help=f"Scan roots (default: {CORE_DIRS + TEST_DIRS + MQL5_DIRS}). "
+             'Pass a single path to restrict, e.g. --path python',
+        default=CORE_DIRS + TEST_DIRS + MQL5_DIRS
     )
 
     args = parser.parse_args()

@@ -41,11 +41,11 @@ class TestHeartbeatRepoll:
         mock.await_submit_confirmation(executor)
         active = executor._active_limit_orders
         assert len(active) == 1
-        assert active[0].in_flight_query is False
+        assert active[0].execution_state.in_flight_query is False
 
         # The heartbeat must now schedule the status poll (was on_tick-only).
         executor.heartbeat()
-        assert active[0].in_flight_query is True
+        assert active[0].execution_state.in_flight_query is True
 
 
 class _StubDecisionLogic:

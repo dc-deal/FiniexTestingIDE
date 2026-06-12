@@ -102,7 +102,7 @@ class SubmitResponse:
 # corresponding Tier-3 triples (_build_modify_payload / _do_request_modify /
 # _parse_modify_response, etc.). drain_inbox handles each response on the
 # main thread — applying the modification to the local shadow state and
-# clearing the PendingOrder.in_flight_operation flag.
+# clearing the PendingOrder.execution_state.in_flight_operation flag.
 
 
 @dataclass
@@ -247,7 +247,7 @@ class PositionModifyResponse:
 # After an order reports FILLED, fetch its per-execution detail via the
 # adapter's Tier-3 trades-query layer. drain_inbox routes the response to
 # LiveTradeExecutor._handle_trades_response, which appends each trade to
-# pending.trades (updating cumulative_*) and triggers _fill_open_order
+# pending.fills.trades (updating cumulative_*) and triggers _fill_open_order
 # with the aggregated cumulative_avg_price / cumulative_fee.
 #
 # See docs/architecture/broker_trade_records.md and ISSUE_326 §8.
@@ -336,7 +336,7 @@ class TradesQueryResponse:
     Result of a TradesQueryJob carried via _http_inbox to the main thread.
 
     drain_inbox routes this to LiveTradeExecutor._handle_trades_response,
-    which appends each trade to pending.trades, updates cumulative_*, and
+    which appends each trade to pending.fills.trades, updates cumulative_*, and
     triggers _fill_open_order with the aggregated values.
 
     Stale-response guard: if response.broker_ref != pending.broker_ref at

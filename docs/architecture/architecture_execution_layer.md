@@ -192,7 +192,7 @@ Every pending order that leaves the queue (filled, rejected, timed out, or force
 
 Open positions are closed via synthetic PendingOrders that bypass the latency pipeline entirely — no pending created, no statistics impact. This is an internal cleanup, not an algo action. After direct-filling, `clear_pending()` catches any genuine stuck-in-pipeline orders (e.g. algo submitted an order right before scenario ended). Only these real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`, `"manual_abort"`).
 
-Synthetic cleanup pendings carry no `submission_tick_mid_price` — there is no algo-initiated submission moment, so the SLIPPAGE audit channel correctly skips them. See `drift_audit.md` for the audit pipeline.
+Synthetic cleanup pendings carry an empty `submission` snapshot — there is no algo-initiated submission moment, so the SLIPPAGE audit channel correctly skips them. See `drift_audit.md` for the audit pipeline.
 
 ### History Retention Limits
 

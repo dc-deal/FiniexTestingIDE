@@ -23,9 +23,9 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType, TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
+from python.framework.types.trading_env_types.order_types import CloseType, OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
 
 
 class EventType(Enum):
@@ -257,11 +257,11 @@ def _build_events(
         # (typically the EXECUTED stage carries it via _fill_open_order). The
         # PENDING placeholder in live may have it set too — first-match wins.
         sub_mid = next(
-            (o.submission_tick_mid_price for o in orders if o.submission_tick_mid_price is not None),
+            (o.submission.tick_mid_price for o in orders if o.submission.tick_mid_price is not None),
             None,
         )
         sub_msc = next(
-            (o.submission_tick_time_msc for o in orders if o.submission_tick_time_msc is not None),
+            (o.submission.tick_time_msc for o in orders if o.submission.tick_time_msc is not None),
             None,
         )
         events.append(TradeEvent(
@@ -297,8 +297,8 @@ def _build_events(
                 lots=_sum_volume(trade.entry_trades) or trade.lots,
                 price=trade.entry_price,
                 status='filled',
-                submission_tick_mid_price=trade.entry_submission_tick_mid_price,
-                submission_tick_time_msc=trade.entry_submission_tick_time_msc,
+                submission_tick_mid_price=trade.entry_submission.tick_mid_price,
+                submission_tick_time_msc=trade.entry_submission.tick_time_msc,
                 notes='vwap' if len(trade.entry_trades) > 1 else '',
             ))
 
@@ -314,8 +314,8 @@ def _build_events(
             lots=trade.lots,
             status=OrderStatus.PENDING.value,
             close_type=trade.close_type.value if isinstance(trade.close_type, CloseType) else str(trade.close_type),
-            submission_tick_mid_price=trade.exit_submission_tick_mid_price,
-            submission_tick_time_msc=trade.exit_submission_tick_time_msc,
+            submission_tick_mid_price=trade.exit_submission.tick_mid_price,
+            submission_tick_time_msc=trade.exit_submission.tick_time_msc,
         ))
 
         # Per-close FILL events + POSITION_CLOSE

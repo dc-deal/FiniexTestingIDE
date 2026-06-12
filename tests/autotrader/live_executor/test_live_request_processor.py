@@ -81,10 +81,10 @@ class TestSubmitAndQuery:
         )
 
         pending = request_processor.get_by_broker_ref("MOCK-000004")
-        assert pending.submitted_at is not None
+        assert pending.timing.submitted_at is not None
         assert pending.broker_ref == "MOCK-000004"
-        assert pending.timeout_at is not None
-        assert pending.timeout_at > pending.submitted_at
+        assert pending.timing.timeout_at is not None
+        assert pending.timing.timeout_at > pending.timing.submitted_at
 
     def test_pending_order_action_is_open(self, request_processor):
         """Registered open order has action=OPEN."""

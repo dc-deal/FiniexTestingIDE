@@ -420,8 +420,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}")
 
         # Slippage statistics (#340) — sim-side equivalent of the live audit
-        # SLIPPAGE counter. Same field source (TradeRecord.entry_submission_tick_*
-        # / exit_submission_tick_*) and direction-aware sign convention.
+        # SLIPPAGE counter. Same field source (TradeRecord.entry_submission /
+        # exit_submission) and direction-aware sign convention.
         self._render_slippage_stats(trades, renderer)
 
         # Rejection breakdown (if any)
@@ -447,14 +447,14 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             renderer: ConsoleRenderer instance
         """
         entry_samples = [
-            self._adverse_slippage(t.entry_price, t.entry_submission_tick_mid_price, t.entry_side)
+            self._adverse_slippage(t.entry_price, t.entry_submission.tick_mid_price, t.entry_side)
             for t in trades
-            if t.entry_submission_tick_mid_price is not None and t.entry_side is not None
+            if t.entry_submission.tick_mid_price is not None and t.entry_side is not None
         ]
         exit_samples = [
-            self._adverse_slippage(t.exit_price, t.exit_submission_tick_mid_price, t.exit_side)
+            self._adverse_slippage(t.exit_price, t.exit_submission.tick_mid_price, t.exit_side)
             for t in trades
-            if t.exit_submission_tick_mid_price is not None and t.exit_side is not None
+            if t.exit_submission.tick_mid_price is not None and t.exit_side is not None
         ]
 
         if not entry_samples and not exit_samples:
@@ -467,8 +467,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         if entry_samples:
             avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(
                 entry_samples,
-                ref_prices=[t.entry_submission_tick_mid_price for t in trades
-                            if t.entry_submission_tick_mid_price is not None and t.entry_side is not None],
+                ref_prices=[t.entry_submission.tick_mid_price for t in trades
+                            if t.entry_submission.tick_mid_price is not None and t.entry_side is not None],
             )
             print(f"      Entry:  avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
                   f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")
@@ -476,8 +476,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         if exit_samples:
             avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(
                 exit_samples,
-                ref_prices=[t.exit_submission_tick_mid_price for t in trades
-                            if t.exit_submission_tick_mid_price is not None and t.exit_side is not None],
+                ref_prices=[t.exit_submission.tick_mid_price for t in trades
+                            if t.exit_submission.tick_mid_price is not None and t.exit_side is not None],
             )
             print(f"      Exit:   avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
                   f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")

@@ -223,7 +223,7 @@ class ScenarioDataValidator:
 
         for instance_name, worker_type in worker_instances.items():
             try:
-                worker_class, _ = worker_factory._resolve_worker_class(worker_type)
+                worker_class, _ = worker_factory.resolve_worker_class(worker_type)
             except ValueError as e:
                 errors.append(
                     f"Cannot resolve worker '{instance_name}' ({worker_type}): {e}"

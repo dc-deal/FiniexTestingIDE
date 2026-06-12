@@ -35,8 +35,9 @@ from typing import Dict, List, Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderTiming
 from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderDirection, OrderType
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
 
@@ -188,8 +189,10 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Store pending order (inherited storage)
         self.store_order(PendingOrder(
             pending_order_id=order_id,
-            placed_at_msc=current_msc,
-            broker_fill_msc=broker_fill_msc,
+            timing=PendingOrderTiming(
+                placed_at_msc=current_msc,
+                broker_fill_msc=broker_fill_msc,
+            ),
             order_action=PendingOrderAction.OPEN,
             order_type=request.order_type,
             symbol=request.symbol,
@@ -198,8 +201,10 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             entry_price=entry_price,
             entry_time=datetime.now(timezone.utc),
             order_kwargs=order_kwargs,
-            submission_tick_mid_price=tick.mid,
-            submission_tick_time_msc=tick.time_msc,
+            submission=SubmissionMetadata(
+                tick_mid_price=tick.mid,
+                tick_time_msc=tick.time_msc,
+            ),
         ))
 
         # Log order reception
@@ -243,12 +248,16 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Store pending close order (inherited storage)
         self.store_order(PendingOrder(
             pending_order_id=position_id,
-            placed_at_msc=current_msc,
-            broker_fill_msc=broker_fill_msc,
+            timing=PendingOrderTiming(
+                placed_at_msc=current_msc,
+                broker_fill_msc=broker_fill_msc,
+            ),
             order_action=PendingOrderAction.CLOSE,
             close_lots=close_lots,
-            submission_tick_mid_price=tick.mid,
-            submission_tick_time_msc=tick.time_msc,
+            submission=SubmissionMetadata(
+                tick_mid_price=tick.mid,
+                tick_time_msc=tick.time_msc,
+            ),
         ))
 
         # Log close order reception
@@ -302,16 +311,16 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         # Find orders ready to fill
         for order_id, pending in self._pending_orders.items():
-            if pending.broker_fill_msc <= current_msc:
+            if pending.timing.broker_fill_msc <= current_msc:
                 to_fill.append(pending)
                 to_remove.append(order_id)
 
                 # Log order ready for fill
-                actual_latency = current_msc - pending.placed_at_msc
+                actual_latency = current_msc - pending.timing.placed_at_msc
                 self.logger.debug(
                     f"✅ Order ready: {order_id} ({pending.order_action}) "
                     f"- latency: {actual_latency}ms | current_msc={current_msc}, "
-                    f"placed_at_msc={pending.placed_at_msc}"
+                    f"placed_at_msc={pending.timing.placed_at_msc}"
                 )
 
         # Remove filled orders from pending

@@ -179,8 +179,8 @@ class AbstractPendingOrderManager(ABC):
                 outcome=outcome,
                 reason=reason,
                 latency_ms=latency_ms,
-                placed_at_msc=pending_order.placed_at_msc,
-                submitted_at=pending_order.submitted_at,
+                placed_at_msc=pending_order.timing.placed_at_msc,
+                submitted_at=pending_order.timing.submitted_at,
             )
 
         self._pending_stats.record(
@@ -234,12 +234,12 @@ class AbstractPendingOrderManager(ABC):
             latency_ms = None
 
             # Simulation: ms-timestamp-based latency
-            if pending.placed_at_msc is not None and current_msc is not None:
-                latency_ms = current_msc - pending.placed_at_msc
+            if pending.timing.placed_at_msc is not None and current_msc is not None:
+                latency_ms = current_msc - pending.timing.placed_at_msc
 
             # Live: time-based latency
-            if pending.submitted_at is not None:
-                elapsed = datetime.now(timezone.utc) - pending.submitted_at
+            if pending.timing.submitted_at is not None:
+                elapsed = datetime.now(timezone.utc) - pending.timing.submitted_at
                 latency_ms = elapsed.total_seconds() * 1000
 
             self.record_outcome(

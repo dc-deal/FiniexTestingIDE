@@ -52,6 +52,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import Pen
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
+    CloseType,
     OrderAction,
     OrderType,
     OrderDirection,
@@ -703,10 +704,10 @@ class AbstractTradeExecutor(ABC):
                     )
                     return
 
-        # #326: ensure pending.trades is populated before portfolio open.
+        # #326: ensure pending.fills.trades is populated before portfolio open.
         # If a consumer (live polling, future async trades_query) already
         # populated it, skip synthesis to preserve the per-execution truth.
-        if not pending_order.trades:
+        if not pending_order.fills.trades:
             self._synthesize_pending_trade(
                 pending_order=pending_order,
                 fill_price=entry_price,
@@ -735,9 +736,8 @@ class AbstractTradeExecutor(ABC):
             comment=pending_order.order_kwargs.get('comment', ''),
             entry_type=entry_type,
             broker_ref=pending_order.broker_ref,
-            entry_trades=list(pending_order.trades),
-            entry_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            entry_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            entry_trades=list(pending_order.fills.trades),
+            entry_submission=pending_order.submission,
         )
 
         # Create order result for history
@@ -750,12 +750,11 @@ class AbstractTradeExecutor(ABC):
             commission=0.0,
             position_id=position.position_id,
             action=OrderAction.OPEN,
-            submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            symbol=pending_order.symbol,
+            direction=pending_order.direction,
+            requested_lots=pending_order.lots,
+            submission=pending_order.submission,
             metadata={
-                "symbol": pending_order.symbol,
-                "direction": pending_order.direction,
-                "position_id": position.position_id,
                 "fee_cost": entry_fee.cost,
                 "fee_type": entry_fee.fee_type.value,
                 "fill_type": fill_type.value,
@@ -869,7 +868,7 @@ class AbstractTradeExecutor(ABC):
         # populated. Exit fee is 0.0 in V1 (no exit commission), matching the
         # portfolio call below; real broker exit fees become available via
         # async trades_query in a future enhancement.
-        if not pending_order.trades:
+        if not pending_order.fills.trades:
             self._synthesize_pending_trade(
                 pending_order=pending_order,
                 fill_price=close_price,
@@ -889,9 +888,8 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
-                exit_trades=list(pending_order.trades),
-                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+                exit_trades=list(pending_order.fills.trades),
+                exit_submission=pending_order.submission,
             )
             self.logger.debug(
                 f"📊 Partial close: {pending_order.pending_order_id} "
@@ -905,9 +903,8 @@ class AbstractTradeExecutor(ABC):
                 exit_tick_index=self._tick_counter,
                 exit_fee=None,  # V1: No exit commission
                 close_reason=close_reason,
-                exit_trades=list(pending_order.trades),
-                exit_submission_tick_mid_price=pending_order.submission_tick_mid_price,
-                exit_submission_tick_time_msc=pending_order.submission_tick_time_msc,
+                exit_trades=list(pending_order.fills.trades),
+                exit_submission=pending_order.submission,
             )
             self.logger.debug(
                 f"💰 Position closed: {pending_order.pending_order_id} "
@@ -922,13 +919,14 @@ class AbstractTradeExecutor(ABC):
             executed_lots=executed_lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
+            position_id=pending_order.pending_order_id,
             action=OrderAction.CLOSE,
-            submission_tick_mid_price=pending_order.submission_tick_mid_price,
-            submission_tick_time_msc=pending_order.submission_tick_time_msc,
+            symbol=position.symbol,
+            direction=position.direction,
+            close_type=CloseType.PARTIAL if is_partial else CloseType.FULL,
+            submission=pending_order.submission,
             metadata={
                 "realized_pnl": realized_pnl,
-                "position_id": pending_order.pending_order_id,
-                "close_type": "partial" if is_partial else "full"
             }
         )
 
@@ -1161,10 +1159,10 @@ class AbstractTradeExecutor(ABC):
         """
         for pending in self._active_limit_orders:
             if pending.pending_order_id == order_id:
-                return pending.in_flight_operation
+                return pending.execution_state.in_flight_operation
         for pending in self._active_stop_orders:
             if pending.pending_order_id == order_id:
-                return pending.in_flight_operation
+                return pending.execution_state.in_flight_operation
         return PendingOperation.NONE
 
     @abstractmethod
@@ -1330,7 +1328,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
-                submitted_at=p.submitted_at,
+                submitted_at=p.timing.submitted_at,
             )
             for p in self._active_limit_orders
         ]
@@ -1348,7 +1346,7 @@ class AbstractTradeExecutor(ABC):
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
                     'take_profit') if p.order_kwargs else None,
-                submitted_at=p.submitted_at,
+                submitted_at=p.timing.submitted_at,
             )
             for p in self._active_stop_orders
         ]
@@ -1367,11 +1365,11 @@ class AbstractTradeExecutor(ABC):
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
                 action=OrderAction.OPEN,
+                symbol=pending.symbol,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'limit',
                     'entry_price': pending.entry_price,
-                    'symbol': pending.symbol,
                 }
             )
             self._order_history.append(result)
@@ -1381,11 +1379,11 @@ class AbstractTradeExecutor(ABC):
                 status=OrderStatus.EXPIRED,
                 execution_time=datetime.now(timezone.utc),
                 action=OrderAction.OPEN,
+                symbol=pending.symbol,
                 metadata={
                     'reason': 'scenario_end',
                     'order_type': pending.order_type.value if pending.order_type else 'stop',
                     'entry_price': pending.entry_price,
-                    'symbol': pending.symbol,
                 }
             )
             self._order_history.append(result)
@@ -1564,7 +1562,7 @@ class AbstractTradeExecutor(ABC):
         fee_cost: float,
     ) -> None:
         """
-        Append a synthetic BrokerTrade to pending_order.trades (#326).
+        Append a synthetic BrokerTrade to pending_order.fills.trades (#326).
 
         Shared sim/live helper invoked from _fill_open_order when the order
         hasn't yet been enriched with per-execution data (no real broker
@@ -1612,4 +1610,4 @@ class AbstractTradeExecutor(ABC):
             side=trade_side,
             is_maker=is_maker,
         )
-        pending_order.append_trade(trade)
+        pending_order.fills.append_trade(trade)

@@ -123,7 +123,7 @@ class TestModifyContractParity:
         assert live_result.rejection_reason is None
 
     def test_in_flight_operation_set_in_both(self):
-        """After modify, target.in_flight_operation == PENDING_MODIFY in both."""
+        """After modify, target.execution_state.in_flight_operation == PENDING_MODIFY in both."""
         sim = _build_sim_executor()
         sim_id = _setup_sim_active_limit(sim)
         sim.modify_limit_order(order_id=sim_id, new_price=48000.0)
@@ -135,7 +135,7 @@ class TestModifyContractParity:
         live.modify_limit_order(order_id=live_id, new_price=48000.0)
         live_target = next(p for p in live._active_limit_orders if p.pending_order_id == live_id)
 
-        assert sim_target.in_flight_operation == live_target.in_flight_operation == PendingOperation.PENDING_MODIFY
+        assert sim_target.execution_state.in_flight_operation == live_target.execution_state.in_flight_operation == PendingOperation.PENDING_MODIFY
 
     def test_modify_applied_after_resolve_in_both(self):
         """After resolve, entry_price reflects new value in both pipelines."""
@@ -153,7 +153,7 @@ class TestModifyContractParity:
         live_target = next(p for p in live._active_limit_orders if p.pending_order_id == live_id)
 
         assert sim_target.entry_price == live_target.entry_price == 48000.0
-        assert sim_target.in_flight_operation == live_target.in_flight_operation == PendingOperation.NONE
+        assert sim_target.execution_state.in_flight_operation == live_target.execution_state.in_flight_operation == PendingOperation.NONE
 
     def test_busy_rejection_in_both(self):
         """Second modify while first is in-flight → OPERATION_BUSY in both pipelines."""
@@ -207,7 +207,7 @@ class TestCancelContractParity:
         assert sim_ok == live_ok == True
 
     def test_in_flight_pending_cancel_set_in_both(self):
-        """After cancel, target.in_flight_operation == PENDING_CANCEL in both."""
+        """After cancel, target.execution_state.in_flight_operation == PENDING_CANCEL in both."""
         sim = _build_sim_executor()
         sim_id = _setup_sim_active_limit(sim)
         sim.cancel_limit_order(order_id=sim_id)
@@ -219,7 +219,7 @@ class TestCancelContractParity:
         live.cancel_limit_order(order_id=live_id)
         live_target = next(p for p in live._active_limit_orders if p.pending_order_id == live_id)
 
-        assert sim_target.in_flight_operation == live_target.in_flight_operation == PendingOperation.PENDING_CANCEL
+        assert sim_target.execution_state.in_flight_operation == live_target.execution_state.in_flight_operation == PendingOperation.PENDING_CANCEL
 
     def test_cancel_removes_order_after_resolve_in_both(self):
         """After resolve, order is gone from _active_limit_orders in both pipelines."""

@@ -70,6 +70,24 @@ Every order passes through up to three distinct stages ("worlds") before becomin
 
 ---
 
+## PendingOrder Composition (#345)
+
+`PendingOrder` keeps its core identity + order parameters flat (`pending_order_id`,
+`order_action`, `order_type`, `broker_ref`, `symbol`, `direction`, `lots`, `entry_price`,
+`entry_time`, `order_kwargs`, `close_lots`) and composes the sub-concerns as named types
+(`latency_simulator_types.py`):
+
+| Sub-type | Field | Holds | Introduced by |
+|---|---|---|---|
+| `PendingOrderTiming` | `pending.timing` | `placed_at_msc`, `broker_fill_msc` (sim); `submitted_at`, `timeout_at` (live) | original |
+| `PendingOrderExecutionState` | `pending.execution_state` | `in_flight_operation`, `pending_modification`, `cancel_apply_at_msc`, `cancel_requested`, `in_flight_query`, `last_polled_at_ms` | #318, #320, #361 |
+| `PendingOrderFills` | `pending.fills` | `trades`, `cumulative_*` aggregates, `append_trade()` | #326 |
+| `SubmissionMetadata` | `pending.submission` | `tick_mid_price`, `tick_time_msc` at the submission moment | #340 |
+
+Access is namespaced: `pending.fills.cumulative_avg_price`,
+`pending.execution_state.in_flight_operation`, `pending.timing.broker_fill_msc`.
+New fields land in their sub-type — no further widening of the parent surface.
+
 ## World 1: Latency Queue
 
 **Storage:** `AbstractPendingOrderManager._pending_orders` (dict, keyed by `pending_order_id`)

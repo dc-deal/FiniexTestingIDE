@@ -23,6 +23,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
+from python.framework.validators.algo_clock_validator import collect_algo_clock_violations
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
@@ -52,7 +53,7 @@ class RequirementsCollector:
 
         # Shared factory — pre-flight class resolution only, no instantiation.
         # strict_parameter_validation is irrelevant here because the factory
-        # is only used via _resolve_worker_class(); per-scenario strict mode
+        # is only used via resolve_worker_class(); per-scenario strict mode
         # is re-applied later via worker_class.validate_parameter_schema().
         self._worker_factory = WorkerFactory(
             logger=self._logger,
@@ -72,6 +73,10 @@ class RequirementsCollector:
             strict_parameter_validation=False,
         )
         self._state_preflight_cache: Dict[str, Optional[str]] = {}
+        # #359 algo-clock pre-flight cache. Violations are a property of the
+        # SOURCE FILES (logic + workers), not of the config — keyed by
+        # (decision_logic_type, sorted worker types) only.
+        self._clock_preflight_cache: Dict[str, Optional[str]] = {}
 
         self._aggregate_requirements = AggregateScenarioDataRequirements(
             logger=self._logger,
@@ -86,11 +91,13 @@ class RequirementsCollector:
         """
         Validate market compatibility and collect requirements from all scenarios.
 
-        Two-step loop per scenario:
+        Per-scenario loop:
         1. Market compatibility check — each worker's required activity metric
            must match the broker's primary_activity_metric. Incompatible
            scenarios get a ValidationResult(is_valid=False) and are skipped.
-        2. Requirements aggregation — classmethod-based warmup calculation.
+        2. Algo state snapshot pre-flight (#354) — serializability check.
+        3. Algo clock pre-flight (#359) — wall-clock scan of algo sources.
+        4. Requirements aggregation — classmethod-based warmup calculation.
 
         Args:
             scenarios: List of scenarios to analyze
@@ -133,7 +140,23 @@ class RequirementsCollector:
                 ))
                 continue
 
-            # === STEP 3: Requirements aggregation ===
+            # === STEP 3: Algo clock pre-flight (#359) ===
+            # §9: decision logic & workers must never read wall-clock — the
+            # canonical clock is get_current_time(). Source-level AST scan of
+            # the loaded algo files (the only path that sees gitignored
+            # user_algos/). A violation excludes the scenario, batch continues.
+            clock_error = self._algo_clock_preflight(scenario)
+            if clock_error:
+                self._logger.error(f"❌ {scenario.name}: {clock_error}")
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[clock_error],
+                    warnings=[],
+                ))
+                continue
+
+            # === STEP 4: Requirements aggregation ===
             try:
                 warmup_reqs = self._aggregate_requirements.add_scenario(
                     scenario=scenario,
@@ -159,6 +182,66 @@ class RequirementsCollector:
         requirements_map = self._aggregate_requirements.finalize()
 
         return requirements_map
+
+    def _algo_clock_preflight(self, scenario: SingleScenario) -> Optional[str]:
+        """
+        Pre-flight the scenario's algo sources for wall-clock reads (#359).
+
+        Resolves the decision-logic class and every configured worker class
+        (class resolution only — no instantiation) and AST-scans their source
+        files for datetime.now() / datetime.utcnow() / time.time() calls (§9).
+        Cached per distinct (decision_logic_type, worker types) — violations
+        are a source-file property, independent of parameter config.
+
+        A resolution failure (unknown type, missing file) is a best-effort
+        skip — the regular pipeline validation reports those with full
+        context, so no false exclusion is produced here.
+
+        Args:
+            scenario: The scenario whose algo sources to pre-flight
+
+        Returns:
+            Error message if a wall-clock violation was found, else None
+        """
+        strategy = scenario.strategy_config or {}
+        logic_type = strategy.get('decision_logic_type', '')
+        worker_instances = strategy.get('worker_instances', {})
+        if not logic_type:
+            return None
+
+        cache_key = f"{logic_type}|{','.join(sorted(set(worker_instances.values())))}"
+        if cache_key in self._clock_preflight_cache:
+            return self._clock_preflight_cache[cache_key]
+
+        classes = []
+        try:
+            logic_class, logic_source = self._decision_logic_factory.resolve_logic_class(logic_type)
+            classes.append(logic_class)
+            # Relative USER worker refs resolve against the logic's source dir
+            # (same semantics as WorkerOrchestrator).
+            worker_base_path = logic_source.parent if logic_source else None
+            for worker_type in worker_instances.values():
+                worker_class, _ = self._worker_factory.resolve_worker_class(
+                    worker_type, base_path=worker_base_path)
+                classes.append(worker_class)
+        except Exception as e:
+            self._logger.debug(
+                f"Algo clock pre-flight skipped for '{logic_type}' "
+                f"(class resolution failed: {e})"
+            )
+            self._clock_preflight_cache[cache_key] = None
+            return None
+
+        violations = collect_algo_clock_violations(classes)
+        result: Optional[str] = None
+        if violations:
+            result = (
+                'Wall-clock read in decision logic / worker code — use '
+                'self.trading_api.get_current_time() (§9): ' + '; '.join(violations)
+            )
+
+        self._clock_preflight_cache[cache_key] = result
+        return result
 
     def _state_snapshot_preflight(self, scenario: SingleScenario) -> Optional[str]:
         """

@@ -43,6 +43,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
     PendingOrderOutcome,
+    PendingOrderTiming,
 )
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
 from python.framework.types.live_types.live_execution_types import (
@@ -66,6 +67,7 @@ from python.framework.types.trading_env_types.order_types import (
     create_rejection_result,
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -279,7 +281,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._request_processor.record_outcome(
                 filled, PendingOrderOutcome.FILLED, latency_ms=latency_ms)
 
-            # Call inherited fill processing (synthesizes pending.trades
+            # Call inherited fill processing (synthesizes pending.fills.trades
             # entry inside _fill_open_order/close_order if not yet populated)
             if filled.order_action == PendingOrderAction.OPEN:
                 self._fill_open_order(filled, fill_price=response.fill_price)
@@ -435,12 +437,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # FILLED-precedence: a fill wins over any deferred cancel (#361).
             self._active_limit_orders.remove(pending)
             self._fill_open_order(pending, fill_price=response.fill_price)
-        elif pending.cancel_requested:
+        elif pending.execution_state.cancel_requested:
             # Deferred cancel (#361): a cancel was requested while this submit was
             # in-flight (broker_ref=None). Now confirmed → issue it. The CancelResponse
             # resolves via _handle_cancel_response (removes from _active_limit_orders).
-            pending.cancel_requested = False
-            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.execution_state.cancel_requested = False
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             self._request_processor.submit_cancel_order_async(
                 order_id=order_id,
                 broker_ref=pending.broker_ref,
@@ -489,7 +491,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
             return
 
-        mod = pending.pending_modification
+        mod = pending.execution_state.pending_modification
 
         if response.is_rejected:
             self.logger.warning(
@@ -533,8 +535,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
 
         # Clear in-flight state in all cases (success or rejection)
-        pending.in_flight_operation = PendingOperation.NONE
-        pending.pending_modification = None
+        pending.execution_state.in_flight_operation = PendingOperation.NONE
+        pending.execution_state.pending_modification = None
 
     def _handle_cancel_response(
         self,
@@ -565,7 +567,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"Broker rejected cancel for {order_id}: "
                 f"{response.rejection_reason or 'unknown'} (cancel-race possible)"
             )
-            pending.in_flight_operation = PendingOperation.NONE
+            pending.execution_state.in_flight_operation = PendingOperation.NONE
             return
 
         # Success — remove from active list. No order_history append: the
@@ -577,7 +579,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         elif pending in self._active_stop_orders:
             self._active_stop_orders.remove(pending)
 
-        pending.in_flight_operation = PendingOperation.NONE
+        pending.execution_state.in_flight_operation = PendingOperation.NONE
         self.logger.info(
             f"❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})"
         )
@@ -672,7 +674,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             consumer: Function receiving (TradesQueryResponse). Read-only
                 contract — consumers MUST read from response.trades (immutable),
-                NOT from pending.trades (mutation-order-sensitive across the
+                NOT from pending.fills.trades (mutation-order-sensitive across the
                 executor's own logic).
         """
         self._trades_response_consumers.append(consumer)
@@ -683,7 +685,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         distribution flow anchor (see ISSUE_326 §8).
 
         Appends per-execution BrokerTrade records to the parent
-        PendingOrder.trades, updates cumulative_* aggregates. If the order
+        PendingOrder.fills.trades, updates cumulative_* aggregates. If the order
         is still in _active_limit_orders, finalizes the fill via
         _fill_open_order with the cumulative truth.
 
@@ -734,22 +736,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Append each broker trade — updates cumulative_*
             for trade in response.trades:
-                pending.append_trade(trade)
+                pending.fills.append_trade(trade)
 
             # Finalize the fill if cumulative volume populated (post-§8 distribution)
-            if pending.cumulative_filled_lots > 0:
+            if pending.fills.cumulative_filled_lots > 0:
                 self._active_limit_orders.remove(pending)
                 self._fill_open_order(
                     pending,
-                    fill_price=pending.cumulative_avg_price,
+                    fill_price=pending.fills.cumulative_avg_price,
                     entry_type=EntryType.LIMIT,
                     fill_type=FillType.LIMIT,
                 )
                 self.logger.info(
                     f"🎯 Order {pending.pending_order_id} filled via trades drain "
-                    f"at avg {pending.cumulative_avg_price:.5f} "
-                    f"({len(pending.trades)} trade(s), "
-                    f"cumulative_lots={pending.cumulative_filled_lots})"
+                    f"at avg {pending.fills.cumulative_avg_price:.5f} "
+                    f"({len(pending.fills.trades)} trade(s), "
+                    f"cumulative_lots={pending.fills.cumulative_filled_lots})"
                 )
         finally:
             # #327 — Multi-consumer fan-out. Always runs, regardless of
@@ -793,13 +795,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         for pending in self._active_limit_orders:
             if not pending.broker_ref:
                 continue
-            if pending.in_flight_query:
+            if pending.execution_state.in_flight_query:
                 continue
-            if now_ms - pending.last_polled_at_ms < self._poll_interval_ms:
+            if now_ms - pending.execution_state.last_polled_at_ms < self._poll_interval_ms:
                 continue
 
-            pending.last_polled_at_ms = now_ms
-            pending.in_flight_query = True
+            pending.execution_state.last_polled_at_ms = now_ms
+            pending.execution_state.in_flight_query = True
             self._request_processor.submit_query_order_async(
                 order_id=pending.pending_order_id,
                 broker_ref=pending.broker_ref,
@@ -810,7 +812,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Drain-inbox hook for QueryResponse (#320).
 
-        Always clears pending.in_flight_query first — the dispatched query is
+        Always clears pending.execution_state.in_flight_query first — the dispatched query is
         resolved regardless of the next steps. Then applies the stale-broker_ref
         guard (broker_ref may have flipped via EditOrder while the query was
         in flight); on stale, returns silently without state mutation. Otherwise
@@ -830,7 +832,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return
 
         # ALWAYS clear in_flight_query — query is resolved
-        pending.in_flight_query = False
+        pending.execution_state.in_flight_query = False
 
         # Stale-broker_ref guard: response is against a ref that's no longer
         # the authoritative one (Kraken EditOrder flipped it). Skip state
@@ -877,6 +879,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # ============================================
     # Order Submission (live-specific)
     # ============================================
+
+    def _current_submission(self) -> SubmissionMetadata:
+        """
+        Snapshot the current tick as submission metadata (#340/#345).
+
+        Returns:
+            SubmissionMetadata from the current tick, or empty when no tick
+            is in scope (cold-start, heartbeat-only path)
+        """
+        if self._current_tick is None:
+            return SubmissionMetadata()
+        return SubmissionMetadata(
+            tick_mid_price=self._current_tick.mid,
+            tick_time_msc=self._current_tick.time_msc,
+        )
 
     def open_order(self, request: OpenOrderRequest) -> OrderResult:
         """
@@ -945,8 +962,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 lots=request.lots,
                 broker_ref=None,
                 order_kwargs=order_kwargs,
-                submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-                submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+                submission=self._current_submission(),
             )
             self._request_processor.submit_open_order_async(
                 order_id=order_id,
@@ -962,12 +978,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 status=OrderStatus.PENDING,
                 position_id=None,
                 action=OrderAction.OPEN,
-                submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-                submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+                symbol=request.symbol,
+                direction=request.direction,
+                requested_lots=request.lots,
+                submission=self._current_submission(),
                 metadata={
-                    "symbol": request.symbol,
-                    "direction": request.direction.value,
-                    "lots": request.lots,
                     "broker_ref": None,
                 },
             )
@@ -987,7 +1002,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
             order_type=OrderType.LIMIT,
-            submitted_at=datetime.now(timezone.utc),
+            timing=PendingOrderTiming(submitted_at=datetime.now(timezone.utc)),
             broker_ref=None,
             symbol=request.symbol,
             direction=request.direction,
@@ -995,8 +1010,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             entry_price=request.price,
             entry_time=datetime.now(timezone.utc),
             order_kwargs=order_kwargs,
-            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+            submission=self._current_submission(),
         )
         self._active_limit_orders.append(pending)
 
@@ -1018,12 +1032,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             status=OrderStatus.PENDING,
             position_id=None,
             action=OrderAction.OPEN,
-            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+            symbol=request.symbol,
+            direction=request.direction,
+            requested_lots=request.lots,
+            submission=self._current_submission(),
             metadata={
-                "symbol": request.symbol,
-                "direction": request.direction.value,
-                "lots": request.lots,
                 "broker_ref": None,
             },
         )
@@ -1073,8 +1086,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             position_id=position_id,
             broker_ref=None,
             close_lots=close_lots,
-            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+            submission=self._current_submission(),
         )
         self._request_processor.submit_close_order_async(
             position_id=position_id,
@@ -1091,8 +1103,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             executed_lots=close_lots,
             execution_time=datetime.now(timezone.utc),
             action=OrderAction.CLOSE,
-            submission_tick_mid_price=self._current_tick.mid if self._current_tick else None,
-            submission_tick_time_msc=self._current_tick.time_msc if self._current_tick else None,
+            symbol=position.symbol,
+            direction=position.direction,
+            requested_lots=close_lots,
+            submission=self._current_submission(),
             metadata={"awaiting_fill": True, "broker_ref": None},
         )
 
@@ -1229,7 +1243,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 rejection_reason=ModificationRejectionReason.ORDER_NOT_CONFIRMED)
 
         # Busy check — one in-flight operation at a time
-        if target_pending.in_flight_operation != PendingOperation.NONE:
+        if target_pending.execution_state.in_flight_operation != PendingOperation.NONE:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
@@ -1248,8 +1262,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Mark in-flight on the target and store provisional values.
         # The drain handler (_handle_modify_response) consumes these on
         # successful response and applies them to entry_price / order_kwargs.
-        target_pending.in_flight_operation = PendingOperation.PENDING_MODIFY
-        target_pending.pending_modification = ModificationRequest(
+        target_pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
+        target_pending.execution_state.pending_modification = ModificationRequest(
             new_price=adapter_price,
             new_stop_loss=adapter_sl,
             new_take_profit=adapter_tp,
@@ -1327,7 +1341,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 success=False,
                 rejection_reason=ModificationRejectionReason.ORDER_NOT_CONFIRMED)
 
-        if target_pending.in_flight_operation != PendingOperation.NONE:
+        if target_pending.execution_state.in_flight_operation != PendingOperation.NONE:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
@@ -1351,8 +1365,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # for the drain handler to apply to order_kwargs['limit_price'].
         # #209 may extend EditJob with a dedicated new_limit_price slot if
         # MT5's ORDER_MODIFY differentiates the two prices.
-        target_pending.in_flight_operation = PendingOperation.PENDING_MODIFY
-        target_pending.pending_modification = ModificationRequest(
+        target_pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
+        target_pending.execution_state.pending_modification = ModificationRequest(
             new_price=adapter_stop,
             new_limit_price=adapter_limit,
             new_stop_loss=adapter_sl,
@@ -1405,17 +1419,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 # Submit still in-flight: defer the cancel (#361) — park the intent and
                 # auto-issue it once _handle_limit_submit_response confirms the broker_ref.
                 # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
-                pending.cancel_requested = True
+                pending.execution_state.cancel_requested = True
                 self.logger.debug(
                     f"[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight")
                 return True
-            if pending.in_flight_operation != PendingOperation.NONE:
+            if pending.execution_state.in_flight_operation != PendingOperation.NONE:
                 self.logger.debug(
                     f"[CANCEL_SKIP] order={order_id} reason=busy "
-                    f"op={pending.in_flight_operation.name} scheduled=0")
+                    f"op={pending.execution_state.in_flight_operation.name} scheduled=0")
                 return False  # busy
 
-            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             self._request_processor.submit_cancel_order_async(
                 order_id=order_id,
                 broker_ref=pending.broker_ref,
@@ -1454,10 +1468,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 continue
             if pending.broker_ref is None:
                 return False
-            if pending.in_flight_operation != PendingOperation.NONE:
+            if pending.execution_state.in_flight_operation != PendingOperation.NONE:
                 return False
 
-            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
             self._request_processor.submit_cancel_order_async(
                 order_id=order_id,
                 broker_ref=pending.broker_ref,
@@ -1518,9 +1532,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             Latency in ms, or None if submitted_at not set
         """
-        if pending.submitted_at is None:
+        if pending.timing.submitted_at is None:
             return None
-        elapsed = datetime.now(timezone.utc) - pending.submitted_at
+        elapsed = datetime.now(timezone.utc) - pending.timing.submitted_at
         return elapsed.total_seconds() * 1000
 
     # ============================================

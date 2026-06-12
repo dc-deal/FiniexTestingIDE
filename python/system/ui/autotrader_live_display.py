@@ -33,8 +33,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseType
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 

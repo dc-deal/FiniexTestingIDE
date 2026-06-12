@@ -4,7 +4,7 @@ Sim Trade Emission — Lifecycle Tests (#326)
 Asserts the sim-side BrokerTrade emission inside AbstractTradeExecutor's
 shared _fill_open_order / _fill_close_order paths:
 
-- After a MARKET fill, pending.trades has one BrokerTrade
+- After a MARKET fill, pending.fills.trades has one BrokerTrade
 - cumulative_filled_lots / cumulative_avg_price / cumulative_fee match the fill
 - is_maker is False for MARKET (taker), True for LIMIT (maker)
 - Close fills produce a second BrokerTrade on the close PendingOrder
@@ -59,7 +59,7 @@ class TestSimSyntheticTradeShape:
     the pending order at the moment of fill via a hook."""
 
     def test_synthesized_trade_matches_fill(self, sim_executor):
-        """Intercept _fill_open_order to capture pending.trades right after synthesis."""
+        """Intercept _fill_open_order to capture pending.fills.trades right after synthesis."""
         captured: list = []
         original_open_position = sim_executor.portfolio.open_position
 
@@ -69,9 +69,9 @@ class TestSimSyntheticTradeShape:
             for p in sim_executor._active_limit_orders + sim_executor._active_stop_orders:
                 if p.pending_order_id == order_id:
                     captured.append({
-                        'trades': list(p.trades),
-                        'cumulative_lots': p.cumulative_filled_lots,
-                        'cumulative_avg': p.cumulative_avg_price,
+                        'trades': list(p.fills.trades),
+                        'cumulative_lots': p.fills.cumulative_filled_lots,
+                        'cumulative_avg': p.fills.cumulative_avg_price,
                     })
                     break
             return original_open_position(*args, **kwargs)
@@ -86,7 +86,7 @@ class TestSimSyntheticTradeShape:
 
         def _record_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost):
             original_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost)
-            synth_trades.append(list(pending_order.trades))
+            synth_trades.append(list(pending_order.fills.trades))
 
         sim_executor._synthesize_pending_trade = _record_synth
 

@@ -14,15 +14,14 @@ and never reached active_limit_count == 0.
 from unittest.mock import MagicMock
 
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderExecutionState
 
 
 class _Order:
     def __init__(self, order_id: str, broker_ref: str = 'REF'):
         self.pending_order_id = order_id
         self.broker_ref = broker_ref
-        self.in_flight_operation = PendingOperation.NONE
-        self.in_flight_query = False
+        self.execution_state = PendingOrderExecutionState()
 
 
 class _FakeApi:

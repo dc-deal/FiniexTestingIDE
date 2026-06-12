@@ -27,6 +27,7 @@ from python.framework.types.live_types.live_request_types import TradesQueryResp
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
@@ -99,8 +100,10 @@ def _make_pending(
         lots=lots,
         entry_price=synthetic_avg_price,
         order_kwargs={},
-        submission_tick_mid_price=submission_tick_mid_price,
-        submission_tick_time_msc=submission_tick_time_msc,
+        submission=SubmissionMetadata(
+            tick_mid_price=submission_tick_mid_price,
+            tick_time_msc=submission_tick_time_msc,
+        ),
     )
     pending.broker_ref = broker_ref
     # Populate synthetic state — mirrors what _synthesize_pending_trade produces
@@ -116,7 +119,7 @@ def _make_pending(
         side=OrderDirection.LONG,
         is_maker=False,
     )
-    pending.append_trade(synthetic_trade)
+    pending.fills.append_trade(synthetic_trade)
     return pending
 
 

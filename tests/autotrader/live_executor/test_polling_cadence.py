@@ -98,7 +98,7 @@ class TestHeartbeat:
         # Force timeout: backdate timeout_at on every pending order
         past = datetime.now(timezone.utc) - timedelta(seconds=60)
         for pending in executor_timeout._request_processor.get_pending_orders():
-            pending.timeout_at = past
+            pending.timing.timeout_at = past
 
         rejected_before = executor_timeout.get_execution_stats().orders_rejected
         executor_timeout.heartbeat()
@@ -170,8 +170,8 @@ class TestThrottle:
 
         # Reset throttle so the first call dispatches deterministically
         for p in executor._active_limit_orders:
-            p.last_polled_at_ms = 0.0
-            p.in_flight_query = False
+            p.execution_state.last_polled_at_ms = 0.0
+            p.execution_state.in_flight_query = False
 
         # Many scheduler calls within < 1s
         for _ in range(50):
@@ -207,8 +207,8 @@ class TestThrottle:
         executor._request_processor.submit_query_order_async = _counting
 
         for p in executor._active_limit_orders:
-            p.last_polled_at_ms = 0.0
-            p.in_flight_query = False
+            p.execution_state.last_polled_at_ms = 0.0
+            p.execution_state.in_flight_query = False
 
         executor._process_active_orders()
         executor._request_processor.flush_outbox()
@@ -242,8 +242,8 @@ class TestThrottle:
         )
 
         for p in executor._active_limit_orders:
-            p.last_polled_at_ms = 0.0
-            p.in_flight_query = False
+            p.execution_state.last_polled_at_ms = 0.0
+            p.execution_state.in_flight_query = False
 
         executor._process_active_orders()
         executor._request_processor.flush_outbox()
@@ -284,8 +284,8 @@ class TestInFlightGuard:
 
         # Manually flip the in-flight bit AFTER confirmation but before the scheduler runs
         pending = executor._active_limit_orders[0]
-        pending.in_flight_query = True
-        pending.last_polled_at_ms = 0.0
+        pending.execution_state.in_flight_query = True
+        pending.execution_state.last_polled_at_ms = 0.0
 
         dispatches = []
         original = executor._request_processor.submit_query_order_async
@@ -317,7 +317,7 @@ class TestInFlightGuard:
 
         # TIMEOUT mode → PENDING — order remains, in_flight cleared
         assert len(executor._active_limit_orders) == 1
-        assert executor._active_limit_orders[0].in_flight_query is False
+        assert executor._active_limit_orders[0].execution_state.in_flight_query is False
 
     def test_in_flight_cleared_on_filled(self):
         """FILLED response → in_flight_query cleared as side effect; order removed."""
@@ -360,7 +360,7 @@ class TestInFlightGuard:
         pending = executor._active_limit_orders[0]
         order_id = pending.pending_order_id
         pending.broker_ref = 'NEW-REF'  # Simulate post-modify ref flip
-        pending.in_flight_query = True
+        pending.execution_state.in_flight_query = True
 
         stale = QueryResponse(
             order_id=order_id,
@@ -372,7 +372,7 @@ class TestInFlightGuard:
         executor._handle_query_response(stale)
 
         # in_flight cleared, but state untouched (order still active under NEW-REF)
-        assert pending.in_flight_query is False
+        assert pending.execution_state.in_flight_query is False
         assert pending in executor._active_limit_orders
 
 
@@ -442,7 +442,7 @@ class TestPartialFillPreservedBehavior:
         executor._request_processor.drain_inbox()
 
         pending = executor._active_limit_orders[0]
-        pending.in_flight_query = True
+        pending.execution_state.in_flight_query = True
 
         partial = QueryResponse(
             order_id=pending.pending_order_id,
@@ -455,5 +455,5 @@ class TestPartialFillPreservedBehavior:
         executor._handle_query_response(partial)
 
         assert pending in executor._active_limit_orders
-        assert pending.in_flight_query is False
+        assert pending.execution_state.in_flight_query is False
         assert len(executor.get_open_positions()) == 0

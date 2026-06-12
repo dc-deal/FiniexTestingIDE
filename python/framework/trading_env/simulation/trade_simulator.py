@@ -125,7 +125,7 @@ class TradeSimulator(AbstractTradeExecutor):
         # #318 — Async modify/cancel resolution state.
         #
         # Modify/cancel of orders in _active_limit_orders / _active_stop_orders
-        # is scheduled via the PendingOrder.in_flight_operation flag and resolved
+        # is scheduled via the PendingOrder.execution_state.in_flight_operation flag and resolved
         # in _resolve_pending_operations() at the start of each tick (Phase 0).
         # No separate index needed — the resolve loop iterates the active lists
         # directly and applies the modification or removes the cancelled order.
@@ -247,8 +247,8 @@ class TradeSimulator(AbstractTradeExecutor):
         for pending_order in filled_orders:
             # Latency = broker_fill_msc - placed_at_msc (planned delay in ms)
             latency_ms = None
-            if pending_order.broker_fill_msc is not None and pending_order.placed_at_msc is not None:
-                latency_ms = pending_order.broker_fill_msc - pending_order.placed_at_msc
+            if pending_order.timing.broker_fill_msc is not None and pending_order.timing.placed_at_msc is not None:
+                latency_ms = pending_order.timing.broker_fill_msc - pending_order.timing.placed_at_msc
 
             match pending_order.order_action:
                 case PendingOrderAction.OPEN:
@@ -426,10 +426,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.PENDING,
                 action=OrderAction.OPEN,
+                symbol=request.symbol,
+                direction=request.direction,
+                requested_lots=request.lots,
                 metadata={
-                    "symbol": request.symbol,
-                    "direction": request.direction,
-                    "lots": request.lots,
                     "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
             )
@@ -456,10 +456,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.PENDING,
                 action=OrderAction.OPEN,
+                symbol=request.symbol,
+                direction=request.direction,
+                requested_lots=request.lots,
                 metadata={
-                    "symbol": request.symbol,
-                    "direction": request.direction,
-                    "lots": request.lots,
                     "limit_price": request.price,
                     "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
@@ -486,10 +486,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.PENDING,
                 action=OrderAction.OPEN,
+                symbol=request.symbol,
+                direction=request.direction,
+                requested_lots=request.lots,
                 metadata={
-                    "symbol": request.symbol,
-                    "direction": request.direction,
-                    "lots": request.lots,
                     "stop_price": request.stop_price,
                     "submitted_at_tick": self._tick_counter  # tick index (for trade records)
                 }
@@ -525,10 +525,10 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 status=OrderStatus.PENDING,
                 action=OrderAction.OPEN,
+                symbol=request.symbol,
+                direction=request.direction,
+                requested_lots=request.lots,
                 metadata={
-                    "symbol": request.symbol,
-                    "direction": request.direction,
-                    "lots": request.lots,
                     "stop_price": request.stop_price,
                     "limit_price": request.price,
                     "submitted_at_tick": self._tick_counter  # tick index (for trade records)
@@ -593,9 +593,12 @@ class TradeSimulator(AbstractTradeExecutor):
             executed_lots=lots if lots else position.lots,
             execution_time=datetime.now(timezone.utc),
             commission=0.0,
+            position_id=position_id,
             action=OrderAction.CLOSE,
+            symbol=position.symbol,
+            direction=position.direction,
+            requested_lots=lots if lots else position.lots,
             metadata={
-                "position_id": position_id,
                 "awaiting_fill": True
             }
         )
@@ -706,14 +709,14 @@ class TradeSimulator(AbstractTradeExecutor):
         for pending in self._active_limit_orders:
             if pending.pending_order_id != order_id:
                 continue
-            if pending.in_flight_operation != PendingOperation.NONE:
+            if pending.execution_state.in_flight_operation != PendingOperation.NONE:
                 return False  # busy — another modify/cancel in flight
             current_msc = self._get_current_msc()
-            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
-            pending.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.execution_state.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
             self.logger.info(
                 f"❌ Limit order {order_id} cancel scheduled "
-                f"(apply_at_msc={pending.cancel_apply_at_msc})"
+                f"(apply_at_msc={pending.execution_state.cancel_apply_at_msc})"
             )
             return True
         return False
@@ -753,7 +756,7 @@ class TradeSimulator(AbstractTradeExecutor):
                 rejection_reason=ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND)
 
         # Busy check — #318 async pattern: one in-flight operation at a time
-        if pending.in_flight_operation != PendingOperation.NONE:
+        if pending.execution_state.in_flight_operation != PendingOperation.NONE:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
@@ -796,8 +799,8 @@ class TradeSimulator(AbstractTradeExecutor):
         # Effective values are captured here; resolve writes them as-is to the
         # PendingOrder. UNSET semantics are baked in via the merge above.
         current_msc = self._get_current_msc()
-        pending.in_flight_operation = PendingOperation.PENDING_MODIFY
-        pending.pending_modification = ModificationRequest(
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
+        pending.execution_state.pending_modification = ModificationRequest(
             new_price=effective_price,
             new_stop_loss=effective_sl,
             new_take_profit=effective_tp,
@@ -808,7 +811,7 @@ class TradeSimulator(AbstractTradeExecutor):
         self.logger.info(
             f"✏️ Limit order {order_id} modify scheduled — "
             f"price={effective_price:.5f}, sl={effective_sl}, tp={effective_tp} "
-            f"(apply_at_msc={pending.pending_modification.apply_at_msc})"
+            f"(apply_at_msc={pending.execution_state.pending_modification.apply_at_msc})"
         )
 
         return ModificationResult(
@@ -901,14 +904,14 @@ class TradeSimulator(AbstractTradeExecutor):
         for pending in self._active_stop_orders:
             if pending.pending_order_id != order_id:
                 continue
-            if pending.in_flight_operation != PendingOperation.NONE:
+            if pending.execution_state.in_flight_operation != PendingOperation.NONE:
                 return False  # busy
             current_msc = self._get_current_msc()
-            pending.in_flight_operation = PendingOperation.PENDING_CANCEL
-            pending.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
+            pending.execution_state.cancel_apply_at_msc = current_msc + self._modify_cancel_delay_msc
             self.logger.info(
                 f"❌ Stop order {order_id} cancel scheduled "
-                f"(apply_at_msc={pending.cancel_apply_at_msc})"
+                f"(apply_at_msc={pending.execution_state.cancel_apply_at_msc})"
             )
             return True
         return False
@@ -958,7 +961,7 @@ class TradeSimulator(AbstractTradeExecutor):
                 rejection_reason=ModificationRejectionReason.STOP_ORDER_NOT_FOUND)
 
         # Busy check — one in-flight operation at a time
-        if pending.in_flight_operation != PendingOperation.NONE:
+        if pending.execution_state.in_flight_operation != PendingOperation.NONE:
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.OPERATION_BUSY)
@@ -1020,8 +1023,8 @@ class TradeSimulator(AbstractTradeExecutor):
         # Schedule the modification — Phase 0 of next tick applies it.
         # Effective values captured here; resolve writes them as-is.
         current_msc = self._get_current_msc()
-        pending.in_flight_operation = PendingOperation.PENDING_MODIFY
-        pending.pending_modification = ModificationRequest(
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
+        pending.execution_state.pending_modification = ModificationRequest(
             new_price=effective_stop,
             new_limit_price=effective_limit if is_stop_limit else None,
             new_stop_loss=effective_sl,
@@ -1035,7 +1038,7 @@ class TradeSimulator(AbstractTradeExecutor):
             f"stop={effective_stop:.5f}, "
             f"{'limit=' + f'{effective_limit:.5f}, ' if is_stop_limit else ''}"
             f"sl={effective_sl}, tp={effective_tp} "
-            f"(apply_at_msc={pending.pending_modification.apply_at_msc})"
+            f"(apply_at_msc={pending.execution_state.pending_modification.apply_at_msc})"
         )
 
         return ModificationResult(
@@ -1158,18 +1161,18 @@ class TradeSimulator(AbstractTradeExecutor):
         ):
             to_cancel = []
             for pending in active_list:
-                if pending.in_flight_operation == PendingOperation.PENDING_MODIFY:
-                    mod = pending.pending_modification
+                if pending.execution_state.in_flight_operation == PendingOperation.PENDING_MODIFY:
+                    mod = pending.execution_state.pending_modification
                     if mod is not None and mod.apply_at_msc <= current_msc:
                         self._apply_pending_modification(pending)
-                elif pending.in_flight_operation == PendingOperation.PENDING_CANCEL:
-                    if pending.cancel_apply_at_msc is not None and pending.cancel_apply_at_msc <= current_msc:
+                elif pending.execution_state.in_flight_operation == PendingOperation.PENDING_CANCEL:
+                    if pending.execution_state.cancel_apply_at_msc is not None and pending.execution_state.cancel_apply_at_msc <= current_msc:
                         to_cancel.append(pending)
             # Remove cancelled orders after iteration to avoid mutation during loop
             for pending in to_cancel:
                 active_list.remove(pending)
-                pending.in_flight_operation = PendingOperation.NONE
-                pending.cancel_apply_at_msc = None
+                pending.execution_state.in_flight_operation = PendingOperation.NONE
+                pending.execution_state.cancel_apply_at_msc = None
                 self.logger.info(
                     f"❌ {list_name.capitalize()} order {pending.pending_order_id} "
                     f"cancellation resolved"
@@ -1201,7 +1204,7 @@ class TradeSimulator(AbstractTradeExecutor):
         - new_limit_price → order_kwargs['limit_price'] (STOP_LIMIT only)
         - new_stop_loss / new_take_profit → order_kwargs['stop_loss' / 'take_profit']
         """
-        mod = pending.pending_modification
+        mod = pending.execution_state.pending_modification
         if pending.order_kwargs is None:
             pending.order_kwargs = {}
 
@@ -1219,8 +1222,8 @@ class TradeSimulator(AbstractTradeExecutor):
         else:
             pending.order_kwargs['take_profit'] = mod.new_take_profit
 
-        pending.pending_modification = None
-        pending.in_flight_operation = PendingOperation.NONE
+        pending.execution_state.pending_modification = None
+        pending.execution_state.in_flight_operation = PendingOperation.NONE
 
         self.logger.info(
             f"✏️ Order {pending.pending_order_id} modification resolved — "

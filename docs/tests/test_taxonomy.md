@@ -81,7 +81,8 @@ tests/
 │   ├── user_namespace/    unit — USER worker/decision discovery
 │   ├── api/               unit — REST API endpoints
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
-│   └── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers); runtime validator → #359
+│   ├── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers, CI plane)
+│   └── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection

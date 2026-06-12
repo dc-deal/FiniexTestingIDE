@@ -3,7 +3,7 @@ Fixtures for sim trade emission tests (#326).
 
 Directly instantiates a TradeSimulator with zero-latency MockBrokerAdapter
 so MARKET orders fill on the first tick after open_order. Tests then inspect
-pending.trades and cumulative_* fields on the filled order.
+pending.fills.trades and cumulative_* fields on the filled order.
 """
 
 from datetime import datetime, timezone

@@ -205,7 +205,7 @@ class TestCoreRegistration:
         """Unknown CORE/ reference → ValueError, not a path load attempt."""
         factory = WorkerFactory(logger=mock_logger)
         with pytest.raises(ValueError, match="Unknown CORE worker"):
-            factory._resolve_worker_class('CORE/nonexistent_worker')
+            factory.resolve_worker_class('CORE/nonexistent_worker')
 
     def test_unknown_core_logic_raises(self, mock_logger):
         factory = DecisionLogicFactory(logger=mock_logger)

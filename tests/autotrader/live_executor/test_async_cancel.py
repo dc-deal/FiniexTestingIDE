@@ -3,7 +3,7 @@ Live Async Cancel Path — Regression Tests (#318)
 
 Locks down the shape of the async cancel lifecycle:
 - cancel_limit_order returns True (scheduled) immediately, NOT False-on-not-yet-cancelled
-- target.in_flight_operation = PENDING_CANCEL during the in-flight window
+- target.execution_state.in_flight_operation = PENDING_CANCEL during the in-flight window
 - drain_inbox removes the order from _active_limit_orders on success
 - Busy / not-confirmed / not-found / unsupported reject paths
 - Cancel-during-fill race handled (logged, in_flight cleared)
@@ -40,14 +40,14 @@ class TestCancelLimitOrderAsyncLifecycle:
         assert scheduled is True
 
     def test_in_flight_operation_set_during_window(self, mock_delayed, executor_delayed):
-        """After cancel_limit_order schedule, target.in_flight_operation == PENDING_CANCEL."""
+        """After cancel_limit_order schedule, target.execution_state.in_flight_operation == PENDING_CANCEL."""
         order_id = _submit_limit_and_confirm(mock_delayed, executor_delayed)
 
         executor_delayed.cancel_limit_order(order_id=order_id)
 
         target = next(p for p in executor_delayed._active_limit_orders
                       if p.pending_order_id == order_id)
-        assert target.in_flight_operation == PendingOperation.PENDING_CANCEL
+        assert target.execution_state.in_flight_operation == PendingOperation.PENDING_CANCEL
 
     def test_order_removed_from_active_after_drain(self, mock_delayed, executor_delayed):
         """Next feed_tick drains CancelResponse; order removed from _active_limit_orders."""
@@ -105,8 +105,8 @@ class TestCancelLimitOrderDeferred:
 
         scheduled = executor_delayed.cancel_limit_order(order_id=order_id)
         assert scheduled is True                       # accepted (deferred), not dropped
-        assert pending.cancel_requested is True
-        assert pending.in_flight_operation == PendingOperation.NONE  # not dispatched yet
+        assert pending.execution_state.cancel_requested is True
+        assert pending.execution_state.in_flight_operation == PendingOperation.NONE  # not dispatched yet
 
     def test_deferred_cancel_auto_issues_on_confirm_and_removes(self, mock_delayed, executor_delayed):
         """After the submit confirms, the parked cancel auto-fires and the order is removed."""
