@@ -51,7 +51,7 @@ class AbstractDecisionLogic(ABC):
     1. get_required_order_types() declares needed order types
     2. BatchOrchestrator validates against broker capabilities
     3. DecisionTradingApi is injected after validation
-    4. compute() generates decisions
+    4. compute_tick() / compute_heartbeat() generate decisions
     5. execute_decision() executes trades (Template Method)
        - Calls _execute_decision_impl() (subclass implements this)
        - Automatically updates statistics
@@ -281,27 +281,47 @@ class AbstractDecisionLogic(ABC):
         pass
 
     @abstractmethod
-    def compute(
+    def compute_tick(
         self,
-        tick: Optional[TickData],
+        tick: TickData,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
-        Generate trading decision based on worker results.
+        Generate trading decision for a real market tick (TICK pass-trigger).
 
         This is the core decision-making method. It receives all worker
-        outputs and must return a structured Decision object.
+        outputs and must return a structured Decision object. The tick is
+        guaranteed non-None — the heartbeat pass-trigger has its own handler
+        (compute_heartbeat), so no None-guards are needed here.
 
         Args:
-            tick: Current tick data
+            tick: Current tick data (never None)
             worker_results: Dict[worker_name, WorkerResult] - All worker outputs
-            current_bars: Current bars per timeframe
-            bar_history: Historical bars per timeframe
 
         Returns:
             Decision object with action/confidence/reason
         """
         pass
+
+    def compute_heartbeat(
+        self,
+        worker_results: Dict[str, WorkerResult],
+    ) -> Optional[Decision]:
+        """
+        Generate trading decision for an idle heartbeat (HEARTBEAT pass-trigger, #360).
+
+        Ghost-pass between ticks: workers do not recompute — worker_results
+        are their cached last outputs. No market tick exists; read time via
+        get_current_time() and prices from your own last-tick state. Only
+        called when wants_heartbeat() returns True — override both together.
+
+        Args:
+            worker_results: Cached worker outputs from the last tick pass
+
+        Returns:
+            Decision to execute with tick=None, or None for no ghost action
+        """
+        return None
 
     # ============================================
     # AwarenessChannel — ephemeral narration
@@ -316,7 +336,7 @@ class AbstractDecisionLogic(ABC):
         """
         Set the current awareness narration (single slot, last write wins).
 
-        Called in compute() to tell the operator what the algo is "thinking".
+        Called in compute_tick() to tell the operator what the algo is "thinking".
         NOT for structural rejections (those go through OrderGuard).
 
         Args:
@@ -406,7 +426,7 @@ class AbstractDecisionLogic(ABC):
 
         Override in subclass to subscribe to order/lifecycle events delivered
         between ticks via the on_* hooks. Default: no subscriptions (most
-        logics react only in compute()). The DecisionEventDispatcher only
+        logics react only in compute_tick()). The DecisionEventDispatcher only
         buffers and delivers the subscribed types — unsubscribed events cost
         nothing.
 

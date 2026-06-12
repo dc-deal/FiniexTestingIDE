@@ -24,18 +24,17 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
         │       ├── _process_pending_orders()         # LatencySimulator: drain tick-based queue
         │       └── _check_sl_tp_triggers(tick)       # Local price check on open positions
         │
+        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303) — all ticks, BEFORE the gate
+        │       └── Aggregate tick into OHLC bars     # (#293: bars reflect the full stream)
+        │
         ├── if tick.is_clipped: continue             # Clipping gate (budget active only)
         │
         │   ═══ ALGO PATH (non-clipped ticks only) ═══
         │
-        ├── 2. bar_rendering_controller.process_tick(tick)
-        │       └── Aggregate tick into OHLC bars
-        │
-        ├── 3. bar_history = bar_rendering_controller.get_all_bar_history(symbol)
-        │
-        ├── 4. worker_coordinator.process_tick(tick, current_bars, bar_history)
+        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        │       ├── bar_history retrieval
         │       ├── Workers compute indicators
-        │       └── decision_logic.compute(tick, worker_results) → Decision
+        │       └── decision_logic.compute_tick(tick, worker_results) → Decision
         │           └── Pure analysis: BUY / SELL / HOLD + metadata (no side effects)
         │
         ├── 5. decision_logic.execute_decision(decision, tick)
@@ -59,7 +58,7 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
 - Synchronous: each step completes before the next starts
 - SL/TP triggers checked locally (`_check_sl_tp_triggers`)
 - Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
-- `compute()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
+- `compute_tick()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
 - **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data preparation. The broker path (step 1) sees every tick — pending order fills, SL/TP triggers, and limit/stop monitoring operate on the full market data stream. The algo path (steps 2-6) skips clipped ticks via `continue`. When budget is disabled (default), `is_clipped` is always `False` and all ticks pass through both paths.
 - **Ghost-pass in simulated time (#360, opt-in):** for a decision that opts in via `wants_heartbeat()`, the loop drives ghost-passes in the simulated gap between two data ticks (`_run_sim_heartbeats`): every `heartbeat_interval_ms` it injects the simulated clock, resolves latency-queue fills at that moment (`TradeSimulator.heartbeat()` → `process_up_to_msc`), and runs `process_heartbeat()` → `execute_decision(tick=None)`. This gives the **same relative reaction point** as the live ghost-pass (sim/live parity). It is **hard-gated**: a non-opt-in decision (all current algos) sees no heartbeat path at all. A **correctness gate** suppresses ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a data/weekend gap the market says nothing. The clock is injected (sim = simulated time, deterministic) and never freezes to the last tick.
 
@@ -90,13 +89,12 @@ AutotraderTickLoop.run()
         │       ├── _process_pending_orders()         # LiveOrderTracker: poll broker for fills
         │       └── _check_sl_tp_triggers(tick)       # Live: broker handles SL/TP server-side (no-op)
         │
-        ├── 2. bar_controller.process_tick(tick)
+        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
         │
-        ├── 3. bar_history = bar_controller.get_all_bar_history(symbol)
-        │
-        ├── 4. worker_orchestrator.process_tick(tick, current_bars, bar_history)
+        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        │       ├── bar_history retrieval
         │       ├── Workers compute indicators
-        │       └── decision_logic.compute(tick, worker_results) → Decision
+        │       └── decision_logic.compute_tick(tick, worker_results) → Decision
         │
         ├── 5. safety check (circuit breaker)         # blocked → override decision to FLAT
         │
@@ -122,9 +120,26 @@ AutotraderTickLoop.run()
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
 - Idle handling (#360): a tick gap fires a timer event (`heartbeat_interval_ms`, default 1 s) — the single main-loop consumer advances the injected clock, re-polls active orders, reconciles, and runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker results, opt-in via `wants_heartbeat()`) so the algo reacts in ~1 s instead of waiting for the next tick. No second thread, no synthetic market tick, no tick-state mutation.
 - Canonical clock (#360): `get_current_time()` is loop-injected — the tick timestamp on a real tick, wall-clock on the heartbeat (sim: simulated time). It never freezes to the last tick, so phase/op timeouts track real elapsed time.
-- Same `compute()` → `execute_decision()` two-phase pattern
+- Same `compute_tick()` → `execute_decision()` two-phase pattern
 
 ---
+
+## Shared Tick Pipeline Core (#303)
+
+The identical algo-pipeline steps live in ONE implementation —
+`python/framework/process/tick_pipeline_core.py` — called by both runners, so
+ordering divergence (the #293 bug class) is impossible by construction:
+
+| Function | Steps | Called for |
+|---|---|---|
+| `render_bars_for_tick` | 2 — bar aggregation | every tick, BEFORE any gate |
+| `execute_algo_path` | 3–4 — bar history + worker/decision compute | non-clipped ticks |
+| `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
+
+Deliberately runner-specific (NOT in the shared core): the simulation clipping
+gate + per-step profiling, the live safety override / display / clipping
+monitor, step 5 `execute_decision` with its per-runner error handling, the
+#348 event-drain boundary, and clock injection (simulated vs wall-clock, #360).
 
 ## Side-by-Side Comparison
 

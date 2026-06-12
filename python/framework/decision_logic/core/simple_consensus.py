@@ -368,7 +368,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             "obv_volume": "CORE/obv"
         }
 
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],

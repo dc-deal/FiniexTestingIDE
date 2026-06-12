@@ -330,7 +330,7 @@ class WorkerOrchestrator:
         # Time decision logic execution
         decision_start = time.perf_counter()
 
-        decision = self.decision_logic.compute(
+        decision = self.decision_logic.compute_tick(
             tick=tick,
             worker_results=self._worker_results
         )
@@ -360,10 +360,11 @@ class WorkerOrchestrator:
         Run a decision ghost-pass for the idle heartbeat (#360).
 
         Workers do NOT recompute — their cached last results (_worker_results)
-        are forwarded as-is. The decision runs with tick=None so it can act
-        between ticks (advance state, react to drained events, issue follow-up
-        orders). Only logics that opt in via wants_heartbeat() are run; others
-        return None (no ghost-pass).
+        are forwarded as-is. The decision's compute_heartbeat handler runs (the
+        HEARTBEAT pass-trigger — no tick exists) so it can act between ticks
+        (advance state, react to drained events, issue follow-up orders). Only
+        logics that opt in via wants_heartbeat() are run; others return None
+        (no ghost-pass).
 
         Extension seam (#141): an API/EVENT worker that produces results off the
         tick signal (HTTP poll, WebSocket news) would refresh its result on the
@@ -379,10 +380,11 @@ class WorkerOrchestrator:
             return None
 
         decision_start = time.perf_counter()
-        decision = self.decision_logic.compute(
-            tick=None,
+        decision = self.decision_logic.compute_heartbeat(
             worker_results=self._worker_results
         )
+        if decision is None:
+            return None
         decision_time_ms = (time.perf_counter() - decision_start) * 1000
 
         if self.decision_logic.performance_logger:

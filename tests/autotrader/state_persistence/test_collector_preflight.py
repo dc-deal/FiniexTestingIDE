@@ -32,7 +32,7 @@ class _BaseStubLogic(AbstractDecisionLogic):
     def get_required_worker_instances(self) -> Dict[str, str]:
         return {}
 
-    def compute(self, tick, worker_results):
+    def compute_tick(self, tick, worker_results):
         return None
 
     def _execute_decision_impl(self, decision, tick):

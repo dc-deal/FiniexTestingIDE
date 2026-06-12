@@ -96,7 +96,7 @@ class {class_name}(AbstractDecisionLogic):
     def get_required_worker_instances(self) -> Dict[str, str]:
         return {{}}
 
-    def compute(self, tick, worker_results) -> Decision:
+    def compute_tick(self, tick, worker_results) -> Decision:
         return Decision(
             action=DecisionLogicAction.FLAT,
             outputs={{

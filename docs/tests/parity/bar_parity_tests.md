@@ -58,7 +58,7 @@ One trade parity test per pair, in the same file as the bar parity test.
 
 `MockBrokerAdapter` provides built-in `SymbolSpecification` for BTCUSD and ETHUSD.
 
-**Decision logic:** `BacktestingDeterministic` — LONG at tick 200, close at tick 700 (hold 500 ticks). `worker_orchestrator.process_tick.side_effect` forwards to `decision_logic.compute(tick, {})`.
+**Decision logic:** `BacktestingDeterministic` — LONG at tick 200, close at tick 700 (hold 500 ticks). `worker_orchestrator.process_tick.side_effect` forwards to `decision_logic.compute_tick(tick, {})`.
 
 **Assertions per pair:** bar identity (16 flat M1 bars) + trade identity (entry/exit price, close_reason) + portfolio identity (balance, P&L, trade count).
 

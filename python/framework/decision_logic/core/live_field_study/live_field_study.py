@@ -99,7 +99,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # JSONL recorder (bot plane) — injected + lifecycle-owned by the AutoTrader wiring.
         self._recorder: Optional[FieldStudyRecorder] = None
 
-        # Session guards (budget + wall-clock) — enforced in compute().
+        # Session guards (budget + wall-clock) — enforced on every machine advance.
         self._realized_cost = 0.0
         self._session_started_at: Optional[datetime] = None
         self._safe_abort_active = False
@@ -281,28 +281,44 @@ class LiveFieldStudy(AbstractDecisionLogic):
             )
 
     # ============================================
-    # Core: compute() drives the machine, execute() dispatches the action
+    # Core: compute()/compute_heartbeat() drive the machine, execute() dispatches the action
     # ============================================
 
-    def compute(
+    def compute_tick(
         self,
-        tick: Optional[TickData],
+        tick: TickData,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
-        self._ensure_machine()
+        self._symbol = tick.symbol
+        self._last_mid = (tick.bid + tick.ask) / 2.0
+        return self._advance_phase_machine(is_ghost=False)
 
-        # Resolve symbol + mid: from the tick on a real pass, from last-known
-        # state on a ghost-pass (tick=None, #360). A ghost-pass that lands before
-        # the first real tick has no market data — skip it.
-        if tick is not None:
-            self._symbol = tick.symbol
-            self._last_mid = (tick.bid + tick.ask) / 2.0
-        elif self._last_mid is None:
+    def compute_heartbeat(
+        self,
+        worker_results: Dict[str, WorkerResult],
+    ) -> Optional[Decision]:
+        # Ghost-pass (#360): drive the phase machine from last-known market
+        # state. A heartbeat that lands before the first real tick has no
+        # market data — emit the idle marker instead of advancing.
+        if self._last_mid is None:
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 outputs={'phase_id': 'heartbeat', 'phase_action': 'none',
                          'reason': 'heartbeat before first tick', 'price': 0.0},
             )
+        return self._advance_phase_machine(is_ghost=True)
+
+    def _advance_phase_machine(self, is_ghost: bool) -> Decision:
+        """
+        Drive the phase machine one advance — shared by both pass-triggers.
+
+        Args:
+            is_ghost: True on a heartbeat ghost-pass (trace source tagging)
+
+        Returns:
+            Decision carrying the phase action
+        """
+        self._ensure_machine()
         mid = self._last_mid
         symbol = self._symbol
 
@@ -342,7 +358,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         cur_phase = self._machine.get_current_phase_id()
 
         # Diagnostic trace (#13/#15 forensics): per-advance, tick vs ghost source.
-        self._trace_advance(tick, ctx, action, cur_phase)
+        self._trace_advance(is_ghost, ctx, action, cur_phase)
 
         self._log_new_results()
 
@@ -523,7 +539,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def _trace_advance(
         self,
-        tick: Optional[TickData],
+        is_ghost: bool,
         ctx: PhaseContext,
         action: PhaseAction,
         cur_phase: Optional[str],
@@ -536,12 +552,12 @@ class LiveFieldStudy(AbstractDecisionLogic):
         phase) — controlled, no per-pass spam.
 
         Args:
-            tick: The market tick (None = ghost-pass / heartbeat advance)
+            is_ghost: True on a heartbeat ghost-pass, False on a tick pass
             ctx: The PhaseContext the machine just consumed
             action: The PhaseAction the machine returned
             cur_phase: Current phase id after the advance
         """
-        src = 'ghost' if tick is None else 'tick'
+        src = 'ghost' if is_ghost else 'tick'
         state = self._machine.get_state()
         submit_time = self._machine.get_submit_time()
         age = f"{(ctx.now - submit_time).total_seconds():.1f}" if submit_time else "-1"

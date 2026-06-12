@@ -154,7 +154,7 @@ class MyDecision(AbstractDecisionLogic):
 `ALERT` (red, unusual conditions).
 
 **Rules:**
-- Call in `compute()`, not in `_execute_decision_impl()` — execution-layer
+- Call in `compute_tick()`, not in `_execute_decision_impl()` — execution-layer
   events (rejections, guard blocks) go through OrderGuard
 - Single slot: only the last call per tick is displayed
 - `reason_key` is optional but helps identify narration patterns
@@ -163,7 +163,7 @@ class MyDecision(AbstractDecisionLogic):
   `notify_awareness()`, the display keeps showing the last narration
   from a *previous* tick — typically the FLAT/"no signal" message —
   even though the current decision is different. Rule of thumb: each
-  `return Decision(...)` in `compute()` should be preceded by exactly
+  `return Decision(...)` in `compute_tick()` should be preceded by exactly
   one `notify_awareness()` call describing that path's state
   ("BUY mode", "SELL blocked — OBV bearish", "No consensus", etc.).
   Look at the CORE decision logics (`simple_consensus`, `aggressive_trend`,
@@ -185,7 +185,7 @@ self.emit_event(
 ```
 
 **Rules:**
-- Can be called from both `compute()` and `_execute_decision_impl()`
+- Can be called from both `compute_tick()` and `_execute_decision_impl()`
 - Same `AwarenessLevel` enum as `notify_awareness()` — controls display color
 - Log level is always `INFO` regardless of `AwarenessLevel`
 - Ring buffer size is configurable via `monitoring.event_tape_size` (default: 5)

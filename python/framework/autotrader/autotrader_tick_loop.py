@@ -21,6 +21,7 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.tick_pipeline_core import execute_algo_path, render_bars_for_tick, run_ghost_pass
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -267,19 +268,16 @@ class AutotraderTickLoop:
                 first_price = (tick.bid + tick.ask) / 2.0
                 self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
 
-            # === 2. Bar Rendering ===
-            current_bars = self._bar_controller.process_tick(tick)
+            # === 2. Bar Rendering (shared core, #303) ===
+            current_bars = render_bars_for_tick(tick, self._bar_controller)
 
-            # === 3. Bar History ===
-            bar_history = self._bar_controller.get_all_bar_history(
-                symbol=self._config.symbol
-            )
-
-            # === 4. Worker Processing + Decision ===
-            decision = self._worker_orchestrator.process_tick(
+            # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
+            decision = execute_algo_path(
                 tick=tick,
                 current_bars=current_bars,
-                bar_history=bar_history
+                bar_controller=self._bar_controller,
+                worker_orchestrator=self._worker_orchestrator,
+                symbol=self._config.symbol,
             )
 
             # === 4b. New-max debug logging ===
@@ -462,7 +460,7 @@ class AutotraderTickLoop:
         Args:
             ticks_processed: Current tick counter (unchanged on a ghost-pass)
         """
-        decision = self._worker_orchestrator.process_heartbeat()
+        decision = run_ghost_pass(self._worker_orchestrator)
         if decision is None:
             return
         self._ghost_pass_count += 1

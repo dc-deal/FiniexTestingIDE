@@ -1,0 +1,1896 @@
+{
+  "metadata": {
+    "report_type": "bar_index_report",
+    "generated_at": "2026-06-12T08:25:39.937273+00:00",
+    "data_directory": "data/processed",
+    "index_file": "data/processed/.parquet_bars_index.parquet",
+    "index_exists": true
+  },
+  "overview": {
+    "total_symbols": 16,
+    "total_timeframes": 112,
+    "total_bar_files": 112,
+    "total_bars": 3819793,
+    "total_size_mb": 89.66,
+    "total_tick_count": 1164698990,
+    "market_types": [
+      "crypto",
+      "forex"
+    ],
+    "timeframe_distribution": {
+      "D1": 16,
+      "H1": 16,
+      "H4": 16,
+      "M15": 16,
+      "M1": 16,
+      "M30": 16,
+      "M5": 16
+    },
+    "broker_types": [
+      "kraken_spot",
+      "mt5"
+    ]
+  },
+  "symbols": {
+    "kraken_spot/ADAUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "ADAUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 156133,
+      "total_size_mb": 5.7,
+      "total_tick_count": 4584692,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-06T08:53:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 103,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-06T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_D1_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 6358.8,
+          "min_ticks_per_bar": 964,
+          "max_ticks_per_bar": 22626,
+          "real_bar_count": 103
+        },
+        "H1": {
+          "bar_count": 2443,
+          "file_size_mb": 0.11,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-06T08:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_H1_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 268.09,
+          "min_ticks_per_bar": 30,
+          "max_ticks_per_bar": 4600,
+          "real_bar_count": 2443
+        },
+        "H4": {
+          "bar_count": 612,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-06T08:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_H4_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 1070.19,
+          "min_ticks_per_bar": 223,
+          "max_ticks_per_bar": 7504,
+          "real_bar_count": 612
+        },
+        "M1": {
+          "bar_count": 109242,
+          "file_size_mb": 3.74,
+          "start_time": "2026-01-24T14:22:00+00:00",
+          "end_time": "2026-05-06T08:53:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_M1_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 6.0,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1192,
+          "real_bar_count": 109242
+        },
+        "M15": {
+          "bar_count": 9760,
+          "file_size_mb": 0.42,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-06T08:45:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_M15_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 67.11,
+          "min_ticks_per_bar": 2,
+          "max_ticks_per_bar": 2868,
+          "real_bar_count": 9760
+        },
+        "M30": {
+          "bar_count": 4884,
+          "file_size_mb": 0.22,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-06T08:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_M30_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 134.1,
+          "min_ticks_per_bar": 5,
+          "max_ticks_per_bar": 3565,
+          "real_bar_count": 4884
+        },
+        "M5": {
+          "bar_count": 29089,
+          "file_size_mb": 1.17,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-06T08:50:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ADAUSD/ADAUSD_M5_BARS.parquet",
+          "total_tick_count": 654956,
+          "avg_ticks_per_bar": 22.52,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1962,
+          "real_bar_count": 29089
+        }
+      }
+    },
+    "kraken_spot/BTCUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "BTCUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 195978,
+      "total_size_mb": 7.31,
+      "total_tick_count": 43740438,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-08T13:34:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 105,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_D1_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 59510.8,
+          "min_ticks_per_bar": 10532,
+          "max_ticks_per_bar": 220963,
+          "real_bar_count": 105
+        },
+        "H1": {
+          "bar_count": 2496,
+          "file_size_mb": 0.12,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T13:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_H1_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 2503.46,
+          "min_ticks_per_bar": 413,
+          "max_ticks_per_bar": 26144,
+          "real_bar_count": 2496
+        },
+        "H4": {
+          "bar_count": 625,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-08T12:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_H4_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 9997.81,
+          "min_ticks_per_bar": 1889,
+          "max_ticks_per_bar": 60514,
+          "real_bar_count": 625
+        },
+        "M1": {
+          "bar_count": 147919,
+          "file_size_mb": 5.26,
+          "start_time": "2026-01-24T14:19:00+00:00",
+          "end_time": "2026-05-08T13:34:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_M1_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 42.24,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2648,
+          "real_bar_count": 147919
+        },
+        "M15": {
+          "bar_count": 9971,
+          "file_size_mb": 0.44,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-08T13:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_M15_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 626.68,
+          "min_ticks_per_bar": 34,
+          "max_ticks_per_bar": 10747,
+          "real_bar_count": 9971
+        },
+        "M30": {
+          "bar_count": 4990,
+          "file_size_mb": 0.22,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T13:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_M30_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 1252.23,
+          "min_ticks_per_bar": 51,
+          "max_ticks_per_bar": 18589,
+          "real_bar_count": 4990
+        },
+        "M5": {
+          "bar_count": 29872,
+          "file_size_mb": 1.23,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-08T13:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/BTCUSD/BTCUSD_M5_BARS.parquet",
+          "total_tick_count": 6248634,
+          "avg_ticks_per_bar": 209.18,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 4350,
+          "real_bar_count": 29872
+        }
+      }
+    },
+    "kraken_spot/DASHUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "DASHUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 89790,
+      "total_size_mb": 3.06,
+      "total_tick_count": 2073414,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-04T22:51:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 101,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-04T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_D1_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 2932.69,
+          "min_ticks_per_bar": 632,
+          "max_ticks_per_bar": 14627,
+          "real_bar_count": 101
+        },
+        "H1": {
+          "bar_count": 2409,
+          "file_size_mb": 0.11,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-04T22:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_H1_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 122.96,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1740,
+          "real_bar_count": 2409
+        },
+        "H4": {
+          "bar_count": 603,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-04T20:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_H4_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 491.21,
+          "min_ticks_per_bar": 33,
+          "max_ticks_per_bar": 4733,
+          "real_bar_count": 603
+        },
+        "M1": {
+          "bar_count": 50508,
+          "file_size_mb": 1.58,
+          "start_time": "2026-01-24T14:22:00+00:00",
+          "end_time": "2026-05-04T22:51:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_M1_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 5.86,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 384,
+          "real_bar_count": 50508
+        },
+        "M15": {
+          "bar_count": 9208,
+          "file_size_mb": 0.36,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-04T22:45:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_M15_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 32.17,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 822,
+          "real_bar_count": 9208
+        },
+        "M30": {
+          "bar_count": 4788,
+          "file_size_mb": 0.2,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-04T22:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_M30_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 61.86,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1179,
+          "real_bar_count": 4788
+        },
+        "M5": {
+          "bar_count": 22173,
+          "file_size_mb": 0.77,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-04T22:50:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/DASHUSD/DASHUSD_M5_BARS.parquet",
+          "total_tick_count": 296202,
+          "avg_ticks_per_bar": 13.36,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 547,
+          "real_bar_count": 22173
+        }
+      }
+    },
+    "kraken_spot/ETHEUR": {
+      "broker_type": "kraken_spot",
+      "symbol": "ETHEUR",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 189020,
+      "total_size_mb": 6.44,
+      "total_tick_count": 10470747,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-07T02:53:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 104,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-07T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_D1_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 14382.89,
+          "min_ticks_per_bar": 993,
+          "max_ticks_per_bar": 51502,
+          "real_bar_count": 104
+        },
+        "H1": {
+          "bar_count": 2461,
+          "file_size_mb": 0.11,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-07T02:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_H1_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 607.81,
+          "min_ticks_per_bar": 78,
+          "max_ticks_per_bar": 7950,
+          "real_bar_count": 2461
+        },
+        "H4": {
+          "bar_count": 616,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-07T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_H4_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 2428.28,
+          "min_ticks_per_bar": 531,
+          "max_ticks_per_bar": 18173,
+          "real_bar_count": 616
+        },
+        "M1": {
+          "bar_count": 141632,
+          "file_size_mb": 4.5,
+          "start_time": "2026-01-24T14:19:00+00:00",
+          "end_time": "2026-05-07T02:53:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_M1_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 10.56,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2282,
+          "real_bar_count": 141632
+        },
+        "M15": {
+          "bar_count": 9832,
+          "file_size_mb": 0.42,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-07T02:45:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_M15_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 152.14,
+          "min_ticks_per_bar": 7,
+          "max_ticks_per_bar": 4401,
+          "real_bar_count": 9832
+        },
+        "M30": {
+          "bar_count": 4920,
+          "file_size_mb": 0.22,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-07T02:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_M30_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 304.03,
+          "min_ticks_per_bar": 9,
+          "max_ticks_per_bar": 5646,
+          "real_bar_count": 4920
+        },
+        "M5": {
+          "bar_count": 29455,
+          "file_size_mb": 1.15,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-07T02:50:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHEUR/ETHEUR_M5_BARS.parquet",
+          "total_tick_count": 1495821,
+          "avg_ticks_per_bar": 50.78,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2500,
+          "real_bar_count": 29455
+        }
+      }
+    },
+    "kraken_spot/ETHUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "ETHUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 195845,
+      "total_size_mb": 6.71,
+      "total_tick_count": 18866638,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-08T20:32:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 105,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_D1_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 25668.9,
+          "min_ticks_per_bar": 4792,
+          "max_ticks_per_bar": 88452,
+          "real_bar_count": 105
+        },
+        "H1": {
+          "bar_count": 2503,
+          "file_size_mb": 0.12,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_H1_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 1076.8,
+          "min_ticks_per_bar": 151,
+          "max_ticks_per_bar": 13732,
+          "real_bar_count": 2503
+        },
+        "H4": {
+          "bar_count": 627,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_H4_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 4298.62,
+          "min_ticks_per_bar": 509,
+          "max_ticks_per_bar": 28394,
+          "real_bar_count": 627
+        },
+        "M1": {
+          "bar_count": 147652,
+          "file_size_mb": 4.72,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-08T20:32:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_M1_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 18.25,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2069,
+          "real_bar_count": 147652
+        },
+        "M15": {
+          "bar_count": 10000,
+          "file_size_mb": 0.43,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_M15_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 269.52,
+          "min_ticks_per_bar": 2,
+          "max_ticks_per_bar": 9091,
+          "real_bar_count": 10000
+        },
+        "M30": {
+          "bar_count": 5004,
+          "file_size_mb": 0.22,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_M30_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 538.62,
+          "min_ticks_per_bar": 20,
+          "max_ticks_per_bar": 12184,
+          "real_bar_count": 5004
+        },
+        "M5": {
+          "bar_count": 29954,
+          "file_size_mb": 1.18,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/ETHUSD/ETHUSD_M5_BARS.parquet",
+          "total_tick_count": 2695234,
+          "avg_ticks_per_bar": 89.98,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 4482,
+          "real_bar_count": 29954
+        }
+      }
+    },
+    "kraken_spot/LTCUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "LTCUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 165647,
+      "total_size_mb": 3.89,
+      "total_tick_count": 3914400,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-03T05:25:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 100,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-03T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_D1_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 5592.0,
+          "min_ticks_per_bar": 1002,
+          "max_ticks_per_bar": 13193,
+          "real_bar_count": 100
+        },
+        "H1": {
+          "bar_count": 2368,
+          "file_size_mb": 0.07,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-03T05:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_H1_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 236.15,
+          "min_ticks_per_bar": 29,
+          "max_ticks_per_bar": 3324,
+          "real_bar_count": 2368
+        },
+        "H4": {
+          "bar_count": 593,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-03T04:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_H4_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 943.0,
+          "min_ticks_per_bar": 235,
+          "max_ticks_per_bar": 4573,
+          "real_bar_count": 593
+        },
+        "M1": {
+          "bar_count": 120090,
+          "file_size_mb": 2.73,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-03T05:25:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_M1_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 4.66,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 602,
+          "real_bar_count": 120090
+        },
+        "M15": {
+          "bar_count": 9458,
+          "file_size_mb": 0.25,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-03T05:15:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_M15_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 59.12,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1795,
+          "real_bar_count": 9458
+        },
+        "M30": {
+          "bar_count": 4733,
+          "file_size_mb": 0.13,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-03T05:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_M30_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 118.15,
+          "min_ticks_per_bar": 5,
+          "max_ticks_per_bar": 2257,
+          "real_bar_count": 4733
+        },
+        "M5": {
+          "bar_count": 28305,
+          "file_size_mb": 0.67,
+          "start_time": "2026-01-24T14:20:00+00:00",
+          "end_time": "2026-05-03T05:25:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/LTCUSD/LTCUSD_M5_BARS.parquet",
+          "total_tick_count": 559200,
+          "avg_ticks_per_bar": 19.76,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1035,
+          "real_bar_count": 28305
+        }
+      }
+    },
+    "kraken_spot/SOLUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "SOLUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 194605,
+      "total_size_mb": 4.87,
+      "total_tick_count": 15948212,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-08T06:36:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 105,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_D1_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 21698.25,
+          "min_ticks_per_bar": 3532,
+          "max_ticks_per_bar": 70589,
+          "real_bar_count": 105
+        },
+        "H1": {
+          "bar_count": 2489,
+          "file_size_mb": 0.09,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T06:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_H1_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 915.35,
+          "min_ticks_per_bar": 120,
+          "max_ticks_per_bar": 15771,
+          "real_bar_count": 2489
+        },
+        "H4": {
+          "bar_count": 623,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-08T04:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_H4_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 3657.01,
+          "min_ticks_per_bar": 918,
+          "max_ticks_per_bar": 26861,
+          "real_bar_count": 623
+        },
+        "M1": {
+          "bar_count": 146679,
+          "file_size_mb": 3.52,
+          "start_time": "2026-01-24T14:19:00+00:00",
+          "end_time": "2026-05-08T06:36:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_M1_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 15.53,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1788,
+          "real_bar_count": 146679
+        },
+        "M15": {
+          "bar_count": 9943,
+          "file_size_mb": 0.29,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-08T06:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_M15_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 229.14,
+          "min_ticks_per_bar": 3,
+          "max_ticks_per_bar": 6455,
+          "real_bar_count": 9943
+        },
+        "M30": {
+          "bar_count": 4976,
+          "file_size_mb": 0.16,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-08T06:30:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_M30_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 457.86,
+          "min_ticks_per_bar": 36,
+          "max_ticks_per_bar": 11239,
+          "real_bar_count": 4976
+        },
+        "M5": {
+          "bar_count": 29790,
+          "file_size_mb": 0.77,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-08T06:35:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/SOLUSD/SOLUSD_M5_BARS.parquet",
+          "total_tick_count": 2278316,
+          "avg_ticks_per_bar": 76.48,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 3457,
+          "real_bar_count": 29790
+        }
+      }
+    },
+    "kraken_spot/XRPUSD": {
+      "broker_type": "kraken_spot",
+      "symbol": "XRPUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 192085,
+      "total_size_mb": 6.05,
+      "total_tick_count": 15251208,
+      "time_range": {
+        "start": "2026-01-24T00:00:00+00:00",
+        "end": "2026-05-07T06:10:00+00:00"
+      },
+      "market_type": "crypto",
+      "data_source": "kraken_spot",
+      "source_version": {
+        "min": "1.0.5",
+        "max": "1.3.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 104,
+          "file_size_mb": 0.01,
+          "start_time": "2026-01-24T00:00:00+00:00",
+          "end_time": "2026-05-07T00:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_D1_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 20949.46,
+          "min_ticks_per_bar": 3798,
+          "max_ticks_per_bar": 118172,
+          "real_bar_count": 104
+        },
+        "H1": {
+          "bar_count": 2465,
+          "file_size_mb": 0.11,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-07T06:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_H1_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 883.87,
+          "min_ticks_per_bar": 126,
+          "max_ticks_per_bar": 13137,
+          "real_bar_count": 2465
+        },
+        "H4": {
+          "bar_count": 617,
+          "file_size_mb": 0.03,
+          "start_time": "2026-01-24T12:00:00+00:00",
+          "end_time": "2026-05-07T04:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_H4_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 3531.19,
+          "min_ticks_per_bar": 726,
+          "max_ticks_per_bar": 33795,
+          "real_bar_count": 617
+        },
+        "M1": {
+          "bar_count": 144629,
+          "file_size_mb": 4.23,
+          "start_time": "2026-01-24T14:19:00+00:00",
+          "end_time": "2026-05-07T06:10:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_M1_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 15.06,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1999,
+          "real_bar_count": 144629
+        },
+        "M15": {
+          "bar_count": 9845,
+          "file_size_mb": 0.4,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-07T06:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_M15_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 221.3,
+          "min_ticks_per_bar": 8,
+          "max_ticks_per_bar": 5024,
+          "real_bar_count": 9845
+        },
+        "M30": {
+          "bar_count": 4927,
+          "file_size_mb": 0.21,
+          "start_time": "2026-01-24T14:00:00+00:00",
+          "end_time": "2026-05-07T06:00:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_M30_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 442.2,
+          "min_ticks_per_bar": 22,
+          "max_ticks_per_bar": 8220,
+          "real_bar_count": 4927
+        },
+        "M5": {
+          "bar_count": 29498,
+          "file_size_mb": 1.06,
+          "start_time": "2026-01-24T14:15:00+00:00",
+          "end_time": "2026-05-07T06:10:00+00:00",
+          "file_path": "/app/data/processed/kraken_spot/bars/XRPUSD/XRPUSD_M5_BARS.parquet",
+          "total_tick_count": 2178744,
+          "avg_ticks_per_bar": 73.86,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 4140,
+          "real_bar_count": 29498
+        }
+      }
+    },
+    "mt5/AUDUSD": {
+      "broker_type": "mt5",
+      "symbol": "AUDUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 309512,
+      "total_size_mb": 5.87,
+      "total_tick_count": 137533781,
+      "time_range": {
+        "start": "2025-09-17T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 201,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-17T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_D1_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 97749.67,
+          "min_ticks_per_bar": 2054,
+          "max_ticks_per_bar": 272547,
+          "real_bar_count": 201
+        },
+        "H1": {
+          "bar_count": 3916,
+          "file_size_mb": 0.14,
+          "start_time": "2025-09-17T17:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_H1_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 5017.28,
+          "min_ticks_per_bar": 60,
+          "max_ticks_per_bar": 21861,
+          "real_bar_count": 3916
+        },
+        "H4": {
+          "bar_count": 1016,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-17T16:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_H4_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 19338.27,
+          "min_ticks_per_bar": 745,
+          "max_ticks_per_bar": 72403,
+          "real_bar_count": 1016
+        },
+        "M1": {
+          "bar_count": 233960,
+          "file_size_mb": 3.93,
+          "start_time": "2025-09-17T17:58:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_M1_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 83.98,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 450,
+          "real_bar_count": 233960
+        },
+        "M15": {
+          "bar_count": 15653,
+          "file_size_mb": 0.45,
+          "start_time": "2025-09-17T17:45:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_M15_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 1255.2,
+          "min_ticks_per_bar": 22,
+          "max_ticks_per_bar": 5892,
+          "real_bar_count": 15653
+        },
+        "M30": {
+          "bar_count": 7829,
+          "file_size_mb": 0.26,
+          "start_time": "2025-09-17T17:30:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_M30_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 2509.6,
+          "min_ticks_per_bar": 60,
+          "max_ticks_per_bar": 11220,
+          "real_bar_count": 7829
+        },
+        "M5": {
+          "bar_count": 46937,
+          "file_size_mb": 1.04,
+          "start_time": "2025-09-17T17:55:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/AUDUSD/AUDUSD_M5_BARS.parquet",
+          "total_tick_count": 19647683,
+          "avg_ticks_per_bar": 418.6,
+          "min_ticks_per_bar": 2,
+          "max_ticks_per_bar": 2049,
+          "real_bar_count": 46937
+        }
+      }
+    },
+    "mt5/EURGBP": {
+      "broker_type": "mt5",
+      "symbol": "EURGBP",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 305539,
+      "total_size_mb": 5.12,
+      "total_tick_count": 109106690,
+      "time_range": {
+        "start": "2025-09-21T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 198,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-21T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_D1_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 78720.56,
+          "min_ticks_per_bar": 2455,
+          "max_ticks_per_bar": 177493,
+          "real_bar_count": 198
+        },
+        "H1": {
+          "bar_count": 3864,
+          "file_size_mb": 0.12,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_H1_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 4033.82,
+          "min_ticks_per_bar": 94,
+          "max_ticks_per_bar": 14364,
+          "real_bar_count": 3864
+        },
+        "H4": {
+          "bar_count": 1002,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-21T20:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_H4_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 15555.56,
+          "min_ticks_per_bar": 974,
+          "max_ticks_per_bar": 45717,
+          "real_bar_count": 1002
+        },
+        "M1": {
+          "bar_count": 230972,
+          "file_size_mb": 3.56,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_M1_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 67.48,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 300,
+          "real_bar_count": 230972
+        },
+        "M15": {
+          "bar_count": 15448,
+          "file_size_mb": 0.35,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_M15_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 1008.98,
+          "min_ticks_per_bar": 24,
+          "max_ticks_per_bar": 3870,
+          "real_bar_count": 15448
+        },
+        "M30": {
+          "bar_count": 7726,
+          "file_size_mb": 0.2,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_M30_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 2017.43,
+          "min_ticks_per_bar": 85,
+          "max_ticks_per_bar": 7313,
+          "real_bar_count": 7726
+        },
+        "M5": {
+          "bar_count": 46329,
+          "file_size_mb": 0.84,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURGBP/EURGBP_M5_BARS.parquet",
+          "total_tick_count": 15586670,
+          "avg_ticks_per_bar": 336.43,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1469,
+          "real_bar_count": 46329
+        }
+      }
+    },
+    "mt5/EURUSD": {
+      "broker_type": "mt5",
+      "symbol": "EURUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 290390,
+      "total_size_mb": 5.39,
+      "total_tick_count": 127078525,
+      "time_range": {
+        "start": "2025-09-17T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 189,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-17T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_D1_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 96053.31,
+          "min_ticks_per_bar": 2437,
+          "max_ticks_per_bar": 240423,
+          "real_bar_count": 189
+        },
+        "H1": {
+          "bar_count": 3676,
+          "file_size_mb": 0.13,
+          "start_time": "2025-09-17T17:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_H1_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 4938.54,
+          "min_ticks_per_bar": 108,
+          "max_ticks_per_bar": 20352,
+          "real_bar_count": 3676
+        },
+        "H4": {
+          "bar_count": 954,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-17T16:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_H4_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 19029.43,
+          "min_ticks_per_bar": 916,
+          "max_ticks_per_bar": 66568,
+          "real_bar_count": 954
+        },
+        "M1": {
+          "bar_count": 219478,
+          "file_size_mb": 3.65,
+          "start_time": "2025-09-17T17:58:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_M1_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 82.71,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 496,
+          "real_bar_count": 219478
+        },
+        "M15": {
+          "bar_count": 14693,
+          "file_size_mb": 0.4,
+          "start_time": "2025-09-17T17:45:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_M15_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 1235.56,
+          "min_ticks_per_bar": 12,
+          "max_ticks_per_bar": 6013,
+          "real_bar_count": 14693
+        },
+        "M30": {
+          "bar_count": 7349,
+          "file_size_mb": 0.23,
+          "start_time": "2025-09-17T17:30:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_M30_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 2470.28,
+          "min_ticks_per_bar": 48,
+          "max_ticks_per_bar": 10262,
+          "real_bar_count": 7349
+        },
+        "M5": {
+          "bar_count": 44051,
+          "file_size_mb": 0.93,
+          "start_time": "2025-09-17T17:55:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/EURUSD/EURUSD_M5_BARS.parquet",
+          "total_tick_count": 18154075,
+          "avg_ticks_per_bar": 412.11,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2328,
+          "real_bar_count": 44051
+        }
+      }
+    },
+    "mt5/GBPUSD": {
+      "broker_type": "mt5",
+      "symbol": "GBPUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 309250,
+      "total_size_mb": 6.0,
+      "total_tick_count": 172807236,
+      "time_range": {
+        "start": "2025-09-17T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 201,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-17T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_D1_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 122819.64,
+          "min_ticks_per_bar": 3585,
+          "max_ticks_per_bar": 278070,
+          "real_bar_count": 201
+        },
+        "H1": {
+          "bar_count": 3916,
+          "file_size_mb": 0.14,
+          "start_time": "2025-09-17T17:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_H1_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 6304.07,
+          "min_ticks_per_bar": 104,
+          "max_ticks_per_bar": 22261,
+          "real_bar_count": 3916
+        },
+        "H4": {
+          "bar_count": 1016,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-17T16:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_H4_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 24297.98,
+          "min_ticks_per_bar": 1674,
+          "max_ticks_per_bar": 74532,
+          "real_bar_count": 1016
+        },
+        "M1": {
+          "bar_count": 233711,
+          "file_size_mb": 4.04,
+          "start_time": "2025-09-17T17:58:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_M1_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 105.63,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 543,
+          "real_bar_count": 233711
+        },
+        "M15": {
+          "bar_count": 15653,
+          "file_size_mb": 0.45,
+          "start_time": "2025-09-17T17:45:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_M15_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 1577.13,
+          "min_ticks_per_bar": 13,
+          "max_ticks_per_bar": 6045,
+          "real_bar_count": 15653
+        },
+        "M30": {
+          "bar_count": 7829,
+          "file_size_mb": 0.26,
+          "start_time": "2025-09-17T17:30:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_M30_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 3153.24,
+          "min_ticks_per_bar": 42,
+          "max_ticks_per_bar": 11313,
+          "real_bar_count": 7829
+        },
+        "M5": {
+          "bar_count": 46924,
+          "file_size_mb": 1.06,
+          "start_time": "2025-09-17T17:55:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/GBPUSD/GBPUSD_M5_BARS.parquet",
+          "total_tick_count": 24686748,
+          "avg_ticks_per_bar": 526.1,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2435,
+          "real_bar_count": 46924
+        }
+      }
+    },
+    "mt5/NZDUSD": {
+      "broker_type": "mt5",
+      "symbol": "NZDUSD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 305470,
+      "total_size_mb": 5.54,
+      "total_tick_count": 94341394,
+      "time_range": {
+        "start": "2025-09-21T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 198,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-21T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_D1_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 68067.38,
+          "min_ticks_per_bar": 1745,
+          "max_ticks_per_bar": 195948,
+          "real_bar_count": 198
+        },
+        "H1": {
+          "bar_count": 3864,
+          "file_size_mb": 0.13,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_H1_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 3487.92,
+          "min_ticks_per_bar": 69,
+          "max_ticks_per_bar": 15843,
+          "real_bar_count": 3864
+        },
+        "H4": {
+          "bar_count": 1002,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-21T20:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_H4_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 13450.44,
+          "min_ticks_per_bar": 770,
+          "max_ticks_per_bar": 54762,
+          "real_bar_count": 1002
+        },
+        "M1": {
+          "bar_count": 230906,
+          "file_size_mb": 3.75,
+          "start_time": "2025-09-21T21:02:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_M1_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 58.37,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 297,
+          "real_bar_count": 230906
+        },
+        "M15": {
+          "bar_count": 15448,
+          "file_size_mb": 0.41,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_M15_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 872.43,
+          "min_ticks_per_bar": 13,
+          "max_ticks_per_bar": 4175,
+          "real_bar_count": 15448
+        },
+        "M30": {
+          "bar_count": 7726,
+          "file_size_mb": 0.24,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_M30_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 1744.41,
+          "min_ticks_per_bar": 54,
+          "max_ticks_per_bar": 8043,
+          "real_bar_count": 7726
+        },
+        "M5": {
+          "bar_count": 46326,
+          "file_size_mb": 0.96,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/NZDUSD/NZDUSD_M5_BARS.parquet",
+          "total_tick_count": 13477342,
+          "avg_ticks_per_bar": 290.92,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1428,
+          "real_bar_count": 46326
+        }
+      }
+    },
+    "mt5/USDCAD": {
+      "broker_type": "mt5",
+      "symbol": "USDCAD",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 305474,
+      "total_size_mb": 5.71,
+      "total_tick_count": 123886728,
+      "time_range": {
+        "start": "2025-09-21T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 198,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-21T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_D1_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 89384.36,
+          "min_ticks_per_bar": 1767,
+          "max_ticks_per_bar": 224251,
+          "real_bar_count": 198
+        },
+        "H1": {
+          "bar_count": 3864,
+          "file_size_mb": 0.14,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_H1_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 4580.25,
+          "min_ticks_per_bar": 125,
+          "max_ticks_per_bar": 21360,
+          "real_bar_count": 3864
+        },
+        "H4": {
+          "bar_count": 1002,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-21T20:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_H4_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 17662.78,
+          "min_ticks_per_bar": 1253,
+          "max_ticks_per_bar": 62133,
+          "real_bar_count": 1002
+        },
+        "M1": {
+          "bar_count": 230909,
+          "file_size_mb": 3.83,
+          "start_time": "2025-09-21T21:02:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_M1_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 76.65,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 458,
+          "real_bar_count": 230909
+        },
+        "M15": {
+          "bar_count": 15448,
+          "file_size_mb": 0.44,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_M15_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 1145.66,
+          "min_ticks_per_bar": 10,
+          "max_ticks_per_bar": 5981,
+          "real_bar_count": 15448
+        },
+        "M30": {
+          "bar_count": 7726,
+          "file_size_mb": 0.25,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_M30_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 2290.72,
+          "min_ticks_per_bar": 49,
+          "max_ticks_per_bar": 10702,
+          "real_bar_count": 7726
+        },
+        "M5": {
+          "bar_count": 46327,
+          "file_size_mb": 1.0,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCAD/USDCAD_M5_BARS.parquet",
+          "total_tick_count": 17698104,
+          "avg_ticks_per_bar": 382.03,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 2031,
+          "real_bar_count": 46327
+        }
+      }
+    },
+    "mt5/USDCHF": {
+      "broker_type": "mt5",
+      "symbol": "USDCHF",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 305518,
+      "total_size_mb": 5.58,
+      "total_tick_count": 102930065,
+      "time_range": {
+        "start": "2025-09-21T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 198,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-21T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_D1_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 74264.12,
+          "min_ticks_per_bar": 2576,
+          "max_ticks_per_bar": 178655,
+          "real_bar_count": 198
+        },
+        "H1": {
+          "bar_count": 3864,
+          "file_size_mb": 0.14,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_H1_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 3805.46,
+          "min_ticks_per_bar": 93,
+          "max_ticks_per_bar": 14801,
+          "real_bar_count": 3864
+        },
+        "H4": {
+          "bar_count": 1002,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-21T20:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_H4_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 14674.95,
+          "min_ticks_per_bar": 849,
+          "max_ticks_per_bar": 51514,
+          "real_bar_count": 1002
+        },
+        "M1": {
+          "bar_count": 230954,
+          "file_size_mb": 3.76,
+          "start_time": "2025-09-21T21:05:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_M1_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 63.67,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 299,
+          "real_bar_count": 230954
+        },
+        "M15": {
+          "bar_count": 15448,
+          "file_size_mb": 0.42,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_M15_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 951.86,
+          "min_ticks_per_bar": 22,
+          "max_ticks_per_bar": 4064,
+          "real_bar_count": 15448
+        },
+        "M30": {
+          "bar_count": 7726,
+          "file_size_mb": 0.24,
+          "start_time": "2025-09-21T21:00:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_M30_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 1903.22,
+          "min_ticks_per_bar": 78,
+          "max_ticks_per_bar": 7497,
+          "real_bar_count": 7726
+        },
+        "M5": {
+          "bar_count": 46326,
+          "file_size_mb": 0.97,
+          "start_time": "2025-09-21T21:05:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDCHF/USDCHF_M5_BARS.parquet",
+          "total_tick_count": 14704295,
+          "avg_ticks_per_bar": 317.41,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 1406,
+          "real_bar_count": 46326
+        }
+      }
+    },
+    "mt5/USDJPY": {
+      "broker_type": "mt5",
+      "symbol": "USDJPY",
+      "available_timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "timeframe_count": 7,
+      "total_bars": 309537,
+      "total_size_mb": 6.42,
+      "total_tick_count": 182164822,
+      "time_range": {
+        "start": "2025-09-17T00:00:00+00:00",
+        "end": "2026-05-08T20:56:00+00:00"
+      },
+      "market_type": "forex",
+      "data_source": "mt5",
+      "source_version": {
+        "min": "1.0.3",
+        "max": "1.1.0"
+      },
+      "timeframes": {
+        "D1": {
+          "bar_count": 201,
+          "file_size_mb": 0.01,
+          "start_time": "2025-09-17T00:00:00+00:00",
+          "end_time": "2026-05-08T00:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_D1_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 129470.38,
+          "min_ticks_per_bar": 4495,
+          "max_ticks_per_bar": 275730,
+          "real_bar_count": 201
+        },
+        "H1": {
+          "bar_count": 3916,
+          "file_size_mb": 0.15,
+          "start_time": "2025-09-17T17:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_H1_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 6645.44,
+          "min_ticks_per_bar": 123,
+          "max_ticks_per_bar": 21335,
+          "real_bar_count": 3916
+        },
+        "H4": {
+          "bar_count": 1016,
+          "file_size_mb": 0.04,
+          "start_time": "2025-09-17T16:00:00+00:00",
+          "end_time": "2026-05-08T20:00:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_H4_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 25613.73,
+          "min_ticks_per_bar": 1377,
+          "max_ticks_per_bar": 66636,
+          "real_bar_count": 1016
+        },
+        "M1": {
+          "bar_count": 233982,
+          "file_size_mb": 4.29,
+          "start_time": "2025-09-17T17:58:00+00:00",
+          "end_time": "2026-05-08T20:56:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_M1_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 111.22,
+          "min_ticks_per_bar": 1,
+          "max_ticks_per_bar": 519,
+          "real_bar_count": 233982
+        },
+        "M15": {
+          "bar_count": 15653,
+          "file_size_mb": 0.49,
+          "start_time": "2025-09-17T17:45:00+00:00",
+          "end_time": "2026-05-08T20:45:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_M15_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 1662.53,
+          "min_ticks_per_bar": 26,
+          "max_ticks_per_bar": 5639,
+          "real_bar_count": 15653
+        },
+        "M30": {
+          "bar_count": 7829,
+          "file_size_mb": 0.27,
+          "start_time": "2025-09-17T17:30:00+00:00",
+          "end_time": "2026-05-08T20:30:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_M30_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 3323.99,
+          "min_ticks_per_bar": 80,
+          "max_ticks_per_bar": 10832,
+          "real_bar_count": 7829
+        },
+        "M5": {
+          "bar_count": 46940,
+          "file_size_mb": 1.17,
+          "start_time": "2025-09-17T17:55:00+00:00",
+          "end_time": "2026-05-08T20:55:00+00:00",
+          "file_path": "/app/data/processed/mt5/bars/USDJPY/USDJPY_M5_BARS.parquet",
+          "total_tick_count": 26023546,
+          "avg_ticks_per_bar": 554.4,
+          "min_ticks_per_bar": 2,
+          "max_ticks_per_bar": 2236,
+          "real_bar_count": 46940
+        }
+      }
+    }
+  },
+  "data_collectors": {
+    "kraken_spot": {
+      "symbols": [
+        "ADAUSD",
+        "BTCUSD",
+        "DASHUSD",
+        "ETHEUR",
+        "ETHUSD",
+        "LTCUSD",
+        "SOLUSD",
+        "XRPUSD"
+      ],
+      "total_bars": 1379103,
+      "total_size_mb": 44.03,
+      "timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "symbol_count": 8,
+      "timeframe_count": 7
+    },
+    "mt5": {
+      "symbols": [
+        "AUDUSD",
+        "EURGBP",
+        "EURUSD",
+        "GBPUSD",
+        "NZDUSD",
+        "USDCAD",
+        "USDCHF",
+        "USDJPY"
+      ],
+      "total_bars": 2440690,
+      "total_size_mb": 45.63,
+      "timeframes": [
+        "D1",
+        "H1",
+        "H4",
+        "M1",
+        "M15",
+        "M30",
+        "M5"
+      ],
+      "symbol_count": 8,
+      "timeframe_count": 7
+    }
+  }
+}
