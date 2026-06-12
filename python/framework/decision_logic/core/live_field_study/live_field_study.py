@@ -99,7 +99,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # JSONL recorder (bot plane) — injected + lifecycle-owned by the AutoTrader wiring.
         self._recorder: Optional[FieldStudyRecorder] = None
 
-        # Session guards (budget + wall-clock) — enforced in compute().
+        # Session guards (budget + wall-clock) — enforced on every machine advance.
         self._realized_cost = 0.0
         self._session_started_at: Optional[datetime] = None
         self._safe_abort_active = False
@@ -284,7 +284,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     # Core: compute()/compute_heartbeat() drive the machine, execute() dispatches the action
     # ============================================
 
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],

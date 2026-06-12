@@ -51,7 +51,7 @@ class AbstractDecisionLogic(ABC):
     1. get_required_order_types() declares needed order types
     2. BatchOrchestrator validates against broker capabilities
     3. DecisionTradingApi is injected after validation
-    4. compute() generates decisions
+    4. compute_tick() / compute_heartbeat() generate decisions
     5. execute_decision() executes trades (Template Method)
        - Calls _execute_decision_impl() (subclass implements this)
        - Automatically updates statistics
@@ -281,7 +281,7 @@ class AbstractDecisionLogic(ABC):
         pass
 
     @abstractmethod
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
@@ -336,7 +336,7 @@ class AbstractDecisionLogic(ABC):
         """
         Set the current awareness narration (single slot, last write wins).
 
-        Called in compute() to tell the operator what the algo is "thinking".
+        Called in compute_tick() to tell the operator what the algo is "thinking".
         NOT for structural rejections (those go through OrderGuard).
 
         Args:
@@ -426,7 +426,7 @@ class AbstractDecisionLogic(ABC):
 
         Override in subclass to subscribe to order/lifecycle events delivered
         between ticks via the on_* hooks. Default: no subscriptions (most
-        logics react only in compute()). The DecisionEventDispatcher only
+        logics react only in compute_tick()). The DecisionEventDispatcher only
         buffers and delivers the subscribed types — unsubscribed events cost
         nothing.
 

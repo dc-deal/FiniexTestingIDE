@@ -385,7 +385,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 | `get_required_worker_instances()` | Declare workers: `{"rsi_fast": "CORE/rsi"}` |
 | `get_required_order_types()` | Return `[OrderType.MARKET]` |
 | `get_output_schema()` | Declare typed output fields (optional) |
-| `compute()` | Analyze workers on a market tick, return `Decision(action=..., outputs={...})` — `tick` is never None |
+| `compute_tick()` | Analyze workers on a market tick, return `Decision(action=..., outputs={...})` — `tick` is never None |
 | `compute_heartbeat()` | Optional: act between ticks on the idle heartbeat (cached worker results, no tick). Override together with `wants_heartbeat()` |
 | `_execute_decision_impl()` | Execute trades via `trading_api` |
 

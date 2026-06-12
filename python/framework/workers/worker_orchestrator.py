@@ -330,7 +330,7 @@ class WorkerOrchestrator:
         # Time decision logic execution
         decision_start = time.perf_counter()
 
-        decision = self.decision_logic.compute(
+        decision = self.decision_logic.compute_tick(
             tick=tick,
             worker_results=self._worker_results
         )

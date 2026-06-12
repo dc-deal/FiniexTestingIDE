@@ -339,7 +339,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             "envelope_main": "CORE/envelope"
         }
 
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],

@@ -247,7 +247,7 @@ class CautiousMacd(AbstractDecisionLogic):
             "rsi_filter": "CORE/rsi",
         }
 
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
