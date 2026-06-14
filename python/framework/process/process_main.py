@@ -9,6 +9,7 @@ from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_preparation import process_startup_preparation
+from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
 from python.framework.utils.file_utils import file_name_for_scenario, pad_int
@@ -80,6 +81,13 @@ def process_main(
             decision_event_dispatcher)
         scenario_logger.debug(
             f"🔄 Execute tick loop finished")
+
+        # === DIAGNOSTICS CSV (#376) ===
+        # Flush algo-declared diagnostics sinks next to events_<scenario>.csv.
+        # Suffix matches process_result.scenario_name (config.name) for alignment.
+        flush_decision_diagnostics(
+            decision_logic, scenario_logger.get_log_dir(),
+            scenario_suffix=config.name)
 
         # === Process Final status ===
         success = True

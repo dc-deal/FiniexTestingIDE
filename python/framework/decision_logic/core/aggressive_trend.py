@@ -395,6 +395,8 @@ class AggressiveTrend(AbstractDecisionLogic):
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
+                self._record_signal_diagnostic(
+                    'BUY', confidence, rsi_value, bollinger_position, reason, tick)
                 return Decision(
                     action=DecisionLogicAction.BUY,
                     outputs={
@@ -431,6 +433,8 @@ class AggressiveTrend(AbstractDecisionLogic):
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
+                self._record_signal_diagnostic(
+                    'SELL', confidence, rsi_value, bollinger_position, reason, tick)
                 return Decision(
                     action=DecisionLogicAction.SELL,
                     outputs={
@@ -456,6 +460,42 @@ class AggressiveTrend(AbstractDecisionLogic):
                 'timestamp': tick.timestamp.isoformat(),
             },
         )
+
+    def _record_signal_diagnostic(
+        self,
+        action: str,
+        confidence: float,
+        rsi_value: float,
+        bollinger_position: float,
+        reason: str,
+        tick: TickData,
+    ) -> None:
+        """
+        Append one row to the signal diagnostics CSV (#376 demonstration).
+
+        A worked use of the strategy-owned diagnostics channel: one row per
+        actionable BUY/SELL signal. The framework flushes it to the run directory
+        next to events.csv at run end (both pipelines).
+
+        Args:
+            action: 'BUY' or 'SELL'
+            confidence: Signal confidence
+            rsi_value: RSI at decision time
+            bollinger_position: Band position (%B) at decision time
+            reason: Human-readable signal reason
+            tick: Current tick (for the timestamp)
+        """
+        self.diagnostics_csv(
+            'aggressive_trend_signals',
+            ['timestamp', 'action', 'confidence', 'rsi', 'bollinger_position', 'reason'],
+        ).append_row({
+            'timestamp': tick.timestamp.isoformat(),
+            'action': action,
+            'confidence': round(confidence, 4),
+            'rsi': round(rsi_value, 2),
+            'bollinger_position': round(bollinger_position, 4),
+            'reason': reason,
+        })
 
     def _calculate_buy_confidence(
         self,

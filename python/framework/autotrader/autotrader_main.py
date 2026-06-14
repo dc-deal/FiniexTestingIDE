@@ -24,6 +24,7 @@ from python.framework.autotrader.autotrader_startup import (
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -551,6 +552,10 @@ class AutotraderMain:
             order_history=result.order_history or [],
             run_dir=self._run_dir,
         ).flush('events.csv')
+
+        # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
+        if self._decision_logic:
+            flush_decision_diagnostics(self._decision_logic, self._run_dir)
 
         post_session_report = AutotraderPostSessionReport(
             summary_logger=self._summary_logger,

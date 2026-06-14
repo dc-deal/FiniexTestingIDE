@@ -98,6 +98,12 @@ the single audited path that keeps such values cross-instrument comparable. It d
 apply to bounded oscillators (RSI) or raw-difference indicators (MACD), which have no
 normalization step. See [`docs/architecture/normalization_system.md`](../architecture/normalization_system.md).
 
+**Strategy-owned diagnostics.** A decision logic that wants structured per-run diagnostics
+(signal funnels, near-miss analysis) declares a CSV via
+`self.diagnostics_csv(name, columns)` and appends rows during the run. The framework owns the
+file logistics — it flushes the CSV into a `diagnostics/` subfolder of the run directory at
+run end, in both pipelines. See [`docs/architecture/diagnostics_csv_sink.md`](../architecture/diagnostics_csv_sink.md).
+
 ---
 
 ## Accessing Framework Capabilities — Injected vs Imported
