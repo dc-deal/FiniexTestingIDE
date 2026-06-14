@@ -17,6 +17,7 @@ from python.framework.validators.parameter_validator import validate_parameters,
 # ============================================
 from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
@@ -33,6 +34,7 @@ from python.framework.decision_logic.core.backtesting.backtesting_deterministic 
 ALL_WORKERS = [
     RsiWorker,
     BollingerWorker,
+    MaTrendWorker,
     MacdWorker,
     ObvWorker,
     HeavyRsiWorker,

@@ -14,7 +14,7 @@ and runnable anywhere.
 from statistics import mean, pstdev
 from typing import List
 
-from python.framework.utils.normalizer import Normalizer
+from python.framework.utils.trading_math.normalizer import Normalizer
 
 
 def _slope_in_vol_units(closes: List[float]) -> tuple:

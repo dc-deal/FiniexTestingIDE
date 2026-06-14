@@ -16,6 +16,7 @@ import pytest
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, REQUIRED, _RequiredSentinel
 from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
@@ -204,6 +205,16 @@ class TestWorkerSpecificSchemas:
         assert ma_type.default == 'sma'
         assert ma_type.choices == ('sma', 'ema')
 
+    def test_ma_trend_has_params(self):
+        """MaTrendWorker must declare ma_type (default ema) and neutral_band (default 0.1)."""
+        schema = MaTrendWorker.get_parameter_schema()
+        assert schema['ma_type'].param_type == str
+        assert schema['ma_type'].default == 'ema'
+        assert schema['ma_type'].choices == ('sma', 'ema')
+        assert schema['neutral_band'].param_type == float
+        assert schema['neutral_band'].default == 0.1
+        assert schema['neutral_band'].min_val == 0.0
+
     def test_macd_has_three_required_periods(self):
         """MacdWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
         schema = MacdWorker.get_parameter_schema()
@@ -341,6 +352,14 @@ class TestWorkerSpecificOutputSchemas:
         for key in ('upper', 'lower', 'position', 'position_raw', 'slope', 'width_pct'):
             assert key in schema, f"Missing output: {key}"
             assert schema[key].category == 'SIGNAL'
+
+    def test_ma_trend_output_schema(self):
+        """MaTrend must declare direction (with choices), slope, ma_value, volatility_pct as SIGNAL."""
+        schema = MaTrendWorker.get_output_schema()
+        for key in ('direction', 'slope', 'ma_value', 'volatility_pct'):
+            assert key in schema, f"Missing output: {key}"
+            assert schema[key].category == 'SIGNAL'
+        assert schema['direction'].choices == ('up', 'down', 'neutral')
 
     def test_macd_output_schema(self):
         """MACD must declare macd, signal, histogram as SIGNAL."""

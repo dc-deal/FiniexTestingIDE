@@ -12,7 +12,7 @@ Contract-level tests on `AbstractWorker.get_required_activity_metric()`.
 
 | Test | Description |
 |------|-------------|
-| `test_core_workers_declare_activity_metric` | ×6 — Every CORE worker returns its expected metric: RSI/Bollinger/MACD/HeavyRSI/BacktestingSample → `None`, OBV → `'volume'` |
+| `test_core_workers_declare_activity_metric` | ×7 — Every CORE worker returns its expected metric: RSI/Bollinger/MaTrend/MACD/HeavyRSI/BacktestingSample → `None`, OBV → `'volume'` |
 | `test_missing_override_raises_not_implemented` | A subclass that does not override the method raises `NotImplementedError` with an actionable message (mentions class name, method name, `'volume'`, `'tick_count'`) |
 
 ### `test_activity_metric_lookup.py`

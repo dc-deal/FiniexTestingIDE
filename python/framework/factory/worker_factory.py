@@ -30,6 +30,7 @@ from python.framework.workers.core.backtesting.backtesting_sample_worker import 
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 
@@ -75,6 +76,7 @@ class WorkerFactory:
         try:
             self._registry['CORE/rsi'] = (RsiWorker, None)
             self._registry['CORE/bollinger'] = (BollingerWorker, None)
+            self._registry['CORE/ma_trend'] = (MaTrendWorker, None)
             self._registry['CORE/heavy_rsi'] = (HeavyRsiWorker, None)
             self._registry['CORE/macd'] = (MacdWorker, None)
             self._registry['CORE/obv'] = (ObvWorker, None)

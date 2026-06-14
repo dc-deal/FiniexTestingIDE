@@ -11,7 +11,8 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
-from python.framework.utils.normalizer import Normalizer
+from python.framework.utils.trading_math.moving_average import moving_average
+from python.framework.utils.trading_math.normalizer import Normalizer
 from python.framework.workers.abstract_worker import \
     AbstractWorker
 
@@ -148,25 +149,6 @@ class BollingerWorker(AbstractWorker):
         """Bollinger recomputes when bar updated"""
         return bar_updated
 
-    def _moving_average(self, closes: np.ndarray, period: int) -> float:
-        """
-        Moving average over a window per the configured ma_type.
-
-        Args:
-            closes: Close prices for the window
-            period: Window length (drives the EMA smoothing factor)
-
-        Returns:
-            SMA (mean) or EMA (alpha=2/(period+1), seeded with the first close)
-        """
-        if self.ma_type == 'ema':
-            alpha = 2.0 / (period + 1)
-            ema = float(closes[0])
-            for price in closes[1:]:
-                ema = alpha * float(price) + (1.0 - alpha) * ema
-            return ema
-        return float(np.mean(closes))
-
     def compute(
         self,
         tick: TickData,
@@ -202,7 +184,7 @@ class BollingerWorker(AbstractWorker):
         close_prices = all_closes[-period:]
 
         # Calculate Bollinger bands
-        middle = self._moving_average(close_prices, period)
+        middle = moving_average(close_prices, period, self.ma_type)
         std_dev = np.std(close_prices)
 
         band_half = std_dev * self.deviation
@@ -219,7 +201,7 @@ class BollingerWorker(AbstractWorker):
         slope = 0.0
         if len(all_closes) >= period + 1:
             prev_window = all_closes[-(period + 1):-1]
-            mid_prev = self._moving_average(prev_window, period)
+            mid_prev = moving_average(prev_window, period, self.ma_type)
             slope = Normalizer.normalize(middle - mid_prev, band_width)
 
         # Band width relative to the midline

@@ -46,7 +46,7 @@ Return values:
 
 | Return | Meaning | Example |
 |--------|---------|---------|
-| `None` | Purely price-based — no activity-data dependency | `RsiWorker`, `BollingerWorker`, `MacdWorker`, `HeavyRsiWorker`, `BacktestingSampleWorker`, `TouchAndTurnRangeWorker` |
+| `None` | Purely price-based — no activity-data dependency | `RsiWorker`, `BollingerWorker`, `MaTrendWorker`, `MacdWorker`, `HeavyRsiWorker`, `BacktestingSampleWorker`, `TouchAndTurnRangeWorker` |
 | `'volume'` | Requires real trade volume | `ObvWorker` |
 | `'tick_count'` | Requires tick arrival density | (none yet — reserved for future forex-native workers) |
 

@@ -27,7 +27,7 @@ Components are referenced by type strings in scenario configs and in `get_requir
 
 Pre-registered at factory startup. Always available.
 
-**Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
+**Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
 
 **Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`
 
@@ -93,7 +93,7 @@ window**.
 
 **2. Normalize through `Normalizer`.** If your worker expresses a price-space quantity
 relative to a volatility or range reference (band position, slope-in-volatility-units,
-relative width), route it through `Normalizer` (`python/framework/utils/normalizer.py`) —
+relative width), route it through `Normalizer` (`python/framework/utils/trading_math/normalizer.py`) —
 the single audited path that keeps such values cross-instrument comparable. It does NOT
 apply to bounded oscillators (RSI) or raw-difference indicators (MACD), which have no
 normalization step. See [`docs/architecture/normalization_system.md`](../architecture/normalization_system.md).

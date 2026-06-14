@@ -1,7 +1,7 @@
 # Normalizer Tests
 
 `tests/framework/test_normalizer.py` — the central normalization apparatus
-(`python/framework/utils/normalizer.py`). Runs under the synthetic `framework/_root` suite.
+(`python/framework/utils/trading_math/normalizer.py`). Runs under the synthetic `framework/_root` suite.
 
 **Total Tests:** 17
 

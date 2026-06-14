@@ -1,6 +1,6 @@
 # Normalization System
 
-`Normalizer` (`python/framework/utils/normalizer.py`) is the single, audited path for
+`Normalizer` (`python/framework/utils/trading_math/normalizer.py`) is the single, audited path for
 turning a price-space quantity into a **dimensionless, cross-instrument-comparable ratio**.
 Workers and indicators normalize through it instead of re-implementing the math inline.
 

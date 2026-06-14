@@ -19,6 +19,7 @@ from python.framework.workers.core.backtesting.backtesting_sample_worker import 
 from conftest import ALL_WORKERS, ALL_DECISION_LOGICS
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 
 # ============================================
@@ -117,6 +118,14 @@ class TestRealWorkerDefaults:
         schema = BollingerWorker.get_parameter_schema()
         merged = apply_defaults({}, schema)
         assert merged['ma_type'] == 'sma'
+
+    def test_ma_trend_defaults(self):
+        """MaTrendWorker: empty config → ma_type='ema', neutral_band=0.1."""
+
+        schema = MaTrendWorker.get_parameter_schema()
+        merged = apply_defaults({}, schema)
+        assert merged['ma_type'] == 'ema'
+        assert merged['neutral_band'] == 0.1
 
     def test_heavy_rsi_default_load(self):
         """HeavyRsiWorker: empty config → artificial_load_ms=5.0."""

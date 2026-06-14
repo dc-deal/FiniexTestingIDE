@@ -186,12 +186,12 @@ Workers return results via `WorkerResult(outputs={...})`. Decision Logics access
 
 If your worker expresses a **price-space quantity relative to a volatility or range
 reference** — a position within bands, a slope measured against volatility, a relative
-width — route it through `Normalizer` (`python/framework/utils/normalizer.py`) instead of
+width — route it through `Normalizer` (`python/framework/utils/trading_math/normalizer.py`) instead of
 dividing inline. It is the single audited path that keeps such values **cross-instrument
 comparable** (a threshold means the same thing on EURUSD and BTCUSD).
 
 ```python
-from python.framework.utils.normalizer import Normalizer
+from python.framework.utils.trading_math.normalizer import Normalizer
 
 position_raw = Normalizer.rescale(price, lower, upper)   # %B, unclamped (overshoot kept)
 position     = Normalizer.clamp(position_raw)            # [0, 1]
@@ -687,6 +687,7 @@ Current limitations:
 |--------|------|-------------|
 | `CORE/rsi` | RSI | Relative Strength Index |
 | `CORE/bollinger` | Bollinger | Bollinger bands (`deviation`: 0.5–5.0, default 2.0; `ma_type`: sma/ema, default sma). Outputs `upper`/`middle`/`lower`/`position` (0–1), `position_raw` (unclamped, shows overshoot), `slope` (normalized midline slope), `width_pct` (relative band width) |
+| `CORE/ma_trend` | MA Trend | Higher-timeframe trend gate (`ma_type`: sma/ema, default ema; `neutral_band`: default 0.1). Outputs `direction` (up/down/neutral), `slope` (volatility-normalized), `ma_value`, `volatility_pct` (relative volatility) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
 | `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
 | `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |

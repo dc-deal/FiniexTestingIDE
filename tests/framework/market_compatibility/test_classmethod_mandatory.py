@@ -19,6 +19,7 @@ from python.framework.workers.core.backtesting.backtesting_sample_worker import 
 )
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
@@ -27,6 +28,7 @@ from python.framework.workers.core.rsi_worker import RsiWorker
 CORE_WORKERS_EXPECTED_METRIC = {
     RsiWorker: None,
     BollingerWorker: None,
+    MaTrendWorker: None,
     MacdWorker: None,
     HeavyRsiWorker: None,
     BacktestingSampleWorker: None,

@@ -8,7 +8,7 @@ Bollinger and ma_trend workers.
 
 import pytest
 
-from python.framework.utils.normalizer import Normalizer
+from python.framework.utils.trading_math.normalizer import Normalizer
 
 
 class TestRescale:
