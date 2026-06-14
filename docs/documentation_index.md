@@ -52,6 +52,7 @@
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |
 | [Market Capabilities](architecture/market_capabilities.md) | Worker activity metric declaration, pre-flight compatibility validation |
+| [Normalization System](architecture/normalization_system.md) | `Normalizer` — central rescale/clamp/normalize for cross-instrument-comparable indicator values |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 | [API Server Architecture](architecture/api_server_architecture.md) | FastAPI foundation, CORS, endpoint guide, cache integration note |
 
@@ -113,6 +114,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Config Tests (Cascade + Merge Utility)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
+| [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
 | [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars — mocked, no parquet required |

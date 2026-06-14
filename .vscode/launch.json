@@ -1182,6 +1182,18 @@
             }
         },
         {
+            "name": "📐 Normalization Demo (cross-instrument)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/normalization_demo/normalization_demo.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 3
+            }
+        },
+        {
             "name": "🔧 Restore collected_msc (apply + force)",
             "type": "debugpy",
             "request": "launch",

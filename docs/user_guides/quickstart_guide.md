@@ -182,6 +182,28 @@ Workers return results via `WorkerResult(outputs={...})`. Decision Logics access
 
 ---
 
+### Normalizing indicator values
+
+If your worker expresses a **price-space quantity relative to a volatility or range
+reference** — a position within bands, a slope measured against volatility, a relative
+width — route it through `Normalizer` (`python/framework/utils/normalizer.py`) instead of
+dividing inline. It is the single audited path that keeps such values **cross-instrument
+comparable** (a threshold means the same thing on EURUSD and BTCUSD).
+
+```python
+from python.framework.utils.normalizer import Normalizer
+
+position_raw = Normalizer.rescale(price, lower, upper)   # %B, unclamped (overshoot kept)
+position     = Normalizer.clamp(position_raw)            # [0, 1]
+slope        = Normalizer.normalize(delta, volatility)   # value in volatility units
+```
+
+**When it does NOT apply:** bounded oscillators (RSI is already 0–100 by construction) and
+raw-difference indicators (MACD) have no normalization step — leave them as-is. See
+[Normalization System](../architecture/normalization_system.md).
+
+---
+
 ### Volume vs Tick Count
 
 ⚠️ **Critical difference between market types:**

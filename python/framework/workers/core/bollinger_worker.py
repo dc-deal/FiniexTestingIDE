@@ -11,6 +11,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import WorkerResult, WorkerType
+from python.framework.utils.normalizer import Normalizer
 from python.framework.workers.abstract_worker import \
     AbstractWorker
 
@@ -210,22 +211,19 @@ class BollingerWorker(AbstractWorker):
 
         # Calculate current position relative to bands (raw = unclamped overshoot)
         current_price = tick.mid
-        position_raw = 0.5  # Default middle
-
-        if upper != lower:
-            position_raw = (current_price - lower) / (upper - lower)
-        position = max(0.0, min(1.0, position_raw))  # Clamp 0-1
+        position_raw = Normalizer.rescale(current_price, lower, upper)
+        position = Normalizer.clamp(position_raw)
 
         # Midline slope, normalized by band width (needs period+1 closes)
         band_width = upper - lower
         slope = 0.0
-        if len(all_closes) >= period + 1 and band_width > 0:
+        if len(all_closes) >= period + 1:
             prev_window = all_closes[-(period + 1):-1]
             mid_prev = self._moving_average(prev_window, period)
-            slope = (middle - mid_prev) / band_width
+            slope = Normalizer.normalize(middle - mid_prev, band_width)
 
         # Band width relative to the midline
-        width_pct = band_width / middle if middle > 0 else 0.0
+        width_pct = Normalizer.normalize(band_width, middle)
 
         return WorkerResult(outputs={
             'upper': float(upper),

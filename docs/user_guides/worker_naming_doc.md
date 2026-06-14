@@ -77,6 +77,53 @@ class MyWorker(AbstractWorker):
 
 ---
 
+## Worker Authoring — Determinism & Normalization
+
+Two rules every worker must follow:
+
+**1. A worker is a pure function of its inputs.** `compute()` may read only `tick`,
+`bar_history`, and `current_bars`. NEVER read wall-clock time (`datetime.now()` /
+`time.time()` — use the injected clock, see project rule §9), and NEVER read external
+mutable state at runtime: caches, run artifacts, or the volatility / market-analysis
+**profiles**. Those profiles are **setup / scenario-generation information only** (the
+`discoveries` CLIs). Coupling a worker to them breaks reproducibility — new data
+recomputes the profile, so identical historical bars would produce different outputs — and
+injects look-ahead. Compute any volatility reference you need **locally, from your own
+window**.
+
+**2. Normalize through `Normalizer`.** If your worker expresses a price-space quantity
+relative to a volatility or range reference (band position, slope-in-volatility-units,
+relative width), route it through `Normalizer` (`python/framework/utils/normalizer.py`) —
+the single audited path that keeps such values cross-instrument comparable. It does NOT
+apply to bounded oscillators (RSI) or raw-difference indicators (MACD), which have no
+normalization step. See [`docs/architecture/normalization_system.md`](../architecture/normalization_system.md).
+
+---
+
+## Accessing Framework Capabilities — Injected vs Imported
+
+There are two ways your worker or decision logic reaches framework functionality, and one
+rule for telling them apart:
+
+- **Injected collaborators** — anything carrying runtime state or a framework-wired binding:
+  the trading API, the logger, validated params, the event hooks. These arrive on `self`,
+  provided by the framework after validation — `self.trading_api` (set via
+  `set_trading_api()`), `self.logger`, `self.params`. You never construct or import them:
+  they must be the instance the framework wired for this run (the simulation vs live
+  executor is chosen there, not by you).
+- **Stateless utilities** — pure helpers with no instance state and no wiring: `Normalizer`,
+  `time_utils`, `MarketCalendar`. You **import them where you use them**. The import line at
+  the top of the file keeps the dependency explicit and visible — *explicit is better than
+  implicit*. They are discovered through these docs and the CORE reference implementations,
+  not through the base class.
+
+**Rule of thumb:** does it carry runtime state or need framework wiring? → it lives on
+`self` (injected). Is it pure / stateless? → import it. The base class stays a lean contract
+(the methods you override + the injected collaborators), not a catch-all facade for every
+utility — so what a component actually depends on stays readable at the top of its file.
+
+---
+
 ## The Contract Model
 
 ### 1. Decision Logic declares required workers
