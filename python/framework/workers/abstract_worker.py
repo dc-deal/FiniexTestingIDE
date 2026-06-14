@@ -13,7 +13,7 @@ from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
-    WorkerResult, WorkerState, WorkerType)
+    RecomputeCadence, WorkerResult, WorkerState, WorkerType)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -146,6 +146,23 @@ class AbstractWorker(ABC):
         """Get last computation result"""
         return self._last_result
 
+    def get_recompute_cadence(self) -> RecomputeCadence:
+        """
+        Effective recompute cadence for this worker instance.
+
+        The per-instance config key 'recompute' overrides the class default
+        (get_default_recompute_cadence). This is the single per-instance switch:
+        the same CORE worker class can be PER_TICK for a tick-reactive strategy
+        and ON_BAR_CLOSE for a bar-close strategy, decided in the run config.
+
+        Returns:
+            RecomputeCadence governing when the orchestrator recomputes this worker
+        """
+        configured = self.parameters.get('recompute')
+        if configured is None:
+            return self.__class__.get_default_recompute_cadence()
+        return RecomputeCadence(configured)
+
     def set_state(self, state: WorkerState):
         """Update worker state"""
         self.state = state
@@ -216,6 +233,22 @@ class AbstractWorker(ABC):
         return ComponentMetadata()
 
     @classmethod
+    def get_default_recompute_cadence(cls) -> RecomputeCadence:
+        """
+        Natural recompute cadence for this worker class.
+
+        Default PER_TICK — preserves the historical behavior and the determinism
+        of existing scenario sets. A bar-derived worker MAY override this to
+        ON_BAR_CLOSE, but CORE workers stay PER_TICK until the event-driven loop
+        (#375) makes a bar-close default safe across all consumers. The per-instance
+        config key 'recompute' overrides this per run.
+
+        Returns:
+            Default RecomputeCadence for this worker class
+        """
+        return RecomputeCadence.PER_TICK
+
+    @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """
         Declare parameter schema for validation and UX.
@@ -281,6 +314,16 @@ class AbstractWorker(ABC):
         Raises:
             ValueError: If required fields missing
         """
+        # Reserved framework key: recompute cadence (per-instance opt-in)
+        recompute = config.get('recompute')
+        if recompute is not None:
+            valid = [c.value for c in RecomputeCadence]
+            if recompute not in valid:
+                raise ValueError(
+                    f"Worker '{cls.__name__}': invalid 'recompute' cadence "
+                    f"'{recompute}'. Allowed: {valid}"
+                )
+
         worker_type = cls.get_worker_type()
         required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])
 

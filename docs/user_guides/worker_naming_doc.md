@@ -112,6 +112,32 @@ market-fit warning if the run's market/instrument is outside the recommended set
 
 ---
 
+## Recompute Cadence — When a Worker Recomputes
+
+By default a worker recomputes on **every tick** (`RecomputeCadence.PER_TICK`). For a
+bar-derived indicator (Bollinger bands, a moving-average trend) the value only changes when
+a **bar closes** — recomputing it on every intra-bar tick repeats the same result hundreds
+of times. A run config can opt a worker instance into bar-close-only recompute:
+
+```json
+"tunnel": { "periods": { "M15": 20 }, "deviation": 2.0, "recompute": "bar_close" }
+```
+
+With `"recompute": "bar_close"` the orchestrator recomputes the worker only when one of its
+required timeframes closes a bar; the cached result is served on the ticks in between (the
+bar-close transition is surfaced by the bar renderer as a typed `BarRenderState`).
+
+- **Per-instance, not per-class.** The same CORE worker can be `bar_close` in a bar-close
+  strategy and `per_tick` in a tick-reactive one — the switch lives in the run config.
+- **Determinism — know your sampling grid.** Only opt in when the consumer reads the worker
+  **on its bar-close grid**. A strategy that acts on M15 closes and reads an M15 Bollinger
+  worker is safe (it samples exactly where the worker recomputes). A consumer that reads the
+  worker's value *between* its closes — or a worker that reflects `tick.mid` live (intra-bar
+  `position` / `position_raw`) — must stay `per_tick`, otherwise it sees a frozen value.
+- **Default stays `per_tick`** for all CORE workers — existing scenario sets are unchanged.
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one

@@ -35,6 +35,21 @@ class WorkerType(Enum):
     EVENT = "event"
 
 
+class RecomputeCadence(Enum):
+    """
+    When the orchestrator recomputes a worker.
+
+    PER_TICK is the default and preserves the historical behavior (recompute on
+    every tick pass). ON_BAR_CLOSE is opt-in: the worker recomputes only when one
+    of its required timeframes closes a bar — its cached result is served on the
+    intra-bar ticks in between. Only safe for consumers that read the worker on
+    its bar-close grid; tick-reactive consumers (live %B from tick.mid) must stay
+    PER_TICK.
+    """
+    PER_TICK = 'per_tick'        # recompute every tick (default)
+    ON_BAR_CLOSE = 'bar_close'   # recompute only when a required timeframe closes
+
+
 @dataclass
 class WorkerResult:
     """

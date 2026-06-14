@@ -8,16 +8,16 @@ import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogger
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.decision_logic_types import Decision
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.types.worker_types import WorkerResult, WorkerState
+from python.framework.types.worker_types import RecomputeCadence, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -292,6 +292,7 @@ class WorkerOrchestrator:
         tick: TickData,
         current_bars: Dict[str, Bar],
         bar_history: Dict[str, List[Bar]] = None,
+        bar_render_state: Optional[BarRenderState] = None,
     ) -> Decision:
         """
         Process tick through all workers and generate decision.
@@ -300,6 +301,8 @@ class WorkerOrchestrator:
             tick: Current tick data
             current_bars: Current bars per timeframe
             bar_history: Historical bars per timeframe
+            bar_render_state: Bar-lifecycle transitions for this pass (close set);
+                drives ON_BAR_CLOSE worker recompute. Defaults to no closes.
 
         Returns:
             Decision object (from DecisionLogic)
@@ -311,6 +314,9 @@ class WorkerOrchestrator:
         self._coordination_stats.ticks_processed += 1
 
         bar_history = bar_history or {}
+        closed_timeframes = (
+            bar_render_state.closed_timeframes if bar_render_state else set()
+        )
 
         # Determine if any bars were updated
         bar_updated = len(current_bars) > 0
@@ -318,10 +324,10 @@ class WorkerOrchestrator:
         # Execute workers (parallel or sequential)
         if self.parallel_workers and len(self.workers) > 1:
             self._process_workers_parallel(
-                tick, bar_updated, bar_history, current_bars)
+                tick, bar_updated, bar_history, current_bars, closed_timeframes)
         else:
             self._process_workers_sequential(
-                tick, bar_updated, bar_history, current_bars
+                tick, bar_updated, bar_history, current_bars, closed_timeframes
             )
 
         # ============================================
@@ -393,20 +399,57 @@ class WorkerOrchestrator:
 
         return decision
 
+    def _worker_needs_recompute(
+        self,
+        name: str,
+        worker: AbstractWorker,
+        tick: TickData,
+        bar_updated: bool,
+        closed_timeframes: Set[str],
+    ) -> bool:
+        """
+        Decide whether a worker recomputes this tick, honoring its recompute cadence.
+
+        ON_BAR_CLOSE workers recompute only when one of their required timeframes
+        closed this pass — their cached result is served on the intra-bar ticks in
+        between. They still compute once at cold start (no cached result yet) to
+        seed the cache. PER_TICK workers keep the existing should_recompute() contract.
+
+        Args:
+            name: Worker instance name (key into the result cache)
+            worker: Worker instance
+            tick: Current tick
+            bar_updated: Whether a bar exists this tick (PER_TICK legacy signal)
+            closed_timeframes: Timeframes whose bar closed since the last pass
+
+        Returns:
+            True if the worker should recompute on this tick
+        """
+        if worker.get_recompute_cadence() == RecomputeCadence.ON_BAR_CLOSE:
+            if name not in self._worker_results:
+                return True  # cold start — seed the cache once
+            return any(
+                tf in closed_timeframes for tf in worker.get_required_timeframes()
+            )
+        return worker.should_recompute(tick, bar_updated)
+
     def _process_workers_sequential(
         self,
         tick: TickData,
         bar_updated: bool,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
+        closed_timeframes: Set[str],
     ):
         """
         Process workers sequentially (original behavior).
 
-        UNCHANGED - This method works exactly as before.
+        Recompute gating now routes through the worker's recompute cadence.
         """
         for name, worker in self.workers.items():
-            if worker.should_recompute(tick, bar_updated):
+            if self._worker_needs_recompute(
+                name, worker, tick, bar_updated, closed_timeframes
+            ):
                 start_time = time.perf_counter()
 
                 try:
@@ -437,11 +480,12 @@ class WorkerOrchestrator:
         bar_updated: bool,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
+        closed_timeframes: Set[str],
     ):
         """
         Process workers in parallel using ThreadPoolExecutor.
 
-        UNCHANGED - Parallelization logic works exactly as before.
+        Recompute gating now routes through the worker's recompute cadence.
         Performance boost: Workers compute simultaneously!
         """
         overall_start = time.perf_counter()
@@ -450,7 +494,9 @@ class WorkerOrchestrator:
         workers_to_compute = [
             (name, worker)
             for name, worker in self.workers.items()
-            if worker.should_recompute(tick, bar_updated)
+            if self._worker_needs_recompute(
+                name, worker, tick, bar_updated, closed_timeframes
+            )
         ]
 
         if not workers_to_compute:

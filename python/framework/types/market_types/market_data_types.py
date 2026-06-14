@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 
 @dataclass
@@ -108,6 +108,30 @@ class Bar:
             'tick_count': self.tick_count,
             'is_complete': self.is_complete
         }
+
+
+@dataclass
+class BarRenderState:
+    """
+    Bar-lifecycle transitions the bar renderer surfaces for one consumed algo pass.
+
+    The bar renderer is the single authority for when a bar closes (the moment a
+    bar is historized). Instead of letting the orchestrator re-derive that from
+    tick timing, the renderer lifts the transition as typed state that flows to
+    the worker orchestrator. The controller accumulates it across clipped ticks /
+    idle heartbeats and hands it over once per algo pass, so a close on a skipped
+    tick is never lost.
+
+    Forward seam (#375): these transitions become first-class timeline events
+    (BarClosedEvent). This package is the typed precursor — extend it here as more
+    bar-lifecycle states surface (e.g. bar_opened).
+
+    Args:
+        closed_timeframes: Timeframes whose bar closed (was historized) since the
+            previous consume — the recompute trigger for ON_BAR_CLOSE workers
+    """
+    closed_timeframes: Set[str] = field(default_factory=set)
+
 
 # ============================================================================
 # TICK TRANSPORT CONTRACT

@@ -10,11 +10,11 @@ CORRECTIONS:
 - Calls bar_renderer.initialize_historical_bars() for each timeframe
 - deserialize_bars_batch() moved here to avoid circular import
 """
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.utils.process_serialization_utils import deserialize_bars_batch
 
 
@@ -51,6 +51,12 @@ class BarRenderingController:
         # CASHE PER TIMEFRAME!
         self._cache_valid_per_timeframe: Dict[str, bool] = {}
 
+        # Bar-close transitions accumulated since the last algo pass consumed them.
+        # Accumulating (not per-tick) keeps a close from being lost when the tick
+        # that closed the bar is clipped (skips the algo path) — the close survives
+        # until the next non-clipped pass calls consume_bar_render_state().
+        self._pending_closed_timeframes: Set[str] = set()
+
     def register_workers(self, workers):
         """
         Register workers and analyze their bar requirements.
@@ -85,14 +91,31 @@ class BarRenderingController:
             tick_data, self._required_timeframes
         )
 
-        # Invalidate cache ONLY for timeframes that closed
+        # Invalidate cache ONLY for timeframes that closed + record the close
+        # transition for the next algo pass (ON_BAR_CLOSE worker recompute trigger)
         for timeframe, was_closed in closed_bars.items():
             if was_closed:
                 self.logger.verbose(
                     f"🔍 [CACHE INVALIDATED] {timeframe} bar closed")
                 self._cache_valid_per_timeframe[timeframe] = False
+                self._pending_closed_timeframes.add(timeframe)
 
         return current_bars
+
+    def consume_bar_render_state(self) -> BarRenderState:
+        """
+        Return the bar-lifecycle transitions since the last consume, and clear them.
+
+        Read once per algo pass (shared pipeline core). The accumulated close set
+        carries over clipped ticks and idle heartbeats, so a bar close is delivered
+        to the worker orchestrator on the next pass that actually runs.
+
+        Returns:
+            BarRenderState with the timeframes whose bar closed since the previous consume
+        """
+        state = BarRenderState(closed_timeframes=self._pending_closed_timeframes)
+        self._pending_closed_timeframes = set()
+        return state
 
     def get_bar_history(
         self, symbol: str, timeframe: str

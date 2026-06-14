@@ -67,10 +67,12 @@ def execute_algo_path(
         Decision from worker_orchestrator.process_tick
     """
     bar_history = bar_controller.get_all_bar_history(symbol=symbol)
+    bar_render_state = bar_controller.consume_bar_render_state()
     return worker_orchestrator.process_tick(
         tick=tick,
         current_bars=current_bars,
         bar_history=bar_history,
+        bar_render_state=bar_render_state,
     )
 
 
