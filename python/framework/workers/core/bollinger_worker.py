@@ -10,6 +10,7 @@ import numpy as np
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.utils.trading_math.moving_average import moving_average
 from python.framework.utils.trading_math.normalizer import Normalizer
@@ -117,6 +118,14 @@ class BollingerWorker(AbstractWorker):
     @classmethod
     def get_worker_type(cls) -> WorkerType:
         return WorkerType.INDICATOR
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE worker metadata (version + doc pointer)."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/user_guides/worker_naming_doc.md',
+        )
 
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:

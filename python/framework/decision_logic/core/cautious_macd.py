@@ -37,6 +37,7 @@ from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
@@ -215,6 +216,15 @@ class CautiousMacd(AbstractDecisionLogic):
                 category='INFO',
             ),
         }
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE showcase decision logic metadata (MACD → price-based, any market)."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/user_guides/quickstart_guide.md',
+            recommended_markets=('forex', 'crypto'),
+        )
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

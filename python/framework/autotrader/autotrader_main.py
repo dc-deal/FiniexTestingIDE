@@ -35,6 +35,7 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.validators.algo_clock_validator import validate_algo_clock
+from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
@@ -186,6 +187,12 @@ class AutotraderMain:
                 [type(self._decision_logic)]
                 + [type(worker) for worker in self._worker_orchestrator.workers.values()]
             )
+
+            # === COMPONENT METADATA ADVISORY (#118 Stage 0) ===
+            # Version line + soft (non-blocking) market-fit warning.
+            surface_decision_logic_metadata(
+                self._decision_logic, self._config.broker_type,
+                self._config.symbol, self._session_logger)
 
             # === DRIFT AUDIT (#327) ===
             # Gated by config; live-only by design — DRYRUN orders auto-skipped

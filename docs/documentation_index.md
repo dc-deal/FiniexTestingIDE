@@ -54,6 +54,7 @@
 | [Market Capabilities](architecture/market_capabilities.md) | Worker activity metric declaration, pre-flight compatibility validation |
 | [Normalization System](architecture/normalization_system.md) | `Normalizer` — central rescale/clamp/normalize for cross-instrument-comparable indicator values |
 | [Diagnostics CSV Sink](architecture/diagnostics_csv_sink.md) | Generic per-run CSV channel — framework owns file logistics, strategy owns the schema (both pipelines) |
+| [Component Metadata](architecture/component_metadata.md) | Author-declared version, doc link, recommended markets/instruments; soft market-fit warning |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 | [API Server Architecture](architecture/api_server_architecture.md) | FastAPI foundation, CORS, endpoint guide, cache integration note |
 

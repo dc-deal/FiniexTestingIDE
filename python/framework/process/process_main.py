@@ -10,6 +10,7 @@ from python.framework.trading_env.decision_event_dispatcher import DecisionEvent
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_preparation import process_startup_preparation
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
+from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
 from python.framework.utils.file_utils import file_name_for_scenario, pad_int
@@ -61,6 +62,10 @@ def process_main(
             config, shared_data, scenario_logger)
         scenario_logger.debug(
             f"🔄 Process preparation finished")
+
+        # Component metadata advisory (#118 Stage 0) — version line + soft market-fit warning
+        surface_decision_logic_metadata(
+            decision_logic, config.broker_type, config.symbol, scenario_logger)
 
         # === DECISION EVENT CHANNEL (#348) ===
         # Built only when the active decision logic subscribes to events.

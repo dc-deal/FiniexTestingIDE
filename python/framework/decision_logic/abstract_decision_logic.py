@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness, StrategyEvent
@@ -170,6 +171,21 @@ class AbstractDecisionLogic(ABC):
             Dict[output_name, OutputParamDef]
         """
         return {}
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """
+        Author-declared metadata (version, doc link, recommended market fit).
+
+        Override to declare. Default is an empty ComponentMetadata (opt-in, no-op).
+        Complements the automatic config_fingerprint with semantic intent; the
+        recommended_markets / recommended_instruments drive a soft (non-blocking)
+        market-fit warning at pre-flight.
+
+        Returns:
+            ComponentMetadata for this decision logic
+        """
+        return ComponentMetadata()
 
     @classmethod
     def validate_parameter_schema(

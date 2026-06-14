@@ -6,6 +6,7 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import validate_parameters
@@ -200,6 +201,19 @@ class AbstractWorker(ABC):
             f"if it is purely price-based (RSI, Bollinger, MACD). "
             f"See docs/architecture/market_capabilities.md."
         )
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """
+        Author-declared metadata (version, doc link, recommended market fit).
+
+        Override to declare. Default is an empty ComponentMetadata (opt-in, no-op).
+        Complements the automatic config_fingerprint with semantic intent.
+
+        Returns:
+            ComponentMetadata for this worker
+        """
+        return ComponentMetadata()
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
