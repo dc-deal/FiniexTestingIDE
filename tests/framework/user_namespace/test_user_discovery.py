@@ -193,7 +193,7 @@ class TestCoreRegistration:
 
     def test_core_workers_registered(self, mock_logger):
         factory = WorkerFactory(logger=mock_logger)
-        for key in ['CORE/rsi', 'CORE/envelope', 'CORE/macd', 'CORE/obv', 'CORE/heavy_rsi']:
+        for key in ['CORE/rsi', 'CORE/bollinger', 'CORE/ma_trend', 'CORE/macd', 'CORE/obv', 'CORE/heavy_rsi']:
             assert key in factory._registry, f"Missing: {key}"
 
     def test_core_logics_registered(self, mock_logger):

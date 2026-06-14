@@ -43,7 +43,7 @@ def make_bars(
     - open = close (flat bars, only close matters for indicators)
     - high = close + 0.0005
     - low  = close - 0.0005
-    - volume = 100.0 (constant, irrelevant for RSI/Envelope/MACD)
+    - volume = 100.0 (constant, irrelevant for RSI/Bollinger/MACD)
 
     Args:
         closes: List of close prices

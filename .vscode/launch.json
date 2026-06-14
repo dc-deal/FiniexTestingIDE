@@ -1182,6 +1182,18 @@
             }
         },
         {
+            "name": "📐 Normalization Demo (cross-instrument)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/normalization_demo/normalization_demo.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_field_studies",
+                "order": 3
+            }
+        },
+        {
             "name": "🔧 Restore collected_msc (apply + force)",
             "type": "debugpy",
             "request": "launch",
@@ -1446,6 +1458,26 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 13
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Diagnostics Probe",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/diagnostics_probe_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 14
             }
         },
         {

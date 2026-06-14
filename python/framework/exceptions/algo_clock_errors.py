@@ -8,7 +8,9 @@ backtest reproducibility and decouples timing from the tick cadence that
 gates async resolution.
 """
 
+from python.framework.exceptions.finiex_error import FiniexError
 
-class AlgoClockViolationError(Exception):
+
+class AlgoClockViolationError(FiniexError):
     """A loaded algo reads wall-clock directly — forbidden in decision-logic / worker code."""
     pass

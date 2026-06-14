@@ -156,14 +156,14 @@ This system enables:
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       },
       "workers": {
         "rsi_fast": {
           "period": 14,
           "timeframe": "M5"
         },
-        "envelope_main": {
+        "bollinger_main": {
           "period": 20,
           "deviation": 2.0,
           "timeframe": "M5"
@@ -310,14 +310,14 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
 ```json
 "worker_instances": {
   "rsi_fast": "CORE/rsi",
-  "envelope_main": "CORE/envelope"
+  "bollinger_main": "CORE/bollinger"
 },
 "workers": {
   "rsi_fast": {
     "period": 14,
     "timeframe": "M5"
   },
-  "envelope_main": {
+  "bollinger_main": {
     "period": 20,
     "deviation": 2.0
   }
@@ -340,7 +340,7 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
     "period": 5,        // ← FROM SCENARIO
     "timeframe": "M5"   // ← FROM GLOBAL
   },
-  "envelope_main": {
+  "bollinger_main": {
     "period": 20,       // ← FROM GLOBAL (unchanged)
     "deviation": 2.0     // ← FROM GLOBAL (unchanged)
   }
@@ -593,7 +593,7 @@ These parameters are **scenario-specific only** - no inheritance:
   "decision_logic_type": "CORE/aggressive_trend",  // Global only
   "worker_instances": {                            // Global only
     "rsi_fast": "CORE/rsi",
-    "envelope_main": "CORE/envelope"
+    "bollinger_main": "CORE/bollinger"
   }
 }
 ```
@@ -686,14 +686,14 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       },
       "workers": {
         "rsi_fast": {
           "period": 14,
           "timeframe": "M5"
         },
-        "envelope_main": {
+        "bollinger_main": {
           "period": 20,
           "deviation": 2.0 
         }
@@ -738,7 +738,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 }
 ```
 
-**Result:** 3 scenarios testing different RSI periods. All other parameters (timeframe, envelope settings) are inherited from global!
+**Result:** 3 scenarios testing different RSI periods. All other parameters (timeframe, Bollinger settings) are inherited from global!
 
 ---
 
@@ -755,7 +755,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
         "rsi_slow": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       },
       "workers": {
         "rsi_fast": {
@@ -766,7 +766,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
           "period": 14,
           "timeframe": "M5"
         },
-        "envelope_main": {
+        "bollinger_main": {
           "period": 20,
           "deviation": 2.0 
         }
@@ -996,16 +996,16 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 "worker_instances": {
   "rsi_fast": "CORE/rsi",      // Period 5, M1
   "rsi_slow": "CORE/rsi",      // Period 21, M5
-  "envelope_tight": "CORE/envelope",  // deviation 1.0
-  "envelope_wide": "CORE/envelope"    // deviation 3.5
+  "bollinger_tight": "CORE/bollinger",  // deviation 1.0
+  "bollinger_wide": "CORE/bollinger"    // deviation 3.5
 }
 
 // ❌ BAD - Generic names
 "worker_instances": {
   "rsi1": "CORE/rsi",
   "rsi2": "CORE/rsi",
-  "env1": "CORE/envelope",
-  "env2": "CORE/envelope"
+  "env1": "CORE/bollinger",
+  "env2": "CORE/bollinger"
 }
 ```
 
@@ -1036,7 +1036,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
     "decision_logic_type": "CORE/aggressive_trend",
     "worker_instances": {
       "rsi_fast": "CORE/rsi",
-      "envelope_main": "CORE/envelope"
+      "bollinger_main": "CORE/bollinger"
     }
   }
 }

@@ -55,13 +55,13 @@ def test_obv_on_crypto_broker_passes(validator, worker_factory, market_config_ma
 def test_mixed_workers_on_crypto_broker_passes(
     validator, worker_factory, market_config_manager
 ):
-    """RSI + Envelope + OBV together on crypto — all compatible."""
+    """RSI + Bollinger + OBV together on crypto — all compatible."""
     scenario = make_scenario(
         name='mixed_crypto',
         data_broker_type='kraken_spot',
         worker_instances={
             'rsi_main': 'CORE/rsi',
-            'env_main': 'CORE/envelope',
+            'env_main': 'CORE/bollinger',
             'obv_main': 'CORE/obv',
         },
     )

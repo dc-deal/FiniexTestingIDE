@@ -27,7 +27,7 @@ Components are referenced by type strings in scenario configs and in `get_requir
 
 Pre-registered at factory startup. Always available.
 
-**Workers:** `CORE/rsi`, `CORE/envelope`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
+**Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
 
 **Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`
 
@@ -67,13 +67,98 @@ class MyWorker(AbstractWorker):
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:
         # Options:
-        # - None          → price-based only (RSI, Envelope, MACD, range/session workers)
+        # - None          → price-based only (RSI, Bollinger, MACD, range/session workers)
         # - 'volume'      → real trade volume (crypto only)
         # - 'tick_count'  → tick arrival density (forex only)
         return None
 ```
 
 **Why it is mandatory.** The parent class raises `NotImplementedError` with an actionable message if you forget. The framework validates at pre-flight time (Phase 2 — Availability) that the scenario's broker provides the declared metric, using `primary_activity_metric` from `configs/market_config.json` as the single source of truth. Incompatible scenarios are marked invalid and skipped; the remaining scenarios continue running. See [`docs/architecture/market_capabilities.md`](../architecture/market_capabilities.md) for the full flow and rationale.
+
+---
+
+## Worker Authoring — Determinism & Normalization
+
+Two rules every worker must follow:
+
+**1. A worker is a pure function of its inputs.** `compute()` may read only `tick`,
+`bar_history`, and `current_bars`. NEVER read wall-clock time (`datetime.now()` /
+`time.time()` — use the injected clock, see project rule §9), and NEVER read external
+mutable state at runtime: caches, run artifacts, or the volatility / market-analysis
+**profiles**. Those profiles are **setup / scenario-generation information only** (the
+`discoveries` CLIs). Coupling a worker to them breaks reproducibility — new data
+recomputes the profile, so identical historical bars would produce different outputs — and
+injects look-ahead. Compute any volatility reference you need **locally, from your own
+window**.
+
+**2. Normalize through `Normalizer`.** If your worker expresses a price-space quantity
+relative to a volatility or range reference (band position, slope-in-volatility-units,
+relative width), route it through `Normalizer` (`python/framework/utils/trading_math/normalizer.py`) —
+the single audited path that keeps such values cross-instrument comparable. It does NOT
+apply to bounded oscillators (RSI) or raw-difference indicators (MACD), which have no
+normalization step. See [`docs/architecture/normalization_system.md`](../architecture/normalization_system.md).
+
+**Strategy-owned diagnostics.** A decision logic that wants structured per-run diagnostics
+(signal funnels, near-miss analysis) declares a CSV via
+`self.diagnostics_csv(name, columns)` and appends rows during the run. The framework owns the
+file logistics — it flushes the CSV into a `diagnostics/` subfolder of the run directory at
+run end, in both pipelines. See [`docs/architecture/diagnostics_csv_sink.md`](../architecture/diagnostics_csv_sink.md).
+
+**Component metadata.** Every worker and decision logic should declare `get_metadata()` →
+`ComponentMetadata` (version, doc_link, and — for decision logics — recommended_markets /
+recommended_instruments). The framework logs the version at run start and emits a soft
+market-fit warning if the run's market/instrument is outside the recommended set. See
+[`docs/architecture/component_metadata.md`](../architecture/component_metadata.md).
+
+---
+
+## Recompute Cadence — When a Worker Recomputes
+
+By default a worker recomputes on **every tick** (`RecomputeCadence.PER_TICK`). For a
+bar-derived indicator (Bollinger bands, a moving-average trend) the value only changes when
+a **bar closes** — recomputing it on every intra-bar tick repeats the same result hundreds
+of times. A run config can opt a worker instance into bar-close-only recompute:
+
+```json
+"tunnel": { "periods": { "M15": 20 }, "deviation": 2.0, "recompute": "bar_close" }
+```
+
+With `"recompute": "bar_close"` the orchestrator recomputes the worker only when one of its
+required timeframes closes a bar; the cached result is served on the ticks in between (the
+bar-close transition is surfaced by the bar renderer as a typed `BarRenderState`).
+
+- **Per-instance, not per-class.** The same CORE worker can be `bar_close` in a bar-close
+  strategy and `per_tick` in a tick-reactive one — the switch lives in the run config.
+- **Determinism — know your sampling grid.** Only opt in when the consumer reads the worker
+  **on its bar-close grid**. A strategy that acts on M15 closes and reads an M15 Bollinger
+  worker is safe (it samples exactly where the worker recomputes). A consumer that reads the
+  worker's value *between* its closes — or a worker that reflects `tick.mid` live (intra-bar
+  `position` / `position_raw`) — must stay `per_tick`, otherwise it sees a frozen value.
+- **Default stays `per_tick`** for all CORE workers — existing scenario sets are unchanged.
+
+---
+
+## Accessing Framework Capabilities — Injected vs Imported
+
+There are two ways your worker or decision logic reaches framework functionality, and one
+rule for telling them apart:
+
+- **Injected collaborators** — anything carrying runtime state or a framework-wired binding:
+  the trading API, the logger, validated params, the event hooks. These arrive on `self`,
+  provided by the framework after validation — `self.trading_api` (set via
+  `set_trading_api()`), `self.logger`, `self.params`. You never construct or import them:
+  they must be the instance the framework wired for this run (the simulation vs live
+  executor is chosen there, not by you).
+- **Stateless utilities** — pure helpers with no instance state and no wiring: `Normalizer`,
+  `time_utils`, `MarketCalendar`. You **import them where you use them**. The import line at
+  the top of the file keeps the dependency explicit and visible — *explicit is better than
+  implicit*. They are discovered through these docs and the CORE reference implementations,
+  not through the base class.
+
+**Rule of thumb:** does it carry runtime state or need framework wiring? → it lives on
+`self` (injected). Is it pure / stateless? → import it. The base class stays a lean contract
+(the methods you override + the injected collaborators), not a catch-all facade for every
+utility — so what a component actually depends on stays readable at the top of its file.
 
 ---
 

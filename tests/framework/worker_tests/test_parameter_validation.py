@@ -186,7 +186,7 @@ class TestBoundaryStrict:
         with pytest.raises(ValueError, match="above maximum"):
             validate_parameters(config, sample_schema, strict=True)
 
-    def test_the_envelope_bug(self, sample_schema):
+    def test_the_bollinger_bug(self, sample_schema):
         """THE BUG: deviation=0.02 must be caught (below min 0.5)."""
         config = {'fast_period': 12, 'deviation': 0.02}
         with pytest.raises(ValueError, match="below minimum"):
@@ -251,9 +251,9 @@ class TestContextName:
 
     def test_context_name_in_missing_required(self, sample_schema):
         """Worker/Logic name should appear in error for missing required."""
-        with pytest.raises(ValueError, match="'EnvelopeWorker'"):
+        with pytest.raises(ValueError, match="'BollingerWorker'"):
             validate_parameters(
-                {}, sample_schema, strict=True, context_name="EnvelopeWorker"
+                {}, sample_schema, strict=True, context_name="BollingerWorker"
             )
 
     def test_context_name_in_type_error(self, sample_schema):

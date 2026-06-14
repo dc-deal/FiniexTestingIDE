@@ -64,7 +64,8 @@ class SharedDataPreparator:
         # Cache for pre-converted file timestamps: (broker_type, symbol) →
         # List[Tuple[Timestamp, Timestamp, str]] (start, end, version)
         # Avoids repeated pd.to_datetime calls in _collect_parquet_versions (O(n_scenarios×n_files) → O(n_files))
-        self._file_ts_cache: Dict[Tuple[str, str], List[Tuple[Any, Any, str]]] = {}
+        self._file_ts_cache: Dict[Tuple[str, str],
+                                  List[Tuple[Any, Any, str]]] = {}
 
         # Use existing index managers
         self._logger.debug("📚 Initializing index managers...")
@@ -358,7 +359,8 @@ class SharedDataPreparator:
             flagged_ticks.append(tick_copy)
 
         ticks_clipped = ticks_total - ticks_kept
-        clipping_rate = (ticks_clipped / ticks_total * 100) if ticks_total > 0 else 0.0
+        clipping_rate = (ticks_clipped / ticks_total *
+                         100) if ticks_total > 0 else 0.0
 
         # Return all ticks with is_clipped flags — counts reflect full dataset
         flagged_result = {
@@ -521,7 +523,13 @@ class SharedDataPreparator:
                 if 'timestamp' in df.columns:
                     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
                 dfs.append(df)
-            full_df = pd.concat(dfs).sort_values('timestamp').reset_index(drop=True)
+            # Stable, fine-grained order: 'timestamp' is second-resolution with many
+            # duplicates, so a non-stable sort on it alone scrambles the sub-second order
+            # (time_msc / collected_msc) → negative inter-tick intervals + spurious clipping.
+            # Break ties by the millisecond time_msc to keep the tick stream chronological.
+            # see also #385
+            full_df = pd.concat(dfs).sort_values(
+                ['timestamp', 'time_msc']).reset_index(drop=True)
 
             self._logger.info(
                 f"  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) "

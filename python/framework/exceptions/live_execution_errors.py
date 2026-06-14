@@ -1,6 +1,3 @@
-# ============================================
-# python/framework/exceptions/live_execution_errors.py
-# ============================================
 """
 FiniexTestingIDE - Live Execution Errors
 Exception types for live trading failures (Horizon 2).
@@ -9,8 +6,10 @@ Used by LiveTradeExecutor and broker adapters to signal
 broker communication and order execution failures.
 """
 
+from python.framework.exceptions.finiex_error import FiniexError
 
-class BrokerConnectionError(Exception):
+
+class BrokerConnectionError(FiniexError):
     """
     Broker API unreachable or authentication failed.
 
@@ -20,7 +19,7 @@ class BrokerConnectionError(Exception):
     pass
 
 
-class OrderTimeoutError(Exception):
+class OrderTimeoutError(FiniexError):
     """
     Broker did not respond within configured timeout window.
 
@@ -30,7 +29,7 @@ class OrderTimeoutError(Exception):
     pass
 
 
-class OrderExecutionError(Exception):
+class OrderExecutionError(FiniexError):
     """
     Unexpected error during order execution at broker.
 

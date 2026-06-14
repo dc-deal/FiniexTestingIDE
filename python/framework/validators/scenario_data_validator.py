@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.exceptions.market_compatibility_error import MarketCompatibilityError
+from python.framework.exceptions.market_compatibility_errors import MarketCompatibilityError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario

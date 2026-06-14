@@ -3,8 +3,10 @@ FiniexTestingIDE - Persistence Errors
 Exception types for the algo state persistence layer (#354).
 """
 
+from python.framework.exceptions.finiex_error import FiniexError
 
-class StatePersistenceError(Exception):
+
+class StatePersistenceError(FiniexError):
     """
     Algo state could not be persisted or restored.
 

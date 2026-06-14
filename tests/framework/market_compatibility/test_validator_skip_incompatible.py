@@ -83,7 +83,7 @@ def test_mixed_valid_and_invalid_workers_only_invalid_reported(
         data_broker_type='mt5',
         worker_instances={
             'rsi_main': 'CORE/rsi',
-            'env_main': 'CORE/envelope',
+            'env_main': 'CORE/bollinger',
             'obv_main': 'CORE/obv',
         },
     )

@@ -15,7 +15,8 @@ import pytest
 
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, REQUIRED, _RequiredSentinel
 from python.framework.workers.core.rsi_worker import RsiWorker
-from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
@@ -184,9 +185,9 @@ class TestWorkerSpecificSchemas:
         schema = ObvWorker.get_parameter_schema()
         assert schema == {}
 
-    def test_envelope_has_deviation(self):
-        """EnvelopeWorker must declare deviation with sensible bounds."""
-        schema = EnvelopeWorker.get_parameter_schema()
+    def test_bollinger_has_deviation(self):
+        """BollingerWorker must declare deviation with sensible bounds."""
+        schema = BollingerWorker.get_parameter_schema()
         assert 'deviation' in schema
         dev = schema['deviation']
         assert dev.param_type == float
@@ -194,6 +195,25 @@ class TestWorkerSpecificSchemas:
         assert dev.default == 2.0
         assert dev.min_val == 0.5
         assert dev.max_val == 5.0
+
+    def test_bollinger_has_ma_type(self):
+        """BollingerWorker must declare ma_type with sma/ema choices, default sma."""
+        schema = BollingerWorker.get_parameter_schema()
+        assert 'ma_type' in schema
+        ma_type = schema['ma_type']
+        assert ma_type.param_type == str
+        assert ma_type.default == 'sma'
+        assert ma_type.choices == ('sma', 'ema')
+
+    def test_ma_trend_has_params(self):
+        """MaTrendWorker must declare ma_type (default ema) and neutral_band (default 0.1)."""
+        schema = MaTrendWorker.get_parameter_schema()
+        assert schema['ma_type'].param_type == str
+        assert schema['ma_type'].default == 'ema'
+        assert schema['ma_type'].choices == ('sma', 'ema')
+        assert schema['neutral_band'].param_type == float
+        assert schema['neutral_band'].default == 0.1
+        assert schema['neutral_band'].min_val == 0.0
 
     def test_macd_has_three_required_periods(self):
         """MacdWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
@@ -326,12 +346,20 @@ class TestWorkerSpecificOutputSchemas:
         assert rsi.category == 'SIGNAL'
         assert rsi.display is True
 
-    def test_envelope_output_schema(self):
-        """Envelope must declare upper, lower, position as SIGNAL."""
-        schema = EnvelopeWorker.get_output_schema()
-        for key in ('upper', 'lower', 'position'):
+    def test_bollinger_output_schema(self):
+        """Bollinger must declare its band + extension outputs as SIGNAL."""
+        schema = BollingerWorker.get_output_schema()
+        for key in ('upper', 'lower', 'position', 'position_raw', 'slope', 'width_pct'):
             assert key in schema, f"Missing output: {key}"
             assert schema[key].category == 'SIGNAL'
+
+    def test_ma_trend_output_schema(self):
+        """MaTrend must declare direction (with choices), slope, ma_value, volatility_pct as SIGNAL."""
+        schema = MaTrendWorker.get_output_schema()
+        for key in ('direction', 'slope', 'ma_value', 'volatility_pct'):
+            assert key in schema, f"Missing output: {key}"
+            assert schema[key].category == 'SIGNAL'
+        assert schema['direction'].choices == ('up', 'down', 'neutral')
 
     def test_macd_output_schema(self):
         """MACD must declare macd, signal, histogram as SIGNAL."""

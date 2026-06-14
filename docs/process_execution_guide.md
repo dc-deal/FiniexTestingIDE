@@ -644,7 +644,7 @@ for result in results:
   "max_ticks": 20000,
   "workers": {
     "rsi_fast": {"period": 14, "timeframe": "M5"},
-    "envelope_main": {"period": 20, "deviation": 2.0, "timeframe": "M30"}
+    "bollinger_main": {"period": 20, "deviation": 2.0, "timeframe": "M30"}
   }
 }
 ```
@@ -685,7 +685,7 @@ Total: 944.64ms
 
 Worker Execution:       743.60ms (78.7%)
   ├─ rsi_fast:          398.77ms (42.2%)
-  └─ envelope_main:     344.83ms (36.5%)
+  └─ bollinger_main:     344.83ms (36.5%)
 
 Decision Logic:         135.28ms (14.3%)
   └─ aggressive_trend:  135.28ms

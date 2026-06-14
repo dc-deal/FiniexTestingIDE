@@ -7,45 +7,47 @@ The worker test suite validates the parameter validation system, schema integrit
 **Test Location:** `tests/framework/worker_tests/`
 
 **Components Covered:**
-- 6 Workers: RsiWorker, EnvelopeWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
+- 7 Workers: RsiWorker, BollingerWorker, MaTrendWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
-**Total Tests:** 231
+**Total Tests:** 269
 
 ---
 
 ## Test Files
 
-### test_parameter_schema.py (~124 Tests)
+### test_parameter_schema.py (~127 Tests)
 
-Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 9 components.
+Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 10 components.
 
-#### TestSchemaStructure (27 Tests)
-
-| Test | Parametrized | Description |
-|------|-------------|-------------|
-| `test_schema_returns_dict` | ×9 | `get_parameter_schema()` returns a `dict` |
-| `test_schema_values_are_parameter_defs` | ×9 | All values are `InputParamDef` instances |
-| `test_schema_keys_are_strings` | ×9 | All keys are strings |
-
-#### TestInputParamDefValidity (54 Tests)
+#### TestSchemaStructure (30 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
-| `test_param_types_are_supported` | ×9 | `param_type` is one of `int`, `float`, `bool`, `str`, `list` |
-| `test_min_less_than_max` | ×9 | `min_val < max_val` when both are set |
-| `test_defaults_within_bounds` | ×9 | Non-REQUIRED defaults fall within `[min_val, max_val]` |
-| `test_defaults_match_declared_type` | ×9 | Default value matches declared `param_type` |
-| `test_choices_contain_valid_values` | ×9 | All choices match declared `param_type` |
-| `test_defaults_in_choices` | ×9 | Default value is in `choices` list (when choices defined) |
+| `test_schema_returns_dict` | ×10 | `get_parameter_schema()` returns a `dict` |
+| `test_schema_values_are_parameter_defs` | ×10 | All values are `InputParamDef` instances |
+| `test_schema_keys_are_strings` | ×10 | All keys are strings |
 
-#### TestWorkerSpecificSchemas (5 Tests)
+#### TestInputParamDefValidity (60 Tests)
+
+| Test | Parametrized | Description |
+|------|-------------|-------------|
+| `test_param_types_are_supported` | ×10 | `param_type` is one of `int`, `float`, `bool`, `str`, `list` |
+| `test_min_less_than_max` | ×10 | `min_val < max_val` when both are set |
+| `test_defaults_within_bounds` | ×10 | Non-REQUIRED defaults fall within `[min_val, max_val]` |
+| `test_defaults_match_declared_type` | ×10 | Default value matches declared `param_type` |
+| `test_choices_contain_valid_values` | ×10 | All choices match declared `param_type` |
+| `test_defaults_in_choices` | ×10 | Default value is in `choices` list (when choices defined) |
+
+#### TestWorkerSpecificSchemas (7 Tests)
 
 | Test | Description |
 |------|-------------|
 | `test_rsi_has_no_algorithm_params` | RSI schema is empty (periods handled by `validate_config()`) |
 | `test_obv_has_no_algorithm_params` | OBV schema is empty (same pattern as RSI) |
-| `test_envelope_has_deviation` | Envelope declares `deviation` with default 2.0, range 0.5–5.0 |
+| `test_bollinger_has_deviation` | Bollinger declares `deviation` with default 2.0, range 0.5–5.0 |
+| `test_bollinger_has_ma_type` | Bollinger declares `ma_type` with sma/ema choices, default sma |
+| `test_ma_trend_has_params` | MaTrend declares `ma_type` (default ema) + `neutral_band` (default 0.1, min 0.0) |
 | `test_macd_has_three_required_periods` | MACD declares `fast_period`, `slow_period`, `signal_period` as REQUIRED |
 | `test_heavy_rsi_has_artificial_load` | HeavyRSI declares `artificial_load_ms` with default 0 |
 
@@ -58,22 +60,23 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_backtesting_deterministic_has_trade_sequence` | BacktestingDeterministic has `trade_sequence` parameter |
 | `test_all_logics_have_lot_size` | All non-backtesting decision logics declare `lot_size` |
 
-#### TestOutputSchemaStructure (30 Tests)
+#### TestOutputSchemaStructure (35 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
-| `test_output_schema_returns_dict` | ×6 | `get_output_schema()` returns a `dict` |
-| `test_output_schema_values_are_output_param_defs` | ×6 | All values are `OutputParamDef` instances |
-| `test_output_schema_keys_are_strings` | ×6 | All keys are non-empty strings |
-| `test_output_category_is_valid` | ×6 | Output category is `'SIGNAL'` or `'INFO'` |
-| `test_output_min_less_than_max` | ×6 | `min_val < max_val` when both are set |
+| `test_output_schema_returns_dict` | ×7 | `get_output_schema()` returns a `dict` |
+| `test_output_schema_values_are_output_param_defs` | ×7 | All values are `OutputParamDef` instances |
+| `test_output_schema_keys_are_strings` | ×7 | All keys are non-empty strings |
+| `test_output_category_is_valid` | ×7 | Output category is `'SIGNAL'` or `'INFO'` |
+| `test_output_min_less_than_max` | ×7 | `min_val < max_val` when both are set |
 
-#### TestWorkerSpecificOutputSchemas (4 Tests)
+#### TestWorkerSpecificOutputSchemas (5 Tests)
 
 | Test | Description |
 |------|-------------|
 | `test_rsi_output_schema` | RSI declares `rsi_value` as SIGNAL with 0–100 range |
-| `test_envelope_output_schema` | Envelope declares `upper`, `lower`, `position` as SIGNAL |
+| `test_bollinger_output_schema` | Bollinger declares `upper`, `lower`, `position`, `position_raw`, `slope`, `width_pct` as SIGNAL |
+| `test_ma_trend_output_schema` | MaTrend declares `direction` (up/down/neutral), `slope`, `ma_value`, `volatility_pct` as SIGNAL |
 | `test_macd_output_schema` | MACD declares `macd`, `signal`, `histogram` as SIGNAL with display |
 | `test_obv_output_schema` | OBV declares `obv_value` as SIGNAL, `trend` with choices |
 
@@ -120,7 +123,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_above_max_raises` | Value above `max_val` raises in strict mode |
 | `test_float_below_min_raises` | Float below minimum raises |
 | `test_float_above_max_raises` | Float above maximum raises |
-| `test_the_envelope_bug` | Regression test: `deviation=0.02` (below min 0.5) is caught |
+| `test_the_bollinger_bug` | Regression test: `deviation=0.02` (below min 0.5) is caught |
 
 #### TestBoundaryNonStrict (3 Tests)
 
@@ -146,7 +149,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 
 ---
 
-### test_worker_defaults.py (22 Tests)
+### test_worker_defaults.py (24 Tests)
 
 Tests the `apply_defaults()` function that fills missing optional parameters from schema defaults.
 
@@ -162,17 +165,19 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 | `test_empty_config_gets_all_defaults` | Empty config receives all optional defaults |
 | `test_empty_schema_returns_copy` | Components with empty schema return input copy |
 
-#### TestRealWorkerDefaults (15 Tests)
+#### TestRealWorkerDefaults (17 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
-| `test_envelope_default_deviation` | — | Envelope gets `deviation=2.0` when not provided |
+| `test_bollinger_default_deviation` | — | Bollinger gets `deviation=2.0` when not provided |
+| `test_bollinger_default_ma_type` | — | Bollinger gets `ma_type='sma'` when not provided |
+| `test_ma_trend_defaults` | — | MaTrend gets `ma_type='ema'`, `neutral_band=0.1` when not provided |
 | `test_heavy_rsi_default_load` | — | HeavyRSI gets `artificial_load_ms=0` when not provided |
 | `test_macd_no_defaults_for_required` | — | MACD gets no defaults (all params REQUIRED) |
 | `test_simple_consensus_all_defaults` | — | SimpleConsensus fills all 10 parameters from defaults |
 | `test_aggressive_trend_all_defaults` | — | AggressiveTrend fills all 6 parameters from defaults |
 | `test_backtesting_sample_worker_default` | — | BacktestingSampleWorker fills `computation_weight` |
-| `test_defaults_produce_valid_config` | ×9 | Defaults-only config passes `validate_parameters()` |
+| `test_defaults_produce_valid_config` | ×10 | Defaults-only config passes `validate_parameters()` |
 
 ---
 
@@ -185,8 +190,8 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | Test | Description |
 |------|-------------|
 | `test_create_rsi_worker` | RSI worker created with valid periods config |
-| `test_create_envelope_worker` | Envelope worker created with explicit deviation |
-| `test_create_envelope_worker_default_deviation` | Envelope created without deviation (default 2.0 applied) |
+| `test_create_bollinger_worker` | Bollinger worker created with explicit deviation |
+| `test_create_bollinger_worker_default_deviation` | Bollinger created without deviation (default 2.0 applied) |
 | `test_create_macd_worker` | MACD worker created with all three required periods |
 | `test_create_heavy_rsi_worker` | HeavyRSI worker created with artificial load parameter |
 | `test_create_obv_worker` | OBV worker created with valid periods config |
@@ -202,8 +207,8 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_deviation_too_low` | Factory rejects `deviation=0.1` (below min 0.5) |
-| `test_envelope_deviation_too_high` | Factory rejects `deviation=10.0` (above max 5.0) |
+| `test_bollinger_deviation_too_low` | Factory rejects `deviation=0.1` (below min 0.5) |
+| `test_bollinger_deviation_too_high` | Factory rejects `deviation=10.0` (above max 5.0) |
 | `test_macd_fast_period_zero` | Factory rejects `fast_period=0` (below min 1) |
 | `test_heavy_rsi_negative_load` | Factory rejects `artificial_load_ms=-5` (below min 0) |
 
@@ -211,7 +216,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_deviation_too_low_warns` | Non-strict mode warns but creates worker with out-of-range deviation |
+| `test_bollinger_deviation_too_low_warns` | Non-strict mode warns but creates worker with out-of-range deviation |
 
 #### TestDecisionLogicFactoryValidConfigs (4 Tests)
 
@@ -238,7 +243,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 ---
 
-### worker_computation_tests/ (38 Tests)
+### worker_computation_tests/ (57 Tests)
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.
 
@@ -271,17 +276,17 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_envelope_computation.py (9 Tests)
+#### test_bollinger_computation.py (19 Tests)
 
-##### TestEnvelopeBasicComputation (3 Tests)
+##### TestBollingerBasicComputation (3 Tests)
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_bands_default_deviation` | Bands computed with default deviation (2.0) |
-| `test_envelope_bands_custom_deviation` | Bands computed with custom deviation value |
-| `test_envelope_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `std_dev`, `bars_used` |
+| `test_bollinger_bands_default_deviation` | Bands computed with default deviation (2.0) |
+| `test_bollinger_bands_custom_deviation` | Bands computed with custom deviation value |
+| `test_bollinger_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `position_raw`, `slope`, `width_pct`, `std_dev`, `bars_used` |
 
-##### TestEnvelopePosition (3 Tests)
+##### TestBollingerPosition (3 Tests)
 
 | Test | Description |
 |------|-------------|
@@ -289,18 +294,71 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_position_above_upper_clamped` | Price above upper band produces position clamped to 1.0 |
 | `test_position_below_lower_clamped` | Price below lower band produces position clamped to 0.0 |
 
-##### TestEnvelopeOutputFields (1 Test)
+##### TestBollingerOutputFields (1 Test)
 
 | Test | Description |
 |------|-------------|
-| `test_envelope_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
+| `test_bollinger_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
 
-##### TestEnvelopeRegression (2 Tests)
+##### TestBollingerRegression (2 Tests)
 
 | Test | Description |
 |------|-------------|
 | `test_band_width_sanity_check` | Band width matches expected value, regression guard against deviation bug |
 | `test_constant_prices_zero_std` | Constant prices produce zero-width bands (upper = lower = middle) |
+
+##### TestBollingerPositionRaw (3 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_position_raw_above_upper_unclamped` | Price above upper band → `position_raw` > 1.0 while `position` clamps to 1.0 |
+| `test_position_raw_below_lower_unclamped` | Price below lower band → `position_raw` < 0.0 while `position` clamps to 0.0 |
+| `test_position_raw_equals_position_inside_bands` | Inside the bands `position_raw` and `position` coincide |
+
+##### TestBollingerSlopeAndWidth (5 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_slope_positive_on_rising_closes` | Rising midline → positive normalized slope |
+| `test_slope_zero_when_flat` | Constant closes → zero band width → slope 0.0 |
+| `test_slope_zero_without_extra_bar` | Exactly `period` bars (no previous window) → slope 0.0 |
+| `test_width_pct_matches_band_width_over_middle` | `width_pct` = (upper − lower) / middle |
+| `test_width_pct_zero_when_flat` | Constant closes → `width_pct` = 0.0 |
+
+##### TestBollingerMaType (2 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_default_ma_type_is_sma` | No `ma_type` → SMA midline = arithmetic mean |
+| `test_ema_midline_differs_from_sma_on_trend` | EMA midline weights recent prices → above SMA on rising closes |
+
+---
+
+#### test_ma_trend_computation.py (9 Tests)
+
+##### TestMaTrendDirection (4 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_up_on_rising_closes` | Rising closes → `direction` = up, positive slope |
+| `test_down_on_falling_closes` | Falling closes → `direction` = down, negative slope |
+| `test_neutral_on_flat_closes` | Flat closes → `direction` = neutral, slope 0.0 |
+| `test_neutral_band_suppresses_direction` | A wide `neutral_band` classifies a real slope as NEUTRAL |
+
+##### TestMaTrendSlopeAndVolatility (3 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_slope_zero_without_extra_bar` | Exactly `period` bars (no previous window) → slope 0.0 |
+| `test_volatility_pct_matches_std_over_ma` | `volatility_pct` = std_window / ma_value |
+| `test_volatility_pct_zero_when_flat` | Constant closes → `volatility_pct` = 0.0 |
+
+##### TestMaTrendMaType (2 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_ema_ma_value_differs_from_sma_on_trend` | EMA leans toward recent highs → above SMA on rising closes |
+| `test_output_keys` | Result outputs dict contains `direction`, `slope`, `ma_value`, `volatility_pct`, `bars_used` |
 
 ---
 
@@ -391,16 +449,17 @@ InputParamDef (input schema)    OutputParamDef (output schema)
 
 ### Parametrized Components
 
-All 9 components tested across schema and defaults tests:
+All 10 components tested across schema and defaults tests:
 
 | Component | Type | Parameters |
 |-----------|------|------------|
 | RsiWorker | Worker | (no algorithm params) |
-| EnvelopeWorker | Worker | `deviation` |
+| BollingerWorker | Worker | `deviation`, `ma_type` |
+| MaTrendWorker | Worker | `ma_type`, `neutral_band` |
 | MacdWorker | Worker | `fast_period`, `slow_period`, `signal_period` |
 | ObvWorker | Worker | (no algorithm params) |
 | HeavyRsiWorker | Worker | `artificial_load_ms` |
 | BacktestingSampleWorker | Worker | `computation_weight` |
-| SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, envelope thresholds, lot_size, etc.) |
+| SimpleConsensus | DecisionLogic | 10 parameters (RSI thresholds, Bollinger thresholds, lot_size, etc.) |
 | AggressiveTrend | DecisionLogic | 6 parameters (RSI thresholds, lot_size, etc.) |
 | BacktestingDeterministic | DecisionLogic | `trade_sequence`, `lot_size` |

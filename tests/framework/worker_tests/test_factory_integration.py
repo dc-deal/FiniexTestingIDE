@@ -75,20 +75,20 @@ class TestWorkerFactoryValidConfigs:
         assert worker is not None
         assert worker.name == "rsi_test"
 
-    def test_create_envelope_worker(self, strict_worker_factory):
-        """Envelope worker with valid deviation."""
+    def test_create_bollinger_worker(self, strict_worker_factory):
+        """Bollinger worker with valid deviation."""
         worker = strict_worker_factory.create_worker(
-            instance_name="envelope_test",
-            worker_type="CORE/envelope",
+            instance_name="bollinger_test",
+            worker_type="CORE/bollinger",
             worker_config={"periods": {"M5": 20}, "deviation": 2.0},
         )
         assert worker is not None
 
-    def test_create_envelope_worker_default_deviation(self, strict_worker_factory):
-        """Envelope worker without deviation uses default 2.0."""
+    def test_create_bollinger_worker_default_deviation(self, strict_worker_factory):
+        """Bollinger worker without deviation uses default 2.0."""
         worker = strict_worker_factory.create_worker(
-            instance_name="envelope_default",
-            worker_type="CORE/envelope",
+            instance_name="bollinger_default",
+            worker_type="CORE/bollinger",
             worker_config={"periods": {"M5": 20}},
         )
         assert worker is not None
@@ -164,21 +164,21 @@ class TestWorkerFactoryMissingRequired:
 class TestWorkerFactoryBoundaryStrict:
     """Out-of-range values must abort in strict mode."""
 
-    def test_envelope_deviation_too_low(self, strict_worker_factory):
+    def test_bollinger_deviation_too_low(self, strict_worker_factory):
         """deviation=0.02 must be rejected (the original bug)."""
         with pytest.raises(ValueError, match="below minimum"):
             strict_worker_factory.create_worker(
-                instance_name="envelope_bug",
-                worker_type="CORE/envelope",
+                instance_name="bollinger_bug",
+                worker_type="CORE/bollinger",
                 worker_config={"periods": {"M5": 20}, "deviation": 0.02},
             )
 
-    def test_envelope_deviation_too_high(self, strict_worker_factory):
+    def test_bollinger_deviation_too_high(self, strict_worker_factory):
         """deviation=50.0 must be rejected."""
         with pytest.raises(ValueError, match="above maximum"):
             strict_worker_factory.create_worker(
-                instance_name="envelope_high",
-                worker_type="CORE/envelope",
+                instance_name="bollinger_high",
+                worker_type="CORE/bollinger",
                 worker_config={"periods": {"M5": 20}, "deviation": 50.0},
             )
 
@@ -213,11 +213,11 @@ class TestWorkerFactoryBoundaryStrict:
 class TestWorkerFactoryBoundaryNonStrict:
     """Out-of-range values warn but allow creation in non-strict mode."""
 
-    def test_envelope_deviation_too_low_warns(self, lenient_worker_factory, mock_logger):
+    def test_bollinger_deviation_too_low_warns(self, lenient_worker_factory, mock_logger):
         """deviation=0.02 creates worker but logs warning."""
         worker = lenient_worker_factory.create_worker(
-            instance_name="envelope_warn",
-            worker_type="CORE/envelope",
+            instance_name="bollinger_warn",
+            worker_type="CORE/bollinger",
             worker_config={"periods": {"M5": 20}, "deviation": 0.02},
         )
         assert worker is not None

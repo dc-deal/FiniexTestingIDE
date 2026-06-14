@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness, StrategyEvent
@@ -110,6 +112,9 @@ class AbstractDecisionLogic(ABC):
         self._event_history: deque[StrategyEvent] = deque(maxlen=tape_size)
         self._total_events_emitted: int = 0
 
+        # Diagnostics CSV sinks (#376) — algo-declared, framework-flushed at run end
+        self._diagnostics_sinks: Dict[str, DiagnosticsCsvSink] = {}
+
     # ============================================
     # abstractmethods
     # ============================================
@@ -166,6 +171,21 @@ class AbstractDecisionLogic(ABC):
             Dict[output_name, OutputParamDef]
         """
         return {}
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """
+        Author-declared metadata (version, doc link, recommended market fit).
+
+        Override to declare. Default is an empty ComponentMetadata (opt-in, no-op).
+        Complements the automatic config_fingerprint with semantic intent; the
+        recommended_markets / recommended_instruments drive a soft (non-blocking)
+        market-fit warning at pre-flight.
+
+        Returns:
+            ComponentMetadata for this decision logic
+        """
+        return ComponentMetadata()
 
     @classmethod
     def validate_parameter_schema(
@@ -263,13 +283,13 @@ class AbstractDecisionLogic(ABC):
         Example:
             {
                 "rsi_fast": "CORE/rsi",
-                "envelope_main": "CORE/envelope"
+                "bollinger_main": "CORE/bollinger"
             }
 
         Config must match exactly:
             "worker_instances": {
                 "rsi_fast": "CORE/rsi",        # ✅ Same key, same type
-                "envelope_main": "CORE/envelope"  # ✅ Same key, same type
+                "bollinger_main": "CORE/bollinger"  # ✅ Same key, same type
             }
 
         Type override is NOT allowed - if DecisionLogic declares
@@ -414,6 +434,40 @@ class AbstractDecisionLogic(ABC):
             Cumulative event count
         """
         return self._total_events_emitted
+
+    # ============================================
+    # Diagnostics CSV Sinks (#376)
+    # ============================================
+
+    def diagnostics_csv(self, name: str, columns: List[str]) -> DiagnosticsCsvSink:
+        """
+        Get or create a named diagnostics CSV sink (strategy-owned schema).
+
+        The strategy declares the columns and appends rows during the run; the
+        framework owns the file logistics and flushes it to the run directory at
+        run end (both pipelines), next to events.csv. Calling again with the same
+        name returns the same sink (columns set on first create). Low-frequency
+        use only (decision moments) — rows buffer in memory, no hot-path cost.
+
+        Args:
+            name: Filename stem (e.g. 'setup_funnel')
+            columns: Ordered column names — the CSV header
+
+        Returns:
+            The DiagnosticsCsvSink for this name (created on first call)
+        """
+        if name not in self._diagnostics_sinks:
+            self._diagnostics_sinks[name] = DiagnosticsCsvSink(name, columns)
+        return self._diagnostics_sinks[name]
+
+    def get_diagnostics_sinks(self) -> List[DiagnosticsCsvSink]:
+        """
+        All diagnostics sinks declared by this logic (for the framework flush).
+
+        Returns:
+            List of DiagnosticsCsvSink (empty if none declared)
+        """
+        return list(self._diagnostics_sinks.values())
 
     # ============================================
     # Decision Event Channel (#348)

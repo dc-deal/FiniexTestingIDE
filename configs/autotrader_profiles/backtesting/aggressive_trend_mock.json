@@ -7,7 +7,7 @@
     "decision_logic_type": "CORE/aggressive_trend",
     "worker_instances": {
       "rsi_fast": "CORE/rsi",
-      "envelope_main": "CORE/envelope"
+      "bollinger_main": "CORE/bollinger"
     },
     "workers": {
       "rsi_fast": {
@@ -15,7 +15,7 @@
           "M5": 14
         }
       },
-      "envelope_main": {
+      "bollinger_main": {
         "periods": {
           "M30": 20
         },
@@ -25,7 +25,7 @@
     "decision_logic_config": {
       "rsi_buy_threshold": 45,
       "rsi_sell_threshold": 55,
-      "envelope_extremes": 0.45,
+      "bollinger_extremes": 0.45,
       "min_confidence": 0.1,
       "min_free_margin": 100,
       "lot_size": 0.01

@@ -235,7 +235,7 @@ def _run_simulation_trades(ticks):
     # do not call decision_logic.compute_tick() directly.
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
     )
 
     execute_tick_loop(
@@ -286,7 +286,7 @@ def _run_autotrader_trades(ticks):
 
     worker_orchestrator = MagicMock()
     worker_orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
     )
 
     tick_source = MagicMock()

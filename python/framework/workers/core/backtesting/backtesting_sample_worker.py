@@ -48,7 +48,7 @@ class BacktestingSampleWorker(AbstractWorker):
     This worker validates that warmup bars are correctly loaded and captures
     bar snapshots at specific ticks for comparison with prerendered bars.
 
-    Unlike computation workers (RSI, Envelope), this worker:
+    Unlike computation workers (RSI, Bollinger), this worker:
     - Returns no computation value (value=None)
     - Only populates metadata with validation data
     - Is designed for testing, not production trading

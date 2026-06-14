@@ -24,6 +24,7 @@ from python.framework.autotrader.autotrader_startup import (
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -34,6 +35,7 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.validators.algo_clock_validator import validate_algo_clock
+from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
@@ -185,6 +187,12 @@ class AutotraderMain:
                 [type(self._decision_logic)]
                 + [type(worker) for worker in self._worker_orchestrator.workers.values()]
             )
+
+            # === COMPONENT METADATA ADVISORY (#118 Stage 0) ===
+            # Version line + soft (non-blocking) market-fit warning.
+            surface_decision_logic_metadata(
+                self._decision_logic, self._config.broker_type,
+                self._config.symbol, self._session_logger)
 
             # === DRIFT AUDIT (#327) ===
             # Gated by config; live-only by design — DRYRUN orders auto-skipped
@@ -551,6 +559,10 @@ class AutotraderMain:
             order_history=result.order_history or [],
             run_dir=self._run_dir,
         ).flush('events.csv')
+
+        # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
+        if self._decision_logic:
+            flush_decision_diagnostics(self._decision_logic, self._run_dir)
 
         post_session_report = AutotraderPostSessionReport(
             summary_logger=self._summary_logger,

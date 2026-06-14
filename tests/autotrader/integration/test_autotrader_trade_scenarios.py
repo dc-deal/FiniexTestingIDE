@@ -138,8 +138,8 @@ class TestMinimalWarmup:
     Minimal warmup: bar_max_history=30, workers cannot satisfy all warmup periods.
     Session must complete without crash — no exception, result returned.
 
-    Workers (RSI periods=M5:14, Envelope periods=M30:20) are starved of M30 history.
-    Envelope stays below warmup threshold for the entire 300-tick session.
+    Workers (RSI periods=M5:14, Bollinger periods=M30:20) are starved of M30 history.
+    Bollinger stays below warmup threshold for the entire 300-tick session.
     Decision logic receives empty/partial worker results and must not crash.
     """
 

@@ -18,7 +18,8 @@ from python.framework.validators.parameter_validator import apply_defaults, vali
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from conftest import ALL_WORKERS, ALL_DECISION_LOGICS
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
-from python.framework.workers.core.envelope_worker import EnvelopeWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 
 # ============================================
@@ -104,12 +105,27 @@ class TestApplyDefaultsCore:
 class TestRealWorkerDefaults:
     """Validate defaults from actual CORE worker schemas."""
 
-    def test_envelope_default_deviation(self):
-        """EnvelopeWorker: empty config → deviation=2.0."""
+    def test_bollinger_default_deviation(self):
+        """BollingerWorker: empty config → deviation=2.0."""
 
-        schema = EnvelopeWorker.get_parameter_schema()
+        schema = BollingerWorker.get_parameter_schema()
         merged = apply_defaults({}, schema)
         assert merged['deviation'] == 2.0
+
+    def test_bollinger_default_ma_type(self):
+        """BollingerWorker: empty config → ma_type='sma'."""
+
+        schema = BollingerWorker.get_parameter_schema()
+        merged = apply_defaults({}, schema)
+        assert merged['ma_type'] == 'sma'
+
+    def test_ma_trend_defaults(self):
+        """MaTrendWorker: empty config → ma_type='ema', neutral_band=0.1."""
+
+        schema = MaTrendWorker.get_parameter_schema()
+        merged = apply_defaults({}, schema)
+        assert merged['ma_type'] == 'ema'
+        assert merged['neutral_band'] == 0.1
 
     def test_heavy_rsi_default_load(self):
         """HeavyRsiWorker: empty config → artificial_load_ms=5.0."""

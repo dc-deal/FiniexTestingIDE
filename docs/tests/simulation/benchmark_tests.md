@@ -201,7 +201,7 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {
         "rsi_fast": "CORE/rsi",
-        "envelope_main": "CORE/envelope"
+        "bollinger_main": "CORE/bollinger"
       }
     },
     "trade_simulator_config": {

@@ -6,13 +6,14 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
-    WorkerResult, WorkerState, WorkerType)
+    RecomputeCadence, WorkerResult, WorkerState, WorkerType)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -145,6 +146,23 @@ class AbstractWorker(ABC):
         """Get last computation result"""
         return self._last_result
 
+    def get_recompute_cadence(self) -> RecomputeCadence:
+        """
+        Effective recompute cadence for this worker instance.
+
+        The per-instance config key 'recompute' overrides the class default
+        (get_default_recompute_cadence). This is the single per-instance switch:
+        the same CORE worker class can be PER_TICK for a tick-reactive strategy
+        and ON_BAR_CLOSE for a bar-close strategy, decided in the run config.
+
+        Returns:
+            RecomputeCadence governing when the orchestrator recomputes this worker
+        """
+        configured = self.parameters.get('recompute')
+        if configured is None:
+            return self.__class__.get_default_recompute_cadence()
+        return RecomputeCadence(configured)
+
     def set_state(self, state: WorkerState):
         """Update worker state"""
         self.state = state
@@ -188,7 +206,7 @@ class AbstractWorker(ABC):
         Returns:
             Metric string ('volume', 'tick_count', ...) or None if the
             worker has no activity-data dependency (pure price-based
-            workers like RSI, Envelope, MACD).
+            workers like RSI, Bollinger, MACD).
 
         Raises:
             NotImplementedError: If subclass does not override this method.
@@ -197,9 +215,38 @@ class AbstractWorker(ABC):
             f"{cls.__name__} must declare get_required_activity_metric(). "
             f"Return 'volume' if the worker consumes real trade volume, "
             f"'tick_count' if it depends on tick arrival density, or None "
-            f"if it is purely price-based (RSI, Envelope, MACD). "
+            f"if it is purely price-based (RSI, Bollinger, MACD). "
             f"See docs/architecture/market_capabilities.md."
         )
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """
+        Author-declared metadata (version, doc link, recommended market fit).
+
+        Override to declare. Default is an empty ComponentMetadata (opt-in, no-op).
+        Complements the automatic config_fingerprint with semantic intent.
+
+        Returns:
+            ComponentMetadata for this worker
+        """
+        return ComponentMetadata()
+
+    @classmethod
+    def get_default_recompute_cadence(cls) -> RecomputeCadence:
+        """
+        Natural recompute cadence for this worker class.
+
+        Default PER_TICK — preserves the historical behavior and the determinism
+        of existing scenario sets. A bar-derived worker MAY override this to
+        ON_BAR_CLOSE, but CORE workers stay PER_TICK until the event-driven loop
+        (#375) makes a bar-close default safe across all consumers. The per-instance
+        config key 'recompute' overrides this per run.
+
+        Returns:
+            Default RecomputeCadence for this worker class
+        """
+        return RecomputeCadence.PER_TICK
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
@@ -267,6 +314,16 @@ class AbstractWorker(ABC):
         Raises:
             ValueError: If required fields missing
         """
+        # Reserved framework key: recompute cadence (per-instance opt-in)
+        recompute = config.get('recompute')
+        if recompute is not None:
+            valid = [c.value for c in RecomputeCadence]
+            if recompute not in valid:
+                raise ValueError(
+                    f"Worker '{cls.__name__}': invalid 'recompute' cadence "
+                    f"'{recompute}'. Allowed: {valid}"
+                )
+
         worker_type = cls.get_worker_type()
         required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])
 
@@ -309,7 +366,7 @@ class AbstractWorker(ABC):
 
         Example:
             >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 2.0}
-            >>> EnvelopeWorker.calculate_requirements(config)
+            >>> BollingerWorker.calculate_requirements(config)
             {"M5": 20, "M30": 50}
         """
         # Default implementation: Use 'periods' directly for INDICATOR
