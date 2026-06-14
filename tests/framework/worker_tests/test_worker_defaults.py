@@ -111,6 +111,13 @@ class TestRealWorkerDefaults:
         merged = apply_defaults({}, schema)
         assert merged['deviation'] == 2.0
 
+    def test_bollinger_default_ma_type(self):
+        """BollingerWorker: empty config → ma_type='sma'."""
+
+        schema = BollingerWorker.get_parameter_schema()
+        merged = apply_defaults({}, schema)
+        assert merged['ma_type'] == 'sma'
+
     def test_heavy_rsi_default_load(self):
         """HeavyRsiWorker: empty config → artificial_load_ms=5.0."""
 

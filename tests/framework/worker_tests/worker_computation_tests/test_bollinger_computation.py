@@ -112,7 +112,10 @@ class TestBollingerBasicComputation:
 
         result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
 
-        expected_keys = {'upper', 'middle', 'lower', 'position', 'std_dev', 'bars_used'}
+        expected_keys = {
+            'upper', 'middle', 'lower', 'position', 'position_raw',
+            'slope', 'width_pct', 'std_dev', 'bars_used',
+        }
         assert set(result.outputs.keys()) == expected_keys
 
 
@@ -257,3 +260,176 @@ class TestBollingerRegression:
         assert result.get_signal('lower') == pytest.approx(100.0, abs=0.001)
         # When upper == lower, position = 0.5 (default)
         assert result.get_signal('position') == pytest.approx(0.5, abs=0.01)
+
+
+# Six rising closes → period 5 leaves one extra bar for the slope window.
+RISING_CLOSES_6 = [100, 101, 102, 103, 104, 105]
+
+
+class TestBollingerPositionRaw:
+    """Test the unclamped position_raw output (overshoot information)."""
+
+    def test_position_raw_above_upper_unclamped(self, mock_logger):
+        """Tick above the upper band → position_raw > 1.0 while position clamps to 1.0."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=110.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('position_raw') > 1.0
+        assert result.get_signal('position') == 1.0
+
+    def test_position_raw_below_lower_unclamped(self, mock_logger):
+        """Tick below the lower band → position_raw < 0.0 while position clamps to 0.0."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=95.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('position_raw') < 0.0
+        assert result.get_signal('position') == 0.0
+
+    def test_position_raw_equals_position_inside_bands(self, mock_logger):
+        """Inside the bands the two coincide (no clamping applied)."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=101.9999, ask=102.0001)  # mid = 102.0 = middle
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('position_raw') == pytest.approx(
+            result.get_signal('position'), abs=0.0001
+        )
+
+
+class TestBollingerSlopeAndWidth:
+    """Test the slope and width_pct outputs."""
+
+    def test_slope_positive_on_rising_closes(self, mock_logger):
+        """A rising midline yields a positive normalized slope."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(RISING_CLOSES_6)
+        tick = make_tick(bid=105.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('slope') > 0.0
+
+    def test_slope_zero_when_flat(self, mock_logger):
+        """Constant closes → zero band width → slope falls back to 0.0."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars([100.0] * 6)
+        tick = make_tick(bid=100.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('slope') == 0.0
+
+    def test_slope_zero_without_extra_bar(self, mock_logger):
+        """Exactly `period` bars → no previous window → slope fallback 0.0."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)  # 5 bars, period 5
+        tick = make_tick(bid=102.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('slope') == 0.0
+
+    def test_width_pct_matches_band_width_over_middle(self, mock_logger):
+        """width_pct = (upper - lower) / middle."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=102.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        band_width = result.get_signal('upper') - result.get_signal('lower')
+        expected = band_width / result.get_signal('middle')
+        assert result.get_signal('width_pct') == pytest.approx(expected, abs=0.0001)
+
+    def test_width_pct_zero_when_flat(self, mock_logger):
+        """Constant closes → zero band width → width_pct = 0.0."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars([100.0] * 6)
+        tick = make_tick(bid=100.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('width_pct') == 0.0
+
+
+class TestBollingerMaType:
+    """Test the ma_type parameter (sma default, ema variant)."""
+
+    def test_default_ma_type_is_sma(self, mock_logger):
+        """No ma_type → SMA midline = arithmetic mean of the window."""
+        worker = BollingerWorker(
+            name="test_bollinger",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=102.0)
+
+        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+
+        assert result.get_signal('middle') == pytest.approx(EXPECTED_MIDDLE, abs=0.001)
+
+    def test_ema_midline_differs_from_sma_on_trend(self, mock_logger):
+        """On rising closes the EMA midline weights recent prices → above the SMA."""
+        sma_worker = BollingerWorker(
+            name="test_sma",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0, "ma_type": "sma"},
+            logger=mock_logger,
+        )
+        ema_worker = BollingerWorker(
+            name="test_ema",
+            parameters={"periods": {"M5": 5}, "deviation": 2.0, "ma_type": "ema"},
+            logger=mock_logger,
+        )
+        bars = make_bars(STANDARD_CLOSES)
+        tick = make_tick(bid=102.0)
+
+        sma_mid = sma_worker.compute(
+            tick=tick, bar_history={"M5": bars}, current_bars={}
+        ).get_signal('middle')
+        ema_mid = ema_worker.compute(
+            tick=tick, bar_history={"M5": bars}, current_bars={}
+        ).get_signal('middle')
+
+        assert ema_mid != pytest.approx(sma_mid, abs=0.001)
+        assert ema_mid > sma_mid  # rising series → EMA leans toward recent highs

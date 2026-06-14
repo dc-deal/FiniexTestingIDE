@@ -195,6 +195,15 @@ class TestWorkerSpecificSchemas:
         assert dev.min_val == 0.5
         assert dev.max_val == 5.0
 
+    def test_bollinger_has_ma_type(self):
+        """BollingerWorker must declare ma_type with sma/ema choices, default sma."""
+        schema = BollingerWorker.get_parameter_schema()
+        assert 'ma_type' in schema
+        ma_type = schema['ma_type']
+        assert ma_type.param_type == str
+        assert ma_type.default == 'sma'
+        assert ma_type.choices == ('sma', 'ema')
+
     def test_macd_has_three_required_periods(self):
         """MacdWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
         schema = MacdWorker.get_parameter_schema()
@@ -327,9 +336,9 @@ class TestWorkerSpecificOutputSchemas:
         assert rsi.display is True
 
     def test_bollinger_output_schema(self):
-        """Bollinger must declare upper, lower, position as SIGNAL."""
+        """Bollinger must declare its band + extension outputs as SIGNAL."""
         schema = BollingerWorker.get_output_schema()
-        for key in ('upper', 'lower', 'position'):
+        for key in ('upper', 'lower', 'position', 'position_raw', 'slope', 'width_pct'):
             assert key in schema, f"Missing output: {key}"
             assert schema[key].category == 'SIGNAL'
 

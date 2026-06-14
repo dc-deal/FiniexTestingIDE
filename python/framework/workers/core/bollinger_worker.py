@@ -25,7 +25,8 @@ class BollingerWorker(AbstractWorker):
         CONFIG STRUCTURE:
         {
             "periods": {"M5": 20, "M30": 50},  # REQUIRED for INDICATOR
-            "deviation": 2.0                   # Optional
+            "deviation": 2.0,                  # Optional
+            "ma_type": "sma"                   # Optional (sma | ema)
         }
 
         """
@@ -36,6 +37,8 @@ class BollingerWorker(AbstractWorker):
 
         # periods → handled by Abstract (INDICATOR type)
         self.deviation = self.params.get('deviation')
+        # Optional — factory applies the 'sma' default; .has() guards direct construction
+        self.ma_type = self.params.get('ma_type') if self.params.has('ma_type') else 'sma'
 
     # ============================================
     # STATIC: Classmethods for factory/UI
@@ -51,6 +54,12 @@ class BollingerWorker(AbstractWorker):
                 min_val=0.5,
                 max_val=5.0,
                 description="Standard deviation multiplier for Bollinger bands"
+            ),
+            'ma_type': InputParamDef(
+                param_type=str,
+                default='sma',
+                choices=('sma', 'ema'),
+                description="Moving-average type for the midline (sma or ema)"
             ),
         }
 
@@ -77,6 +86,21 @@ class BollingerWorker(AbstractWorker):
                 param_type=float, min_val=0.0, max_val=1.0,
                 description='Price position within bands (0=lower, 1=upper)',
                 category='SIGNAL', display=True, display_label='pos',
+            ),
+            'position_raw': OutputParamDef(
+                param_type=float,
+                description='Unclamped price position (<0 below lower, >1 above upper)',
+                category='SIGNAL',
+            ),
+            'slope': OutputParamDef(
+                param_type=float,
+                description='Midline slope per bar, normalized by band width',
+                category='SIGNAL',
+            ),
+            'width_pct': OutputParamDef(
+                param_type=float, min_val=0.0,
+                description='Band width relative to the midline: (upper-lower)/middle',
+                category='SIGNAL',
             ),
             'std_dev': OutputParamDef(
                 param_type=float, min_val=0.0,
@@ -123,6 +147,25 @@ class BollingerWorker(AbstractWorker):
         """Bollinger recomputes when bar updated"""
         return bar_updated
 
+    def _moving_average(self, closes: np.ndarray, period: int) -> float:
+        """
+        Moving average over a window per the configured ma_type.
+
+        Args:
+            closes: Close prices for the window
+            period: Window length (drives the EMA smoothing factor)
+
+        Returns:
+            SMA (mean) or EMA (alpha=2/(period+1), seeded with the first close)
+        """
+        if self.ma_type == 'ema':
+            alpha = 2.0 / (period + 1)
+            ema = float(closes[0])
+            for price in closes[1:]:
+                ema = alpha * float(price) + (1.0 - alpha) * ema
+            return ema
+        return float(np.mean(closes))
+
     def compute(
         self,
         tick: TickData,
@@ -153,29 +196,45 @@ class BollingerWorker(AbstractWorker):
         if current_bar:  # Check if Bar exists (not Dict!)
             bars = list(bars) + [current_bar]
 
-        # Extract close prices from bars
-        close_prices = np.array([bar.close for bar in bars[-period:]])
+        # Extract close prices from bars (keep one extra bar for slope)
+        all_closes = np.array([bar.close for bar in bars])
+        close_prices = all_closes[-period:]
 
         # Calculate Bollinger bands
-        middle = np.mean(close_prices)
+        middle = self._moving_average(close_prices, period)
         std_dev = np.std(close_prices)
 
-        upper = middle + (std_dev * self.deviation)
-        lower = middle - (std_dev * self.deviation)
+        band_half = std_dev * self.deviation
+        upper = middle + band_half
+        lower = middle - band_half
 
-        # Calculate current position relative to bands
+        # Calculate current position relative to bands (raw = unclamped overshoot)
         current_price = tick.mid
-        position = 0.5  # Default middle
+        position_raw = 0.5  # Default middle
 
         if upper != lower:
-            position = (current_price - lower) / (upper - lower)
-            position = max(0.0, min(1.0, position))  # Clamp 0-1
+            position_raw = (current_price - lower) / (upper - lower)
+        position = max(0.0, min(1.0, position_raw))  # Clamp 0-1
+
+        # Midline slope, normalized by band width (needs period+1 closes)
+        band_width = upper - lower
+        slope = 0.0
+        if len(all_closes) >= period + 1 and band_width > 0:
+            prev_window = all_closes[-(period + 1):-1]
+            mid_prev = self._moving_average(prev_window, period)
+            slope = (middle - mid_prev) / band_width
+
+        # Band width relative to the midline
+        width_pct = band_width / middle if middle > 0 else 0.0
 
         return WorkerResult(outputs={
             'upper': float(upper),
             'middle': float(middle),
             'lower': float(lower),
             'position': float(position),
+            'position_raw': float(position_raw),
+            'slope': float(slope),
+            'width_pct': float(width_pct),
             'std_dev': float(std_dev),
             'bars_used': len(close_prices),
         })

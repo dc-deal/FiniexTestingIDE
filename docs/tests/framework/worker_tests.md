@@ -10,13 +10,13 @@ The worker test suite validates the parameter validation system, schema integrit
 - 6 Workers: RsiWorker, BollingerWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
-**Total Tests:** 231
+**Total Tests:** 243
 
 ---
 
 ## Test Files
 
-### test_parameter_schema.py (~124 Tests)
+### test_parameter_schema.py (~125 Tests)
 
 Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 9 components.
 
@@ -39,13 +39,14 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_choices_contain_valid_values` | ×9 | All choices match declared `param_type` |
 | `test_defaults_in_choices` | ×9 | Default value is in `choices` list (when choices defined) |
 
-#### TestWorkerSpecificSchemas (5 Tests)
+#### TestWorkerSpecificSchemas (6 Tests)
 
 | Test | Description |
 |------|-------------|
 | `test_rsi_has_no_algorithm_params` | RSI schema is empty (periods handled by `validate_config()`) |
 | `test_obv_has_no_algorithm_params` | OBV schema is empty (same pattern as RSI) |
 | `test_bollinger_has_deviation` | Bollinger declares `deviation` with default 2.0, range 0.5–5.0 |
+| `test_bollinger_has_ma_type` | Bollinger declares `ma_type` with sma/ema choices, default sma |
 | `test_macd_has_three_required_periods` | MACD declares `fast_period`, `slow_period`, `signal_period` as REQUIRED |
 | `test_heavy_rsi_has_artificial_load` | HeavyRSI declares `artificial_load_ms` with default 0 |
 
@@ -73,7 +74,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | Test | Description |
 |------|-------------|
 | `test_rsi_output_schema` | RSI declares `rsi_value` as SIGNAL with 0–100 range |
-| `test_bollinger_output_schema` | Bollinger declares `upper`, `lower`, `position` as SIGNAL |
+| `test_bollinger_output_schema` | Bollinger declares `upper`, `lower`, `position`, `position_raw`, `slope`, `width_pct` as SIGNAL |
 | `test_macd_output_schema` | MACD declares `macd`, `signal`, `histogram` as SIGNAL with display |
 | `test_obv_output_schema` | OBV declares `obv_value` as SIGNAL, `trend` with choices |
 
@@ -146,7 +147,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 
 ---
 
-### test_worker_defaults.py (22 Tests)
+### test_worker_defaults.py (23 Tests)
 
 Tests the `apply_defaults()` function that fills missing optional parameters from schema defaults.
 
@@ -162,11 +163,12 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 | `test_empty_config_gets_all_defaults` | Empty config receives all optional defaults |
 | `test_empty_schema_returns_copy` | Components with empty schema return input copy |
 
-#### TestRealWorkerDefaults (15 Tests)
+#### TestRealWorkerDefaults (16 Tests)
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
 | `test_bollinger_default_deviation` | — | Bollinger gets `deviation=2.0` when not provided |
+| `test_bollinger_default_ma_type` | — | Bollinger gets `ma_type='sma'` when not provided |
 | `test_heavy_rsi_default_load` | — | HeavyRSI gets `artificial_load_ms=0` when not provided |
 | `test_macd_no_defaults_for_required` | — | MACD gets no defaults (all params REQUIRED) |
 | `test_simple_consensus_all_defaults` | — | SimpleConsensus fills all 10 parameters from defaults |
@@ -238,7 +240,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 ---
 
-### worker_computation_tests/ (38 Tests)
+### worker_computation_tests/ (48 Tests)
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.
 
@@ -271,7 +273,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_bollinger_computation.py (9 Tests)
+#### test_bollinger_computation.py (19 Tests)
 
 ##### TestBollingerBasicComputation (3 Tests)
 
@@ -279,7 +281,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 |------|-------------|
 | `test_bollinger_bands_default_deviation` | Bands computed with default deviation (2.0) |
 | `test_bollinger_bands_custom_deviation` | Bands computed with custom deviation value |
-| `test_bollinger_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `std_dev`, `bars_used` |
+| `test_bollinger_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `position_raw`, `slope`, `width_pct`, `std_dev`, `bars_used` |
 
 ##### TestBollingerPosition (3 Tests)
 
@@ -301,6 +303,31 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 |------|-------------|
 | `test_band_width_sanity_check` | Band width matches expected value, regression guard against deviation bug |
 | `test_constant_prices_zero_std` | Constant prices produce zero-width bands (upper = lower = middle) |
+
+##### TestBollingerPositionRaw (3 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_position_raw_above_upper_unclamped` | Price above upper band → `position_raw` > 1.0 while `position` clamps to 1.0 |
+| `test_position_raw_below_lower_unclamped` | Price below lower band → `position_raw` < 0.0 while `position` clamps to 0.0 |
+| `test_position_raw_equals_position_inside_bands` | Inside the bands `position_raw` and `position` coincide |
+
+##### TestBollingerSlopeAndWidth (5 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_slope_positive_on_rising_closes` | Rising midline → positive normalized slope |
+| `test_slope_zero_when_flat` | Constant closes → zero band width → slope 0.0 |
+| `test_slope_zero_without_extra_bar` | Exactly `period` bars (no previous window) → slope 0.0 |
+| `test_width_pct_matches_band_width_over_middle` | `width_pct` = (upper − lower) / middle |
+| `test_width_pct_zero_when_flat` | Constant closes → `width_pct` = 0.0 |
+
+##### TestBollingerMaType (2 Tests)
+
+| Test | Description |
+|------|-------------|
+| `test_default_ma_type_is_sma` | No `ma_type` → SMA midline = arithmetic mean |
+| `test_ema_midline_differs_from_sma_on_trend` | EMA midline weights recent prices → above SMA on rising closes |
 
 ---
 

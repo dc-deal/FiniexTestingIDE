@@ -664,7 +664,7 @@ Current limitations:
 | Worker | Type | Description |
 |--------|------|-------------|
 | `CORE/rsi` | RSI | Relative Strength Index |
-| `CORE/bollinger` | Bollinger | Bollinger-style bands (`deviation`: 0.5–5.0, default 2.0) |
+| `CORE/bollinger` | Bollinger | Bollinger bands (`deviation`: 0.5–5.0, default 2.0; `ma_type`: sma/ema, default sma). Outputs `upper`/`middle`/`lower`/`position` (0–1), `position_raw` (unclamped, shows overshoot), `slope` (normalized midline slope), `width_pct` (relative band width) |
 | `CORE/macd` | MACD | Moving Average Convergence Divergence |
 | `CORE/obv` | OBV | On-Balance Volume (⚠️ Forex: volume always 0, works best with Crypto) |
 | `CORE/backtesting/heavy_rsi` | Heavy RSI | RSI with artificial delay (testing) |
