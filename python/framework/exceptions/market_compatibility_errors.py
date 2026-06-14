@@ -6,8 +6,10 @@ scenario's broker market.
 
 from typing import Optional
 
+from python.framework.exceptions.finiex_error import FiniexError
 
-class MarketCompatibilityError(ValueError):
+
+class MarketCompatibilityError(FiniexError, ValueError):
     """
     Raised when a worker declares an activity metric that the scenario's
     broker market does not provide.

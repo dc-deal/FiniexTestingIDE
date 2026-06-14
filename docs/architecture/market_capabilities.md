@@ -107,7 +107,7 @@ The message is built by `MarketCompatibilityError` with structured fields so it 
 - `python/framework/validators/scenario_data_validator.py` — static `validate_worker_market_compatibility()`
 - `python/framework/batch/requirements_collector.py` — owns `WorkerFactory` + `MarketConfigManager`, runs Step 1 per scenario
 - `python/framework/data_preparation/aggregate_scenario_data_requirements.py` — receives the shared factory via constructor
-- `python/framework/exceptions/market_compatibility_error.py` — structured error
+- `python/framework/exceptions/market_compatibility_errors.py` — structured error
 - `configs/market_config.json` — metric declarations
 - `docs/user_guides/worker_naming_doc.md` — user-facing worker authoring guide
 - `docs/tests/framework/market_compatibility_tests.md` — test suite documentation

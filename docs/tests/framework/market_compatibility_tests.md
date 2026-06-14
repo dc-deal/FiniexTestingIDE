@@ -70,7 +70,7 @@ Modules under test:
 
 - `python/framework/workers/abstract_worker.py` — classmethod contract
 - `python/framework/validators/scenario_data_validator.py` — `validate_worker_market_compatibility()`
-- `python/framework/exceptions/market_compatibility_error.py` — structured error
+- `python/framework/exceptions/market_compatibility_errors.py` — structured error
 - `python/configuration/market_config_manager.py` — metric lookup
 
 ## Running

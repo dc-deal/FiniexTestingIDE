@@ -27,10 +27,8 @@ from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
-from python.data_management.index.data_loader_exceptions import (
-    ArtificialDuplicateException,
-    DuplicateReport
-)
+from python.framework.exceptions.data_quality_errors import ArtificialDuplicateException
+from python.framework.reporting.duplicate_report import DuplicateReport
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour

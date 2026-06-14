@@ -8,7 +8,8 @@ from fastapi import APIRouter
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.api.api_types import ApiException, SymbolInfo, SymbolListResponse
+from python.framework.exceptions.api_errors import ApiException
+from python.framework.types.api.api_types import SymbolInfo, SymbolListResponse
 
 router = APIRouter()
 

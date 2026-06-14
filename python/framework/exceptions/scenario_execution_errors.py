@@ -5,11 +5,12 @@ Exception types for scenario execution failures
 
 
 from typing import List
+from python.framework.exceptions.finiex_error import FiniexError
 from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import ProcessResult
 
 
-class ScenarioPreparationError(Exception):
+class ScenarioPreparationError(FiniexError):
     """
     Raised when scenario preparation (warmup phase) fails.
 
@@ -24,7 +25,7 @@ class ScenarioPreparationError(Exception):
     pass
 
 
-class ScenarioExecutionError(Exception):
+class ScenarioExecutionError(FiniexError):
     """
     Raised when scenario tick loop execution fails.
 
@@ -39,7 +40,7 @@ class ScenarioExecutionError(Exception):
     pass
 
 
-class ScenarioStateError(Exception):
+class ScenarioStateError(FiniexError):
     """
     Raised when execute_tick_loop() is called without prior prepare_scenario().
 

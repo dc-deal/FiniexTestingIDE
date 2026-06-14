@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Iterable
 
-from python.framework.exceptions.timeframe_exceptions import (
+from python.framework.exceptions.timeframe_errors import (
     UnsupportedTimeframeError,
     TimeframeConfigError,
 )

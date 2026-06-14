@@ -299,7 +299,7 @@ The duplicate report now also compares `data_collector`:
 
 ```python
 from python.data_management.index.core import TickDataLoader
-from python.data_management.index.data_loader_exceptions import ArtificialDuplicateException
+from python.framework.exceptions.data_quality_errors import ArtificialDuplicateException
 
 loader = TickDataLoader('./data/processed/')
 

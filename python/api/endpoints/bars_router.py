@@ -11,8 +11,8 @@ import pandas as pd
 from fastapi import APIRouter, Query
 
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_types import (
-    ApiException,
     BarResponse,
     CoverageResponse,
 )

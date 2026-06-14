@@ -6,9 +6,7 @@ Tests that the importer correctly detects and handles duplicate imports.
 
 import pytest
 
-from python.data_management.index.data_loader_exceptions import (
-    ArtificialDuplicateException,
-)
+from python.framework.exceptions.data_quality_errors import ArtificialDuplicateException
 from python.data_management.importers.tick_importer import TickDataImporter
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,

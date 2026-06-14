@@ -5,8 +5,10 @@ Centralized exceptions for timeframe validation and configuration errors.
 
 from typing import Optional
 
+from python.framework.exceptions.finiex_error import FiniexError
 
-class TimeframeError(ValueError):
+
+class TimeframeError(FiniexError, ValueError):
     """
     Base exception for timeframe-related errors.
     """
