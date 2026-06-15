@@ -120,7 +120,7 @@ a **bar closes** — recomputing it on every intra-bar tick repeats the same res
 of times. A run config can opt a worker instance into bar-close-only recompute:
 
 ```json
-"tunnel": { "periods": { "M15": 20 }, "deviation": 2.0, "recompute": "bar_close" }
+"bollinger_main": { "periods": { "M15": 20 }, "deviation": 2.0, "recompute": "bar_close" }
 ```
 
 With `"recompute": "bar_close"` the orchestrator recomputes the worker only when one of its
@@ -135,6 +135,50 @@ bar-close transition is surfaced by the bar renderer as a typed `BarRenderState`
   worker's value *between* its closes — or a worker that reflects `tick.mid` live (intra-bar
   `position` / `position_raw`) — must stay `per_tick`, otherwise it sees a frozen value.
 - **Default stays `per_tick`** for all CORE workers — existing scenario sets are unchanged.
+
+---
+
+## Current Bar — What a Worker Computes On
+
+A second, independent axis. By default a worker computes on completed bar history **plus the
+current (still-forming, incomplete) bar** of its timeframe (a live, intra-bar view — the value
+drifts with the live price). A run config can make a worker instance **completed-bar-only**:
+
+```json
+"h1_trend": { "periods": { "H1": 24 }, "recompute": "bar_close", "include_current_bar": false }
+```
+
+With `"include_current_bar": false` the worker computes on completed bars only — its value
+changes **only when a bar closes** (the institutional bar-indicator model: nautilus / LEAN /
+Backtrader all update indicators on completed bars).
+
+- **When to use it.** A higher-timeframe filter read on a finer grid (an H1 trend read by an
+  M15-acting strategy) wants completed-bar-only — a stable gate, no intra-bar flicker. A
+  tick-reactive worker that needs the live intra-bar value (e.g. Bollinger `position` from
+  `tick.mid`) keeps the default.
+- **Default stays `true`** (current bar included) for all CORE workers — existing scenario sets
+  are unchanged.
+
+## The Two Axes — Responsibilities and the Dead Cell
+
+The two options answer **different questions** and are owned by **different layers**:
+
+| Option | Question | Affects | Owned by |
+|---|---|---|---|
+| `include_current_bar` | *Which* bars does the worker compute on? | the **value** (changes decisions) | the **worker** (computation / window assembly — `effective_bars`) |
+| `recompute` | *When* does the worker recompute? | the **cost** (same decisions) | the **orchestrator** (loop control — only it can skip a compute) |
+
+Combined, three of the four cells are useful; one is nonsense:
+
+| | `include_current_bar: true` (live) | `include_current_bar: false` (completed) |
+|---|---|---|
+| `recompute: per_tick` | live default — recomputes every tick, sees the drifting current bar | **dead cell** — recomputes every tick a value that can only change on close → wasted work |
+| `recompute: bar_close` | recomputes on its own close grid (read on that grid → safe) | the institutional higher-TF filter — stable value, cheapest |
+
+The **dead cell** (`include_current_bar: false` + `recompute: per_tick`) is not wrong, just
+wasteful: a completed-bar-only value cannot change between closes, so per-tick recompute only
+repeats work. The worker factory emits a warning when it is configured — use `recompute:
+bar_close` instead.
 
 ---
 

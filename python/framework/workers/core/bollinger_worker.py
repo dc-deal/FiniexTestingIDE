@@ -183,10 +183,7 @@ class BollingerWorker(AbstractWorker):
         period = self.periods[timeframe]
 
         # Get bar history for our timeframe
-        bars = bar_history.get(timeframe, [])
-        current_bar = current_bars.get(timeframe)  # Default: None (not [])
-        if current_bar:  # Check if Bar exists (not Dict!)
-            bars = list(bars) + [current_bar]
+        bars = self.effective_bars(timeframe, bar_history, current_bars)
 
         # Extract close prices from bars (keep one extra bar for slope)
         all_closes = np.array([bar.close for bar in bars])
