@@ -163,6 +163,52 @@ class AbstractWorker(ABC):
             return self.__class__.get_default_recompute_cadence()
         return RecomputeCadence(configured)
 
+    def includes_current_bar(self) -> bool:
+        """
+        Whether this worker instance computes on the current (still-forming, incomplete)
+        bar in addition to completed history (#387).
+
+        The per-instance config key 'include_current_bar' overrides the class default
+        (get_default_includes_current_bar). False = completed-bar-only — the worker's
+        value changes only when a bar closes (the institutional bar-indicator model),
+        which a bar-close consumer reads identically on any finer grid.
+
+        Returns:
+            True to append the current bar (default, live intra-bar view)
+        """
+        configured = self.parameters.get('include_current_bar')
+        if configured is None:
+            return self.__class__.get_default_includes_current_bar()
+        return bool(configured)
+
+    def effective_bars(
+        self,
+        timeframe: str,
+        bar_history: Dict[str, List[Bar]],
+        current_bars: Dict[str, Bar],
+    ) -> List[Bar]:
+        """
+        Bars this worker computes on for a timeframe (#387).
+
+        Completed history, plus the current (forming) bar unless the worker is
+        configured completed-bar-only (include_current_bar=False). Centralizes the
+        append that was previously duplicated inline in every worker's compute().
+
+        Args:
+            timeframe: Timeframe key
+            bar_history: Completed bars per timeframe
+            current_bars: Current (forming) bar per timeframe
+
+        Returns:
+            List of bars to compute on (history, optionally with the current bar)
+        """
+        bars = bar_history.get(timeframe, [])
+        if self.includes_current_bar():
+            current_bar = current_bars.get(timeframe)
+            if current_bar:
+                bars = list(bars) + [current_bar]
+        return bars
+
     def set_state(self, state: WorkerState):
         """Update worker state"""
         self.state = state
@@ -249,6 +295,22 @@ class AbstractWorker(ABC):
         return RecomputeCadence.PER_TICK
 
     @classmethod
+    def get_default_includes_current_bar(cls) -> bool:
+        """
+        Whether this worker class computes on the current (forming) bar by default (#387).
+
+        Default True — preserves the historical live intra-bar behavior and the
+        determinism of existing scenario sets. The institutional bar-indicator model
+        is completed-bar-only (False); a worker MAY default to that, but CORE workers
+        stay True until consumers migrate (same migration discipline as the recompute
+        cadence default). The per-instance config key 'include_current_bar' overrides.
+
+        Returns:
+            Default current-bar inclusion for this worker class
+        """
+        return True
+
+    @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """
         Declare parameter schema for validation and UX.
@@ -323,6 +385,14 @@ class AbstractWorker(ABC):
                     f"Worker '{cls.__name__}': invalid 'recompute' cadence "
                     f"'{recompute}'. Allowed: {valid}"
                 )
+
+        # Reserved framework key: current-bar inclusion (per-instance opt-in)
+        include_current_bar = config.get('include_current_bar')
+        if include_current_bar is not None and not isinstance(include_current_bar, bool):
+            raise ValueError(
+                f"Worker '{cls.__name__}': 'include_current_bar' must be a bool, "
+                f"got {type(include_current_bar).__name__} ({include_current_bar})"
+            )
 
         worker_type = cls.get_worker_type()
         required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])

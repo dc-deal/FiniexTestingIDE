@@ -211,11 +211,8 @@ class MacdWorker(AbstractWorker):
         timeframe = list(self.periods.keys())[0]
         period = self.periods[timeframe]
 
-        # Get bar history for our timeframe
-        bars = bar_history.get(timeframe, [])
-        current_bar = current_bars.get(timeframe)
-        if current_bar:
-            bars = list(bars) + [current_bar]
+        # Bars to compute on: history + the current bar unless completed-bar-only
+        bars = self.effective_bars(timeframe, bar_history, current_bars)
 
         # Extract close prices from bars
         close_prices = np.array([bar.close for bar in bars[-period:]])

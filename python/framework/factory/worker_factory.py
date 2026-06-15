@@ -24,6 +24,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.types.worker_types import RecomputeCadence
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
@@ -178,6 +179,19 @@ class WorkerFactory:
             parameters=validated_params,
             trading_context=trading_context,
         )
+
+        # Dead-cell advisory: completed-bar-only + per_tick recompute. A
+        # completed-bar-only value cannot change between bar closes, so recomputing
+        # it on every tick only wastes work — the operator almost certainly wants
+        # recompute: bar_close. Not an error (the result is still correct), so warn.
+        if (not worker_instance.includes_current_bar()
+                and worker_instance.get_recompute_cadence() == RecomputeCadence.PER_TICK):
+            self._logger.warning(
+                f"⚠️ Worker '{instance_name}': include_current_bar=false with per_tick "
+                f"recompute — a completed-bar-only value cannot change between bar "
+                f"closes, so per_tick recompute only wastes computes. "
+                f"Use recompute: bar_close."
+            )
 
         self._logger.debug(
             f"✅ Created worker: {instance_name} ({worker_type}) "
