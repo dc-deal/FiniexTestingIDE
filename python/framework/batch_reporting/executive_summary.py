@@ -133,8 +133,18 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         if warmup_hotspot:
             print(f"Warmup Hotspot:     {warmup_hotspot}")
 
-        print(f"Mode:               {'Parallel' if parallel else 'Sequential'}" +
-              (f" (max {max_workers} workers)" if parallel else ""))
+        # Mode line carries the run-quality tag (recorded at execution time):
+        # PRODUCTION (real subprocesses, timings representative) vs DEBUG (serial
+        # under a debugger / DEBUG_MODE, timings not representative).
+        if self._batch_summary.debug_execution:
+            mode_str = 'Sequential ' + renderer.yellow(
+                '🐞 DEBUG — timings not representative')
+        else:
+            mode_str = 'Parallel' if parallel else 'Sequential'
+            if parallel:
+                mode_str += f" (max {max_workers} workers)"
+            mode_str += f" {renderer.green('— PRODUCTION')}"
+        print(f"Mode:               {mode_str}")
 
         # Source line (Profile Run vs Scenario Set)
         if self._generator_profiles:

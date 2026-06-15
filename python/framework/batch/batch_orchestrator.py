@@ -128,6 +128,7 @@ from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
+from python.framework.utils.runtime_env_utils import is_debug_execution
 from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
@@ -482,6 +483,8 @@ class BatchOrchestrator:
             # main-process serialization time (submit loop) + sample size
             batch_pickle_time=batch_pickle_time,
             batch_pickle_sample_mb=batch_pickle_sample_mb,
+            # debugger attached / DEBUG_MODE → serial run, timings not representative
+            debug_execution=is_debug_execution(),
         )
 
         self._logger.verbose(summary.process_result_list)

@@ -50,16 +50,17 @@ Returns ProcessResult to main process
 
 ### Auto-Detection Logic
 
-```python
-# Debugger detection
-DEBUGGER_ACTIVE = (
-    hasattr(sys, 'gettrace') and sys.gettrace() is not None
-    or 'debugpy' in sys.modules
-    or 'pydevd' in sys.modules
-)
+The debug/serial decision is centralized in `is_debug_execution()`
+(`python/framework/utils/runtime_env_utils.py`), the single source of truth shared by
+the execution coordinator and the report:
 
-# Mode selection
-if DEBUGGER_ACTIVE or os.getenv('DEBUG_MODE'):
+```python
+# python/framework/utils/runtime_env_utils.py
+def is_debug_execution() -> bool:
+    return is_debugger_attached() or bool(os.getenv('DEBUG_MODE'))
+
+# Mode selection (ExecutionCoordinator)
+if is_debug_execution():
     use_processpool = False  # ThreadPool for compatibility
 else:
     use_processpool = True   # ProcessPool for performance
@@ -70,6 +71,20 @@ else:
 - VSCode debugpy causes 10+ second shutdown delays in ProcessPool
 - ThreadPool works seamlessly with debuggers (but slower)
 - Production runs without debugger use ProcessPool for maximum speed
+
+### Run-Quality Tag in the Summary — Are These Timings Trustworthy?
+
+A debug/serial run carries debugger trace overhead, so its per-tick timings are **not
+representative** of production performance. To make this impossible to misread, the fact is
+recorded at execution time on `BatchExecutionSummary.debug_execution` (set from
+`is_debug_execution()` in the batch orchestrator) and surfaced in the report:
+
+- **Executive Summary — `Mode:` line:** `— PRODUCTION` (green, real subprocesses, timings
+  representative) vs `🐞 DEBUG — timings not representative` (yellow).
+- **Warnings & Notices:** a prominent debug-mode banner (debug runs only).
+
+The report only *reads* the field — it never re-detects. So always read a **PRODUCTION** run
+for performance numbers; a `🐞 DEBUG` run is for behavior/correctness, not timing.
 
 ---
 
