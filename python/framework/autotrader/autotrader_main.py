@@ -22,9 +22,7 @@ from python.framework.autotrader.autotrader_startup import (
     setup_tick_source,
 )
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
-from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
+from python.framework.autotrader.reporting.autotrader_report_coordinator import AutotraderReportCoordinator
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -550,25 +548,17 @@ class AutotraderMain:
         if self._clipping_monitor:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
 
-        # === REPORTS ===
-        # Long-format event-stream CSV (#330) — replaces the previous
-        # autotrader_orders.csv + autotrader_trades.csv pair with a single
-        # chronological events.csv (FIX ExecutionReport style).
-        EventStreamWriter.from_autotrader_result(
-            trade_history=result.trade_history or [],
-            order_history=result.order_history or [],
+        # === REPORTS === all run artifacts + post-session summary, delegated to
+        # the live report coordinator (mirrors the sim BatchReportCoordinator —
+        # consumes the finished result).
+        AutotraderReportCoordinator(
+            result=result,
             run_dir=self._run_dir,
-        ).flush('events.csv')
-
-        # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
-        if self._decision_logic:
-            flush_decision_diagnostics(self._decision_logic, self._run_dir)
-
-        post_session_report = AutotraderPostSessionReport(
+            config=self._config,
+            decision_logic=self._decision_logic,
             summary_logger=self._summary_logger,
             global_logger=self._global_logger,
-        )
-        post_session_report.print_report(result)
+        ).generate_and_log()
 
         # Close all loggers
         self._global_logger.info('🏁 Session complete — loggers closing')
