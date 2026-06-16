@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.trade_history_report_builder import compute_trade_analytics
 from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -113,4 +114,6 @@ def filter_trade_history_report(
         rows.append(row)
 
     symbols = sorted({row.symbol for row in rows})
-    return TradeHistoryReport(trades=rows, count=len(rows), symbols=symbols)
+    return TradeHistoryReport(
+        trades=rows, count=len(rows), symbols=symbols,
+        analytics=compute_trade_analytics(rows))

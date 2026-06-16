@@ -20,7 +20,11 @@ from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
     OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeHistoryReport, TradeHistoryRow)
+    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+
+_ZERO_ANALYTICS = TradeAnalytics(
+    expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
+    avg_mae_winners=0.0, avg_mae_losers=0.0, avg_mfe_losers=0.0)
 
 _RUN = '20260615_120000'
 _URL = f'/api/v1/reports/runs/{_RUN}/trade-history'
@@ -41,7 +45,8 @@ def _report() -> TradeHistoryReport:
             exit_price=1.32, exit_time='2025-10-13T09:10:00+00:00', duration_s=600.0,
             close_reason='sl_triggered', gross_pnl=-1.0, total_fees=0.2, net_pnl=-1.2),
     ]
-    return TradeHistoryReport(trades=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
+    return TradeHistoryReport(
+        trades=rows, count=2, symbols=['EURUSD', 'GBPUSD'], analytics=_ZERO_ANALYTICS)
 
 
 def _order_report() -> OrderHistoryReport:

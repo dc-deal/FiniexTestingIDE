@@ -49,7 +49,7 @@ specific to one. **Status** tracks what is already on the model.
 
 | Section | Underlying data | Domain | Status |
 |---|---|---|---|
-| Trade History | `List[TradeRecord]` | unified | ✅ migrated |
+| Trade History (+ MAE/MFE/R analytics, #389) | `List[TradeRecord]` | unified | ✅ migrated |
 | Order History | `List[OrderResult]` | unified | ✅ migrated |
 | Portfolio / Headline | `PortfolioStats` (+ currency roll-up) | unified | ✅ migrated |
 | Execution Stats | `ExecutionStats` | unified | ⏳ planned |
@@ -110,7 +110,11 @@ the API serves either pipeline's run by `run_id`.
 2. **`RunResult` split** — abstract the run result (sim = N scenario units + extras; live = 1
    session unit + extras) into a generic per-unit currency, deduplicating the per-source
    extraction once more sections justify it.
-3. **Trade analytics (#389)** — MAE/MFE + R-multiple/expectancy as the model's analytics columns.
+3. **Trade analytics (#389, done)** — MAE/MFE **tracked** on the Position each tick (runtime,
+   shared layer) + `initial_risk` stamped at close; R-multiple / expectancy **derived** in the
+   postprocessor. Surfaced as per-row columns (`mae_*`/`mfe_*`/`r_multiple`) + a `TradeAnalytics`
+   aggregate on `TradeHistoryReport`. Console display follows with #393. Pips are a forex-convention
+   approximation (`10^-(digits-1)`); exact per-symbol `pip_size` is #167.
 4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
 5. The remaining report sections (execution stats, warnings, worker/decision, then the per-pipeline

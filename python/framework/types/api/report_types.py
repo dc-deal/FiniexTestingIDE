@@ -25,13 +25,33 @@ class TradeHistoryRow(BaseModel):
     gross_pnl: float
     total_fees: float
     net_pnl: float
+    # Trade analytics (#389) — excursion + risk-normalized result (defaulted: additive columns)
+    mae_price: float = 0.0      # most adverse price reached while open
+    mfe_price: float = 0.0      # most favorable price reached while open
+    mae_pnl: float = 0.0        # gross P&L at the worst excursion
+    mfe_pnl: float = 0.0        # gross P&L at the best excursion
+    mae_pips: float = 0.0       # MAE distance in pips (forex convention; #167 for exact pip_size)
+    mfe_pips: float = 0.0       # MFE distance in pips (forex convention)
+    r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
+
+
+class TradeAnalytics(BaseModel):
+    """Aggregate trade analytics (#389) — risk-normalized profitability + SL calibration."""
+    expectancy: float       # mean R over trades with a defined R
+    avg_win_r: float        # mean R of winners (R-defined)
+    avg_loss_r: float       # mean R of losers (R-defined)
+    r_trade_count: int      # trades with a defined R (had a stop loss)
+    avg_mae_winners: float  # mean MAE P&L on winners — SL too tight if large vs win size
+    avg_mae_losers: float   # mean MAE P&L on losers
+    avg_mfe_losers: float   # mean MFE P&L on losers — "left on the table" read
 
 
 class TradeHistoryReport(BaseModel):
-    """The trade-history table + light metadata (the first ReportModel slice)."""
+    """The trade-history table + light metadata + aggregate analytics (#389)."""
     trades: list[TradeHistoryRow]
     count: int
     symbols: list[str]      # distinct symbols present (filter UX)
+    analytics: TradeAnalytics
 
 
 class OrderHistoryRow(BaseModel):

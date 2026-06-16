@@ -26,6 +26,11 @@ def _trade(
     close_reason: CloseReason = CloseReason.TP_TRIGGERED,
     entry_offset_min: int = 0,
     duration_min: int = 30,
+    initial_risk: float | None = None,
+    mae_price: float = 0.0,
+    mfe_price: float = 0.0,
+    mae_pnl: float = 0.0,
+    mfe_pnl: float = 0.0,
 ) -> TradeRecord:
     """Build a fixture closed trade with sensible defaults for the audit fields."""
     entry_time = _T0 + timedelta(minutes=entry_offset_min)
@@ -40,6 +45,8 @@ def _trade(
         digits=5, contract_size=100000,
         spread_cost=0.5, commission_cost=0.3, swap_cost=0.0, total_fees=0.8,
         gross_pnl=net_pnl + 0.8, net_pnl=net_pnl,
+        initial_risk=initial_risk,
+        mae_price=mae_price, mfe_price=mfe_price, mae_pnl=mae_pnl, mfe_pnl=mfe_pnl,
         close_reason=close_reason, entry_type=EntryType.MARKET,
     )
 
@@ -106,3 +113,43 @@ class TestMetadata:
         assert report.count == 0
         assert report.trades == []
         assert report.symbols == []
+
+
+class TestAnalytics:
+    """#389 — R-multiple + pips per row, and the aggregate analytics block."""
+
+    def test_r_multiple(self):
+        # net_pnl 20 / initial_risk 10 → R = 2.0
+        report = build_trade_history_report([_trade(net_pnl=20.0, initial_risk=10.0)])
+        assert report.trades[0].r_multiple == 2.0
+
+    def test_r_multiple_none_without_sl(self):
+        # no initial_risk (trade had no stop loss) → R undefined
+        assert build_trade_history_report([_trade()]).trades[0].r_multiple is None
+
+    def test_pips_forex_convention(self):
+        # entry 1.1000, digits 5 → pip = 1e-4; |Δprice| / pip
+        row = build_trade_history_report(
+            [_trade(mae_price=1.0990, mfe_price=1.1030)]).trades[0]
+        assert round(row.mae_pips, 1) == 10.0      # |1.1000 - 1.0990| / 1e-4
+        assert round(row.mfe_pips, 1) == 30.0      # |1.1030 - 1.1000| / 1e-4
+
+    def test_aggregate(self):
+        trades = [
+            _trade(position_id='w1', net_pnl=20.0, initial_risk=10.0, mae_pnl=-3.0),  # R=2
+            _trade(position_id='w2', net_pnl=20.0, initial_risk=10.0, mae_pnl=-5.0),  # R=2
+            _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-12.0, mfe_pnl=4.0),  # R=-1
+            _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-8.0, mfe_pnl=6.0),   # R=-1
+        ]
+        a = build_trade_history_report(trades).analytics
+        assert a.r_trade_count == 4
+        assert a.expectancy == 0.5                 # (2+2-1-1)/4
+        assert a.avg_win_r == 2.0
+        assert a.avg_loss_r == -1.0
+        assert a.avg_mae_winners == -4.0           # (-3 + -5)/2
+        assert a.avg_mae_losers == -10.0           # (-12 + -8)/2
+        assert a.avg_mfe_losers == 5.0             # (4 + 6)/2
+
+    def test_empty_analytics(self):
+        a = build_trade_history_report([]).analytics
+        assert a.expectancy == 0.0 and a.r_trade_count == 0

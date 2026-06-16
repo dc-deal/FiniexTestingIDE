@@ -107,6 +107,16 @@ class TradeRecord:
     take_profit: Optional[float] = None
     comment: str = ""
 
+    # === Trade Analytics (#389) ===
+    # MAE/MFE = max adverse / favorable excursion over the position's life (price +
+    # gross-P&L). initial_risk = gross loss had the SL been hit (account currency);
+    # None when the trade had no stop loss → R-multiple undefined.
+    mae_price: float = 0.0
+    mfe_price: float = 0.0
+    mae_pnl: float = 0.0
+    mfe_pnl: float = 0.0
+    initial_risk: Optional[float] = None
+
     # === Close Reason ===
     close_reason: CloseReason = CloseReason.MANUAL
 

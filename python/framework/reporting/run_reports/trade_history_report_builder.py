@@ -11,7 +11,8 @@ reason / time range) live here so console, CSV, and API share one filter path.
 from datetime import datetime
 from typing import List, Optional
 
-from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
+from python.framework.types.api.report_types import (
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 
 
@@ -48,11 +49,43 @@ def build_trade_history_report(
         rows.append(_to_row(trade))
 
     symbols = sorted({row.symbol for row in rows})
-    return TradeHistoryReport(trades=rows, count=len(rows), symbols=symbols)
+    return TradeHistoryReport(
+        trades=rows, count=len(rows), symbols=symbols,
+        analytics=compute_trade_analytics(rows))
+
+
+def compute_trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
+    """
+    Aggregate the per-row analytics (#389): expectancy + R distribution over the
+    R-defined subset, MAE/MFE summaries over winners/losers. Recomputed per (filtered)
+    report so the numbers always match the rows shown.
+
+    Args:
+        rows: The report's trade rows (already filtered)
+
+    Returns:
+        The aggregate TradeAnalytics
+    """
+    r_rows = [r for r in rows if r.r_multiple is not None]
+    winners = [r for r in rows if r.net_pnl > 0]
+    losers = [r for r in rows if r.net_pnl < 0]
+    return TradeAnalytics(
+        expectancy=_mean([r.r_multiple for r in r_rows]),
+        avg_win_r=_mean([r.r_multiple for r in r_rows if r.net_pnl > 0]),
+        avg_loss_r=_mean([r.r_multiple for r in r_rows if r.net_pnl < 0]),
+        r_trade_count=len(r_rows),
+        avg_mae_winners=_mean([r.mae_pnl for r in winners]),
+        avg_mae_losers=_mean([r.mae_pnl for r in losers]),
+        avg_mfe_losers=_mean([r.mfe_pnl for r in losers]),
+    )
 
 
 def _to_row(trade: TradeRecord) -> TradeHistoryRow:
     """Map one closed TradeRecord to a renderable row."""
+    pip = _pip_size(trade.digits)
+    mae_dist = abs(trade.entry_price - trade.mae_price) if trade.mae_price > 0 else 0.0
+    mfe_dist = abs(trade.mfe_price - trade.entry_price) if trade.mfe_price > 0 else 0.0
+    r_multiple = (trade.net_pnl / trade.initial_risk) if trade.initial_risk else None
     return TradeHistoryRow(
         position_id=trade.position_id,
         symbol=trade.symbol,
@@ -67,4 +100,24 @@ def _to_row(trade: TradeRecord) -> TradeHistoryRow:
         gross_pnl=trade.gross_pnl,
         total_fees=trade.total_fees,
         net_pnl=trade.net_pnl,
+        mae_price=trade.mae_price,
+        mfe_price=trade.mfe_price,
+        mae_pnl=trade.mae_pnl,
+        mfe_pnl=trade.mfe_pnl,
+        mae_pips=mae_dist / pip,
+        mfe_pips=mfe_dist / pip,
+        r_multiple=r_multiple,
     )
+
+
+def _mean(values: List[float]) -> float:
+    """Mean, or 0.0 for an empty list."""
+    return sum(values) / len(values) if values else 0.0
+
+
+def _pip_size(digits: int) -> float:
+    """
+    Forex-convention pip = 10^-(digits-1) (5-digit FX → 0.0001, 3-digit JPY → 0.01).
+    Approximation only — crypto has no pip concept; the exact per-symbol pip_size is #167.
+    """
+    return 10.0 ** -(digits - 1)

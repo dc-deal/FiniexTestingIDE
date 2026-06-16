@@ -10,6 +10,7 @@ from python.framework.types.trading_env_types.broker_types import FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
+from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 
 
 class PositionStatus(Enum):
@@ -89,6 +90,18 @@ class Position:
     entry_tick_index: int = 0
     exit_tick_index: int = 0
 
+    # === Excursion (MAE/MFE) — running extrema over the position's life (#389) ===
+    # Tracked per tick in update_current_price; copied to TradeRecord at close.
+    mae_pnl: float = 0.0    # worst (most negative) gross unrealized P&L
+    mfe_pnl: float = 0.0    # best (most positive) gross unrealized P&L
+    mae_price: float = 0.0  # current_price at the worst excursion (seeded to entry)
+    mfe_price: float = 0.0  # current_price at the best excursion (seeded to entry)
+
+    def __post_init__(self):
+        # Seed excursion prices at entry → "no move" reports as 0 distance (#389).
+        self.mae_price = self.entry_price
+        self.mfe_price = self.entry_price
+
     def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
         """
         Update current price and recalculate unrealized P&L.
@@ -107,16 +120,23 @@ class Position:
         else:
             price_diff = self.entry_price - self.current_price
 
-        # Convert to points
-        points = price_diff * (10 ** digits)
-
         # Calculate P&L: points * tick_value * lots - all fees
-        gross_pnl = points * tick_value * self.lots
+        gross_pnl = gross_pnl_from_price_diff(price_diff, digits, tick_value, self.lots)
         total_fees = self.get_total_fees()
 
         # Store gross_pnl for trade record
         self.gross_pnl = gross_pnl
         self.unrealized_pnl = gross_pnl - total_fees
+
+        # Track max adverse / favorable excursion over the position's life (#389).
+        # gross_pnl (pre-fee) is the excursion axis → fee-noise-free; record the
+        # price at each extreme for the SL-calibration read.
+        if gross_pnl < self.mae_pnl:
+            self.mae_pnl = gross_pnl
+            self.mae_price = self.current_price
+        if gross_pnl > self.mfe_pnl:
+            self.mfe_pnl = gross_pnl
+            self.mfe_price = self.current_price
 
     def add_fee(self, fee: AbstractTradingFee) -> None:
         """Add fee to position"""

@@ -15,7 +15,11 @@ from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
     OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeHistoryReport, TradeHistoryRow)
+    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+
+_ZERO_ANALYTICS = TradeAnalytics(
+    expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
+    avg_mae_winners=0.0, avg_mae_losers=0.0, avg_mfe_losers=0.0)
 
 
 def _row(position_id: str, symbol: str, close_reason: str, entry_time: str) -> TradeHistoryRow:
@@ -33,7 +37,8 @@ def _report() -> TradeHistoryReport:
         _row('p2', 'GBPUSD', 'sl_triggered', '2025-10-13T09:00:00+00:00'),
         _row('p3', 'EURUSD', 'sl_triggered', '2025-10-13T10:00:00+00:00'),
     ]
-    return TradeHistoryReport(trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'])
+    return TradeHistoryReport(
+        trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=_ZERO_ANALYTICS)
 
 
 def _write_run(logs_root: Path, group: str, owner: str, run_id: str) -> None:
