@@ -16,20 +16,11 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing import Queue
 from typing import Dict, List, Optional
-import os
-import sys
 import time
 import traceback
 
 from python.framework.types.validation_types import ValidationResult, get_validation_list_report
-
-
-# Auto-detect if debugger is attached
-DEBUGGER_ACTIVE = (
-    hasattr(sys, 'gettrace') and sys.gettrace() is not None
-    or 'debugpy' in sys.modules
-    or 'pydevd' in sys.modules
-)
+from python.framework.utils.runtime_env_utils import is_debug_execution
 
 
 class ExecutionCoordinator:
@@ -159,7 +150,7 @@ class ExecutionCoordinator:
             pickle_sample_mb: serialized size of scenario 0 package (single sample)
         """
         # Auto-switch based on environment
-        if DEBUGGER_ACTIVE or os.getenv('DEBUG_MODE'):
+        if is_debug_execution():
             use_processpool = False
             self._logger.warning(
                 "⚠️  Debugger detected - using ThreadPool "

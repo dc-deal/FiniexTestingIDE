@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from python.api.endpoints import bars_router, broker_router
+from python.api.endpoints import bars_router, broker_router, reports_router
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.exceptions.api_errors import ApiException
@@ -79,5 +79,6 @@ def create_app() -> FastAPI:
 
     app.include_router(broker_router.router, prefix='/api/v1')
     app.include_router(bars_router.router, prefix='/api/v1')
+    app.include_router(reports_router.router, prefix='/api/v1')
 
     return app

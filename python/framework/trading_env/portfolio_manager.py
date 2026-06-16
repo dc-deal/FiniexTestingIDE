@@ -21,6 +21,7 @@ from python.framework.types.trading_env_types.submission_metadata_types import S
 from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 
 
 class _UnsetType:
@@ -503,6 +504,11 @@ class PortfolioManager:
             net_pnl=closed_net_pnl,
             stop_loss=position.stop_loss,
             take_profit=position.take_profit,
+            mae_price=position.mae_price,
+            mfe_price=position.mfe_price,
+            mae_pnl=position.mae_pnl,
+            mfe_pnl=position.mfe_pnl,
+            initial_risk=self._initial_risk(position, close_lots),
             close_reason=close_reason,
             entry_type=position.entry_type,
             comment=position.comment,
@@ -543,6 +549,24 @@ class PortfolioManager:
         self._update_statistics(position, closed_net_pnl)
 
         return closed_net_pnl
+
+    def _initial_risk(self, position: Position, lots: float) -> Optional[float]:
+        """
+        Gross loss (account currency) had the stop loss been hit — the R-multiple
+        denominator. None when the trade had no stop loss.
+
+        Args:
+            position: The position being closed
+            lots: Lots of the closed portion (full close = position.lots; partial = close_lots)
+
+        Returns:
+            Initial risk in account currency, or None if no stop loss
+        """
+        if position.stop_loss is None:
+            return None
+        return gross_pnl_from_price_diff(
+            abs(position.entry_price - position.stop_loss),
+            position.digits, position.entry_tick_value, lots)
 
     def _create_trade_record(
         self,
@@ -591,6 +615,11 @@ class PortfolioManager:
             net_pnl=position.unrealized_pnl,
             stop_loss=position.stop_loss,
             take_profit=position.take_profit,
+            mae_price=position.mae_price,
+            mfe_price=position.mfe_price,
+            mae_pnl=position.mae_pnl,
+            mfe_pnl=position.mfe_pnl,
+            initial_risk=self._initial_risk(position, position.lots),
             close_reason=close_reason,
             entry_type=position.entry_type,
             comment=position.comment,

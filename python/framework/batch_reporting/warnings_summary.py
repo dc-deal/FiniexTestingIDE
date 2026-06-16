@@ -49,6 +49,11 @@ class WarningsSummary(AbstractBatchSummarySection):
         # Collect all warning blocks
         warning_blocks = []
 
+        # First, most prominent: debug-mode timing notice (if applicable)
+        debug_block = self._build_debug_mode_notice(renderer)
+        if debug_block:
+            warning_blocks.append(debug_block)
+
         stress_test_block = self._build_stress_test_warning(renderer)
         if stress_test_block:
             warning_blocks.append(stress_test_block)
@@ -83,6 +88,32 @@ class WarningsSummary(AbstractBatchSummarySection):
             print(block)
             if i < len(warning_blocks) - 1:
                 print()
+
+    def _build_debug_mode_notice(self, renderer: ConsoleRenderer) -> str:
+        """
+        Prominent notice when the batch ran in debug / serial mode (timings unreliable).
+
+        The fact is recorded on the summary at execution time (BatchExecutionSummary.
+        debug_execution) — the report only reads it, it does not re-detect.
+
+        Args:
+            renderer: Console renderer for formatting
+
+        Returns:
+            Formatted notice block, or empty string if the run was not in debug mode
+        """
+        if not self._batch_summary.debug_execution:
+            return ''
+
+        return '\n'.join([
+            renderer.red(renderer.bold(
+                '🐞 DEBUG MODE — debugger attached / DEBUG_MODE set')),
+            renderer.yellow(
+                '   Execution is SERIAL (single process) with trace overhead.'),
+            renderer.red(renderer.bold(
+                '   ⏱️  TIMINGS IN THIS REPORT ARE NOT REPRESENTATIVE — '
+                'use a non-debug run for performance numbers.')),
+        ])
 
     def _build_stress_test_warning(self, renderer: ConsoleRenderer) -> str:
         """

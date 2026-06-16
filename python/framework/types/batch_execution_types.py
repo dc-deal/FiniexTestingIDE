@@ -32,7 +32,8 @@ class BatchExecutionSummary:
         clipping_stats_map: Dict[int, ClippingStats] | None = None,
         warmup_phases: Optional[List[WarmupPhaseEntry]] = None,
         batch_pickle_time: float = 0.0,
-        batch_pickle_sample_mb: float = 0.0
+        batch_pickle_sample_mb: float = 0.0,
+        debug_execution: bool = False
     ):
         self._batch_execution_time = batch_execution_time
         self._batch_warmup_time = batch_warmup_time
@@ -44,6 +45,9 @@ class BatchExecutionSummary:
         self._warmup_phases: List[WarmupPhaseEntry] = warmup_phases or []
         self._batch_pickle_time = batch_pickle_time
         self._batch_pickle_sample_mb = batch_pickle_sample_mb
+        # True when the batch ran under a debugger / DEBUG_MODE (serial, trace
+        # overhead) → per-tick timings in the report are not representative.
+        self._debug_execution = debug_execution
 
     @property
     def batch_execution_time(self) -> float:
@@ -80,6 +84,10 @@ class BatchExecutionSummary:
     @property
     def batch_pickle_time(self) -> float:
         return self._batch_pickle_time
+
+    @property
+    def debug_execution(self) -> bool:
+        return self._debug_execution
 
     @property
     def batch_pickle_sample_mb(self) -> float:

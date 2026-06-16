@@ -8,7 +8,16 @@ This is the coordination layer - actual rendering logic stays in framework/batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
+from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
+from python.framework.reporting.run_reports.order_history_report_io import (
+    order_records_from_batch, write_order_history_csv, write_order_history_report)
+from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report_from_batch
+from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.run_reports.trade_history_report_io import (
+    trade_records_from_batch, write_trade_history_csv, write_trade_history_report)
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
@@ -106,3 +115,24 @@ class BatchReportCoordinator:
                 order_history=tlr.order_history or [],
                 run_dir=events_dir,
             ).flush(f'events_{process_result.scenario_name}.csv')
+
+        # Unified report artifacts (#391) — the canonical models the console/CSV
+        # render and the API serves. One set per run, at the run dir root.
+        report = build_trade_history_report(
+            trade_records_from_batch(self._batch_execution_summary))
+        write_trade_history_report(report, run_dir)
+        write_trade_history_csv(report, run_dir)
+
+        order_report = build_order_history_report(
+            order_records_from_batch(self._batch_execution_summary))
+        write_order_history_report(order_report, run_dir)
+        write_order_history_csv(order_report, run_dir)
+
+        # Portfolio headline — units (scenarios) + per-currency roll-up. The
+        # aggregate is the existing currency aggregator (single source for the
+        # total), injected so the builder stays out of the console-summary layer.
+        currency_aggregates = PortfolioAggregator(
+            self._batch_execution_summary.process_result_list).aggregate_by_currency()
+        portfolio_report = build_portfolio_report_from_batch(
+            self._batch_execution_summary, currency_aggregates)
+        write_portfolio_report(portfolio_report, run_dir)
