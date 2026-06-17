@@ -47,16 +47,19 @@ Every section eventually flows through the pipeline so a frontend can render it 
 the per-pipeline ones. **Domain** says whether a section's data is shared (both pipelines) or
 specific to one. **Status** tracks what is already on the model.
 
-| Section | Underlying data | Domain | Status |
-|---|---|---|---|
-| Trade History (+ MAE/MFE/R analytics, #389) | `List[TradeRecord]` | unified | ✅ migrated |
-| Order History | `List[OrderResult]` | unified | ✅ migrated |
-| Portfolio / Headline | `PortfolioStats` (+ currency roll-up) | unified | ✅ migrated |
-| Execution Stats | `ExecutionStats` | unified | ⏳ planned |
-| Warnings / Errors | §35 error pot | unified | ⏳ planned |
-| Worker / Decision Stats | `WorkerPerformanceStats` / `DecisionLogicStats` | unified | ⏳ planned |
-| Profiling / Warmup / Block-Splitting | profiling, coordination, warmup phases | **sim-only** | console-only (migrates later) |
-| Shutdown / Emergency / Session | `shutdown_mode`, `emergency_reason`, session timing | **autotrader-only** | console-only (migrates later) |
+**Model** = a section has a derived model + JSON/CSV/API (#391/#389). **Console (#393)** = the
+console + file-log render *from* that model (vs. their own inline derivation).
+
+| Section | Underlying data | Domain | Model (JSON/CSV/API) | Console (#393) |
+|---|---|---|---|---|
+| Trade History (+ MAE/MFE/R analytics, #389) | `List[TradeRecord]` | unified | ✅ | ✅ renders from model (full audit table + #330 executions) |
+| Order History | `List[OrderResult]` | unified | ✅ | ✅ (rejections, via the trade summary) |
+| Portfolio / Headline | `PortfolioStats` (+ currency roll-up) | unified | ✅ | ⏳ deferred — console still derives inline (needs a PortfolioReport full projection: execution/cost/equity/pending/balances) |
+| Execution Stats | `ExecutionStats` | unified | ⏳ planned | — |
+| Warnings / Errors | §35 error pot | unified | ⏳ planned | — |
+| Worker / Decision Stats | `WorkerPerformanceStats` / `DecisionLogicStats` | unified | ⏳ planned | — |
+| Profiling / Warmup / Block-Splitting | profiling, coordination, warmup phases | **sim-only** | console-only (migrates later) | n/a |
+| Shutdown / Emergency / Session | `shutdown_mode`, `emergency_reason`, session timing | **autotrader-only** | console-only (migrates later) | operational view stays; #389 analytics line model-sourced |
 
 The **array model** is the unifier: a run is a list of units (sim: N scenarios; live: 1
 session). Where a section carries per-unit meaning (portfolio breakdown) the model keeps the
@@ -90,10 +93,10 @@ the API serves either pipeline's run by `run_id`.
   their models. Portfolio is JSON-only — units + per-currency aggregates are two sections, not one
   flat table.
 - **Console** — the API/CSV trade table is the lean *trade list*. The console's existing
-  `trade_history_summary` per-scenario table is a richer **P&L-verification** view (more columns);
-  migrating it onto the model is deferred until the model's canonical column set settles with the
-  trade-analytics work (MAE/MFE + R-multiple, #389). The richer per-pipeline console boxes stay
-  console-specific until their sections migrate (see the taxonomy table).
+  `trade_history_summary` per-scenario table is a richer **P&L-verification** view (more columns).
+  With the trade-analytics column set now settled (#389 done), migrating it onto the model is
+  **#393**'s job. The richer per-pipeline console boxes stay console-specific until their sections
+  migrate (see the taxonomy table).
 
 ## Tests
 
@@ -119,6 +122,9 @@ the API serves either pipeline's run by `run_id`.
    can render the report at any time (between-ticks consistent read).
 5. The remaining report sections (execution stats, warnings, worker/decision, then the per-pipeline
    ones) migrate to the model; the visual channel (#379) consumes the API.
-6. **Console / file renderers from the model (#393)** — migrate the console summaries + their
-   file-log copies (`scenario_summary.log` / `autotrader_summary.log`) to render *from* the model,
-   collapsing today's parallel console-side derivation so #389 analytics reach console + file too.
+6. **Console / file renderers from the model (#393, in progress)** — **trade-history** (the sim
+   audit table incl. #330 execution sub-lines + the #389 analytics block) + **order rejections**
+   now render *from* the model; the **AutoTrader** post-session summary gains a model-sourced #389
+   analytics line. **Portfolio** console migration is **deferred** (needs a PortfolioReport full
+   projection: execution / cost / equity / pending / balances) — it stays on the inline path. The
+   file-logs follow automatically (captured stdout).

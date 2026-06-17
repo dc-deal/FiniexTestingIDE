@@ -4,6 +4,7 @@ Console and file log summary printed after an AutoTrader session completes.
 """
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.api.report_types import TradeHistoryReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
 
@@ -23,7 +24,8 @@ class AutotraderPostSessionReport:
         self._summary_logger = summary_logger
         self._global_logger = global_logger
 
-    def print_report(self, result: AutoTraderResult) -> None:
+    def print_report(
+        self, result: AutoTraderResult, trade_report: TradeHistoryReport = None) -> None:
         """
         Print full session summary to file and flush to console.
 
@@ -32,8 +34,10 @@ class AutotraderPostSessionReport:
 
         Args:
             result: Completed AutoTraderResult with all statistics
+            trade_report: Unified trade-history report — its #389 analytics line is
+                appended to the headline (model-sourced, #393)
         """
-        self._write_summary(result)
+        self._write_summary(result, trade_report)
         self._write_warnings_errors(result)
         self._write_output_locations(result)
 
@@ -47,12 +51,14 @@ class AutotraderPostSessionReport:
             f"{len(result.warning_messages)} warnings, {len(result.error_messages)} errors"
         )
 
-    def _write_summary(self, result: AutoTraderResult) -> None:
+    def _write_summary(
+        self, result: AutoTraderResult, trade_report: TradeHistoryReport = None) -> None:
         """
         Write session statistics to summary logger.
 
         Args:
             result: Completed AutoTraderResult
+            trade_report: Unified trade-history report (for the #389 analytics line)
         """
         self._summary_logger.info('=' * 60)
         self._summary_logger.info('📋 AutoTrader Session Summary')
@@ -78,6 +84,15 @@ class AutotraderPostSessionReport:
                 f"  Orders:         {result.execution_stats.orders_sent} sent, "
                 f"{result.execution_stats.orders_executed} executed, "
                 f"{result.execution_stats.orders_rejected} rejected"
+            )
+
+        # Trade analytics (#389/#393) — model-sourced, one line per account currency
+        # (a live session is normally one). The big per-trade table stays sim-only / API.
+        for a in (trade_report.analytics if trade_report else []):
+            self._summary_logger.info(
+                f"  Analytics:      expectancy {a.expectancy:+.3f}R | "
+                f"win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | "
+                f"R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})"
             )
 
         clipping = result.clipping_summary

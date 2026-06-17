@@ -141,8 +141,9 @@ class TestAnalytics:
             _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-12.0, mfe_pnl=4.0),  # R=-1
             _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-8.0, mfe_pnl=6.0),   # R=-1
         ]
-        a = build_trade_history_report(trades).analytics
+        a = build_trade_history_report(trades).analytics[0]   # single currency ('')
         assert a.r_trade_count == 4
+        assert a.trade_count == 4
         assert a.expectancy == 0.5                 # (2+2-1-1)/4
         assert a.avg_win_r == 2.0
         assert a.avg_loss_r == -1.0
@@ -151,5 +152,4 @@ class TestAnalytics:
         assert a.avg_mfe_losers == 5.0             # (4 + 6)/2
 
     def test_empty_analytics(self):
-        a = build_trade_history_report([]).analytics
-        assert a.expectancy == 0.0 and a.r_trade_count == 0
+        assert build_trade_history_report([]).analytics == []   # no rows → no currency groups

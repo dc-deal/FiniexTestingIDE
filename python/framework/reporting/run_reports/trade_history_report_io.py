@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.trade_history_report_builder import compute_trade_analytics
+from python.framework.reporting.run_reports.trade_history_report_builder import analytics_by_currency
 from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -71,13 +71,16 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
     Returns:
         Path of the written CSV
     """
+    # Flat aggregate table: the nested per-fill executions (#393) are JSON-only —
+    # they do not flatten into a single CSV row (same rule as the portfolio model).
+    nested = {'entry_executions', 'exit_executions'}
     path = Path(run_dir) / TRADE_HISTORY_CSV
-    columns = list(TradeHistoryRow.model_fields.keys())
+    columns = [k for k in TradeHistoryRow.model_fields if k not in nested]
     with path.open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.trades:
-            writer.writerow(row.model_dump())
+            writer.writerow(row.model_dump(exclude=nested))
     return path
 
 
@@ -116,4 +119,4 @@ def filter_trade_history_report(
     symbols = sorted({row.symbol for row in rows})
     return TradeHistoryReport(
         trades=rows, count=len(rows), symbols=symbols,
-        analytics=compute_trade_analytics(rows))
+        analytics=analytics_by_currency(rows))

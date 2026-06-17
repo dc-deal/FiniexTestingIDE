@@ -15,14 +15,14 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
+from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report_from_session
 from python.framework.reporting.run_reports.order_history_report_io import (
-    order_records_from_session, write_order_history_csv, write_order_history_report)
+    write_order_history_csv, write_order_history_report)
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report_from_session
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report_from_session
 from python.framework.reporting.run_reports.trade_history_report_io import (
-    trade_records_from_session, write_trade_history_csv, write_trade_history_report)
+    write_trade_history_csv, write_trade_history_report)
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
@@ -82,28 +82,29 @@ class AutotraderReportCoordinator:
 
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.
-        report = build_trade_history_report(trade_records_from_session(result))
+        # The session is one run unit → tagged with the profile/symbol name (#393).
+        name = self._config.name or self._config.symbol
+        report = build_trade_history_report_from_session(result, name)
         write_trade_history_report(report, self._run_dir)
         write_trade_history_csv(report, self._run_dir)
 
-        order_report = build_order_history_report(order_records_from_session(result))
+        order_report = build_order_history_report_from_session(result, name)
         write_order_history_report(order_report, self._run_dir)
         write_order_history_csv(order_report, self._run_dir)
 
         # Portfolio headline — the single session unit (= its own currency aggregate).
         portfolio_report = build_portfolio_report_from_session(
-            result,
-            name=self._config.name or self._config.symbol,
-            symbol=self._config.symbol,
-        )
+            result, name=name, symbol=self._config.symbol)
         write_portfolio_report(portfolio_report, self._run_dir)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
             flush_decision_diagnostics(self._decision_logic, self._run_dir)
 
+        # Post-session summary — operational view + the #389 analytics line from the
+        # model (#393); the big per-trade table stays sim-only / API for live.
         post_session_report = AutotraderPostSessionReport(
             summary_logger=self._summary_logger,
             global_logger=self._global_logger,
         )
-        post_session_report.print_report(result)
+        post_session_report.print_report(result, report)

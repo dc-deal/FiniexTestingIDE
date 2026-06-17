@@ -15,7 +15,7 @@
         },
         "summary": {
             "show_global_log": false,
-            "detail": false,
+            "detail": true,
             "scenario_detail_threshold": 9
         }
     },

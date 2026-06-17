@@ -38,7 +38,7 @@ def _report() -> TradeHistoryReport:
         _row('p3', 'EURUSD', 'sl_triggered', '2025-10-13T10:00:00+00:00'),
     ]
     return TradeHistoryReport(
-        trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=_ZERO_ANALYTICS)
+        trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=[_ZERO_ANALYTICS])
 
 
 def _write_run(logs_root: Path, group: str, owner: str, run_id: str) -> None:

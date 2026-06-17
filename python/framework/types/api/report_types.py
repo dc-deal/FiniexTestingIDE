@@ -10,6 +10,18 @@ exception as api_types.py.
 from pydantic import BaseModel
 
 
+class ExecutionRow(BaseModel):
+    """One broker execution / fill (#330) — the projection of a BrokerTrade (#393)."""
+    trade_id: str
+    side: str               # 'buy' | 'sell'
+    volume: float
+    price: float
+    fee: float
+    fee_currency: str
+    liquidity: str          # 'maker' | 'taker'
+    timestamp: str          # ISO-8601 UTC, '' if absent
+
+
 class TradeHistoryRow(BaseModel):
     """One closed trade, rendered identically to CSV / console / API."""
     position_id: str
@@ -25,6 +37,7 @@ class TradeHistoryRow(BaseModel):
     gross_pnl: float
     total_fees: float
     net_pnl: float
+    currency: str = ''      # account currency (#393 — for console P&L formatting)
     # Trade analytics (#389) — excursion + risk-normalized result (defaulted: additive columns)
     mae_price: float = 0.0      # most adverse price reached while open
     mfe_price: float = 0.0      # most favorable price reached while open
@@ -33,10 +46,33 @@ class TradeHistoryRow(BaseModel):
     mae_pips: float = 0.0       # MAE distance in pips (forex convention; #167 for exact pip_size)
     mfe_pips: float = 0.0       # MFE distance in pips (forex convention)
     r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
+    # Full projection (#393) — lets the console audit table render purely from the model
+    scenario_name: str = ''     # owning run unit (sim: scenario; live: session) → grouping
+    entry_tick_index: int = 0   # chronological sort key within a unit
+    exit_tick_index: int = 0
+    entry_type: str = ''        # 'market' | 'limit' | 'stop' | 'stop_limit'
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    entry_side: str = ''        # 'buy' | 'sell'
+    exit_side: str = ''
+    entry_executions: list[ExecutionRow] = []   # #330 per-fill sub-lines (entry)
+    exit_executions: list[ExecutionRow] = []    # #330 per-fill sub-lines (exit)
+    # Submission-vs-fill slippage (#340) — adverse (>0 = paid worse than submission mid);
+    # None when no submission tick was captured (legacy / cleanup-only close).
+    entry_slippage: float | None = None
+    exit_slippage: float | None = None
+    entry_slippage_pct: float | None = None
+    exit_slippage_pct: float | None = None
 
 
 class TradeAnalytics(BaseModel):
-    """Aggregate trade analytics (#389) — risk-normalized profitability + SL calibration."""
+    """
+    Aggregate trade analytics (#389) for ONE account currency — risk-normalized
+    profitability + SL calibration. Per-currency so the P&L-denominated fields
+    (MAE/MFE) never mix currencies (#393); R fields are dimensionless anyway.
+    """
+    currency: str = ''      # account currency this aggregate is over
+    trade_count: int = 0    # trades in this currency group
     expectancy: float       # mean R over trades with a defined R
     avg_win_r: float        # mean R of winners (R-defined)
     avg_loss_r: float       # mean R of losers (R-defined)
@@ -47,16 +83,17 @@ class TradeAnalytics(BaseModel):
 
 
 class TradeHistoryReport(BaseModel):
-    """The trade-history table + light metadata + aggregate analytics (#389)."""
+    """The trade-history table + light metadata + per-currency analytics (#389/#393)."""
     trades: list[TradeHistoryRow]
     count: int
     symbols: list[str]      # distinct symbols present (filter UX)
-    analytics: TradeAnalytics
+    analytics: list[TradeAnalytics]  # one entry per account currency (no cross-currency mixing)
 
 
 class OrderHistoryRow(BaseModel):
     """One order-lifecycle record (the resting/filled/rejected order list)."""
     order_id: str
+    scenario_name: str = '' # owning run unit (sim: scenario; live: session) — #393 grouping
     position_id: str        # '' if not yet/never tied to a position
     symbol: str
     direction: str          # 'long' | 'short' | '' (unknown)

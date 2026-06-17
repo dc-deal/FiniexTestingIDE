@@ -46,7 +46,7 @@ def _report() -> TradeHistoryReport:
             close_reason='sl_triggered', gross_pnl=-1.0, total_fees=0.2, net_pnl=-1.2),
     ]
     return TradeHistoryReport(
-        trades=rows, count=2, symbols=['EURUSD', 'GBPUSD'], analytics=_ZERO_ANALYTICS)
+        trades=rows, count=2, symbols=['EURUSD', 'GBPUSD'], analytics=[_ZERO_ANALYTICS])
 
 
 def _order_report() -> OrderHistoryReport:

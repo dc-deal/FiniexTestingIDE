@@ -21,6 +21,7 @@ from python.framework.batch_reporting.trade_history_summary import TradeHistoryS
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
+from python.framework.types.api.report_types import OrderHistoryReport, TradeHistoryReport
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -39,6 +40,8 @@ class BatchSummary:
         self,
         batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigManager,
+        trade_report: TradeHistoryReport,
+        order_report: OrderHistoryReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -47,6 +50,8 @@ class BatchSummary:
         Args:
             batch_execution_summary: Batch execution results
             app_config: AppConfigManager instance
+            trade_report: Unified trade-history report (#393 — feeds the trade-history section)
+            order_report: Unified order-history report (#393 — rejection source)
             generator_profiles: Generator profiles for Profile Run disposition (None for normal runs)
         """
         self.batch_execution_summary = batch_execution_summary
@@ -72,9 +77,9 @@ class BatchSummary:
             app_config=app_config
         )
 
-        # Trade history summary
+        # Trade history summary — renders from the unified model (#393)
         self.trade_history_summary = TradeHistorySummary(
-            batch_execution_summary)
+            trade_report, order_report)
 
         # Warnings summary (always rendered)
         self.warnings_summary = WarningsSummary(
