@@ -15,9 +15,9 @@ CAPTURE  (source-specific, raw)         DERIVE  (shared, pure)            PRESEN
         the session
 ```
 
-The first slices are the **trade-history**, **order-history**, and **portfolio** sections.
-The full report model and the `RunResult` abstraction that lets sim + live share *all*
-sections follow (see *Phasing*).
+The migrated slices are **trade-history**, **order-history**, **portfolio**, and
+**execution-stats**. The `RunUnit` abstraction (#391 Phase 2) now lets sim + live share the
+*same* extraction for every section — see *Pipeline in detail* below.
 
 > **Report pipeline ≠ live streaming export.** This pipeline is about the *report* — the
 > derived artifact written at run end (and later snapshotted, #392). It is **not** the live
@@ -30,9 +30,11 @@ sections follow (see *Phasing*).
 | Layer | Unit | Role |
 |---|---|---|
 | Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport`, `ExecutionStatsReport` |
-| Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio}_report_builder.py` | **pure** derivation: records → report + the shared filter. Trade/order builders are flat record lists; the portfolio builder has two source variants (`*_from_batch` / `*_from_session`) feeding the array model |
-| IO + extract | `framework/reporting/run_reports/{trade_history,order_history,portfolio}_report_io.py` | extract the shared records from a sim batch or a live session; write the artifact(s); read + filter |
-| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` |
+| Run units | `framework/reporting/run_reports/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
+| Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here |
+| Aggregators | `framework/reporting/run_reports/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency, execution totals, portfolio per-currency roll-up). Ratios recomputed from summed components (mirrors the console `PortfolioAggregator`); the seam a future `RunSummary` composes from (#390) |
+| IO | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats}_report_io.py` | write the artifact(s); read back + filter (the API path) |
+| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats}` with section-specific filters |
@@ -40,6 +42,61 @@ sections follow (see *Phasing*).
 The `framework/reporting/run_reports/` subfolder holds **only** the unified-report-pipeline units
 (builders + io + store); the other `framework/reporting/*` files are unrelated reporting utilities
 (diagnostics CSV, event-stream CSV, field-study, …).
+
+## Pipeline in detail (with RunUnit)
+
+The flow has four stages. **CAPTURE** is the only source-specific part; from the `RunUnit`
+list onward everything is shared, so sim and live produce identical reports by construction.
+
+```
+CAPTURE  (source-specific, raw)
+   sim:  BatchExecutionSummary                 live:  AutoTraderResult
+         (N scenario results)                         (1 session)
+              │                                            │
+              │  run_units_from_batch                      │  run_units_from_session
+              │  (symbol ← index-synced scenario)          │  (name/symbol ← profile)
+              ▼                                            ▼
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  List[RunUnit]   — the unified per-unit source (#391 Phase 2)      │
+   │     each unit:  name · symbol                                      │
+   │                 trade_history · order_history                      │
+   │                 portfolio_stats · execution_stats                 │
+   └─────────────────────────────────────────────────────────────────┘
+        │                 │                  │                  │
+DERIVE  │  pure, off the hot loop — one builder per section, maps ONE unit
+        ▼                 ▼                  ▼                  ▼
+  build_trade_      build_order_       build_portfolio_   build_execution_
+  history_report    history_report     report_from_*      stats_report
+  (units, filters)  (units, filters)   (units, aggs)      (units)
+        │                 │                  │                  │
+        ▼                 ▼                  ▼                  ▼
+  TradeHistory      OrderHistory       PortfolioReport    ExecutionStats
+  Report            Report             (units + per-      Report
+  (+ analytics)                         currency aggs)    (units + totals)
+        └─────────────────┴─────────┬────────┴──────────────────┘
+                                     │  the canonical models
+PRESENT  (thin renderers — the SAME models on every surface)
+                                     ├─► console      (BatchSummary / post-session)
+                                     ├─► file log     (captured stdout, ANSI-stripped)
+                                     ├─► CSV          (flat per-unit tables)
+                                     └─► JSON artifact ─► ReportStore ─► API (reports_router)
+```
+
+- **CAPTURE → RunUnit:** the two `run_units_from_*` extractors are the *only* place that knows
+  `BatchExecutionSummary` from `AutoTraderResult`. They resolve the per-unit identity once — the
+  sim symbol comes from the index-synced `SingleScenario` (`ProcessResult` carries none); a
+  scenario without a tick-loop result is skipped.
+- **DERIVE:** each builder maps a single unit's source to rows; the **array model** keeps the
+  units (sim: N, live: 1). Trade / order rows are tagged with their unit name (grouping);
+  portfolio + execution carry the unit explicitly. The aggregates (portfolio per-currency
+  roll-up, execution totals, trade analytics) are the shared **`report_aggregators`** — one pure
+  `aggregate_*(rows)` per section (facts → measures), recomputing ratios from summed components,
+  never re-deriving per surface. The cross-section run-wide KPI roll-up (`RunSummary`, #390
+  prework) composes these once and is the seam every consumer reads (sweep objective, dashboard
+  headline, live snapshot).
+- **PRESENT:** every surface renders the *same* model — the file log is the captured console
+  stdout (ANSI-stripped), CSV is the flat per-unit table, the API serves the persisted JSON via
+  `ReportStore`. Adding a surface = adding a renderer over the model, never a re-derivation.
 
 ## Report sections — domain & migration status
 
@@ -110,9 +167,12 @@ the API serves either pipeline's run by `run_id`.
 
 1. **Trade / order / portfolio slices (done)** — models + postprocessors + IO/store + API
    endpoints + persist in both pipelines.
-2. **`RunResult` split** — abstract the run result (sim = N scenario units + extras; live = 1
-   session unit + extras) into a generic per-unit currency, deduplicating the per-source
-   extraction once more sections justify it.
+2. **`RunResult` split (done)** — the per-unit extraction is unified in
+   `run_reports/run_unit.py` (`RunUnit` + `run_units_from_batch` / `run_units_from_session`):
+   the run is extracted into units once (symbol resolved from the index-synced scenario for
+   sim), and every section builder maps from the shared units — no per-source duplication, no
+   flat builder variants. The aggregate handling (portfolio per-currency roll-up) is the next
+   target (the aggregator layer).
 3. **Trade analytics (#389, done)** — MAE/MFE **tracked** on the Position each tick (runtime,
    shared layer) + `initial_risk` stamped at close; R-multiple / expectancy **derived** in the
    postprocessor. Surfaced as per-row columns (`mae_*`/`mfe_*`/`r_multiple`) + a `TradeAnalytics`

@@ -4,18 +4,20 @@ Trade-History Full-Projection Tests (#393).
 The B projection lets the console render the audit table purely from the model: each
 row carries its unit (`scenario_name`), the audit columns, and the #330 per-fill
 executions. Tested with real TradeRecord / BrokerTrade / ProcessResult fixtures (no
-run required) — the source variants must tag the unit name correctly.
+run required), built into RunUnits — the units must tag the unit name correctly.
 """
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.trade_history_report_builder import (
-    build_trade_history_report_from_batch, build_trade_history_report_from_session)
+from python.framework.reporting.run_reports.run_unit import (
+    run_units_from_batch, run_units_from_session)
+from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason, CloseType, EntryType, TradeRecord)
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 
@@ -49,20 +51,23 @@ def _trade(position_id: str = 'p1', with_executions: bool = True) -> TradeRecord
     )
 
 
+def _session_report(result: AutoTraderResult, name: str):
+    """Build the trade report from a single live-session unit."""
+    return build_trade_history_report(run_units_from_session(result, name, ''))
+
+
 class TestProjection:
     """The B audit columns + #330 executions map onto the row."""
 
     def test_audit_columns(self):
-        row = build_trade_history_report_from_session(
-            AutoTraderResult(trade_history=[_trade()]), name='s').trades[0]
+        row = _session_report(AutoTraderResult(trade_history=[_trade()]), 's').trades[0]
         assert row.entry_type == 'limit'
         assert row.stop_loss == 1.0980 and row.take_profit == 1.1040
         assert row.entry_side == 'buy' and row.exit_side == 'sell'
         assert row.entry_tick_index == 42 and row.exit_tick_index == 99
 
     def test_executions_mapped(self):
-        row = build_trade_history_report_from_session(
-            AutoTraderResult(trade_history=[_trade()]), name='s').trades[0]
+        row = _session_report(AutoTraderResult(trade_history=[_trade()]), 's').trades[0]
         assert len(row.entry_executions) == 1 and len(row.exit_executions) == 1
         ex = row.entry_executions[0]
         assert ex.trade_id == 'e1' and ex.side == 'buy'
@@ -70,8 +75,8 @@ class TestProjection:
         assert ex.volume == 0.1 and ex.price == 1.1000
 
     def test_no_executions(self):
-        row = build_trade_history_report_from_session(
-            AutoTraderResult(trade_history=[_trade(with_executions=False)]), name='s').trades[0]
+        row = _session_report(
+            AutoTraderResult(trade_history=[_trade(with_executions=False)]), 's').trades[0]
         assert row.entry_executions == [] and row.exit_executions == []
 
 
@@ -89,11 +94,17 @@ class TestSourceVariants:
                     success=True, scenario_name='EURUSD_cont_01', scenario_index=1,
                     tick_loop_results=ProcessTickLoopResult(trade_history=[_trade('p2')])),
             ],
-            single_scenario_list=[])
-        report = build_trade_history_report_from_batch(batch)
+            single_scenario_list=[
+                SingleScenario(
+                    name='AUDUSD_cont_00', scenario_index=0, symbol='AUDUSD',
+                    data_broker_type='mt5', start_date=_T0),
+                SingleScenario(
+                    name='EURUSD_cont_01', scenario_index=1, symbol='EURUSD',
+                    data_broker_type='mt5', start_date=_T0),
+            ])
+        report = build_trade_history_report(run_units_from_batch(batch))
         assert [r.scenario_name for r in report.trades] == ['AUDUSD_cont_00', 'EURUSD_cont_01']
 
     def test_from_session_tags_name(self):
-        report = build_trade_history_report_from_session(
-            AutoTraderResult(trade_history=[_trade()]), name='my_profile')
+        report = _session_report(AutoTraderResult(trade_history=[_trade()]), 'my_profile')
         assert report.trades[0].scenario_name == 'my_profile'

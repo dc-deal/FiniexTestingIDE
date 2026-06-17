@@ -3,15 +3,16 @@ Execution-Stats Report Builder Tests (#391).
 
 Counts-only segment: order counts + SL/TP triggers, currency-agnostic. Tested against
 a real BatchExecutionSummary / ProcessResult / ProcessTickLoopResult / SingleScenario
-(not stand-ins) so it exercises the actual persist-path attribute access — the symbol
-comes from the index-synced SingleScenario (ProcessResult carries none). The live
-builder uses a real AutoTraderResult.
+(not stand-ins), extracted into RunUnits — so it exercises the actual persist-path
+attribute access (the symbol comes from the index-synced SingleScenario, since
+ProcessResult carries none). The live builder uses a real AutoTraderResult.
 """
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.execution_stats_report_builder import (
-    build_execution_stats_report_from_batch, build_execution_stats_report_from_session)
+from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
+from python.framework.reporting.run_reports.run_unit import (
+    run_units_from_batch, run_units_from_session)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
@@ -59,19 +60,19 @@ class TestBatch:
     """sim: N scenario units (symbol from SingleScenario) + summed totals."""
 
     def test_units_use_scenario_symbol(self):
-        report = build_execution_stats_report_from_batch(_batch())
+        report = build_execution_stats_report(run_units_from_batch(_batch()))
         assert [u.name for u in report.units] == ['s1', 's2']
         # symbol is NOT on ProcessResult — must resolve via the index-synced scenario
         assert [u.symbol for u in report.units] == ['EURUSD', 'GBPUSD']
 
     def test_unit_counts_mapped(self):
-        report = build_execution_stats_report_from_batch(_batch())
+        report = build_execution_stats_report(run_units_from_batch(_batch()))
         row = report.units[0]
         assert (row.orders_sent, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
             == (5, 4, 1, 2)
 
     def test_totals_sum_currency_agnostic(self):
-        report = build_execution_stats_report_from_batch(_batch())
+        report = build_execution_stats_report(run_units_from_batch(_batch()))
         assert report.totals.orders_sent == 8
         assert report.totals.orders_executed == 7
         assert report.totals.orders_rejected == 1
@@ -80,7 +81,7 @@ class TestBatch:
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
             success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
-        report = build_execution_stats_report_from_batch(_batch(extra_results=[bad]))
+        report = build_execution_stats_report(run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
 
 
@@ -90,8 +91,8 @@ class TestSession:
     def test_single_unit_and_totals(self):
         result = AutoTraderResult(
             execution_stats=_stats(sent=7, executed=6, rejected=1, sl_tp=4))
-        report = build_execution_stats_report_from_session(
-            result, name='my_profile', symbol='BTCUSD')
+        report = build_execution_stats_report(
+            run_units_from_session(result, 'my_profile', 'BTCUSD'))
         assert len(report.units) == 1
         assert report.units[0].name == 'my_profile'
         assert report.units[0].symbol == 'BTCUSD'
@@ -99,7 +100,7 @@ class TestSession:
         assert report.totals.sl_tp_triggered == 4
 
     def test_empty_when_no_stats(self):
-        report = build_execution_stats_report_from_session(
-            AutoTraderResult(execution_stats=None), name='p', symbol='BTCUSD')
+        report = build_execution_stats_report(
+            run_units_from_session(AutoTraderResult(execution_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
         assert report.totals.orders_sent == 0

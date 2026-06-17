@@ -8,17 +8,17 @@ This is the coordination layer - actual rendering logic stays in framework/batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
-from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report_from_batch
+from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
-from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report_from_batch
+from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
 from python.framework.reporting.run_reports.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
-from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report_from_batch
+from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report_from_batch
+from python.framework.reporting.run_reports.run_unit import run_units_from_batch
+from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.configuration.app_config_manager import AppConfigManager
@@ -72,18 +72,14 @@ class BatchReportCoordinator:
         run_dir = self._scenario_set.logger.get_log_dir()
 
         # === DERIVE (once, off the hot loop) — the canonical report models ===
-        trade_report = build_trade_history_report_from_batch(self._batch_execution_summary)
-        order_report = build_order_history_report_from_batch(self._batch_execution_summary)
-        # Portfolio headline — units (scenarios) + per-currency roll-up. The aggregate is
-        # the existing currency aggregator (single source for the total), injected so the
-        # builder stays out of the console-summary layer.
-        currency_aggregates = PortfolioAggregator(
-            self._batch_execution_summary.process_result_list).aggregate_by_currency()
-        portfolio_report = build_portfolio_report_from_batch(
-            self._batch_execution_summary, currency_aggregates)
+        # Extract the run's units once (#391 Phase 2) — every section maps from these.
+        units = run_units_from_batch(self._batch_execution_summary)
+        trade_report = build_trade_history_report(units)
+        order_report = build_order_history_report(units)
+        # Portfolio headline — per-unit rows + per-currency roll-up, derived from the rows.
+        portfolio_report = build_portfolio_report(units)
         # Execution-stats headline — per-scenario order counts + summed total (#391).
-        execution_stats_report = build_execution_stats_report_from_batch(
-            self._batch_execution_summary)
+        execution_stats_report = build_execution_stats_report(units)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(

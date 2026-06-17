@@ -8,31 +8,13 @@ shared filter path. One model, one filter, identical data across console/file/AP
 
 import csv
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.trading_env_types.order_types import OrderResult
 
 # Canonical artifact names inside a run directory
 ORDER_HISTORY_ARTIFACT = 'order_history.json'
 ORDER_HISTORY_CSV = 'order_history.csv'
-
-
-def order_records_from_batch(batch: BatchExecutionSummary) -> List[OrderResult]:
-    """Aggregate the order records across all scenarios of a sim batch."""
-    records: List[OrderResult] = []
-    for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if tick_loop and tick_loop.order_history:
-            records.extend(tick_loop.order_history)
-    return records
-
-
-def order_records_from_session(session: AutoTraderResult) -> List[OrderResult]:
-    """The order records of a live AutoTrader session (the single unit)."""
-    return list(session.order_history or [])
 
 
 def write_order_history_report(report: OrderHistoryReport, run_dir: Path) -> Path:

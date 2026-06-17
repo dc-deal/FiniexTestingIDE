@@ -2,62 +2,34 @@
 Order-history report builder (#391) — postprocessor twin of the trade-history
 builder, for the order-lifecycle list (resting / filled / rejected orders).
 
-Pure function: a list of OrderResults (the input both pipelines already produce via
-`get_order_history()`) → the canonical `OrderHistoryReport`. Runs off the hot loop,
-source-agnostic, fixture-testable. Optional filters (symbol / status) live here so
-console, CSV, and API share one filter path.
+Consumes the run's `RunUnit` list (#391 Phase 2): each order row is tagged with its
+run unit name. Pure, off the hot loop, fixture-testable. Optional filters (symbol /
+status) live here so console, CSV, and API share one filter path.
 """
 
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.order_types import OrderResult
 
 
 def build_order_history_report(
-    orders: List[OrderResult],
+    units: List[RunUnit],
     symbol: Optional[str] = None,
     status: Optional[str] = None,
 ) -> OrderHistoryReport:
     """
-    Build the canonical order-history report from a flat order list (rows tagged '').
+    Build the canonical order-history report from the run's units.
 
     Args:
-        orders: Order records
+        units: The run's units (sim: scenarios; live: the session)
         symbol / status: Optional filters
 
     Returns:
         OrderHistoryReport with the filtered, mapped rows + distinct symbols
     """
-    return _assemble([_to_row(o) for o in orders], symbol, status)
-
-
-def build_order_history_report_from_batch(
-    batch: BatchExecutionSummary,
-    symbol: Optional[str] = None,
-    status: Optional[str] = None,
-) -> OrderHistoryReport:
-    """Build from a sim batch — each row tagged with its scenario name."""
-    rows: List[OrderHistoryRow] = []
-    for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if not tick_loop or not tick_loop.order_history:
-            continue
-        for order in tick_loop.order_history:
-            rows.append(_to_row(order, result.scenario_name))
-    return _assemble(rows, symbol, status)
-
-
-def build_order_history_report_from_session(
-    session: AutoTraderResult,
-    name: str,
-    symbol: Optional[str] = None,
-    status: Optional[str] = None,
-) -> OrderHistoryReport:
-    """Build from a live session — all rows tagged with the session unit name."""
-    rows = [_to_row(o, name) for o in (session.order_history or [])]
+    rows = [_to_row(order, unit.name) for unit in units for order in unit.order_history]
     return _assemble(rows, symbol, status)
 
 

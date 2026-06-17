@@ -3,91 +3,43 @@ Trade-history report builder (#391/#389/#393) — the postprocessor of the unifi
 reporting pipeline.
 
 Maps closed TradeRecords → the canonical `TradeHistoryReport` (the full projection:
-audit columns + #389 analytics + #330 per-fill executions). Source variants tag each
-row with its run unit (`scenario_name`) so the console can group per scenario and
-render purely from the model. Runs off the hot loop, fixture-testable. The shared
-filter (symbol / close reason / time range) lives here so every surface filters identically.
+audit columns + #389 analytics + #330 per-fill executions). Consumes the run's
+`RunUnit` list (#391 Phase 2), so each row is tagged with its run unit (`scenario_name`)
+and the console can group per unit and render purely from the model. Runs off the hot
+loop, fixture-testable. The shared filter (symbol / close reason / time range) lives
+here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 """
 
 from datetime import datetime
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.report_aggregators import aggregate_trade_analytics
+from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    ExecutionRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.batch_execution_types import BatchExecutionSummary
+    ExecutionRow, TradeHistoryReport, TradeHistoryRow)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderSide
 
 
 def build_trade_history_report(
-    trades: List[TradeRecord],
+    units: List[RunUnit],
     symbol: Optional[str] = None,
     close_reason: Optional[str] = None,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ) -> TradeHistoryReport:
     """
-    Build the report from a flat trade list (no unit context — rows tagged '').
+    Build the report from the run's units — each row tagged with its unit name.
 
     Args:
-        trades: Closed trade records
+        units: The run's units (sim: scenarios; live: the session)
         symbol / close_reason / start / end: Optional filters
 
     Returns:
         The filtered, mapped TradeHistoryReport
     """
-    return _assemble([_to_row(t) for t in trades], symbol, close_reason, start, end)
-
-
-def build_trade_history_report_from_batch(
-    batch: BatchExecutionSummary,
-    symbol: Optional[str] = None,
-    close_reason: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
-) -> TradeHistoryReport:
-    """
-    Build the report from a sim batch — each row tagged with its scenario name.
-
-    Args:
-        batch: The completed batch summary
-        symbol / close_reason / start / end: Optional filters
-
-    Returns:
-        The filtered TradeHistoryReport with per-scenario `scenario_name` tags
-    """
-    rows: List[TradeHistoryRow] = []
-    for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if not tick_loop or not tick_loop.trade_history:
-            continue
-        for trade in tick_loop.trade_history:
-            rows.append(_to_row(trade, result.scenario_name))
-    return _assemble(rows, symbol, close_reason, start, end)
-
-
-def build_trade_history_report_from_session(
-    session: AutoTraderResult,
-    name: str,
-    symbol: Optional[str] = None,
-    close_reason: Optional[str] = None,
-    start: Optional[datetime] = None,
-    end: Optional[datetime] = None,
-) -> TradeHistoryReport:
-    """
-    Build the report from a live session — all rows tagged with the session unit name.
-
-    Args:
-        session: The collected session result
-        name: Session unit label (profile / symbol)
-        symbol / close_reason / start / end: Optional filters
-
-    Returns:
-        The filtered TradeHistoryReport
-    """
-    rows = [_to_row(trade, name) for trade in (session.trade_history or [])]
+    rows = [_to_row(trade, unit.name) for unit in units for trade in unit.trade_history]
     return _assemble(rows, symbol, close_reason, start, end)
 
 
@@ -114,52 +66,7 @@ def _assemble(
     symbols = sorted({row.symbol for row in filtered})
     return TradeHistoryReport(
         trades=filtered, count=len(filtered), symbols=symbols,
-        analytics=analytics_by_currency(filtered))
-
-
-def analytics_by_currency(rows: List[TradeHistoryRow]) -> List[TradeAnalytics]:
-    """
-    Per-currency analytics (#393): group the rows by account currency and compute
-    one TradeAnalytics each, so the P&L-denominated fields (MAE/MFE) never mix
-    currencies. Returns one entry per currency (sorted), [] for no rows.
-
-    Args:
-        rows: The report's trade rows (already filtered)
-
-    Returns:
-        One TradeAnalytics per currency present
-    """
-    groups: dict = {}
-    for row in rows:
-        groups.setdefault(row.currency, []).append(row)
-    return [compute_trade_analytics(groups[c]) for c in sorted(groups)]
-
-
-def compute_trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
-    """
-    Aggregate the per-row analytics (#389) for ONE currency group: expectancy + R
-    distribution over the R-defined subset, MAE/MFE summaries over winners/losers.
-
-    Args:
-        rows: Trade rows of a single currency group
-
-    Returns:
-        The aggregate TradeAnalytics for that group
-    """
-    r_rows = [r for r in rows if r.r_multiple is not None]
-    winners = [r for r in rows if r.net_pnl > 0]
-    losers = [r for r in rows if r.net_pnl < 0]
-    return TradeAnalytics(
-        currency=rows[0].currency if rows else '',
-        trade_count=len(rows),
-        expectancy=_mean([r.r_multiple for r in r_rows]),
-        avg_win_r=_mean([r.r_multiple for r in r_rows if r.net_pnl > 0]),
-        avg_loss_r=_mean([r.r_multiple for r in r_rows if r.net_pnl < 0]),
-        r_trade_count=len(r_rows),
-        avg_mae_winners=_mean([r.mae_pnl for r in winners]),
-        avg_mae_losers=_mean([r.mae_pnl for r in losers]),
-        avg_mfe_losers=_mean([r.mfe_pnl for r in losers]),
-    )
+        analytics=aggregate_trade_analytics(filtered))
 
 
 def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
@@ -239,11 +146,6 @@ def _execution_rows(broker_trades: Optional[List[BrokerTrade]]) -> List[Executio
         )
         for bt in (broker_trades or [])
     ]
-
-
-def _mean(values: List[float]) -> float:
-    """Mean, or 0.0 for an empty list."""
-    return sum(values) / len(values) if values else 0.0
 
 
 def _pip_size(digits: int) -> float:
