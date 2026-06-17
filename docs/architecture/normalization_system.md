@@ -71,5 +71,5 @@ worker's own window), never pulled from a precomputed profile at runtime.
 
 A runnable illustration lives at
 `python/experiments/normalization_demo/normalization_demo.py` (launch entry
-"📐 Normalization Demo"): the same trend on EURUSD vs BTCUSD — raw numbers incomparable,
-normalized identical.
+"📐 Normalization Demo"): the same trend across four instruments (EURUSD → USDJPY →
+ETHUSD → BTCUSD, calm forex to wild crypto) — raw numbers incomparable, normalized identical.

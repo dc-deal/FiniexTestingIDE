@@ -1,7 +1,8 @@
 """Demo: why normalization makes indicator values cross-instrument comparable.
 
-Runs the same "trend strength" scenario on a calm instrument (EURUSD) and a
-wild one (BTCUSD). The raw price-space numbers (slope in price units, band
+Runs the same "trend strength" scenario across four instruments spanning very
+different price scales and volatilities (EURUSD → USDJPY → ETHUSD → BTCUSD, calm
+forex to wild crypto). The raw price-space numbers (slope in price units, band
 distance) differ by orders of magnitude and cannot share a threshold. Routed
 through the Normalizer they collapse onto the same dimensionless scale — the
 whole reason the Bollinger and ma_trend workers normalize rather than split per
@@ -32,13 +33,16 @@ def _slope_in_vol_units(closes: List[float]) -> tuple:
     return delta, std, Normalizer.normalize(delta, std)
 
 
-def _band_position(price: float, closes: List[float], deviation: float = 2.0) -> tuple:
+def _band_position(closes: List[float], overshoot: float = 1.3, deviation: float = 2.0) -> tuple:
     """
-    Price position within a Bollinger band (raw distance vs %B).
+    Band position of a probe price set just past the upper band (raw distance vs %B).
+
+    The probe sits `overshoot` volatility units above the last close, so every
+    instrument lands at roughly the same %B (slight overshoot) regardless of scale.
 
     Args:
-        price: Current price
         closes: Close-price window
+        overshoot: Std multiplier placing the probe above the last close
         deviation: Std multiplier for the band
 
     Returns:
@@ -48,7 +52,8 @@ def _band_position(price: float, closes: List[float], deviation: float = 2.0) ->
     std = pstdev(closes)
     lower = mid - deviation * std
     upper = mid + deviation * std
-    return price - lower, Normalizer.rescale(price, lower, upper)
+    probe = closes[-1] + overshoot * std
+    return probe - lower, Normalizer.rescale(probe, lower, upper)
 
 
 def _print_row(label: str, raw: str, normalized: str) -> None:
@@ -56,42 +61,47 @@ def _print_row(label: str, raw: str, normalized: str) -> None:
 
 
 def main() -> None:
-    # Calm vs wild: comparable trend strength, vastly different price scale + volatility.
-    eurusd = [1.0800, 1.0802, 1.0804, 1.0806, 1.0808, 1.0811, 1.0813]
-    btcusd = [60000, 60130, 60260, 60390, 60520, 60680, 60810]
+    # Same gentle uptrend, four very different price scales + volatilities.
+    instruments = [
+        ('EURUSD', 'calm forex',  [1.0800, 1.0802, 1.0804, 1.0806, 1.0808, 1.0811, 1.0813]),
+        ('USDJPY', 'forex, ~150', [149.80, 149.83, 149.86, 149.89, 149.92, 149.96, 149.99]),
+        ('ETHUSD', 'mid crypto',  [3000.0, 3007.0, 3014.0, 3021.0, 3028.0, 3036.0, 3043.0]),
+        ('BTCUSD', 'wild crypto', [60000.0, 60130.0, 60260.0, 60390.0, 60520.0, 60680.0, 60810.0]),
+    ]
 
-    eur_delta, eur_std, eur_slope = _slope_in_vol_units(eurusd)
-    btc_delta, btc_std, btc_slope = _slope_in_vol_units(btcusd)
-
-    eur_dist, eur_pb = _band_position(eurusd[-1] + 0.0006, eurusd)
-    btc_dist, btc_pb = _band_position(btcusd[-1] + 360, btcusd)
+    rows = []
+    for label, note, closes in instruments:
+        delta, std, slope = _slope_in_vol_units(closes)
+        dist, pb = _band_position(closes)
+        rows.append((label, note, closes[0], delta, std, slope, dist, pb))
 
     print("=" * 76)
     print("📐 NORMALIZATION DEMO — raw price-space vs cross-instrument-comparable")
     print("=" * 76)
     print()
-    print("   Same trend scenario, two instruments:")
-    print(f"      EURUSD (calm)  closes ~{eurusd[0]:.4f}, std {eur_std:.5f}")
-    print(f"      BTCUSD (wild)  closes ~{btcusd[0]:.0f}, std {btc_std:.2f}")
+    print("   Same trend scenario across four scales + volatilities:")
+    for label, note, first, _, std, _, _, _ in rows:
+        tag = f"{label} ({note})"
+        print(f"      {tag:<22} closes ~{first:<9g} std {std:.5g}")
     print()
     print("─" * 76)
     print("   MIDLINE SLOPE")
     print("─" * 76)
     _print_row("", "raw (price/bar)", "normalize()")
-    _print_row("EURUSD", f"{eur_delta:.6f}", f"{eur_slope:.3f}")
-    _print_row("BTCUSD", f"{btc_delta:.2f}", f"{btc_slope:.3f}")
+    for label, _, _, delta, _, slope, _, _ in rows:
+        _print_row(label, f"{delta:.6g}", f"{slope:.3f}")
     print()
-    print("   → raw slopes differ by ~6 orders of magnitude (no shared threshold);")
-    print("     in volatility units both read as the SAME trend strength.")
+    print("   → raw slopes span ~6 orders of magnitude (no shared threshold);")
+    print("     in volatility units they all read as the SAME trend strength.")
     print()
     print("─" * 76)
     print("   BAND POSITION (%B)")
     print("─" * 76)
     _print_row("", "raw dist. to lower band", "rescale() = %B")
-    _print_row("EURUSD", f"{eur_dist:.6f}", f"{eur_pb:.3f}")
-    _print_row("BTCUSD", f"{btc_dist:.2f}", f"{btc_pb:.3f}")
+    for label, _, _, _, _, _, dist, pb in rows:
+        _print_row(label, f"{dist:.6g}", f"{pb:.3f}")
     print()
-    print("   → raw distances incomparable; %B places both on the same 0..1 scale.")
+    print("   → raw distances incomparable; %B places them all on the same 0..1 scale.")
     print("=" * 76)
 
 
