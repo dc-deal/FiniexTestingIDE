@@ -109,6 +109,19 @@ class TestBatch:
         assert row.profit_factor == 2.5
         assert row.net_profit == 60.0                  # total_profit - total_loss
 
+    def test_full_projection_fields(self):
+        # the per-scenario linear block renders purely from these
+        row = build_portfolio_report(run_units_from_batch(_batch())).units[0]
+        assert row.broker_name == 'kraken'
+        assert row.spot_mode is False
+        assert row.data_source == 'mt5'                # from the index-synced scenario
+        assert (row.total_long_trades, row.total_short_trades) == (10, 0)
+        assert row.max_equity == 1100.0
+        assert (row.current_balance, row.initial_balance) == (1060.0, 1000.0)
+        assert row.conversion_rate == 1.0
+        assert (row.total_spread_cost, row.total_commission, row.total_swap) == (2.0, 2.0, 1.0)
+        assert row.has_error is False
+
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
             success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)

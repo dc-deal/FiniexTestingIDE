@@ -11,13 +11,15 @@ from pathlib import Path
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
+from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
-    OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
+    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
+    PortfolioAggregateRow, PortfolioReport,
     PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
 _ZERO_ANALYTICS = TradeAnalytics(
@@ -190,3 +192,29 @@ class TestExecutionStats:
         assert lines[0].startswith('name,symbol,orders_sent')
         assert len(lines) == 1 + 1                 # header + 1 unit row
         assert 'EURUSD' in lines[1]
+
+
+def _pending_orders_report() -> PendingOrdersReport:
+    unit = PendingOrdersUnitRow(
+        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2,
+        total_force_closed=1, avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        active_limit_orders=[ActiveOrderRow(
+            order_id='L1', order_type='limit', direction='long', lots=0.1,
+            entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
+    return PendingOrdersReport(units=[unit])
+
+
+class TestPendingOrders:
+    def test_reads_pending_orders(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_pending_orders_report(_pending_orders_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_pending_orders('20260615_120000')
+        assert report is not None
+        u = report.units[0]
+        assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
+        assert u.active_limit_orders[0].order_id == 'L1'
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_pending_orders('nope') is None

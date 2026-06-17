@@ -16,12 +16,14 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.framework.reporting.run_reports.execution_stats_report_io import write_execution_stats_report
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
+from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
-    OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
+    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
+    PortfolioAggregateRow, PortfolioReport,
     PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
 _ZERO_ANALYTICS = TradeAnalytics(
@@ -33,6 +35,7 @@ _URL = f'/api/v1/reports/runs/{_RUN}/trade-history'
 _ORDER_URL = f'/api/v1/reports/runs/{_RUN}/order-history'
 _PORTFOLIO_URL = f'/api/v1/reports/runs/{_RUN}/portfolio'
 _EXEC_URL = f'/api/v1/reports/runs/{_RUN}/execution-stats'
+_PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
 
 
 def _report() -> TradeHistoryReport:
@@ -91,6 +94,16 @@ def _execution_stats_report() -> ExecutionStatsReport:
     return ExecutionStatsReport(units=[unit], totals=totals)
 
 
+def _pending_orders_report() -> PendingOrdersReport:
+    unit = PendingOrdersUnitRow(
+        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2, total_force_closed=1,
+        avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        active_limit_orders=[ActiveOrderRow(
+            order_id='L1', order_type='limit', direction='long', lots=0.1,
+            entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
+    return PendingOrdersReport(units=[unit])
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -99,6 +112,7 @@ def client(tmp_path: Path):
     write_order_history_report(_order_report(), run_dir)
     write_portfolio_report(_portfolio_report(), run_dir)
     write_execution_stats_report(_execution_stats_report(), run_dir)
+    write_pending_orders_report(_pending_orders_report(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -172,4 +186,18 @@ def test_execution_stats_returns(client):
 
 def test_execution_stats_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/execution-stats')
+    assert response.status_code == 404
+
+
+def test_pending_orders_returns(client):
+    response = client.get(_PENDING_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body['units']) == 1
+    assert body['units'][0]['total_resolved'] == 3
+    assert body['units'][0]['active_limit_orders'][0]['order_id'] == 'L1'
+
+
+def test_pending_orders_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/pending-orders')
     assert response.status_code == 404

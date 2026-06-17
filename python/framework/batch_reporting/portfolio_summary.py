@@ -1,55 +1,264 @@
 """
 FiniexTestingIDE - Portfolio Summary
-Trading and portfolio statistics rendering
 
-Rendered in BOX format matching scenario details.
+Per-scenario portfolio results render **linearly** (one block per unit) purely from the
+unified report model (#393) — `PortfolioReport` (full projection) + `PendingOrdersReport` +
+`ExecutionStatsReport` (order counts). The per-currency **aggregated** section stays on
+`PortfolioAggregator` (it is a cross-domain per-currency roll-up — the future `RunSummary`
+territory) and is unchanged.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
+from python.framework.types.api.report_types import (
+    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, PendingOrdersReport,
+    PendingOrdersUnitRow, PortfolioReport, PortfolioUnitRow)
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats, CostBreakdown
-from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats, PortfolioStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
 class PortfolioSummary(AbstractBatchSummarySection):
     """
     Portfolio and trading statistics summary.
+
+    Per-scenario: linear blocks from the model. Aggregated: per-currency via PortfolioAggregator.
     """
 
     _section_title = '💰 PORTFOLIO & TRADING RESULTS'
 
-    def __init__(self, batch_execution_summary: BatchExecutionSummary):
+    def __init__(
+        self,
+        report: PortfolioReport,
+        pending_report: PendingOrdersReport,
+        execution_report: ExecutionStatsReport,
+    ):
         """
         Initialize portfolio summary.
-        """
-        self.batch_execution_summary = batch_execution_summary
 
-    def render_per_scenario(self, renderer: ConsoleRenderer, box_renderer: ConsoleBoxRenderer):
+        Args:
+            report: The unified portfolio report (per-unit full projection + aggregates)
+            pending_report: The unified pending-orders report (per-unit lifecycle + active)
+            execution_report: The unified execution-stats report (per-unit order counts)
         """
-        Render portfolio stats per scenario in BOX format.
+        self._report = report
+        self._pending_report = pending_report
+        self._execution_report = execution_report
+
+    # ============================================
+    # Per-scenario (linear, from the model)
+    # ============================================
+
+    def render_per_scenario(self, renderer: ConsoleRenderer):
+        """
+        Render portfolio stats per scenario as linear blocks (one below another).
 
         Args:
             renderer: ConsoleRenderer instance
-            box_renderer: ConsoleBoxRenderer instance
         """
         self._render_section_header(renderer)
 
-        # Use grid renderer
+        if not self._report.units:
+            print("No portfolio data available")
+            return
+
+        pending_by_name: Dict[str, PendingOrdersUnitRow] = {
+            u.name: u for u in self._pending_report.units}
+        execution_by_name: Dict[str, ExecutionStatsRow] = {
+            u.name: u for u in self._execution_report.units}
+
         print()
-        box_renderer.render_portfolio_grid(
-            batch_summary=self.batch_execution_summary,
-            columns=3,      # 3 boxes per row
-            box_width=38    # Same width as scenario boxes
-        )
+        for idx, unit in enumerate(self._report.units, 1):
+            if idx > 1:
+                print()
+                renderer.print_separator(width=120, char="·")
+            self._render_unit_block(
+                unit, pending_by_name.get(unit.name),
+                execution_by_name.get(unit.name), renderer)
 
         # Active order detail tables (per scenario with active orders)
         self._render_active_order_details(renderer)
+
+    def _render_unit_block(
+        self,
+        unit: PortfolioUnitRow,
+        pending: Optional[PendingOrdersUnitRow],
+        execution: Optional[ExecutionStatsRow],
+        renderer: ConsoleRenderer
+    ) -> None:
+        """Render a single scenario's portfolio block (linear)."""
+        currency_disp = f"{unit.currency} [SPOT]" if unit.spot_mode else unit.currency
+        broker = (unit.broker_name[:30] if unit.broker_name else '—')
+        data = f" | Data: {unit.data_source}" if unit.data_source else ''
+        print(f"💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}")
+        if unit.has_error:
+            print(renderer.red("   ⚠️ CRITICAL: Errors detected"))
+
+        # No-trades case
+        if unit.total_trades == 0:
+            orders = self._orders_line(execution, renderer)
+            print(f"   No trades executed" + (f" | {orders}" if orders else ""))
+            active = self._active_summary(pending, renderer)
+            if active:
+                print(f"   {active}")
+            return
+
+        print(
+            f"   Trades: {unit.total_trades} ({unit.winning_trades}W/{unit.losing_trades}L) | "
+            f"Win {unit.win_rate:.1%} | "
+            f"Long/Short {unit.total_long_trades}/{unit.total_short_trades}")
+
+        rate = f" @ {unit.conversion_rate:.4f}" if unit.conversion_rate is not None else ''
+        print(f"   P&L: {renderer.pnl(unit.net_profit, unit.currency)}{rate}")
+
+        for line in self._balance_lines(unit, renderer):
+            if line:
+                print(f"   {line}")
+
+        max_dd_pct = (unit.max_drawdown / unit.max_equity * 100) if unit.max_equity > 0 else 0.0
+        print(
+            f"   Max DD: {renderer.pnl(force_negative(unit.max_drawdown), unit.currency)} "
+            f"({max_dd_pct:.1f}%) | "
+            f"Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}")
+
+        print(
+            f"   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | "
+            f"comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | "
+            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)}")
+
+        orders = self._orders_line(execution, renderer)
+        if orders:
+            print(f"   {orders}")
+        pending_line = self._pending_line(pending, renderer)
+        if pending_line:
+            print(f"   {pending_line}")
+        active = self._active_summary(pending, renderer)
+        if active:
+            print(f"   {active}")
+
+    def _balance_lines(
+        self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:
+        """Balance + init (+ spot estimated P&L) lines — spot-aware, from the model."""
+        currency = unit.currency
+        if not unit.spot_mode:
+            initial_str = format_currency_simple(unit.initial_balance, currency)
+            current_str = format_currency_simple(unit.current_balance, currency)
+            if unit.current_balance > unit.initial_balance:
+                current_str = renderer.green(current_str)
+            elif unit.current_balance < unit.initial_balance:
+                current_str = renderer.red(current_str)
+            return [f"Balance: {current_str} (init {initial_str})"]
+
+        # Spot mode — dual balance + estimated portfolio value
+        symbol = unit.symbol
+        quote = symbol[-3:] if len(symbol) >= 6 else currency
+        base = symbol[:-3] if len(symbol) >= 6 else ''
+        quote_bal = unit.balances.get(quote, 0.0)
+        base_bal = unit.balances.get(base, 0.0)
+        quote_init = unit.initial_balances.get(quote, 0.0)
+        base_init = unit.initial_balances.get(base, 0.0)
+        base_fmt = f'{base_bal:,.4f}' if base_bal < 100 else f'{base_bal:,.2f}'
+        base_init_fmt = f'{base_init:,.4f}' if base_init < 100 else f'{base_init:,.2f}'
+
+        lines = [
+            f"Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}",
+            f"Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}",
+        ]
+        if unit.last_price > 0:
+            est_current = quote_bal + (base_bal * unit.last_price)
+            est_initial = quote_init + (base_init * unit.last_price)
+            est_pnl = est_current - est_initial
+            est_pnl_pct = (est_pnl / est_initial * 100) if est_initial > 0 else 0.0
+            sign = '+' if est_pnl >= 0 else ''
+            price_str = format_currency_simple(unit.last_price, quote)
+            lines.append(
+                f"Est: {sign}{format_currency_simple(est_pnl, quote)} "
+                f"({sign}{est_pnl_pct:.2f}%) @ {base} {price_str}")
+        return lines
+
+    @staticmethod
+    def _orders_line(
+        execution: Optional[ExecutionStatsRow], renderer: ConsoleRenderer) -> str:
+        """Order execution counts line (from the execution-stats model)."""
+        if execution is None:
+            return ''
+        line = f"Orders: {execution.orders_executed}/{execution.orders_sent} executed"
+        if execution.orders_rejected > 0:
+            line += f" | {renderer.yellow(f'Rej: {execution.orders_rejected}')}"
+        return line
+
+    @staticmethod
+    def _pending_line(
+        pending: Optional[PendingOrdersUnitRow], renderer: ConsoleRenderer) -> str:
+        """Pending-order latency summary line (green), or '' when no latency data."""
+        if pending is None or pending.min_latency_ms is None:
+            return ''
+        text = (
+            f"Pending: avg {pending.avg_latency_ms:.0f}ms "
+            f"({pending.min_latency_ms:.0f}-{pending.max_latency_ms:.0f})")
+        anomalies = []
+        if pending.total_force_closed > 0:
+            anomalies.append(f"{pending.total_force_closed} forced")
+        if pending.total_timed_out > 0:
+            anomalies.append(f"{pending.total_timed_out} timeout")
+        if anomalies:
+            text += " | " + renderer.yellow(" | ".join(anomalies))
+        return renderer.green(text)
+
+    @staticmethod
+    def _active_summary(
+        pending: Optional[PendingOrdersUnitRow], renderer: ConsoleRenderer) -> str:
+        """Active orders at run end summary line (cyan), or '' when none."""
+        if pending is None:
+            return ''
+        parts = []
+        if pending.active_limit_orders:
+            parts.append(f"{len(pending.active_limit_orders)} limits")
+        if pending.active_stop_orders:
+            parts.append(f"{len(pending.active_stop_orders)} stops")
+        return renderer.cyan(f"Active: {' | '.join(parts)}") if parts else ''
+
+    def _render_active_order_details(self, renderer: ConsoleRenderer) -> None:
+        """Render active-order detail tables for each unit with active orders (from the model)."""
+        for unit in self._pending_report.units:
+            active = unit.active_limit_orders + unit.active_stop_orders
+            if not active:
+                continue
+            print()
+            print(renderer.cyan(
+                f"   ┌─ Active Orders at Scenario End: {unit.name} "
+                f"({len(active)} order{'s' if len(active) > 1 else ''}) ─┐"))
+            self._render_active_order_table(renderer, active)
+
+    @staticmethod
+    def _render_active_order_table(
+        renderer: ConsoleRenderer, orders: List[ActiveOrderRow]) -> None:
+        """Render the active-order table (from the model's ActiveOrderRows)."""
+        header = (
+            f"   {'ID':<16} {'Type':<12} {'Dir':<6} "
+            f"{'Trigger':>12} {'Limit':>12} {'Lots':>10} {'SL/TP'}"
+        )
+        print(renderer.cyan(header))
+        print(renderer.cyan(f"   {'─' * 80}"))
+        for order in orders:
+            limit_str = f"{order.limit_price:.2f}" if order.limit_price else '—'
+            sl_str = f"{order.stop_loss:.2f}" if order.stop_loss else '—'
+            tp_str = f"{order.take_profit:.2f}" if order.take_profit else '—'
+            line = (
+                f"   {order.order_id:<16} {order.order_type.upper():<12} "
+                f"{order.direction.upper():<6} "
+                f"{order.entry_price:>12.2f} {limit_str:>12} "
+                f"{order.lots:>10g} {sl_str}/{tp_str}"
+            )
+            print(renderer.cyan(line))
+
+    # ============================================
+    # Aggregated (per currency, via PortfolioAggregator) — unchanged
+    # ============================================
 
     def render_aggregated(self,
                           renderer: ConsoleRenderer,
@@ -268,60 +477,6 @@ class PortfolioSummary(AbstractBatchSummarySection):
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))
 
-    def _render_active_order_details(self, renderer: ConsoleRenderer) -> None:
-        """
-        Render active order detail tables for each scenario that has active orders.
-
-        Shows individual order details (ID, type, direction, trigger, limit, lots, SL/TP)
-        for all untriggered limit/stop orders at scenario end.
-        """
-        for result in self.batch_execution_summary.process_result_list:
-            if not result.tick_loop_results or not result.tick_loop_results.pending_stats:
-                continue
-            pending = result.tick_loop_results.pending_stats
-            all_active = pending.active_limit_orders + pending.active_stop_orders
-            if not all_active:
-                continue
-            print()
-            print(renderer.cyan(
-                f"   ┌─ Active Orders at Scenario End: {result.scenario_name} "
-                f"({len(all_active)} order{'s' if len(all_active) > 1 else ''}) ─┐"))
-            self._render_active_order_table(renderer, all_active)
-
-    @staticmethod
-    def _render_active_order_table(
-        renderer: ConsoleRenderer,
-        orders: List[ActiveOrderSnapshot]
-    ) -> None:
-        """
-        Render formatted table of active order snapshots.
-
-        Args:
-            renderer: Console renderer for formatting
-            orders: List of active order snapshots to display
-        """
-        # Header
-        header = (
-            f"   {'ID':<16} {'Type':<12} {'Dir':<6} "
-            f"{'Trigger':>12} {'Limit':>12} {'Lots':>10} {'SL/TP'}"
-        )
-        print(renderer.cyan(header))
-        print(renderer.cyan(f"   {'─' * 80}"))
-
-        for order in orders:
-            limit_str = f"{order.limit_price:.2f}" if order.limit_price else '—'
-            sl_str = f"{order.stop_loss:.2f}" if order.stop_loss else '—'
-            tp_str = f"{order.take_profit:.2f}" if order.take_profit else '—'
-            sltp_str = f"{sl_str}/{tp_str}"
-
-            line = (
-                f"   {order.order_id:<16} {order.order_type.value.upper():<12} "
-                f"{order.direction.value.upper():<6} "
-                f"{order.entry_price:>12.2f} {limit_str:>12} "
-                f"{order.lots:>10g} {sltp_str}"
-            )
-            print(renderer.cyan(line))
-
     def _has_any_time_divergence(
         self,
         aggregated_portfolios: Dict[str, AggregatedPortfolio]
@@ -387,4 +542,3 @@ class PortfolioSummary(AbstractBatchSummarySection):
 
         print("   3. RECOMMENDATION:")
         print("      Use currency-grouped reports above for accurate P&L values.")
-

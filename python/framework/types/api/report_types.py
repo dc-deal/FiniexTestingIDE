@@ -132,6 +132,25 @@ class PortfolioUnitRow(BaseModel):
     net_profit: float       # total_profit - total_loss
     max_drawdown: float
     total_fees: float
+    # Full projection — the per-scenario linear block renders purely from these (defaulted:
+    # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
+    data_source: str = ''       # the scenario's data broker type (box line "Data: …")
+    broker_name: str = ''
+    spot_mode: bool = False
+    total_long_trades: int = 0
+    total_short_trades: int = 0
+    max_equity: float = 0.0
+    current_balance: float = 0.0
+    initial_balance: float = 0.0
+    conversion_rate: float | None = None
+    total_spread_cost: float = 0.0
+    total_commission: float = 0.0
+    total_swap: float = 0.0
+    has_error: bool = False     # hybrid unit (partial data + error) → CRITICAL marker
+    # Spot mode — dual-balance + estimated portfolio value
+    balances: dict[str, float] = {}
+    initial_balances: dict[str, float] = {}
+    last_price: float = 0.0
 
 
 class PortfolioAggregateRow(BaseModel):
@@ -184,3 +203,39 @@ class ExecutionStatsReport(BaseModel):
     """Order-execution counts as the unified array model: per-unit rows + a summed total."""
     units: list[ExecutionStatsRow]
     totals: ExecutionStatsTotals
+
+
+class ActiveOrderRow(BaseModel):
+    """One active (untriggered) limit/stop order at run end."""
+    order_id: str
+    order_type: str         # 'limit' | 'stop' | 'stop_limit'
+    direction: str          # 'long' | 'short'
+    lots: float
+    entry_price: float      # limit price (LIMIT) / trigger price (STOP/STOP_LIMIT)
+    limit_price: float | None = None    # STOP_LIMIT only
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
+class PendingOrdersUnitRow(BaseModel):
+    """Pending-order lifecycle + latency + active orders of one run unit (sim scenario)."""
+    name: str               # owning run unit (scenario)
+    symbol: str
+    total_resolved: int = 0
+    total_filled: int = 0
+    total_rejected: int = 0
+    total_timed_out: int = 0
+    total_force_closed: int = 0
+    avg_latency_ms: float | None = None
+    min_latency_ms: float | None = None
+    max_latency_ms: float | None = None
+    active_limit_orders: list[ActiveOrderRow] = []
+    active_stop_orders: list[ActiveOrderRow] = []
+
+
+class PendingOrdersReport(BaseModel):
+    """
+    Pending-order lifecycle as the unified array model: per-unit rows. Sim-populated
+    (the live AutoTraderResult carries no pending stats → empty units live).
+    """
+    units: list[PendingOrdersUnitRow]

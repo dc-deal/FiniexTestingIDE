@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -108,7 +109,9 @@ class TestRunnerCli:
             print('No test suites found.')
             sys.exit(1)
 
+        start_dt = datetime.now(timezone.utc)
         print(f"Running {len(suites)} test suites...")
+        print(f"Started:  {self._format_clock(start_dt)}")
         print(self._SEPARATOR)
 
         results: List[SuiteResult] = []
@@ -135,6 +138,7 @@ class TestRunnerCli:
         # Summary
         print(self._SEPARATOR)
         self._print_summary(results, aborted)
+        print(f"Finished: {self._format_clock(datetime.now(timezone.utc))}")
 
         # Exit with failure if any suite failed
         has_failures = any(r.exit_code != 0 for r in results)
@@ -325,6 +329,19 @@ class TestRunnerCli:
                 if counts['errors'] > 0:
                     cat_parts.append(f"{counts['errors']} errors")
                 print(f"  {cat:<16} {', '.join(cat_parts)}")
+
+    @staticmethod
+    def _format_clock(dt: datetime) -> str:
+        """
+        Format a wall-clock timestamp for console output.
+
+        Args:
+            dt: Timezone-aware datetime (UTC)
+
+        Returns:
+            Formatted string (e.g. "2026-06-17 14:30:05 UTC")
+        """
+        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
     @staticmethod
     def _format_duration(seconds: float) -> str:

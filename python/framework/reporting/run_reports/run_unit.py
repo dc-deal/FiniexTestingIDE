@@ -17,6 +17,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
@@ -25,10 +26,13 @@ class RunUnit:
     """One run unit's report source (sim: a scenario; live: the session)."""
     name: str
     symbol: str
+    data_source: str = ''           # data broker type (sim: scenario; live: '')
+    has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
     order_history: List[OrderResult] = field(default_factory=list)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
+    pending_stats: Optional[PendingOrderStats] = None
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -51,10 +55,13 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
         units.append(RunUnit(
             name=result.scenario_name,
             symbol=scenario.symbol,
+            data_source=scenario.data_broker_type,
+            has_error=bool(result.error_type or result.error_message),
             trade_history=tick_loop.trade_history or [],
             order_history=tick_loop.order_history or [],
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
+            pending_stats=tick_loop.pending_stats,
         ))
     return units
 
@@ -75,6 +82,7 @@ def run_units_from_session(
     return [RunUnit(
         name=name,
         symbol=symbol,
+        has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],
         order_history=session.order_history or [],
         portfolio_stats=session.portfolio_stats,

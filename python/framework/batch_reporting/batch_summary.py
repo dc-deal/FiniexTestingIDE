@@ -21,7 +21,9 @@ from python.framework.batch_reporting.trade_history_summary import TradeHistoryS
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
-from python.framework.types.api.report_types import OrderHistoryReport, TradeHistoryReport
+from python.framework.types.api.report_types import (
+    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    TradeHistoryReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -42,6 +44,9 @@ class BatchSummary:
         app_config: AppConfigManager,
         trade_report: TradeHistoryReport,
         order_report: OrderHistoryReport,
+        portfolio_report: PortfolioReport,
+        pending_report: PendingOrdersReport,
+        execution_report: ExecutionStatsReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -58,8 +63,9 @@ class BatchSummary:
         self.app_config = app_config
         self._generator_profiles = generator_profiles
 
-        # Initialize sub-summaries
-        self.portfolio_summary = PortfolioSummary(batch_execution_summary)
+        # Initialize sub-summaries — portfolio renders from the unified model (#393)
+        self.portfolio_summary = PortfolioSummary(
+            portfolio_report, pending_report, execution_report)
         self.performance_summary = PerformanceSummary(batch_execution_summary)
 
         # this must happen only onece, due the "pop" mechanic in ProfilingData.from_dicts
@@ -200,9 +206,7 @@ class BatchSummary:
 
         # Portfolio summaries
         if summary_detail:
-            self.portfolio_summary.render_per_scenario(
-                self._renderer, self._box_renderer
-            )
+            self.portfolio_summary.render_per_scenario(self._renderer)
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(

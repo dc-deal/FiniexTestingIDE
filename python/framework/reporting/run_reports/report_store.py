@@ -14,12 +14,15 @@ from python.framework.reporting.run_reports.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
+from python.framework.reporting.run_reports.pending_orders_report_io import (
+    PENDING_ORDERS_ARTIFACT, read_pending_orders_report)
 from python.framework.reporting.run_reports.portfolio_report_io import (
     PORTFOLIO_ARTIFACT, read_portfolio_report)
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    TradeHistoryReport)
 
 
 class ReportStore:
@@ -114,6 +117,21 @@ class ReportStore:
         if path is None:
             return None
         return read_execution_stats_report(path)
+
+    def get_pending_orders(self, run_id: str) -> Optional[PendingOrdersReport]:
+        """
+        Read a run's pending-orders report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The pending-orders report, or None if the run has no pending-orders artifact
+        """
+        path = self._resolve(run_id, PENDING_ORDERS_ARTIFACT)
+        if path is None:
+            return None
+        return read_pending_orders_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

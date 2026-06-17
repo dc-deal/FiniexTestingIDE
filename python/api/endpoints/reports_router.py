@@ -14,7 +14,8 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    TradeHistoryReport)
 
 router = APIRouter()
 
@@ -112,6 +113,25 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
         raise ApiException(
             404, 'run_not_found',
             f"No execution-stats artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/pending-orders', response_model=PendingOrdersReport)
+def get_pending_orders(run_id: str) -> PendingOrdersReport:
+    """
+    Pending-orders report for a run (per-unit lifecycle + latency + active orders).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The PendingOrdersReport (404 if the run has no pending-orders artifact)
+    """
+    report = ReportStore().get_pending_orders(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No pending-orders artifact for run '{run_id}'")
     return report
 
 

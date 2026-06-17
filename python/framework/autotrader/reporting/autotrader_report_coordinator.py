@@ -21,6 +21,8 @@ from python.framework.reporting.run_reports.execution_stats_report_io import (
 from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
 from python.framework.reporting.run_reports.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
+from python.framework.reporting.run_reports.pending_orders_report_builder import build_pending_orders_report
+from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.run_unit import run_units_from_session
@@ -102,6 +104,11 @@ class AutotraderReportCoordinator:
         # Portfolio headline — the single session unit (= its own currency aggregate).
         portfolio_report = build_portfolio_report(units)
         write_portfolio_report(portfolio_report, self._run_dir)
+
+        # Pending-orders — empty for live (AutoTraderResult carries no pending stats);
+        # written for artifact / API consistency with the sim runs.
+        pending_report = build_pending_orders_report(units)
+        write_pending_orders_report(pending_report, self._run_dir)
 
         # Execution-stats headline — the single session unit's order counts (#391).
         execution_stats_report = build_execution_stats_report(units)
