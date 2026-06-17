@@ -29,13 +29,13 @@ sections follow (see *Phasing*).
 
 | Layer | Unit | Role |
 |---|---|---|
-| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` |
+| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport`, `ExecutionStatsReport` |
 | Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio}_report_builder.py` | **pure** derivation: records → report + the shared filter. Trade/order builders are flat record lists; the portfolio builder has two source variants (`*_from_batch` / `*_from_session`) feeding the array model |
 | IO + extract | `framework/reporting/run_reports/{trade_history,order_history,portfolio}_report_io.py` | extract the shared records from a sim batch or a live session; write the artifact(s); read + filter |
 | Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
-| API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio}` with section-specific filters |
+| API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats}` with section-specific filters |
 
 The `framework/reporting/run_reports/` subfolder holds **only** the unified-report-pipeline units
 (builders + io + store); the other `framework/reporting/*` files are unrelated reporting utilities
@@ -55,7 +55,7 @@ console + file-log render *from* that model (vs. their own inline derivation).
 | Trade History (+ MAE/MFE/R analytics, #389) | `List[TradeRecord]` | unified | ✅ | ✅ renders from model (full audit table + #330 executions) |
 | Order History | `List[OrderResult]` | unified | ✅ | ✅ (rejections, via the trade summary) |
 | Portfolio / Headline | `PortfolioStats` (+ currency roll-up) | unified | ✅ | ⏳ deferred — console still derives inline (needs a PortfolioReport full projection: execution/cost/equity/pending/balances) |
-| Execution Stats | `ExecutionStats` | unified | ⏳ planned | — |
+| Execution Stats (order counts + SL/TP) | `ExecutionStats` | unified | ✅ | ⏳ deferred — counts still rendered inline in `portfolio_summary` |
 | Warnings / Errors | §35 error pot | unified | ⏳ planned | — |
 | Worker / Decision Stats | `WorkerPerformanceStats` / `DecisionLogicStats` | unified | ⏳ planned | — |
 | Profiling / Warmup / Block-Splitting | profiling, coordination, warmup phases | **sim-only** | console-only (migrates later) | n/a |
@@ -74,8 +74,8 @@ portfolio stats — the same objects both pipelines already produce. Each pipeli
 reports and persists them into its run directory:
 
 - **Simulation** — `BatchReportCoordinator.generate_and_log()` aggregates records across scenarios
-  and writes `trade_history.{json,csv}`, `order_history.{json,csv}`, and `portfolio.json` at the run
-  dir root (next to `events/`). The portfolio aggregate reuses the existing `PortfolioAggregator`
+  and writes `trade_history.{json,csv}`, `order_history.{json,csv}`, `portfolio.json`, and
+  `execution_stats.{json,csv}` at the run dir root (next to `events/`). The portfolio aggregate reuses the existing `PortfolioAggregator`
   (single source for the total), injected into the builder so the pipeline stays in its layer.
 - **AutoTrader** — `autotrader_main._collect_results()` builds the `AutoTraderResult`, then
   `AutotraderReportCoordinator.generate_and_log()` writes the same artifacts at session end (the

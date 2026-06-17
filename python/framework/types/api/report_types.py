@@ -157,3 +157,30 @@ class PortfolioReport(BaseModel):
     """
     units: list[PortfolioUnitRow]
     aggregates: list[PortfolioAggregateRow]
+
+
+class ExecutionStatsRow(BaseModel):
+    """Order-execution counts of one run unit (sim: a scenario; live: the session)."""
+    name: str               # scenario name (sim) / profile/session label (live)
+    symbol: str
+    orders_sent: int
+    orders_executed: int
+    orders_rejected: int
+    sl_tp_triggered: int    # closes triggered by stop-loss / take-profit
+
+
+class ExecutionStatsTotals(BaseModel):
+    """
+    Order counts summed across all units. Counts are currency-agnostic, so this is
+    ONE object (no per-currency split, unlike the portfolio roll-up).
+    """
+    orders_sent: int = 0
+    orders_executed: int = 0
+    orders_rejected: int = 0
+    sl_tp_triggered: int = 0
+
+
+class ExecutionStatsReport(BaseModel):
+    """Order-execution counts as the unified array model: per-unit rows + a summed total."""
+    units: list[ExecutionStatsRow]
+    totals: ExecutionStatsTotals

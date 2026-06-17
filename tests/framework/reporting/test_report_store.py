@@ -8,12 +8,15 @@ no run required.
 
 from pathlib import Path
 
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
+    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
     PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
@@ -156,3 +159,34 @@ class TestPortfolio:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_portfolio('nope') is None
+
+
+def _execution_stats_report() -> ExecutionStatsReport:
+    unit = ExecutionStatsRow(
+        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
+        orders_rejected=1, sl_tp_triggered=2)
+    totals = ExecutionStatsTotals(
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+    return ExecutionStatsReport(units=[unit], totals=totals)
+
+
+class TestExecutionStats:
+    def test_reads_execution_stats(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_execution_stats_report(_execution_stats_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_execution_stats('20260615_120000')
+        assert report is not None
+        assert report.units[0].sl_tp_triggered == 2
+        assert report.totals.orders_executed == 4
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_execution_stats('nope') is None
+
+    def test_csv_header_and_rows(self, tmp_path):
+        write_execution_stats_csv(_execution_stats_report(), tmp_path)
+        lines = (tmp_path / 'execution_stats.csv').read_text().splitlines()
+        assert lines[0].startswith('name,symbol,orders_sent')
+        assert len(lines) == 1 + 1                 # header + 1 unit row
+        assert 'EURUSD' in lines[1]

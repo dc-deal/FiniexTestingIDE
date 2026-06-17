@@ -14,11 +14,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.reporting.run_reports.execution_stats_report_io import write_execution_stats_report
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
+    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
     PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
@@ -30,6 +32,7 @@ _RUN = '20260615_120000'
 _URL = f'/api/v1/reports/runs/{_RUN}/trade-history'
 _ORDER_URL = f'/api/v1/reports/runs/{_RUN}/order-history'
 _PORTFOLIO_URL = f'/api/v1/reports/runs/{_RUN}/portfolio'
+_EXEC_URL = f'/api/v1/reports/runs/{_RUN}/execution-stats'
 
 
 def _report() -> TradeHistoryReport:
@@ -79,6 +82,15 @@ def _portfolio_report() -> PortfolioReport:
     return PortfolioReport(units=[unit], aggregates=[agg])
 
 
+def _execution_stats_report() -> ExecutionStatsReport:
+    unit = ExecutionStatsRow(
+        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
+        orders_rejected=1, sl_tp_triggered=2)
+    totals = ExecutionStatsTotals(
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+    return ExecutionStatsReport(units=[unit], totals=totals)
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -86,6 +98,7 @@ def client(tmp_path: Path):
     write_trade_history_report(_report(), run_dir)
     write_order_history_report(_order_report(), run_dir)
     write_portfolio_report(_portfolio_report(), run_dir)
+    write_execution_stats_report(_execution_stats_report(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -145,4 +158,18 @@ def test_portfolio_returns(client):
 
 def test_portfolio_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/portfolio')
+    assert response.status_code == 404
+
+
+def test_execution_stats_returns(client):
+    response = client.get(_EXEC_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body['units']) == 1
+    assert body['units'][0]['sl_tp_triggered'] == 2
+    assert body['totals']['orders_executed'] == 4
+
+
+def test_execution_stats_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/execution-stats')
     assert response.status_code == 404

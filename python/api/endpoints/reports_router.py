@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    ExecutionStatsReport, OrderHistoryReport, PortfolioReport, TradeHistoryReport)
 
 router = APIRouter()
 
@@ -93,6 +93,25 @@ def get_portfolio(run_id: str) -> PortfolioReport:
         raise ApiException(
             404, 'run_not_found',
             f"No portfolio artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/execution-stats', response_model=ExecutionStatsReport)
+def get_execution_stats(run_id: str) -> ExecutionStatsReport:
+    """
+    Execution-stats report for a run (per-unit order counts + summed totals).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ExecutionStatsReport (404 if the run has no execution-stats artifact)
+    """
+    report = ReportStore().get_execution_stats(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No execution-stats artifact for run '{run_id}'")
     return report
 
 

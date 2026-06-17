@@ -1,6 +1,6 @@
 # API Server Architecture
 
-The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar data over HTTP. It is the server-side counterpart of the FiniexViewer companion project and the foundation for any future remote-monitoring or tooling integrations.
+The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar data — and the persisted run-report artifacts of both pipelines (#391) — over HTTP. It is the server-side counterpart of the FiniexViewer companion project and the foundation for any future remote-monitoring or tooling integrations.
 
 ---
 
@@ -26,16 +26,17 @@ The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes ex
 python/
   api/
     api_app.py          ← FastAPI app factory (create_app())
-    endpoints/          ← Future routers land here once §26 threshold is reached
+    endpoints/          ← Router modules (broker_router, bars_router, reports_router)
   cli/
     api_server_cli.py   ← Entry point (argparse, no logic)
   framework/
     types/
       api/
         api_types.py    ← Pydantic response models (exception to @dataclass rule)
+        report_types.py ← Unified report models (#391) served by reports_router
 ```
 
-The `endpoints/` directory is reserved for router modules added in #298 and beyond. Until three or more router files exist (§26), endpoints live inline in `api_app.py`.
+The `endpoints/` directory holds one `APIRouter` module per domain. The §26 threshold is reached (`broker_router`, `bars_router`, `reports_router`), each registered in `create_app()` via `app.include_router(..., prefix='/api/v1')`.
 
 ## Request Lifecycle
 
@@ -73,6 +74,10 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
+| GET | `/api/v1/reports/runs/{run_id}/trade-history` | Trade-history report (query: `symbol`, `close_reason`, `start`, `end`) |
+| GET | `/api/v1/reports/runs/{run_id}/order-history` | Order-history report (query: `symbol`, `status`) |
+| GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio headline report (per-unit rows + per-currency aggregates) |
+| GET | `/api/v1/reports/runs/{run_id}/execution-stats` | Execution-stats report (per-unit order counts + summed totals) |
 
 ### Timeframes Endpoint Details
 
@@ -85,6 +90,17 @@ Returns the globally configured timeframe list in ascending order (by bar durati
 - Response timestamps `t` are **unix seconds UTC**
 - Maximum bars per request: `MAX_BARS = 10_000` — prevents accidental huge responses
 - Valid timeframes: M1, M5, M15, M30, H1, H4, D1 (via `TimeframeConfig`)
+
+### Reports Endpoints Details
+
+The reports endpoints serve the **persisted** run-report artifacts of the unified reporting
+pipeline (#391) — the same canonical models the console and CSV render. They do **not** run or
+re-derive anything: `ReportStore` resolves a run by `run_id` under the logs tree
+(`logs/{scenario_sets,autotrader}/<owner>/<run_id>/`), reads the `trade_history.json` /
+`order_history.json` / `portfolio.json` artifact, and applies the section's filters
+server-side so the frontend renders rather than derives. A run without the requested artifact
+returns `404 run_not_found`. The model definitions live in `framework/types/api/report_types.py`;
+the pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).
 
 ### Error Responses
 
@@ -102,17 +118,14 @@ All errors return structured JSON — no raw FastAPI tracebacks:
 
 ## Extension Guide — Adding a New Endpoint
 
-**While endpoint count is below the §26 threshold (< 3 router files):**
-
-Add the route inline in `api_app.py` next to the existing endpoints.
-
-**Once 3+ router files are warranted (at or after #298):**
+Routers are split per domain under `python/api/endpoints/`:
 
 1. Create `python/api/endpoints/<domain>_router.py`
-2. Define an `APIRouter` instance and move related routes there
+2. Define an `APIRouter` instance and add the routes there
 3. Register via `app.include_router(router, prefix='/api/v1')` in `create_app()`
 
-Response models for new endpoints go in `python/framework/types/api/api_types.py`.
+Response models go in `python/framework/types/api/api_types.py` (or `report_types.py` for
+report sections).
 
 ## Pydantic Exception Note
 

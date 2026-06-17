@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
 from python.framework.reporting.run_reports.portfolio_report_io import (
@@ -17,7 +19,7 @@ from python.framework.reporting.run_reports.portfolio_report_io import (
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
 from python.framework.types.api.report_types import (
-    OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    ExecutionStatsReport, OrderHistoryReport, PortfolioReport, TradeHistoryReport)
 
 
 class ReportStore:
@@ -97,6 +99,21 @@ class ReportStore:
         if path is None:
             return None
         return read_portfolio_report(path)
+
+    def get_execution_stats(self, run_id: str) -> Optional[ExecutionStatsReport]:
+        """
+        Read a run's execution-stats report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The execution-stats report, or None if the run has no execution-stats artifact
+        """
+        path = self._resolve(run_id, EXECUTION_STATS_ARTIFACT)
+        if path is None:
+            return None
+        return read_execution_stats_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

@@ -15,6 +15,9 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report_from_session
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report_from_session
 from python.framework.reporting.run_reports.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
@@ -96,6 +99,12 @@ class AutotraderReportCoordinator:
         portfolio_report = build_portfolio_report_from_session(
             result, name=name, symbol=self._config.symbol)
         write_portfolio_report(portfolio_report, self._run_dir)
+
+        # Execution-stats headline — the single session unit's order counts (#391).
+        execution_stats_report = build_execution_stats_report_from_session(
+            result, name=name, symbol=self._config.symbol)
+        write_execution_stats_report(execution_stats_report, self._run_dir)
+        write_execution_stats_csv(execution_stats_report, self._run_dir)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:

@@ -52,21 +52,18 @@ class ExecutionStats:
     """
     Order execution statistics.
 
-    Tracks order submission, execution, and rejection rates.
-    Useful for analyzing broker simulation behavior and strategy performance.
+    Currency-agnostic order counts plus SL/TP triggers. Trading costs are NOT here —
+    they live in CostBreakdown, the single cost source owned by the PortfolioManager.
 
     Attributes:
         orders_sent: Total orders submitted
         orders_executed: Orders successfully executed
         orders_rejected: Orders rejected (margin, validation, etc.)
-        total_commission: Total commission paid on executions
-        total_spread_cost: Total spread cost from order fills
+        sl_tp_triggered: Closes triggered by stop-loss / take-profit
     """
     orders_sent: int
     orders_executed: int
     orders_rejected: int
-    total_commission: float
-    total_spread_cost: float
     sl_tp_triggered: int = 0
 
 

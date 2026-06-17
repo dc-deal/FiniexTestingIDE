@@ -10,6 +10,9 @@ from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
 from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report_from_batch
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report_from_batch
 from python.framework.reporting.run_reports.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
@@ -78,6 +81,9 @@ class BatchReportCoordinator:
             self._batch_execution_summary.process_result_list).aggregate_by_currency()
         portfolio_report = build_portfolio_report_from_batch(
             self._batch_execution_summary, currency_aggregates)
+        # Execution-stats headline — per-scenario order counts + summed total (#391).
+        execution_stats_report = build_execution_stats_report_from_batch(
+            self._batch_execution_summary)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -136,3 +142,5 @@ class BatchReportCoordinator:
         write_order_history_report(order_report, run_dir)
         write_order_history_csv(order_report, run_dir)
         write_portfolio_report(portfolio_report, run_dir)
+        write_execution_stats_report(execution_stats_report, run_dir)
+        write_execution_stats_csv(execution_stats_report, run_dir)
