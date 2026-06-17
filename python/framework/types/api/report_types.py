@@ -239,3 +239,31 @@ class PendingOrdersReport(BaseModel):
     (the live AutoTraderResult carries no pending stats → empty units live).
     """
     units: list[PendingOrdersUnitRow]
+
+
+class ScenarioDetailsRow(BaseModel):
+    """Per-scenario execution + signal metadata (sim batch — the SCENARIO DETAILS section)."""
+    name: str
+    symbol: str
+    data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
+    execution_time_ms: float = 0.0
+    ticks_processed: int = 0
+    first_tick_time: str = ''       # ISO-8601 UTC, '' if none
+    last_tick_time: str = ''
+    tick_timespan_seconds: float = 0.0
+    buy_signals: int = 0
+    sell_signals: int = 0
+    flat_signals: int = 0
+    trades_requested: int = 0
+    worker_count: int = 0
+    error_type: str = ''
+    error_message: str = ''
+
+
+class ScenarioDetailsReport(BaseModel):
+    """
+    Per-scenario execution/signal metadata (sim-only): one row per scenario, **including
+    failed ones** (the section's job is the full scenario status grid).
+    """
+    units: list[ScenarioDetailsRow]

@@ -14,13 +14,15 @@ from python.framework.reporting.run_reports.order_history_report_io import write
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
     ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow,
+    ScenarioDetailsReport, ScenarioDetailsRow,
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -218,3 +220,29 @@ class TestPendingOrders:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_pending_orders('nope') is None
+
+
+def _scenario_details_report() -> ScenarioDetailsReport:
+    return ScenarioDetailsReport(units=[
+        ScenarioDetailsRow(
+            name='s1', symbol='EURUSD', data_source='mt5', status='success',
+            ticks_processed=15000, buy_signals=296, sell_signals=263, worker_count=2),
+        ScenarioDetailsRow(
+            name='bad', symbol='BTCUSD', data_source='kraken_spot', status='failed',
+            error_type='ValidationError', error_message='start before data'),
+    ])
+
+
+class TestScenarioDetails:
+    def test_reads_scenario_details(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_scenario_details_report(_scenario_details_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_scenario_details('20260615_120000')
+        assert report is not None
+        assert [u.status for u in report.units] == ['success', 'failed']
+        assert report.units[0].buy_signals == 296
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_scenario_details('nope') is None

@@ -15,7 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    TradeHistoryReport)
+    ScenarioDetailsReport, TradeHistoryReport)
 
 router = APIRouter()
 
@@ -132,6 +132,25 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
         raise ApiException(
             404, 'run_not_found',
             f"No pending-orders artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/scenario-details', response_model=ScenarioDetailsReport)
+def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
+    """
+    Scenario-details report for a run (per-scenario execution + signal metadata, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ScenarioDetailsReport (404 if the run has no scenario-details artifact)
+    """
+    report = ReportStore().get_scenario_details(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No scenario-details artifact for run '{run_id}'")
     return report
 
 

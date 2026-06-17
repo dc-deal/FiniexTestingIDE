@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.batch_reporting.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
-from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
+from python.framework.batch_reporting.scenario_details_summary import ScenarioDetailsSummary
 from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
 from python.framework.batch_reporting.performance_summary import PerformanceSummary
@@ -23,7 +23,7 @@ from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSum
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    TradeHistoryReport)
+    ScenarioDetailsReport, TradeHistoryReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -47,6 +47,7 @@ class BatchSummary:
         portfolio_report: PortfolioReport,
         pending_report: PendingOrdersReport,
         execution_report: ExecutionStatsReport,
+        scenario_details_report: ScenarioDetailsReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -94,9 +95,11 @@ class BatchSummary:
         # Warmup phase breakdown (summary_detail only)
         self.warmup_phase_summary = WarmupPhaseSummary(batch_execution_summary)
 
+        # Scenario details — linear presenter from the model (#393)
+        self.scenario_details_summary = ScenarioDetailsSummary(scenario_details_report)
+
         # Renderer for unified console output
         self._renderer = ConsoleRenderer()
-        self._box_renderer = ConsoleBoxRenderer(self._renderer)
 
     def _detect_profile_run(self) -> bool:
         """
@@ -184,19 +187,10 @@ class BatchSummary:
             self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)
 
-        # Scenario details grid
-        self._renderer.section_separator()
-        self._renderer.print_bold("🔍 SCENARIO DETAILS")
-        self._renderer.section_separator()
-
-        # Pass show_status_line flag
-        show_status_line = batch_status != BatchStatus.SUCCESS
+        # Scenario details — linear, from the model (#393)
         threshold = self.app_config.get_console_logging_config_object().scenario_detail_threshold
-        self._box_renderer.render_scenario_grid(
-            self.batch_execution_summary,
-            show_status_line=show_status_line,
-            scenario_detail_threshold=threshold
-        )
+        self.scenario_details_summary.render(
+            self._renderer, scenario_detail_threshold=threshold)
 
         # Summary detail flag (per-scenario vs aggregated only)
         if summary_detail is None:

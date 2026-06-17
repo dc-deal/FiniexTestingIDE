@@ -19,12 +19,14 @@ from python.framework.reporting.run_reports.order_history_report_io import write
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
     ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow,
+    ScenarioDetailsReport, ScenarioDetailsRow,
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -36,6 +38,7 @@ _ORDER_URL = f'/api/v1/reports/runs/{_RUN}/order-history'
 _PORTFOLIO_URL = f'/api/v1/reports/runs/{_RUN}/portfolio'
 _EXEC_URL = f'/api/v1/reports/runs/{_RUN}/execution-stats'
 _PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
+_SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 
 
 def _report() -> TradeHistoryReport:
@@ -104,6 +107,16 @@ def _pending_orders_report() -> PendingOrdersReport:
     return PendingOrdersReport(units=[unit])
 
 
+def _scenario_details_report() -> ScenarioDetailsReport:
+    return ScenarioDetailsReport(units=[
+        ScenarioDetailsRow(
+            name='s1', symbol='EURUSD', data_source='mt5', status='success',
+            ticks_processed=15000, buy_signals=296, worker_count=2),
+        ScenarioDetailsRow(
+            name='bad', symbol='BTCUSD', status='failed', error_type='ValidationError'),
+    ])
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -113,6 +126,7 @@ def client(tmp_path: Path):
     write_portfolio_report(_portfolio_report(), run_dir)
     write_execution_stats_report(_execution_stats_report(), run_dir)
     write_pending_orders_report(_pending_orders_report(), run_dir)
+    write_scenario_details_report(_scenario_details_report(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -200,4 +214,17 @@ def test_pending_orders_returns(client):
 
 def test_pending_orders_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/pending-orders')
+    assert response.status_code == 404
+
+
+def test_scenario_details_returns(client):
+    response = client.get(_SCENARIO_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert [u['status'] for u in body['units']] == ['success', 'failed']
+    assert body['units'][0]['buy_signals'] == 296
+
+
+def test_scenario_details_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/scenario-details')
     assert response.status_code == 404

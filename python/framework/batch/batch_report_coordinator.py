@@ -20,6 +20,8 @@ from python.framework.reporting.run_reports.pending_orders_report_io import writ
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.run_unit import run_units_from_batch
+from python.framework.reporting.run_reports.scenario_details_report_builder import build_scenario_details_report_from_batch
+from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
@@ -84,6 +86,9 @@ class BatchReportCoordinator:
         pending_report = build_pending_orders_report(units)
         # Execution-stats headline — per-scenario order counts + summed total (#391).
         execution_stats_report = build_execution_stats_report(units)
+        # Scenario details — per-scenario execution/signal metadata incl. failed (sim-only).
+        scenario_details_report = build_scenario_details_report_from_batch(
+            self._batch_execution_summary)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -95,6 +100,7 @@ class BatchReportCoordinator:
             portfolio_report=portfolio_report,
             pending_report=pending_report,
             execution_report=execution_stats_report,
+            scenario_details_report=scenario_details_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -148,3 +154,4 @@ class BatchReportCoordinator:
         write_pending_orders_report(pending_report, run_dir)
         write_execution_stats_report(execution_stats_report, run_dir)
         write_execution_stats_csv(execution_stats_report, run_dir)
+        write_scenario_details_report(scenario_details_report, run_dir)
