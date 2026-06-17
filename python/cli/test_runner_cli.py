@@ -164,7 +164,8 @@ class TestRunnerCli:
         )
         duration = time.monotonic() - start
 
-        passed, failed, errors, skipped = self._parse_pytest_output(proc.stdout)
+        passed, failed, errors, skipped = self._parse_pytest_output(
+            proc.stdout)
         failed_tests = self._parse_failed_tests(proc.stdout)
 
         # Exit code 5 = pytest "no tests collected" — not a failure,
@@ -266,7 +267,8 @@ class TestRunnerCli:
                 parts.append(f"{result.errors} errors")
             if result.passed > 0:
                 parts.append(f"{result.passed} passed")
-            status = ', '.join(parts) if parts else f"exit code {result.exit_code}"
+            status = ', '.join(
+                parts) if parts else f"exit code {result.exit_code}"
             line = f"  {name_col}   \u274c {status}  ({duration})"
 
         # Pad to overwrite any leftover characters from "running..."
@@ -307,7 +309,8 @@ class TestRunnerCli:
         if total_skipped > 0:
             parts.append(f"{total_skipped} skipped")
 
-        print(f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
+        print(
+            f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
 
         # Per-category breakdown (grouped by first path component)
         categories: dict = {}
