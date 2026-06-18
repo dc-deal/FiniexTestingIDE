@@ -14,13 +14,14 @@ from python.framework.reporting.run_reports.order_history_report_io import write
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.run_reports.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
     ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow,
+    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
     TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
@@ -246,3 +247,27 @@ class TestScenarioDetails:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_scenario_details('nope') is None
+
+
+def _run_summary() -> RunSummary:
+    return RunSummary(
+        currencies=[RunSummaryCurrency(
+            currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, max_drawdown=12.0,
+            total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
+            expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+
+
+class TestRunSummary:
+    def test_reads_run_summary(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_run_summary(_run_summary(), run_dir)
+
+        rs = ReportStore(tmp_path).get_run_summary('20260615_120000')
+        assert rs is not None
+        assert rs.currencies[0].expectancy == 0.5
+        assert rs.orders_executed == 4 and rs.unit_count == 1
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_run_summary('nope') is None

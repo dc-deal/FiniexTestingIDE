@@ -19,12 +19,13 @@ from python.framework.reporting.run_reports.order_history_report_io import write
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.run_reports.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
     ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow,
+    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
     TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
 
@@ -39,6 +40,7 @@ _PORTFOLIO_URL = f'/api/v1/reports/runs/{_RUN}/portfolio'
 _EXEC_URL = f'/api/v1/reports/runs/{_RUN}/execution-stats'
 _PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
 _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
+_RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
 
 
 def _report() -> TradeHistoryReport:
@@ -117,6 +119,15 @@ def _scenario_details_report() -> ScenarioDetailsReport:
     ])
 
 
+def _run_summary() -> RunSummary:
+    return RunSummary(
+        currencies=[RunSummaryCurrency(
+            currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, max_drawdown=12.0,
+            total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
+            expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -127,6 +138,7 @@ def client(tmp_path: Path):
     write_execution_stats_report(_execution_stats_report(), run_dir)
     write_pending_orders_report(_pending_orders_report(), run_dir)
     write_scenario_details_report(_scenario_details_report(), run_dir)
+    write_run_summary(_run_summary(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -227,4 +239,18 @@ def test_scenario_details_returns(client):
 
 def test_scenario_details_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/scenario-details')
+    assert response.status_code == 404
+
+
+def test_run_summary_returns(client):
+    response = client.get(_RUNSUMMARY_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['currencies'][0]['currency'] == 'USD'
+    assert body['currencies'][0]['expectancy'] == 0.5
+    assert body['orders_executed'] == 4 and body['unit_count'] == 1
+
+
+def test_run_summary_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/run-summary')
     assert response.status_code == 404

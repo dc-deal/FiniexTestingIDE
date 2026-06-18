@@ -19,6 +19,8 @@ from python.framework.reporting.run_reports.pending_orders_report_builder import
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
+from python.framework.reporting.run_reports.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.run_unit import run_units_from_batch
 from python.framework.reporting.run_reports.scenario_details_report_builder import build_scenario_details_report_from_batch
 from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
@@ -89,6 +91,9 @@ class BatchReportCoordinator:
         # Scenario details — per-scenario execution/signal metadata incl. failed (sim-only).
         scenario_details_report = build_scenario_details_report_from_batch(
             self._batch_execution_summary)
+        # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
+        run_summary = build_run_summary(
+            portfolio_report, trade_report, execution_stats_report)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -155,3 +160,4 @@ class BatchReportCoordinator:
         write_execution_stats_report(execution_stats_report, run_dir)
         write_execution_stats_csv(execution_stats_report, run_dir)
         write_scenario_details_report(scenario_details_report, run_dir)
+        write_run_summary(run_summary, run_dir)

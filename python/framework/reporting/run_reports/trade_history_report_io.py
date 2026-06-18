@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_trade_analytics
+from python.framework.reporting.run_reports.report_aggregators import (
+    aggregate_trade_analytics, aggregate_trade_scenario_totals)
 from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
 
 # Canonical artifact names inside a run directory
@@ -101,4 +102,5 @@ def filter_trade_history_report(
     symbols = sorted({row.symbol for row in rows})
     return TradeHistoryReport(
         trades=rows, count=len(rows), symbols=symbols,
-        analytics=aggregate_trade_analytics(rows))
+        analytics=aggregate_trade_analytics(rows),
+        scenario_totals=aggregate_trade_scenario_totals(rows))

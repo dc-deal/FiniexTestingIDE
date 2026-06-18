@@ -80,6 +80,20 @@ class TradeAnalytics(BaseModel):
     avg_mae_winners: float  # mean MAE P&L on winners — SL too tight if large vs win size
     avg_mae_losers: float   # mean MAE P&L on losers
     avg_mfe_losers: float   # mean MFE P&L on losers — "left on the table" read
+    # Per-currency P&L totals (#393 — the trade-table TOTAL line, model-served for the API)
+    gross_pnl: float = 0.0  # Σ gross P&L over the group
+    net_pnl: float = 0.0    # Σ net P&L over the group
+    total_fees: float = 0.0  # Σ fees over the group
+
+
+class TradeScenarioTotals(BaseModel):
+    """Per-scenario trade-table totals (the per-scenario footer) — model-served, no renderer math."""
+    scenario_name: str
+    currency: str
+    trade_count: int
+    gross_pnl: float
+    net_pnl: float
+    total_fees: float
 
 
 class TradeHistoryReport(BaseModel):
@@ -88,6 +102,7 @@ class TradeHistoryReport(BaseModel):
     count: int
     symbols: list[str]      # distinct symbols present (filter UX)
     analytics: list[TradeAnalytics]  # one entry per account currency (no cross-currency mixing)
+    scenario_totals: list[TradeScenarioTotals] = []  # per-scenario footer totals (no re-sum)
 
 
 class OrderHistoryRow(BaseModel):
@@ -267,3 +282,38 @@ class ScenarioDetailsReport(BaseModel):
     failed ones** (the section's job is the full scenario status grid).
     """
     units: list[ScenarioDetailsRow]
+
+
+class RunSummaryCurrency(BaseModel):
+    """
+    Run-wide KPIs for ONE account currency (#390 prework). Composed once from the per-section
+    aggregates (portfolio roll-up + trade analytics) — never re-derived. Per currency so the
+    P&L-denominated fields never mix currencies.
+    """
+    currency: str
+    net_pnl: float          # ← PortfolioAggregateRow.net_profit
+    profit_factor: float    # ← PortfolioAggregateRow.profit_factor
+    win_rate: float         # ← PortfolioAggregateRow.win_rate
+    max_drawdown: float     # ← PortfolioAggregateRow.max_drawdown
+    total_fees: float       # ← PortfolioAggregateRow.total_fees
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
+    avg_win_r: float        # ← TradeAnalytics.avg_win_r
+    avg_loss_r: float       # ← TradeAnalytics.avg_loss_r
+    r_trade_count: int      # ← TradeAnalytics.r_trade_count
+
+
+class RunSummary(BaseModel):
+    """
+    Cross-section run KPI model (#390 prework): per-currency KPIs (P&L-denominated) + global
+    order counts (currency-agnostic). The single object every consumer reads — sweep objective,
+    console headline, API, live snapshot, dashboard — composed once off the section aggregates.
+    """
+    currencies: list[RunSummaryCurrency]
+    orders_sent: int = 0
+    orders_executed: int = 0
+    orders_rejected: int = 0
+    sl_tp_triggered: int = 0
+    unit_count: int = 0     # sim: N scenarios | live: 1

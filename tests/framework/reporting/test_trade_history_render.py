@@ -12,7 +12,8 @@ from contextlib import redirect_stdout
 
 from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
-    ExecutionRow, OrderHistoryReport, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    ExecutionRow, OrderHistoryReport, TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
+    TradeScenarioTotals)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -40,7 +41,11 @@ def _report() -> TradeHistoryReport:
         analytics=[TradeAnalytics(
             currency='USD', trade_count=1,
             expectancy=2.0, avg_win_r=2.0, avg_loss_r=0.0, r_trade_count=1,
-            avg_mae_winners=-1.0, avg_mae_losers=0.0, avg_mfe_losers=0.0)])
+            avg_mae_winners=-1.0, avg_mae_losers=0.0, avg_mfe_losers=0.0,
+            gross_pnl=20.8, net_pnl=20.0, total_fees=0.8)],
+        scenario_totals=[TradeScenarioTotals(
+            scenario_name='AUDUSD_cont_00', currency='USD', trade_count=1,
+            gross_pnl=20.8, net_pnl=20.0, total_fees=0.8)])
 
 
 def _empty_orders() -> OrderHistoryReport:

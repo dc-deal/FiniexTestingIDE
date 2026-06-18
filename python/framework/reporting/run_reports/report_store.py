@@ -18,13 +18,15 @@ from python.framework.reporting.run_reports.pending_orders_report_io import (
     PENDING_ORDERS_ARTIFACT, read_pending_orders_report)
 from python.framework.reporting.run_reports.portfolio_report_io import (
     PORTFOLIO_ARTIFACT, read_portfolio_report)
+from python.framework.reporting.run_reports.run_summary_io import (
+    RUN_SUMMARY_ARTIFACT, read_run_summary)
 from python.framework.reporting.run_reports.scenario_details_report_io import (
     SCENARIO_DETAILS_ARTIFACT, read_scenario_details_report)
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
 
 
 class ReportStore:
@@ -149,6 +151,21 @@ class ReportStore:
         if path is None:
             return None
         return read_scenario_details_report(path)
+
+    def get_run_summary(self, run_id: str) -> Optional[RunSummary]:
+        """
+        Read a run's cross-section KPI summary.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The run-summary report, or None if the run has no run-summary artifact
+        """
+        path = self._resolve(run_id, RUN_SUMMARY_ARTIFACT)
+        if path is None:
+            return None
+        return read_run_summary(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

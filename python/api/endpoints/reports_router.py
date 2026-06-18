@@ -15,7 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
 
 router = APIRouter()
 
@@ -151,6 +151,25 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
         raise ApiException(
             404, 'run_not_found',
             f"No scenario-details artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/run-summary', response_model=RunSummary)
+def get_run_summary(run_id: str) -> RunSummary:
+    """
+    Cross-section KPI summary for a run (per-currency KPIs + global order counts).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The RunSummary (404 if the run has no run-summary artifact)
+    """
+    report = ReportStore().get_run_summary(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No run-summary artifact for run '{run_id}'")
     return report
 
 

@@ -25,6 +25,8 @@ from python.framework.reporting.run_reports.pending_orders_report_builder import
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
+from python.framework.reporting.run_reports.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.run_unit import run_units_from_session
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
@@ -114,6 +116,10 @@ class AutotraderReportCoordinator:
         execution_stats_report = build_execution_stats_report(units)
         write_execution_stats_report(execution_stats_report, self._run_dir)
         write_execution_stats_csv(execution_stats_report, self._run_dir)
+
+        # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
+        run_summary = build_run_summary(portfolio_report, report, execution_stats_report)
+        write_run_summary(run_summary, self._run_dir)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:

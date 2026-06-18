@@ -39,7 +39,8 @@
     "trade_simulator_config": {
       "balances": {
         "USD": 10000
-      }
+      },
+      "account_currency": "BTC"
     },
     "stress_test_config": {
       "reject_open_order": {
@@ -112,15 +113,16 @@
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
-      "end_date": "2025-09-23T23:00:00+00:00",
-      "max_ticks": null,
+      "end_date": null,
+      "max_ticks": 30000,
       "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {
-          "JPY": 10000
+          "USD": 10000,
+          "JPY": 0
         }
       }
     },

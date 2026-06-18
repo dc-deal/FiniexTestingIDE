@@ -120,6 +120,16 @@ class TestMetadata:
         assert report.trades == []
         assert report.symbols == []
 
+    def test_scenario_totals(self):
+        # per-scenario footer totals (the table footer, model-served)
+        report = build_trade_history_report(
+            _units([_trade(net_pnl=20.0), _trade(position_id='p2', net_pnl=-10.0)]))
+        assert len(report.scenario_totals) == 1
+        st = report.scenario_totals[0]
+        assert st.trade_count == 2
+        assert round(st.net_pnl, 2) == 10.0        # 20 - 10
+        assert round(st.total_fees, 2) == 1.6      # 0.8 × 2
+
 
 class TestAnalytics:
     """#389 — R-multiple + pips per row, and the aggregate analytics block."""
@@ -156,6 +166,10 @@ class TestAnalytics:
         assert a.avg_mae_winners == -4.0           # (-3 + -5)/2
         assert a.avg_mae_losers == -10.0           # (-12 + -8)/2
         assert a.avg_mfe_losers == 5.0             # (4 + 6)/2
+        # per-currency P&L totals (#393 — the trade-table TOTAL, model-served)
+        assert round(a.net_pnl, 2) == 20.0         # 20 + 20 - 10 - 10
+        assert round(a.total_fees, 2) == 3.2       # 0.8 × 4
+        assert round(a.gross_pnl, 2) == 23.2       # net + fees
 
     def test_empty_analytics(self):
         assert build_trade_history_report(_units([])).analytics == []   # no rows → no currency groups

@@ -13,7 +13,8 @@ here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 from datetime import datetime
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_trade_analytics
+from python.framework.reporting.run_reports.report_aggregators import (
+    aggregate_trade_analytics, aggregate_trade_scenario_totals)
 from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     ExecutionRow, TradeHistoryReport, TradeHistoryRow)
@@ -66,7 +67,8 @@ def _assemble(
     symbols = sorted({row.symbol for row in filtered})
     return TradeHistoryReport(
         trades=filtered, count=len(filtered), symbols=symbols,
-        analytics=aggregate_trade_analytics(filtered))
+        analytics=aggregate_trade_analytics(filtered),
+        scenario_totals=aggregate_trade_scenario_totals(filtered))
 
 
 def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:

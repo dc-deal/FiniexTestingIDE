@@ -12,7 +12,8 @@ from typing import Dict, List
 
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
-    ExecutionRow, OrderHistoryReport, OrderHistoryRow, TradeHistoryReport, TradeHistoryRow)
+    ExecutionRow, OrderHistoryReport, OrderHistoryRow, TradeAnalytics, TradeHistoryReport,
+    TradeHistoryRow, TradeScenarioTotals)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -41,6 +42,9 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         """
         self._report = report
         self._order_report = order_report
+        # Per-scenario footer totals from the model (no renderer re-sum)
+        self._scenario_totals_by_name = {
+            t.scenario_name: t for t in report.scenario_totals}
 
     def _grouped(self) -> Dict[str, List[TradeHistoryRow]]:
         """Group rows by scenario_name, preserving first-appearance order."""
@@ -114,16 +118,15 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         renderer: ConsoleRenderer
     ) -> None:
         """Render trade history for a single scenario (already its rows)."""
-        # Sort by entry_tick_index (chronological)
+        # Sort by entry_tick_index (chronological) — ordering is a presentation concern
         sorted_rows = sorted(rows, key=lambda r: r.entry_tick_index)
 
-        trade_count = len(sorted_rows)
-        total_pnl = sum(r.net_pnl for r in sorted_rows)
-        currency = sorted_rows[0].currency if sorted_rows else "USD"
-
-        pnl_str = self._format_pnl(total_pnl, currency, renderer)
+        # Per-scenario totals from the model aggregate (not a re-sum)
+        totals = self._scenario_totals_by_name[scenario_name]
+        pnl_str = self._format_pnl(totals.net_pnl, totals.currency, renderer)
         print(
-            f"📋 {renderer.bold(scenario_name)}: {trade_count} trades | Total P&L: {pnl_str}")
+            f"📋 {renderer.bold(scenario_name)}: {totals.trade_count} trades | "
+            f"Total P&L: {pnl_str}")
         print()
 
         # Pre-compute entry execution trade_id frequency for the shared(Nx) annotation
@@ -137,7 +140,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self._print_table_header(renderer)
         for idx, row in enumerate(sorted_rows, 1):
             self._print_trade_row(idx, row, renderer, shared_counts)
-        self._print_table_footer(sorted_rows, renderer)
+        self._print_table_footer(totals, renderer)
 
         self._render_scenario_rejections(scenario_name, renderer)
 
@@ -240,29 +243,24 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(renderer.gray(text))
 
     def _print_table_footer(
-        self, rows: List[TradeHistoryRow], renderer: ConsoleRenderer) -> None:
-        """Print trade table footer with totals."""
+        self, totals: TradeScenarioTotals, renderer: ConsoleRenderer) -> None:
+        """Print trade table footer with the per-scenario totals (from the model aggregate)."""
         print(renderer.gray("   " + "-" * 200))
-        total_gross = sum(r.gross_pnl for r in rows)
-        total_fees = sum(r.total_fees for r in rows)
-        total_net = sum(r.net_pnl for r in rows)
-        currency = rows[0].currency if rows else "USD"
-
-        gross_str = self._format_value(total_gross, renderer)
-        net_str = self._format_value(total_net, renderer)
+        gross_str = self._format_value(totals.gross_pnl, renderer)
+        net_str = self._format_value(totals.net_pnl, renderer)
         total_row = (
             f"   {'':>3} | {'TOTAL':^5} | {' ':1} | {'':>5} | "
             f"{'':>12} | {'':>12} | {'':>12} | {'':>12} | "
             f"{'':>10} | {'':>10} | {'':>8} | "
-            f"{gross_str:>10} | {total_fees:>8.2f} | {net_str:>10} | "
-            f"{'':>7} | {'':>7} | {'':>6} | {currency} |"
+            f"{gross_str:>10} | {totals.total_fees:>8.2f} | {net_str:>10} | "
+            f"{'':>7} | {'':>7} | {'':>6} | {totals.currency} |"
         )
         print(renderer.bold(total_row))
 
     def _render_aggregated_stats(
         self,
         rows: List[TradeHistoryRow],
-        analytics,
+        analytics: TradeAnalytics,
         renderer: ConsoleRenderer
     ) -> None:
         """Render aggregated statistics for one currency group (all from the model rows)."""
@@ -273,9 +271,11 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         winning_trades = [r for r in rows if r.net_pnl > 0]
         losing_trades = [r for r in rows if r.net_pnl <= 0]
 
-        total_gross = sum(r.gross_pnl for r in rows)
-        total_fees = sum(r.total_fees for r in rows)
-        total_net = sum(r.net_pnl for r in rows)
+        # P&L totals come straight from the model aggregate — analytics is always present here
+        # (one per currency; render_aggregated returns early when there are no trades).
+        total_gross = analytics.gross_pnl
+        total_fees = analytics.total_fees
+        total_net = analytics.net_pnl
         avg_gross = total_gross / total_trades if total_trades else 0
         avg_fees = total_fees / total_trades if total_trades else 0
         avg_net = total_net / total_trades if total_trades else 0
@@ -312,8 +312,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(f"\n   {renderer.bold('⏱️  DURATION (ticks):')}")
         print(f"      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}")
 
-        if analytics is not None:
-            self._render_analytics(analytics, renderer)
+        self._render_analytics(analytics, renderer)
         self._render_slippage_stats(rows, renderer)
 
     def _render_analytics(self, analytics, renderer: ConsoleRenderer) -> None:

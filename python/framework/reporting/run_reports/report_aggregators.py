@@ -13,7 +13,7 @@ from typing import Dict, List
 
 from python.framework.types.api.report_types import (
     ExecutionStatsRow, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioUnitRow,
-    TradeAnalytics, TradeHistoryRow)
+    TradeAnalytics, TradeHistoryRow, TradeScenarioTotals)
 
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -50,7 +50,39 @@ def _trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
         avg_mae_winners=_mean([r.mae_pnl for r in winners]),
         avg_mae_losers=_mean([r.mae_pnl for r in losers]),
         avg_mfe_losers=_mean([r.mfe_pnl for r in losers]),
+        gross_pnl=sum(r.gross_pnl for r in rows),
+        net_pnl=sum(r.net_pnl for r in rows),
+        total_fees=sum(r.total_fees for r in rows),
     )
+
+
+# --- Trade per-scenario totals (the per-scenario table footer) ------------------------
+
+def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeScenarioTotals]:
+    """
+    Per-scenario trade-table totals (the footer line): group the rows by `scenario_name`
+    and sum gross / net / fees, so the console (and the API) read the footer off the model.
+
+    Args:
+        rows: The report's trade rows (already filtered)
+
+    Returns:
+        One TradeScenarioTotals per scenario present (first-appearance order)
+    """
+    groups: Dict[str, List[TradeHistoryRow]] = {}
+    for row in rows:
+        groups.setdefault(row.scenario_name, []).append(row)
+    return [
+        TradeScenarioTotals(
+            scenario_name=name,
+            currency=group[0].currency,
+            trade_count=len(group),
+            gross_pnl=sum(r.gross_pnl for r in group),
+            net_pnl=sum(r.net_pnl for r in group),
+            total_fees=sum(r.total_fees for r in group),
+        )
+        for name, group in groups.items()
+    ]
 
 
 # --- Execution totals (currency-agnostic counts) --------------------------------------
