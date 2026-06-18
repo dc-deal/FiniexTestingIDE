@@ -31,6 +31,8 @@ from python.framework.reporting.run_reports.run_unit import run_units_from_sessi
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
+from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
@@ -120,6 +122,10 @@ class AutotraderReportCoordinator:
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(portfolio_report, report, execution_stats_report)
         write_run_summary(run_summary, self._run_dir)
+
+        # Worker/decision — per-unit worker + decision performance (unified, #398).
+        worker_decision_report = build_worker_decision_report(units)
+        write_worker_decision_report(worker_decision_report, self._run_dir)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:

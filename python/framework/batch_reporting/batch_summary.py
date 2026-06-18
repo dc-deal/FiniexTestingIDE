@@ -23,7 +23,7 @@ from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSum
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -49,6 +49,7 @@ class BatchSummary:
         execution_report: ExecutionStatsReport,
         scenario_details_report: ScenarioDetailsReport,
         run_summary: RunSummary,
+        worker_decision_report: WorkerDecisionReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -71,14 +72,16 @@ class BatchSummary:
             portfolio_report, pending_report, execution_report)
         self.performance_summary = PerformanceSummary(batch_execution_summary)
 
-        # this must happen only onece, due the "pop" mechanic in ProfilingData.from_dicts
+        # Built once and shared by the profiling + worker-decision sections (from_dicts
+        # is non-mutating, so this is for reuse, not a correctness constraint).
         profiling_data_map = self.build_profiling_data_map(
             batch_execution_summary)
 
         self.profiling_summary = ProfilingSummary(
             batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
-            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
+            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map,
+            worker_decision_report=worker_decision_report)
 
         # Broker summary
         self.broker_summary = BrokerSummary(

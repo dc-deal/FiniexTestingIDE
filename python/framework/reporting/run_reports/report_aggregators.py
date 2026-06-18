@@ -13,7 +13,7 @@ from typing import Dict, List
 
 from python.framework.types.api.report_types import (
     ExecutionStatsRow, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioUnitRow,
-    TradeAnalytics, TradeHistoryRow, TradeScenarioTotals)
+    TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow, WorkerStatRow)
 
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -152,3 +152,41 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
 def _mean(values: List[float]) -> float:
     """Mean, or 0.0 for an empty list."""
     return sum(values) / len(values) if values else 0.0
+
+
+# --- Worker timing (summed across units, #398) ----------------------------------------
+
+def aggregate_worker_totals(rows: List[WorkerDecisionUnitRow]) -> List[WorkerStatRow]:
+    """
+    Sum per-worker timing across all unit rows (keyed by worker name).
+
+    avg is recomputed from summed total / summed call_count (never averaged); min/max
+    are the extremes across units. Returned in descending total-time order.
+
+    Args:
+        rows: The per-unit worker/decision rows
+
+    Returns:
+        One WorkerStatRow per distinct worker, summed across the units
+    """
+    acc: Dict[str, Dict] = {}
+    for row in rows:
+        for w in row.workers:
+            a = acc.setdefault(w.worker_name, {
+                'worker_type': w.worker_type, 'call_count': 0, 'total_time_ms': 0.0,
+                'min_time_ms': None, 'max_time_ms': None})
+            a['call_count'] += w.call_count
+            a['total_time_ms'] += w.total_time_ms
+            a['min_time_ms'] = w.min_time_ms if a['min_time_ms'] is None else min(a['min_time_ms'], w.min_time_ms)
+            a['max_time_ms'] = w.max_time_ms if a['max_time_ms'] is None else max(a['max_time_ms'], w.max_time_ms)
+
+    totals = [
+        WorkerStatRow(
+            worker_type=a['worker_type'], worker_name=name, call_count=a['call_count'],
+            total_time_ms=a['total_time_ms'],
+            avg_time_ms=(a['total_time_ms'] / a['call_count']) if a['call_count'] else 0.0,
+            min_time_ms=a['min_time_ms'] or 0.0, max_time_ms=a['max_time_ms'] or 0.0)
+        for name, a in acc.items()
+    ]
+    totals.sort(key=lambda w: w.total_time_ms, reverse=True)
+    return totals

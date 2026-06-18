@@ -44,9 +44,13 @@ class TestExecutionConfigCascade:
         assert exec_cfg['adaptive_parallelization'] is True
         assert exec_cfg['strict_parameter_validation'] is True
         assert exec_cfg['tick_processing_budget_ms'] == 0.0
-        # Sub-group defaults (#137)
-        assert exec_cfg['performance_tracking']['tick_loop_profiling'] is True
-        assert exec_cfg['performance_tracking']['worker_decision_tracking'] is False
+        # Sub-group (#137): assert only that the performance_tracking switches CASCADE
+        # (are present) — not their value. They are operator-mutable switches (flipped in
+        # app_config to debug), so pinning the live value here would break the suite
+        # whenever the operator toggles one. Their value-cascade is asserted against a
+        # controlled fixture in test_sub_group_per_key_merge (app_config out of play).
+        assert 'tick_loop_profiling' in exec_cfg['performance_tracking']
+        assert 'worker_decision_tracking' in exec_cfg['performance_tracking']
 
     def test_global_overrides_app_defaults(self):
         """Global sets parallel_workers and tick_processing_budget_ms — Level 2 wins over Level 1."""

@@ -14,6 +14,8 @@ from typing import List, Optional
 
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.performance_types.performance_stats_types import (
+    DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -33,6 +35,11 @@ class RunUnit:
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     pending_stats: Optional[PendingOrderStats] = None
+    # Worker / decision performance (unified — both pipelines; #398). Coordination
+    # is sim-only (the live session has no worker coordinator) → Optional, None on live.
+    worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
+    decision_statistics: Optional[DecisionLogicStats] = None
+    coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -62,6 +69,9 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
             pending_stats=tick_loop.pending_stats,
+            worker_statistics=tick_loop.worker_statistics or [],
+            decision_statistics=tick_loop.decision_statistics,
+            coordination_statistics=tick_loop.coordination_statistics,
         ))
     return units
 
@@ -87,4 +97,6 @@ def run_units_from_session(
         order_history=session.order_history or [],
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,
+        worker_statistics=session.worker_statistics or [],
+        decision_statistics=session.decision_statistics,
     )]

@@ -24,9 +24,11 @@ from python.framework.reporting.run_reports.scenario_details_report_io import (
     SCENARIO_DETAILS_ARTIFACT, read_scenario_details_report)
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
+from python.framework.reporting.run_reports.worker_decision_report_io import (
+    WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 
 
 class ReportStore:
@@ -166,6 +168,21 @@ class ReportStore:
         if path is None:
             return None
         return read_run_summary(path)
+
+    def get_worker_decision(self, run_id: str) -> Optional[WorkerDecisionReport]:
+        """
+        Read a run's worker/decision report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The worker/decision report, or None if the run has no worker-decision artifact
+        """
+        path = self._resolve(run_id, WORKER_DECISION_ARTIFACT)
+        if path is None:
+            return None
+        return read_worker_decision_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

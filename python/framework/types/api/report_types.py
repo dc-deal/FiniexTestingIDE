@@ -319,3 +319,51 @@ class RunSummary(BaseModel):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+
+
+class WorkerStatRow(BaseModel):
+    """Per-worker timing within a unit (#398)."""
+    worker_type: str
+    worker_name: str
+    call_count: int = 0
+    total_time_ms: float = 0.0
+    avg_time_ms: float = 0.0
+    min_time_ms: float = 0.0
+    max_time_ms: float = 0.0
+
+
+class WorkerDecisionUnitRow(BaseModel):
+    """
+    Per-unit worker + decision performance (#398, **unified** — sim scenario / live session).
+    Coordination fields are sim-only (the live session has no worker coordinator) and stay at
+    their defaults on live.
+    """
+    name: str
+    symbol: str
+    # decision logic
+    decision_logic_type: str = ''
+    decision_logic_name: str = ''
+    decision_count: int = 0
+    buy_signals: int = 0
+    sell_signals: int = 0
+    flat_signals: int = 0
+    trades_requested: int = 0
+    decision_total_time_ms: float = 0.0
+    decision_avg_time_ms: float = 0.0
+    # coordination (sim-only)
+    ticks_processed: int = 0
+    parallel_workers: bool = False
+    parallel_time_saved_ms: float = 0.0
+    # per-worker timing
+    workers: list[WorkerStatRow] = []
+
+
+class WorkerDecisionReport(BaseModel):
+    """
+    Per-unit worker + decision stats (#398, unified): one row per scenario/session, plus the
+    per-worker timing totals rolled up across units. The coordination-overhead % breakdown
+    (worker / decision / coordination split) is profiling-derived and stays with the Profiling
+    section — it is NOT part of this report.
+    """
+    units: list[WorkerDecisionUnitRow]
+    worker_totals: list[WorkerStatRow] = []     # per-worker timing summed across units

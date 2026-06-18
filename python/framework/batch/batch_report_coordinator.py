@@ -27,6 +27,8 @@ from python.framework.reporting.run_reports.scenario_details_report_io import wr
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
+from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
@@ -94,6 +96,8 @@ class BatchReportCoordinator:
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
             portfolio_report, trade_report, execution_stats_report)
+        # Worker/decision — per-unit worker + decision performance (unified, #398).
+        worker_decision_report = build_worker_decision_report(units)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -107,6 +111,7 @@ class BatchReportCoordinator:
             execution_report=execution_stats_report,
             scenario_details_report=scenario_details_report,
             run_summary=run_summary,
+            worker_decision_report=worker_decision_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -162,3 +167,4 @@ class BatchReportCoordinator:
         write_execution_stats_csv(execution_stats_report, run_dir)
         write_scenario_details_report(scenario_details_report, run_dir)
         write_run_summary(run_summary, run_dir)
+        write_worker_decision_report(worker_decision_report, run_dir)

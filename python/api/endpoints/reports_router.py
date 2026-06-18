@@ -15,7 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -170,6 +170,25 @@ def get_run_summary(run_id: str) -> RunSummary:
         raise ApiException(
             404, 'run_not_found',
             f"No run-summary artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/worker-decision', response_model=WorkerDecisionReport)
+def get_worker_decision(run_id: str) -> WorkerDecisionReport:
+    """
+    Worker/decision report for a run (per-unit worker + decision performance, unified).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The WorkerDecisionReport (404 if the run has no worker-decision artifact)
+    """
+    report = ReportStore().get_worker_decision(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No worker-decision artifact for run '{run_id}'")
     return report
 
 

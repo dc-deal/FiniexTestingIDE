@@ -13,6 +13,7 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 from typing import Any, Dict, List, Optional
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.types.api.report_types import WorkerDecisionReport
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_metrics_types import (
     WorkerDecisionBreakdown,
@@ -30,10 +31,19 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
     _section_title = '🔍 WORKER DECISION BREAKDOWN'
 
-    def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]):
+    def __init__(
+        self,
+        batch_execution_summary: BatchExecutionSummary,
+        profiling_data_map: Dict[Any, Any],
+        worker_decision_report: WorkerDecisionReport,
+    ):
         self.batch_execution_summary = batch_execution_summary
         self.profiling_data_map = profiling_data_map
         self._process_results = batch_execution_summary.process_result_list
+        # Worker/decision facts come from the unified model (#398), matched per unit by
+        # name; the profiling map supplies only the operation top-line (the residual
+        # profiling input the Profiling migration will absorb).
+        self._wd_rows_by_name = {row.name: row for row in worker_decision_report.units}
         self.breakdowns = self._build_breakdowns()
 
     def _both_layers_have_data(self) -> bool:
@@ -135,30 +145,31 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         if not profiling:
             return None
 
-        # Get total worker_decision time from profiling
+        # Get total worker_decision time from profiling (the only residual profiling
+        # input — moves to the model with the Profiling migration).
         total_worker_decision_ms = profiling.get_operation_time(
             'worker_decision')
         if total_worker_decision_ms == 0:
             return None
 
-        # Get statistics from new structure
-        decision_stats = scenario.tick_loop_results.decision_statistics
-        worker_stats = scenario.tick_loop_results.worker_statistics
-        coordination_stats = scenario.tick_loop_results.coordination_statistics
+        # Facts from the unified worker/decision model (#398), matched by scenario name.
+        row = self._wd_rows_by_name.get(scenario.scenario_name)
+        if row is None:
+            return None
 
-        # Calculate worker execution time (sum from list)
-        worker_execution_ms = sum(w.worker_total_time_ms for w in worker_stats)
+        # Calculate worker execution time (sum from the model's per-worker rows)
+        worker_execution_ms = sum(w.total_time_ms for w in row.workers)
 
         # Build worker breakdown dict (worker_name -> time_ms)
         worker_breakdown = {
-            w.worker_name: w.worker_total_time_ms
-            for w in worker_stats
+            w.worker_name: w.total_time_ms
+            for w in row.workers
         }
 
         # Get decision logic time
-        decision_logic_ms = decision_stats.decision_total_time_ms
+        decision_logic_ms = row.decision_total_time_ms
 
-        # Calculate coordination overhead
+        # Calculate coordination overhead (profiling total minus the model components)
         coordination_overhead_ms = max(
             0.0,
             total_worker_decision_ms - worker_execution_ms - decision_logic_ms
@@ -168,7 +179,7 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
             scenario_index=scenario.scenario_index,
             scenario_name=scenario.scenario_name,
             total_time_ms=total_worker_decision_ms,
-            total_ticks=coordination_stats.ticks_processed,
+            total_ticks=row.ticks_processed,
             worker_execution_ms=worker_execution_ms,
             decision_logic_ms=decision_logic_ms,
             coordination_overhead_ms=coordination_overhead_ms,
