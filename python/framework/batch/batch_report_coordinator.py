@@ -106,6 +106,7 @@ class BatchReportCoordinator:
             pending_report=pending_report,
             execution_report=execution_stats_report,
             scenario_details_report=scenario_details_report,
+            run_summary=run_summary,
         )
 
         summary_detail = self._app_config.get_summary_detail()

@@ -14,6 +14,7 @@ import psutil
 from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.types.api.report_types import RunSummary
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -37,6 +38,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         self,
         batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigManager,
+        run_summary: RunSummary,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -45,10 +47,12 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Args:
             batch_execution_summary: Batch execution results
             app_config: Application configuration
+            run_summary: Cross-section run KPIs (the model-fed headline source)
             generator_profiles: Generator profiles for Profile Run source info (None for normal runs)
         """
         self._batch_summary = batch_execution_summary
         self._app_config = app_config
+        self._run_summary = run_summary
         self._generator_profiles = generator_profiles
 
     def render(self, renderer: ConsoleRenderer):
@@ -60,6 +64,8 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         """
         self._render_section_header(renderer)
 
+        self._render_run_summary(renderer)
+        print()
         self._render_execution_results(renderer)
         print()
         self._render_data_sources(renderer)
@@ -69,6 +75,45 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         self._render_portfolio_performance(renderer)
         print()
         self._render_system_resources(renderer)
+
+    def _render_run_summary(self, renderer: ConsoleRenderer):
+        """
+        Render the cross-section run KPIs straight from the RunSummary model (#390/#393).
+
+        The model-fed headline: per-currency P&L / win rate / profit factor / expectancy /
+        fees + the global order counts — composed once in the pipeline, never re-derived here.
+        """
+        summary = self._run_summary
+
+        renderer.print_bold("RUN SUMMARY")
+        renderer.print_separator(width=68)
+        print(f"Scenarios:          {summary.unit_count}")
+
+        exec_rate = (summary.orders_executed / summary.orders_sent *
+                     100) if summary.orders_sent > 0 else 0.0
+        orders_line = (f"Orders:             {summary.orders_executed}/{summary.orders_sent} "
+                       f"executed ({exec_rate:.1f}%)")
+        if summary.orders_rejected > 0:
+            orders_line += f" | {renderer.yellow(f'{summary.orders_rejected} rejected')}"
+        if summary.sl_tp_triggered > 0:
+            orders_line += f" | {summary.sl_tp_triggered} SL/TP"
+        print(orders_line)
+
+        if not summary.currencies:
+            return
+
+        print("")
+        for c in summary.currencies:
+            # Expectancy (mean R) is only meaningful with stop-loss trades.
+            exp_str = f"{c.expectancy:+.2f}R" if c.r_trade_count > 0 else "n/a"
+            print(
+                f"{c.currency}:".ljust(20)
+                + f"P&L {renderer.pnl(c.net_pnl, c.currency)} | "
+                + f"Win {c.win_rate * 100:.1f}% ({c.winning_trades}W/{c.losing_trades}L) | "
+                + f"PF {c.profit_factor:.2f} | "
+                + f"Exp {exp_str} | "
+                + f"Fees {format_currency_simple(c.total_fees, c.currency)}"
+            )
 
     def _render_execution_results(self, renderer: ConsoleRenderer):
         """Render execution results section."""

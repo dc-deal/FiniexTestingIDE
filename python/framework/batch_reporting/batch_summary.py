@@ -23,7 +23,7 @@ from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSum
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ScenarioDetailsReport, TradeHistoryReport)
+    RunSummary, ScenarioDetailsReport, TradeHistoryReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -48,6 +48,7 @@ class BatchSummary:
         pending_report: PendingOrdersReport,
         execution_report: ExecutionStatsReport,
         scenario_details_report: ScenarioDetailsReport,
+        run_summary: RunSummary,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -62,6 +63,7 @@ class BatchSummary:
         """
         self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config
+        self._run_summary = run_summary
         self._generator_profiles = generator_profiles
 
         # Initialize sub-summaries — portfolio renders from the unified model (#393)
@@ -251,7 +253,7 @@ class BatchSummary:
 
         # Executive Summary
         executive = ExecutiveSummary(
-            self.batch_execution_summary, self.app_config,
+            self.batch_execution_summary, self.app_config, self._run_summary,
             generator_profiles=self._generator_profiles
         )
         executive.render(self._renderer)

@@ -137,7 +137,7 @@ console + file-log render *from* that model (vs. their own inline derivation).
 | Pending Orders / Active (lifecycle + latency) | `PendingOrderStats` | unified (sim-populated) | ✅ | ✅ per-scenario latency + active-order tables from the model |
 | Execution Stats (order counts + SL/TP) | `ExecutionStats` | unified | ✅ | ✅ per-scenario order line from the model (the aggregated ORDER EXECUTION block stays on `PortfolioAggregator`) |
 | Scenario Details (exec/signal metadata) | `ProcessResult` (+ stats) | **sim-only** | ✅ | ✅ per-scenario **linear** from the model (incl. failed scenarios + the resolved `account_currency` with an `(explicit)` hint when set in config); the box grid is removed |
-| Run Summary (cross-section KPIs, #390) | composed from the section aggregates | unified | ✅ | — (consumed by the sweep #390 + API; a console headline migrates with the executive section) |
+| Run Summary (cross-section KPIs, #390) | composed from the section aggregates | unified | ✅ | ✅ model-fed headline opening the executive section (per-currency P&L / win / PF / expectancy / fees + global order counts); also consumed by the sweep #390 + API |
 | Warnings / Errors | §35 error pot | unified | ⏳ planned | — |
 | Worker / Decision Stats | `WorkerPerformanceStats` / `DecisionLogicStats` | unified | ⏳ planned | — |
 | Profiling / Warmup / Block-Splitting | profiling, coordination, warmup phases | **sim-only** | console-only (migrates later) | n/a |
@@ -213,8 +213,14 @@ the API serves either pipeline's run by `run_id`.
    (audit table + #330 execution sub-lines + #389 analytics block), **order rejections**,
    **portfolio** per-scenario (linear, boxes removed), **scenario-details** (linear, incl. failed
    scenarios), **pending-orders**, **execution-stats** per-scenario, and the **AutoTrader**
-   post-session #389 line. **Built but not yet console-consumed:** **run-summary**. **Still inline
-   (the renderers left to retire):** worker/decision · performance / profiling / warmup /
-   block-splitting · broker · executive (→ feeds from run-summary) · warnings/errors (→ Part C,
-   `ISSUE_393c`) · the cross-domain **portfolio aggregated** + ORDER EXECUTION block (still on
-   `PortfolioAggregator`, folds into run-summary). File-logs follow automatically (captured stdout).
+   post-session #389 line, and the **run-summary** headline opening the executive section. **Still
+   inline (the renderers left to retire):** worker/decision · performance / profiling / warmup /
+   block-splitting · broker · the executive's **detailed** portfolio-performance block · warnings/errors
+   (→ Part C of #391, **#395**) · the cross-domain **portfolio aggregated** + ORDER EXECUTION block (still
+   on `PortfolioAggregator`). The last two are model-fed when `PortfolioAggregator` is retired
+   (**#397** — the aggregated-portfolio model). File-logs follow automatically (captured stdout).
+7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
+   fold `framework/batch_reporting/` into one `framework/reporting/` home organized by stage:
+   `run_reports/` (DERIVE) · `io/` (PERSIST — the `*_report_io` + `report_store`) · `console/`
+   (PRESENT — the `*_summary` presenters). Pure file-move + import refactor; the models stay in
+   `types/api/report_types.py`.
