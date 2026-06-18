@@ -39,6 +39,9 @@ def _to_row(result: ProcessResult, scenario: SingleScenario) -> ScenarioDetailsR
         name=result.scenario_name,
         symbol=scenario.symbol,
         data_source=scenario.data_broker_type,
+        account_currency=scenario.account_currency or '',
+        account_currency_explicit=bool(
+            (scenario.trade_simulator_config or {}).get('account_currency')),
         execution_time_ms=getattr(result, 'execution_time_ms', 0.0) or 0.0,
         error_type=result.error_type or '',
         error_message=result.error_message or '',

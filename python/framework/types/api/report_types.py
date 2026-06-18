@@ -261,6 +261,8 @@ class ScenarioDetailsRow(BaseModel):
     name: str
     symbol: str
     data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    account_currency: str = ''      # resolved P&L denomination currency
+    account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
     execution_time_ms: float = 0.0
     ticks_processed: int = 0

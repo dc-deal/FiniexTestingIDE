@@ -46,9 +46,13 @@ def _result(name, idx, tick_loop=None, error_type='', error_message='') -> Proce
         tick_loop_results=tick_loop, error_type=error_type, error_message=error_message)
 
 
-def _scenario(name, idx, symbol) -> SingleScenario:
-    return SingleScenario(
+def _scenario(name, idx, symbol, account_currency='', explicit=False) -> SingleScenario:
+    scenario = SingleScenario(
         name=name, scenario_index=idx, symbol=symbol, data_broker_type='mt5', start_date=_DT)
+    scenario.account_currency = account_currency
+    if explicit:
+        scenario.trade_simulator_config = {'account_currency': account_currency}
+    return scenario
 
 
 def _batch(results, scenarios) -> BatchExecutionSummary:
@@ -85,3 +89,21 @@ class TestBuild:
         assert row.status == 'hybrid'
         assert row.error_type == 'RuntimeError'
         assert row.ticks_processed == 15000        # partial data preserved
+
+    def test_account_currency_explicit(self):
+        # account_currency set in config → row carries it + the explicit marker
+        batch = _batch(
+            [_result('s1', 0, tick_loop=_tick_loop())],
+            [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=True)])
+        row = build_scenario_details_report_from_batch(batch).units[0]
+        assert row.account_currency == 'USD'
+        assert row.account_currency_explicit is True
+
+    def test_account_currency_derived(self):
+        # derived (not in config) → currency present, explicit marker off
+        batch = _batch(
+            [_result('s1', 0, tick_loop=_tick_loop())],
+            [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=False)])
+        row = build_scenario_details_report_from_batch(batch).units[0]
+        assert row.account_currency == 'USD'
+        assert row.account_currency_explicit is False
