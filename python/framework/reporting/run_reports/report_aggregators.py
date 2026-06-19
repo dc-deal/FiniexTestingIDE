@@ -13,7 +13,12 @@ from typing import Dict, List
 
 from python.framework.types.api.report_types import (
     ExecutionStatsRow, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioUnitRow,
+    ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow, ProfilingUnitRow,
     TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow, WorkerStatRow)
+
+
+# Operations that are strategy work — a high bottleneck share there is GOOD, not a problem (#399).
+_EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
 
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -190,3 +195,111 @@ def aggregate_worker_totals(rows: List[WorkerDecisionUnitRow]) -> List[WorkerSta
     ]
     totals.sort(key=lambda w: w.total_time_ms, reverse=True)
     return totals
+
+
+# --- Profiling roll-up (cross-scenario, #399) -----------------------------------------
+
+def aggregate_profiling(rows: List[ProfilingUnitRow], budget_active: bool) -> ProfilingAggregate:
+    """
+    Roll up the per-unit profiling rows into the run-level aggregate.
+
+    Reproduces the console profiling summary's measures: cross-scenario avg/tick, the most
+    common bottleneck, the P5 range, the P95-processing budget recommendation (P95 + 10%),
+    the per-operation cross-scenario average call time, and the per-operation bottleneck
+    frequency + status. Ratios are recomputed from summed components, never averaged-of-ratios.
+
+    Args:
+        rows: The per-unit profiling rows
+        budget_active: Whether a tick-processing budget was configured (clipping simulated)
+
+    Returns:
+        The run-level ProfilingAggregate
+    """
+    if not rows:
+        return ProfilingAggregate(budget_active=budget_active)
+
+    scenarios = len(rows)
+    total_ticks = sum(r.total_ticks for r in rows)
+    total_time_ms = sum(r.total_ms for r in rows)
+    avg_per_tick_ms = total_time_ms / total_ticks if total_ticks > 0 else 0.0
+
+    # Bottleneck frequency: how often each operation was a unit's top operation.
+    freq: Dict[str, int] = {}
+    for row in rows:
+        if row.bottleneck_operation:
+            freq[row.bottleneck_operation] = freq.get(row.bottleneck_operation, 0) + 1
+    most_common, most_common_count = ('', 0)
+    for op, count in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0])):
+        most_common, most_common_count = op, count
+        break
+    most_common_pct = (most_common_count / scenarios * 100) if scenarios else 0.0
+
+    # Inter-tick P5 range across scenarios.
+    p5s = [r.inter_tick.p5_ms for r in rows if r.inter_tick]
+    p5_min_ms = min(p5s) if p5s else 0.0
+    p5_max_ms = max(p5s) if p5s else 0.0
+
+    # Budget recommendation: P95 of per-scenario avg/tick processing time, + 10% margin.
+    avgs = sorted(r.avg_per_tick_ms for r in rows if r.avg_per_tick_ms > 0)
+    if avgs:
+        p95_idx = min(int(len(avgs) * 0.95), len(avgs) - 1)
+        p95_processing_ms = avgs[p95_idx]
+        suggested_budget_ms = round(p95_processing_ms * 1.1, 3)
+    else:
+        p95_processing_ms, suggested_budget_ms = 0.0, 0.0
+
+    # Cross-scenario average per-operation call time (mean of per-unit avg_time_ms).
+    op_sum: Dict[str, float] = {}
+    op_cnt: Dict[str, int] = {}
+    for row in rows:
+        for op in row.operations:
+            op_sum[op.operation] = op_sum.get(op.operation, 0.0) + op.avg_time_ms
+            op_cnt[op.operation] = op_cnt.get(op.operation, 0) + 1
+    avg_operation_times = [
+        ProfilingOperationRow(operation=name, avg_time_ms=op_sum[name] / op_cnt[name])
+        for name in op_sum
+    ]
+    avg_operation_times.sort(key=lambda o: o.avg_time_ms, reverse=True)
+
+    # Clipping roll-up (only meaningful when a budget was active).
+    clips = [r.clipping for r in rows if r.clipping]
+    clipping_total_ticks = sum(c.ticks_total for c in clips)
+    clipping_total_kept = sum(c.ticks_kept for c in clips)
+    clipping_total_clipped = sum(c.ticks_clipped for c in clips)
+    clipping_budgets = sorted({c.budget_ms for c in clips})
+
+    # Per-operation bottleneck analysis (all operations seen, with frequency + status).
+    all_ops = {op.operation for row in rows for op in row.operations}
+    bottlenecks = [
+        ProfilingBottleneckRow(
+            operation=op,
+            scenario_count=freq.get(op, 0),
+            total_scenarios=scenarios,
+            pct=(freq.get(op, 0) / scenarios * 100) if scenarios else 0.0,
+            status=_bottleneck_status(op, freq.get(op, 0), (freq.get(op, 0) / scenarios * 100) if scenarios else 0.0))
+        for op in all_ops
+    ]
+    bottlenecks.sort(key=lambda b: (-b.scenario_count, b.operation))
+
+    return ProfilingAggregate(
+        scenarios=scenarios, total_ticks=total_ticks, total_time_s=total_time_ms / 1000,
+        avg_per_tick_ms=avg_per_tick_ms, most_common_bottleneck=most_common,
+        most_common_bottleneck_pct=most_common_pct, p5_min_ms=p5_min_ms, p5_max_ms=p5_max_ms,
+        p95_processing_ms=p95_processing_ms, suggested_budget_ms=suggested_budget_ms,
+        budget_active=budget_active, clipping_total_ticks=clipping_total_ticks,
+        clipping_total_kept=clipping_total_kept, clipping_total_clipped=clipping_total_clipped,
+        clipping_budgets=clipping_budgets, avg_operation_times=avg_operation_times,
+        bottlenecks=bottlenecks)
+
+
+def _bottleneck_status(operation: str, count: int, pct: float) -> str:
+    """Classify an operation's bottleneck frequency (mirrors the console thresholds)."""
+    if count == 0:
+        return 'none'
+    if operation in _EXPECTED_OPERATIONS:
+        return 'expected'
+    if pct >= 40:
+        return 'critical'
+    if pct >= 15:
+        return 'optimize'
+    return 'review'

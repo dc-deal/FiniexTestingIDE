@@ -30,16 +30,16 @@ see *Pipeline in detail* below.
 
 | Layer | Unit | Role |
 |---|---|---|
-| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance) |
+| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
 | Run units | `framework/reporting/run_reports/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
 | Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` is the one exception — it reads the batch directly (failed scenarios carry no `RunUnit`) |
 | Aggregators | `framework/reporting/run_reports/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, portfolio per-currency roll-up). Ratios recomputed from summed components (mirrors the console `PortfolioAggregator`) |
 | Run summary | `framework/reporting/run_reports/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
 | IO | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` |
+| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
-| API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision}` with section-specific filters |
+| API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision,profiling}` with section-specific filters |
 
 The `framework/reporting/run_reports/` subfolder holds **only** the unified-report-pipeline units
 (builders + io + store); the other `framework/reporting/*` files are unrelated reporting utilities
@@ -127,21 +127,29 @@ the per-pipeline ones. **Domain** says whether a section's data is shared (both 
 specific to one. **Status** tracks what is already on the model.
 
 **Model** = a section has a derived model + JSON/CSV/API (#391/#389). **Console (#393)** = the
-console + file-log render *from* that model (vs. their own inline derivation).
+console + file-log render *from* that model (vs. their own inline derivation). **Remaining** = the
+open work to finish migrating the section (issue ref where one exists; ✅ = done).
 
-| Section | Underlying data | Domain | Model (JSON/CSV/API) | Console (#393) |
+| Section | Domain | Model | Console | Remaining work |
 |---|---|---|---|---|
-| Trade History (+ MAE/MFE/R analytics, #389) | `List[TradeRecord]` | unified | ✅ (analytics incl. per-currency P&L totals — the TOTAL line) | ✅ renders from model (full audit table + #330 executions) |
-| Order History | `List[OrderResult]` | unified | ✅ | ✅ (rejections, via the trade summary) |
-| Portfolio (full per-unit projection) | `PortfolioStats` (+ currency roll-up) | unified | ✅ | ✅ **per-scenario** renders linearly from the model (boxes removed); the **per-currency aggregated** section stays on `PortfolioAggregator` (a cross-domain per-currency roll-up — the future `RunSummary` territory) |
-| Pending Orders / Active (lifecycle + latency) | `PendingOrderStats` | unified (sim-populated) | ✅ | ✅ per-scenario latency + active-order tables from the model |
-| Execution Stats (order counts + SL/TP) | `ExecutionStats` | unified | ✅ | ✅ per-scenario order line from the model (the aggregated ORDER EXECUTION block stays on `PortfolioAggregator`) |
-| Scenario Details (exec/signal metadata) | `ProcessResult` (+ stats) | **sim-only** | ✅ | ✅ per-scenario **linear** from the model (incl. failed scenarios + the resolved `account_currency` with an `(explicit)` hint when set in config); the box grid is removed |
-| Run Summary (cross-section KPIs, #390) | composed from the section aggregates | unified | ✅ | ✅ model-fed headline opening the executive section (per-currency P&L / win / PF / expectancy / fees + global order counts); also consumed by the sweep #390 + API |
-| Warnings / Errors | §35 error pot | unified | ⏳ planned | — |
-| Worker / Decision Stats | `WorkerPerformanceStats` / `DecisionLogicStats` | unified | ✅ (`WorkerDecisionReport` — per-unit worker timing + decision stats + per-worker totals; #398) | ✅ the breakdown renders from the model (worker timing + decision + ticks); only the operation **Total** stays profiling-coupled (it feeds the coordination-overhead delta) until the Profiling migration absorbs it |
-| Profiling / Warmup / Block-Splitting | profiling, coordination, warmup phases | **sim-only** | console-only (migrates later) | n/a |
-| Shutdown / Emergency / Session | `shutdown_mode`, `emergency_reason`, session timing | **autotrader-only** | console-only (migrates later) | operational view stays; #389 analytics line model-sourced |
+| Trade History (#389 analytics) | unified | ✅ | ✅ | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · slippage distribution · rejection-by-reason |
+| Order History | unified | ✅ | ✅ | — |
+| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — |
+| Portfolio — aggregated (by currency) | unified | on `PortfolioAggregator` | ✅ inline | **#397** — model it + retire `PortfolioAggregator` |
+| Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
+| Execution Stats — per-scenario | unified | ✅ | ✅ | — |
+| Execution — aggregated ORDER EXECUTION | unified | on `PortfolioAggregator` | ✅ inline | **#397** (folds with the portfolio aggregate) |
+| Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
+| Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
+| Worker / Decision (#398) | unified | ✅ (`WorkerDecisionReport`) | ✅ (overhead Total now from the profiling model, #399 — residual closed) | **3d** — merge `performance_summary` worker views (DETAILS / AGGREGATED / SLOWEST) into this one model-fed view |
+| Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
+| Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ⏳ inline (`warmup_phase_summary`) | **3c** — render from the model + retire `warmup_phase_summary` |
+| Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
+| Broker Configuration | unified | ⏳ | ✅ inline | **no issue yet** — migrate `broker_summary` → model |
+| Warnings / Errors | unified | ⏳ | ✅ inline | **#395** — incl. the executive failed-scenario headline |
+| Executive — detailed portfolio-performance block | **sim-only** | on `PortfolioAggregator` | ✅ inline | **#397** |
+| Shutdown / Emergency / Session | **autotrader-only** | ⏳ | ✅ inline | migrates later (live post-session); #389 analytics line already model-sourced |
+| **Final:** directory consolidation | — | — | — | **#396** — fold `batch_reporting/` into `framework/reporting/` (after all the above) |
 
 The **array model** is the unifier: a run is a list of units (sim: N scenarios; live: 1
 session). Where a section carries per-unit meaning (portfolio breakdown) the model keeps the
@@ -206,20 +214,21 @@ the API serves either pipeline's run by `run_id`.
    approximation (`10^-(digits-1)`); exact per-symbol `pip_size` is #167.
 4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
-5. The remaining report sections (the per-pipeline ones: performance / profiling / warmup /
-   block-splitting / broker / executive, and warnings/errors) migrate to the model; the visual
-   channel (#379) consumes the API.
+5. The remaining report sections (the per-pipeline ones: warmup / block-splitting / broker /
+   executive, and warnings/errors) migrate to the model; the visual channel (#379) consumes the API.
 6. **Console / file renderers from the model (#393, in progress)** — **done:** **trade-history**
    (audit table + #330 execution sub-lines + #389 analytics block), **order rejections**,
    **portfolio** per-scenario (linear, boxes removed), **scenario-details** (linear, incl. failed
    scenarios), **pending-orders**, **execution-stats** per-scenario, and the **AutoTrader**
    post-session #389 line, the **run-summary** headline opening the executive section, and the
-   **worker/decision** breakdown (facts from the model; only the profiling Total is residual, #398).
-   **Still inline (the renderers left to retire):** performance / profiling / warmup /
-   block-splitting · broker · the executive's **detailed** portfolio-performance block · warnings/errors
-   (→ Part C of #391, **#395**) · the cross-domain **portfolio aggregated** + ORDER EXECUTION block (still
-   on `PortfolioAggregator`). The last two are model-fed when `PortfolioAggregator` is retired
-   (**#397** — the aggregated-portfolio model). File-logs follow automatically (captured stdout).
+   **worker/decision** breakdown (now fully model-fed — the overhead Total comes from the profiling
+   model, #399, closing the #398 residual), and **profiling** (operations + inter-tick + clipping, #399).
+   **Still inline (the renderers left to retire):** warmup (`warmup_phase_summary` → fold into the
+   profiling model, **#399 3c**) · `performance_summary` worker views (→ merge into worker/decision,
+   **#399 3d**) · broker · block-splitting (generation concern, separate) · the executive's **detailed**
+   portfolio-performance block · warnings/errors (→ Part C of #391, **#395**) · the cross-domain
+   **portfolio aggregated** + ORDER EXECUTION block (still on `PortfolioAggregator`, → **#397**).
+   File-logs follow automatically (captured stdout).
 7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
    fold `framework/batch_reporting/` into one `framework/reporting/` home organized by stage:
    `run_reports/` (DERIVE) · `io/` (PERSIST — the `*_report_io` + `report_store`) · `console/`

@@ -367,3 +367,96 @@ class WorkerDecisionReport(BaseModel):
     """
     units: list[WorkerDecisionUnitRow]
     worker_totals: list[WorkerStatRow] = []     # per-worker timing summed across units
+
+
+class ProfilingOperationRow(BaseModel):
+    """One tick-loop operation's timing within a unit (#399)."""
+    operation: str
+    total_time_ms: float = 0.0
+    avg_time_ms: float = 0.0
+    call_count: int = 0
+    pct: float = 0.0            # share of the unit's total_per_tick time
+
+
+class InterTickStatsRow(BaseModel):
+    """Inter-tick interval distribution for a unit (#399) — market-side time between ticks."""
+    min_ms: float = 0.0
+    p5_ms: float = 0.0
+    median_ms: float = 0.0
+    mean_ms: float = 0.0
+    p95_ms: float = 0.0
+    max_ms: float = 0.0
+    interval_count: int = 0
+    gaps_removed: int = 0
+    threshold_s: float = 0.0
+
+
+class ClippingRow(BaseModel):
+    """Tick-clipping (budget filter) stats for a unit (#399) — sim-only."""
+    ticks_total: int = 0
+    ticks_kept: int = 0
+    ticks_clipped: int = 0
+    clipping_rate_pct: float = 0.0
+    budget_ms: float = 0.0
+
+
+class ProfilingUnitRow(BaseModel):
+    """Per-unit tick-loop profiling (#399, sim-only): operation timing + inter-tick + clipping."""
+    name: str
+    symbol: str
+    total_ticks: int = 0
+    avg_per_tick_ms: float = 0.0
+    total_ms: float = 0.0                   # total_per_tick across all operations
+    bottleneck_operation: str = ''          # the highest-share operation
+    bottleneck_pct: float = 0.0
+    operations: list[ProfilingOperationRow] = []
+    inter_tick: InterTickStatsRow | None = None
+    clipping: ClippingRow | None = None
+
+
+class WarmupPhaseRow(BaseModel):
+    """One warmup phase (#399, run-level)."""
+    name: str
+    duration_s: float = 0.0
+
+
+class ProfilingBottleneckRow(BaseModel):
+    """Cross-scenario bottleneck frequency for one operation (#399)."""
+    operation: str
+    scenario_count: int = 0     # in how many scenarios this op was the bottleneck
+    total_scenarios: int = 0
+    pct: float = 0.0
+    status: str = ''            # 'expected' | 'critical' | 'optimize' | 'review' | 'none'
+
+
+class ProfilingAggregate(BaseModel):
+    """Run-level profiling roll-up (#399) — composed from the unit rows by the aggregator."""
+    scenarios: int = 0
+    total_ticks: int = 0
+    total_time_s: float = 0.0
+    avg_per_tick_ms: float = 0.0
+    most_common_bottleneck: str = ''
+    most_common_bottleneck_pct: float = 0.0
+    p5_min_ms: float = 0.0      # P5 range across scenarios
+    p5_max_ms: float = 0.0
+    p95_processing_ms: float = 0.0
+    suggested_budget_ms: float = 0.0    # P95 + 10% margin
+    budget_active: bool = False
+    # Clipping roll-up (only meaningful when budget_active)
+    clipping_total_ticks: int = 0
+    clipping_total_kept: int = 0
+    clipping_total_clipped: int = 0
+    clipping_budgets: list[float] = []          # distinct budget values across scenarios
+    avg_operation_times: list[ProfilingOperationRow] = []   # per op, cross-scenario avg (avg_time_ms)
+    bottlenecks: list[ProfilingBottleneckRow] = []
+
+
+class ProfilingReport(BaseModel):
+    """
+    Per-unit tick-loop profiling + run-level roll-up + warmup (#399, **sim-only**). Closes the
+    #398 residual: the `worker_decision` operation Total now lives here, so the worker/decision
+    breakdown reads it from the model instead of the profiling map.
+    """
+    units: list[ProfilingUnitRow]
+    aggregate: ProfilingAggregate = ProfilingAggregate()
+    warmup_phases: list[WarmupPhaseRow] = []

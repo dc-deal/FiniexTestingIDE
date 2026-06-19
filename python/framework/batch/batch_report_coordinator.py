@@ -19,6 +19,8 @@ from python.framework.reporting.run_reports.pending_orders_report_builder import
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.run_reports.profiling_report_builder import build_profiling_report_from_batch
+from python.framework.reporting.run_reports.profiling_report_io import write_profiling_report
 from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
 from python.framework.reporting.run_reports.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.run_unit import run_units_from_batch
@@ -98,6 +100,8 @@ class BatchReportCoordinator:
             portfolio_report, trade_report, execution_stats_report)
         # Worker/decision — per-unit worker + decision performance (unified, #398).
         worker_decision_report = build_worker_decision_report(units)
+        # Profiling — per-scenario operation timing + inter-tick + clipping + warmup (sim-only, #399).
+        profiling_report = build_profiling_report_from_batch(self._batch_execution_summary)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -112,6 +116,7 @@ class BatchReportCoordinator:
             scenario_details_report=scenario_details_report,
             run_summary=run_summary,
             worker_decision_report=worker_decision_report,
+            profiling_report=profiling_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -168,3 +173,4 @@ class BatchReportCoordinator:
         write_scenario_details_report(scenario_details_report, run_dir)
         write_run_summary(run_summary, run_dir)
         write_worker_decision_report(worker_decision_report, run_dir)
+        write_profiling_report(profiling_report, run_dir)

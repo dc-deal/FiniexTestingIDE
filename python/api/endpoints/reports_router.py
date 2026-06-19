@@ -15,7 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -189,6 +189,25 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
         raise ApiException(
             404, 'run_not_found',
             f"No worker-decision artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/profiling', response_model=ProfilingReport)
+def get_profiling(run_id: str) -> ProfilingReport:
+    """
+    Profiling report for a run (per-scenario operation timing + inter-tick + clipping + warmup, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ProfilingReport (404 if the run has no profiling artifact)
+    """
+    report = ReportStore().get_profiling(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No profiling artifact for run '{run_id}'")
     return report
 
 

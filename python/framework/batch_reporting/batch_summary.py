@@ -23,7 +23,7 @@ from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSum
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -50,6 +50,7 @@ class BatchSummary:
         scenario_details_report: ScenarioDetailsReport,
         run_summary: RunSummary,
         worker_decision_report: WorkerDecisionReport,
+        profiling_report: ProfilingReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -77,10 +78,10 @@ class BatchSummary:
         profiling_data_map = self.build_profiling_data_map(
             batch_execution_summary)
 
-        self.profiling_summary = ProfilingSummary(
-            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
+        self.profiling_summary = ProfilingSummary(profiling_report)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
-            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map,
+            batch_execution_summary=batch_execution_summary,
+            profiling_report=profiling_report,
             worker_decision_report=worker_decision_report)
 
         # Broker summary
