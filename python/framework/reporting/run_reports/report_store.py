@@ -28,11 +28,14 @@ from python.framework.reporting.run_reports.profiling_report_io import (
     PROFILING_ARTIFACT, read_profiling_report)
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_io import (
+    WARNINGS_ERRORS_ARTIFACT, read_warnings_errors_report)
 from python.framework.reporting.run_reports.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
     BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 
 class ReportStore:
@@ -202,6 +205,21 @@ class ReportStore:
         if path is None:
             return None
         return read_profiling_report(path)
+
+    def get_warnings_errors(self, run_id: str) -> Optional[WarningsErrorsReport]:
+        """
+        Read a run's warnings & errors report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The warnings/errors report, or None if the run has no artifact
+        """
+        path = self._resolve(run_id, WARNINGS_ERRORS_ARTIFACT)
+        if path is None:
+            return None
+        return read_warnings_errors_report(path)
 
     def get_broker(self, run_id: str) -> Optional[BrokerReport]:
         """

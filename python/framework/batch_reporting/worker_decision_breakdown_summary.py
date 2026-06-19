@@ -90,25 +90,6 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
         print()
 
-    def render_overhead_analysis(self, renderer, compact: bool = False, threshold: int = 9):
-        """
-        Render overhead analysis.
-
-        Args:
-            renderer: ConsoleRenderer instance
-            compact: If True, truncate high-overhead list to threshold entries
-            threshold: Max entries to display before collapsing
-        """
-        if not self._both_layers_have_data():
-            return
-
-        print()
-        renderer.section_separator()
-        renderer.print_bold("🔥 OVERHEAD ANALYSIS")
-        renderer.section_separator()
-        self._render_overhead_details(renderer, compact=compact, threshold=threshold)
-        print()
-
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
         """Build breakdowns from scenarios."""
         breakdowns = []
@@ -200,56 +181,16 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
               f"{breakdown.decision_logic_pct:>5.1f}%      │")
 
         bar_overhead = self._create_bar(breakdown.coordination_overhead_pct)
-        color = renderer.red if breakdown.is_high_overhead else renderer.yellow
-        indicator = " ⚠️ " if breakdown.is_high_overhead else "    "
+        # Overhead % is a pure calculation; the "too high?" verdict lives in the post-run
+        # validator (#395), so no ⚠️ / red flag is asserted here.
         print(f"│ Coordination Overhead {breakdown.coordination_overhead_ms:>7.2f}ms  {bar_overhead}  "
-              f"{color(f'{breakdown.coordination_overhead_pct:>5.1f}%')} {indicator}│")
+              f"{renderer.yellow(f'{breakdown.coordination_overhead_pct:>5.1f}%')}     │")
 
         print("└────────────────────────────────────────────────────┘")
         print()
         # Per-worker timing is rendered once, by the model-fed performance summary
         # (WORKER DETAILS) — not duplicated here (#399 3d). The Components box above
         # is the overhead split; the per-worker detail lives in PerformanceSummary.
-
-    def _render_overhead_details(self, renderer, compact: bool = False, threshold: int = 9):
-        """
-        Render overhead analysis.
-
-        Args:
-            renderer: ConsoleRenderer instance
-            compact: If True, truncate list to threshold entries
-            threshold: Max entries to display before collapsing
-        """
-        if not self.breakdowns:
-            return
-
-        high_overhead = [b for b in self.breakdowns if b.is_high_overhead]
-
-        if not high_overhead:
-            print(renderer.green("✅ No high overhead"))
-            return
-
-        high_overhead.sort(key=lambda b: b.overhead_ratio, reverse=True)
-
-        print(f"High overhead: {len(high_overhead)}")
-        print()
-
-        header = f"{'Scenario':<30} {'Overhead':<12} {'Ratio':<10}"
-        print(renderer.bold(header))
-        print("-" * 55)
-
-        visible = high_overhead[:threshold] if compact and len(high_overhead) > threshold else high_overhead
-        for breakdown in visible:
-            name = breakdown.scenario_name[:28]
-            overhead = f"{breakdown.coordination_overhead_ms:.2f}ms"
-            ratio = f"{breakdown.overhead_ratio:.2f}x"
-            status = renderer.red(
-                "Critical") if breakdown.overhead_ratio >= 2.0 else renderer.yellow("High")
-            print(f"{name:<30} {overhead:<12} {ratio:<10} {status}")
-
-        if compact and len(high_overhead) > threshold:
-            remaining = len(high_overhead) - threshold
-            print(f"  … +{remaining} more (all High) — see log for full list")
 
     def _create_bar(self, percentage: float, width: int = 12) -> str:
         """Create ASCII bar."""

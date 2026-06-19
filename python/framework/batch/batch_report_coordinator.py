@@ -31,6 +31,8 @@ from python.framework.reporting.run_reports.scenario_details_report_io import wr
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_builder import build_warnings_errors_report_from_batch
+from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
 from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
 from python.configuration.app_config_manager import AppConfigManager
@@ -106,6 +108,9 @@ class BatchReportCoordinator:
         profiling_report = build_profiling_report_from_batch(self._batch_execution_summary)
         # Broker configuration — per-broker spec + scenarios + symbols (sim-only).
         broker_report = build_broker_report_from_batch(self._batch_execution_summary)
+        # Warnings & errors — tiered, from the validation channels + log pots (#395).
+        warnings_errors_report = build_warnings_errors_report_from_batch(
+            self._batch_execution_summary)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -122,6 +127,7 @@ class BatchReportCoordinator:
             worker_decision_report=worker_decision_report,
             profiling_report=profiling_report,
             broker_report=broker_report,
+            warnings_errors_report=warnings_errors_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -180,3 +186,4 @@ class BatchReportCoordinator:
         write_worker_decision_report(worker_decision_report, run_dir)
         write_profiling_report(profiling_report, run_dir)
         write_broker_report(broker_report, run_dir)
+        write_warnings_errors_report(warnings_errors_report, run_dir)

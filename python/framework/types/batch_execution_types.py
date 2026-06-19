@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.validation_types import ValidationResult
 
 
 @dataclass
@@ -33,7 +34,8 @@ class BatchExecutionSummary:
         warmup_phases: Optional[List[WarmupPhaseEntry]] = None,
         batch_pickle_time: float = 0.0,
         batch_pickle_sample_mb: float = 0.0,
-        debug_execution: bool = False
+        debug_execution: bool = False,
+        batch_validation_result: Optional[List[ValidationResult]] = None
     ):
         self._batch_execution_time = batch_execution_time
         self._batch_warmup_time = batch_warmup_time
@@ -48,6 +50,9 @@ class BatchExecutionSummary:
         # True when the batch ran under a debugger / DEBUG_MODE (serial, trace
         # overhead) → per-tick timings in the report are not representative.
         self._debug_execution = debug_execution
+        # Run-scoped (batch-global) validation results — the home for warnings that are not
+        # per-scenario (e.g. debug-mode). Filled by post-run validators, never by the report.
+        self._batch_validation_result: List[ValidationResult] = batch_validation_result or []
 
     @property
     def batch_execution_time(self) -> float:
@@ -88,6 +93,19 @@ class BatchExecutionSummary:
     @property
     def debug_execution(self) -> bool:
         return self._debug_execution
+
+    @property
+    def batch_validation_result(self) -> List[ValidationResult]:
+        return self._batch_validation_result
+
+    def add_batch_validation_result(self, result: ValidationResult) -> None:
+        """
+        Append a run-scoped (batch-global) validation result.
+
+        Args:
+            result: ValidationResult carrying batch-global warnings/errors
+        """
+        self._batch_validation_result.append(result)
 
     @property
     def batch_pickle_sample_mb(self) -> float:

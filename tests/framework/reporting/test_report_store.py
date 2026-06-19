@@ -19,13 +19,15 @@ from python.framework.reporting.run_reports.run_summary_io import write_run_summ
 from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.types.api.report_types import (
     ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
     ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
-    TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
+    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -280,6 +282,29 @@ def _broker_report() -> BrokerReport:
         broker_type='kraken_spot', market_type='crypto', company='Kraken',
         config_hash='abcd1234', scenarios=['btc_run'],
         symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
+
+
+def _warnings_errors_report() -> WarningsErrorsReport:
+    return WarningsErrorsReport(
+        warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
+        errors=[UnitErrorRow(name='bad', symbol='BTCUSD', error_type='ValidationError')],
+        outcome=WarningsErrorsOutcome(failed_count=1, total_units=2))
+
+
+class TestWarningsErrors:
+    def test_reads_warnings_errors(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_warnings_errors_report(_warnings_errors_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_warnings_errors('20260615_120000')
+        assert report is not None
+        assert report.warnings[0].message == 'DEBUG MODE'
+        assert report.errors[0].name == 'bad'
+        assert report.outcome.failed_count == 1
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_warnings_errors('nope') is None
 
 
 class TestBroker:

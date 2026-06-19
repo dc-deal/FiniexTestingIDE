@@ -15,7 +15,8 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
     BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -208,6 +209,25 @@ def get_profiling(run_id: str) -> ProfilingReport:
         raise ApiException(
             404, 'run_not_found',
             f"No profiling artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/warnings-errors', response_model=WarningsErrorsReport)
+def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
+    """
+    Warnings & errors report for a run (tiered warnings + per-unit errors + outcome, both pipelines).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
+    """
+    report = ReportStore().get_warnings_errors(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No warnings-errors artifact for run '{run_id}'")
     return report
 
 

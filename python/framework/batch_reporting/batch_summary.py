@@ -8,7 +8,7 @@ Architecture:
 - Uses ConsoleRenderer for unified output
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from python.framework.batch_reporting.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
@@ -22,13 +22,13 @@ from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
-from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData
 
 
 class BatchSummary:
@@ -51,6 +51,7 @@ class BatchSummary:
         worker_decision_report: WorkerDecisionReport,
         profiling_report: ProfilingReport,
         broker_report: BrokerReport,
+        warnings_errors_report: WarningsErrorsReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -66,17 +67,13 @@ class BatchSummary:
         self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config
         self._run_summary = run_summary
+        self._warnings_errors_report = warnings_errors_report
         self._generator_profiles = generator_profiles
 
         # Initialize sub-summaries — portfolio renders from the unified model (#393)
         self.portfolio_summary = PortfolioSummary(
             portfolio_report, pending_report, execution_report)
         self.performance_summary = PerformanceSummary(worker_decision_report)
-
-        # Built once and shared by the profiling + worker-decision sections (from_dicts
-        # is non-mutating, so this is for reuse, not a correctness constraint).
-        profiling_data_map = self.build_profiling_data_map(
-            batch_execution_summary)
 
         self.profiling_summary = ProfilingSummary(profiling_report)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
@@ -91,9 +88,8 @@ class BatchSummary:
         self.trade_history_summary = TradeHistorySummary(
             trade_report, order_report)
 
-        # Warnings summary (always rendered)
-        self.warnings_summary = WarningsSummary(
-            batch_execution_summary, profiling_data_map=profiling_data_map)
+        # Warnings & errors summary — renders from the unified model (#395)
+        self.warnings_summary = WarningsSummary(warnings_errors_report)
 
         # Scenario details — linear presenter from the model (#393)
         self.scenario_details_summary = ScenarioDetailsSummary(scenario_details_report)
@@ -135,26 +131,6 @@ class BatchSummary:
             return BatchStatus.FAILED
         else:
             return BatchStatus.PARTIAL
-
-    def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
-        # Build ProfilingData for all scenarios
-
-        profiling_data_map = {}
-
-        for process_result in batch_execution_summary.process_result_list:
-            # Check if profiling data exists
-            if (not process_result.tick_loop_results or
-                    not process_result.tick_loop_results.profiling_data):
-                continue
-            profiling = ProfilingData.from_dicts(
-                process_result.tick_loop_results.profiling_data.profile_times,
-                process_result.tick_loop_results.profiling_data.profile_counts,
-                inter_tick_intervals_ms=process_result.tick_loop_results.profiling_data.inter_tick_intervals_ms,
-                gap_threshold_s=process_result.tick_loop_results.profiling_data.gap_threshold_s,
-                ticks_total=process_result.tick_loop_results.profiling_data.ticks_total
-            )
-            profiling_data_map[process_result.scenario_index] = profiling
-        return profiling_data_map
 
     def render_all(self, summary_detail: Optional[bool] = None):
         """
@@ -229,11 +205,11 @@ class BatchSummary:
         self.profiling_summary.render_aggregated(self._renderer, compact=compact, threshold=threshold)
         self.profiling_summary.render_bottleneck_analysis(self._renderer)
 
-        # Worker Decision Breakdown
+        # Worker Decision Breakdown — the overhead/bottleneck "too high?" verdicts moved to the
+        # post-run validator (#395); the breakdown now shows the calculated split only.
         if summary_detail:
             self.worker_decision_breakdown.render_per_scenario(self._renderer)
         self.worker_decision_breakdown.render_aggregated()
-        self.worker_decision_breakdown.render_overhead_analysis(self._renderer, compact=compact, threshold=threshold)
 
         # Warmup phase breakdown (summary_detail only) — from the profiling model (#399)
         if summary_detail:
@@ -252,6 +228,7 @@ class BatchSummary:
         # Executive Summary
         executive = ExecutiveSummary(
             self.batch_execution_summary, self.app_config, self._run_summary,
+            self._warnings_errors_report,
             generator_profiles=self._generator_profiles
         )
         executive.render(self._renderer)

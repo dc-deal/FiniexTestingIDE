@@ -428,7 +428,7 @@ class ProfilingBottleneckRow(BaseModel):
     scenario_count: int = 0     # in how many scenarios this op was the bottleneck
     total_scenarios: int = 0
     pct: float = 0.0
-    status: str = ''            # 'expected' | 'critical' | 'optimize' | 'review' | 'none'
+    status: str = ''            # display class only: 'expected' (hot path) | 'infra' | 'none'
 
 
 class ProfilingAggregate(BaseModel):
@@ -502,3 +502,44 @@ class BrokerReport(BaseModel):
     at AutoTrader startup but not yet carried into the session report (live follow-up).
     """
     units: list[BrokerInfoRow]
+
+
+class WarningRow(BaseModel):
+    """One warning notice (#395). See docs/architecture/warnings_errors_tiers.md."""
+    tier: str = 'major'             # 'major' (Tier 1, validator-produced) | 'minor' (Tier 2, log pot)
+    scope: str = 'run'              # 'run' (batch-global) | unit name (per-scenario / session)
+    message: str = ''
+
+
+class UnitErrorRow(BaseModel):
+    """Per-unit error record (#395): the villain + validation errors + the logged ERROR pot."""
+    name: str
+    symbol: str = ''
+    error_type: str = ''            # ProcessResult villain (uncaught exception)
+    error_message: str = ''
+    validation_errors: list[str] = []   # ValidationResult.errors (is_valid=False)
+    logged_errors: list[str] = []       # scenario/session logger ERROR pot (§35)
+    traceback: str = ''
+
+
+class WarningsErrorsOutcome(BaseModel):
+    """Run-level outcome (#395) — the Executive headline reads this, it does not re-scan."""
+    failed_count: int = 0
+    total_units: int = 0
+    failed_unit_names: list[str] = []
+    first_failure_name: str = ''
+    first_failure_error: str = ''
+    emergency_reason: str = ''      # live villain
+    shutdown_mode: str = ''         # live outcome ('normal' | 'emergency')
+
+
+class WarningsErrorsReport(BaseModel):
+    """
+    Unified warnings & errors section (#395, both pipelines). Tiered: errors (always) +
+    Tier-1 major warnings (validator-produced) + Tier-2 minor warnings (log pot). The
+    reporting pipeline only reads — every verdict is decided by a validator upstream.
+    See docs/architecture/warnings_errors_tiers.md.
+    """
+    warnings: list[WarningRow] = []
+    errors: list[UnitErrorRow] = []
+    outcome: WarningsErrorsOutcome = WarningsErrorsOutcome()

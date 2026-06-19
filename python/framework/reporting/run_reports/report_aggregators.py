@@ -15,10 +15,7 @@ from python.framework.types.api.report_types import (
     ExecutionStatsRow, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioUnitRow,
     ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow, ProfilingUnitRow,
     TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow, WorkerStatRow)
-
-
-# Operations that are strategy work — a high bottleneck share there is GOOD, not a problem (#399).
-_EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
+from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
 
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -268,7 +265,9 @@ def aggregate_profiling(rows: List[ProfilingUnitRow], budget_active: bool) -> Pr
     clipping_total_clipped = sum(c.ticks_clipped for c in clips)
     clipping_budgets = sorted({c.budget_ms for c in clips})
 
-    # Per-operation bottleneck analysis (all operations seen, with frequency + status).
+    # Per-operation bottleneck frequency (all operations seen). `status` is a display
+    # classification only (expected hot-path vs. infra) — the "is this a problem?" verdict is a
+    # decision and lives in the post-run validator (#395, no decisions in reports).
     all_ops = {op.operation for row in rows for op in row.operations}
     bottlenecks = [
         ProfilingBottleneckRow(
@@ -276,7 +275,7 @@ def aggregate_profiling(rows: List[ProfilingUnitRow], budget_active: bool) -> Pr
             scenario_count=freq.get(op, 0),
             total_scenarios=scenarios,
             pct=(freq.get(op, 0) / scenarios * 100) if scenarios else 0.0,
-            status=_bottleneck_status(op, freq.get(op, 0), (freq.get(op, 0) / scenarios * 100) if scenarios else 0.0))
+            status=_bottleneck_status(op, freq.get(op, 0)))
         for op in all_ops
     ]
     bottlenecks.sort(key=lambda b: (-b.scenario_count, b.operation))
@@ -292,14 +291,12 @@ def aggregate_profiling(rows: List[ProfilingUnitRow], budget_active: bool) -> Pr
         bottlenecks=bottlenecks)
 
 
-def _bottleneck_status(operation: str, count: int, pct: float) -> str:
-    """Classify an operation's bottleneck frequency (mirrors the console thresholds)."""
+def _bottleneck_status(operation: str, count: int) -> str:
+    """
+    Display classification only: 'expected' (intended hot path) vs 'infra', or 'none' when this
+    operation was never the bottleneck. NOT a verdict — whether an infra bottleneck is a problem
+    is decided by the post-run validator (#395).
+    """
     if count == 0:
         return 'none'
-    if operation in _EXPECTED_OPERATIONS:
-        return 'expected'
-    if pct >= 40:
-        return 'critical'
-    if pct >= 15:
-        return 'optimize'
-    return 'review'
+    return 'expected' if operation in EXPECTED_OPERATIONS else 'infra'

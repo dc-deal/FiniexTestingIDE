@@ -10,11 +10,8 @@ bottleneck frequency, cross-scenario averages) are all read from the model — n
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
     InterTickStatsRow, ProfilingReport, ProfilingUnitRow)
+from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
 from python.framework.utils.console_renderer import ConsoleRenderer
-
-
-# Expected operations (strategy work — a high share here is GOOD, not a bottleneck).
-_EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
 
 
 class ProfilingSummary(AbstractBatchSummarySection):
@@ -191,7 +188,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
         # Rows
         for op in unit.operations:
-            is_expected = op.operation in _EXPECTED_OPERATIONS
+            is_expected = op.operation in EXPECTED_OPERATIONS
 
             if is_expected:
                 # Expected operation - positive coloring
@@ -222,7 +219,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
         if unit.bottleneck_operation:
             print()
             # Icon based on whether it's expected
-            is_expected_bottleneck = unit.bottleneck_operation in _EXPECTED_OPERATIONS
+            is_expected_bottleneck = unit.bottleneck_operation in EXPECTED_OPERATIONS
             icon = renderer.green(
                 '✅') if is_expected_bottleneck else renderer.red('🔥')
             print(f"  {icon} {renderer.bold(unit.bottleneck_operation)} "
@@ -457,14 +454,15 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
     @staticmethod
     def _bottleneck_label(status: str, pct: float, renderer: ConsoleRenderer):
-        """Map a bottleneck status token to (color_func, status_label) — mirrors the console rules."""
+        """
+        Map a bottleneck display class to (color_func, label). Display only (hot-path vs infra
+        coloring) — whether an infra bottleneck is a problem is a verdict decided by the post-run
+        validator (#395), not asserted here.
+        """
         if status == 'none':
             return (lambda x: x), '-'
         if status == 'expected':
             color = renderer.green if pct >= 50 else renderer.yellow
             return color, '✅ Expected'
-        if status == 'critical':
-            return renderer.red, '⚠️  Critical'
-        if status == 'optimize':
-            return renderer.yellow, '⚠️  Optimize'
-        return (lambda x: x), '⚠️  Review'
+        # infra — a strategy-external operation dominating; flagged by color, not a verdict
+        return renderer.red, '🔥 Infra'

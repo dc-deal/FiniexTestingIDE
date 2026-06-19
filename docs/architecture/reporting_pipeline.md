@@ -32,11 +32,11 @@ see *Pipeline in detail* below.
 |---|---|---|
 | Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
 | Run units | `framework/reporting/run_reports/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
-| Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` are the exceptions — not via `RunUnit`: `scenario_details` reads the batch directly (failed scenarios carry no `RunUnit`), `profiling` is a batch-keyed snapshot, `broker` maps the resolved `BrokerConfig` (sim: batch map · live: executor) |
+| Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here) |
 | Aggregators | `framework/reporting/run_reports/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, portfolio per-currency roll-up). Ratios recomputed from summed components (mirrors the console `PortfolioAggregator`) |
 | Run summary | `framework/reporting/run_reports/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
-| IO | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,worker_decision,profiling,broker}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` |
+| IO | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,worker_decision,profiling,broker,warnings_errors}_report_io.py` | write the artifact(s); read back + filter (the API path) |
+| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision,profiling}` with section-specific filters |
@@ -146,7 +146,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
 | Broker Configuration | unified | ✅ (`BrokerReport`) | ✅ from the model (sim full table · live compact line) | — |
-| Warnings / Errors | unified | ⏳ | ✅ inline | **#395** — incl. the executive failed-scenario headline |
+| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | live render still reads session buffers (same source) |
 | Executive — detailed portfolio-performance block | **sim-only** | on `PortfolioAggregator` | ✅ inline | **#397** |
 | Shutdown / Emergency / Session | **autotrader-only** | ⏳ | ✅ inline | migrates later (live post-session); #389 analytics line already model-sourced |
 | **Final:** directory consolidation | — | — | — | **#396** — fold `batch_reporting/` into `framework/reporting/` (after all the above) |
@@ -214,8 +214,8 @@ the API serves either pipeline's run by `run_id`.
    approximation (`10^-(digits-1)`); exact per-symbol `pip_size` is #167.
 4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
-5. The remaining report sections (the per-pipeline ones: block-splitting / executive,
-   and warnings/errors) migrate to the model; the visual channel (#379) consumes the API.
+5. The remaining report sections (block-splitting / the executive's detailed portfolio block)
+   migrate to the model; the visual channel (#379) consumes the API.
 6. **Console / file renderers from the model (#393, in progress)** — **done:** **trade-history**
    (audit table + #330 execution sub-lines + #389 analytics block), **order rejections**,
    **portfolio** per-scenario (linear, boxes removed), **scenario-details** (linear, incl. failed
@@ -227,11 +227,18 @@ the API serves either pipeline's run by `run_id`.
    aggregate + bottleneck now model-fed, the duplicate per-scenario worker list removed, #399 3d),
    and the **broker** configuration section (`BrokerReport`, both pipelines — sim renders the full
    table, the live post-session summary a compact broker/symbol line; `broker.json` written by both,
-   the AutoTrader `broker_config` threaded in from the executor).
+   the AutoTrader `broker_config` threaded in from the executor), and **warnings & errors**
+   (`WarningsErrorsReport`, both pipelines — tiered; the inline warning checks were lifted into
+   `PostRunValidator`, the executive failed-headline reads the model outcome, the orchestrator keeps
+   a thin global-log line, #395). The decision **smells** in the already-migrated profiling /
+   worker-breakdown renderers were eliminated too: the `is_high_overhead` (>50%) and the bottleneck
+   `critical/optimize/review` **verdicts** moved into `PostRunValidator` advisories — the reports now
+   show only the calculation (overhead %, bottleneck frequency) plus a display class (hot-path vs
+   infra); `EXPECTED_OPERATIONS` consolidated to one source.
    **Still inline (the renderers left to retire):** block-splitting (generation concern,
-   separate) · the executive's **detailed** portfolio-performance block · warnings/errors (→ Part C
-   of #391, **#395**) · the cross-domain **portfolio aggregated** + ORDER EXECUTION block (still on
-   `PortfolioAggregator`, → **#397**). File-logs follow automatically (captured stdout).
+   separate) · the executive's **detailed** portfolio-performance block · the cross-domain
+   **portfolio aggregated** + ORDER EXECUTION block (still on `PortfolioAggregator`, → **#397**).
+   File-logs follow automatically (captured stdout).
 7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
    fold `framework/batch_reporting/` into one `framework/reporting/` home organized by stage:
    `run_reports/` (DERIVE) · `io/` (PERSIST — the `*_report_io` + `report_store`) · `console/`

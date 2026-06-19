@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_io import write_execution_stats_report
+from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
@@ -29,7 +30,8 @@ from python.framework.types.api.report_types import (
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
-    TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
+    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -44,6 +46,7 @@ _PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
 _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 _RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
 _BROKER_URL = f'/api/v1/reports/runs/{_RUN}/broker'
+_WARNINGS_URL = f'/api/v1/reports/runs/{_RUN}/warnings-errors'
 
 
 def _report() -> TradeHistoryReport:
@@ -138,6 +141,13 @@ def _broker_report() -> BrokerReport:
         symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
 
 
+def _warnings_errors_report() -> WarningsErrorsReport:
+    return WarningsErrorsReport(
+        warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
+        errors=[UnitErrorRow(name='bad', symbol='BTCUSD', error_type='ValidationError')],
+        outcome=WarningsErrorsOutcome(failed_count=1, total_units=2))
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -150,6 +160,7 @@ def client(tmp_path: Path):
     write_scenario_details_report(_scenario_details_report(), run_dir)
     write_run_summary(_run_summary(), run_dir)
     write_broker_report(_broker_report(), run_dir)
+    write_warnings_errors_report(_warnings_errors_report(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -277,4 +288,18 @@ def test_broker_returns(client):
 
 def test_broker_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/broker')
+    assert response.status_code == 404
+
+
+def test_warnings_errors_returns(client):
+    response = client.get(_WARNINGS_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['warnings'][0]['message'] == 'DEBUG MODE'
+    assert body['errors'][0]['name'] == 'bad'
+    assert body['outcome']['failed_count'] == 1
+
+
+def test_warnings_errors_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/warnings-errors')
     assert response.status_code == 404

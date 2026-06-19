@@ -14,7 +14,7 @@ import psutil
 from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.types.api.report_types import RunSummary
+from python.framework.types.api.report_types import RunSummary, WarningsErrorsOutcome, WarningsErrorsReport
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -39,6 +39,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigManager,
         run_summary: RunSummary,
+        warnings_errors_report: WarningsErrorsReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -48,11 +49,14 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             batch_execution_summary: Batch execution results
             app_config: Application configuration
             run_summary: Cross-section run KPIs (the model-fed headline source)
+            warnings_errors_report: Warnings/errors model — the failed-scenario headline reads its
+                outcome (no inline re-scan of process results, #395)
             generator_profiles: Generator profiles for Profile Run source info (None for normal runs)
         """
         self._batch_summary = batch_execution_summary
         self._app_config = app_config
         self._run_summary = run_summary
+        self._outcome = warnings_errors_report.outcome
         self._generator_profiles = generator_profiles
 
     def render(self, renderer: ConsoleRenderer):
@@ -117,12 +121,12 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
     def _render_execution_results(self, renderer: ConsoleRenderer):
         """Render execution results section."""
-        process_results = self._batch_summary.process_result_list
         scenarios = self._batch_summary.single_scenario_list
 
         total_scenarios = len(scenarios)
-        successful = sum(1 for r in process_results if r.success)
-        failed = total_scenarios - successful
+        # Failure truth from the warnings/errors model (no inline re-scan, #395)
+        failed = self._outcome.failed_count
+        successful = total_scenarios - failed
         success_rate = (successful / total_scenarios *
                         100) if total_scenarios > 0 else 0
 
@@ -148,10 +152,6 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         disabled = sum(1 for s in scenarios if hasattr(
             s, 'enabled') and not s.enabled)
 
-        # Get first failed scenario info
-        first_failed = next(
-            (r for r in process_results if not r.success), None)
-
         # Render section
         renderer.print_bold("EXECUTION RESULTS")
         renderer.print_separator(width=68)
@@ -161,9 +161,9 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             f"Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)")
         print(f"Status:             {status_str}")
 
-        # Show first failed scenario details
-        if first_failed:
-            self._render_first_failure(renderer, first_failed, failed)
+        # Show first failed scenario details (from the model outcome)
+        if failed > 0:
+            self._render_first_failure(renderer)
 
         # Batch time with warmup/tickrun split
         if warmup_time > 0:
@@ -238,17 +238,16 @@ class ExecutiveSummary(AbstractBatchSummarySection):
                 f"{broker_type} [{market_type}]".ljust(24) +
                 f"{stats['count']} scenario(s) ({symbols_str})")
 
-    def _render_first_failure(self, renderer: ConsoleRenderer, failed_result, total_failed: int):
+    def _render_first_failure(self, renderer: ConsoleRenderer):
         """
-        Render first failed scenario details.
+        Render first failed scenario details from the model outcome (#395).
 
         Args:
             renderer: Console renderer
-            failed_result: First failed ProcessResult
-            total_failed: Total count of failed scenarios
         """
-        scenario_name = failed_result.scenario_name
-        error_msg = failed_result.error_message or "No error message available"
+        scenario_name = self._outcome.first_failure_name
+        total_failed = self._outcome.failed_count
+        error_msg = self._outcome.first_failure_error or "No error message available"
 
         # Extract first meaningful error line
         lines = [line.strip()

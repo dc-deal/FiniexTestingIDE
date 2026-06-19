@@ -11,7 +11,8 @@ import io
 from contextlib import redirect_stdout
 
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
-from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
+from python.framework.types.api.report_types import (
+    RunSummary, RunSummaryCurrency, WarningsErrorsReport)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -33,7 +34,8 @@ def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> Ru
 def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
     executive = ExecutiveSummary(
-        batch_execution_summary=None, app_config=None, run_summary=summary)
+        batch_execution_summary=None, app_config=None, run_summary=summary,
+        warnings_errors_report=WarningsErrorsReport())
     buf = io.StringIO()
     with redirect_stdout(buf):
         executive._render_run_summary(ConsoleRenderer())

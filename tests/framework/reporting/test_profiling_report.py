@@ -136,12 +136,14 @@ class TestAggregate:
         avg = {o.operation: o.avg_time_ms for o in agg.avg_operation_times}
         assert round(avg['live_update'], 2) == 0.70 and round(avg['worker_decision'], 2) == 0.35
 
-    def test_bottleneck_status_infra_vs_expected(self):
-        # live_update (infra) bottleneck in 100% → critical; worker_decision (expected) never → none
+    def test_bottleneck_status_is_display_class_only(self):
+        # status is a DISPLAY class (the verdict moved to the post-run validator, #395):
+        # live_update (the bottleneck, not a hot-path op) → 'infra'; worker_decision (never the
+        # bottleneck) → 'none'.
         u = self._unit('s1', [('live_update', 0.8), ('worker_decision', 0.3)], 1000, 1000.0, 'live_update', 1.0)
         agg = aggregate_profiling([u], budget_active=False)
         status = {b.operation: b.status for b in agg.bottlenecks}
-        assert status['live_update'] == 'critical'
+        assert status['live_update'] == 'infra'
         assert status['worker_decision'] == 'none'
 
     def test_expected_bottleneck_status(self):

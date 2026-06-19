@@ -33,6 +33,8 @@ from python.framework.reporting.run_reports.run_unit import run_units_from_sessi
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_builder import build_warnings_errors_report_from_session
+from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
 from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -137,6 +139,13 @@ class AutotraderReportCoordinator:
         # Worker/decision — per-unit worker + decision performance (unified, #398).
         worker_decision_report = build_worker_decision_report(units)
         write_worker_decision_report(worker_decision_report, self._run_dir)
+
+        # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
+        # the compact post-session summary keeps reading the session buffers directly (same
+        # structured source, avoids double-rendering the emergency cause).
+        warnings_errors_report = build_warnings_errors_report_from_session(
+            result, name, self._config.symbol)
+        write_warnings_errors_report(warnings_errors_report, self._run_dir)
 
         # Broker configuration — the session's single broker + symbol (unified model;
         # same artifact + API shape as the sim runs). Skipped if the session never built

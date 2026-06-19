@@ -116,6 +116,7 @@ RECOMMENDATION:
 """
 import time
 from python.framework.validators.scenario_validator import ScenarioValidator
+from python.framework.validators.post_run_validator import PostRunValidator
 from multiprocessing import Manager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
@@ -489,12 +490,17 @@ class BatchOrchestrator:
 
         self._logger.verbose(summary.process_result_list)
 
-        # Error handling
+        # Post-run advisory warnings (Tier 1) — debug-mode / stress / data-version / budget.
+        # Lifted out of the report renderer into a validator: the structured truth lands on
+        # the validation channels, the report only reads it (#395, no decisions in reports).
+        PostRunValidator(summary).validate()
+
+        # Error handling — the structured failed-scenario detail is now the warnings/errors
+        # model (rendered in the summary + warnings_errors.json + API). The global log keeps
+        # only a thin one-line trail (§36).
         failed_results = [r for r in results if not r.success]
         if failed_results:
-            # After all processing, raise comprehensive error
-            execution_error = BatchExecutionError(failed_results)
-            self._logger.error(execution_error.get_message())
+            self._logger.error(BatchExecutionError(failed_results).get_failure_summary())
 
         self.flush_all_logs(summary)
 
