@@ -8,6 +8,7 @@ no run required.
 
 from pathlib import Path
 
+from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
@@ -19,7 +20,8 @@ from python.framework.reporting.run_reports.scenario_details_report_io import wr
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
+    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
@@ -271,3 +273,25 @@ class TestRunSummary:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_run_summary('nope') is None
+
+
+def _broker_report() -> BrokerReport:
+    return BrokerReport(units=[BrokerInfoRow(
+        broker_type='kraken_spot', market_type='crypto', company='Kraken',
+        config_hash='abcd1234', scenarios=['btc_run'],
+        symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
+
+
+class TestBroker:
+    def test_reads_broker(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_broker_report(_broker_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_broker('20260615_120000')
+        assert report is not None
+        assert report.units[0].broker_type == 'kraken_spot'
+        assert report.units[0].symbols[0].symbol == 'BTCUSD'
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_broker('nope') is None

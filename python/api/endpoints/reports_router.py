@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
     ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 
 router = APIRouter()
@@ -208,6 +208,25 @@ def get_profiling(run_id: str) -> ProfilingReport:
         raise ApiException(
             404, 'run_not_found',
             f"No profiling artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/broker', response_model=BrokerReport)
+def get_broker(run_id: str) -> BrokerReport:
+    """
+    Broker-configuration report for a run (per-broker spec + scenarios + symbols, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The BrokerReport (404 if the run has no broker artifact)
+    """
+    report = ReportStore().get_broker(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No broker artifact for run '{run_id}'")
     return report
 
 

@@ -9,6 +9,8 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.run_reports.broker_report_builder import build_broker_report_from_batch
+from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
@@ -102,6 +104,8 @@ class BatchReportCoordinator:
         worker_decision_report = build_worker_decision_report(units)
         # Profiling — per-scenario operation timing + inter-tick + clipping + warmup (sim-only, #399).
         profiling_report = build_profiling_report_from_batch(self._batch_execution_summary)
+        # Broker configuration — per-broker spec + scenarios + symbols (sim-only).
+        broker_report = build_broker_report_from_batch(self._batch_execution_summary)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -117,6 +121,7 @@ class BatchReportCoordinator:
             run_summary=run_summary,
             worker_decision_report=worker_decision_report,
             profiling_report=profiling_report,
+            broker_report=broker_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -174,3 +179,4 @@ class BatchReportCoordinator:
         write_run_summary(run_summary, run_dir)
         write_worker_decision_report(worker_decision_report, run_dir)
         write_profiling_report(profiling_report, run_dir)
+        write_broker_report(broker_report, run_dir)

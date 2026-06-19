@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_io import write_execution_stats_report
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
 from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
@@ -23,7 +24,8 @@ from python.framework.reporting.run_reports.run_summary_io import write_run_summ
 from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
+    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
@@ -41,6 +43,7 @@ _EXEC_URL = f'/api/v1/reports/runs/{_RUN}/execution-stats'
 _PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
 _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 _RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
+_BROKER_URL = f'/api/v1/reports/runs/{_RUN}/broker'
 
 
 def _report() -> TradeHistoryReport:
@@ -128,6 +131,13 @@ def _run_summary() -> RunSummary:
         orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
 
 
+def _broker_report() -> BrokerReport:
+    return BrokerReport(units=[BrokerInfoRow(
+        broker_type='kraken_spot', market_type='crypto', company='Kraken',
+        config_hash='abcd1234', scenarios=['btc_run'],
+        symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
+
+
 @pytest.fixture
 def client(tmp_path: Path):
     run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
@@ -139,6 +149,7 @@ def client(tmp_path: Path):
     write_pending_orders_report(_pending_orders_report(), run_dir)
     write_scenario_details_report(_scenario_details_report(), run_dir)
     write_run_summary(_run_summary(), run_dir)
+    write_broker_report(_broker_report(), run_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -253,4 +264,17 @@ def test_run_summary_returns(client):
 
 def test_run_summary_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/run-summary')
+    assert response.status_code == 404
+
+
+def test_broker_returns(client):
+    response = client.get(_BROKER_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['units'][0]['broker_type'] == 'kraken_spot'
+    assert body['units'][0]['symbols'][0]['symbol'] == 'BTCUSD'
+
+
+def test_broker_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/broker')
     assert response.status_code == 404

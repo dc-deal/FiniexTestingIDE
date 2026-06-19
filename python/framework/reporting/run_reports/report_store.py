@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.broker_report_io import (
+    BROKER_ARTIFACT, read_broker_report)
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import (
@@ -29,7 +31,7 @@ from python.framework.reporting.run_reports.trade_history_report_io import (
 from python.framework.reporting.run_reports.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
     ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 
 
@@ -200,6 +202,21 @@ class ReportStore:
         if path is None:
             return None
         return read_profiling_report(path)
+
+    def get_broker(self, run_id: str) -> Optional[BrokerReport]:
+        """
+        Read a run's broker-configuration report (sim-only).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The broker report, or None if the run has no broker artifact
+        """
+        path = self._resolve(run_id, BROKER_ARTIFACT)
+        if path is None:
+            return None
+        return read_broker_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

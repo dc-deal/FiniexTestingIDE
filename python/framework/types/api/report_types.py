@@ -462,3 +462,43 @@ class ProfilingReport(BaseModel):
     units: list[ProfilingUnitRow]
     aggregate: ProfilingAggregate = ProfilingAggregate()
     warmup_phases: list[WarmupPhaseRow] = []
+
+
+class BrokerSymbolRow(BaseModel):
+    """Static symbol specification (one row of the TRADED SYMBOLS table)."""
+    symbol: str
+    volume_min: float = 0.0
+    volume_max: float = 0.0
+    volume_step: float = 0.0
+    contract_size: int = 0
+    tick_size: float = 0.0
+    base_currency: str = ''
+    quote_currency: str = ''
+    swap_long: float = 0.0
+    swap_short: float = 0.0
+
+
+class BrokerInfoRow(BaseModel):
+    """One broker's static configuration plus its scenario list and traded symbols."""
+    broker_type: str
+    market_type: str = ''
+    company: str = ''
+    server: str = ''
+    trade_mode: str = ''
+    leverage: int = 0
+    margin_mode: str = ''
+    margin_call_level: float = 0.0
+    stopout_level: float = 0.0
+    hedging_allowed: bool = False
+    config_hash: str = ''
+    scenarios: list[str] = []
+    symbols: list[BrokerSymbolRow] = []
+
+
+class BrokerReport(BaseModel):
+    """
+    Broker configuration view: one unit per broker, each with its scenario list and
+    per-symbol specs. **Sim-only** for now — the live session's broker_config is loaded
+    at AutoTrader startup but not yet carried into the session report (live follow-up).
+    """
+    units: list[BrokerInfoRow]

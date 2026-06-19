@@ -21,7 +21,7 @@ from python.framework.batch_reporting.trade_history_summary import TradeHistoryS
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
     ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -50,6 +50,7 @@ class BatchSummary:
         run_summary: RunSummary,
         worker_decision_report: WorkerDecisionReport,
         profiling_report: ProfilingReport,
+        broker_report: BrokerReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -83,11 +84,8 @@ class BatchSummary:
             profiling_report=profiling_report,
             worker_decision_report=worker_decision_report)
 
-        # Broker summary
-        self.broker_summary = BrokerSummary(
-            batch_summary=batch_execution_summary,
-            app_config=app_config
-        )
+        # Broker summary — renders from the unified model (#391)
+        self.broker_summary = BrokerSummary(broker_report)
 
         # Trade history summary — renders from the unified model (#393)
         self.trade_history_summary = TradeHistorySummary(

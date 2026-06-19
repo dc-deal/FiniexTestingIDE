@@ -3,9 +3,8 @@ FiniexTestingIDE - Broker Information Renderer
 Formats static broker configuration data for logs and reports
 """
 
-from typing import Dict, Optional, List
+from typing import Optional
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, SymbolSpecification
-from python.framework.types.config_types.market_config_types import MarketType
 
 
 class BrokerInfoRenderer:
@@ -75,87 +74,3 @@ class BrokerInfoRenderer:
         ]
 
         return " | ".join(parts)
-
-    @staticmethod
-    def render_summary_table(
-        broker_spec: BrokerSpecification = None,
-        scenarios: List[str] = None,
-        indent: str = "   ",
-        market_type=MarketType,
-        compact: bool = False,
-        threshold: int = 9,
-        config_hash: str = '',
-    ) -> str:
-        """
-        Render broker info as table for batch summaries.
-
-        Args:
-            broker_spec: BrokerSpecification object
-            scenarios: List of scenario names
-            indent: Line indentation
-            compact: If True and len(scenarios) > threshold, show count only
-            threshold: Max scenarios to list before collapsing to count
-            config_hash: 8-char config seed hash (shown if non-empty)
-
-        Returns:
-            Multi-line table string
-        """
-        if not broker_spec:
-            return f"{indent}No broker data available"
-
-        lines = [
-            f"{indent}Market:  {market_type.value}",
-            f"{indent}Company: {broker_spec.company}",
-            f"{indent}Server: {broker_spec.server} | Mode: {broker_spec.trade_mode.upper()}",
-            f"{indent}Leverage: 1:{broker_spec.leverage} | Margin: {broker_spec.margin_mode.value}",
-            f"{indent}Risk: MC {broker_spec.margin_call_level}% / SO {broker_spec.stopout_level}% | Hedging: {'✅' if broker_spec.hedging_allowed else '❌'}",
-        ]
-        if config_hash:
-            lines.append(f"{indent}Config:  [{config_hash}]")
-
-        # Add scenarios as bullet points (collapsed to count in compact mode)
-        if scenarios:
-            if compact and len(scenarios) > threshold:
-                lines.append(f"{indent}Scenarios: {len(scenarios)} scenarios — see log for full list")
-            else:
-                lines.append(f"{indent}Scenarios:")
-                for scenario in scenarios:
-                    lines.append(f"{indent}  • {scenario}")
-
-        return "\n".join(lines)
-
-    @staticmethod
-    def render_symbols_table(
-        symbol_specs:  Dict[str, SymbolSpecification],
-        indent: str = "   "
-    ) -> str:
-        """
-        Render symbols table for batch summaries.
-
-        Args:
-            symbol_specs: List of symbol specifications
-            indent: Line indentation
-
-        Returns:
-            Multi-line table string
-        """
-        if not symbol_specs:
-            return f"{indent}No symbols available"
-
-        # Header
-        lines = [
-            f"{indent}Symbol    | Lots        | Contract | Tick     | Currencies | Swap L/S"
-        ]
-        lines.append(f"{indent}" + "-" * 75)
-
-        # Rows
-        for symbol, spec in symbol_specs.items():
-            lot_range = f"{spec.volume_min}-{spec.volume_max}"
-            currencies = f"{spec.base_currency}/{spec.quote_currency}"
-            swap = f"{spec.swap_long}/{spec.swap_short}"
-
-            lines.append(
-                f"{indent}{symbol:<10}| {lot_range:<12}| {spec.contract_size:<9,}| {spec.tick_size:<9}| {currencies:<11}| {swap}"
-            )
-
-        return "\n".join(lines)
