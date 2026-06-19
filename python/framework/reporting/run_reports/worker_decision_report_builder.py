@@ -54,6 +54,8 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
         trades_requested=decision.trades_requested if decision else 0,
         decision_total_time_ms=decision.decision_total_time_ms if decision else 0.0,
         decision_avg_time_ms=decision.decision_avg_time_ms if decision else 0.0,
+        decision_min_time_ms=decision.decision_min_time_ms if decision else 0.0,
+        decision_max_time_ms=decision.decision_max_time_ms if decision else 0.0,
         ticks_processed=coordination.ticks_processed if coordination else 0,
         parallel_workers=coordination.parallel_workers if coordination else False,
         parallel_time_saved_ms=coordination.parallel_time_saved_ms if coordination else 0.0,

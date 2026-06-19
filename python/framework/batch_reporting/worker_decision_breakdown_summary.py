@@ -207,18 +207,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
         print("└────────────────────────────────────────────────────┘")
         print()
-
-        # Workers
-        if breakdown.worker_breakdown:
-            print(renderer.bold("Workers:"))
-            for worker_name, worker_time in sorted(
-                breakdown.worker_breakdown.items(),
-                key=lambda x: x[1],
-                reverse=True
-            ):
-                pct = (worker_time / breakdown.total_time_ms) * 100
-                print(f"  {worker_name:<20} {worker_time:>7.2f}ms  {pct:>5.1f}%")
-            print()
+        # Per-worker timing is rendered once, by the model-fed performance summary
+        # (WORKER DETAILS) — not duplicated here (#399 3d). The Components box above
+        # is the overhead split; the per-worker detail lives in PerformanceSummary.
 
     def _render_overhead_details(self, renderer, compact: bool = False, threshold: int = 9):
         """

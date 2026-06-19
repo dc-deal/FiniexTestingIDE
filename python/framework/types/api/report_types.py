@@ -350,6 +350,8 @@ class WorkerDecisionUnitRow(BaseModel):
     trades_requested: int = 0
     decision_total_time_ms: float = 0.0
     decision_avg_time_ms: float = 0.0
+    decision_min_time_ms: float = 0.0
+    decision_max_time_ms: float = 0.0
     # coordination (sim-only)
     ticks_processed: int = 0
     parallel_workers: bool = False

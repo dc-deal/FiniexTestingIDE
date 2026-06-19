@@ -19,7 +19,6 @@ from python.framework.batch_reporting.performance_summary import PerformanceSumm
 from python.framework.batch_reporting.profiling_summary import ProfilingSummary
 from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
-from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
@@ -71,7 +70,7 @@ class BatchSummary:
         # Initialize sub-summaries — portfolio renders from the unified model (#393)
         self.portfolio_summary = PortfolioSummary(
             portfolio_report, pending_report, execution_report)
-        self.performance_summary = PerformanceSummary(batch_execution_summary)
+        self.performance_summary = PerformanceSummary(worker_decision_report)
 
         # Built once and shared by the profiling + worker-decision sections (from_dicts
         # is non-mutating, so this is for reuse, not a correctness constraint).
@@ -97,9 +96,6 @@ class BatchSummary:
         # Warnings summary (always rendered)
         self.warnings_summary = WarningsSummary(
             batch_execution_summary, profiling_data_map=profiling_data_map)
-
-        # Warmup phase breakdown (summary_detail only)
-        self.warmup_phase_summary = WarmupPhaseSummary(batch_execution_summary)
 
         # Scenario details — linear presenter from the model (#393)
         self.scenario_details_summary = ScenarioDetailsSummary(scenario_details_report)
@@ -241,9 +237,9 @@ class BatchSummary:
         self.worker_decision_breakdown.render_aggregated()
         self.worker_decision_breakdown.render_overhead_analysis(self._renderer, compact=compact, threshold=threshold)
 
-        # Warmup phase breakdown (summary_detail only)
+        # Warmup phase breakdown (summary_detail only) — from the profiling model (#399)
         if summary_detail:
-            self.warmup_phase_summary.render(self._renderer)
+            self.profiling_summary.render_warmup(self._renderer)
 
         # Warnings & Notices (always rendered, before executive summary)
         self.warnings_summary.render(self._renderer)

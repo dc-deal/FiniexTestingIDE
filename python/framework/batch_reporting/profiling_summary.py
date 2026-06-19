@@ -116,6 +116,44 @@ class ProfilingSummary(AbstractBatchSummarySection):
         self._render_bottleneck_details(renderer)
         print()
 
+    def render_warmup(self, renderer: ConsoleRenderer) -> None:
+        """
+        Render the warmup-phase breakdown from the model (#399 — folds the retired
+        `warmup_phase_summary`). Run-level: independent of Layer B / operation data, so it
+        renders whenever warmup phases were captured (even with profiling off).
+
+        Args:
+            renderer: ConsoleRenderer instance
+        """
+        phases = self._report.warmup_phases
+        if not phases:
+            return
+
+        total_warmup = sum(p.duration_s for p in phases)
+        if total_warmup <= 0:
+            return
+
+        renderer.section_separator()
+        renderer.print_bold('⏱️  WARMUP PHASE BREAKDOWN')
+        renderer.section_separator()
+
+        slowest_name = max(phases, key=lambda p: p.duration_s).name
+        name_width = max(max(len(p.name) for p in phases), 20)
+
+        for idx, phase in enumerate(phases):
+            pct = phase.duration_s / total_warmup * 100
+            label = f"Phase {idx}  {phase.name:<{name_width}}"
+            value = f"{phase.duration_s:>7.2f}s  {pct:>5.1f}%"
+            if phase.name == slowest_name:
+                print(renderer.yellow(f"  {label}  {value}  ← slowest"))
+            else:
+                print(f"  {label}  {value}")
+
+        renderer.print_separator(width=68)
+        total_label = f"{'Total Warmup':<{name_width + 8}}"
+        print(f"  {total_label}  {total_warmup:>7.2f}s  100.0%")
+        print()
+
     def _render_scenario_profile(self, unit: ProfilingUnitRow, renderer: ConsoleRenderer):
         """
         Render single scenario's profiling breakdown.

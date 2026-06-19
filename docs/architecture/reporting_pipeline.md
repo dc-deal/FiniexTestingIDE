@@ -141,9 +141,9 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Execution — aggregated ORDER EXECUTION | unified | on `PortfolioAggregator` | ✅ inline | **#397** (folds with the portfolio aggregate) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
-| Worker / Decision (#398) | unified | ✅ (`WorkerDecisionReport`) | ✅ (overhead Total now from the profiling model, #399 — residual closed) | **3d** — merge `performance_summary` worker views (DETAILS / AGGREGATED / SLOWEST) into this one model-fed view |
+| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown both read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed | — |
 | Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
-| Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ⏳ inline (`warmup_phase_summary`) | **3c** — render from the model + retire `warmup_phase_summary` |
+| Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
 | Broker Configuration | unified | ⏳ | ✅ inline | **no issue yet** — migrate `broker_summary` → model |
 | Warnings / Errors | unified | ⏳ | ✅ inline | **#395** — incl. the executive failed-scenario headline |
@@ -214,21 +214,21 @@ the API serves either pipeline's run by `run_id`.
    approximation (`10^-(digits-1)`); exact per-symbol `pip_size` is #167.
 4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
-5. The remaining report sections (the per-pipeline ones: warmup / block-splitting / broker /
-   executive, and warnings/errors) migrate to the model; the visual channel (#379) consumes the API.
+5. The remaining report sections (the per-pipeline ones: block-splitting / broker / executive,
+   and warnings/errors) migrate to the model; the visual channel (#379) consumes the API.
 6. **Console / file renderers from the model (#393, in progress)** — **done:** **trade-history**
    (audit table + #330 execution sub-lines + #389 analytics block), **order rejections**,
    **portfolio** per-scenario (linear, boxes removed), **scenario-details** (linear, incl. failed
-   scenarios), **pending-orders**, **execution-stats** per-scenario, and the **AutoTrader**
-   post-session #389 line, the **run-summary** headline opening the executive section, and the
-   **worker/decision** breakdown (now fully model-fed — the overhead Total comes from the profiling
-   model, #399, closing the #398 residual), and **profiling** (operations + inter-tick + clipping, #399).
-   **Still inline (the renderers left to retire):** warmup (`warmup_phase_summary` → fold into the
-   profiling model, **#399 3c**) · `performance_summary` worker views (→ merge into worker/decision,
-   **#399 3d**) · broker · block-splitting (generation concern, separate) · the executive's **detailed**
-   portfolio-performance block · warnings/errors (→ Part C of #391, **#395**) · the cross-domain
-   **portfolio aggregated** + ORDER EXECUTION block (still on `PortfolioAggregator`, → **#397**).
-   File-logs follow automatically (captured stdout).
+   scenarios), **pending-orders**, **execution-stats** per-scenario, the **AutoTrader**
+   post-session #389 line, the **run-summary** headline opening the executive section, the
+   **worker/decision** breakdown (fully model-fed — overhead Total from the profiling model, #399),
+   **profiling** (operations + inter-tick + clipping, #399), **warmup** (folded into the profiling
+   model, `warmup_phase_summary` retired, #399 3c), and **performance** (worker/decision detail +
+   aggregate + bottleneck now model-fed, the duplicate per-scenario worker list removed, #399 3d).
+   **Still inline (the renderers left to retire):** broker · block-splitting (generation concern,
+   separate) · the executive's **detailed** portfolio-performance block · warnings/errors (→ Part C
+   of #391, **#395**) · the cross-domain **portfolio aggregated** + ORDER EXECUTION block (still on
+   `PortfolioAggregator`, → **#397**). File-logs follow automatically (captured stdout).
 7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
    fold `framework/batch_reporting/` into one `framework/reporting/` home organized by stage:
    `run_reports/` (DERIVE) · `io/` (PERSIST — the `*_report_io` + `report_store`) · `console/`

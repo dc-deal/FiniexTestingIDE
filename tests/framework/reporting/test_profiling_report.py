@@ -9,14 +9,20 @@ Layer-B-off scenario (no profiling) and the clipping path; the aggregator is exe
 on real `ProfilingUnitRow` rows.
 """
 
+import io
+import re
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
+from python.framework.batch_reporting.profiling_summary import ProfilingSummary
 from python.framework.reporting.run_reports.profiling_report_builder import (
     build_profiling_report_from_batch)
 from python.framework.reporting.run_reports.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
-    ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingUnitRow)
+    ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingReport, ProfilingUnitRow,
+    WarmupPhaseRow)
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.performance_types.performance_stats_types import (
     WorkerCoordinatorPerformanceStats)
 from python.framework.types.process_data_types import (
@@ -163,3 +169,25 @@ class TestAggregate:
     def test_empty(self):
         agg = aggregate_profiling([], budget_active=False)
         assert agg.scenarios == 0 and agg.bottlenecks == [] and agg.avg_operation_times == []
+
+
+class TestRenderWarmup:
+    """render_warmup (#399, 3c) — the folded warmup breakdown, model-fed."""
+
+    def _render(self, phases) -> str:
+        report = ProfilingReport(units=[], warmup_phases=phases)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ProfilingSummary(report).render_warmup(ConsoleRenderer())
+        return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+
+    def test_renders_phases_and_total(self):
+        out = self._render([WarmupPhaseRow(name='Config', duration_s=0.5),
+                            WarmupPhaseRow(name='Data Loading', duration_s=9.5)])
+        assert 'WARMUP PHASE BREAKDOWN' in out
+        assert 'Config' in out and 'Data Loading' in out
+        assert '← slowest' in out                 # slowest phase marked
+        assert 'Total Warmup' in out and '10.00s' in out   # 0.5 + 9.5
+
+    def test_empty_renders_nothing(self):
+        assert self._render([]) == ''
