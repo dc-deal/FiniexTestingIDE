@@ -224,6 +224,8 @@ def aggregate_full_portfolio(
         total_spread_cost=total_spread,
         total_commission=sum(r.total_commission for r in rows),
         total_swap=sum(r.total_swap for r in rows),
+        maker_fee=sum(r.maker_fee for r in rows),
+        taker_fee=sum(r.taker_fee for r in rows),
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
         orders_sent=sum(e.orders_sent for e in ex),
         orders_executed=sum(e.orders_executed for e in ex),

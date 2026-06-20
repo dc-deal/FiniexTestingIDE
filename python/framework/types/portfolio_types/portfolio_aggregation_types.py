@@ -40,6 +40,8 @@ class BasePortfolioStats:
     total_spread_cost: float
     total_commission: float
     total_swap: float
+    maker_fee: float
+    taker_fee: float
     total_fees: float
 
     # Metadata

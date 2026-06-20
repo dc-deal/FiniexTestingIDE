@@ -128,7 +128,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(
             f"   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | "
             f"comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | "
-            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)}")
+            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)} | "
+            f"maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | "
+            f"taker {renderer.pnl(force_negative(unit.taker_fee), unit.currency)}")
 
         orders = self._orders_line(execution, renderer)
         if orders:
@@ -349,15 +351,17 @@ class PortfolioSummary(AbstractBatchSummarySection):
         # Pending order statistics (green)
         self._render_pending_stats(renderer, row)
 
-        # Cost breakdown
-        total_costs = row.total_spread_cost + row.total_commission + row.total_swap
+        # Cost breakdown (layout A — all five categories, zeros where n/a)
+        total_costs = (row.total_spread_cost + row.total_commission + row.total_swap
+                       + row.maker_fee + row.taker_fee)
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f"      Spread Cost: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  "
+        print(f"      Spread: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  "
               f"Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  "
               f"Swap: {renderer.pnl(force_negative(row.total_swap), currency)}")
-        print(
-            f"      Total Costs: {renderer.pnl(force_negative(total_costs), currency)}")
+        print(f"      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  "
+              f"Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  "
+              f"Total Fees: {renderer.pnl(force_negative(total_costs), currency)}")
 
         print(f"\n   📉 RISK METRICS:")
         print(f"      Max Drawdown: {renderer.pnl(force_negative(h.max_drawdown), currency)} "

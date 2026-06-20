@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.trading_fees import MakerTakerFee
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
@@ -196,6 +197,27 @@ class PortfolioManager:
         self._position_counter += 1
         return f"pos_{symbol.lower()}_{self._position_counter}"
 
+    def _record_fee_cost(self, fee: AbstractTradingFee) -> None:
+        """
+        Categorize a single trading fee into the cost-tracking breakdown.
+
+        Args:
+            fee: Trading fee to record (spread / commission / swap / maker-taker)
+        """
+        if fee.fee_type == FeeType.SPREAD:
+            self._cost_tracking.total_spread_cost += fee.cost
+        elif fee.fee_type == FeeType.COMMISSION:
+            self._cost_tracking.total_commission += fee.cost
+        elif fee.fee_type == FeeType.SWAP:
+            self._cost_tracking.total_swap += fee.cost
+        elif fee.fee_type == FeeType.MAKER_TAKER and isinstance(fee, MakerTakerFee):
+            if fee.is_maker:
+                self._cost_tracking.maker_fee += fee.cost
+            else:
+                self._cost_tracking.taker_fee += fee.cost
+
+        self._cost_tracking.total_fees += fee.cost
+
     def open_position(
         self,
         order_id: str,
@@ -261,12 +283,7 @@ class PortfolioManager:
             position.add_fee(entry_fee)
 
             # Update cost tracking object
-            if entry_fee.fee_type == FeeType.SPREAD:
-                self._cost_tracking.total_spread_cost += entry_fee.cost
-            elif entry_fee.fee_type == FeeType.COMMISSION:
-                self._cost_tracking.total_commission += entry_fee.cost
-
-            self._cost_tracking.total_fees += entry_fee.cost
+            self._record_fee_cost(entry_fee)
 
         # Add to open positions
         self.open_positions[position_id] = position
@@ -330,12 +347,7 @@ class PortfolioManager:
             position.add_fee(exit_fee)
 
             # Update cost tracking
-            if exit_fee.fee_type == FeeType.COMMISSION:
-                self._cost_tracking.total_commission += exit_fee.cost
-            elif exit_fee.fee_type == FeeType.SWAP:
-                self._cost_tracking.total_swap += exit_fee.cost
-
-            self._cost_tracking.total_fees += exit_fee.cost
+            self._record_fee_cost(exit_fee)
 
         # Calculate final P&L and update balances
         if self._spot_mode:
@@ -447,11 +459,7 @@ class PortfolioManager:
             closed_fees += exit_fee.cost
 
             # Update cost tracking
-            if exit_fee.fee_type == FeeType.COMMISSION:
-                self._cost_tracking.total_commission += exit_fee.cost
-            elif exit_fee.fee_type == FeeType.SWAP:
-                self._cost_tracking.total_swap += exit_fee.cost
-            self._cost_tracking.total_fees += exit_fee.cost
+            self._record_fee_cost(exit_fee)
 
         closed_net_pnl = closed_gross_pnl - closed_fees
 
@@ -1059,6 +1067,8 @@ class PortfolioManager:
             total_spread_cost=self._cost_tracking.total_spread_cost,
             total_commission=self._cost_tracking.total_commission,
             total_swap=self._cost_tracking.total_swap,
+            maker_fee=self._cost_tracking.maker_fee,
+            taker_fee=self._cost_tracking.taker_fee,
             total_fees=self._cost_tracking.total_fees,
             currency=self.account_currency,  # Account currency
             broker_name=self.broker_config.get_broker_name(),

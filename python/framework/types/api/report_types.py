@@ -161,6 +161,8 @@ class PortfolioUnitRow(BaseModel):
     total_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
+    maker_fee: float = 0.0       # spot maker-side fee
+    taker_fee: float = 0.0       # spot taker-side fee
     has_error: bool = False     # hybrid unit (partial data + error) → CRITICAL marker
     # Spot mode — dual-balance + estimated portfolio value
     balances: dict[str, float] = {}
@@ -593,6 +595,8 @@ class AggregatedPortfolioRow(BaseModel):
     total_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
+    maker_fee: float = 0.0
+    taker_fee: float = 0.0
     avg_spread: float = 0.0
     # Execution (per currency)
     orders_sent: int = 0

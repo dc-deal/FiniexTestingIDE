@@ -22,7 +22,7 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 
 def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose=1,
         profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, fees=5.0, spread=3.0,
-        initial=1000.0, current=1060.0, long=1, short=1,
+        maker=0.0, taker=0.0, initial=1000.0, current=1060.0, long=1, short=1,
         balances=None, initial_balances=None, last_price=0.0) -> PortfolioUnitRow:
     return PortfolioUnitRow(
         name=name, symbol=symbol, currency=currency, total_trades=trades,
@@ -31,6 +31,7 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
         net_profit=profit - loss, max_drawdown=max_dd, total_fees=fees, spot_mode=spot,
         total_long_trades=long, total_short_trades=short, max_equity=max_eq,
         current_balance=current, initial_balance=initial, total_spread_cost=spread,
+        maker_fee=maker, taker_fee=taker,
         balances=balances or {}, initial_balances=initial_balances or {}, last_price=last_price)
 
 
@@ -113,10 +114,17 @@ class TestBuild:
         rep = _build([_pf('s1', currency='USD'), _pf('s2', currency='EUR')])
         assert [c.currency for c in rep.currencies] == ['EUR', 'USD']  # sorted
 
+    def test_maker_taker_sum(self):
+        # Spot fees split into maker/taker, summed across the currency group (#3).
+        rep = _build([_pf('sp1', symbol='BTCUSD', spot=True, maker=1.5, taker=2.5),
+                      _pf('sp2', symbol='BTCUSD', spot=True, maker=0.5, taker=1.0)])
+        c = rep.currencies[0].combined
+        assert c.maker_fee == 2.0 and c.taker_fee == 3.5
+
 
 class TestRender:
     def test_aggregated_section_renders(self):
-        rep = _build([_pf('s1', profit=100, loss=40)], [_ex('s1')], [_pe('s1')])
+        rep = _build([_pf('s1', profit=100, loss=40, maker=1.5, taker=2.5)], [_ex('s1')], [_pe('s1')])
         summary = PortfolioSummary(
             PortfolioReport(units=[], aggregates=[]),
             PendingOrdersReport(units=[]),
@@ -129,3 +137,5 @@ class TestRender:
         assert 'AGGREGATED PORTFOLIO' in out
         assert 'TRADING SUMMARY' in out and 'ORDER EXECUTION' in out
         assert 'COST BREAKDOWN' in out and 'RISK METRICS' in out
+        # Layout A — all five cost categories incl. maker/taker (#3)
+        assert 'Maker:' in out and 'Taker:' in out and 'Total Fees:' in out

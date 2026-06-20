@@ -463,6 +463,10 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             f"Commission:         {format_currency_simple(row.total_commission, currency)}")
         print(
             f"Swap:               {format_currency_simple(row.total_swap, currency)}")
+        print(
+            f"Maker Fee:          {format_currency_simple(row.maker_fee, currency)}")
+        print(
+            f"Taker Fee:          {format_currency_simple(row.taker_fee, currency)}")
 
     def _render_spot_portfolio(
         self, renderer: ConsoleRenderer, currency: str, row: AggregatedPortfolioRow
@@ -519,11 +523,18 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             print(
                 f"Orders:             {row.orders_executed}/{row.orders_sent} executed")
 
-        # Costs
-        if row.total_spread_cost != 0:
-            print("")
-            print(
-                f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}")
+        # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
+        print("")
+        print(
+            f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}")
+        print(
+            f"Commission:         {format_currency_simple(row.total_commission, currency)}")
+        print(
+            f"Swap:               {format_currency_simple(row.total_swap, currency)}")
+        print(
+            f"Maker Fee:          {format_currency_simple(row.maker_fee, currency)}")
+        print(
+            f"Taker Fee:          {format_currency_simple(row.taker_fee, currency)}")
 
     @staticmethod
     def _format_pending_latency(renderer: ConsoleRenderer, row: AggregatedPortfolioRow) -> str:

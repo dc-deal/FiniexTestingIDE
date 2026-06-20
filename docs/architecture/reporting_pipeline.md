@@ -238,7 +238,11 @@ the API serves either pipeline's run by `run_id`.
    **portfolio aggregated** + ORDER EXECUTION block + the executive's **detailed** portfolio block
    render from `AggregatedPortfolioReport` (built from the per-unit rows, byte-identical, margin /
    spot / mixed preserved); `PortfolioAggregator` retired; the multi-currency + time-divergence
-   notices moved to `PostRunValidator`.
+   notices moved to `PostRunValidator`. The cost breakdown now splits the **maker / taker** fee
+   (spot): `CostBreakdown` / `PortfolioStats` / the portfolio rows carry `maker_fee` + `taker_fee`
+   (`PortfolioManager._record_fee_cost` categorizes every fee — maker/taker by `is_maker`), and all
+   five categories (spread · commission · swap · maker · taker) render together (zeros where n/a), so
+   the spot fee that used to fold invisibly into `total_fees` is now itemized.
    **Still inline (the renderers left to retire):** block-splitting (generation concern, separate).
    File-logs follow automatically (captured stdout).
 7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
