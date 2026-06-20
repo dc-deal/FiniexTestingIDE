@@ -14,8 +14,10 @@ Usage:
 """
 
 from typing import Dict, List
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -175,6 +177,7 @@ class ScenarioValidator:
             scenarios: List of scenarios to process
             broker_scenario_map: Map from BrokerType to BrokerScenarioInfo for currency lookup
         """
+        market_config = MarketConfigManager()
         for scenario in scenarios:
             symbol = scenario.symbol
             balances = scenario.trade_simulator_config.get('balances', {})
@@ -183,13 +186,14 @@ class ScenarioValidator:
                 # validation will flag this later
                 continue
 
+            base, quote = ScenarioValidator._get_symbol_currencies(
+                symbol, scenario.broker_type, broker_scenario_map)
+
             # Explicit override or derive from balances keys + symbol
             explicit = scenario.trade_simulator_config.get('account_currency', '')
             if explicit:
                 account_currency = explicit
             else:
-                base, quote = ScenarioValidator._get_symbol_currencies(
-                    symbol, scenario.broker_type, broker_scenario_map)
                 if quote in balances:
                     account_currency = quote
                 elif base in balances:
@@ -199,6 +203,26 @@ class ScenarioValidator:
                 else:
                     # ambiguous — validation will catch this
                     continue
+
+            # Spot settles in the quote currency (institutional norm). A base-denominated
+            # account would mix units: gross P&L in base, fees in quote. Normalize to
+            # quote and warn — the operator sees the override took effect.
+            trading_model = market_config.get_trading_model(scenario.broker_type.value)
+            if trading_model == TradingModel.SPOT and account_currency != quote:
+                logger.warning(
+                    f"💱 {scenario.name}: account_currency '{account_currency}' "
+                    f"normalized to quote '{quote}' — spot settles in the quote currency"
+                )
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=True,
+                    scenario_name=scenario.name,
+                    warnings=[
+                        f"account_currency '{account_currency}' normalized to quote "
+                        f"'{quote}' — spot settles in the quote currency, not the base "
+                        f"asset (base-denominated P&L would mix units)."
+                    ],
+                ))
+                account_currency = quote
 
             logger.debug(
                 f"💱 Account Currency: {account_currency} (derived from balances)"
@@ -367,6 +391,30 @@ class ScenarioValidator:
             logger.error(
                 f"❌ {scenario.name}: Balance currencies {list(balances.keys())} "
                 f"don't match symbol {symbol} ({base_currency}/{quote_currency})"
+            )
+            return
+
+        # An explicit account_currency override must be the symbol's base or quote.
+        # Cross-currency settlement (account ≠ base ≠ quote) needs an FX rate source
+        # and is not supported in V1. Reject here — otherwise tick_value raises
+        # mid-run, or the balance is silently zeroed (balance = balances.get(
+        # account_currency, 0.0)) and the scenario produces a no-op run.
+        explicit = scenario.trade_simulator_config.get('account_currency', '')
+        if explicit and explicit not in symbol_currencies:
+            validation_result = ValidationResult(
+                is_valid=False,
+                scenario_name=scenario.name,
+                errors=[
+                    f"account_currency '{explicit}' is neither base ({base_currency}) "
+                    f"nor quote ({quote_currency}) of symbol {symbol}. "
+                    f"Cross-currency settlement is not supported (V1)."
+                ],
+                warnings=[]
+            )
+            scenario.validation_result.append(validation_result)
+            logger.error(
+                f"❌ {scenario.name}: account_currency '{explicit}' incompatible with "
+                f"symbol {symbol} ({base_currency}/{quote_currency})"
             )
 
     @staticmethod

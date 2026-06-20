@@ -4,6 +4,7 @@ Console and file log summary printed after an AutoTrader session completes.
 """
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.api.report_types import BrokerReport, TradeHistoryReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
 
@@ -23,7 +24,9 @@ class AutotraderPostSessionReport:
         self._summary_logger = summary_logger
         self._global_logger = global_logger
 
-    def print_report(self, result: AutoTraderResult) -> None:
+    def print_report(
+        self, result: AutoTraderResult, trade_report: TradeHistoryReport = None,
+        broker_report: BrokerReport = None) -> None:
         """
         Print full session summary to file and flush to console.
 
@@ -32,8 +35,13 @@ class AutotraderPostSessionReport:
 
         Args:
             result: Completed AutoTraderResult with all statistics
+            trade_report: Unified trade-history report — its #389 analytics line is
+                appended to the headline (model-sourced, #393)
+            broker_report: Unified broker-configuration report — rendered as a compact
+                broker/symbol line (the full table stays in broker.json / API, #391)
         """
-        self._write_summary(result)
+        self._write_summary(result, trade_report)
+        self._write_broker(broker_report)
         self._write_warnings_errors(result)
         self._write_output_locations(result)
 
@@ -47,12 +55,14 @@ class AutotraderPostSessionReport:
             f"{len(result.warning_messages)} warnings, {len(result.error_messages)} errors"
         )
 
-    def _write_summary(self, result: AutoTraderResult) -> None:
+    def _write_summary(
+        self, result: AutoTraderResult, trade_report: TradeHistoryReport = None) -> None:
         """
         Write session statistics to summary logger.
 
         Args:
             result: Completed AutoTraderResult
+            trade_report: Unified trade-history report (for the #389 analytics line)
         """
         self._summary_logger.info('=' * 60)
         self._summary_logger.info('📋 AutoTrader Session Summary')
@@ -80,6 +90,15 @@ class AutotraderPostSessionReport:
                 f"{result.execution_stats.orders_rejected} rejected"
             )
 
+        # Trade analytics (#389/#393) — model-sourced, one line per account currency
+        # (a live session is normally one). The big per-trade table stays sim-only / API.
+        for a in (trade_report.analytics if trade_report else []):
+            self._summary_logger.info(
+                f"  Analytics:      expectancy {a.expectancy:+.3f}R | "
+                f"win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | "
+                f"R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})"
+            )
+
         clipping = result.clipping_summary
         if clipping.total_ticks > 0:
             self._summary_logger.info(
@@ -87,6 +106,35 @@ class AutotraderPostSessionReport:
                 f"(max stale: {clipping.max_stale_ms:.1f}ms, "
                 f"avg proc: {clipping.avg_processing_ms:.2f}ms)"
             )
+
+    def _write_broker(self, broker_report: BrokerReport = None) -> None:
+        """
+        Write a compact broker/symbol line per broker (model-fed, #391).
+
+        The full broker table (all symbol columns) lives in broker.json / the API; the
+        live summary stays compact — same philosophy as the one-line analytics.
+
+        Args:
+            broker_report: Unified broker-configuration report (skipped if empty)
+        """
+        if not broker_report or not broker_report.units:
+            return
+
+        self._summary_logger.info('-' * 60)
+        for unit in broker_report.units:
+            hedging = '✅' if unit.hedging_allowed else '❌'
+            hash_tag = f" | [{unit.config_hash}]" if unit.config_hash else ''
+            self._summary_logger.info(
+                f"  Broker:         {unit.company} ({unit.trade_mode}) | {unit.market_type} | "
+                f"1:{unit.leverage} | margin {unit.margin_mode} | "
+                f"MC/SO {unit.margin_call_level}/{unit.stopout_level} | hedging {hedging}{hash_tag}"
+            )
+            for sym in unit.symbols:
+                self._summary_logger.info(
+                    f"  Symbol:         {sym.symbol} ({sym.base_currency}/{sym.quote_currency}) | "
+                    f"lots {sym.volume_min}-{sym.volume_max} | tick {sym.tick_size} | "
+                    f"contract {sym.contract_size} | swap L/S {sym.swap_long}/{sym.swap_short}"
+                )
 
     _MAX_DETAIL_LINES = 10
 

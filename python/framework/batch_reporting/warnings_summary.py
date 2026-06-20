@@ -1,343 +1,113 @@
 """
-FiniexTestingIDE - Warnings Summary
-Global warnings and notices for batch execution results
+FiniexTestingIDE - Warnings & Errors Summary
 
-Consolidates all system-wide warnings (stress tests, data quality, etc.)
-into a single section. Always rendered regardless of summary_detail setting.
+Renders the unified "Warnings & Errors" section from the `WarningsErrorsReport` model (#395):
+per-unit errors first, then Tier-1 major warnings (run-scoped first for prominence, e.g.
+debug-mode), then a Tier-2 minor summary. This presenter makes NO decisions — every warning was
+produced by a validator upstream; it only formats. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from typing import Any, Dict, Optional
-
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.types.api.report_types import UnitErrorRow, WarningRow, WarningsErrorsReport
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class WarningsSummary(AbstractBatchSummarySection):
     """
-    Global warnings and notices section.
+    Warnings & errors section, rendered from the unified model.
 
-    Renders only when at least one warning is active.
+    Renders only when at least one error or warning is present.
     Always displayed regardless of summary_detail flag.
     """
 
-    _section_title = '⚠️ WARNINGS & NOTICES'
+    _section_title = '⚠️ WARNINGS & ERRORS'
 
-    def __init__(
-        self,
-        batch_execution_summary: BatchExecutionSummary,
-        profiling_data_map: Optional[Dict[Any, Any]] = None
-    ):
+    def __init__(self, warnings_errors_report: WarningsErrorsReport):
         """
-        Initialize warnings summary.
+        Initialize warnings & errors summary.
 
         Args:
-            batch_execution_summary: Batch execution results
-            profiling_data_map: Pre-built profiling data (avoids pop-mutation issue)
+            warnings_errors_report: The unified warnings/errors report
         """
-        self._batch_summary = batch_execution_summary
-        self._profiling_data_map = profiling_data_map or {}
+        self._report = warnings_errors_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
         """
-        Render all active warnings. Skips section entirely if none are active.
+        Render the section. Skips entirely if there are no errors and no warnings.
 
         Args:
             renderer: Console renderer for formatting
         """
-        # Collect all warning blocks
-        warning_blocks = []
+        blocks = []
 
-        # First, most prominent: debug-mode timing notice (if applicable)
-        debug_block = self._build_debug_mode_notice(renderer)
-        if debug_block:
-            warning_blocks.append(debug_block)
+        # Errors first — most important
+        if self._report.errors:
+            blocks.append(self._build_errors_block(renderer))
 
-        stress_test_block = self._build_stress_test_warning(renderer)
-        if stress_test_block:
-            warning_blocks.append(stress_test_block)
+        # Tier-1 major warnings (run-scoped first for prominence, e.g. debug-mode)
+        major = [w for w in self._report.warnings if w.tier == 'major']
+        for warning in sorted(major, key=lambda w: w.scope != 'run'):
+            blocks.append(self._format_major(warning, renderer))
 
-        validation_block = self._build_validation_warning(renderer)
-        if validation_block:
-            warning_blocks.append(validation_block)
+        # Tier-2 minor warnings — summarized, low-key
+        for warning in (w for w in self._report.warnings if w.tier == 'minor'):
+            blocks.append(renderer.gray(warning.message))
 
-        data_version_block = self._build_data_version_warning(renderer)
-        if data_version_block:
-            warning_blocks.append(data_version_block)
-
-        budget_block = self._build_budget_warning(renderer)
-        if budget_block:
-            warning_blocks.append(budget_block)
-
-        granularity_block = self._build_budget_granularity_warning(renderer)
-        if granularity_block:
-            warning_blocks.append(granularity_block)
-
-        too_high_block = self._build_budget_too_high_warning(renderer)
-        if too_high_block:
-            warning_blocks.append(too_high_block)
-
-        # Only render section if there are warnings
-        if not warning_blocks:
+        if not blocks:
             return
 
         self._render_section_header(renderer)
-
-        for i, block in enumerate(warning_blocks):
+        for i, block in enumerate(blocks):
             print(block)
-            if i < len(warning_blocks) - 1:
+            if i < len(blocks) - 1:
                 print()
 
-    def _build_debug_mode_notice(self, renderer: ConsoleRenderer) -> str:
-        """
-        Prominent notice when the batch ran in debug / serial mode (timings unreliable).
+    _MAX_DETAIL = 120
 
-        The fact is recorded on the summary at execution time (BatchExecutionSummary.
-        debug_execution) — the report only reads it, it does not re-detect.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted notice block, or empty string if the run was not in debug mode
-        """
-        if not self._batch_summary.debug_execution:
-            return ''
-
-        return '\n'.join([
-            renderer.red(renderer.bold(
-                '🐞 DEBUG MODE — debugger attached / DEBUG_MODE set')),
-            renderer.yellow(
-                '   Execution is SERIAL (single process) with trace overhead.'),
-            renderer.red(renderer.bold(
-                '   ⏱️  TIMINGS IN THIS REPORT ARE NOT REPRESENTATIVE — '
-                'use a non-debug run for performance numbers.')),
-        ])
-
-    def _build_stress_test_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build stress test warning block if any scenario has active stress tests.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted warning string or empty string
-        """
-        scenarios = self._batch_summary.single_scenario_list
-
-        # Group scenarios by stress test config signature
-        config_groups: dict[str, list[str]] = {}
-        for scenario in scenarios:
-            config = StressTestConfig.from_dict(scenario.stress_test_config)
-            if not config.has_any_enabled():
-                continue
-            parts = []
-            if config.reject_open_order and config.reject_open_order.enabled:
-                ro = config.reject_open_order
-                parts.append(
-                    f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
-            signature = ' | '.join(parts)
-            if signature not in config_groups:
-                config_groups[signature] = []
-            config_groups[signature].append(scenario.name)
-
-        if not config_groups:
-            return ''
-
-        lines = []
-        lines.append(renderer.red(
-            'STRESS TEST ACTIVE — Results contain INTENTIONAL errors and rejections!'))
-        for signature, scenario_names in config_groups.items():
-            lines.append(renderer.yellow(
-                f"  → {signature}"))
-            lines.append(renderer.yellow(
-                f"    Scenarios ({len(scenario_names)}): {', '.join(scenario_names)}"))
-
+    def _build_errors_block(self, renderer: ConsoleRenderer) -> str:
+        """Build the per-unit errors block (the prominent red headline + per-unit detail)."""
+        errors = self._report.errors
+        lines = [renderer.red(renderer.bold(
+            f"❌ Scenario errors detected — {len(errors)} unit(s) with error(s)"))]
+        for err in errors:
+            lines.append(renderer.red(self._error_head(err)))
+            # Validation failures carry the structured error list; a pure execution villain
+            # has none → show its exception message instead (no multi-line report dump).
+            if err.validation_errors:
+                for ve in err.validation_errors[:3]:
+                    lines.append(renderer.yellow(f"      ✗ {self._trim(ve)}"))
+                extra = len(err.validation_errors) - 3
+                if extra > 0:
+                    lines.append(renderer.yellow(f"      … +{extra} more validation error(s)"))
+            elif err.error_type or err.error_message:
+                detail = f"{err.error_type}: {self._trim(err.error_message)}".strip(': ')
+                lines.append(renderer.yellow(f"      {detail}"))
+            if err.logged_errors:
+                lines.append(renderer.yellow(
+                    f"      {len(err.logged_errors)} logged error(s) — see scenario log"))
         return '\n'.join(lines)
 
-    def _build_validation_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build validation warning block from scenario validation results.
+    def _error_head(self, err: UnitErrorRow) -> str:
+        """Unit header line for an error row."""
+        head = f"  • {err.name}"
+        if err.symbol:
+            head += f" ({err.symbol})"
+        return head
 
-        Args:
-            renderer: Console renderer for formatting
+    def _trim(self, text: str) -> str:
+        """First non-empty line of a message, truncated for the console."""
+        first = next((line.strip() for line in text.split('\n') if line.strip()), '')
+        return first if len(first) <= self._MAX_DETAIL else first[:self._MAX_DETAIL - 3] + '...'
 
-        Returns:
-            Formatted warning string or empty string
-        """
-        warning_count = 0
-        scenarios_with_warnings = 0
+    def _format_major(self, warning: WarningRow, renderer: ConsoleRenderer) -> str:
+        """Format a Tier-1 major warning: run-scope is prominent (bold red head), per-scenario yellow."""
+        msg_lines = warning.message.split('\n')
+        if warning.scope == 'run':
+            out = [renderer.red(renderer.bold(msg_lines[0]))]
+            out += [renderer.yellow(line) for line in msg_lines[1:]]
+            return '\n'.join(out)
 
-        for scenario in self._batch_summary.single_scenario_list:
-            scenario_warnings = sum(
-                len(r.warnings) for r in scenario.validation_result if r.is_valid
-            )
-            if scenario_warnings > 0:
-                warning_count += scenario_warnings
-                scenarios_with_warnings += 1
-
-        if warning_count == 0:
-            return ''
-
-        return renderer.yellow(
-            f"Validation: {warning_count} warning(s) across "
-            f"{scenarios_with_warnings} scenario(s) — see global log for details"
-        )
-
-    def _build_data_version_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build data format version warning if pre-V1.3.0 data is present.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted warning string or empty string
-        """
-        total_files = 0
-        pre_v130_files = 0
-
-        for scenario in self._batch_summary.single_scenario_list:
-            for version in scenario.data_format_versions:
-                total_files += 1
-                # 'unknown' or any non-semver string treated as pre-V1.3.0
-                if not version.startswith('1.') or version < '1.3.0':
-                    pre_v130_files += 1
-
-        if pre_v130_files == 0:
-            return ''
-
-        lines = []
-        lines.append(renderer.yellow(
-            f"Data includes pre-V1.3.0 files ({pre_v130_files}/{total_files}): "
-            f"inter-tick intervals based on synthesized collected_msc"))
-
-        # Kraken-specific caveat: synthetic 1ms spacing dominates interval statistics
-        has_kraken = any(
-            'kraken' in s.data_broker_type
-            for s in self._batch_summary.single_scenario_list
-            if s.data_format_versions and any(
-                not v.startswith('1.') or v < '1.3.0'
-                for v in s.data_format_versions
-            )
-        )
-        if has_kraken:
-            lines.append(renderer.yellow(
-                '  → Kraken trade fills: 1ms spacing is synthetic — real arrival cadence unknown'))
-
-        return '\n'.join(lines)
-
-    def _build_budget_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build tick processing budget notice when avg processing exceeds P5 interval.
-
-        Uses pre-built profiling_data_map to avoid pop-mutation issues with profile_times.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted warning string or empty string
-        """
-        # When budget is already active, clipping is being simulated — warning is redundant
-        has_budget_active = bool(self._batch_summary.clipping_stats_map)
-        if has_budget_active:
-            return ''
-
-        warning_count = 0
-
-        for result in self._batch_summary.process_result_list:
-            profiling = self._profiling_data_map.get(result.scenario_index)
-            if not profiling or not profiling.interval_stats:
-                continue
-
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
-                continue
-            avg_ms = profiling.total_per_tick_ms / ticks
-
-            if avg_ms > profiling.interval_stats.p5_ms:
-                warning_count += 1
-
-        if warning_count == 0:
-            return ''
-
-        return renderer.yellow(
-            f"Tick processing budget: {warning_count} scenario(s) exceed P5 tick interval "
-            f"— consider setting tick_processing_budget_ms (see Profiling Analysis)"
-        )
-
-    def _build_budget_granularity_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build warning when tick processing budget is active but below data granularity.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted warning string or empty string
-        """
-        clipping_map = self._batch_summary.clipping_stats_map
-        if not clipping_map:
-            return ''
-
-        # Check if any budget is < 1.0ms and produced 0 clipping
-        ineffective = [
-            c for c in clipping_map.values()
-            if c.budget_ms < 1.0 and c.ticks_clipped == 0 and c.ticks_total > 0
-        ]
-        if not ineffective:
-            return ''
-
-        budget_values = sorted(set(c.budget_ms for c in ineffective))
-        budget_str = ', '.join(f'{b}ms' for b in budget_values)
-
-        return renderer.yellow(
-            f"Tick processing budget ({budget_str}) below data granularity — "
-            f"no effect with integer-ms collected_msc (minimum effective: 1.0ms)"
-        )
-
-    def _build_budget_too_high_warning(self, renderer: ConsoleRenderer) -> str:
-        """
-        Build warning when tick processing budget exceeds 2× P95 processing time.
-
-        Args:
-            renderer: Console renderer for formatting
-
-        Returns:
-            Formatted warning string or empty string
-        """
-        clipping_map = self._batch_summary.clipping_stats_map
-        if not clipping_map:
-            return ''
-
-        # Compute avg processing per scenario from profiling data
-        avg_times = []
-        for result in self._batch_summary.process_result_list:
-            profiling = self._profiling_data_map.get(result.scenario_index)
-            if not profiling:
-                continue
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
-                continue
-            avg_times.append(profiling.total_per_tick_ms / ticks)
-
-        if not avg_times:
-            return ''
-
-        # P95 of avg processing times
-        avg_times_sorted = sorted(avg_times)
-        p95_idx = min(int(len(avg_times_sorted) * 0.95), len(avg_times_sorted) - 1)
-        p95_processing = avg_times_sorted[p95_idx]
-
-        # Check if any budget exceeds 2× P95
-        max_budget = max(c.budget_ms for c in clipping_map.values())
-        if max_budget <= p95_processing * 2:
-            return ''
-
-        return renderer.yellow(
-            f"Tick processing budget ({max_budget}ms) exceeds 2× P95 processing time "
-            f"({p95_processing:.3f}ms) — ticks clipped unnecessarily, reducing simulation accuracy"
-        )
+        # Per-scenario major warning — prefix with the unit scope
+        head = renderer.yellow(f"[{warning.scope}] {msg_lines[0]}")
+        rest = [renderer.yellow(line) for line in msg_lines[1:]]
+        return '\n'.join([head] + rest)

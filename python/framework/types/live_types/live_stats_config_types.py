@@ -68,14 +68,12 @@ class LiveStatsExportConfig:
         enabled: Master switch for monitoring
         detailed_mode: Basic vs. Detailed mode
         export_portfolio_stats: Include full PortfolioStats
-        export_performance_stats: Include BatchPerformanceStats
         export_current_bars: Include current M5, M30, etc.
         update_interval_ms: Time between updates in milliseconds (from tui_refresh_rate_ms)
     """
     enabled: bool = True
     detailed_mode: bool = False
     export_portfolio_stats: bool = False
-    export_performance_stats: bool = False
     export_current_bars: bool = False
     update_interval_ms: float = 300
 
@@ -104,7 +102,6 @@ class LiveStatsExportConfig:
                 enabled=False,
                 detailed_mode=False,
                 export_portfolio_stats=False,
-                export_performance_stats=False,
                 export_current_bars=False,
                 update_interval_ms=0
             )
@@ -119,8 +116,6 @@ class LiveStatsExportConfig:
         exports = monitoring.get('detailed_live_stats_exports', {})
         export_portfolio = exports.get(
             'export_portfolio_stats', True) if use_detailed else False
-        export_performance = exports.get(
-            'export_performance_stats', False) if use_detailed else False
         export_bars = exports.get(
             'export_current_bars', False) if use_detailed else False
 
@@ -131,7 +126,6 @@ class LiveStatsExportConfig:
             enabled=True,
             detailed_mode=use_detailed,
             export_portfolio_stats=export_portfolio,
-            export_performance_stats=export_performance,
             export_current_bars=export_bars,
             update_interval_ms=update_interval_ms
         )

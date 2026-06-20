@@ -1,12 +1,11 @@
 """
 FiniexTestingIDE - Performance Summary
-Worker and decision logic performance rendering
+Worker and decision logic performance rendering.
 
-
-- Uses BatchExecutionSummary instead of batch_results dict
-- Reads Scenario objects
-
-FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
+Thin presenter over the unified WorkerDecisionReport model (#398/#399 3d): per-worker timing,
+decision-logic timing, parallel efficiency, the cross-scenario aggregate, and the worst-performer
+bottleneck analysis are all read from the model — the single worker/decision source (the
+per-scenario worker list was removed from the worker-decision breakdown to avoid the duplicate).
 
 Renders:
 - Per-scenario worker performance (call counts, timings, parallel efficiency)
@@ -19,51 +18,37 @@ from typing import Dict, List, Tuple
 
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.api.report_types import WorkerDecisionReport, WorkerDecisionUnitRow
 from python.framework.types.performance_types.performance_summary_aggregation_types import AggregatedPerformanceStats, DecisionLogicBottleneckData, ParallelBottleneckData, PerformanceBottlenecks, ScenarioBottleneckData, WorkerAggregateData, WorkerBottleneckData
-from python.framework.types.process_data_types import ProcessResult, ProcessResult
 
 
 class PerformanceSummary(AbstractBatchSummarySection):
     """
-    Worker and decision logic performance summary.
-
-
-    - Uses BatchExecutionSummary for data access
-    - FULLY TYPED: Direct attribute access instead of .get()
+    Worker and decision logic performance summary — model-fed from `WorkerDecisionReport`.
     """
 
     _section_title = '📊 PERFORMANCE DETAILS (PER SCENARIO)'
 
-    def __init__(self, batch_execution_summary: BatchExecutionSummary) -> None:
+    def __init__(self, worker_decision_report: WorkerDecisionReport) -> None:
         """
         Initialize performance summary.
 
         Args:
-            batch_execution_summary: Batch execution summary containing all scenario results
+            worker_decision_report: The unified worker/decision report (#398)
         """
-        self.batch_execution_summary: BatchExecutionSummary = batch_execution_summary
-        self._process_results: List[ProcessResult] = batch_execution_summary.process_result_list
+        self._units: List[WorkerDecisionUnitRow] = worker_decision_report.units
 
     def _layer_a_has_data(self) -> bool:
         """
-        Returns True if at least one scenario produced per-worker statistics.
-        When Layer A (worker_decision_tracking) is off, all scenarios have
-        empty worker_statistics and this summary's sections are suppressed (#137).
+        Returns True if at least one unit produced per-worker statistics.
+        When Layer A (worker_decision_tracking) is off, all units have empty
+        worker lists and this summary's sections are suppressed (#137).
         """
-        for scenario in self._process_results:
-            if scenario.tick_loop_results and scenario.tick_loop_results.worker_statistics:
-                return True
-        return False
+        return any(unit.workers for unit in self._units)
 
     def render_per_scenario(self, renderer: ConsoleRenderer):
         """
-        Render profiling breakdown per scenario.
-
-        Shows:
-        - Operation timing table
-        - Percentage breakdown
-        - Bottleneck identification
+        Render per-scenario worker / decision performance.
 
         Args:
             renderer: ConsoleRenderer instance
@@ -73,18 +58,18 @@ class PerformanceSummary(AbstractBatchSummarySection):
 
         self._render_section_header(renderer)
 
-        if not self._process_results:
-            print("No profiling data available")
+        if not self._units:
+            print("No performance data available")
             return
 
-        for idx, scenario in enumerate(self._process_results, 1):
+        for idx, unit in enumerate(self._units, 1):
             # Separator between scenarios
             if idx > 1:
                 print()
                 renderer.print_separator(width=120, char="·")
                 print()
 
-            self._render_scenario_performance(scenario, renderer)
+            self._render_scenario_performance(unit, renderer)
 
     def render_aggregated(self, renderer: ConsoleRenderer) -> None:
         """
@@ -129,64 +114,45 @@ class PerformanceSummary(AbstractBatchSummarySection):
         self._render_bottleneck_details(bottlenecks, renderer)
         print()
 
-    def _render_scenario_performance(self, scenario: ProcessResult, renderer: ConsoleRenderer) -> None:
+    def _render_scenario_performance(self, unit: WorkerDecisionUnitRow, renderer: ConsoleRenderer) -> None:
         """
-        Render performance for single scenario.
+        Render performance for single scenario (unit).
 
         Args:
-            scenario: Scenario result to render
+            unit: The worker/decision unit row
             renderer: ConsoleRenderer instance
         """
-        if not scenario.tick_loop_results:
-            return
-
         renderer.section_separator()
 
-        # Get statistics
-        decision_statistics = scenario.tick_loop_results.decision_statistics
-        worker_statistics = scenario.tick_loop_results.worker_statistics
-        coordination_statistics = scenario.tick_loop_results.coordination_statistics
-
-        # Get config for parallel mode
-        parallel_workers = coordination_statistics.parallel_workers
-
         # Header
-        ticks_processed = coordination_statistics.ticks_processed
-        total_workers = len(worker_statistics)
-        decision_count = decision_statistics.decision_count
-        total_calls = sum(ws.worker_call_count for ws in worker_statistics)
+        parallel_workers = unit.parallel_workers
+        ticks_processed = unit.ticks_processed
+        total_workers = len(unit.workers)
+        decision_count = unit.decision_count
+        total_calls = sum(w.call_count for w in unit.workers)
 
-        # Header
         mode_str = renderer.green(
             "Parallel") if parallel_workers else renderer.yellow("Sequential")
-        print(f"{renderer.bold('📊 SCENARIO PERFORMANCE:')} {scenario.scenario_name}")
+        print(f"{renderer.bold('📊 SCENARIO PERFORMANCE:')} {unit.name}")
         print(f"{renderer.bold('   Workers:')} {total_workers} workers ({mode_str})  |  "
               f"Ticks: {ticks_processed:,}  |  "
               f"Calls: {total_calls:,}  |  "
               f"Decisions: {decision_count}")
 
         # Per-worker details
-        if worker_statistics:
+        if unit.workers:
             print(f"\n{renderer.bold('   📊 WORKER DETAILS:')}")
 
-            for worker_perf in worker_statistics:
-                worker_name = worker_perf.worker_name
-                worker_type = worker_perf.worker_type
-                call_count = worker_perf.worker_call_count
-                avg_time = worker_perf.worker_avg_time_ms
-                min_time = worker_perf.worker_min_time_ms
-                max_time = worker_perf.worker_max_time_ms
-                total_time = worker_perf.worker_total_time_ms
-
-                print(f"      {renderer.blue(f'{worker_name:15}->{worker_type:15}')}  "
-                      f"Calls: {call_count:>5}  |  "
-                      f"Avg: {avg_time:>6.3f}ms  |  "
-                      f"Range: {min_time:>6.3f}-{max_time:>6.3f}ms  |  "
-                      f"Total: {total_time:>8.2f}ms")
+            for w in unit.workers:
+                print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
+                      f"Calls: {w.call_count:>5}  |  "
+                      f"Avg: {w.avg_time_ms:>6.3f}ms  |  "
+                      f"Range: {w.min_time_ms:>6.3f}-{w.max_time_ms:>6.3f}ms  |  "
+                      f"Total: {w.total_time_ms:>8.2f}ms")
 
         # Parallel efficiency
-        if parallel_workers:
-            parallel_time_saved_ms = coordination_statistics.parallel_time_saved_ms
+        if parallel_workers and ticks_processed > 0:
+            parallel_time_saved_ms = unit.parallel_time_saved_ms
             parallel_avg_saved_per_tick_ms = parallel_time_saved_ms / ticks_processed
             status = self._get_parallel_status(parallel_time_saved_ms)
 
@@ -196,62 +162,46 @@ class PerformanceSummary(AbstractBatchSummarySection):
                   f"Status: {status}")
 
         # Decision logic
-        if decision_statistics:
-            logic_name = decision_statistics.decision_logic_name
-            logic_type = decision_statistics.decision_logic_type
-            avg_time = decision_statistics.decision_avg_time_ms
-            min_time = decision_statistics.decision_min_time_ms
-            max_time = decision_statistics.decision_max_time_ms
-            total_time = decision_statistics.decision_total_time_ms
-            decision_count = decision_statistics.decision_count
+        if unit.decision_logic_name or unit.decision_count:
             print(
-                f"\n{renderer.bold('   🧠 DECISION LOGIC:')} {logic_name} ({logic_type})")
-            print(f"      Decisions: {decision_count}  |  "
-                  f"Avg: {avg_time:>6.3f}ms  |  "
-                  f"Range: {min_time:>6.3f}-{max_time:>6.3f}ms  |  "
-                  f"Total: {total_time:>8.2f}ms")
+                f"\n{renderer.bold('   🧠 DECISION LOGIC:')} {unit.decision_logic_name} ({unit.decision_logic_type})")
+            print(f"      Decisions: {unit.decision_count}  |  "
+                  f"Avg: {unit.decision_avg_time_ms:>6.3f}ms  |  "
+                  f"Range: {unit.decision_min_time_ms:>6.3f}-{unit.decision_max_time_ms:>6.3f}ms  |  "
+                  f"Total: {unit.decision_total_time_ms:>8.2f}ms")
 
         print()
 
     def _aggregate_performance_stats(self) -> AggregatedPerformanceStats:
         """
-        Aggregate performance statistics across all scenarios.
+        Aggregate performance statistics across all units.
 
         Returns:
             Aggregated performance statistics
         """
         aggregated = AggregatedPerformanceStats()
 
-        for scenario in self._process_results:
-            if not scenario.tick_loop_results:
-                continue
-
-            decision_statistics = scenario.tick_loop_results.decision_statistics
-            worker_statistics = scenario.tick_loop_results.worker_statistics
-
+        for unit in self._units:
             # Basic stats
-            aggregated.total_ticks += scenario.tick_loop_results.coordination_statistics.ticks_processed
-            aggregated.total_signals += decision_statistics.decision_count
-            aggregated.total_decisions += decision_statistics.decision_count
+            aggregated.total_ticks += unit.ticks_processed
+            aggregated.total_signals += unit.decision_count
+            aggregated.total_decisions += unit.decision_count
 
             # Worker stats
-            for worker_perf in worker_statistics:
-                worker_name = worker_perf.worker_name
+            for w in unit.workers:
+                if w.worker_name not in aggregated.worker_aggregates:
+                    aggregated.worker_aggregates[w.worker_name] = WorkerAggregateData()
 
-                if worker_name not in aggregated.worker_aggregates:
-                    aggregated.worker_aggregates[worker_name] = WorkerAggregateData(
-                    )
-
-                worker_agg = aggregated.worker_aggregates[worker_name]
-                worker_agg.calls += worker_perf.worker_call_count
-                worker_agg.total_time += worker_perf.worker_total_time_ms
-                worker_agg.times.append(worker_perf.worker_avg_time_ms)
+                worker_agg = aggregated.worker_aggregates[w.worker_name]
+                worker_agg.calls += w.call_count
+                worker_agg.total_time += w.total_time_ms
+                worker_agg.times.append(w.avg_time_ms)
 
             # Decision logic
             decision_agg = aggregated.decision_aggregates
-            decision_agg.calls += decision_statistics.decision_count
-            decision_agg.total_time += decision_statistics.decision_total_time_ms
-            decision_agg.times.append(decision_statistics.decision_avg_time_ms)
+            decision_agg.calls += unit.decision_count
+            decision_agg.total_time += unit.decision_total_time_ms
+            decision_agg.times.append(unit.decision_avg_time_ms)
 
         return aggregated
 
@@ -307,7 +257,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
 
     def _analyze_bottlenecks(self) -> PerformanceBottlenecks:
         """
-        Analyze performance bottlenecks across all scenarios.
+        Analyze performance bottlenecks across all units.
 
         Returns:
             Performance bottleneck analysis
@@ -319,21 +269,13 @@ class PerformanceSummary(AbstractBatchSummarySection):
         decision_logic_times: Dict[str, List[Tuple[str, float]]] = {}
         worst_parallel_saved: float = float('inf')
 
-        for scenario in self._process_results:
-            if not scenario.tick_loop_results:
-                continue
-
-            decision_statistics = scenario.tick_loop_results.decision_statistics
-            worker_statistics = scenario.tick_loop_results.worker_statistics
-            coordination_statistics = scenario.tick_loop_results.coordination_statistics
-
-            scenario_name = scenario.scenario_name
-            ticks = coordination_statistics.ticks_processed
+        for unit in self._units:
+            scenario_name = unit.name
+            ticks = unit.ticks_processed
 
             # Calculate scenario avg time per tick
-            total_worker_time = sum(
-                w.worker_total_time_ms for w in worker_statistics)
-            total_decision_time = decision_statistics.decision_total_time_ms
+            total_worker_time = sum(w.total_time_ms for w in unit.workers)
+            total_decision_time = unit.decision_total_time_ms
 
             total_time = total_worker_time + total_decision_time
             avg_time_per_tick = total_time / ticks if ticks > 0 else 0.0
@@ -347,34 +289,27 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 )
 
             # Collect worker times
-            for worker_perf in worker_statistics:
-                worker_name = worker_perf.worker_name
-                avg_time = worker_perf.worker_avg_time_ms
-                total_time = worker_perf.worker_total_time_ms
-                avg_time = worker_perf.worker_avg_time_ms
-                if worker_name not in worker_times:
-                    worker_times[worker_name] = []
-                worker_times[worker_name].append((scenario_name, avg_time))
+            for w in unit.workers:
+                if w.worker_name not in worker_times:
+                    worker_times[w.worker_name] = []
+                worker_times[w.worker_name].append((scenario_name, w.avg_time_ms))
 
             # Collect decision logic times
-            if decision_statistics:
-                logic_name = decision_statistics.decision_logic_name
-                avg_time = decision_statistics.decision_avg_time_ms
-                if logic_name not in decision_logic_times:
-                    decision_logic_times[logic_name] = []
-                decision_logic_times[logic_name].append(
-                    (scenario_name, avg_time))
+            if unit.decision_logic_name:
+                if unit.decision_logic_name not in decision_logic_times:
+                    decision_logic_times[unit.decision_logic_name] = []
+                decision_logic_times[unit.decision_logic_name].append(
+                    (scenario_name, unit.decision_avg_time_ms))
 
             # Check parallel efficiency
-            if coordination_statistics.parallel_workers:
-                time_saved = coordination_statistics.parallel_time_saved_ms
+            if unit.parallel_workers:
+                time_saved = unit.parallel_time_saved_ms
                 if time_saved < worst_parallel_saved:
                     worst_parallel_saved = time_saved
                     bottlenecks.worst_parallel = ParallelBottleneckData(
                         name=scenario_name,
                         time_saved=time_saved,
-                        status=self._get_parallel_status(
-                            time_saved)
+                        status=self._get_parallel_status(time_saved)
                     )
 
         # Find worst worker

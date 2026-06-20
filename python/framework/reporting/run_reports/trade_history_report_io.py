@@ -10,32 +10,15 @@ file, and API all go through this — one model, one filter, identical data.
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from python.framework.reporting.run_reports.trade_history_report_builder import compute_trade_analytics
+from python.framework.reporting.run_reports.report_aggregators import (
+    aggregate_trade_analytics, aggregate_trade_scenario_totals)
 from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
-from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 
 # Canonical artifact names inside a run directory
 TRADE_HISTORY_ARTIFACT = 'trade_history.json'
 TRADE_HISTORY_CSV = 'trade_history.csv'
-
-
-def trade_records_from_batch(batch: BatchExecutionSummary) -> List[TradeRecord]:
-    """Aggregate the closed trade records across all scenarios of a sim batch."""
-    records: List[TradeRecord] = []
-    for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if tick_loop and tick_loop.trade_history:
-            records.extend(tick_loop.trade_history)
-    return records
-
-
-def trade_records_from_session(session: AutoTraderResult) -> List[TradeRecord]:
-    """The closed trade records of a live AutoTrader session (the single unit)."""
-    return list(session.trade_history)
 
 
 def write_trade_history_report(report: TradeHistoryReport, run_dir: Path) -> Path:
@@ -71,13 +54,16 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
     Returns:
         Path of the written CSV
     """
+    # Flat aggregate table: the nested per-fill executions (#393) are JSON-only —
+    # they do not flatten into a single CSV row (same rule as the portfolio model).
+    nested = {'entry_executions', 'exit_executions'}
     path = Path(run_dir) / TRADE_HISTORY_CSV
-    columns = list(TradeHistoryRow.model_fields.keys())
+    columns = [k for k in TradeHistoryRow.model_fields if k not in nested]
     with path.open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.trades:
-            writer.writerow(row.model_dump())
+            writer.writerow(row.model_dump(exclude=nested))
     return path
 
 
@@ -116,4 +102,5 @@ def filter_trade_history_report(
     symbols = sorted({row.symbol for row in rows})
     return TradeHistoryReport(
         trades=rows, count=len(rows), symbols=symbols,
-        analytics=compute_trade_analytics(rows))
+        analytics=aggregate_trade_analytics(rows),
+        scenario_totals=aggregate_trade_scenario_totals(rows))

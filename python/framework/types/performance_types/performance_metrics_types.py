@@ -197,9 +197,9 @@ class WorkerDecisionBreakdown:
     decision_logic_pct: float = 0.0
     coordination_overhead_pct: float = 0.0
 
-    # Derived metrics
+    # Derived metric (pure calculation). The "is overhead too high?" verdict is NOT here — it is a
+    # decision produced by the post-run validator (#395, no decisions in reports).
     overhead_ratio: float = 0.0  # overhead / computation time
-    is_high_overhead: bool = False  # True if overhead > 50%
 
     def __post_init__(self):
         """Calculate derived metrics after initialization."""
@@ -211,8 +211,7 @@ class WorkerDecisionBreakdown:
             self.coordination_overhead_pct = (
                 self.coordination_overhead_ms / self.total_time_ms) * 100
 
-        # Calculate overhead ratio
+        # Calculate overhead ratio (pure calc — no verdict)
         computation_time = self.worker_execution_ms + self.decision_logic_ms
         if computation_time > 0:
             self.overhead_ratio = self.coordination_overhead_ms / computation_time
-            self.is_high_overhead = self.overhead_ratio > 0.5  # Overhead > 50% of computation

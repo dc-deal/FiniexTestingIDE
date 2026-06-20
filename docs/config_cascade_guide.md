@@ -486,6 +486,8 @@ Trading simulator settings cascade individually (app_config → global → scena
 > A scenario with `{"JPY": 50000}` does NOT inherit the global `{"EUR": 10000}`.
 >
 > **Optional:** `"account_currency": "JPY"` can be added to `trade_simulator_config` to explicitly set the P&L denomination currency. If omitted, derived from balances + symbol (quote currency preferred).
+> It must be the symbol's **base or quote** currency — cross-currency settlement (account ≠ base ≠ quote) is not supported in V1, and a scenario that sets an incompatible currency is marked invalid.
+> In **spot** mode the account currency is always the **quote** currency: a base value is normalized to quote (with a warning), because spot P&L settles in the quote currency while a base-denominated account would mix units (gross in base, fees in quote).
 
 **Override Log:**
 ```

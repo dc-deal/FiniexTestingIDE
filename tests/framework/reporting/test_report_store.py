@@ -8,14 +8,26 @@ no run required.
 
 from pathlib import Path
 
+from python.framework.reporting.run_reports.broker_report_io import write_broker_report
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
+from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.run_reports.run_summary_io import write_run_summary
+from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.types.api.report_types import (
-    OrderHistoryReport, OrderHistoryRow, PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport, TradeHistoryRow)
+    ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
+    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
+    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
+    ScenarioDetailsReport, ScenarioDetailsRow,
+    TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
+    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -38,7 +50,7 @@ def _report() -> TradeHistoryReport:
         _row('p3', 'EURUSD', 'sl_triggered', '2025-10-13T10:00:00+00:00'),
     ]
     return TradeHistoryReport(
-        trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=_ZERO_ANALYTICS)
+        trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=[_ZERO_ANALYTICS])
 
 
 def _write_run(logs_root: Path, group: str, owner: str, run_id: str) -> None:
@@ -156,3 +168,155 @@ class TestPortfolio:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_portfolio('nope') is None
+
+
+def _execution_stats_report() -> ExecutionStatsReport:
+    unit = ExecutionStatsRow(
+        name='s1', symbol='EURUSD', orders_sent=5, orders_executed=4,
+        orders_rejected=1, sl_tp_triggered=2)
+    totals = ExecutionStatsTotals(
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
+    return ExecutionStatsReport(units=[unit], totals=totals)
+
+
+class TestExecutionStats:
+    def test_reads_execution_stats(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_execution_stats_report(_execution_stats_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_execution_stats('20260615_120000')
+        assert report is not None
+        assert report.units[0].sl_tp_triggered == 2
+        assert report.totals.orders_executed == 4
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_execution_stats('nope') is None
+
+    def test_csv_header_and_rows(self, tmp_path):
+        write_execution_stats_csv(_execution_stats_report(), tmp_path)
+        lines = (tmp_path / 'execution_stats.csv').read_text().splitlines()
+        assert lines[0].startswith('name,symbol,orders_sent')
+        assert len(lines) == 1 + 1                 # header + 1 unit row
+        assert 'EURUSD' in lines[1]
+
+
+def _pending_orders_report() -> PendingOrdersReport:
+    unit = PendingOrdersUnitRow(
+        name='s1', symbol='EURUSD', total_resolved=3, total_filled=2,
+        total_force_closed=1, avg_latency_ms=42.0, min_latency_ms=21.0, max_latency_ms=60.0,
+        active_limit_orders=[ActiveOrderRow(
+            order_id='L1', order_type='limit', direction='long', lots=0.1,
+            entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
+    return PendingOrdersReport(units=[unit])
+
+
+class TestPendingOrders:
+    def test_reads_pending_orders(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_pending_orders_report(_pending_orders_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_pending_orders('20260615_120000')
+        assert report is not None
+        u = report.units[0]
+        assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
+        assert u.active_limit_orders[0].order_id == 'L1'
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_pending_orders('nope') is None
+
+
+def _scenario_details_report() -> ScenarioDetailsReport:
+    return ScenarioDetailsReport(units=[
+        ScenarioDetailsRow(
+            name='s1', symbol='EURUSD', data_source='mt5', status='success',
+            ticks_processed=15000, buy_signals=296, sell_signals=263, worker_count=2),
+        ScenarioDetailsRow(
+            name='bad', symbol='BTCUSD', data_source='kraken_spot', status='failed',
+            error_type='ValidationError', error_message='start before data'),
+    ])
+
+
+class TestScenarioDetails:
+    def test_reads_scenario_details(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_scenario_details_report(_scenario_details_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_scenario_details('20260615_120000')
+        assert report is not None
+        assert [u.status for u in report.units] == ['success', 'failed']
+        assert report.units[0].buy_signals == 296
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_scenario_details('nope') is None
+
+
+def _run_summary() -> RunSummary:
+    return RunSummary(
+        currencies=[RunSummaryCurrency(
+            currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, max_drawdown=12.0,
+            total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
+            expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
+        orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
+
+
+class TestRunSummary:
+    def test_reads_run_summary(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_run_summary(_run_summary(), run_dir)
+
+        rs = ReportStore(tmp_path).get_run_summary('20260615_120000')
+        assert rs is not None
+        assert rs.currencies[0].expectancy == 0.5
+        assert rs.orders_executed == 4 and rs.unit_count == 1
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_run_summary('nope') is None
+
+
+def _broker_report() -> BrokerReport:
+    return BrokerReport(units=[BrokerInfoRow(
+        broker_type='kraken_spot', market_type='crypto', company='Kraken',
+        config_hash='abcd1234', scenarios=['btc_run'],
+        symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
+
+
+def _warnings_errors_report() -> WarningsErrorsReport:
+    return WarningsErrorsReport(
+        warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
+        errors=[UnitErrorRow(name='bad', symbol='BTCUSD', error_type='ValidationError')],
+        outcome=WarningsErrorsOutcome(failed_count=1, total_units=2))
+
+
+class TestWarningsErrors:
+    def test_reads_warnings_errors(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_warnings_errors_report(_warnings_errors_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_warnings_errors('20260615_120000')
+        assert report is not None
+        assert report.warnings[0].message == 'DEBUG MODE'
+        assert report.errors[0].name == 'bad'
+        assert report.outcome.failed_count == 1
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_warnings_errors('nope') is None
+
+
+class TestBroker:
+    def test_reads_broker(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_broker_report(_broker_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_broker('20260615_120000')
+        assert report is not None
+        assert report.units[0].broker_type == 'kraken_spot'
+        assert report.units[0].symbols[0].symbol == 'BTCUSD'
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_broker('nope') is None

@@ -10,14 +10,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.broker_report_io import (
+    BROKER_ARTIFACT, read_broker_report)
+from python.framework.reporting.run_reports.execution_stats_report_io import (
+    EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
+from python.framework.reporting.run_reports.pending_orders_report_io import (
+    PENDING_ORDERS_ARTIFACT, read_pending_orders_report)
 from python.framework.reporting.run_reports.portfolio_report_io import (
     PORTFOLIO_ARTIFACT, read_portfolio_report)
+from python.framework.reporting.run_reports.run_summary_io import (
+    RUN_SUMMARY_ARTIFACT, read_run_summary)
+from python.framework.reporting.run_reports.scenario_details_report_io import (
+    SCENARIO_DETAILS_ARTIFACT, read_scenario_details_report)
+from python.framework.reporting.run_reports.profiling_report_io import (
+    PROFILING_ARTIFACT, read_profiling_report)
 from python.framework.reporting.run_reports.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
+from python.framework.reporting.run_reports.warnings_errors_report_io import (
+    WARNINGS_ERRORS_ARTIFACT, read_warnings_errors_report)
+from python.framework.reporting.run_reports.worker_decision_report_io import (
+    WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
-    OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 
 class ReportStore:
@@ -97,6 +115,126 @@ class ReportStore:
         if path is None:
             return None
         return read_portfolio_report(path)
+
+    def get_execution_stats(self, run_id: str) -> Optional[ExecutionStatsReport]:
+        """
+        Read a run's execution-stats report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The execution-stats report, or None if the run has no execution-stats artifact
+        """
+        path = self._resolve(run_id, EXECUTION_STATS_ARTIFACT)
+        if path is None:
+            return None
+        return read_execution_stats_report(path)
+
+    def get_pending_orders(self, run_id: str) -> Optional[PendingOrdersReport]:
+        """
+        Read a run's pending-orders report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The pending-orders report, or None if the run has no pending-orders artifact
+        """
+        path = self._resolve(run_id, PENDING_ORDERS_ARTIFACT)
+        if path is None:
+            return None
+        return read_pending_orders_report(path)
+
+    def get_scenario_details(self, run_id: str) -> Optional[ScenarioDetailsReport]:
+        """
+        Read a run's scenario-details report (sim-only).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The scenario-details report, or None if the run has no scenario-details artifact
+        """
+        path = self._resolve(run_id, SCENARIO_DETAILS_ARTIFACT)
+        if path is None:
+            return None
+        return read_scenario_details_report(path)
+
+    def get_run_summary(self, run_id: str) -> Optional[RunSummary]:
+        """
+        Read a run's cross-section KPI summary.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The run-summary report, or None if the run has no run-summary artifact
+        """
+        path = self._resolve(run_id, RUN_SUMMARY_ARTIFACT)
+        if path is None:
+            return None
+        return read_run_summary(path)
+
+    def get_worker_decision(self, run_id: str) -> Optional[WorkerDecisionReport]:
+        """
+        Read a run's worker/decision report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The worker/decision report, or None if the run has no worker-decision artifact
+        """
+        path = self._resolve(run_id, WORKER_DECISION_ARTIFACT)
+        if path is None:
+            return None
+        return read_worker_decision_report(path)
+
+    def get_profiling(self, run_id: str) -> Optional[ProfilingReport]:
+        """
+        Read a run's profiling report (sim-only).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The profiling report, or None if the run has no profiling artifact
+        """
+        path = self._resolve(run_id, PROFILING_ARTIFACT)
+        if path is None:
+            return None
+        return read_profiling_report(path)
+
+    def get_warnings_errors(self, run_id: str) -> Optional[WarningsErrorsReport]:
+        """
+        Read a run's warnings & errors report.
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The warnings/errors report, or None if the run has no artifact
+        """
+        path = self._resolve(run_id, WARNINGS_ERRORS_ARTIFACT)
+        if path is None:
+            return None
+        return read_warnings_errors_report(path)
+
+    def get_broker(self, run_id: str) -> Optional[BrokerReport]:
+        """
+        Read a run's broker-configuration report (sim-only).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The broker report, or None if the run has no broker artifact
+        """
+        path = self._resolve(run_id, BROKER_ARTIFACT)
+        if path is None:
+            return None
+        return read_broker_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact for a run id across the log groups."""

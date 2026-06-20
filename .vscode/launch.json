@@ -1727,6 +1727,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Live Telemetry (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/live_telemetry/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 21
+            }
+        },
+        {
             "name": "🧩 Pytest: Config Cascade (All)",
             "type": "debugpy",
             "request": "launch",

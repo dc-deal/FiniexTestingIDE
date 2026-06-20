@@ -14,7 +14,9 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.run_reports.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    OrderHistoryReport, PortfolioReport, TradeHistoryReport)
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -93,6 +95,158 @@ def get_portfolio(run_id: str) -> PortfolioReport:
         raise ApiException(
             404, 'run_not_found',
             f"No portfolio artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/execution-stats', response_model=ExecutionStatsReport)
+def get_execution_stats(run_id: str) -> ExecutionStatsReport:
+    """
+    Execution-stats report for a run (per-unit order counts + summed totals).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ExecutionStatsReport (404 if the run has no execution-stats artifact)
+    """
+    report = ReportStore().get_execution_stats(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No execution-stats artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/pending-orders', response_model=PendingOrdersReport)
+def get_pending_orders(run_id: str) -> PendingOrdersReport:
+    """
+    Pending-orders report for a run (per-unit lifecycle + latency + active orders).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The PendingOrdersReport (404 if the run has no pending-orders artifact)
+    """
+    report = ReportStore().get_pending_orders(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No pending-orders artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/scenario-details', response_model=ScenarioDetailsReport)
+def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
+    """
+    Scenario-details report for a run (per-scenario execution + signal metadata, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ScenarioDetailsReport (404 if the run has no scenario-details artifact)
+    """
+    report = ReportStore().get_scenario_details(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No scenario-details artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/run-summary', response_model=RunSummary)
+def get_run_summary(run_id: str) -> RunSummary:
+    """
+    Cross-section KPI summary for a run (per-currency KPIs + global order counts).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The RunSummary (404 if the run has no run-summary artifact)
+    """
+    report = ReportStore().get_run_summary(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No run-summary artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/worker-decision', response_model=WorkerDecisionReport)
+def get_worker_decision(run_id: str) -> WorkerDecisionReport:
+    """
+    Worker/decision report for a run (per-unit worker + decision performance, unified).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The WorkerDecisionReport (404 if the run has no worker-decision artifact)
+    """
+    report = ReportStore().get_worker_decision(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No worker-decision artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/profiling', response_model=ProfilingReport)
+def get_profiling(run_id: str) -> ProfilingReport:
+    """
+    Profiling report for a run (per-scenario operation timing + inter-tick + clipping + warmup, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The ProfilingReport (404 if the run has no profiling artifact)
+    """
+    report = ReportStore().get_profiling(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No profiling artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/warnings-errors', response_model=WarningsErrorsReport)
+def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
+    """
+    Warnings & errors report for a run (tiered warnings + per-unit errors + outcome, both pipelines).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
+    """
+    report = ReportStore().get_warnings_errors(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No warnings-errors artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/broker', response_model=BrokerReport)
+def get_broker(run_id: str) -> BrokerReport:
+    """
+    Broker-configuration report for a run (per-broker spec + scenarios + symbols, sim-only).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The BrokerReport (404 if the run has no broker artifact)
+    """
+    report = ReportStore().get_broker(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No broker artifact for run '{run_id}'")
     return report
 
 

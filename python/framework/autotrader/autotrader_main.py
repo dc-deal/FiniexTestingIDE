@@ -558,6 +558,7 @@ class AutotraderMain:
             decision_logic=self._decision_logic,
             summary_logger=self._summary_logger,
             global_logger=self._global_logger,
+            broker_config=self._executor.broker if self._executor else None,
         ).generate_and_log()
 
         # Close all loggers

@@ -1,14 +1,15 @@
 """
 Trade-History Report Builder Tests (#391).
 
-The postprocessor is a pure function (List[TradeRecord] → TradeHistoryReport), so it
-is tested in isolation with hand-built fixture trade records — no simulation or live
-run required. Covers mapping, the filter path (symbol / close reason / time range),
-distinct symbols, and the empty case.
+The postprocessor is a pure function (RunUnits → TradeHistoryReport), so it is tested
+in isolation with hand-built fixture trade records wrapped in a single RunUnit — no
+simulation or live run required. Covers mapping, the filter path (symbol / close
+reason / time range), distinct symbols, and the empty case.
 """
 
 from datetime import datetime, timedelta, timezone
 
+from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason, CloseType, EntryType, TradeRecord)
@@ -16,6 +17,11 @@ from python.framework.types.trading_env_types.order_types import OrderDirection
 
 
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
+
+
+def _units(trades):
+    """Wrap a flat trade list in a single RunUnit (the builder consumes units)."""
+    return [RunUnit(name='', symbol='', trade_history=trades)]
 
 
 def _trade(
@@ -55,12 +61,12 @@ class TestMapping:
     """TradeRecord → renderable row."""
 
     def test_builds_rows(self):
-        report = build_trade_history_report([_trade(), _trade(position_id='p2')])
+        report = build_trade_history_report(_units([_trade(), _trade(position_id='p2')]))
         assert report.count == 2
         assert len(report.trades) == 2
 
     def test_row_fields_mapped(self):
-        report = build_trade_history_report([_trade(net_pnl=12.5, duration_min=15)])
+        report = build_trade_history_report(_units([_trade(net_pnl=12.5, duration_min=15)]))
         row = report.trades[0]
         assert row.direction == 'long'                 # enum → value
         assert row.close_reason == 'tp_triggered'
@@ -69,7 +75,7 @@ class TestMapping:
         assert row.entry_time.endswith('+00:00')       # ISO-8601 UTC
 
     def test_short_direction(self):
-        report = build_trade_history_report([_trade(direction=OrderDirection.SHORT)])
+        report = build_trade_history_report(_units([_trade(direction=OrderDirection.SHORT)]))
         assert report.trades[0].direction == 'short'
 
 
@@ -84,18 +90,18 @@ class TestFilters:
         ]
 
     def test_filter_by_symbol(self):
-        report = build_trade_history_report(self._mixed(), symbol='GBPUSD')
+        report = build_trade_history_report(_units(self._mixed()), symbol='GBPUSD')
         assert report.count == 1
         assert report.trades[0].position_id == 'p2'
 
     def test_filter_by_close_reason(self):
-        report = build_trade_history_report(self._mixed(), close_reason='sl_triggered')
+        report = build_trade_history_report(_units(self._mixed()), close_reason='sl_triggered')
         assert report.count == 2
         assert {r.position_id for r in report.trades} == {'p2', 'p3'}
 
     def test_filter_by_time_range(self):
         report = build_trade_history_report(
-            self._mixed(), start=_T0 + timedelta(minutes=30), end=_T0 + timedelta(minutes=90))
+            _units(self._mixed()), start=_T0 + timedelta(minutes=30), end=_T0 + timedelta(minutes=90))
         assert report.count == 1
         assert report.trades[0].position_id == 'p2'
 
@@ -104,15 +110,25 @@ class TestMetadata:
     """Distinct symbols + empty case."""
 
     def test_distinct_symbols_sorted(self):
-        report = build_trade_history_report([
-            _trade(symbol='GBPUSD'), _trade(symbol='EURUSD'), _trade(symbol='EURUSD')])
+        report = build_trade_history_report(_units([
+            _trade(symbol='GBPUSD'), _trade(symbol='EURUSD'), _trade(symbol='EURUSD')]))
         assert report.symbols == ['EURUSD', 'GBPUSD']
 
     def test_empty(self):
-        report = build_trade_history_report([])
+        report = build_trade_history_report(_units([]))
         assert report.count == 0
         assert report.trades == []
         assert report.symbols == []
+
+    def test_scenario_totals(self):
+        # per-scenario footer totals (the table footer, model-served)
+        report = build_trade_history_report(
+            _units([_trade(net_pnl=20.0), _trade(position_id='p2', net_pnl=-10.0)]))
+        assert len(report.scenario_totals) == 1
+        st = report.scenario_totals[0]
+        assert st.trade_count == 2
+        assert round(st.net_pnl, 2) == 10.0        # 20 - 10
+        assert round(st.total_fees, 2) == 1.6      # 0.8 × 2
 
 
 class TestAnalytics:
@@ -120,17 +136,17 @@ class TestAnalytics:
 
     def test_r_multiple(self):
         # net_pnl 20 / initial_risk 10 → R = 2.0
-        report = build_trade_history_report([_trade(net_pnl=20.0, initial_risk=10.0)])
+        report = build_trade_history_report(_units([_trade(net_pnl=20.0, initial_risk=10.0)]))
         assert report.trades[0].r_multiple == 2.0
 
     def test_r_multiple_none_without_sl(self):
         # no initial_risk (trade had no stop loss) → R undefined
-        assert build_trade_history_report([_trade()]).trades[0].r_multiple is None
+        assert build_trade_history_report(_units([_trade()])).trades[0].r_multiple is None
 
     def test_pips_forex_convention(self):
         # entry 1.1000, digits 5 → pip = 1e-4; |Δprice| / pip
         row = build_trade_history_report(
-            [_trade(mae_price=1.0990, mfe_price=1.1030)]).trades[0]
+            _units([_trade(mae_price=1.0990, mfe_price=1.1030)])).trades[0]
         assert round(row.mae_pips, 1) == 10.0      # |1.1000 - 1.0990| / 1e-4
         assert round(row.mfe_pips, 1) == 30.0      # |1.1030 - 1.1000| / 1e-4
 
@@ -141,15 +157,19 @@ class TestAnalytics:
             _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-12.0, mfe_pnl=4.0),  # R=-1
             _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-8.0, mfe_pnl=6.0),   # R=-1
         ]
-        a = build_trade_history_report(trades).analytics
+        a = build_trade_history_report(_units(trades)).analytics[0]   # single currency ('')
         assert a.r_trade_count == 4
+        assert a.trade_count == 4
         assert a.expectancy == 0.5                 # (2+2-1-1)/4
         assert a.avg_win_r == 2.0
         assert a.avg_loss_r == -1.0
         assert a.avg_mae_winners == -4.0           # (-3 + -5)/2
         assert a.avg_mae_losers == -10.0           # (-12 + -8)/2
         assert a.avg_mfe_losers == 5.0             # (4 + 6)/2
+        # per-currency P&L totals (#393 — the trade-table TOTAL, model-served)
+        assert round(a.net_pnl, 2) == 20.0         # 20 + 20 - 10 - 10
+        assert round(a.total_fees, 2) == 3.2       # 0.8 × 4
+        assert round(a.gross_pnl, 2) == 23.2       # net + fees
 
     def test_empty_analytics(self):
-        a = build_trade_history_report([]).analytics
-        assert a.expectancy == 0.0 and a.r_trade_count == 0
+        assert build_trade_history_report(_units([])).analytics == []   # no rows → no currency groups

@@ -13,6 +13,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.reporting.run_reports.broker_report_io import read_broker_report
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
@@ -101,3 +102,18 @@ class TestAutotraderMockSession:
         # Session logs in subdirectory (tick-date based, not wall clock)
         session_logs = list((run_dir / 'session_logs').glob('autotrader_session_*.log'))
         assert len(session_logs) >= 1, 'No session log files created'
+
+    def test_broker_report_written(self, mock_session):
+        """Broker report is persisted (unified model) + rendered in the summary (#391 live)."""
+        _, run_dir = mock_session
+
+        broker_artifact = run_dir / 'broker.json'
+        assert broker_artifact.exists(), 'broker.json not written for live session'
+
+        report = read_broker_report(broker_artifact)
+        assert len(report.units) == 1
+        assert report.units[0].symbols[0].symbol == 'BTCUSD'
+
+        # Compact broker line appears in the post-session summary
+        summary = (run_dir / 'autotrader_summary.log').read_text()
+        assert 'Broker:' in summary

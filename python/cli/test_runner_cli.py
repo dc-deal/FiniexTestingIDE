@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -108,7 +109,9 @@ class TestRunnerCli:
             print('No test suites found.')
             sys.exit(1)
 
+        start_dt = datetime.now(timezone.utc)
         print(f"Running {len(suites)} test suites...")
+        print(f"Started:  {self._format_clock(start_dt)}")
         print(self._SEPARATOR)
 
         results: List[SuiteResult] = []
@@ -135,6 +138,7 @@ class TestRunnerCli:
         # Summary
         print(self._SEPARATOR)
         self._print_summary(results, aborted)
+        print(f"Finished: {self._format_clock(datetime.now(timezone.utc))}")
 
         # Exit with failure if any suite failed
         has_failures = any(r.exit_code != 0 for r in results)
@@ -160,7 +164,8 @@ class TestRunnerCli:
         )
         duration = time.monotonic() - start
 
-        passed, failed, errors, skipped = self._parse_pytest_output(proc.stdout)
+        passed, failed, errors, skipped = self._parse_pytest_output(
+            proc.stdout)
         failed_tests = self._parse_failed_tests(proc.stdout)
 
         # Exit code 5 = pytest "no tests collected" — not a failure,
@@ -262,7 +267,8 @@ class TestRunnerCli:
                 parts.append(f"{result.errors} errors")
             if result.passed > 0:
                 parts.append(f"{result.passed} passed")
-            status = ', '.join(parts) if parts else f"exit code {result.exit_code}"
+            status = ', '.join(
+                parts) if parts else f"exit code {result.exit_code}"
             line = f"  {name_col}   \u274c {status}  ({duration})"
 
         # Pad to overwrite any leftover characters from "running..."
@@ -303,7 +309,8 @@ class TestRunnerCli:
         if total_skipped > 0:
             parts.append(f"{total_skipped} skipped")
 
-        print(f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
+        print(
+            f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
 
         # Per-category breakdown (grouped by first path component)
         categories: dict = {}
@@ -325,6 +332,19 @@ class TestRunnerCli:
                 if counts['errors'] > 0:
                     cat_parts.append(f"{counts['errors']} errors")
                 print(f"  {cat:<16} {', '.join(cat_parts)}")
+
+    @staticmethod
+    def _format_clock(dt: datetime) -> str:
+        """
+        Format a wall-clock timestamp for console output.
+
+        Args:
+            dt: Timezone-aware datetime (UTC)
+
+        Returns:
+            Formatted string (e.g. "2026-06-17 14:30:05 UTC")
+        """
+        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
     @staticmethod
     def _format_duration(seconds: float) -> str:

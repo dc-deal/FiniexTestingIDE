@@ -501,7 +501,7 @@ The fill methods (`_fill_open_order`, `_fill_close_order`) are the heart of the 
 5. Check margin availability → **reject if insufficient** (appends rejection to `_order_history`, returns)
 6. Open position in PortfolioManager
 7. Append `OrderResult` to `_order_history`
-8. Update execution statistics (`_orders_executed`, `_total_spread_cost`)
+8. Update execution statistics (`_orders_executed`) — cost tracking lives in the PortfolioManager (`CostBreakdown`)
 
 The method is void because both success and failure are side effects: results go into `_order_history`, rejections increment `_orders_rejected`. Callers (like `_process_pending_orders()`) don't need to inspect the result — the portfolio and history are updated internally.
 

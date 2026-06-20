@@ -5,6 +5,8 @@ Covers:
 - detect_quote_currency() and detect_base_currency() for standard 6-char symbols
   and variable-length symbols such as DASHUSD (7 chars)
 - validate_scenario_symbols() — broker config symbol registration check
+- validate_account_currency() — explicit override compatibility (V1 cross-currency guard)
+- set_scenario_account_currency() — derivation + spot quote-normalization
 """
 
 import pytest
@@ -122,3 +124,104 @@ class TestValidateScenarioSymbols:
 
         assert len(scenario.validation_result) == 0
         logger.error.assert_not_called()
+
+
+def _account_scenario(name, symbol, broker_type, balances, account_currency=None):
+    """Build a MagicMock SingleScenario with a real trade_simulator_config dict."""
+    scenario = MagicMock(spec=SingleScenario)
+    scenario.name = name
+    scenario.symbol = symbol
+    scenario.broker_type = broker_type
+    tsc = {'balances': balances}
+    if account_currency is not None:
+        tsc['account_currency'] = account_currency
+    scenario.trade_simulator_config = tsc
+    scenario.validation_result = []
+    return scenario
+
+
+class TestValidateAccountCurrency:
+    """validate_account_currency — explicit override compatibility (V1 cross-currency guard).
+
+    Empty broker_map → _get_symbol_currencies uses the known-quote-suffix heuristic,
+    so no broker config is needed.
+    """
+
+    def test_explicit_incompatible_marks_invalid(self):
+        # 'BTC' on a forex pair is neither base (GBP) nor quote (USD) → invalid
+        scenario = _account_scenario('gbp', 'GBPUSD', BrokerType.MT5_FOREX, {'USD': 10000}, 'BTC')
+        logger = MagicMock()
+
+        ScenarioValidator.validate_account_currency(scenario, logger, {})
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'BTC' in scenario.validation_result[0].errors[0]
+        logger.error.assert_called_once()
+
+    def test_explicit_quote_is_valid(self):
+        scenario = _account_scenario('gbp', 'GBPUSD', BrokerType.MT5_FOREX, {'USD': 10000}, 'USD')
+        logger = MagicMock()
+
+        ScenarioValidator.validate_account_currency(scenario, logger, {})
+
+        assert len(scenario.validation_result) == 0
+
+    def test_explicit_base_is_valid(self):
+        # base-denominated margin account (MT5 style) is allowed
+        scenario = _account_scenario('gbp', 'GBPUSD', BrokerType.MT5_FOREX, {'GBP': 10000}, 'GBP')
+        logger = MagicMock()
+
+        ScenarioValidator.validate_account_currency(scenario, logger, {})
+
+        assert len(scenario.validation_result) == 0
+
+    def test_balances_mismatch_short_circuits(self):
+        # No balance matches symbol → invalid on balances; explicit check not reached
+        scenario = _account_scenario('gbp', 'GBPUSD', BrokerType.MT5_FOREX, {'CHF': 10000}, 'CHF')
+        logger = MagicMock()
+
+        ScenarioValidator.validate_account_currency(scenario, logger, {})
+
+        assert len(scenario.validation_result) == 1
+        assert 'No balance currency matches' in scenario.validation_result[0].errors[0]
+
+
+class TestSetScenarioAccountCurrency:
+    """set_scenario_account_currency — derivation + spot quote-normalization."""
+
+    def test_spot_base_normalized_to_quote_with_warning(self):
+        # Spot BTCUSD with explicit base 'BTC' → normalized to quote 'USD' + warning
+        scenario = _account_scenario(
+            'btc', 'BTCUSD', BrokerType.KRAKEN_SPOT, {'USD': 10000, 'BTC': 0.0}, 'BTC')
+        logger = MagicMock()
+
+        ScenarioValidator.set_scenario_account_currency(logger, [scenario], {})
+
+        assert scenario.account_currency == 'USD'
+        warnings = [w for r in scenario.validation_result if r.is_valid for w in r.warnings]
+        assert len(warnings) == 1 and 'normalized' in warnings[0]
+        logger.warning.assert_called_once()
+
+    def test_spot_quote_no_warning(self):
+        # Spot, quote already → no normalization, no warning
+        scenario = _account_scenario(
+            'btc', 'BTCUSD', BrokerType.KRAKEN_SPOT, {'USD': 10000, 'BTC': 0.0})
+        logger = MagicMock()
+
+        ScenarioValidator.set_scenario_account_currency(logger, [scenario], {})
+
+        assert scenario.account_currency == 'USD'
+        assert scenario.validation_result == []
+        logger.warning.assert_not_called()
+
+    def test_margin_base_kept_no_warning(self):
+        # Margin GBPUSD with base account 'GBP' → kept (MT5 style), no normalization
+        scenario = _account_scenario('gbp', 'GBPUSD', BrokerType.MT5_FOREX, {'GBP': 10000}, 'GBP')
+        logger = MagicMock()
+
+        ScenarioValidator.set_scenario_account_currency(logger, [scenario], {})
+
+        assert scenario.account_currency == 'GBP'
+        assert scenario.validation_result == []
+        logger.warning.assert_not_called()

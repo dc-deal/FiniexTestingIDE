@@ -72,6 +72,7 @@ def pytest_collection_modifyitems(items):
             '/tests/autotrader/state_persistence/',
             '/tests/framework/algo_clock_validator/',
             '/tests/framework/bar_rendering/',
+            '/tests/framework/live_telemetry/',
             '/tests/framework/batch_validations/',
             '/tests/framework/worker_tests/',
             '/tests/framework/market_compatibility/',

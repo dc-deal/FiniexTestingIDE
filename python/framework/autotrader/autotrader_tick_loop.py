@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Deque, Dict, List, Optional, Tuple
 
+from python.framework.autotrader.autotrader_display_exporter import AutotraderDisplayExporter
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
@@ -28,20 +29,16 @@ from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
-    AutoTraderDisplayStats,
-    PositionSnapshot,
     RejectionEntry,
-    TradeHistoryEntry,
+    SafetyState,
 )
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.parameter_types import OutputValue
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -161,6 +158,27 @@ class AutotraderTickLoop:
         self._initial_placeholder_path: Optional[Path] = None
         if self._logger.file_logger:
             self._initial_placeholder_path = self._logger.file_logger.log_file_path
+
+        # #400 — Display stats builder (extracted from this loop). Holds the
+        # stable collaborators; the volatile per-frame state (safety, rejections,
+        # spot-equity baseline) is passed per call.
+        self._display_exporter = AutotraderDisplayExporter(
+            config=self._config,
+            executor=self._executor,
+            worker_orchestrator=self._worker_orchestrator,
+            decision_logic=self._decision_logic,
+            clipping_monitor=self._clipping_monitor,
+            tick_queue=self._tick_queue,
+            trading_model=self._trading_model,
+            base_currency=self._base_currency,
+            quote_currency=self._quote_currency,
+            session_start=self._session_start,
+            dry_run=self._dry_run,
+            display_label_cache=self._display_label_cache,
+            drift_auditor=self._drift_auditor,
+            reconciler=self._reconciler,
+            api_monitor=self._api_monitor,
+        )
 
     def stop(self) -> None:
         """Signal the tick loop to stop. Thread-safe."""
@@ -344,8 +362,12 @@ class AutotraderTickLoop:
 
             # === 8. Display Stats ===
             if self._display_queue is not None:
-                display_stats = self._build_display_stats(
-                    decision, ticks_processed, tick)
+                display_stats = self._display_exporter.build(
+                    decision, ticks_processed, tick,
+                    safety=self._safety_state(),
+                    recent_rejections=list(self._recent_rejections),
+                    total_rejections=self._rejection_count,
+                    initial_spot_equity=self._initial_spot_equity)
                 try:
                     self._display_queue.put_nowait(display_stats)
                 except queue.Full:
@@ -387,8 +409,12 @@ class AutotraderTickLoop:
                     self._display_queue.get_nowait()
                 except queue.Empty:
                     break
-            final_stats = self._build_display_stats(
-                last_decision, ticks_processed, last_tick)
+            final_stats = self._display_exporter.build(
+                last_decision, ticks_processed, last_tick,
+                safety=self._safety_state(),
+                recent_rejections=list(self._recent_rejections),
+                total_rejections=self._rejection_count,
+                initial_spot_equity=self._initial_spot_equity)
             try:
                 self._display_queue.put(final_stats, timeout=1.0)
             except queue.Full:
@@ -488,11 +514,15 @@ class AutotraderTickLoop:
 
         if self._last_real_tick is None or self._last_real_decision is None:
             seconds_since = (datetime.now(timezone.utc) - self._session_start).total_seconds()
-            stats = self._build_startup_pulse_stats(seconds_since)
+            stats = self._display_exporter.build_startup_pulse(seconds_since)
         else:
             seconds_since = time.time() - self._last_real_tick_wall_time
-            stats = self._build_display_stats(
-                self._last_real_decision, ticks_processed, self._last_real_tick)
+            stats = self._display_exporter.build(
+                self._last_real_decision, ticks_processed, self._last_real_tick,
+                safety=self._safety_state(),
+                recent_rejections=list(self._recent_rejections),
+                total_rejections=self._rejection_count,
+                initial_spot_equity=self._initial_spot_equity)
             stats.is_pulse = True
             stats.seconds_since_last_tick = seconds_since
 
@@ -501,272 +531,14 @@ class AutotraderTickLoop:
         except queue.Full:
             pass  # Display will use last known state
 
-    def _build_startup_pulse_stats(self, seconds_since_start: float) -> AutoTraderDisplayStats:
-        """
-        Build a slim pre-first-tick pulse frame (#320).
-
-        Carries only what's known before any market data has arrived: session
-        identity, configured account, and the wall-clock delta since session
-        start. The renderer flags the `ticks_processed == 0 + is_pulse` combo
-        and shows `💓 Ns since startup` instead of the default wait label.
-
-        Args:
-            seconds_since_start: Wall-clock seconds since session_start
-
-        Returns:
-            Minimal AutoTraderDisplayStats with is_pulse=True
-        """
-        portfolio = self._executor.portfolio
-        return AutoTraderDisplayStats(
-            session_start=self._session_start,
-            dry_run=self._dry_run,
-            symbol=self._config.symbol,
-            broker_type=self._config.broker_type,
-            ticks_processed=0,
-            config_hash=self._executor.broker.config_hash,
-            balance=portfolio.balance,
-            initial_balance=portfolio.initial_balance,
-            total_trades=0,
-            winning_trades=0,
-            losing_trades=0,
-            equity=portfolio.balance,
-            spot_balances=portfolio.get_balances() if self._trading_model == TradingModel.SPOT else None,
-            account_currency=self._executor.account_currency,
-            base_currency=self._base_currency,
-            quote_currency=self._quote_currency,
-            trading_model=self._trading_model.value,
-            is_pulse=True,
-            seconds_since_last_tick=seconds_since_start,
-            **self._drift_display_counters(),
-            **self._reconcile_display_counters(),
-            api_perf=self._api_perf_snapshot(),
+    def _safety_state(self) -> SafetyState:
+        """Bundle the current circuit-breaker state for the display exporter."""
+        return SafetyState(
+            blocked=self._safety_blocked,
+            reason=self._safety_reason,
+            current_value=self._safety_current_value,
+            drawdown_pct=self._safety_drawdown_pct,
         )
-
-    def _build_display_stats(self, decision: Decision, ticks_processed: int, tick: TickData) -> AutoTraderDisplayStats:
-        """
-        Build display stats snapshot from current pipeline state.
-
-        Reads portfolio dirty-state (attribute reads, zero cost),
-        open positions (0-3 in live), active orders, worker outputs.
-        Called after the algo pipeline — not on the critical path.
-
-        Args:
-            decision: Current tick's decision
-            ticks_processed: Tick counter
-            tick: Current tick (for last_price)
-
-        Returns:
-            AutoTraderDisplayStats snapshot for display queue
-        """
-        portfolio = self._executor.portfolio
-
-        # Ensure P&L is current before snapshotting (display only, not every tick)
-        portfolio.ensure_positions_updated()
-
-        # Mid price (needed early for spot equity)
-        last_price = (tick.bid + tick.ask) / 2.0
-
-        # Equity + spot balances — spot mode reads balances directly (O(1), no cache trigger)
-        if self._trading_model == TradingModel.SPOT:
-            equity = portfolio.get_spot_equity(last_price)
-            spot_balances = portfolio.get_balances()
-        else:
-            # Margin mode: balance + unrealized P&L (positions already updated above)
-            unrealized = sum(pos.unrealized_pnl for pos in portfolio.open_positions.values())
-            equity = portfolio.balance + unrealized
-            spot_balances = None
-
-        # Open positions → PositionSnapshot
-        open_positions = []
-        for pos in self._executor.get_open_positions():
-            open_positions.append(PositionSnapshot(
-                position_id=pos.position_id,
-                symbol=pos.symbol,
-                direction=pos.direction,
-                lots=pos.lots,
-                entry_price=pos.entry_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                entry_trades=list(pos.entry_trades),
-            ))
-
-        # Active orders (limit + stop) from pending stats
-        pending_stats = self._executor.get_pending_stats()
-        active_orders = list(pending_stats.active_limit_orders) + \
-            list(pending_stats.active_stop_orders)
-        pipeline_count = pending_stats.latency_queue_count
-
-        # Trade history — last 10, newest first
-        recent_trades: List[TradeHistoryEntry] = []
-        trade_history = self._executor.get_trade_history()
-        for trade in trade_history[-10:][::-1]:
-            recent_trades.append(TradeHistoryEntry(
-                trade_id=trade.position_id,
-                symbol=trade.symbol,
-                direction=trade.direction,
-                lots=trade.lots,
-                entry_price=trade.entry_price,
-                exit_price=trade.exit_price,
-                net_pnl=trade.net_pnl,
-                close_reason=trade.close_reason,
-                close_type=trade.close_type,
-                entry_trades=list(trade.entry_trades),
-                exit_trades=list(trade.exit_trades),
-                exit_side=trade.exit_side,
-                exit_time=trade.exit_time,
-            ))
-
-        # Clipping — lightweight snapshot (avoids full session summary construction)
-        clipping_stats = self._clipping_monitor.get_display_stats()
-
-        # Worker performance + outputs (display=True only — keys from cache)
-        worker_times: Dict[str, float] = {}
-        worker_max_times: Dict[str, float] = {}
-        worker_rolling_avgs: Dict[str, float] = {}
-        worker_outputs: Dict[str, Dict[str, OutputValue]] = {}
-        worker_display_keys = self._display_label_cache.worker_display_output_keys
-        for name, worker in self._worker_orchestrator.workers.items():
-            # Performance
-            if worker.performance_logger:
-                stats = worker.performance_logger.get_stats()
-                worker_times[name] = stats.worker_avg_time_ms
-                worker_max_times[name] = stats.worker_max_time_ms
-                worker_rolling_avgs[name] = worker.performance_logger.get_rolling_avg_ms()
-
-            # Outputs (cached display=True key list, no per-tick schema read)
-            display_keys = worker_display_keys.get(name)
-            if not display_keys:
-                continue
-            result = self._worker_orchestrator.get_worker_result(name)
-            if result:
-                display_outputs = {
-                    key: result.outputs[key]
-                    for key in display_keys
-                    if key in result.outputs
-                }
-                if display_outputs:
-                    worker_outputs[name] = display_outputs
-
-        # Decision outputs (display=True)
-        decision_outputs: Dict[str, OutputValue] = {}
-        decision_schema = self._decision_logic.__class__.get_output_schema()
-        for key, param_def in decision_schema.items():
-            if param_def.display and key in decision.outputs:
-                decision_outputs[key] = decision.outputs[key]
-
-        # Decision logic config params (static, but read fresh to support future live reload)
-        config_params: Dict[str, OutputValue] = {}
-        for raw_key, _display_key in self._display_label_cache.config_param_specs:
-            if self._decision_logic.params.has(raw_key):
-                config_params[raw_key] = self._decision_logic.params.get(raw_key)
-
-        # Tick rate (session average)
-        uptime_min = max(0.001, (datetime.now(timezone.utc) -
-                         self._session_start).total_seconds() / 60.0)
-        ticks_per_min = ticks_processed / uptime_min
-
-        # Spot mode: P&L baseline = full equity at session start (USD + crypto × first_price)
-        # Margin mode: P&L baseline = account balance at session start
-        if self._trading_model == TradingModel.SPOT and self._initial_spot_equity > 0:
-            initial_balance_for_display = self._initial_spot_equity
-        else:
-            initial_balance_for_display = portfolio.initial_balance
-
-        return AutoTraderDisplayStats(
-            session_start=self._session_start,
-            dry_run=self._dry_run,
-            symbol=self._config.symbol,
-            broker_type=self._config.broker_type,
-            ticks_processed=ticks_processed,
-            config_hash=self._executor.broker.config_hash,
-            balance=portfolio.balance,
-            initial_balance=initial_balance_for_display,
-            total_trades=portfolio.get_total_trades(),
-            winning_trades=portfolio.get_winning_trades(),
-            losing_trades=portfolio.get_losing_trades(),
-            equity=equity,
-            spot_balances=spot_balances,
-            open_positions=open_positions,
-            active_orders=active_orders,
-            pipeline_count=pipeline_count,
-            recent_trades=recent_trades,
-            clipping_ratio=clipping_stats.clipping_ratio,
-            avg_processing_ms=clipping_stats.avg_processing_ms,
-            max_processing_ms=clipping_stats.max_processing_ms,
-            queue_depth=self._tick_queue.qsize(),
-            total_ticks_clipped=clipping_stats.ticks_clipped,
-            processing_times_ms=clipping_stats.processing_times_ms,
-            ticks_per_min=ticks_per_min,
-            last_price=last_price,
-            worker_times_ms=worker_times,
-            worker_max_times_ms=worker_max_times,
-            worker_rolling_avg_times_ms=worker_rolling_avgs,
-            worker_outputs=worker_outputs,
-            last_decision_action=decision.action,
-            decision_outputs=decision_outputs,
-            config_params=config_params,
-            decision_time_ms=self._decision_logic.performance_logger.get_stats().decision_avg_time_ms if self._decision_logic.performance_logger else 0.0,
-            decision_max_time_ms=self._decision_logic.performance_logger.get_stats().decision_max_time_ms if self._decision_logic.performance_logger else 0.0,
-            decision_rolling_avg_ms=self._decision_logic.performance_logger.get_rolling_avg_ms() if self._decision_logic.performance_logger else 0.0,
-            account_currency=self._executor.account_currency,
-            base_currency=self._base_currency,
-            quote_currency=self._quote_currency,
-            trading_model=self._trading_model.value,
-            safety_blocked=self._safety_blocked,
-            safety_reason=self._safety_reason,
-            safety_current_value=self._safety_current_value,
-            safety_drawdown_pct=self._safety_drawdown_pct,
-            recent_rejections=list(self._recent_rejections),
-            total_rejections=self._rejection_count,
-            last_awareness=self._decision_logic.get_last_awareness(),
-            event_history=self._decision_logic.get_event_history(),
-            total_events_emitted=self._decision_logic.get_total_events_emitted(),
-            last_tick_time=self._executor.get_current_time(),
-            **self._drift_display_counters(),
-            **self._reconcile_display_counters(),
-            api_perf=self._api_perf_snapshot(),
-        )
-
-    def _drift_display_counters(self) -> Dict[str, object]:
-        """
-        Build drift_* kwargs for AutoTraderDisplayStats. Returns empty dict
-        (uses dataclass defaults) when no DriftAuditor is wired. #327.
-        """
-        if self._drift_auditor is None:
-            return {}
-        counters = self._drift_auditor.get_display_counters()
-        return {
-            'drift_enabled': bool(counters.get('drift_enabled', False)),
-            'drift_audited': int(counters.get('drift_audited', 0)),
-            'drift_fee_events': int(counters.get('drift_fee_events', 0)),
-            'drift_volume_events': int(counters.get('drift_volume_events', 0)),
-            'drift_price_events': int(counters.get('drift_price_events', 0)),
-            'drift_slippage_events': int(counters.get('drift_slippage_events', 0)),
-            'drift_max_fee_pct': float(counters.get('drift_max_fee_pct', 0.0)),
-            'drift_max_slippage_pct': float(counters.get('drift_max_slippage_pct', 0.0)),
-        }
-
-    def _reconcile_display_counters(self) -> Dict[str, object]:
-        """
-        Build reconcile_* kwargs for AutoTraderDisplayStats. Returns empty dict
-        (uses dataclass defaults) when no Reconciler is wired. #151.
-        """
-        if self._reconciler is None:
-            return {}
-        counters = self._reconciler.get_display_counters()
-        return {
-            'reconcile_enabled': bool(counters.get('reconcile_enabled', False)),
-            'reconcile_divergences': int(counters.get('reconcile_divergences', 0)),
-            'reconcile_clean': bool(counters.get('reconcile_clean', True)),
-            'reconcile_count': int(counters.get('reconcile_count', 0)),
-            'reconcile_state_age_s': float(counters.get('reconcile_state_age_s', 0.0)),
-            'reconcile_next_in_s': float(counters.get('reconcile_next_in_s', 0.0)),
-        }
-
-    def _api_perf_snapshot(self) -> Optional[ApiPerfSnapshot]:
-        """Return the API monitor snapshot for the display, or None if not wired (#351)."""
-        if self._api_monitor is None:
-            return None
-        return self._api_monitor.get_snapshot()
 
     def _check_new_maxes(self) -> None:
         """Log new all-time max execution times for workers and decision logic."""

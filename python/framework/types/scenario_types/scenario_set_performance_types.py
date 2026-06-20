@@ -13,6 +13,10 @@ import numpy as np
 
 from python.framework.types.performance_types.performance_metrics_types import InterTickIntervalStats
 
+# Operations that are the intended hot path (strategy work) — a high share here is GOOD, not a
+# bottleneck. Single source of truth for the profiling presenter + the post-run advisory validator.
+EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
+
 
 @dataclass
 class OperationTiming:
@@ -117,16 +121,19 @@ class ProfilingData:
         Returns:
             ProfilingData instance
         """
-        # Extract total_per_tick (special key)
-        total_per_tick = profile_times.pop('total_per_tick', 0.0)
+        # Extract total_per_tick (special key) — non-destructive read: the input
+        # dict is left intact so the same profile_times can be derived more than
+        # once (e.g. by multiple report consumers), without depending on call order.
+        total_per_tick = profile_times.get('total_per_tick', 0.0)
 
-        # Build operations map
+        # Build operations map (exclude the special key)
         operations = {
             name: OperationTiming(
                 total_time_ms=time_ms,
                 call_count=profile_counts.get(name, 0)
             )
             for name, time_ms in profile_times.items()
+            if name != 'total_per_tick'
         }
 
         # Build inter-tick interval stats

@@ -10,9 +10,10 @@ Pure data output, no recommendations or suggestions.
 FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.types.api.report_types import ProfilingReport, WorkerDecisionReport
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_metrics_types import (
     WorkerDecisionBreakdown,
@@ -30,32 +31,33 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
     _section_title = '🔍 WORKER DECISION BREAKDOWN'
 
-    def __init__(self, batch_execution_summary: BatchExecutionSummary, profiling_data_map: Dict[Any, Any]):
+    def __init__(
+        self,
+        batch_execution_summary: BatchExecutionSummary,
+        profiling_report: ProfilingReport,
+        worker_decision_report: WorkerDecisionReport,
+    ):
         self.batch_execution_summary = batch_execution_summary
-        self.profiling_data_map = profiling_data_map
         self._process_results = batch_execution_summary.process_result_list
+        # Both inputs are model-fed now, matched per unit by name: the worker/decision facts
+        # (Layer A, #398) and the operation Total that drives the coordination-overhead
+        # (Layer B, from the profiling model — #399, closing the #398 residual). No
+        # profiling_data_map dependency anymore.
+        self._wd_rows_by_name = {row.name: row for row in worker_decision_report.units}
+        self._profiling_by_name = {unit.name: unit for unit in profiling_report.units}
         self.breakdowns = self._build_breakdowns()
 
     def _both_layers_have_data(self) -> bool:
         """
-        Returns True only when at least one scenario has BOTH Layer A
-        (worker_statistics populated) and Layer B (profile_times populated).
-        The breakdown's components (Worker Execution / Decision Logic /
-        Coordination Overhead) need both data sources — Layer A provides the
-        per-component split, Layer B provides the operation top-line. If
-        either is missing the section becomes meaningless and is suppressed (#137).
+        Returns True only when at least one unit has BOTH Layer A (worker facts, the
+        worker/decision model) AND Layer B (operation timing, the profiling model). The
+        breakdown's components (Worker Execution / Decision Logic / Coordination Overhead)
+        need both — Layer A the per-component split, Layer B the operation top-line. If
+        either is missing the section is suppressed (#137).
         """
-        layer_a = False
-        layer_b = False
-        for scenario in self._process_results:
-            if not scenario.tick_loop_results:
-                continue
-            if scenario.tick_loop_results.worker_statistics:
-                layer_a = True
-            profiling = scenario.tick_loop_results.profiling_data
-            if profiling and profiling.profile_times:
-                layer_b = True
-            if layer_a and layer_b:
+        for name, profiling in self._profiling_by_name.items():
+            row = self._wd_rows_by_name.get(name)
+            if profiling.operations and row is not None and row.workers:
                 return True
         return False
 
@@ -88,25 +90,6 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
         print()
 
-    def render_overhead_analysis(self, renderer, compact: bool = False, threshold: int = 9):
-        """
-        Render overhead analysis.
-
-        Args:
-            renderer: ConsoleRenderer instance
-            compact: If True, truncate high-overhead list to threshold entries
-            threshold: Max entries to display before collapsing
-        """
-        if not self._both_layers_have_data():
-            return
-
-        print()
-        renderer.section_separator()
-        renderer.print_bold("🔥 OVERHEAD ANALYSIS")
-        renderer.section_separator()
-        self._render_overhead_details(renderer, compact=compact, threshold=threshold)
-        print()
-
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
         """Build breakdowns from scenarios."""
         breakdowns = []
@@ -131,34 +114,36 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         Returns:
             WorkerDecisionBreakdown or None if no profiling data
         """
-        profiling = self.profiling_data_map.get(scenario.scenario_index)
-        if not profiling:
+        profiling = self._profiling_by_name.get(scenario.scenario_name)
+        if profiling is None:
             return None
 
-        # Get total worker_decision time from profiling
-        total_worker_decision_ms = profiling.get_operation_time(
-            'worker_decision')
+        # Total worker_decision operation time — from the profiling model now (#399,
+        # closing the #398 residual; was the profiling_data_map top-line).
+        total_worker_decision_ms = next(
+            (op.total_time_ms for op in profiling.operations
+             if op.operation == 'worker_decision'), 0.0)
         if total_worker_decision_ms == 0:
             return None
 
-        # Get statistics from new structure
-        decision_stats = scenario.tick_loop_results.decision_statistics
-        worker_stats = scenario.tick_loop_results.worker_statistics
-        coordination_stats = scenario.tick_loop_results.coordination_statistics
+        # Facts from the unified worker/decision model (#398), matched by scenario name.
+        row = self._wd_rows_by_name.get(scenario.scenario_name)
+        if row is None:
+            return None
 
-        # Calculate worker execution time (sum from list)
-        worker_execution_ms = sum(w.worker_total_time_ms for w in worker_stats)
+        # Calculate worker execution time (sum from the model's per-worker rows)
+        worker_execution_ms = sum(w.total_time_ms for w in row.workers)
 
         # Build worker breakdown dict (worker_name -> time_ms)
         worker_breakdown = {
-            w.worker_name: w.worker_total_time_ms
-            for w in worker_stats
+            w.worker_name: w.total_time_ms
+            for w in row.workers
         }
 
         # Get decision logic time
-        decision_logic_ms = decision_stats.decision_total_time_ms
+        decision_logic_ms = row.decision_total_time_ms
 
-        # Calculate coordination overhead
+        # Calculate coordination overhead (profiling total minus the model components)
         coordination_overhead_ms = max(
             0.0,
             total_worker_decision_ms - worker_execution_ms - decision_logic_ms
@@ -168,7 +153,7 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
             scenario_index=scenario.scenario_index,
             scenario_name=scenario.scenario_name,
             total_time_ms=total_worker_decision_ms,
-            total_ticks=coordination_stats.ticks_processed,
+            total_ticks=row.ticks_processed,
             worker_execution_ms=worker_execution_ms,
             decision_logic_ms=decision_logic_ms,
             coordination_overhead_ms=coordination_overhead_ms,
@@ -196,65 +181,16 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
               f"{breakdown.decision_logic_pct:>5.1f}%      │")
 
         bar_overhead = self._create_bar(breakdown.coordination_overhead_pct)
-        color = renderer.red if breakdown.is_high_overhead else renderer.yellow
-        indicator = " ⚠️ " if breakdown.is_high_overhead else "    "
+        # Overhead % is a pure calculation; the "too high?" verdict lives in the post-run
+        # validator (#395), so no ⚠️ / red flag is asserted here.
         print(f"│ Coordination Overhead {breakdown.coordination_overhead_ms:>7.2f}ms  {bar_overhead}  "
-              f"{color(f'{breakdown.coordination_overhead_pct:>5.1f}%')} {indicator}│")
+              f"{renderer.yellow(f'{breakdown.coordination_overhead_pct:>5.1f}%')}     │")
 
         print("└────────────────────────────────────────────────────┘")
         print()
-
-        # Workers
-        if breakdown.worker_breakdown:
-            print(renderer.bold("Workers:"))
-            for worker_name, worker_time in sorted(
-                breakdown.worker_breakdown.items(),
-                key=lambda x: x[1],
-                reverse=True
-            ):
-                pct = (worker_time / breakdown.total_time_ms) * 100
-                print(f"  {worker_name:<20} {worker_time:>7.2f}ms  {pct:>5.1f}%")
-            print()
-
-    def _render_overhead_details(self, renderer, compact: bool = False, threshold: int = 9):
-        """
-        Render overhead analysis.
-
-        Args:
-            renderer: ConsoleRenderer instance
-            compact: If True, truncate list to threshold entries
-            threshold: Max entries to display before collapsing
-        """
-        if not self.breakdowns:
-            return
-
-        high_overhead = [b for b in self.breakdowns if b.is_high_overhead]
-
-        if not high_overhead:
-            print(renderer.green("✅ No high overhead"))
-            return
-
-        high_overhead.sort(key=lambda b: b.overhead_ratio, reverse=True)
-
-        print(f"High overhead: {len(high_overhead)}")
-        print()
-
-        header = f"{'Scenario':<30} {'Overhead':<12} {'Ratio':<10}"
-        print(renderer.bold(header))
-        print("-" * 55)
-
-        visible = high_overhead[:threshold] if compact and len(high_overhead) > threshold else high_overhead
-        for breakdown in visible:
-            name = breakdown.scenario_name[:28]
-            overhead = f"{breakdown.coordination_overhead_ms:.2f}ms"
-            ratio = f"{breakdown.overhead_ratio:.2f}x"
-            status = renderer.red(
-                "Critical") if breakdown.overhead_ratio >= 2.0 else renderer.yellow("High")
-            print(f"{name:<30} {overhead:<12} {ratio:<10} {status}")
-
-        if compact and len(high_overhead) > threshold:
-            remaining = len(high_overhead) - threshold
-            print(f"  … +{remaining} more (all High) — see log for full list")
+        # Per-worker timing is rendered once, by the model-fed performance summary
+        # (WORKER DETAILS) — not duplicated here (#399 3d). The Components box above
+        # is the overhead split; the per-worker detail lives in PerformanceSummary.
 
     def _create_bar(self, percentage: float, width: int = 12) -> str:
         """Create ASCII bar."""

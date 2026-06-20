@@ -2,50 +2,56 @@
 Order-history report builder (#391) — postprocessor twin of the trade-history
 builder, for the order-lifecycle list (resting / filled / rejected orders).
 
-Pure function: a list of OrderResults (the input both pipelines already produce via
-`get_order_history()`) → the canonical `OrderHistoryReport`. Runs off the hot loop,
-source-agnostic, fixture-testable. Optional filters (symbol / status) live here so
-console, CSV, and API share one filter path.
+Consumes the run's `RunUnit` list (#391 Phase 2): each order row is tagged with its
+run unit name. Pure, off the hot loop, fixture-testable. Optional filters (symbol /
+status) live here so console, CSV, and API share one filter path.
 """
 
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
 from python.framework.types.trading_env_types.order_types import OrderResult
 
 
 def build_order_history_report(
-    orders: List[OrderResult],
+    units: List[RunUnit],
     symbol: Optional[str] = None,
     status: Optional[str] = None,
 ) -> OrderHistoryReport:
     """
-    Build the canonical order-history report from order records.
+    Build the canonical order-history report from the run's units.
 
     Args:
-        orders: Order records (sim: aggregated across scenarios; live: the session)
-        symbol: Keep only this symbol (None = all)
-        status: Keep only this OrderStatus value, e.g. 'rejected' (None = all)
+        units: The run's units (sim: scenarios; live: the session)
+        symbol / status: Optional filters
 
     Returns:
         OrderHistoryReport with the filtered, mapped rows + distinct symbols
     """
-    rows: List[OrderHistoryRow] = []
-    for order in orders:
-        if symbol is not None and (order.symbol or '') != symbol:
+    rows = [_to_row(order, unit.name) for unit in units for order in unit.order_history]
+    return _assemble(rows, symbol, status)
+
+
+def _assemble(
+    rows: List[OrderHistoryRow], symbol: Optional[str], status: Optional[str]) -> OrderHistoryReport:
+    """Apply the shared row filter and assemble the report (the one filter path)."""
+    filtered = []
+    for row in rows:
+        if symbol is not None and row.symbol != symbol:
             continue
-        if status is not None and order.status.value != status:
+        if status is not None and row.status != status:
             continue
-        rows.append(_to_row(order))
+        filtered.append(row)
+    symbols = sorted({row.symbol for row in filtered if row.symbol})
+    return OrderHistoryReport(orders=filtered, count=len(filtered), symbols=symbols)
 
-    symbols = sorted({row.symbol for row in rows if row.symbol})
-    return OrderHistoryReport(orders=rows, count=len(rows), symbols=symbols)
 
-
-def _to_row(order: OrderResult) -> OrderHistoryRow:
+def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:
     """Map one OrderResult to a renderable row (None-safe for optional fields)."""
     return OrderHistoryRow(
         order_id=order.order_id,
+        scenario_name=scenario_name,
         position_id=order.position_id or '',
         symbol=order.symbol or '',
         direction=order.direction.value if order.direction else '',

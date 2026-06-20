@@ -193,7 +193,7 @@ class AutoTraderLiveDisplay:
 
     def _build_header_title(self, stats: Optional[AutoTraderDisplayStats] = None) -> Text:
         """Build the header title with symbol, mode and config seed hash."""
-        symbol = stats.symbol if stats else self._config.symbol
+        symbol = stats.core.symbol if stats else self._config.symbol
         broker = stats.broker_type if stats else self._config.broker_type
         dry_run = stats.dry_run if stats else self._dry_run
         config_hash = stats.config_hash if stats else ''
@@ -328,8 +328,8 @@ class AutoTraderLiveDisplay:
         uptime_str = f'{hours}h {minutes:02d}m {seconds:02d}s'
 
         mode = '[yellow]DRY RUN[/yellow]' if stats.dry_run else '[green]LIVE[/green]'
-        win_rate = (stats.winning_trades / stats.total_trades *
-                    100) if stats.total_trades > 0 else 0.0
+        win_rate = (stats.core.winning_trades / stats.core.total_trades *
+                    100) if stats.core.total_trades > 0 else 0.0
 
         if stats.safety_blocked:
             safety_str = f'[red bold]⛔ BLOCKED[/red bold]  [dim]{stats.safety_reason}[/dim]'
@@ -347,7 +347,7 @@ class AutoTraderLiveDisplay:
         # first real tick) so the operator sees the loop is alive without the
         # status switching to a misleading IDLE.
         if stats.is_pulse and stats.seconds_since_last_tick > 0:
-            since_label = 'since startup' if stats.ticks_processed == 0 else 'since last tick'
+            since_label = 'since startup' if stats.core.ticks_processed == 0 else 'since last tick'
             status_str = (
                 f'[green]● RUNNING[/green]  '
                 f'[dim]💓 {stats.seconds_since_last_tick:.1f}s {since_label}[/dim]'
@@ -358,8 +358,8 @@ class AutoTraderLiveDisplay:
         lines = [
             f'Uptime:  {uptime_str}',
             f'Status:  {status_str}',
-            f'Processed: {stats.ticks_per_min:.1f}/min  ({stats.ticks_processed:,} total)',
-            f'Trades:  {stats.total_trades}  (Win: {win_rate:.1f}%)',
+            f'Processed: {stats.ticks_per_min:.1f}/min  ({stats.core.ticks_processed:,} total)',
+            f'Trades:  {stats.core.total_trades}  (Win: {win_rate:.1f}%)',
             f'Mode:    {mode}',
             f'Config:  {config_str}',
             f'Safety:  {safety_str}',
@@ -455,9 +455,9 @@ class AutoTraderLiveDisplay:
         """Portfolio state (margin): account context, balance, P&L."""
         # Include unrealized P&L from open positions
         unrealized = sum(p.unrealized_pnl for p in stats.open_positions)
-        net_pnl = stats.balance - stats.initial_balance + unrealized
-        pnl_pct = (net_pnl / stats.initial_balance *
-                   100) if stats.initial_balance > 0 else 0.0
+        net_pnl = stats.core.balance - stats.core.initial_balance + unrealized
+        pnl_pct = (net_pnl / stats.core.initial_balance *
+                   100) if stats.core.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
@@ -470,17 +470,17 @@ class AutoTraderLiveDisplay:
         # account_currency tells us which side we hold — the other is estimated from price
         if stats.account_currency == quote_currency:
             # e.g. USD account trading SOLUSD: show USD, estimate SOL equivalent
-            balance_line = f'Balance:  {stats.balance:,.6f} {quote_currency}'
+            balance_line = f'Balance:  {stats.core.balance:,.6f} {quote_currency}'
             if stats.last_price > 0:
-                other_val = stats.balance / stats.last_price
+                other_val = stats.core.balance / stats.last_price
                 secondary_line = f'          [dim]≈ {other_val:,.6f} {base_currency} (est.)[/dim]'
             else:
                 secondary_line = ''
         else:
             # e.g. SOL account trading SOLUSD: show SOL, estimate USD equivalent
-            balance_line = f'Balance:  {stats.balance:,.6f} {base_currency}'
+            balance_line = f'Balance:  {stats.core.balance:,.6f} {base_currency}'
             if stats.last_price > 0:
-                other_val = stats.balance * stats.last_price
+                other_val = stats.core.balance * stats.last_price
                 secondary_line = f'          [dim]≈ {other_val:,.6f} {quote_currency} (est.)[/dim]'
             else:
                 secondary_line = ''
@@ -493,7 +493,7 @@ class AutoTraderLiveDisplay:
             lines.append(secondary_line)
         lines += [
             f'Net P&L:  [{pnl_color}]{pnl_sign}{net_pnl:,.6f} ({pnl_sign}{pnl_pct:.2f}%)[/{pnl_color}]',
-            f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
+            f'Trades:   {stats.core.winning_trades}W / {stats.core.losing_trades}L',
         ]
         return Panel('\n'.join(lines), title='[bold]PORTFOLIO[/bold]', box=box.ROUNDED)
 
@@ -503,9 +503,9 @@ class AutoTraderLiveDisplay:
         base_currency = stats.base_currency
 
         # P&L based on equity change from initial balance (real portfolio value)
-        net_pnl = stats.equity - stats.initial_balance
-        pnl_pct = (net_pnl / stats.initial_balance *
-                   100) if stats.initial_balance > 0 else 0.0
+        net_pnl = stats.equity - stats.core.initial_balance
+        pnl_pct = (net_pnl / stats.core.initial_balance *
+                   100) if stats.core.initial_balance > 0 else 0.0
         pnl_color = 'green' if net_pnl >= 0 else 'red'
         pnl_sign = '+' if net_pnl >= 0 else ''
 
@@ -543,7 +543,7 @@ class AutoTraderLiveDisplay:
 
         lines += [
             f'Net P&L:  [{pnl_color}]{pnl_sign}{net_pnl:,.6f} ({pnl_sign}{pnl_pct:.2f}%)[/{pnl_color}]',
-            f'Trades:   {stats.winning_trades}W / {stats.losing_trades}L',
+            f'Trades:   {stats.core.winning_trades}W / {stats.core.losing_trades}L',
         ]
         return Panel('\n'.join(lines), title='[bold]PORTFOLIO[/bold]', box=box.ROUNDED)
 
@@ -752,7 +752,7 @@ class AutoTraderLiveDisplay:
                     '', '',
                 )
 
-        hidden_trades = stats.total_trades - self._MAX_RECENT_TRADES
+        hidden_trades = stats.core.total_trades - self._MAX_RECENT_TRADES
         if hidden_trades > 0:
             table.add_row('', f'[dim]… +{hidden_trades} more[/dim]', '', '', '', '')
 
@@ -947,8 +947,8 @@ class AutoTraderLiveDisplay:
                 lines.append(f'Params:    {" ".join(param_parts)}')
 
         # AwarenessChannel — ephemeral narration from decision logic
-        if stats.last_awareness is not None:
-            awareness = stats.last_awareness
+        if stats.core.last_awareness is not None:
+            awareness = stats.core.last_awareness
             if awareness.level == AwarenessLevel.ALERT:
                 a_color = 'bold red'
                 a_icon = '!!'

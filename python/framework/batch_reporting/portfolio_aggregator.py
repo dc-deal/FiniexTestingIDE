@@ -221,23 +221,20 @@ class PortfolioAggregator:
         orders_sent = 0
         orders_executed = 0
         orders_rejected = 0
-        total_commission = 0.0
-        total_spread_cost = 0.0
+        sl_tp_triggered = 0
 
         for scenario in scenarios:
             stats = scenario.tick_loop_results.execution_stats
             orders_sent += stats.orders_sent
             orders_executed += stats.orders_executed
             orders_rejected += stats.orders_rejected
-            total_commission += stats.total_commission
-            total_spread_cost += stats.total_spread_cost
+            sl_tp_triggered += stats.sl_tp_triggered
 
         return ExecutionStats(
             orders_sent=orders_sent,
             orders_executed=orders_executed,
             orders_rejected=orders_rejected,
-            total_commission=total_commission,
-            total_spread_cost=total_spread_cost
+            sl_tp_triggered=sl_tp_triggered
         )
 
     def _aggregate_cost_breakdown(

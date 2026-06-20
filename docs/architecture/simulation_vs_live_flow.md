@@ -3,6 +3,7 @@
 Two execution modes, one strategy layer. The trading strategy (DecisionLogic + Workers) runs identically in both modes — only the tick source and execution backend differ.
 
 For class-level architecture details, see [architecture_execution_layer.md](architecture_execution_layer.md).
+For how the console dashboards get their live data (the throttled telemetry feed), see [live_telemetry_architecture.md](live_telemetry_architecture.md).
 
 ---
 

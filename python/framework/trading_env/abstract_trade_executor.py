@@ -153,8 +153,6 @@ class AbstractTradeExecutor(ABC):
         self._orders_sent = 0
         self._orders_executed = 0
         self._orders_rejected = 0
-        self._total_commission = 0.0
-        self._total_spread_cost = 0.0
         self._sl_tp_triggered = 0
 
         # Active limit orders waiting for price trigger (post-pipeline)
@@ -768,7 +766,6 @@ class AbstractTradeExecutor(ABC):
 
         # Update statistics
         self._orders_executed += 1
-        self._total_spread_cost += entry_fee.cost
         self._check_order_history_limit()
         self._order_history.append(result)
         self._notify_outcome(pending_order.direction, result, pending_order)
@@ -1394,8 +1391,6 @@ class AbstractTradeExecutor(ABC):
             orders_sent=self._orders_sent,
             orders_executed=self._orders_executed,
             orders_rejected=self._orders_rejected,
-            total_commission=self._total_commission,
-            total_spread_cost=self._total_spread_cost,
             sl_tp_triggered=self._sl_tp_triggered
         )
 
@@ -1455,8 +1450,6 @@ class AbstractTradeExecutor(ABC):
         self._orders_sent = 0
         self._orders_executed = 0
         self._orders_rejected = 0
-        self._total_commission = 0.0
-        self._total_spread_cost = 0.0
         self._sl_tp_triggered = 0
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()

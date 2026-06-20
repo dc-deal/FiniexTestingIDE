@@ -8,25 +8,27 @@ Architecture:
 - Uses ConsoleRenderer for unified output
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from python.framework.batch_reporting.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
-from python.framework.batch_reporting.grid.console_box_renderer import ConsoleBoxRenderer
+from python.framework.batch_reporting.scenario_details_summary import ScenarioDetailsSummary
 from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
 from python.framework.batch_reporting.performance_summary import PerformanceSummary
 from python.framework.batch_reporting.profiling_summary import ProfilingSummary
 from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
-from python.framework.batch_reporting.warmup_phase_summary import WarmupPhaseSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
+from python.framework.types.api.report_types import (
+    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
+    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
-from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData
 
 
 class BatchSummary:
@@ -39,6 +41,17 @@ class BatchSummary:
         self,
         batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigManager,
+        trade_report: TradeHistoryReport,
+        order_report: OrderHistoryReport,
+        portfolio_report: PortfolioReport,
+        pending_report: PendingOrdersReport,
+        execution_report: ExecutionStatsReport,
+        scenario_details_report: ScenarioDetailsReport,
+        run_summary: RunSummary,
+        worker_decision_report: WorkerDecisionReport,
+        profiling_report: ProfilingReport,
+        broker_report: BrokerReport,
+        warnings_errors_report: WarningsErrorsReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -47,45 +60,42 @@ class BatchSummary:
         Args:
             batch_execution_summary: Batch execution results
             app_config: AppConfigManager instance
+            trade_report: Unified trade-history report (#393 — feeds the trade-history section)
+            order_report: Unified order-history report (#393 — rejection source)
             generator_profiles: Generator profiles for Profile Run disposition (None for normal runs)
         """
         self.batch_execution_summary = batch_execution_summary
         self.app_config = app_config
+        self._run_summary = run_summary
+        self._warnings_errors_report = warnings_errors_report
         self._generator_profiles = generator_profiles
 
-        # Initialize sub-summaries
-        self.portfolio_summary = PortfolioSummary(batch_execution_summary)
-        self.performance_summary = PerformanceSummary(batch_execution_summary)
+        # Initialize sub-summaries — portfolio renders from the unified model (#393)
+        self.portfolio_summary = PortfolioSummary(
+            portfolio_report, pending_report, execution_report)
+        self.performance_summary = PerformanceSummary(worker_decision_report)
 
-        # this must happen only onece, due the "pop" mechanic in ProfilingData.from_dicts
-        profiling_data_map = self.build_profiling_data_map(
-            batch_execution_summary)
-
-        self.profiling_summary = ProfilingSummary(
-            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
+        self.profiling_summary = ProfilingSummary(profiling_report)
         self.worker_decision_breakdown = WorkerDecisionBreakdownSummary(
-            batch_execution_summary=batch_execution_summary, profiling_data_map=profiling_data_map)
+            batch_execution_summary=batch_execution_summary,
+            profiling_report=profiling_report,
+            worker_decision_report=worker_decision_report)
 
-        # Broker summary
-        self.broker_summary = BrokerSummary(
-            batch_summary=batch_execution_summary,
-            app_config=app_config
-        )
+        # Broker summary — renders from the unified model (#391)
+        self.broker_summary = BrokerSummary(broker_report)
 
-        # Trade history summary
+        # Trade history summary — renders from the unified model (#393)
         self.trade_history_summary = TradeHistorySummary(
-            batch_execution_summary)
+            trade_report, order_report)
 
-        # Warnings summary (always rendered)
-        self.warnings_summary = WarningsSummary(
-            batch_execution_summary, profiling_data_map=profiling_data_map)
+        # Warnings & errors summary — renders from the unified model (#395)
+        self.warnings_summary = WarningsSummary(warnings_errors_report)
 
-        # Warmup phase breakdown (summary_detail only)
-        self.warmup_phase_summary = WarmupPhaseSummary(batch_execution_summary)
+        # Scenario details — linear presenter from the model (#393)
+        self.scenario_details_summary = ScenarioDetailsSummary(scenario_details_report)
 
         # Renderer for unified console output
         self._renderer = ConsoleRenderer()
-        self._box_renderer = ConsoleBoxRenderer(self._renderer)
 
     def _detect_profile_run(self) -> bool:
         """
@@ -122,26 +132,6 @@ class BatchSummary:
         else:
             return BatchStatus.PARTIAL
 
-    def build_profiling_data_map(self, batch_execution_summary: BatchExecutionSummary) -> Dict[Any, Any]:
-        # Build ProfilingData for all scenarios
-
-        profiling_data_map = {}
-
-        for process_result in batch_execution_summary.process_result_list:
-            # Check if profiling data exists
-            if (not process_result.tick_loop_results or
-                    not process_result.tick_loop_results.profiling_data):
-                continue
-            profiling = ProfilingData.from_dicts(
-                process_result.tick_loop_results.profiling_data.profile_times,
-                process_result.tick_loop_results.profiling_data.profile_counts,
-                inter_tick_intervals_ms=process_result.tick_loop_results.profiling_data.inter_tick_intervals_ms,
-                gap_threshold_s=process_result.tick_loop_results.profiling_data.gap_threshold_s,
-                ticks_total=process_result.tick_loop_results.profiling_data.ticks_total
-            )
-            profiling_data_map[process_result.scenario_index] = profiling
-        return profiling_data_map
-
     def render_all(self, summary_detail: Optional[bool] = None):
         """
         Render complete batch summary.
@@ -173,19 +163,10 @@ class BatchSummary:
             self._renderer.section_header("🎉 EXECUTION RESULTS")
         self._render_basic_stats(batch_status)
 
-        # Scenario details grid
-        self._renderer.section_separator()
-        self._renderer.print_bold("🔍 SCENARIO DETAILS")
-        self._renderer.section_separator()
-
-        # Pass show_status_line flag
-        show_status_line = batch_status != BatchStatus.SUCCESS
+        # Scenario details — linear, from the model (#393)
         threshold = self.app_config.get_console_logging_config_object().scenario_detail_threshold
-        self._box_renderer.render_scenario_grid(
-            self.batch_execution_summary,
-            show_status_line=show_status_line,
-            scenario_detail_threshold=threshold
-        )
+        self.scenario_details_summary.render(
+            self._renderer, scenario_detail_threshold=threshold)
 
         # Summary detail flag (per-scenario vs aggregated only)
         if summary_detail is None:
@@ -195,9 +176,7 @@ class BatchSummary:
 
         # Portfolio summaries
         if summary_detail:
-            self.portfolio_summary.render_per_scenario(
-                self._renderer, self._box_renderer
-            )
+            self.portfolio_summary.render_per_scenario(self._renderer)
 
         # Aggregate by currency
         aggregator = PortfolioAggregator(
@@ -226,15 +205,15 @@ class BatchSummary:
         self.profiling_summary.render_aggregated(self._renderer, compact=compact, threshold=threshold)
         self.profiling_summary.render_bottleneck_analysis(self._renderer)
 
-        # Worker Decision Breakdown
+        # Worker Decision Breakdown — the overhead/bottleneck "too high?" verdicts moved to the
+        # post-run validator (#395); the breakdown now shows the calculated split only.
         if summary_detail:
             self.worker_decision_breakdown.render_per_scenario(self._renderer)
         self.worker_decision_breakdown.render_aggregated()
-        self.worker_decision_breakdown.render_overhead_analysis(self._renderer, compact=compact, threshold=threshold)
 
-        # Warmup phase breakdown (summary_detail only)
+        # Warmup phase breakdown (summary_detail only) — from the profiling model (#399)
         if summary_detail:
-            self.warmup_phase_summary.render(self._renderer)
+            self.profiling_summary.render_warmup(self._renderer)
 
         # Warnings & Notices (always rendered, before executive summary)
         self.warnings_summary.render(self._renderer)
@@ -248,7 +227,8 @@ class BatchSummary:
 
         # Executive Summary
         executive = ExecutiveSummary(
-            self.batch_execution_summary, self.app_config,
+            self.batch_execution_summary, self.app_config, self._run_summary,
+            self._warnings_errors_report,
             generator_profiles=self._generator_profiles
         )
         executive.render(self._renderer)
