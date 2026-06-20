@@ -1,6 +1,7 @@
 from multiprocessing import Queue
 from typing import Optional
 
+from python.framework.types.live_types.live_scenario_stats_types import LiveStatusFrame
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.framework.types.process_data_types import ProcessScenarioConfig
 
@@ -43,11 +44,10 @@ def broadcast_status_update(
 
     try:
         # === NORMAL STATUS UPDATE (all scenarios) ===
-        live_queue.put_nowait({
-            "type": "status",
-            "scenario_index": scenario_index,
-            "scenario_name": scenario_name,
-            "status": status
-        })
+        live_queue.put_nowait(LiveStatusFrame(
+            scenario_index=scenario_index,
+            scenario_name=scenario_name,
+            status=status,
+        ))
     except:
         pass  # Queue full - skip update

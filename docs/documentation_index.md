@@ -46,6 +46,7 @@
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + live — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
+| [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/live channels (#395) |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |

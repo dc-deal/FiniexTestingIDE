@@ -80,6 +80,7 @@ tests/
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── user_namespace/    unit — USER worker/decision discovery
 │   ├── api/               unit — REST API endpoints
+│   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
 │   ├── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers, CI plane)
 │   └── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)

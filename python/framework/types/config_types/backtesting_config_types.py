@@ -44,7 +44,6 @@ class TradeSimulatorDefaults(BaseModel):
 class DetailedLiveStatsExports(BaseModel):
     """Monitoring TUI export toggles."""
     export_portfolio_stats: bool = False
-    export_performance_stats: bool = False
     export_current_bars: bool = False
 
 

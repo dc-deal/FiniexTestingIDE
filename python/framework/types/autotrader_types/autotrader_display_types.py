@@ -10,13 +10,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from python.framework.types.decision_logic_types import DecisionAwareness, DecisionLogicAction, StrategyEvent
+from python.framework.types.decision_logic_types import DecisionLogicAction, StrategyEvent
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection, OrderSide
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
+from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 
 
 @dataclass
@@ -87,6 +88,23 @@ class TradeHistoryEntry:
 
 
 @dataclass
+class SafetyState:
+    """
+    Circuit-breaker state passed from the tick loop to the display exporter.
+
+    Args:
+        blocked: Whether new entries are currently blocked
+        reason: Human-readable breaker reason (empty when not blocked)
+        current_value: The checked value (equity for spot, balance for margin)
+        drawdown_pct: Current drawdown from the session baseline, in percent
+    """
+    blocked: bool = False
+    reason: str = ''
+    current_value: float = 0.0
+    drawdown_pct: float = 0.0
+
+
+@dataclass
 class RejectionEntry:
     """
     A single order rejection — fed to the dedicated REJECTIONS panel.
@@ -120,14 +138,8 @@ class AutoTraderDisplayStats:
     Args:
         session_start: Session start time (UTC)
         dry_run: Whether this is a dry-run session
-        symbol: Trading symbol
+        core: Shared live-telemetry core (symbol, ticks_processed, balances, trades, awareness)
         broker_type: Broker identifier
-        ticks_processed: Total ticks processed so far
-        balance: Current account balance
-        initial_balance: Starting account balance
-        total_trades: Total completed trades
-        winning_trades: Number of winning trades
-        losing_trades: Number of losing trades
         open_positions: Current open position snapshots
         active_orders: Active limit/stop orders + pending orders in transit
         pipeline_count: Orders currently in transit to broker (LiveRequestProcessor)
@@ -146,19 +158,13 @@ class AutoTraderDisplayStats:
         decision_outputs: Decision display=True output values
         decision_time_ms: Decision logic computation time in ms
     """
+    # Shared live-telemetry core (symbol, balances, trades, awareness)
+    core: LiveCoreSnapshot
+
     # Session
     session_start: datetime
     dry_run: bool
-    symbol: str
     broker_type: str
-    ticks_processed: int
-
-    # Portfolio
-    balance: float
-    initial_balance: float
-    total_trades: int
-    winning_trades: int
-    losing_trades: int
 
     # Broker config seed (8-char SHA256 of symbols block — empty if unavailable)
     config_hash: str = ''
@@ -230,9 +236,6 @@ class AutoTraderDisplayStats:
 
     # Decision logic config params (display=True inputs → Params: line in ALGO STATE)
     config_params: Dict[str, OutputValue] = field(default_factory=dict)
-
-    # AwarenessChannel — ephemeral narration from decision logic
-    last_awareness: Optional[DecisionAwareness] = None
 
     # Event tape — last N strategy moments (ring buffer snapshot)
     event_history: List[StrategyEvent] = field(default_factory=list)

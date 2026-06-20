@@ -4,7 +4,8 @@ Manages live statistics cache and status broadcasting
 
 Extracted from BatchOrchestrator to separate live stats management.
 """
-from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats
+from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
+from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats, LiveStatusFrame
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from typing import Dict, List, Optional
@@ -47,8 +48,8 @@ class LiveStatsCoordinator:
         """Initialize LiveScenarioStats cache for all scenarios."""
         for idx, scenario in enumerate(self._scenarios):
             self._live_stats_cache[idx] = LiveScenarioStats(
+                core=LiveCoreSnapshot(symbol=scenario.symbol),
                 scenario_name=scenario.name,
-                symbol=scenario.symbol,
                 scenario_index=idx,
                 status=ScenarioStatus.INITIALIZED
             )
@@ -67,11 +68,10 @@ class LiveStatsCoordinator:
             stats.status = status
 
             try:
-                self._live_queue.put_nowait({
-                    "type": "status",
-                    "scenario_index": idx,
-                    "scenario_name": stats.scenario_name,
-                    "status": status.value
-                })
+                self._live_queue.put_nowait(LiveStatusFrame(
+                    scenario_index=idx,
+                    scenario_name=stats.scenario_name,
+                    status=status,
+                ))
             except:
                 pass  # Queue full - skip update

@@ -25,7 +25,7 @@ import time
 import traceback
 import psutil
 from multiprocessing import Queue
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
@@ -35,7 +35,8 @@ from rich import box
 
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple, get_currency_symbol
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats, ScenarioStatus
+from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
+from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats, LiveStatusFrame, ScenarioStatus
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
@@ -93,8 +94,8 @@ class LiveProgressDisplay:
         """Initialize stats cache with INITIALIZED status."""
         for idx, scenario in enumerate(self.scenarios):
             self._stats_cache[idx] = LiveScenarioStats(
+                core=LiveCoreSnapshot(symbol=scenario.symbol),
                 scenario_name=scenario.name,
-                symbol=scenario.symbol,
                 scenario_index=idx,
                 status=ScenarioStatus.INITIALIZED
             )
@@ -170,78 +171,25 @@ class LiveProgressDisplay:
                     self._running = False
                     raise
 
-    def _process_update(self, update: dict) -> None:
+    def _process_update(self, update: Union[LiveScenarioStats, LiveStatusFrame]) -> None:
         """
-        Process a single queue update and update cache.
+        Process a single typed frame from the queue and update the cache.
 
         Args:
-            update: Update message from queue
+            update: Either a full progress frame (LiveScenarioStats) or a
+                lightweight status-only frame (LiveStatusFrame).
         """
-        # === REGULAR UPDATES (require scenario_index) ===
-        scenario_index = update.get("scenario_index")
-        if scenario_index is None:
-            return
-
-        update_type = update.get("type", "progress")
         with self._lock:
-            stats = self._stats_cache.get(scenario_index)
-            if not stats:
+            # Status-only frame: touch only the cached scenario's status —
+            # never overwrite progress (a status update can arrive before any ticks).
+            if isinstance(update, LiveStatusFrame):
+                cached = self._stats_cache.get(update.scenario_index)
+                if cached:
+                    cached.status = update.status
                 return
 
-            # Status-only updates
-            if update_type == "status":
-                status_str = update.get("status", "initialized")
-                stats.status = ScenarioStatus(status_str)
-                return
-
-            # Progress updates
-            if update_type == "progress":
-                # Progress
-                stats.ticks_processed = update.get(
-                    "ticks_processed", stats.ticks_processed)
-                stats.total_ticks = update.get(
-                    "total_ticks", stats.total_ticks)
-                stats.progress_percent = update.get(
-                    "progress_percent", stats.progress_percent)
-
-                # In-Time tracking
-                stats.first_tick_time = update.get(
-                    "first_tick_time", stats.first_tick_time)
-                stats.current_tick_time = update.get(
-                    "current_tick_time", stats.current_tick_time)
-                stats.tick_timespan_seconds = update.get(
-                    "tick_timespan_seconds",
-                    stats.tick_timespan_seconds
-                )
-
-                # Basic Portfolio
-                stats.current_balance = update.get(
-                    "current_balance", stats.current_balance)
-                stats.initial_balance = update.get(
-                    "initial_balance", stats.initial_balance)
-                stats.total_trades = update.get(
-                    "total_trades", stats.total_trades)
-                stats.winning_trades = update.get(
-                    "winning_trades", stats.winning_trades)
-                stats.losing_trades = update.get(
-                    "losing_trades", stats.losing_trades)
-                stats.portfolio_dirty_flag = update.get(
-                    "portfolio_dirty_flag", stats.portfolio_dirty_flag)
-
-                # AwarenessChannel (ephemeral narration)
-                stats.last_awareness_message = update.get(
-                    'last_awareness_message', None)
-                stats.last_awareness_level = update.get(
-                    'last_awareness_level', None)
-
-                # Status
-                status_str = update.get("status", "running")
-                stats.status = ScenarioStatus(status_str)
-
-                # Detailed exports (if present)
-                # Note: portfolio_stats, performance_stats, current_bars
-                # are available in update but not stored in LiveScenarioStats
-                # Display can access them directly from update if needed
+            # Full progress frame replaces the cache entry.
+            self._stats_cache[update.scenario_index] = update
 
     def _render(self) -> Panel:
         """
@@ -442,10 +390,10 @@ class LiveProgressDisplay:
             progress_text = self._build_progress_text(stats)
 
             # Stats
-            portfolio_value = stats.current_balance
-            total_trades = stats.total_trades
-            winning = stats.winning_trades
-            losing = stats.losing_trades
+            portfolio_value = stats.core.balance
+            total_trades = stats.core.total_trades
+            winning = stats.core.winning_trades
+            losing = stats.core.losing_trades
 
             trades = ""
             # Only show trades when not in initial states
@@ -461,7 +409,7 @@ class LiveProgressDisplay:
                 trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
 
             # Format P/L
-            pnl = stats.current_balance - stats.initial_balance
+            pnl = stats.core.balance - stats.core.initial_balance
             if pnl >= 0:
                 pnl_color = "green"
                 pnl_sign = "+"
@@ -474,11 +422,11 @@ class LiveProgressDisplay:
 
             # AwarenessChannel suffix (truncated to 30 chars)
             awareness_suffix = ''
-            if stats.last_awareness_message:
-                a_msg = stats.last_awareness_message
+            if stats.core.last_awareness is not None:
+                a_msg = stats.core.last_awareness.message
                 if len(a_msg) > 30:
                     a_msg = a_msg[:30] + '…'
-                a_level = stats.last_awareness_level or 'info'
+                a_level = stats.core.last_awareness.level.value
                 if a_level == 'alert':
                     a_suffix_color = 'bold red'
                     a_icon = '!!'

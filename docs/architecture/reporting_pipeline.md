@@ -22,7 +22,7 @@ see *Pipeline in detail* below.
 
 > **Report pipeline ≠ live streaming export.** This pipeline is about the *report* — the
 > derived artifact written at run end (and later snapshotted, #392). It is **not** the live
-> telemetry stream (`process/process_live_export.py`, the AutoTrader `display_stats`), which
+> telemetry stream ([live_telemetry_architecture.md](live_telemetry_architecture.md)), which
 > pushes per-tick data into a queue for the live console view. The two never share code:
 > one is a coherent, post-derived report; the other is a fast, lossy live feed.
 

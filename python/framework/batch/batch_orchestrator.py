@@ -237,7 +237,6 @@ class BatchOrchestrator:
             if self._live_stats_config.detailed_mode:
                 self._logger.debug(
                     f"   Exports: Portfolio={self._live_stats_config.export_portfolio_stats}, "
-                    f"Performance={self._live_stats_config.export_performance_stats}, "
                     f"Bars={self._live_stats_config.export_current_bars}"
                 )
 

@@ -124,7 +124,6 @@
             "detailed_live_stats_threshold": 3,
             "detailed_live_stats_exports": {
                 "export_portfolio_stats": false,
-                "export_performance_stats": false,
                 "export_current_bars": false
             },
             "event_tape_size": 5
