@@ -13,7 +13,6 @@ from python.framework.batch_reporting.block_splitting_disposition import BlockSp
 from python.framework.batch_reporting.broker_summary import BrokerSummary
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
 from python.framework.batch_reporting.scenario_details_summary import ScenarioDetailsSummary
-from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
 from python.framework.batch_reporting.performance_summary import PerformanceSummary
 from python.framework.batch_reporting.profiling_summary import ProfilingSummary
@@ -21,9 +20,9 @@ from python.framework.batch_reporting.trade_history_summary import TradeHistoryS
 from python.framework.batch_reporting.warnings_summary import WarningsSummary
 from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.types.api.report_types import (
-    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
-    WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
+    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
+    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -52,6 +51,7 @@ class BatchSummary:
         profiling_report: ProfilingReport,
         broker_report: BrokerReport,
         warnings_errors_report: WarningsErrorsReport,
+        aggregated_portfolio_report: AggregatedPortfolioReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -68,11 +68,13 @@ class BatchSummary:
         self.app_config = app_config
         self._run_summary = run_summary
         self._warnings_errors_report = warnings_errors_report
+        self._aggregated_portfolio_report = aggregated_portfolio_report
         self._generator_profiles = generator_profiles
 
-        # Initialize sub-summaries — portfolio renders from the unified model (#393)
+        # Initialize sub-summaries — portfolio renders from the unified model (#393); the
+        # aggregated per-currency view from the aggregated-portfolio model (#397)
         self.portfolio_summary = PortfolioSummary(
-            portfolio_report, pending_report, execution_report)
+            portfolio_report, pending_report, execution_report, aggregated_portfolio_report)
         self.performance_summary = PerformanceSummary(worker_decision_report)
 
         self.profiling_summary = ProfilingSummary(profiling_report)
@@ -178,12 +180,8 @@ class BatchSummary:
         if summary_detail:
             self.portfolio_summary.render_per_scenario(self._renderer)
 
-        # Aggregate by currency
-        aggregator = PortfolioAggregator(
-            self.batch_execution_summary.process_result_list)
-        aggregated_portfolios = aggregator.aggregate_by_currency()
-        self.portfolio_summary.render_aggregated(
-            self._renderer, aggregated_portfolios)
+        # Aggregated per-currency view — from the model (#397)
+        self.portfolio_summary.render_aggregated(self._renderer)
 
         # Trade History
         if summary_detail:
@@ -228,7 +226,7 @@ class BatchSummary:
         # Executive Summary
         executive = ExecutiveSummary(
             self.batch_execution_summary, self.app_config, self._run_summary,
-            self._warnings_errors_report,
+            self._warnings_errors_report, self._aggregated_portfolio_report,
             generator_profiles=self._generator_profiles
         )
         executive.render(self._renderer)

@@ -24,6 +24,8 @@ from python.framework.types.validation_types import ValidationResult
 _HIGH_OVERHEAD_RATIO = 0.5
 # Infra-bottleneck verdict threshold — share of scenarios where a non-hot-path op dominated.
 _BOTTLENECK_PCT = 15.0
+# Time-divergence threshold — a currency group spanning more days than this gets an advisory.
+_TIME_DIVERGENCE_DAYS = 30
 
 
 class PostRunValidator:
@@ -48,6 +50,8 @@ class PostRunValidator:
         self._check_budget_too_high()
         self._check_coordination_overhead()
         self._check_bottlenecks()
+        self._check_multi_currency()
+        self._check_time_divergence()
 
     def _add(self, check: str, message: str) -> None:
         """Append a run-scoped advisory warning (is_valid=True) to the batch-level channel."""
@@ -240,6 +244,38 @@ class PostRunValidator:
         """The operation with the largest total time (the scenario's bottleneck), or '' if none."""
         ops = {n: t for n, t in profiling_data.profile_times.items() if n != 'total_per_tick'}
         return max(ops, key=ops.get) if ops else ''
+
+    def _check_multi_currency(self) -> None:
+        """Advisory when a batch mixes account currencies (cross-currency P&L is not summed)."""
+        currencies = sorted({
+            result.tick_loop_results.portfolio_stats.currency
+            for result in self._batch.process_result_list
+            if result.tick_loop_results and result.tick_loop_results.portfolio_stats})
+        if len(currencies) > 1:
+            self._add('multi_currency', (
+                f"Multi-currency batch ({len(currencies)} currencies: {', '.join(currencies)}) — "
+                f"cross-currency aggregation is not performed; each currency group shows P&L in its "
+                f"own currency."))
+
+    def _check_time_divergence(self) -> None:
+        """Advisory when a currency group's scenarios span a large time range (aggregation unrealistic)."""
+        groups = {}
+        for result in self._batch.process_result_list:
+            tlr = result.tick_loop_results
+            if not tlr or not tlr.portfolio_stats:
+                continue
+            trs = tlr.tick_range_stats
+            if trs and trs.first_tick_time and trs.last_tick_time:
+                groups.setdefault(tlr.portfolio_stats.currency, []).extend(
+                    [trs.first_tick_time, trs.last_tick_time])
+        for currency in sorted(groups):
+            dates = groups[currency]
+            span_days = (max(dates) - min(dates)).days
+            if span_days > _TIME_DIVERGENCE_DAYS:
+                self._add('time_divergence', (
+                    f"Time divergence: {currency} group scenarios span {span_days} days — aggregated "
+                    f"P&L is statistical only, not portfolio-representative (market conditions / "
+                    f"volatility / rates differ)."))
 
     def _profiling(self, result: ProcessResult) -> Optional[ProfilingData]:
         """Build typed ProfilingData for a scenario, or None when no profiling data exists."""

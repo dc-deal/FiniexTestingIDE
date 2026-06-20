@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.reporting.run_reports.aggregated_portfolio_report_io import (
+    AGGREGATED_PORTFOLIO_ARTIFACT, read_aggregated_portfolio_report)
 from python.framework.reporting.run_reports.broker_report_io import (
     BROKER_ARTIFACT, read_broker_report)
 from python.framework.reporting.run_reports.execution_stats_report_io import (
@@ -33,9 +35,9 @@ from python.framework.reporting.run_reports.warnings_errors_report_io import (
 from python.framework.reporting.run_reports.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
-    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
-    WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
+    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
+    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 
 
 class ReportStore:
@@ -205,6 +207,21 @@ class ReportStore:
         if path is None:
             return None
         return read_profiling_report(path)
+
+    def get_aggregated_portfolio(self, run_id: str) -> Optional[AggregatedPortfolioReport]:
+        """
+        Read a run's aggregated per-currency portfolio report (sim).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The aggregated-portfolio report, or None if the run has no artifact
+        """
+        path = self._resolve(run_id, AGGREGATED_PORTFOLIO_ARTIFACT)
+        if path is None:
+            return None
+        return read_aggregated_portfolio_report(path)
 
     def get_warnings_errors(self, run_id: str) -> Optional[WarningsErrorsReport]:
         """

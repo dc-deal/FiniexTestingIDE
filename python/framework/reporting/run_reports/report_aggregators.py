@@ -12,9 +12,11 @@ components, never summed.
 from typing import Dict, List
 
 from python.framework.types.api.report_types import (
-    ExecutionStatsRow, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioUnitRow,
-    ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow, ProfilingUnitRow,
-    TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow, WorkerStatRow)
+    AggregatedPortfolioRow, AggregatedPortfolioSpotScenarioRow,
+    ExecutionStatsRow, ExecutionStatsTotals, PendingOrdersUnitRow, PortfolioAggregateRow,
+    PortfolioUnitRow, ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow,
+    ProfilingUnitRow, TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow,
+    WorkerStatRow)
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
 
 
@@ -149,6 +151,133 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         max_drawdown=max_drawdown,
         total_fees=sum(r.total_fees for r in rows),
     )
+
+
+def aggregate_full_portfolio(
+    rows: List[PortfolioUnitRow],
+    exec_by_name: Dict[str, ExecutionStatsRow],
+    pending_by_name: Dict[str, PendingOrdersUnitRow],
+    currency: str,
+    is_spot: bool,
+    label: str,
+) -> AggregatedPortfolioRow:
+    """
+    Roll up one currency (or margin/spot sub-) group into the rich aggregate (#397). Composes the
+    lean headline (`_portfolio_aggregate`, byte-identical) and adds the cross-domain measures —
+    balances, cost split, per-currency execution + pending (weighted-avg latency), and the spot
+    dual-balance. Mirrors `PortfolioAggregator` + the executive's inline derivations exactly.
+
+    Args:
+        rows: The portfolio per-unit rows of this group
+        exec_by_name / pending_by_name: execution / pending rows keyed by unit name
+        currency / is_spot / label: group identity (label = '' | 'Margin' | 'Spot')
+
+    Returns:
+        AggregatedPortfolioRow
+    """
+    headline = _portfolio_aggregate(currency, rows)
+    total_trades = headline.total_trades
+    winning, losing = headline.winning_trades, headline.losing_trades
+    total_profit, total_loss = headline.total_profit, headline.total_loss
+
+    # Worst-magnitude drawdown + peak equity, with scenario attribution (order-preserving)
+    max_dd = 0.0
+    max_dd_scn = ''
+    max_eq = 0.0
+    max_eq_scn = ''
+    for r in rows:
+        if abs(r.max_drawdown) > abs(max_dd):
+            max_dd, max_dd_scn = r.max_drawdown, r.name
+        if r.max_equity > max_eq:
+            max_eq, max_eq_scn = r.max_equity, r.name
+
+    initial = sum(r.initial_balance for r in rows)
+    final = sum(r.current_balance for r in rows)
+    count = len(rows)
+    balance_pnl = final - initial
+
+    total_spread = sum(r.total_spread_cost for r in rows)
+
+    ex = [exec_by_name[r.name] for r in rows if r.name in exec_by_name]
+    pend = [pending_by_name[r.name] for r in rows if r.name in pending_by_name]
+    lat = [p for p in pend if p.avg_latency_ms is not None]
+    lat_count = sum(p.latency_count for p in lat)
+
+    return AggregatedPortfolioRow(
+        headline=headline,
+        is_spot=is_spot,
+        label=label,
+        total_long_trades=sum(r.total_long_trades for r in rows),
+        total_short_trades=sum(r.total_short_trades for r in rows),
+        avg_win=total_profit / winning if winning > 0 else 0.0,
+        avg_loss=abs(total_loss) / losing if losing > 0 else 0.0,
+        initial_balance=initial,
+        final_balance=final,
+        avg_initial=initial / count if count > 0 else 0.0,
+        balance_pnl=balance_pnl,
+        balance_pnl_pct=(balance_pnl / initial * 100) if initial > 0 else 0.0,
+        recovery_factor=balance_pnl / abs(max_dd) if max_dd != 0 else 0.0,
+        max_dd_pct=(max_dd / max_eq * 100) if max_eq > 0 else 0.0,
+        max_drawdown_scenario=max_dd_scn,
+        max_equity=max_eq,
+        max_equity_scenario=max_eq_scn,
+        total_spread_cost=total_spread,
+        total_commission=sum(r.total_commission for r in rows),
+        total_swap=sum(r.total_swap for r in rows),
+        avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
+        orders_sent=sum(e.orders_sent for e in ex),
+        orders_executed=sum(e.orders_executed for e in ex),
+        orders_rejected=sum(e.orders_rejected for e in ex),
+        sl_tp_triggered=sum(e.sl_tp_triggered for e in ex),
+        pending_total_resolved=sum(p.total_resolved for p in pend),
+        pending_total_filled=sum(p.total_filled for p in pend),
+        pending_total_rejected=sum(p.total_rejected for p in pend),
+        pending_total_timed_out=sum(p.total_timed_out for p in pend),
+        pending_total_force_closed=sum(p.total_force_closed for p in pend),
+        pending_avg_latency_ms=(
+            sum(p.avg_latency_ms * p.latency_count for p in lat) / lat_count) if lat_count > 0 else None,
+        pending_min_latency_ms=min((p.min_latency_ms for p in lat), default=None),
+        pending_max_latency_ms=max((p.max_latency_ms for p in lat), default=None),
+        pending_active_limit_count=sum(len(p.active_limit_orders) for p in pend),
+        pending_active_stop_count=sum(len(p.active_stop_orders) for p in pend),
+        **_spot_balances(rows, currency) if is_spot else {},
+    )
+
+
+def _spot_balances(rows: List[PortfolioUnitRow], currency: str) -> Dict:
+    """Per-scenario spot dual-balance + estimated-value roll-up (mirrors the executive spot block)."""
+    spot_rows = []
+    total_cur = 0.0
+    total_init = 0.0
+    has_any_base = False
+    for r in rows:
+        sym = r.symbol
+        base = sym[:-3] if len(sym) >= 6 else ''
+        quote = sym[-3:] if len(sym) >= 6 else currency
+        quote_bal = r.balances.get(quote, 0.0)
+        base_bal = r.balances.get(base, 0.0)
+        quote_init = r.initial_balances.get(quote, 0.0)
+        base_init = r.initial_balances.get(base, 0.0)
+        price = r.last_price
+        has_base = price > 0 and base_bal != 0.0
+        if has_base:
+            est_cur = quote_bal + base_bal * price
+            est_init = quote_init + base_init * price
+            has_any_base = True
+        elif price > 0:
+            est_cur, est_init = quote_bal, quote_init
+        else:
+            est_cur, est_init = 0.0, 0.0
+        total_cur += est_cur
+        total_init += est_init
+        spot_rows.append(AggregatedPortfolioSpotScenarioRow(
+            scenario_name=r.name, quote_currency=quote, base_currency=base,
+            quote_balance=quote_bal, base_balance=base_bal,
+            quote_initial=quote_init, base_initial=base_init, last_price=price,
+            est_current=est_cur, est_initial=est_init, has_base_holdings=has_base))
+    return dict(
+        spot_scenarios=spot_rows, spot_total_est_current=total_cur,
+        spot_total_est_initial=total_init, spot_has_base_holdings=has_any_base)
 
 
 def _mean(values: List[float]) -> float:

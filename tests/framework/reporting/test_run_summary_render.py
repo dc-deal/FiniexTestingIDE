@@ -12,7 +12,7 @@ from contextlib import redirect_stdout
 
 from python.framework.batch_reporting.executive_summary import ExecutiveSummary
 from python.framework.types.api.report_types import (
-    RunSummary, RunSummaryCurrency, WarningsErrorsReport)
+    AggregatedPortfolioReport, RunSummary, RunSummaryCurrency, WarningsErrorsReport)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -35,7 +35,8 @@ def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
     executive = ExecutiveSummary(
         batch_execution_summary=None, app_config=None, run_summary=summary,
-        warnings_errors_report=WarningsErrorsReport())
+        warnings_errors_report=WarningsErrorsReport(),
+        aggregated_report=AggregatedPortfolioReport())
     buf = io.StringIO()
     with redirect_stdout(buf):
         executive._render_run_summary(ConsoleRenderer())

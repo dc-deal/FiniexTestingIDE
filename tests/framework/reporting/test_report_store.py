@@ -8,6 +8,7 @@ no run required.
 
 from pathlib import Path
 
+from python.framework.reporting.run_reports.aggregated_portfolio_report_io import write_aggregated_portfolio_report
 from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
@@ -21,7 +22,8 @@ from python.framework.reporting.run_reports.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
+    ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
+    BrokerInfoRow, BrokerReport, BrokerSymbolRow,
     ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
@@ -305,6 +307,32 @@ class TestWarningsErrors:
 
     def test_not_found_returns_none(self, tmp_path):
         assert ReportStore(tmp_path).get_warnings_errors('nope') is None
+
+
+def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
+    headline = PortfolioAggregateRow(
+        currency='USD', unit_count=2, total_trades=4, winning_trades=2, losing_trades=2,
+        win_rate=0.5, profit_factor=2.0, total_profit=100.0, total_loss=50.0, net_profit=50.0,
+        max_drawdown=12.0, total_fees=5.0)
+    row = AggregatedPortfolioRow(headline=headline, initial_balance=2000.0, final_balance=2050.0)
+    return AggregatedPortfolioReport(currencies=[AggregatedPortfolioCurrency(
+        currency='USD', scenario_count=2, scenario_names=['s1', 's2'], combined=row)])
+
+
+class TestAggregatedPortfolio:
+    def test_reads_aggregated_portfolio(self, tmp_path):
+        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir.mkdir(parents=True)
+        write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir)
+
+        report = ReportStore(tmp_path).get_aggregated_portfolio('20260615_120000')
+        assert report is not None
+        cur = report.currencies[0]
+        assert cur.currency == 'USD' and cur.combined.headline.total_trades == 4
+        assert cur.combined.initial_balance == 2000.0
+
+    def test_not_found_returns_none(self, tmp_path):
+        assert ReportStore(tmp_path).get_aggregated_portfolio('nope') is None
 
 
 class TestBroker:

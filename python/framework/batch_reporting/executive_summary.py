@@ -14,13 +14,13 @@ import psutil
 from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.types.api.report_types import RunSummary, WarningsErrorsOutcome, WarningsErrorsReport
+from python.framework.types.api.report_types import (
+    AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
+    RunSummary, WarningsErrorsOutcome, WarningsErrorsReport)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.batch_reporting.portfolio_aggregator import PortfolioAggregator
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 
@@ -40,6 +40,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         app_config: AppConfigManager,
         run_summary: RunSummary,
         warnings_errors_report: WarningsErrorsReport,
+        aggregated_report: AggregatedPortfolioReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
     ):
         """
@@ -57,6 +58,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         self._app_config = app_config
         self._run_summary = run_summary
         self._outcome = warnings_errors_report.outcome
+        self._aggregated_report = aggregated_report
         self._generator_profiles = generator_profiles
 
     def render(self, renderer: ConsoleRenderer):
@@ -356,137 +358,69 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             f"Speedup:            {speedup:,.0f}x ({in_time_stats['total_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
 
     def _render_portfolio_performance(self, renderer: ConsoleRenderer):
-        """Render aggregated portfolio performance."""
-        # Aggregate portfolios by currency
-        aggregator = PortfolioAggregator(
-            self._batch_summary.process_result_list)
-        aggregated = aggregator.aggregate_by_currency()
+        """Render aggregated portfolio performance from the model (#397)."""
+        currencies = self._aggregated_report.currencies
 
-        if not aggregated:
+        if not currencies:
             renderer.print_bold("PORTFOLIO PERFORMANCE")
             renderer.print_separator(width=68)
             print("No portfolio data available")
             return
 
-        # Render each currency — split margin/spot for mixed batches
-        for currency, agg_portfolio in aggregated.items():
-            # Check if this group has mixed margin + spot
-            currency_results = [
-                r for r in self._batch_summary.process_result_list
-                if r.tick_loop_results and
-                r.tick_loop_results.portfolio_stats.currency == currency
-            ]
-            margin_results = [r for r in currency_results if not r.tick_loop_results.portfolio_stats.spot_mode]
-            spot_results = [r for r in currency_results if r.tick_loop_results.portfolio_stats.spot_mode]
-
-            if margin_results and spot_results:
-                # Mixed: render separately
-                margin_agg = PortfolioAggregator(margin_results).aggregate_by_currency()
-                spot_agg = PortfolioAggregator(spot_results).aggregate_by_currency()
-                if currency in margin_agg:
-                    self._render_currency_portfolio(
-                        renderer, currency, margin_agg[currency], label='Margin')
-                if currency in spot_agg:
-                    self._render_spot_portfolio(
-                        renderer, currency, spot_agg[currency], spot_results)
-            elif spot_results:
-                # Pure spot
-                self._render_spot_portfolio(
-                    renderer, currency, agg_portfolio, spot_results)
+        # Render each currency — the model carries the margin/spot split for mixed batches
+        for cur in currencies:
+            if cur.is_mixed:
+                self._render_currency_portfolio(renderer, cur.currency, cur.margin)
+                self._render_spot_portfolio(renderer, cur.currency, cur.spot)
+            elif cur.is_spot:
+                self._render_spot_portfolio(renderer, cur.currency, cur.combined)
             else:
-                # Pure margin (original path)
-                self._render_currency_portfolio(
-                    renderer, currency, agg_portfolio)
+                self._render_currency_portfolio(renderer, cur.currency, cur.combined)
 
     def _render_currency_portfolio(
-        self, renderer: ConsoleRenderer, currency: str, agg_portfolio,
-        label: str = ''
+        self, renderer: ConsoleRenderer, currency: str, row: AggregatedPortfolioRow
     ):
         """
-        Render portfolio metrics for single currency (margin mode).
+        Render portfolio metrics for one currency (margin mode), from the model (#397).
 
         Args:
             renderer: Console renderer
             currency: Currency code (EUR, USD, etc.)
-            agg_portfolio: Aggregated portfolio statistics
-            label: Optional label suffix (e.g. 'Margin' for mixed batches)
+            row: Aggregated portfolio row (the margin / combined group; row.label suffixes the title)
         """
-        # Get all ProcessResults for this currency
-        currency_results = [
-            r for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and
-            r.tick_loop_results.portfolio_stats.currency == currency and
-            not r.tick_loop_results.portfolio_stats.spot_mode
-        ] if label else [
-            r for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and
-            r.tick_loop_results.portfolio_stats.currency == currency
-        ]
+        h = row.headline
+        initial = row.initial_balance
+        final = row.final_balance
+        pnl = row.balance_pnl
+        pnl_pct = row.balance_pnl_pct
 
-        # Calculate initial and final balances from ProcessResults
-        initial = sum(
-            r.tick_loop_results.portfolio_stats.initial_balance
-            for r in currency_results
-        )
-        final = sum(
-            r.tick_loop_results.portfolio_stats.current_balance
-            for r in currency_results
-        )
-        pnl = final - initial
-        pnl_pct = (pnl / initial * 100) if initial > 0 else 0
+        total_trades = h.total_trades
+        winning = h.winning_trades
+        losing = h.losing_trades
+        win_rate = h.win_rate
 
-        # Get metrics from aggregated portfolio stats
-        portfolio_stats = agg_portfolio.portfolio_stats
-        total_trades = portfolio_stats.total_trades
-        winning = portfolio_stats.winning_trades
-        losing = portfolio_stats.losing_trades
-        win_rate = portfolio_stats.win_rate
+        # Profit factor (executive formula: total_profit / abs(total_loss))
+        profit_factor = h.total_profit / \
+            abs(h.total_loss) if h.total_loss != 0 else 0
 
-        # Avg win/loss size
-        avg_win = portfolio_stats.total_profit / winning if winning > 0 else 0
-        avg_loss = abs(portfolio_stats.total_loss) / \
-            losing if losing > 0 else 0
-
-        # Profit factor
-        profit_factor = portfolio_stats.total_profit / \
-            abs(portfolio_stats.total_loss) if portfolio_stats.total_loss != 0 else 0
-
-        # Recovery factor
-        recovery_factor = pnl / \
-            abs(portfolio_stats.max_drawdown) if portfolio_stats.max_drawdown != 0 else 0
-
-        # Max drawdown percentage
-        max_dd_pct = (portfolio_stats.max_drawdown / portfolio_stats.max_equity *
-                      100) if portfolio_stats.max_equity > 0 else 0
-
-        # print(f"DEBUG: portfolio_stats.win_rate = {portfolio_stats.win_rate}")
-        # print(f"DEBUG: win_rate variable = {win_rate}")
-
-        # Calculate scenario count and avg initial
-        scenario_count = agg_portfolio.scenario_count
-        avg_initial = initial / scenario_count if scenario_count > 0 else 0
-
-        avg_spread = portfolio_stats.total_spread_cost / \
-            total_trades if total_trades > 0 else 0
+        scenario_count = h.unit_count
 
         # Render section
         section_title = f"PORTFOLIO PERFORMANCE ({currency})"
-        if label:
-            section_title = f"PORTFOLIO PERFORMANCE ({currency} — {label})"
+        if row.label:
+            section_title = f"PORTFOLIO PERFORMANCE ({currency} — {row.label})"
         renderer.print_bold(section_title)
         renderer.print_separator(width=68)
         print(f"Scenarios:          {scenario_count}")
         print(
-            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(avg_initial, currency)}/scenario)")
+            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)")
         print(f"Final Balance:      {format_currency_simple(final, currency)}")
 
-        pnl_str = renderer.pnl(pnl, currency)
-        print(f"Total P&L:          {pnl_str} ({pnl_pct:+.2f}%)")
+        print(f"Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)")
         # Order execution stats
-        exec_stats = agg_portfolio.execution_stats
-        orders_sent = exec_stats.orders_sent if exec_stats else 0
-        orders_executed = exec_stats.orders_executed if exec_stats else 0
-        orders_rejected = exec_stats.orders_rejected if exec_stats else 0
+        orders_sent = row.orders_sent
+        orders_executed = row.orders_executed
+        orders_rejected = row.orders_rejected
         exec_rate = (orders_executed / orders_sent *
                      100) if orders_sent > 0 else 0
 
@@ -494,9 +428,9 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
         print(f"Win Rate:           {win_rate * 100:.1f}%")
         print(
-            f"Avg Win:            {format_currency_simple(avg_win, currency)}")
+            f"Avg Win:            {format_currency_simple(row.avg_win, currency)}")
         print(
-            f"Avg Loss:           {format_currency_simple(avg_loss, currency)}")
+            f"Avg Loss:           {format_currency_simple(row.avg_loss, currency)}")
         print(f"Profit Factor:      {profit_factor:.2f}")
 
         if orders_rejected > 0:
@@ -508,160 +442,111 @@ class ExecutiveSummary(AbstractBatchSummarySection):
                 f"Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)")
 
         # Pending order latency (green)
-        pending_stats = agg_portfolio.pending_stats
-        if pending_stats and pending_stats.total_resolved > 0:
-            latency_line = self._format_pending_latency(
-                renderer, pending_stats)
+        if row.pending_total_resolved > 0:
+            latency_line = self._format_pending_latency(renderer, row)
             if latency_line:
                 print(latency_line)
 
         # Order pipeline status (always visible)
-        self._render_order_pipeline(renderer, pending_stats)
+        self._render_order_pipeline(renderer, row)
 
         print("")
         print(
-            f"Max Drawdown:       {format_currency_simple(abs(portfolio_stats.max_drawdown), currency)} ({max_dd_pct:.1f}%)")
+            f"Max Drawdown:       {format_currency_simple(abs(h.max_drawdown), currency)} ({row.max_dd_pct:.1f}%)")
         print(
-            f"Max Equity:         {format_currency_simple(portfolio_stats.max_equity, currency)}")
-        print(f"Recovery Factor:    {recovery_factor:.2f}")
+            f"Max Equity:         {format_currency_simple(row.max_equity, currency)}")
+        print(f"Recovery Factor:    {row.recovery_factor:.2f}")
         print("")
         print(
-            f"Spread Cost:        {format_currency_simple(portfolio_stats.total_spread_cost, currency)} (avg {format_currency_simple(avg_spread, currency)}/trade)")
+            f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)} (avg {format_currency_simple(row.avg_spread, currency)}/trade)")
         print(
-            f"Commission:         {format_currency_simple(portfolio_stats.total_commission, currency)}")
+            f"Commission:         {format_currency_simple(row.total_commission, currency)}")
         print(
-            f"Swap:               {format_currency_simple(portfolio_stats.total_swap, currency)}")
+            f"Swap:               {format_currency_simple(row.total_swap, currency)}")
 
     def _render_spot_portfolio(
-        self, renderer: ConsoleRenderer, currency: str,
-        agg_portfolio, spot_results: List
+        self, renderer: ConsoleRenderer, currency: str, row: AggregatedPortfolioRow
     ):
         """
-        Render portfolio metrics for spot scenarios.
+        Render portfolio metrics for spot scenarios from the model (#397).
 
         Shows dual balances per scenario, estimated portfolio value, and P&L.
 
         Args:
             renderer: Console renderer
             currency: Quote currency code (USD, etc.)
-            agg_portfolio: Aggregated portfolio statistics for spot scenarios
-            spot_results: List of ProcessResult for spot scenarios
+            row: Aggregated spot portfolio row (carries the per-scenario dual-balance sub-rows)
         """
-        portfolio_stats = agg_portfolio.portfolio_stats
-        scenario_count = agg_portfolio.scenario_count
+        h = row.headline
 
         renderer.print_bold(f"PORTFOLIO PERFORMANCE ({currency} — Spot)")
         renderer.print_separator(width=68)
-        print(f"Scenarios:          {scenario_count}")
+        print(f"Scenarios:          {h.unit_count}")
 
-        # Initial/final totals (quote currency)
-        initial = sum(
-            r.tick_loop_results.portfolio_stats.initial_balance
-            for r in spot_results
-        )
-        final = sum(
-            r.tick_loop_results.portfolio_stats.current_balance
-            for r in spot_results
-        )
-        avg_initial = initial / scenario_count if scenario_count > 0 else 0
         print(
-            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(avg_initial, currency)}/scenario)")
+            f"Initial Capital:    {format_currency_simple(row.initial_balance, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)")
 
         # Per-scenario spot balances
-        total_est_current = 0.0
-        total_est_initial = 0.0
-        has_base_holdings = False
-        for r in spot_results:
-            stats = r.tick_loop_results.portfolio_stats
-            symbol = stats.symbol
-            base = symbol[:-3] if len(symbol) >= 6 else ''
-            quote = symbol[-3:] if len(symbol) >= 6 else currency
-
-            quote_bal = stats.balances.get(quote, 0.0)
-            base_bal = stats.balances.get(base, 0.0)
-            quote_init = stats.initial_balances.get(quote, 0.0)
-            base_init = stats.initial_balances.get(base, 0.0)
-            last_price = stats.last_price
-
-            base_fmt = f'{base_bal:,.4f}' if base_bal < 100 else f'{base_bal:,.2f}'
-
-            print(f"  {r.scenario_name}:")
-            print(f"    Balances: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}")
-
-            # Only show estimated value if base holdings are non-zero
-            if last_price > 0 and base_bal != 0.0:
-                has_base_holdings = True
-                est_current = quote_bal + (base_bal * last_price)
-                est_initial = quote_init + (base_init * last_price)
-                total_est_current += est_current
-                total_est_initial += est_initial
-                print(f"    Est. Value: {format_currency_simple(est_current, quote)} @ {base} {format_currency_simple(last_price, quote)}")
-            elif last_price > 0:
-                # No base holdings — portfolio value equals quote balance
-                total_est_current += quote_bal
-                total_est_initial += quote_init
+        for s in row.spot_scenarios:
+            base_fmt = f'{s.base_balance:,.4f}' if s.base_balance < 100 else f'{s.base_balance:,.2f}'
+            print(f"  {s.scenario_name}:")
+            print(f"    Balances: {format_currency_simple(s.quote_balance, s.quote_currency)} | {s.base_currency} {base_fmt}")
+            if s.has_base_holdings:
+                print(f"    Est. Value: {format_currency_simple(s.est_current, s.quote_currency)} @ {s.base_currency} {format_currency_simple(s.last_price, s.quote_currency)}")
 
         # Totals
         print("")
-        if has_base_holdings and total_est_initial > 0:
-            total_pnl = total_est_current - total_est_initial
-            total_pnl_pct = (total_pnl / total_est_initial * 100)
-            print(f"Est. Portfolio:     {format_currency_simple(total_est_current, currency)}")
+        if row.spot_has_base_holdings and row.spot_total_est_initial > 0:
+            total_pnl = row.spot_total_est_current - row.spot_total_est_initial
+            total_pnl_pct = (total_pnl / row.spot_total_est_initial * 100)
+            print(f"Est. Portfolio:     {format_currency_simple(row.spot_total_est_current, currency)}")
             print(f"Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)")
         else:
             # Simple P&L when no base holdings (same as margin)
-            pnl = final - initial
-            pnl_pct = (pnl / initial * 100) if initial > 0 else 0
-            print(f"Final Balance:      {format_currency_simple(final, currency)}")
+            pnl = row.final_balance - row.initial_balance
+            pnl_pct = (pnl / row.initial_balance * 100) if row.initial_balance > 0 else 0
+            print(f"Final Balance:      {format_currency_simple(row.final_balance, currency)}")
             print(f"Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)")
 
         # Trade stats
-        total_trades = portfolio_stats.total_trades
-        if total_trades > 0:
-            winning = portfolio_stats.winning_trades
-            losing = portfolio_stats.losing_trades
+        if h.total_trades > 0:
             print("")
-            print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
-            print(f"Win Rate:           {portfolio_stats.win_rate * 100:.1f}%")
+            print(f"Total Trades:       {h.total_trades} ({h.winning_trades}W / {h.losing_trades}L)")
+            print(f"Win Rate:           {h.win_rate * 100:.1f}%")
 
         # Order execution
-        exec_stats = agg_portfolio.execution_stats
-        if exec_stats and exec_stats.orders_sent > 0:
+        if row.orders_sent > 0:
             print(
-                f"Orders:             {exec_stats.orders_executed}/{exec_stats.orders_sent} executed")
+                f"Orders:             {row.orders_executed}/{row.orders_sent} executed")
 
         # Costs
-        if portfolio_stats.total_spread_cost != 0:
+        if row.total_spread_cost != 0:
             print("")
             print(
-                f"Spread Cost:        {format_currency_simple(portfolio_stats.total_spread_cost, currency)}")
+                f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}")
 
     @staticmethod
-    def _format_pending_latency(renderer: ConsoleRenderer, pending_stats) -> str:
+    def _format_pending_latency(renderer: ConsoleRenderer, row: AggregatedPortfolioRow) -> str:
         """
-        Format pending latency line for executive summary.
+        Format the pending-latency line for the executive summary from the model row (#397).
 
         Args:
             renderer: Console renderer for color formatting
-            pending_stats: PendingOrderStats with latency metrics
+            row: Aggregated portfolio row carrying the pending latency fields
 
         Returns:
             Formatted latency line (green) or empty string
         """
         # Millisecond-based latency
-        if pending_stats.min_latency_ms is not None:
-            avg = pending_stats.avg_latency_ms
-            min_val = pending_stats.min_latency_ms
-            max_val = pending_stats.max_latency_ms
-            line = f"Avg Latency:        {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"
+        if row.pending_min_latency_ms is not None:
+            line = (f"Avg Latency:        {row.pending_avg_latency_ms:.0f}ms "
+                    f"(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)")
             # Anomaly suffix (force-closed, timed out)
             anomaly_parts = []
-            if pending_stats.total_force_closed > 0:
-                anomaly_parts.append(
-                    f"{pending_stats.total_force_closed} force-closed")
-            if pending_stats.total_timed_out > 0:
-                anomaly_parts.append(
-                    f"{pending_stats.total_timed_out} timed out")
+            if row.pending_total_force_closed > 0:
+                anomaly_parts.append(f"{row.pending_total_force_closed} force-closed")
+            if row.pending_total_timed_out > 0:
+                anomaly_parts.append(f"{row.pending_total_timed_out} timed out")
             if anomaly_parts:
                 line += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
             return renderer.green(line)
@@ -671,25 +556,20 @@ class ExecutiveSummary(AbstractBatchSummarySection):
     @staticmethod
     def _render_order_pipeline(
         renderer: ConsoleRenderer,
-        pending_stats: PendingOrderStats
+        row: AggregatedPortfolioRow
     ) -> None:
         """
-        Render order pipeline status line (always visible).
+        Render the order-pipeline status line (always visible), from the model row (#397).
 
-        Shows all three waiting categories:
-        - pending: orders in latency queue (waiting for broker response)
-        - active limits: past latency, waiting for limit price trigger
-        - active stops: past latency, waiting for stop price trigger
+        The aggregated pending stats never carry the latency-queue count → `pending` is always
+        0 here (matches the previous aggregator behaviour); active limits / stops come from the row.
 
         Args:
             renderer: Console renderer for color formatting
-            pending_stats: PendingOrderStats (may be None)
+            row: Aggregated portfolio row carrying the active-order counts
         """
-        pending = pending_stats.latency_queue_count if pending_stats else 0
-        limits = len(pending_stats.active_limit_orders) if pending_stats else 0
-        stops = len(pending_stats.active_stop_orders) if pending_stats else 0
-
-        line = f"Order Pipeline:     {pending} pending | {limits} active limits | {stops} active stops"
+        line = (f"Order Pipeline:     0 pending | {row.pending_active_limit_count} active limits | "
+                f"{row.pending_active_stop_count} active stops")
         print(renderer.cyan(line))
 
     def _format_tracking_status_line(self, renderer: ConsoleRenderer) -> str:

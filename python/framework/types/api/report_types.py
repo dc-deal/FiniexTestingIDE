@@ -244,6 +244,7 @@ class PendingOrdersUnitRow(BaseModel):
     avg_latency_ms: float | None = None
     min_latency_ms: float | None = None
     max_latency_ms: float | None = None
+    latency_count: int = 0      # latency samples → weighted avg on aggregation (#397)
     active_limit_orders: list[ActiveOrderRow] = []
     active_stop_orders: list[ActiveOrderRow] = []
 
@@ -543,3 +544,100 @@ class WarningsErrorsReport(BaseModel):
     warnings: list[WarningRow] = []
     errors: list[UnitErrorRow] = []
     outcome: WarningsErrorsOutcome = WarningsErrorsOutcome()
+
+
+class AggregatedPortfolioSpotScenarioRow(BaseModel):
+    """Per-scenario spot dual-balance view (the executive spot block, #397)."""
+    scenario_name: str
+    quote_currency: str = ''
+    base_currency: str = ''
+    quote_balance: float = 0.0
+    base_balance: float = 0.0
+    quote_initial: float = 0.0
+    base_initial: float = 0.0
+    last_price: float = 0.0
+    est_current: float = 0.0        # quote + base*last_price (0 if no base holdings)
+    est_initial: float = 0.0
+    has_base_holdings: bool = False
+
+
+class AggregatedPortfolioRow(BaseModel):
+    """
+    Full per-currency (or per-mode, for mixed batches) aggregate — the rich detail view that
+    `PortfolioAggregator` used to feed inline (#397). Composes the lean `PortfolioAggregateRow`
+    (the headline / `RunSummary` source) and adds the cross-domain extras: balances, cost split,
+    per-currency execution, pending, and the spot dual-balance. Derived values (avg win/loss,
+    recovery factor, %s) are computed in the builder; presenters only format.
+    """
+    headline: PortfolioAggregateRow
+    is_spot: bool = False
+    label: str = ''                 # '' | 'Margin' | 'Spot' (mixed-batch tag)
+    # Trade extras
+    total_long_trades: int = 0
+    total_short_trades: int = 0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    # Balances (per-currency sums of per-scenario portfolio stats)
+    initial_balance: float = 0.0
+    final_balance: float = 0.0
+    avg_initial: float = 0.0
+    balance_pnl: float = 0.0        # final_balance - initial_balance (executive "Total P&L")
+    balance_pnl_pct: float = 0.0
+    # Risk
+    recovery_factor: float = 0.0
+    max_dd_pct: float = 0.0
+    max_drawdown_scenario: str = ''
+    max_equity: float = 0.0
+    max_equity_scenario: str = ''
+    # Cost split
+    total_spread_cost: float = 0.0
+    total_commission: float = 0.0
+    total_swap: float = 0.0
+    avg_spread: float = 0.0
+    # Execution (per currency)
+    orders_sent: int = 0
+    orders_executed: int = 0
+    orders_rejected: int = 0
+    sl_tp_triggered: int = 0
+    # Pending
+    pending_total_resolved: int = 0
+    pending_total_filled: int = 0
+    pending_total_rejected: int = 0
+    pending_total_timed_out: int = 0
+    pending_total_force_closed: int = 0
+    pending_avg_latency_ms: float | None = None
+    pending_min_latency_ms: float | None = None
+    pending_max_latency_ms: float | None = None
+    pending_active_limit_count: int = 0
+    pending_active_stop_count: int = 0
+    # Spot dual-balance (only populated for spot rows)
+    spot_scenarios: list[AggregatedPortfolioSpotScenarioRow] = []
+    spot_total_est_current: float = 0.0
+    spot_total_est_initial: float = 0.0
+    spot_has_base_holdings: bool = False
+
+
+class AggregatedPortfolioCurrency(BaseModel):
+    """
+    One currency group (#397). `combined` feeds the "AGGREGATED PORTFOLIO" section (margin+spot
+    together, as `PortfolioAggregator` grouped by currency only); `margin`/`spot` feed the executive
+    block which splits a mixed batch. For pure margin / pure spot, only `combined` is used.
+    """
+    currency: str
+    scenario_count: int = 0
+    scenario_names: list[str] = []
+    is_spot: bool = False           # pure-spot currency (executive renders the spot path)
+    is_mixed: bool = False          # both margin + spot present → use margin/spot sub-rows
+    combined: AggregatedPortfolioRow
+    margin: AggregatedPortfolioRow | None = None   # only when is_mixed
+    spot: AggregatedPortfolioRow | None = None     # only when is_mixed
+
+
+class AggregatedPortfolioReport(BaseModel):
+    """
+    Aggregated per-currency portfolio — the rich detail view (#397, retires `PortfolioAggregator`).
+    `RunSummary` stays the lean KPI headline; this is the comprehensive single-concern object
+    (LEAN's Portfolio-vs-Trade split). **Sim batch** (multi-currency aggregation is a sim concern;
+    live keeps the lean `PortfolioReport.aggregates`).
+    """
+    currencies: list[AggregatedPortfolioCurrency] = []

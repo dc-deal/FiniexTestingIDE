@@ -133,6 +133,15 @@ class PendingOrderStats:
     _latency_ms_sum: float = field(default=0.0, repr=False)
     _latency_count: int = field(default=0, repr=False)
 
+    def get_latency_count(self) -> int:
+        """
+        Number of latency samples behind avg_latency_ms.
+
+        Returns:
+            Latency sample count (for a weighted average on aggregation)
+        """
+        return self._latency_count
+
     def record(
         self,
         outcome: PendingOrderOutcome,

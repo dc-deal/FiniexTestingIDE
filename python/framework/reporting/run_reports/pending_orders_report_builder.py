@@ -53,6 +53,7 @@ def _to_row(name: str, symbol: str, stats: PendingOrderStats) -> PendingOrdersUn
         avg_latency_ms=stats.avg_latency_ms if has_latency else None,
         min_latency_ms=stats.min_latency_ms,
         max_latency_ms=stats.max_latency_ms,
+        latency_count=stats.get_latency_count(),
         active_limit_orders=_active_rows(stats.active_limit_orders),
         active_stop_orders=_active_rows(stats.active_stop_orders),
     )

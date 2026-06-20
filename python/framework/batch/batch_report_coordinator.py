@@ -9,6 +9,8 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch_reporting.batch_summary import BatchSummary
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
+from python.framework.reporting.run_reports.aggregated_portfolio_report_builder import build_aggregated_portfolio_report
+from python.framework.reporting.run_reports.aggregated_portfolio_report_io import write_aggregated_portfolio_report
 from python.framework.reporting.run_reports.broker_report_builder import build_broker_report_from_batch
 from python.framework.reporting.run_reports.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
@@ -111,6 +113,9 @@ class BatchReportCoordinator:
         # Warnings & errors — tiered, from the validation channels + log pots (#395).
         warnings_errors_report = build_warnings_errors_report_from_batch(
             self._batch_execution_summary)
+        # Aggregated per-currency portfolio — the rich detail view from the per-unit rows (#397).
+        aggregated_portfolio_report = build_aggregated_portfolio_report(
+            portfolio_report, execution_stats_report, pending_report)
 
         # === PRESENT — the migrated sections render from the models (#393) ===
         summary = BatchSummary(
@@ -128,6 +133,7 @@ class BatchReportCoordinator:
             profiling_report=profiling_report,
             broker_report=broker_report,
             warnings_errors_report=warnings_errors_report,
+            aggregated_portfolio_report=aggregated_portfolio_report,
         )
 
         summary_detail = self._app_config.get_summary_detail()
@@ -187,3 +193,4 @@ class BatchReportCoordinator:
         write_profiling_report(profiling_report, run_dir)
         write_broker_report(broker_report, run_dir)
         write_warnings_errors_report(warnings_errors_report, run_dir)
+        write_aggregated_portfolio_report(aggregated_portfolio_report, run_dir)
