@@ -252,3 +252,6 @@ the API serves either pipeline's run by `run_id`.
    `console/` (PRESENT — the `*_summary` presenters). The former `BatchSummary` orchestrator was
    dissolved into `BatchReportCoordinator` (sub-presenters stay; render orchestration in
    `generate_and_log`). Pure file-move + import refactor; the models stay in `types/api/report_types.py`.
+   **On disk:** the persisted report artifacts (JSON + CSV) now live in the run's **`io/`** subfolder
+   (`<run_dir>/io/`, the `IO_SUBDIR` constant in `report_store`) — both pipelines write there and
+   `ReportStore` reads from there; `events/`, `scenario_logs/` and the run logs stay at the run-dir root.

@@ -14,6 +14,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
+from python.framework.reporting.io.report_store import IO_SUBDIR
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
@@ -107,7 +108,7 @@ class TestAutotraderMockSession:
         """Broker report is persisted (unified model) + rendered in the summary (#391 live)."""
         _, run_dir = mock_session
 
-        broker_artifact = run_dir / 'broker.json'
+        broker_artifact = run_dir / IO_SUBDIR / 'broker.json'
         assert broker_artifact.exists(), 'broker.json not written for live session'
 
         report = read_broker_report(broker_artifact)

@@ -15,7 +15,7 @@ from python.framework.reporting.io.execution_stats_report_io import (
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.report_store import ReportStore
+from python.framework.reporting.io.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.io.trade_history_report_io import (
@@ -56,9 +56,10 @@ def _report() -> TradeHistoryReport:
 
 
 def _write_run(logs_root: Path, group: str, owner: str, run_id: str) -> None:
-    run_dir = logs_root / group / owner / run_id
-    run_dir.mkdir(parents=True)
-    write_trade_history_report(_report(), run_dir)
+    # Artifacts live in the run's io/ subfolder (#396 housekeeping)
+    io_dir = logs_root / group / owner / run_id / IO_SUBDIR
+    io_dir.mkdir(parents=True)
+    write_trade_history_report(_report(), io_dir)
 
 
 class TestResolveRead:
@@ -143,8 +144,8 @@ def _portfolio_report() -> PortfolioReport:
 class TestOrderHistory:
     def test_reads_and_filters(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_order_history_report(_order_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_order_history_report(_order_report(), run_dir / IO_SUBDIR)
 
         full = ReportStore(tmp_path).get_order_history('20260615_120000')
         assert full.count == 2
@@ -160,8 +161,8 @@ class TestOrderHistory:
 class TestPortfolio:
     def test_reads_portfolio(self, tmp_path):
         run_dir = tmp_path / 'autotrader' / 'my_profile' / '20260615_130000'
-        run_dir.mkdir(parents=True)
-        write_portfolio_report(_portfolio_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_portfolio_report(_portfolio_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_portfolio('20260615_130000')
         assert report is not None
@@ -184,8 +185,8 @@ def _execution_stats_report() -> ExecutionStatsReport:
 class TestExecutionStats:
     def test_reads_execution_stats(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_execution_stats_report(_execution_stats_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_execution_stats_report(_execution_stats_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_execution_stats('20260615_120000')
         assert report is not None
@@ -216,8 +217,8 @@ def _pending_orders_report() -> PendingOrdersReport:
 class TestPendingOrders:
     def test_reads_pending_orders(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_pending_orders_report(_pending_orders_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_pending_orders_report(_pending_orders_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_pending_orders('20260615_120000')
         assert report is not None
@@ -243,8 +244,8 @@ def _scenario_details_report() -> ScenarioDetailsReport:
 class TestScenarioDetails:
     def test_reads_scenario_details(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_scenario_details_report(_scenario_details_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_scenario_details_report(_scenario_details_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_scenario_details('20260615_120000')
         assert report is not None
@@ -267,8 +268,8 @@ def _run_summary() -> RunSummary:
 class TestRunSummary:
     def test_reads_run_summary(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_run_summary(_run_summary(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_run_summary(_run_summary(), run_dir / IO_SUBDIR)
 
         rs = ReportStore(tmp_path).get_run_summary('20260615_120000')
         assert rs is not None
@@ -296,8 +297,8 @@ def _warnings_errors_report() -> WarningsErrorsReport:
 class TestWarningsErrors:
     def test_reads_warnings_errors(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_warnings_errors_report(_warnings_errors_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_warnings_errors_report(_warnings_errors_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_warnings_errors('20260615_120000')
         assert report is not None
@@ -322,8 +323,8 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
 class TestAggregatedPortfolio:
     def test_reads_aggregated_portfolio(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_aggregated_portfolio('20260615_120000')
         assert report is not None
@@ -338,8 +339,8 @@ class TestAggregatedPortfolio:
 class TestBroker:
     def test_reads_broker(self, tmp_path):
         run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
-        run_dir.mkdir(parents=True)
-        write_broker_report(_broker_report(), run_dir)
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        write_broker_report(_broker_report(), run_dir / IO_SUBDIR)
 
         report = ReportStore(tmp_path).get_broker('20260615_120000')
         assert report is not None

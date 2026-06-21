@@ -3,7 +3,8 @@ Report store (#391) — resolves persisted run-report artifacts under the logs t
 
 The API's read-only source: given a run id, find the run's trade-history artifact
 (written by either pipeline into its run directory), read it, and apply the shared
-filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`.
+filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`, and the
+report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`).
 """
 
 from datetime import datetime
@@ -39,6 +40,9 @@ from python.framework.types.api.report_types import (
     PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
     TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 
+# Report artifacts (JSON + CSV) live in this subfolder of a run directory.
+IO_SUBDIR = 'io'
+
 
 class ReportStore:
     """Locates + serves persisted run-report artifacts (sim + autotrader runs)."""
@@ -53,8 +57,8 @@ class ReportStore:
         """Run ids (run-timestamp dirs) carrying a trade-history artifact, newest first."""
         run_ids = set()
         for group in self._GROUPS:
-            for artifact in (self._logs_root / group).glob(f'*/*/{TRADE_HISTORY_ARTIFACT}'):
-                run_ids.add(artifact.parent.name)
+            for artifact in (self._logs_root / group).glob(f'*/*/{IO_SUBDIR}/{TRADE_HISTORY_ARTIFACT}'):
+                run_ids.add(artifact.parent.parent.name)
         return sorted(run_ids, reverse=True)
 
     def get_trade_history(
@@ -254,8 +258,8 @@ class ReportStore:
         return read_broker_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
-        """Find a named report artifact for a run id across the log groups."""
+        """Find a named report artifact (in the run's io/ subfolder) across the log groups."""
         for group in self._GROUPS:
-            for found in (self._logs_root / group).glob(f'*/{run_id}/{artifact}'):
+            for found in (self._logs_root / group).glob(f'*/{run_id}/{IO_SUBDIR}/{artifact}'):
                 return found
         return None

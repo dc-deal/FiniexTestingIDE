@@ -21,7 +21,7 @@ from python.framework.reporting.io.warnings_errors_report_io import write_warnin
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.report_store import ReportStore
+from python.framework.reporting.io.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.io.trade_history_report_io import write_trade_history_report
@@ -163,18 +163,19 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
 
 @pytest.fixture
 def client(tmp_path: Path):
-    run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
-    run_dir.mkdir(parents=True)
-    write_trade_history_report(_report(), run_dir)
-    write_order_history_report(_order_report(), run_dir)
-    write_portfolio_report(_portfolio_report(), run_dir)
-    write_execution_stats_report(_execution_stats_report(), run_dir)
-    write_pending_orders_report(_pending_orders_report(), run_dir)
-    write_scenario_details_report(_scenario_details_report(), run_dir)
-    write_run_summary(_run_summary(), run_dir)
-    write_broker_report(_broker_report(), run_dir)
-    write_warnings_errors_report(_warnings_errors_report(), run_dir)
-    write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir)
+    # Artifacts live in the run's io/ subfolder (#396 housekeeping)
+    io_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN / IO_SUBDIR
+    io_dir.mkdir(parents=True)
+    write_trade_history_report(_report(), io_dir)
+    write_order_history_report(_order_report(), io_dir)
+    write_portfolio_report(_portfolio_report(), io_dir)
+    write_execution_stats_report(_execution_stats_report(), io_dir)
+    write_pending_orders_report(_pending_orders_report(), io_dir)
+    write_scenario_details_report(_scenario_details_report(), io_dir)
+    write_run_summary(_run_summary(), io_dir)
+    write_broker_report(_broker_report(), io_dir)
+    write_warnings_errors_report(_warnings_errors_report(), io_dir)
+    write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())

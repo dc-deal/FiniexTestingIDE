@@ -38,6 +38,7 @@ from python.framework.reporting.run_reports.pending_orders_report_builder import
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.report_store import IO_SUBDIR
 from python.framework.reporting.run_reports.profiling_report_builder import build_profiling_report_from_batch
 from python.framework.reporting.io.profiling_report_io import write_profiling_report
 from python.framework.reporting.run_reports.run_meta_report_builder import build_run_meta_report_from_batch
@@ -208,26 +209,29 @@ class BatchReportCoordinator:
                 run_dir=events_dir,
             ).flush(f'events_{process_result.scenario_name}.csv')
 
-        # === PERSIST — the same model objects the console rendered (#391) ===
-        write_trade_history_report(trade_report, run_dir)
-        write_trade_history_csv(trade_report, run_dir)
-        write_order_history_report(order_report, run_dir)
-        write_order_history_csv(order_report, run_dir)
-        write_portfolio_report(portfolio_report, run_dir)
-        write_pending_orders_report(pending_report, run_dir)
-        write_execution_stats_report(execution_stats_report, run_dir)
-        write_execution_stats_csv(execution_stats_report, run_dir)
-        write_scenario_details_report(scenario_details_report, run_dir)
-        write_run_summary(run_summary, run_dir)
-        write_run_meta_report(run_meta_report, run_dir)
-        write_worker_decision_report(worker_decision_report, run_dir)
-        write_profiling_report(profiling_report, run_dir)
-        write_broker_report(broker_report, run_dir)
-        write_warnings_errors_report(warnings_errors_report, run_dir)
-        write_aggregated_portfolio_report(aggregated_portfolio_report, run_dir)
+        # === PERSIST — the same model objects the console rendered (#391); the report
+        # artifacts (JSON + CSV) go into the run's io/ subfolder (#396 housekeeping) ===
+        io_dir = run_dir / IO_SUBDIR
+        io_dir.mkdir(parents=True, exist_ok=True)
+        write_trade_history_report(trade_report, io_dir)
+        write_trade_history_csv(trade_report, io_dir)
+        write_order_history_report(order_report, io_dir)
+        write_order_history_csv(order_report, io_dir)
+        write_portfolio_report(portfolio_report, io_dir)
+        write_pending_orders_report(pending_report, io_dir)
+        write_execution_stats_report(execution_stats_report, io_dir)
+        write_execution_stats_csv(execution_stats_report, io_dir)
+        write_scenario_details_report(scenario_details_report, io_dir)
+        write_run_summary(run_summary, io_dir)
+        write_run_meta_report(run_meta_report, io_dir)
+        write_worker_decision_report(worker_decision_report, io_dir)
+        write_profiling_report(profiling_report, io_dir)
+        write_broker_report(broker_report, io_dir)
+        write_warnings_errors_report(warnings_errors_report, io_dir)
+        write_aggregated_portfolio_report(aggregated_portfolio_report, io_dir)
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
-            write_block_splitting_report(block_splitting_report, run_dir)
+            write_block_splitting_report(block_splitting_report, io_dir)
 
     def _render_all(self, summary_detail: Optional[bool] = None):
         """
