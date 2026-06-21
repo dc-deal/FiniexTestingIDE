@@ -21,10 +21,11 @@ reconciliation alert count.
 
 import json
 import re
-import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from python.framework.utils.git_info_utils import get_git_commit
 
 # Default home for committed certificates — sibling of tests/live_adapters/reports
 # and tests/simulation/benchmark/reports (release-gate suites).
@@ -168,7 +169,7 @@ class FieldStudyCertificate:
         certificate = {
             'record_kind': 'certificate',
             'release_version': release_version,
-            'git_commit': FieldStudyCertificate._git_commit(),
+            'git_commit': get_git_commit() or 'unknown',
             'timestamp': now.isoformat(),
             'valid_until': (now + timedelta(days=VALIDITY_DAYS)).isoformat(),
             'comment': comment,
@@ -222,14 +223,3 @@ class FieldStudyCertificate:
         header = json.loads(lines[0])
         events = [json.loads(ln) for ln in lines[1:]]
         return header, events
-
-    @staticmethod
-    def _git_commit() -> str:
-        """Short git commit hash, or 'unknown' outside a repo."""
-        try:
-            return subprocess.check_output(
-                ['git', 'rev-parse', '--short', 'HEAD'],
-                stderr=subprocess.DEVNULL,
-            ).decode().strip()
-        except Exception:
-            return 'unknown'

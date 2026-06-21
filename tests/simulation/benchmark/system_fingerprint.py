@@ -14,7 +14,7 @@ import psutil
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple
 
-from tests.shared.report_utils import get_git_commit  # noqa: F401 — re-exported for benchmark conftest
+from python.framework.utils.git_info_utils import get_git_commit  # noqa: F401 — re-exported for benchmark conftest
 
 
 @dataclass

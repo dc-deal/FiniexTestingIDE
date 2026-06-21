@@ -17,7 +17,6 @@ Usage:
 import os
 import platform
 import psutil
-import subprocess
 try:
     import numpy as _numpy
 except ImportError:
@@ -26,11 +25,12 @@ try:
     import pandas as _pandas
 except ImportError:
     _pandas = None
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.git_info_types import GitInfo
+from python.framework.utils.git_info_utils import get_git_info
 
 
 def write_system_version_parameters(logger: ScenarioLogger) -> None:
@@ -55,7 +55,14 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     cpu_basic, cpu_detailed = _get_cpu_info()
     ram_info = _get_ram_info()
     env_info = _get_environment_info()
-    git_info = _get_git_info(logger)
+    git_info = get_git_info()
+
+    # Warn if working tree has uncommitted changes (snapshot not reproducible)
+    if git_info and git_info.dirty:
+        logger.warning(
+            f"Git working tree has {git_info.uncommitted_count} uncommitted change(s) - "
+            f"this performance snapshot may not be reproducible!"
+        )
 
     # INFO: Essential summary
     info_output = _format_info_summary(
@@ -199,100 +206,6 @@ def _get_environment_info() -> str:
     return "native"
 
 
-def _get_git_info(logger: ScenarioLogger) -> Optional[Dict[str, Any]]:
-    """
-    Get Git repository information.
-
-    Returns None if Git is not available or not in a Git repo.
-    Logs warning if uncommitted changes detected.
-
-    Args:
-        logger: Logger for warnings
-
-    Returns:
-        Dict with git info or None if unavailable
-    """
-    try:
-        # Check if git is available
-        subprocess.run(
-            ['git', '--version'],
-            capture_output=True,
-            check=True,
-            timeout=5
-        )
-
-        # Get branch
-        branch = subprocess.run(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        ).stdout.strip()
-
-        # Get commit hash (short)
-        commit = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        ).stdout.strip()
-
-        # Get commit date (UTC)
-        commit_date_str = subprocess.run(
-            ['git', 'log', '-1', '--format=%cI'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        ).stdout.strip()
-
-        # Parse and convert to UTC
-        commit_date = datetime.fromisoformat(
-            commit_date_str).astimezone(timezone.utc)
-
-        # Get commit message (first line only)
-        commit_message = subprocess.run(
-            ['git', 'log', '-1', '--format=%s'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        ).stdout.strip()
-
-        # Check for uncommitted changes
-        status = subprocess.run(
-            ['git', 'status', '--porcelain'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        ).stdout.strip()
-
-        dirty = bool(status)
-
-        # Warn if dirty
-        if dirty:
-            num_changes = len(status.splitlines())
-            logger.warning(
-                f"Git working tree has {num_changes} uncommitted change(s) - "
-                f"this performance snapshot may not be reproducible!"
-            )
-
-        return {
-            'branch': branch,
-            'commit': commit,
-            'date': commit_date,
-            'message': commit_message,
-            'dirty': dirty
-        }
-
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        # Git not available or not in a git repo - not critical
-        return None
-
-
 def _get_dependencies() -> Dict[str, str]:
     """
     Get versions of critical dependencies.
@@ -370,7 +283,7 @@ def _format_info_summary(
     cpu_basic: str,
     ram_info: Dict[str, float],
     env_info: str,
-    git_info: Optional[Dict[str, Any]]
+    git_info: Optional[GitInfo]
 ) -> str:
     """
     Format INFO-level summary (essential performance metrics).
@@ -381,7 +294,7 @@ def _format_info_summary(
         cpu_basic: CPU basic info (model + cores + freq)
         ram_info: RAM info dict
         env_info: Environment (docker/native)
-        git_info: Git information dict or None
+        git_info: Git information or None
 
     Returns:
         Formatted multi-line string
@@ -396,16 +309,16 @@ def _format_info_summary(
 
     if git_info:
         # Add -DIRTY marker if uncommitted changes
-        commit_str = git_info['commit']
-        if git_info['dirty']:
+        commit_str = git_info.commit
+        if git_info.dirty:
             commit_str += "-DIRTY"
 
         # Truncate message if too long
-        message = git_info['message']
+        message = git_info.message
         if len(message) > 45:
             message = message[:42] + "..."
 
-        git_summary = f"{git_info['branch']} @ {commit_str} ({git_info['date'].strftime('%Y-%m-%d')}: \"{message}\")"
+        git_summary = f"{git_info.branch} @ {commit_str} ({git_info.date.strftime('%Y-%m-%d')}: \"{message}\")"
         lines.append(f"Git:         {git_summary}")
     else:
         lines.append("Git:         (not available)")
