@@ -18,7 +18,7 @@ from python.configuration.autotrader.kraken_config_fetcher import get_runtime_ca
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
-from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
+from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
 from python.framework.types.config_types.market_config_types import ConfigMode
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.validation_types import ValidationResult

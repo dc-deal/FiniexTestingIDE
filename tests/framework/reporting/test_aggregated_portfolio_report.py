@@ -11,7 +11,7 @@ import io
 import re
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
+from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.run_reports.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report)
 from python.framework.types.api.report_types import (

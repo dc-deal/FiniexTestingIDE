@@ -8,19 +8,19 @@ no run required.
 
 from pathlib import Path
 
-from python.framework.reporting.run_reports.aggregated_portfolio_report_io import write_aggregated_portfolio_report
-from python.framework.reporting.run_reports.broker_report_io import write_broker_report
-from python.framework.reporting.run_reports.execution_stats_report_io import (
+from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
+from python.framework.reporting.io.broker_report_io import write_broker_report
+from python.framework.reporting.io.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
-from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
-from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.run_reports.report_store import ReportStore
-from python.framework.reporting.run_reports.run_summary_io import write_run_summary
-from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.run_reports.trade_history_report_io import (
+from python.framework.reporting.io.order_history_report_io import write_order_history_report
+from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
+from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.report_store import ReportStore
+from python.framework.reporting.io.run_summary_io import write_run_summary
+from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
+from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
-from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.types.api.report_types import (
     ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
     BrokerInfoRow, BrokerReport, BrokerSymbolRow,

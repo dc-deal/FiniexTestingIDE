@@ -145,7 +145,7 @@ In V1.3 sim and current Kraken live, both lists are 1-element. The data model is
 
 ### Sim trade-history log
 
-`docs/../python/framework/batch_reporting/trade_history_summary.py` emits the aggregate row plus one sub-line per `BrokerTrade` in `entry_trades` / `exit_trades`:
+`docs/../python/framework/reporting/console/trade_history_summary.py` emits the aggregate row plus one sub-line per `BrokerTrade` in `entry_trades` / `exit_trades`:
 
 ```
    # |  Dir  | ET |  Lots |  Entry Price |   Exit Price | ... | Net P&L | Close Reason
@@ -236,7 +236,7 @@ Construction sites are inventoried at:
 | `python/framework/trading_env/abstract_trade_executor.py` | Propagation at `_fill_open_order` + `_fill_close_order`; `_synthesize_pending_trade` |
 | `python/framework/trading_env/portfolio_manager.py` | Signature extensions on `open_position`, `close_position_portfolio`, `partial_close_position`, `_create_trade_record` |
 | `python/framework/reporting/event_stream_csv_writer.py` | `EventStreamWriter`, `EventType` enum, `TradeEvent`, `EVENT_FIELDS` |
-| `python/framework/batch_reporting/trade_history_summary.py` | Sim sub-line renderer + `shared(Nx)` + `(this trade: X of Y)` |
+| `python/framework/reporting/console/trade_history_summary.py` | Sim sub-line renderer + `shared(Nx)` + `(this trade: X of Y)` |
 | `python/system/ui/autotrader_live_display.py` | Live panel sub-rows + `partial` / `remain` reason markers |
 | `python/framework/autotrader/autotrader_main.py` | AutoTrader-side `EventStreamWriter.from_autotrader_result(...).flush('events.csv')` |
 | `python/framework/batch/batch_report_coordinator.py` | Sim-side per-scenario loop emitting `events_<scenario>.csv` into `events/` subfolder |

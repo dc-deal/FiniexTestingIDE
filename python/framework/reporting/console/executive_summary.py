@@ -13,7 +13,7 @@ Provides comprehensive summary:
 import psutil
 from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
     ProfilingReport, RunMetaReport, RunSummary, ScenarioDetailsReport, WarningsErrorsOutcome,

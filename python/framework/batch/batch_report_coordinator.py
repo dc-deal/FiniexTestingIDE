@@ -3,57 +3,57 @@ FiniexTestingIDE - Batch Report Coordinator
 Coordinates batch execution report generation and logging
 
 Extracted from strategy_runner.py to separate reporting concerns.
-This is the coordination layer - actual rendering logic stays in framework/batch_reporting/
+This is the coordination layer — the section sub-presenters live in framework/reporting/console/.
 """
 from typing import Optional
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
-from python.framework.batch_reporting.block_splitting_disposition import BlockSplittingDisposition
-from python.framework.batch_reporting.broker_summary import BrokerSummary
-from python.framework.batch_reporting.execution_header_summary import ExecutionHeaderSummary
-from python.framework.batch_reporting.executive_summary import ExecutiveSummary
-from python.framework.batch_reporting.performance_summary import PerformanceSummary
-from python.framework.batch_reporting.portfolio_summary import PortfolioSummary
-from python.framework.batch_reporting.profiling_summary import ProfilingSummary
-from python.framework.batch_reporting.scenario_details_summary import ScenarioDetailsSummary
-from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
-from python.framework.batch_reporting.warnings_summary import WarningsSummary
-from python.framework.batch_reporting.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
+from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
+from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
+from python.framework.reporting.console.executive_summary import ExecutiveSummary
+from python.framework.reporting.console.performance_summary import PerformanceSummary
+from python.framework.reporting.console.portfolio_summary import PortfolioSummary
+from python.framework.reporting.console.profiling_summary import ProfilingSummary
+from python.framework.reporting.console.scenario_details_summary import ScenarioDetailsSummary
+from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
+from python.framework.reporting.console.warnings_summary import WarningsSummary
+from python.framework.reporting.console.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.run_reports.aggregated_portfolio_report_builder import build_aggregated_portfolio_report
-from python.framework.reporting.run_reports.aggregated_portfolio_report_io import write_aggregated_portfolio_report
+from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
 from python.framework.reporting.run_reports.block_splitting_report_builder import build_block_splitting_report_from_batch
-from python.framework.reporting.run_reports.block_splitting_report_io import write_block_splitting_report
+from python.framework.reporting.io.block_splitting_report_io import write_block_splitting_report
 from python.framework.reporting.run_reports.broker_report_builder import build_broker_report_from_batch
-from python.framework.reporting.run_reports.broker_report_io import write_broker_report
+from python.framework.reporting.io.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
-from python.framework.reporting.run_reports.execution_stats_report_io import (
+from python.framework.reporting.io.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
-from python.framework.reporting.run_reports.order_history_report_io import (
+from python.framework.reporting.io.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
 from python.framework.reporting.run_reports.pending_orders_report_builder import build_pending_orders_report
-from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
+from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
-from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.profiling_report_builder import build_profiling_report_from_batch
-from python.framework.reporting.run_reports.profiling_report_io import write_profiling_report
+from python.framework.reporting.io.profiling_report_io import write_profiling_report
 from python.framework.reporting.run_reports.run_meta_report_builder import build_run_meta_report_from_batch
-from python.framework.reporting.run_reports.run_meta_report_io import write_run_meta_report
+from python.framework.reporting.io.run_meta_report_io import write_run_meta_report
 from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
-from python.framework.reporting.run_reports.run_summary_io import write_run_summary
+from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.run_unit import run_units_from_batch
 from python.framework.reporting.run_reports.scenario_details_report_builder import build_scenario_details_report_from_batch
-from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
+from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
-from python.framework.reporting.run_reports.trade_history_report_io import (
+from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.reporting.run_reports.warnings_errors_report_builder import build_warnings_errors_report_from_batch
-from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
-from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
 from python.configuration.app_config_manager import AppConfigManager
 import sys
 import io
@@ -70,7 +70,7 @@ class BatchReportCoordinator:
     - Capture stdout with ANSI colors for console, strip colors for file logging
     - PERSIST the model artifacts (JSON/CSV) the API serves
 
-    Note: the section sub-presenters live in framework/batch_reporting/; this coordinator is
+    Note: the section sub-presenters live in framework/reporting/console/; this coordinator is
     their orchestrator (the former BatchSummary, folded in).
     """
 
@@ -97,7 +97,7 @@ class BatchReportCoordinator:
         Generate report, print to console, and log to file.
 
         Workflow:
-        1. Create BatchSummary instance
+        1. DERIVE the report models + build the section sub-presenters
         2. Capture full output (all per-scenario details) for file logging
         3. Capture console output (respects summary_detail config)
         4. Print colored version to console

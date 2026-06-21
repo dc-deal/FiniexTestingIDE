@@ -3,7 +3,7 @@ FiniexTestingIDE - Broker Summary
 Displays broker configuration in batch summary reports
 """
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import BrokerInfoRow, BrokerReport
 from python.framework.utils.console_renderer import ConsoleRenderer
 

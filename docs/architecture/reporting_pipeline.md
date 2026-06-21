@@ -35,8 +35,9 @@ see *Pipeline in detail* below.
 | Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
 | Aggregators | `framework/reporting/run_reports/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
 | Run summary | `framework/reporting/run_reports/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
-| IO | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/run_reports/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| IO | `framework/reporting/io/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,run_meta,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio,block_splitting}_report_io.py` | write the artifact(s); read back + filter (the API path) |
+| Store | `framework/reporting/io/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| Console | `framework/reporting/console/*_summary.py` (+ `executive_summary` / `execution_header_summary` / `block_splitting_disposition`) | the **PRESENT** sub-presenters, orchestrated by `BatchReportCoordinator` (the former `BatchSummary`, folded into the coordinator) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision,profiling}` with section-specific filters |
@@ -149,7 +150,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | live render still reads session buffers (same source) |
 | Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397) |
 | Shutdown / Emergency / Session | **autotrader-only** | ⏳ | ✅ inline | migrates later (live post-session); #389 analytics line already model-sourced |
-| **Final:** directory consolidation | — | — | — | **#396** — fold `batch_reporting/` into `framework/reporting/` (after all the above) |
+| **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
 
 The **array model** is the unifier: a run is a list of units (sim: N scenarios; live: 1
 session). Where a section carries per-unit meaning (portfolio breakdown) the model keeps the
@@ -243,10 +244,11 @@ the API serves either pipeline's run by `run_id`.
    (`PortfolioManager._record_fee_cost` categorizes every fee — maker/taker by `is_maker`), and all
    five categories (spread · commission · swap · maker · taker) render together (zeros where n/a), so
    the spot fee that used to fold invisibly into `total_fees` is now itemized.
-   **Still inline (the renderers left to retire):** block-splitting (generation concern, separate).
+   Block-splitting disposition is also model-fed now (`BlockSplittingReport`, Profile Runs only).
    File-logs follow automatically (captured stdout).
-7. **Directory consolidation (#396, final, structural)** — once every inline renderer is migrated,
-   fold `framework/batch_reporting/` into one `framework/reporting/` home organized by stage:
-   `run_reports/` (DERIVE) · `io/` (PERSIST — the `*_report_io` + `report_store`) · `console/`
-   (PRESENT — the `*_summary` presenters). Pure file-move + import refactor; the models stay in
-   `types/api/report_types.py`.
+7. **Directory consolidation (#396, final, structural) — DONE.** `framework/batch_reporting/` was
+   folded into one `framework/reporting/` home organized by stage: `run_reports/` (DERIVE — builders
+   + `report_aggregators` + `run_unit`) · `io/` (PERSIST — the `*_report_io` + `report_store`) ·
+   `console/` (PRESENT — the `*_summary` presenters). The former `BatchSummary` orchestrator was
+   dissolved into `BatchReportCoordinator` (sub-presenters stay; render orchestration in
+   `generate_and_log`). Pure file-move + import refactor; the models stay in `types/api/report_types.py`.

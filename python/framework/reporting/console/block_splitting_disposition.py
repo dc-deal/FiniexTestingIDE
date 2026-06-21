@@ -8,7 +8,7 @@ Placed before Executive Summary in batch output. Thin presenter over the model
 GOOD/MODERATE/HIGH/UNRELIABLE display class is applied here.
 """
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import BlockSplittingReport
 from python.framework.utils.console_renderer import ConsoleRenderer
 

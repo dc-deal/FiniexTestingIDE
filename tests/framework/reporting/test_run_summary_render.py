@@ -10,7 +10,7 @@ other executive sub-sections (timing, resources) are not exercised here.
 import io
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.executive_summary import ExecutiveSummary
+from python.framework.reporting.console.executive_summary import ExecutiveSummary
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, ProfilingReport, RunMetaReport, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, WarningsErrorsReport)

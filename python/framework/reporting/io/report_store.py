@@ -10,29 +10,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.aggregated_portfolio_report_io import (
+from python.framework.reporting.io.aggregated_portfolio_report_io import (
     AGGREGATED_PORTFOLIO_ARTIFACT, read_aggregated_portfolio_report)
-from python.framework.reporting.run_reports.broker_report_io import (
+from python.framework.reporting.io.broker_report_io import (
     BROKER_ARTIFACT, read_broker_report)
-from python.framework.reporting.run_reports.execution_stats_report_io import (
+from python.framework.reporting.io.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
-from python.framework.reporting.run_reports.order_history_report_io import (
+from python.framework.reporting.io.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
-from python.framework.reporting.run_reports.pending_orders_report_io import (
+from python.framework.reporting.io.pending_orders_report_io import (
     PENDING_ORDERS_ARTIFACT, read_pending_orders_report)
-from python.framework.reporting.run_reports.portfolio_report_io import (
+from python.framework.reporting.io.portfolio_report_io import (
     PORTFOLIO_ARTIFACT, read_portfolio_report)
-from python.framework.reporting.run_reports.run_summary_io import (
+from python.framework.reporting.io.run_summary_io import (
     RUN_SUMMARY_ARTIFACT, read_run_summary)
-from python.framework.reporting.run_reports.scenario_details_report_io import (
+from python.framework.reporting.io.scenario_details_report_io import (
     SCENARIO_DETAILS_ARTIFACT, read_scenario_details_report)
-from python.framework.reporting.run_reports.profiling_report_io import (
+from python.framework.reporting.io.profiling_report_io import (
     PROFILING_ARTIFACT, read_profiling_report)
-from python.framework.reporting.run_reports.trade_history_report_io import (
+from python.framework.reporting.io.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
-from python.framework.reporting.run_reports.warnings_errors_report_io import (
+from python.framework.reporting.io.warnings_errors_report_io import (
     WARNINGS_ERRORS_ARTIFACT, read_warnings_errors_report)
-from python.framework.reporting.run_reports.worker_decision_report_io import (
+from python.framework.reporting.io.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,

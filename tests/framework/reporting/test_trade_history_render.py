@@ -10,7 +10,7 @@ by feeding a hand-built model and asserting the rendered text — the audit tabl
 import io
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.trade_history_summary import TradeHistorySummary
+from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
     ExecutionRow, OrderHistoryReport, TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
     TradeScenarioTotals)

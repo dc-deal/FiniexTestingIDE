@@ -9,7 +9,7 @@ import io
 import re
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.execution_header_summary import ExecutionHeaderSummary
+from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.types.api.report_types import (
     RunMetaReport, WarningsErrorsOutcome, WarningsErrorsReport)
 from python.framework.types.rendering_types import BatchStatus

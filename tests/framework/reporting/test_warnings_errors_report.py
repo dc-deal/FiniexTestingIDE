@@ -13,7 +13,7 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
-from python.framework.batch_reporting.warnings_summary import WarningsSummary
+from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.run_reports.warnings_errors_report_builder import (
     build_warnings_errors_report_from_batch, build_warnings_errors_report_from_session)
 from python.framework.types.api.report_types import (

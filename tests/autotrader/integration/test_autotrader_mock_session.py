@@ -13,7 +13,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.run_reports.broker_report_io import read_broker_report
+from python.framework.reporting.io.broker_report_io import read_broker_report
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'

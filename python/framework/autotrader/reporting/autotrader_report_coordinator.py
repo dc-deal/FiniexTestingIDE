@@ -16,27 +16,27 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.run_reports.broker_report_builder import build_broker_report_from_session
-from python.framework.reporting.run_reports.broker_report_io import write_broker_report
+from python.framework.reporting.io.broker_report_io import write_broker_report
 from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
-from python.framework.reporting.run_reports.execution_stats_report_io import (
+from python.framework.reporting.io.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
 from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
-from python.framework.reporting.run_reports.order_history_report_io import (
+from python.framework.reporting.io.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
 from python.framework.reporting.run_reports.pending_orders_report_builder import build_pending_orders_report
-from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
+from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
-from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
-from python.framework.reporting.run_reports.run_summary_io import write_run_summary
+from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.run_reports.run_unit import run_units_from_session
 from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
-from python.framework.reporting.run_reports.trade_history_report_io import (
+from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_csv, write_trade_history_report)
 from python.framework.reporting.run_reports.warnings_errors_report_builder import build_warnings_errors_report_from_session
-from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
-from python.framework.reporting.run_reports.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult

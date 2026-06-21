@@ -11,7 +11,7 @@ import io
 import re
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.performance_summary import PerformanceSummary
+from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.run_reports.run_unit import RunUnit
 from python.framework.reporting.run_reports.worker_decision_report_builder import (
     build_worker_decision_report)
