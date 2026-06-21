@@ -3,21 +3,18 @@ FiniexTestingIDE - Portfolio Summary
 
 Per-scenario portfolio results render **linearly** (one block per unit) purely from the
 unified report model (#393) — `PortfolioReport` (full projection) + `PendingOrdersReport` +
-`ExecutionStatsReport` (order counts). The per-currency **aggregated** section stays on
-`PortfolioAggregator` (it is a cross-domain per-currency roll-up — the future `RunSummary`
-territory) and is unchanged.
+`ExecutionStatsReport` (order counts). The per-currency **aggregated** section renders from the
+`AggregatedPortfolioReport` model (#397) — `PortfolioAggregator` retired.
 """
 
 from typing import Dict, List, Optional
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, ExecutionStatsReport, ExecutionStatsRow, PendingOrdersReport,
-    PendingOrdersUnitRow, PortfolioReport, PortfolioUnitRow)
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats, CostBreakdown
-from python.framework.types.portfolio_types.portfolio_aggregation_types import AggregatedPortfolio, AggregatedPortfolioStats
+    ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
+    ExecutionStatsReport, ExecutionStatsRow, PendingOrdersReport, PendingOrdersUnitRow,
+    PortfolioReport, PortfolioUnitRow)
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.utils.math_utils import force_negative, force_positive
 
@@ -26,7 +23,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
     """
     Portfolio and trading statistics summary.
 
-    Per-scenario: linear blocks from the model. Aggregated: per-currency via PortfolioAggregator.
+    Per-scenario: linear blocks from the model. Aggregated: per-currency from the model (#397).
     """
 
     _section_title = '💰 PORTFOLIO & TRADING RESULTS'
@@ -36,6 +33,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         report: PortfolioReport,
         pending_report: PendingOrdersReport,
         execution_report: ExecutionStatsReport,
+        aggregated_report: AggregatedPortfolioReport,
     ):
         """
         Initialize portfolio summary.
@@ -44,10 +42,12 @@ class PortfolioSummary(AbstractBatchSummarySection):
             report: The unified portfolio report (per-unit full projection + aggregates)
             pending_report: The unified pending-orders report (per-unit lifecycle + active)
             execution_report: The unified execution-stats report (per-unit order counts)
+            aggregated_report: The aggregated per-currency portfolio report (#397)
         """
         self._report = report
         self._pending_report = pending_report
         self._execution_report = execution_report
+        self._aggregated_report = aggregated_report
 
     # ============================================
     # Per-scenario (linear, from the model)
@@ -128,7 +128,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(
             f"   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | "
             f"comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | "
-            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)}")
+            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)} | "
+            f"maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | "
+            f"taker {renderer.pnl(force_negative(unit.taker_fee), unit.currency)}")
 
         orders = self._orders_line(execution, renderer)
         if orders:
@@ -257,288 +259,156 @@ class PortfolioSummary(AbstractBatchSummarySection):
             print(renderer.cyan(line))
 
     # ============================================
-    # Aggregated (per currency, via PortfolioAggregator) — unchanged
+    # Aggregated (per currency, from the model — #397)
     # ============================================
 
-    def render_aggregated(self,
-                          renderer: ConsoleRenderer,
-                          aggregated_portfolios: Dict[str, AggregatedPortfolio]):
+    def render_aggregated(self, renderer: ConsoleRenderer):
         """
-        Render aggregated portfolio stats grouped by currency.
-
-        Renders separate aggregation for each currency group to avoid
-        cross-currency conversion issues.
+        Render the aggregated portfolio per currency from the model (#397).
 
         Args:
             renderer: ConsoleRenderer instance
-            aggregated_portfolios: Dict mapping currency to aggregated portfolio
         """
-        if not aggregated_portfolios:
+        currencies = self._aggregated_report.currencies
+        if not currencies:
             return
 
-        # Check if we have multiple currency groups
-        has_multiple_currencies = len(aggregated_portfolios) > 1
+        has_multiple_currencies = len(currencies) > 1
 
         print()
         renderer.section_separator()
-
         if has_multiple_currencies:
             renderer.print_bold("📊 AGGREGATED PORTFOLIO (BY CURRENCY)")
         else:
             renderer.print_bold("📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)")
-
         renderer.section_separator()
 
-        # Render each currency group
-        for currency, aggregated in aggregated_portfolios.items():
-            self._render_currency_group(
-                renderer, aggregated, has_multiple_currencies)
+        for cur in currencies:
+            self._render_currency_group(renderer, cur, has_multiple_currencies)
             renderer.print_separator(width=120, char="·")
 
-        # Render multi-currency warning if applicable
-        if has_multiple_currencies or self._has_any_time_divergence(aggregated_portfolios):
-            self._render_aggregation_warnings(
-                renderer, aggregated_portfolios)
-
+        # The aggregation-limitation notices (multi-currency / time-divergence) moved to the
+        # post-run validator → the WARNINGS & ERRORS section (no decisions in reports, #395/#397).
         print()
 
     def _render_currency_group(
         self,
         renderer: ConsoleRenderer,
-        aggregated: AggregatedPortfolio,
+        cur: AggregatedPortfolioCurrency,
         show_currency_header: bool
     ):
         """
-        Render single currency group aggregation.
+        Render one currency group's combined aggregate (margin + spot together).
 
         Args:
             renderer: ConsoleRenderer instance
-            aggregated: Aggregated portfolio for this currency
-            show_currency_header: Whether to show currency-specific header
+            cur: Aggregated currency group
+            show_currency_header: Whether to show the currency-specific header
         """
         if show_currency_header:
             print()
-            scenario_names = ", ".join(aggregated.scenario_names)
+            scenario_names = ", ".join(cur.scenario_names)
             print(
-                f"\n{renderer.bold(f'   💰 {aggregated.currency} GROUP ({aggregated.scenario_count} scenarios)')}")
+                f"\n{renderer.bold(f'   💰 {cur.currency} GROUP ({cur.scenario_count} scenarios)')}")
             print(f"      Scenarios: {scenario_names}")
 
-        self._render_aggregated_details(
-            aggregated.portfolio_stats,
-            aggregated.execution_stats,
-            aggregated.cost_breakdown,
-            aggregated.pending_stats,
-            renderer
-        )
+        self._render_aggregated_details(cur.combined, cur.currency, renderer)
 
     def _render_aggregated_details(
         self,
-        portfolio_stats: AggregatedPortfolioStats,
-        execution_stats: ExecutionStats,
-        cost_breakdown: CostBreakdown,
-        pending_stats: PendingOrderStats,
+        row: AggregatedPortfolioRow,
+        currency: str,
         renderer: ConsoleRenderer
     ):
-        """Render detailed aggregated portfolio stats."""
-        # Trading summary
-        total_trades = portfolio_stats.total_trades
-        winning_trades = portfolio_stats.winning_trades
-        losing_trades = portfolio_stats.losing_trades
-        long_trades = portfolio_stats.total_long_trades
-        short_trades = portfolio_stats.total_short_trades
-        win_rate = portfolio_stats.win_rate
-        # min/max aggregated
-        max_drawdown = portfolio_stats.max_drawdown
-        max_drawdown_scenario = portfolio_stats.max_drawdown_scenario
-        max_equity = portfolio_stats.max_equity
-        max_equity_scenario = portfolio_stats.max_equity_scenario
-
-        total_profit = portfolio_stats.total_profit
-        total_loss = portfolio_stats.total_loss
-        total_pnl = total_profit - total_loss
+        """Render detailed aggregated portfolio stats from the model row (#397)."""
+        h = row.headline
+        total_pnl = h.total_profit - h.total_loss
 
         print(f"\n{renderer.bold('   TRADING SUMMARY:')}")
-        print(f"      Total Trades: {total_trades} (L/S: {long_trades}/{short_trades}) |  "
-              f"Win/Loss: {winning_trades}W/{losing_trades}L  |  "
-              f"Win Rate: {win_rate:.1%}")
+        print(f"      Total Trades: {h.total_trades} (L/S: {row.total_long_trades}/{row.total_short_trades}) |  "
+              f"Win/Loss: {h.winning_trades}W/{h.losing_trades}L  |  "
+              f"Win Rate: {h.win_rate:.1%}")
 
-        # Get currency from portfolio stats
-        currency = portfolio_stats.currency
-
-        pnl_str = renderer.pnl(total_pnl, currency)
-
-        print(f"      Total P&L: {pnl_str}  |  "
-              f"Profit: {renderer.pnl(force_positive(total_profit), currency)}  |  "
-              f"Loss: {renderer.pnl(force_negative(total_loss), currency)}")
+        print(f"      Total P&L: {renderer.pnl(total_pnl, currency)}  |  "
+              f"Profit: {renderer.pnl(force_positive(h.total_profit), currency)}  |  "
+              f"Loss: {renderer.pnl(force_negative(h.total_loss), currency)}")
 
         # Profit factor
-        profit_factor = portfolio_stats.profit_factor
-        if profit_factor == float('inf'):
+        if h.profit_factor == float('inf'):
             pf_str = "∞ (no losses)"
         else:
-            pf_str = f"{profit_factor:.2f}"
+            pf_str = f"{h.profit_factor:.2f}"
         print(f"      Profit Factor: {pf_str}")
 
-        # Order execution
-        orders_sent = execution_stats.orders_sent
-        orders_executed = execution_stats.orders_executed
-        orders_rejected = execution_stats.orders_rejected
-
         print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
-        print(f"      Orders Sent: {orders_sent}  |  "
-              f"Executed: {orders_executed}  |  "
-              f"Rejected: {orders_rejected}")
+        print(f"      Orders Sent: {row.orders_sent}  |  "
+              f"Executed: {row.orders_executed}  |  "
+              f"Rejected: {row.orders_rejected}")
 
-        if orders_sent > 0:
-            exec_rate = orders_executed / orders_sent
-            print(f"      Execution Rate: {exec_rate:.1%}")
+        if row.orders_sent > 0:
+            print(f"      Execution Rate: {row.orders_executed / row.orders_sent:.1%}")
 
         # Pending order statistics (green)
-        self._render_pending_stats(renderer, pending_stats)
+        self._render_pending_stats(renderer, row)
 
-        # Cost breakdown
-        spread_cost = cost_breakdown.total_spread_cost
-        commission = cost_breakdown.total_commission
-        swap = cost_breakdown.total_swap
-        total_costs = spread_cost + commission + swap
-        currency = cost_breakdown.currency
+        # Cost breakdown (layout A — all five categories, zeros where n/a)
+        total_costs = (row.total_spread_cost + row.total_commission + row.total_swap
+                       + row.maker_fee + row.taker_fee)
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f"      Spread Cost: {renderer.pnl(force_negative(spread_cost), currency)} |  "
-              f"Commission: {renderer.pnl(force_negative(commission), currency)} |  "
-              f"Swap: {renderer.pnl(force_negative(swap), currency)}")
-        print(
-            f"      Total Costs: {renderer.pnl(force_negative(total_costs), currency)}")
-
-        # Risk Metrics
-        max_dd_pct = 0.0
-        if portfolio_stats.max_equity > 0:
-            max_dd_pct = max_drawdown / \
-                portfolio_stats.max_equity * 100
+        print(f"      Spread: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  "
+              f"Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  "
+              f"Swap: {renderer.pnl(force_negative(row.total_swap), currency)}")
+        print(f"      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  "
+              f"Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  "
+              f"Total Fees: {renderer.pnl(force_negative(total_costs), currency)}")
 
         print(f"\n   📉 RISK METRICS:")
-        print(f"      Max Drawdown: {renderer.pnl(force_negative(max_drawdown), currency)} "
-              f"({max_dd_pct:.1f}%) - Scenario: {max_drawdown_scenario}")
-        print(f"      Max Equity: {renderer.pnl(force_positive(max_equity), currency)} "
-              f"- Scenario: {max_equity_scenario}")
+        print(f"      Max Drawdown: {renderer.pnl(force_negative(h.max_drawdown), currency)} "
+              f"({row.max_dd_pct:.1f}%) - Scenario: {row.max_drawdown_scenario}")
+        print(f"      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} "
+              f"- Scenario: {row.max_equity_scenario}")
 
     @staticmethod
     def _render_pending_stats(
         renderer: ConsoleRenderer,
-        pending_stats: PendingOrderStats
+        row: AggregatedPortfolioRow
     ) -> None:
         """
-        Render pending order statistics in ORDER EXECUTION section.
+        Render aggregated pending-order statistics from the model row (#397).
 
         Args:
             renderer: Console renderer for formatting
-            pending_stats: Aggregated pending order statistics
+            row: Aggregated portfolio row carrying the pending fields
         """
-        if not pending_stats:
-            return
-        has_resolved = pending_stats.total_resolved > 0
-        has_active = pending_stats.active_limit_orders or pending_stats.active_stop_orders
+        has_resolved = row.pending_total_resolved > 0
+        has_active = row.pending_active_limit_count or row.pending_active_stop_count
         if not has_resolved and not has_active:
             return
 
         # Pending resolved breakdown (only if orders were resolved)
         if has_resolved:
-            filled = pending_stats.total_filled
-            rejected = pending_stats.total_rejected
-            force_closed = pending_stats.total_force_closed
-            timed_out = pending_stats.total_timed_out
-
-            resolved_line = f"      Pending Resolved: {renderer.green(f'{filled} filled')}"
-            if rejected > 0:
-                resolved_line += f" | {rejected} rejected"
-            if timed_out > 0:
-                resolved_line += f" | {renderer.yellow(f'{timed_out} timed out')}"
-            if force_closed > 0:
-                resolved_line += f" | {renderer.yellow(f'{force_closed} force-closed')}"
+            resolved_line = f"      Pending Resolved: {renderer.green(f'{row.pending_total_filled} filled')}"
+            if row.pending_total_rejected > 0:
+                resolved_line += f" | {row.pending_total_rejected} rejected"
+            if row.pending_total_timed_out > 0:
+                resolved_line += f" | {renderer.yellow(f'{row.pending_total_timed_out} timed out')}"
+            if row.pending_total_force_closed > 0:
+                resolved_line += f" | {renderer.yellow(f'{row.pending_total_force_closed} force-closed')}"
             print(resolved_line)
 
         # Latency stats (ms-based)
-        if pending_stats.min_latency_ms is not None:
-            avg = pending_stats.avg_latency_ms
-            min_val = pending_stats.min_latency_ms
-            max_val = pending_stats.max_latency_ms
+        if row.pending_min_latency_ms is not None:
             print(renderer.green(
-                f"      Avg Latency: {avg:.0f}ms (min: {min_val:.0f}ms | max: {max_val:.0f}ms)"))
+                f"      Avg Latency: {row.pending_avg_latency_ms:.0f}ms "
+                f"(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)"))
 
         # Active orders at scenario end (bot's pending plan)
         active_parts = []
-        if pending_stats.active_limit_orders:
-            active_parts.append(
-                f"{len(pending_stats.active_limit_orders)} limits")
-        if pending_stats.active_stop_orders:
-            active_parts.append(
-                f"{len(pending_stats.active_stop_orders)} stops")
+        if row.pending_active_limit_count:
+            active_parts.append(f"{row.pending_active_limit_count} limits")
+        if row.pending_active_stop_count:
+            active_parts.append(f"{row.pending_active_stop_count} stops")
         if active_parts:
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))
-
-    def _has_any_time_divergence(
-        self,
-        aggregated_portfolios: Dict[str, AggregatedPortfolio]
-    ) -> bool:
-        """
-        Check if any currency group has time divergence warning.
-
-        Args:
-            aggregated_portfolios: Dict of aggregated portfolios
-
-        Returns:
-            True if any group has time divergence
-        """
-        return any(agg.has_time_divergence_warning for agg in aggregated_portfolios.values())
-
-    def _render_aggregation_warnings(
-        self,
-        renderer: ConsoleRenderer,
-        aggregated_portfolios: Dict[str, AggregatedPortfolio]
-    ):
-        """
-        Render warnings about aggregation limitations.
-
-        Args:
-            renderer: ConsoleRenderer instance
-            aggregated_portfolios: Dict of aggregated portfolios
-        """
-        has_multiple_currencies = len(aggregated_portfolios) > 1
-        has_time_divergence = self._has_any_time_divergence(
-            aggregated_portfolios)
-
-        if not (has_multiple_currencies or has_time_divergence):
-            return
-
-        print()
-        print(renderer.yellow("⚠️  AGGREGATION LIMITATIONS:"))
-        print()
-
-        if has_time_divergence:
-            # Find groups with divergence
-            divergent_groups = [
-                (currency, agg) for currency, agg in aggregated_portfolios.items()
-                if agg.has_time_divergence_warning
-            ]
-
-            print("   1. TIME DIVERGENCE:")
-            for currency, agg in divergent_groups:
-                print(
-                    f"      {currency} Group: Scenarios span {agg.time_span_days} days")
-            print("      Market conditions, volatility, and rates differ significantly.")
-            print(
-                "      Aggregated P&L is statistical only, not representative of portfolio performance.")
-            print()
-
-        if has_multiple_currencies:
-            print("   2. MULTI-CURRENCY:")
-            print(
-                "      Cross-currency aggregation is not performed to avoid conversion errors.")
-            print("      Each currency group shows accurate P&L in its own currency.")
-            print(
-                "      For portfolio-level P&L, implement real-time conversion (Post-V1).")
-            print()
-
-        print("   3. RECOMMENDATION:")
-        print("      Use currency-grouped reports above for accurate P&L values.")

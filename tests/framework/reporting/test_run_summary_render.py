@@ -10,9 +10,10 @@ other executive sub-sections (timing, resources) are not exercised here.
 import io
 from contextlib import redirect_stdout
 
-from python.framework.batch_reporting.executive_summary import ExecutiveSummary
+from python.framework.reporting.console.executive_summary import ExecutiveSummary
 from python.framework.types.api.report_types import (
-    RunSummary, RunSummaryCurrency, WarningsErrorsReport)
+    AggregatedPortfolioReport, ProfilingReport, RunMetaReport, RunSummary, RunSummaryCurrency,
+    ScenarioDetailsReport, WarningsErrorsReport)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -34,8 +35,11 @@ def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> Ru
 def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
     executive = ExecutiveSummary(
-        batch_execution_summary=None, app_config=None, run_summary=summary,
-        warnings_errors_report=WarningsErrorsReport())
+        app_config=None, run_summary=summary,
+        run_meta_report=RunMetaReport(), profiling_report=ProfilingReport(units=[]),
+        scenario_details_report=ScenarioDetailsReport(units=[]),
+        warnings_errors_report=WarningsErrorsReport(),
+        aggregated_report=AggregatedPortfolioReport())
     buf = io.StringIO()
     with redirect_stdout(buf):
         executive._render_run_summary(ConsoleRenderer())

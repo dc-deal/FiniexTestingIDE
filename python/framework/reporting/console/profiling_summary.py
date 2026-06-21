@@ -7,7 +7,7 @@ inter-tick distribution, clipping, and the run-level aggregate (budget recommend
 bottleneck frequency, cross-scenario averages) are all read from the model — no re-derivation.
 """
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
     InterTickStatsRow, ProfilingReport, ProfilingUnitRow)
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS

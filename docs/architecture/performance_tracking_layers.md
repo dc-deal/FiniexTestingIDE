@@ -156,8 +156,8 @@ See [config_cascade_guide.md](../config_cascade_guide.md) for the full cascade d
 |---|---|
 | [`python/framework/workers/worker_orchestrator.py`](../../python/framework/workers/worker_orchestrator.py) | Layer A tracker creation, gated by `worker_decision_tracking` |
 | [`python/framework/process/process_tick_loop.py`](../../python/framework/process/process_tick_loop.py) | Layer B operation profiling, gated by `tick_loop_profiling` |
-| [`python/framework/batch_reporting/performance_summary.py`](../../python/framework/batch_reporting/performance_summary.py) | Layer-A sections, suppressed via `_layer_a_has_data()` |
-| [`python/framework/batch_reporting/profiling_summary.py`](../../python/framework/batch_reporting/profiling_summary.py) | Layer-B sections, suppressed via `_layer_b_has_data()` |
-| [`python/framework/batch_reporting/worker_decision_breakdown_summary.py`](../../python/framework/batch_reporting/worker_decision_breakdown_summary.py) | Hybrid section, suppressed when either layer is off |
-| [`python/framework/batch_reporting/executive_summary.py`](../../python/framework/batch_reporting/executive_summary.py) | `Tracking:` status line in the EXECUTION RESULTS block |
+| [`python/framework/reporting/console/performance_summary.py`](../../python/framework/reporting/console/performance_summary.py) | Layer-A sections, suppressed via `_layer_a_has_data()` |
+| [`python/framework/reporting/console/profiling_summary.py`](../../python/framework/reporting/console/profiling_summary.py) | Layer-B sections, suppressed via `_layer_b_has_data()` |
+| [`python/framework/reporting/console/worker_decision_breakdown_summary.py`](../../python/framework/reporting/console/worker_decision_breakdown_summary.py) | Hybrid section, suppressed when either layer is off |
+| [`python/framework/reporting/console/executive_summary.py`](../../python/framework/reporting/console/executive_summary.py) | `Tracking:` status line in the EXECUTION RESULTS block |
 | [`python/framework/types/config_types/performance_tracking_config_types.py`](../../python/framework/types/config_types/performance_tracking_config_types.py) | Pydantic models with `extra='forbid'` |

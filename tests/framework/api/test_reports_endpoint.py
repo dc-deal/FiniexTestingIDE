@@ -14,18 +14,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.framework.reporting.run_reports.broker_report_io import write_broker_report
-from python.framework.reporting.run_reports.execution_stats_report_io import write_execution_stats_report
-from python.framework.reporting.run_reports.warnings_errors_report_io import write_warnings_errors_report
-from python.framework.reporting.run_reports.order_history_report_io import write_order_history_report
-from python.framework.reporting.run_reports.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.run_reports.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.run_reports.report_store import ReportStore
-from python.framework.reporting.run_reports.run_summary_io import write_run_summary
-from python.framework.reporting.run_reports.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.run_reports.trade_history_report_io import write_trade_history_report
+from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
+from python.framework.reporting.io.broker_report_io import write_broker_report
+from python.framework.reporting.io.execution_stats_report_io import write_execution_stats_report
+from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.order_history_report_io import write_order_history_report
+from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
+from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.io.run_summary_io import write_run_summary
+from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
+from python.framework.reporting.io.trade_history_report_io import write_trade_history_report
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, BrokerInfoRow, BrokerReport, BrokerSymbolRow,
+    ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
+    BrokerInfoRow, BrokerReport, BrokerSymbolRow,
     ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
@@ -47,6 +49,7 @@ _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 _RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
 _BROKER_URL = f'/api/v1/reports/runs/{_RUN}/broker'
 _WARNINGS_URL = f'/api/v1/reports/runs/{_RUN}/warnings-errors'
+_AGG_URL = f'/api/v1/reports/runs/{_RUN}/aggregated-portfolio'
 
 
 def _report() -> TradeHistoryReport:
@@ -148,19 +151,31 @@ def _warnings_errors_report() -> WarningsErrorsReport:
         outcome=WarningsErrorsOutcome(failed_count=1, total_units=2))
 
 
+def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
+    headline = PortfolioAggregateRow(
+        currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
+        win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0, net_profit=60.0,
+        max_drawdown=12.0, total_fees=5.0)
+    return AggregatedPortfolioReport(currencies=[AggregatedPortfolioCurrency(
+        currency='USD', scenario_count=1, scenario_names=['s1'],
+        combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])
+
+
 @pytest.fixture
 def client(tmp_path: Path):
-    run_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN
-    run_dir.mkdir(parents=True)
-    write_trade_history_report(_report(), run_dir)
-    write_order_history_report(_order_report(), run_dir)
-    write_portfolio_report(_portfolio_report(), run_dir)
-    write_execution_stats_report(_execution_stats_report(), run_dir)
-    write_pending_orders_report(_pending_orders_report(), run_dir)
-    write_scenario_details_report(_scenario_details_report(), run_dir)
-    write_run_summary(_run_summary(), run_dir)
-    write_broker_report(_broker_report(), run_dir)
-    write_warnings_errors_report(_warnings_errors_report(), run_dir)
+    # Artifacts live in the run's io/ subfolder (#396 housekeeping)
+    io_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN / IO_SUBDIR
+    io_dir.mkdir(parents=True)
+    write_trade_history_report(_report(), io_dir)
+    write_order_history_report(_order_report(), io_dir)
+    write_portfolio_report(_portfolio_report(), io_dir)
+    write_execution_stats_report(_execution_stats_report(), io_dir)
+    write_pending_orders_report(_pending_orders_report(), io_dir)
+    write_scenario_details_report(_scenario_details_report(), io_dir)
+    write_run_summary(_run_summary(), io_dir)
+    write_broker_report(_broker_report(), io_dir)
+    write_warnings_errors_report(_warnings_errors_report(), io_dir)
+    write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
         yield TestClient(create_app())
@@ -302,4 +317,19 @@ def test_warnings_errors_returns(client):
 
 def test_warnings_errors_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/warnings-errors')
+    assert response.status_code == 404
+
+
+def test_aggregated_portfolio_returns(client):
+    response = client.get(_AGG_URL)
+    assert response.status_code == 200
+    body = response.json()
+    cur = body['currencies'][0]
+    assert cur['currency'] == 'USD'
+    assert cur['combined']['headline']['total_trades'] == 10
+    assert cur['combined']['initial_balance'] == 1000.0
+
+
+def test_aggregated_portfolio_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/aggregated-portfolio')
     assert response.status_code == 404

@@ -100,8 +100,9 @@ Returns the globally configured timeframe list in ascending order (by bar durati
 The reports endpoints serve the **persisted** run-report artifacts of the unified reporting
 pipeline (#391) — the same canonical models the console and CSV render. They do **not** run or
 re-derive anything: `ReportStore` resolves a run by `run_id` under the logs tree
-(`logs/{scenario_sets,autotrader}/<owner>/<run_id>/`), reads the `trade_history.json` /
-`order_history.json` / `portfolio.json` artifact, and applies the section's filters
+(`logs/{scenario_sets,autotrader}/<owner>/<run_id>/io/`, the `io/` subfolder holding the
+report artifacts), reads the `trade_history.json` / `order_history.json` / `portfolio.json`
+artifact, and applies the section's filters
 server-side so the frontend renders rather than derives. A run without the requested artifact
 returns `404 run_not_found`. The model definitions live in `framework/types/api/report_types.py`;
 the pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).

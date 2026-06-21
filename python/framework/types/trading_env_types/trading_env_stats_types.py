@@ -79,10 +79,14 @@ class CostBreakdown:
         total_spread_cost: Bid-ask spread cost (implicit)
         total_commission: Broker commission (explicit)
         total_swap: Overnight interest (can be negative/positive)
+        maker_fee: Maker-side trading fee (spot, liquidity-providing fills)
+        taker_fee: Taker-side trading fee (spot, liquidity-taking fills)
         total_fees: Sum of all costs
     """
     total_spread_cost: float = 0
     total_commission: float = 0
     total_swap: float = 0
+    maker_fee: float = 0
+    taker_fee: float = 0
     total_fees: float = 0
     currency: str = ''  # Account currency (e.g., "USD", "EUR", "JPY")

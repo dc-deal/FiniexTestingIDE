@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.batch_reporting.broker_info_renderer import BrokerInfoRenderer
+from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.trading_env.adapters.mt5_adapter import Mt5Adapter

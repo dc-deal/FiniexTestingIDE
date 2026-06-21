@@ -7,7 +7,7 @@ debug-mode), then a Tier-2 minor summary. This presenter makes NO decisions — 
 produced by a validator upstream; it only formats. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import UnitErrorRow, WarningRow, WarningsErrorsReport
 from python.framework.utils.console_renderer import ConsoleRenderer
 

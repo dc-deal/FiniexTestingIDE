@@ -10,7 +10,7 @@ Renders (purely from the unified report model, #393):
 
 from typing import Dict, List
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
     ExecutionRow, OrderHistoryReport, OrderHistoryRow, TradeAnalytics, TradeHistoryReport,
     TradeHistoryRow, TradeScenarioTotals)

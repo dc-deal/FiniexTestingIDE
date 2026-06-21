@@ -58,6 +58,8 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         total_spread_cost=stats.total_spread_cost,
         total_commission=stats.total_commission,
         total_swap=stats.total_swap,
+        maker_fee=stats.maker_fee,
+        taker_fee=stats.taker_fee,
         has_error=unit.has_error,
         balances=stats.balances,
         initial_balances=stats.initial_balances,

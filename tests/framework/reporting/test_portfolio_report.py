@@ -47,7 +47,8 @@ def _stats(
         total_profit=total_profit, total_loss=total_loss,
         max_drawdown=max_drawdown, max_equity=1100.0,
         win_rate=win_rate, profit_factor=profit_factor,
-        total_spread_cost=2.0, total_commission=2.0, total_swap=1.0, total_fees=total_fees,
+        total_spread_cost=2.0, total_commission=2.0, total_swap=1.0,
+        maker_fee=0.7, taker_fee=0.9, total_fees=total_fees,
         currency=currency, broker_name='kraken', current_conversion_rate=1.0,
         current_balance=1060.0, initial_balance=1000.0, symbol='BTCUSD',
     )
@@ -120,6 +121,7 @@ class TestBatch:
         assert (row.current_balance, row.initial_balance) == (1060.0, 1000.0)
         assert row.conversion_rate == 1.0
         assert (row.total_spread_cost, row.total_commission, row.total_swap) == (2.0, 2.0, 1.0)
+        assert (row.maker_fee, row.taker_fee) == (0.7, 0.9)
         assert row.has_error is False
 
     def test_skips_scenarios_without_stats(self):

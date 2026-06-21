@@ -3,39 +3,45 @@ Report store (#391) — resolves persisted run-report artifacts under the logs t
 
 The API's read-only source: given a run id, find the run's trade-history artifact
 (written by either pipeline into its run directory), read it, and apply the shared
-filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`.
+filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`, and the
+report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`).
 """
 
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.broker_report_io import (
+from python.framework.reporting.io.aggregated_portfolio_report_io import (
+    AGGREGATED_PORTFOLIO_ARTIFACT, read_aggregated_portfolio_report)
+from python.framework.reporting.io.broker_report_io import (
     BROKER_ARTIFACT, read_broker_report)
-from python.framework.reporting.run_reports.execution_stats_report_io import (
+from python.framework.reporting.io.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
-from python.framework.reporting.run_reports.order_history_report_io import (
+from python.framework.reporting.io.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
-from python.framework.reporting.run_reports.pending_orders_report_io import (
+from python.framework.reporting.io.pending_orders_report_io import (
     PENDING_ORDERS_ARTIFACT, read_pending_orders_report)
-from python.framework.reporting.run_reports.portfolio_report_io import (
+from python.framework.reporting.io.portfolio_report_io import (
     PORTFOLIO_ARTIFACT, read_portfolio_report)
-from python.framework.reporting.run_reports.run_summary_io import (
+from python.framework.reporting.io.run_summary_io import (
     RUN_SUMMARY_ARTIFACT, read_run_summary)
-from python.framework.reporting.run_reports.scenario_details_report_io import (
+from python.framework.reporting.io.scenario_details_report_io import (
     SCENARIO_DETAILS_ARTIFACT, read_scenario_details_report)
-from python.framework.reporting.run_reports.profiling_report_io import (
+from python.framework.reporting.io.profiling_report_io import (
     PROFILING_ARTIFACT, read_profiling_report)
-from python.framework.reporting.run_reports.trade_history_report_io import (
+from python.framework.reporting.io.trade_history_report_io import (
     TRADE_HISTORY_ARTIFACT, filter_trade_history_report, read_trade_history_report)
-from python.framework.reporting.run_reports.warnings_errors_report_io import (
+from python.framework.reporting.io.warnings_errors_report_io import (
     WARNINGS_ERRORS_ARTIFACT, read_warnings_errors_report)
-from python.framework.reporting.run_reports.worker_decision_report_io import (
+from python.framework.reporting.io.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
-    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
-    WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
+    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
+    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
+
+# Report artifacts (JSON + CSV) live in this subfolder of a run directory.
+IO_SUBDIR = 'io'
 
 
 class ReportStore:
@@ -51,8 +57,8 @@ class ReportStore:
         """Run ids (run-timestamp dirs) carrying a trade-history artifact, newest first."""
         run_ids = set()
         for group in self._GROUPS:
-            for artifact in (self._logs_root / group).glob(f'*/*/{TRADE_HISTORY_ARTIFACT}'):
-                run_ids.add(artifact.parent.name)
+            for artifact in (self._logs_root / group).glob(f'*/*/{IO_SUBDIR}/{TRADE_HISTORY_ARTIFACT}'):
+                run_ids.add(artifact.parent.parent.name)
         return sorted(run_ids, reverse=True)
 
     def get_trade_history(
@@ -206,6 +212,21 @@ class ReportStore:
             return None
         return read_profiling_report(path)
 
+    def get_aggregated_portfolio(self, run_id: str) -> Optional[AggregatedPortfolioReport]:
+        """
+        Read a run's aggregated per-currency portfolio report (sim).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The aggregated-portfolio report, or None if the run has no artifact
+        """
+        path = self._resolve(run_id, AGGREGATED_PORTFOLIO_ARTIFACT)
+        if path is None:
+            return None
+        return read_aggregated_portfolio_report(path)
+
     def get_warnings_errors(self, run_id: str) -> Optional[WarningsErrorsReport]:
         """
         Read a run's warnings & errors report.
@@ -237,8 +258,8 @@ class ReportStore:
         return read_broker_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
-        """Find a named report artifact for a run id across the log groups."""
+        """Find a named report artifact (in the run's io/ subfolder) across the log groups."""
         for group in self._GROUPS:
-            for found in (self._logs_root / group).glob(f'*/{run_id}/{artifact}'):
+            for found in (self._logs_root / group).glob(f'*/{run_id}/{IO_SUBDIR}/{artifact}'):
                 return found
         return None

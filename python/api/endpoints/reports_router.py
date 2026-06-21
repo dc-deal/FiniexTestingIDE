@@ -12,11 +12,11 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from python.framework.exceptions.api_errors import ApiException
-from python.framework.reporting.run_reports.report_store import ReportStore
+from python.framework.reporting.io.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    BrokerReport, ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    ProfilingReport, RunSummary, ScenarioDetailsReport, TradeHistoryReport, WarningsErrorsReport,
-    WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
+    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
+    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -209,6 +209,25 @@ def get_profiling(run_id: str) -> ProfilingReport:
         raise ApiException(
             404, 'run_not_found',
             f"No profiling artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/aggregated-portfolio', response_model=AggregatedPortfolioReport)
+def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
+    """
+    Aggregated per-currency portfolio report for a run (the rich detail view, sim).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The AggregatedPortfolioReport (404 if the run has no aggregated-portfolio artifact)
+    """
+    report = ReportStore().get_aggregated_portfolio(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No aggregated-portfolio artifact for run '{run_id}'")
     return report
 
 

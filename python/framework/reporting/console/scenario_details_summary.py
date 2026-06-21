@@ -9,7 +9,7 @@ purely from the unified report model (#393) — replaces the old box grid. Above
 from datetime import datetime
 from typing import List
 
-from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import ScenarioDetailsReport, ScenarioDetailsRow
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.time_utils import format_duration, format_tick_timespan
