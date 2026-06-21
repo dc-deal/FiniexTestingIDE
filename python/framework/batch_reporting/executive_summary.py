@@ -16,8 +16,8 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
-    RunSummary, WarningsErrorsOutcome, WarningsErrorsReport)
-from python.framework.types.batch_execution_types import BatchExecutionSummary
+    ProfilingReport, RunMetaReport, RunSummary, ScenarioDetailsReport, WarningsErrorsOutcome,
+    WarningsErrorsReport)
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
@@ -36,9 +36,11 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
     def __init__(
         self,
-        batch_execution_summary: BatchExecutionSummary,
         app_config: AppConfigManager,
         run_summary: RunSummary,
+        run_meta_report: RunMetaReport,
+        profiling_report: ProfilingReport,
+        scenario_details_report: ScenarioDetailsReport,
         warnings_errors_report: WarningsErrorsReport,
         aggregated_report: AggregatedPortfolioReport,
         generator_profiles: Optional[List[GeneratorProfile]] = None
@@ -47,16 +49,19 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Initialize executive summary.
 
         Args:
-            batch_execution_summary: Batch execution results
             app_config: Application configuration
             run_summary: Cross-section run KPIs (the model-fed headline source)
+            run_meta_report: Run-level meta (scenario identity + timing split) — the run-level
+                values read from the model instead of the raw batch summary
             warnings_errors_report: Warnings/errors model — the failed-scenario headline reads its
                 outcome (no inline re-scan of process results, #395)
             generator_profiles: Generator profiles for Profile Run source info (None for normal runs)
         """
-        self._batch_summary = batch_execution_summary
         self._app_config = app_config
         self._run_summary = run_summary
+        self._run_meta = run_meta_report
+        self._profiling = profiling_report
+        self._scenario_details = scenario_details_report
         self._outcome = warnings_errors_report.outcome
         self._aggregated_report = aggregated_report
         self._generator_profiles = generator_profiles
@@ -123,19 +128,17 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
     def _render_execution_results(self, renderer: ConsoleRenderer):
         """Render execution results section."""
-        scenarios = self._batch_summary.single_scenario_list
-
-        total_scenarios = len(scenarios)
+        total_scenarios = self._run_meta.scenario_count
         # Failure truth from the warnings/errors model (no inline re-scan, #395)
         failed = self._outcome.failed_count
         successful = total_scenarios - failed
         success_rate = (successful / total_scenarios *
                         100) if total_scenarios > 0 else 0
 
-        # Get timing breakdown
-        batch_time = self._batch_summary.batch_execution_time
-        warmup_time = self._batch_summary.batch_warmup_time
-        tickrun_time = self._batch_summary.batch_tickrun_time
+        # Get timing breakdown (run-level, from the meta model)
+        batch_time = self._run_meta.execution_time_s
+        warmup_time = self._run_meta.warmup_time_s
+        tickrun_time = self._run_meta.tickrun_time_s
 
         # Get execution config
         parallel = self._app_config.get_default_parallel_scenarios()
@@ -150,9 +153,8 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             status_str = renderer.yellow(
                 f"⚠️ Partial ({successful}/{total_scenarios})")
 
-        # Count disabled scenarios
-        disabled = sum(1 for s in scenarios if hasattr(
-            s, 'enabled') and not s.enabled)
+        # Count disabled scenarios (run-level, from the meta model)
+        disabled = self._run_meta.disabled_count
 
         # Render section
         renderer.print_bold("EXECUTION RESULTS")
@@ -183,7 +185,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         # Mode line carries the run-quality tag (recorded at execution time):
         # PRODUCTION (real subprocesses, timings representative) vs DEBUG (serial
         # under a debugger / DEBUG_MODE, timings not representative).
-        if self._batch_summary.debug_execution:
+        if self._run_meta.debug_execution:
             mode_str = 'Sequential ' + renderer.yellow(
                 '🐞 DEBUG — timings not representative')
         else:
@@ -209,19 +211,17 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
     def _render_data_sources(self, renderer: ConsoleRenderer):
         """Render data sources summary section."""
-        scenarios = self._batch_summary.single_scenario_list
-
-        # Aggregate by data_broker_type
+        # Aggregate by data broker type — from the scenario-details model (one row per scenario)
         broker_type_stats = {}
-        for scenario in scenarios:
-            bt = scenario.data_broker_type
+        for unit in self._scenario_details.units:
+            bt = unit.data_source
             if bt not in broker_type_stats:
                 broker_type_stats[bt] = {
                     'count': 0,
                     'symbols': set()
                 }
             broker_type_stats[bt]['count'] += 1
-            broker_type_stats[bt]['symbols'].add(scenario.symbol)
+            broker_type_stats[bt]['symbols'].add(unit.symbol)
 
         # Render section
         renderer.print_bold("DATA SOURCES")
@@ -283,26 +283,18 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         in_time_stats = self._calculate_in_time_stats()
 
         # Calculate real-time stats using ONLY tick run time
-        # Algo ticks (non-clipped) — what the algo path actually processed
-        algo_ticks = sum(
-            r.tick_loop_results.coordination_statistics.ticks_processed
-            for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and r.tick_loop_results.coordination_statistics
-        )
+        agg = self._profiling.aggregate
+        # Algo ticks (non-clipped, coordination) — what the algo path actually processed
+        algo_ticks = sum(u.ticks_processed for u in self._scenario_details.units)
 
-        # Total ticks (including clipped) — what the loop actually iterated
-        ticks_total = sum(
-            r.tick_loop_results.profiling_data.ticks_total
-            for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and r.tick_loop_results.profiling_data
-            and r.tick_loop_results.profiling_data.ticks_total > 0
-        )
+        # Total ticks (including clipped) — what the loop actually iterated (0 = no clipping)
+        ticks_total = agg.clipping_total_ticks
         # Fall back to algo_ticks when no clipping active (ticks_total=0)
         loop_ticks = ticks_total if ticks_total > 0 else algo_ticks
         has_clipping = ticks_total > 0 and ticks_total != algo_ticks
 
         # Use tick run time (excludes warmup)
-        tickrun_time = self._batch_summary.batch_tickrun_time
+        tickrun_time = self._run_meta.tickrun_time_s
         ticks_per_second = loop_ticks / tickrun_time if tickrun_time > 0 else 0
         speedup = (in_time_stats['total_hours'] * 3600) / \
             tickrun_time if tickrun_time > 0 else 0
@@ -319,12 +311,10 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             print(f"Ticks Processed:    {algo_ticks:,} total")
 
         # Tick budget one-liner (only when clipping was active)
-        clipping_map = self._batch_summary.clipping_stats_map
-        if clipping_map:
-            total_clipped = sum(c.ticks_clipped for c in clipping_map.values())
-            total_original = sum(c.ticks_total for c in clipping_map.values())
-            budget_values = sorted(set(c.budget_ms for c in clipping_map.values()))
-            budget_str = '/'.join(f'{b}ms' for b in budget_values)
+        if agg.budget_active:
+            total_clipped = agg.clipping_total_clipped
+            total_original = agg.clipping_total_ticks
+            budget_str = '/'.join(f'{b}ms' for b in agg.clipping_budgets)
             if total_clipped > 0:
                 rate = total_clipped / total_original * 100 if total_original > 0 else 0
                 print(
@@ -341,8 +331,8 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         # Render REAL-TIME section (tick processing speed)
         renderer.print_bold("REAL-TIME PERFORMANCE (Tick Processing Speed)")
         renderer.print_separator(width=68)
-        pickle_time = self._batch_summary.batch_pickle_time
-        pickle_mb = self._batch_summary.batch_pickle_sample_mb
+        pickle_time = self._run_meta.pickle_time_s
+        pickle_mb = self._run_meta.pickle_sample_mb
         if pickle_time > 0.0:
             execution_time = tickrun_time - pickle_time
             mb_str = f" ~{pickle_mb:.1f} MB/scenario" if pickle_mb > 0.0 else ''
@@ -595,18 +585,8 @@ class ExecutiveSummary(AbstractBatchSummarySection):
             layer is off, empty string when both layers are on (default case
             — no friction).
         """
-        layer_a_on = False
-        layer_b_on = False
-        for r in self._batch_summary.process_result_list:
-            if not r.tick_loop_results:
-                continue
-            if r.tick_loop_results.worker_statistics:
-                layer_a_on = True
-            profiling = r.tick_loop_results.profiling_data
-            if profiling and profiling.profile_times:
-                layer_b_on = True
-            if layer_a_on and layer_b_on:
-                break
+        layer_a_on = self._run_meta.worker_tracking_on
+        layer_b_on = self._run_meta.profiling_tracking_on
 
         if layer_a_on and layer_b_on:
             return ''
@@ -635,7 +615,7 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Returns:
             Formatted one-liner string, or empty string if no data
         """
-        phases = self._batch_summary.warmup_phases
+        phases = self._profiling.warmup_phases
         if not phases:
             return ''
 
@@ -668,19 +648,13 @@ class ExecutiveSummary(AbstractBatchSummarySection):
         Returns:
             Formatted deviation string, or empty string
         """
-        results = self._batch_summary.process_result_list
-        if len(results) < 2:
+        # Per-scenario compute cost = the unit's summed operation time (profiling model).
+        # The model only carries units where tick-loop profiling was on — same filter as before.
+        units = self._profiling.units
+        if len(units) < 2:
             return ''
 
-        scenario_times = []
-        for r in results:
-            if not r.tick_loop_results or not r.tick_loop_results.profiling_data:
-                continue
-            total_ms = sum(r.tick_loop_results.profiling_data.profile_times.values())
-            scenario_times.append((r.scenario_name, total_ms))
-
-        if len(scenario_times) < 2:
-            return ''
+        scenario_times = [(u.name, u.total_ms) for u in units]
 
         avg_ms = sum(t for _, t in scenario_times) / len(scenario_times)
         if avg_ms <= 0:
@@ -714,42 +688,23 @@ class ExecutiveSummary(AbstractBatchSummarySection):
 
     def _calculate_in_time_stats(self) -> Dict[str, float]:
         """
-        Calculate in-time statistics from scenarios.
+        Calculate in-time statistics from the run-meta + profiling models.
 
         Returns:
             Dict with total_hours, avg_hours, total_days, ticks_per_hour
         """
-        scenarios = self._batch_summary.single_scenario_list
+        total_hours = self._run_meta.total_hours
 
-        total_hours = 0.0
-        for scenario in scenarios:
-            if scenario.end_date and scenario.start_date:
-                duration = scenario.end_date - scenario.start_date
-                total_hours += duration.total_seconds() / 3600
-
-        scenario_count = len(scenarios)
-        avg_hours = total_hours / scenario_count if scenario_count > 0 else 0
-        total_days = total_hours / 24
-
-        # Calculate ticks per hour (market density = all ticks including clipped)
-        ticks_total = sum(
-            r.tick_loop_results.profiling_data.ticks_total
-            for r in self._batch_summary.process_result_list
-            if r.tick_loop_results and r.tick_loop_results.profiling_data
-            and r.tick_loop_results.profiling_data.ticks_total > 0
-        )
-        # Fall back to algo ticks when no clipping active
+        # Ticks per hour (market density = all ticks incl. clipped; fall back to the
+        # coordination ticks when no clipping was active)
+        ticks_total = self._profiling.aggregate.clipping_total_ticks
         if ticks_total == 0:
-            ticks_total = sum(
-                r.tick_loop_results.coordination_statistics.ticks_processed
-                for r in self._batch_summary.process_result_list
-                if r.tick_loop_results and r.tick_loop_results.coordination_statistics
-            )
+            ticks_total = sum(u.ticks_processed for u in self._scenario_details.units)
         ticks_per_hour = ticks_total / total_hours if total_hours > 0 else 0
 
         return {
             'total_hours': total_hours,
-            'avg_hours': avg_hours,
-            'total_days': total_days,
+            'avg_hours': self._run_meta.avg_hours,
+            'total_days': self._run_meta.total_days,
             'ticks_per_hour': ticks_per_hour
         }

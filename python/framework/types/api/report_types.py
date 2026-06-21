@@ -324,6 +324,68 @@ class RunSummary(BaseModel):
     unit_count: int = 0     # sim: N scenarios | live: 1
 
 
+class RunMetaReport(BaseModel):
+    """
+    Run-level execution facts the orchestrator measures primarily (sim): scenario identity +
+    the wall-clock timing split. These are the run-level values the executive / basic-stats read
+    straight from `BatchExecutionSummary` today — projected once at DERIVE so PRESENT stays
+    model-fed. NOT re-derived facts (status comes from the warnings/errors outcome, ticks from
+    the profiling aggregate) — only the primary measurements live here.
+    """
+    scenario_count: int = 0     # all scenarios in the run (incl. failed / disabled)
+    disabled_count: int = 0
+    symbols: list[str] = []
+    is_profile_run: bool = False
+    debug_execution: bool = False
+    # Timing split (wall-clock, primary orchestrator measurements)
+    execution_time_s: float = 0.0
+    warmup_time_s: float = 0.0
+    tickrun_time_s: float = 0.0
+    pickle_time_s: float = 0.0
+    pickle_sample_mb: float = 0.0
+    # In-time (simulated market time) — derived from the scenario config date windows
+    total_hours: float = 0.0
+    total_days: float = 0.0
+    avg_hours: float = 0.0
+    # #137 performance-tracking layer presence (any scenario): A = worker stats, B = tick-loop profiling
+    worker_tracking_on: bool = False
+    profiling_tracking_on: bool = False
+
+
+class BlockSplittingSymbolRow(BaseModel):
+    """
+    Per-symbol block-splitting disposition (Profile Runs, sim-only): how much of the symbol's
+    P&L came from force-closes at block boundaries vs. natural closes — the distortion a split
+    introduces. Facts are summed across the symbol's blocks; the ratios are derived in the builder.
+    """
+    symbol: str
+    generator_mode: str
+    block_count: int = 0
+    force_closed_trades: int = 0
+    force_closed_pnl: float = 0.0
+    natural_closed_trades: int = 0
+    natural_closed_pnl: float = 0.0
+    discarded_pending_orders: int = 0
+    # Derived (builder)
+    total_trades: int = 0
+    total_pnl: float = 0.0
+    force_close_ratio: float = 0.0      # % of trades that were force-closed
+    disposition_pct: float = 0.0        # |force-close P&L| / |total P&L| * 100
+
+
+class BlockSplittingReport(BaseModel):
+    """
+    Block-splitting disposition (Profile Runs, sim-only): per-symbol rows + the cross-symbol
+    aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/UNRELIABLE label
+    is a display class applied by the presenter — only the facts + ratios live here.
+    """
+    symbols: list[BlockSplittingSymbolRow] = []
+    agg_force_closed_trades: int = 0
+    agg_total_trades: int = 0
+    agg_force_close_ratio: float = 0.0
+    agg_disposition_pct: float = 0.0
+
+
 class WorkerStatRow(BaseModel):
     """Per-worker timing within a unit (#398)."""
     worker_type: str

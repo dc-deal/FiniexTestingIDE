@@ -120,9 +120,9 @@
       "execution_config": {},
       "trade_simulator_config": {
         "balances": {
-          "USD": 10000,
-          "JPY": 0
-        }
+          "USD": 10000
+        },
+        "account_currency": "USD"
       }
     },
     {

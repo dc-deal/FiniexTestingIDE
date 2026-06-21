@@ -176,7 +176,6 @@ class WorkerDecisionBreakdown:
 
     This helps identify performance bottlenecks within the decision pipeline.
     """
-    scenario_index: int
     scenario_name: str
 
     # Total time (should match worker_decision from TickLoopProfile)

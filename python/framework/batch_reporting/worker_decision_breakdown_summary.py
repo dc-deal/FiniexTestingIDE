@@ -13,12 +13,10 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 from typing import List, Optional
 from python.framework.batch_reporting.abstract_batch_summary_section import AbstractBatchSummarySection
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.types.api.report_types import ProfilingReport, WorkerDecisionReport
-from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.api.report_types import ProfilingReport, ProfilingUnitRow, WorkerDecisionReport
 from python.framework.types.performance_types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
-from python.framework.types.process_data_types import ProcessResult
 
 
 class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
@@ -33,12 +31,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
     def __init__(
         self,
-        batch_execution_summary: BatchExecutionSummary,
         profiling_report: ProfilingReport,
         worker_decision_report: WorkerDecisionReport,
     ):
-        self.batch_execution_summary = batch_execution_summary
-        self._process_results = batch_execution_summary.process_result_list
         # Both inputs are model-fed now, matched per unit by name: the worker/decision facts
         # (Layer A, #398) and the operation Total that drives the coordination-overhead
         # (Layer B, from the profiling model — #399, closing the #398 residual). No
@@ -91,34 +86,27 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         print()
 
     def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
-        """Build breakdowns from scenarios."""
+        """Build breakdowns from the profiling units (model-fed, ordered per run unit)."""
         breakdowns = []
-        for scenario in self._process_results:
-            breakdown = self._build_breakdown_for_scenario(
-                scenario)
+        for profiling in self._profiling_by_name.values():
+            breakdown = self._build_breakdown_for_unit(profiling)
             if breakdown:
                 breakdowns.append(breakdown)
         return breakdowns
 
-    def _build_breakdown_for_scenario(
-        self, scenario: ProcessResult
+    def _build_breakdown_for_unit(
+        self, profiling: ProfilingUnitRow
     ) -> Optional[WorkerDecisionBreakdown]:
         """
-        Build breakdown for single scenario.
-
-        Uses typed ProfilingData and new statistics structure.
+        Build breakdown for a single run unit from the model rows (matched by name).
 
         Args:
-            scenario: ProcessResult with tick loop results
+            profiling: The unit's profiling row (operation timing)
 
         Returns:
-            WorkerDecisionBreakdown or None if no profiling data
+            WorkerDecisionBreakdown or None if the worker_decision op / worker facts are missing
         """
-        profiling = self._profiling_by_name.get(scenario.scenario_name)
-        if profiling is None:
-            return None
-
-        # Total worker_decision operation time — from the profiling model now (#399,
+        # Total worker_decision operation time — from the profiling model (#399,
         # closing the #398 residual; was the profiling_data_map top-line).
         total_worker_decision_ms = next(
             (op.total_time_ms for op in profiling.operations
@@ -126,8 +114,8 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         if total_worker_decision_ms == 0:
             return None
 
-        # Facts from the unified worker/decision model (#398), matched by scenario name.
-        row = self._wd_rows_by_name.get(scenario.scenario_name)
+        # Facts from the unified worker/decision model (#398), matched by unit name.
+        row = self._wd_rows_by_name.get(profiling.name)
         if row is None:
             return None
 
@@ -150,8 +138,7 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         )
 
         return WorkerDecisionBreakdown(
-            scenario_index=scenario.scenario_index,
-            scenario_name=scenario.scenario_name,
+            scenario_name=profiling.name,
             total_time_ms=total_worker_decision_ms,
             total_ticks=row.ticks_processed,
             worker_execution_ms=worker_execution_ms,
