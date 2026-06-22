@@ -56,6 +56,7 @@ tests/
 │   ├── tick_clipping/     unit — bar rendering ordering guard (#293 regression)
 │   ├── order_precision/   unit — order price → digits normalization (#332)
 │   ├── event_channel/     integration — decision event channel dual-world parity (#348)
+│   ├── optimization/      unit — parameter optimization: grid expand, override, ledger, ranking, sensitivity, grid validation (#390)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/

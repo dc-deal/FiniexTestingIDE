@@ -133,6 +133,8 @@ data/raw/*.json
 data/finished/*
 !data/finished/.gitkeep
 data/cache/
+# Parameter Optimization run-results ledger (generated runtime data)
+data/run_results/
 
 # UPDATED (C#003): Ignore all subdirectories in processed/
 # This covers hierarchical structure: data/processed/{collector}/{symbol}/*.parquet

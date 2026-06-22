@@ -78,6 +78,7 @@ def pytest_collection_modifyitems(items):
             '/tests/framework/market_compatibility/',
             '/tests/framework/tick_parquet_reader/',
             '/tests/framework/user_namespace/',
+            '/tests/simulation/optimization/',
         )
         if any(p in path for p in _UNIT_PATHS):
             item.add_marker(pytest.mark.unit)

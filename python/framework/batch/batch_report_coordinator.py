@@ -55,7 +55,11 @@ from python.framework.reporting.run_reports.warnings_errors_report_builder impor
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
 from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.run_reports.run_provenance_builder import build_run_provenance
+from python.framework.reporting.io.run_results_ledger import RunResultsLedger
+from python.framework.types.run_results_types import SweepContext
 from python.configuration.app_config_manager import AppConfigManager
+from pathlib import Path
 import sys
 import io
 import re
@@ -79,7 +83,8 @@ class BatchReportCoordinator:
         self,
         batch_execution_summary: BatchExecutionSummary,
         scenario_set: ScenarioSet,
-        app_config: AppConfigManager
+        app_config: AppConfigManager,
+        sweep_context: SweepContext = None
     ):
         """
         Initialize batch report coordinator.
@@ -88,10 +93,12 @@ class BatchReportCoordinator:
             batch_execution_summary: Execution results to report
             scenario_set: Scenario set with logger
             app_config: Application configuration
+            sweep_context: Optional sweep tagging when run as a sweep combination (#390)
         """
         self._batch_execution_summary = batch_execution_summary
         self._scenario_set = scenario_set
         self._app_config = app_config
+        self._sweep_context = sweep_context
 
     def generate_and_log(self) -> None:
         """
@@ -232,6 +239,17 @@ class BatchReportCoordinator:
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
             write_block_splitting_report(block_splitting_report, io_dir)
+
+        # === Run-results ledger (#390) — append the run to the persistent cross-run store the
+        # Parameter Optimization system ranks over. The run's status/error (a total failure, e.g.
+        # an out-of-range parameter combination) comes from the canonical warnings/errors outcome
+        # inside build_run_provenance — recorded as an error-flagged row, never silently absent (#1). ===
+        provenance = build_run_provenance(
+            self._batch_execution_summary, self._scenario_set, run_dir,
+            self._sweep_context, warnings_errors_report)
+        if provenance is not None:
+            ledger = RunResultsLedger(Path(self._app_config.get_run_results_path()))
+            ledger.append(run_summary, provenance)
 
     def _render_all(self, summary_detail: Optional[bool] = None):
         """

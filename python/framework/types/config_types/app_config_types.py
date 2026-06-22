@@ -14,6 +14,9 @@ class SharedPaths(BaseModel):
     """Filesystem paths shared across both pipelines."""
     data_processed: str
     user_algo_dirs: List[str] = ['user_algos/']
+    # Persistent run-results ledger (one parquet fragment per run; the
+    # Parameter Optimization system reads it). Data layer, survives log cleanup.
+    run_results: str = 'data/run_results'
 
 
 class HistoryConfig(BaseModel):

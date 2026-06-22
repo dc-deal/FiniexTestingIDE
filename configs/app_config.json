@@ -35,7 +35,8 @@
         "data_processed": "data/processed",
         "user_algo_dirs": [
             "user_algos/"
-        ]
+        ],
+        "run_results": "data/run_results"
     },
     "history": {
         "bar_max_history": 1000,
