@@ -1,11 +1,12 @@
 """
 Optimization runner (#390) — drives a parameter sweep.
 
-Loads the sweep spec + base scenario set, validates the grid against the component
-schemas (fail-fast), expands the grid, and runs each combination as one normal batch
-through the existing pipeline. Every combination self-records its KPIs in the run-results
-ledger (tagged with the sweep id), so ranking happens afterwards by reading the ledger —
-the runner itself collects nothing in memory.
+Loads the sweep spec + base scenario set, validates the grid STRUCTURE (fail-fast),
+expands the grid, and runs each combination as one normal batch through the existing
+pipeline. Parameter existence / range are validated per combination inside the run
+(Phase 0), so a bad value fails only its own combination. Every combination self-records
+its KPIs in the run-results ledger (tagged with the sweep id), so ranking happens
+afterwards by reading the ledger — the runner itself collects nothing in memory.
 """
 
 from datetime import datetime, timezone
@@ -48,8 +49,9 @@ class OptimizationRunner:
             raise ValueError(
                 f"Base scenario set '{spec.base_scenario_set}' has no enabled scenarios")
 
-        # Fail-fast: validate every grid value against its component's parameter schema
-        validate_sweep_grid(spec.grid, base.scenarios[0].strategy_config, vLog)
+        # Fail-fast: validate the grid STRUCTURE (path shape + non-empty lists).
+        # Param existence / range is validated per combination inside the run (Phase 0).
+        validate_sweep_grid(spec.grid, vLog)
 
         combos = expand_grid(spec.grid)
         sweep_id = f"sweep_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"

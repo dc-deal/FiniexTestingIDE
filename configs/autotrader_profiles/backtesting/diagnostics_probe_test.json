@@ -15,9 +15,7 @@
         }
       }
     },
-    "decision_logic_config": {
-      "lot_size": 0.001
-    }
+    "decision_logic_config": {}
   },
   "account": {
     "balances": {

@@ -6,7 +6,7 @@ Stateless utility functions for parameter validation and default injection.
 Used by both Factories (Phase 6) and static validation (Phase 0).
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.types.parameter_types import InputParamDef
 
@@ -15,7 +15,8 @@ def validate_parameters(
     config: Dict[str, Any],
     schema: Dict[str, InputParamDef],
     strict: bool = True,
-    context_name: str = ""
+    context_name: str = "",
+    reserved_keys: Optional[Set[str]] = None,
 ) -> List[str]:
     """
     Validate config dict against parameter schema.
@@ -25,19 +26,26 @@ def validate_parameters(
     2. Types match (always strict - type errors are never warnings)
     3. Values within min/max bounds (strict or warn)
     4. Values in choices (strict or warn)
+    5. Unknown keys (opt-in via reserved_keys) — a config key that is neither a
+       schema parameter nor a declared reserved/structural key is a typo, otherwise
+       silently ignored at runtime
 
     Args:
         config: User-provided configuration dict
         schema: Parameter schema from get_parameter_schema()
         strict: True = raise on boundary violations, False = warn only
         context_name: Worker/Logic name for error messages
+        reserved_keys: Non-schema keys the component legitimately accepts. When given
+            (even empty), unknown keys are rejected; when None, the unknown-key check
+            is skipped (backward-compatible default)
 
     Returns:
         List of warning messages (empty if all valid in strict mode)
     """
-    if not schema:
+    if not schema and reserved_keys is None:
         return []
 
+    schema = schema or {}
     warnings: List[str] = []
     prefix = f"'{context_name}': " if context_name else ""
 
@@ -87,6 +95,23 @@ def validate_parameters(
             msg = (
                 f"{prefix}Parameter '{param_name}' value '{value}' "
                 f"not in allowed choices: {param_def.choices}"
+            )
+            if strict:
+                raise ValueError(msg)
+            warnings.append(msg)
+
+    # --- Unknown-key check (opt-in) ---
+    # Keys starting with '_' are the config-file comment/metadata convention
+    # (JSON has no comments, e.g. '_comment') — never strategy parameters, so they
+    # are allowed without weakening typo detection on real parameters.
+    if reserved_keys is not None:
+        allowed = set(schema) | reserved_keys
+        for key in config:
+            if key.startswith('_') or key in allowed:
+                continue
+            msg = (
+                f"{prefix}Unknown parameter '{key}' — not in the component "
+                f"schema. Known parameters: {sorted(allowed)}"
             )
             if strict:
                 raise ValueError(msg)

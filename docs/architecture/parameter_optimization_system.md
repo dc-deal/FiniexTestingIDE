@@ -66,14 +66,18 @@ strategy parameter mapped to its candidate values:
 | `objective_currency` | required only when a run produces more than one account currency |
 | `maximize` | rank direction (set `false` e.g. for `max_drawdown`) |
 
-**Validation — structural fail-fast, value errors per-combination:** before any batch runs,
-`sweep_grid_validator.py` checks the grid **structurally** — every dotted path must resolve to a real
-parameter of the right component (`get_parameter_schema()`); an unknown path / param / worker or an
-empty value list is a spec typo affecting all combinations → abort early. Value **range / type**
-violations are NOT caught here: an out-of-range value flows into its combination's run, fails it at
-setup, and is recorded as an **error-flagged ledger row** that is excluded from the ranking (§33 =
-config error → per-scenario failure, not a whole-batch abort). Other combinations keep running.
-(Strategy parameters are not Pydantic-typed by design — the per-component schema is their type system.)
+**Validation — structural fail-fast, parameter errors per-combination:** before any batch runs,
+`sweep_grid_validator.py` checks the grid **structurally only** — every dotted path must have a valid
+shape (`decision_logic_config.<param>` or `workers.<instance>.<param>`) and a non-empty value list; a
+malformed path or empty list is a spec typo affecting all combinations → abort early. Parameter
+**existence / range / type** are NOT checked here: the grid only writes values into each combination's
+`strategy_config`, and the run validates them in **Phase 0** (`ScenarioValidator.validate_scenario_parameters`,
+against each component's `get_parameter_schema()` — type, range, required, AND unknown keys). An invalid
+combination is marked invalid there, excluded from execution, and recorded as an **error-flagged ledger
+row** that is excluded from the ranking (§33 = config error → per-scenario failure, not a whole-batch
+abort). Other combinations keep running. (Strategy parameters are not Pydantic-typed by design — the
+per-component schema is their type system; lifting the check into Phase 0 means every run — not just
+sweeps — rejects a typo'd parameter instead of silently ignoring it.)
 
 **How a combination is built:** the base config is loaded once; per combination it is deep-copied and
 each grid value is written into every scenario's `strategy_config` (in-memory, no temp files; the base

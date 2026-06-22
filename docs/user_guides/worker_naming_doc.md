@@ -371,3 +371,13 @@ ValueError: Missing 'rsi_fast' in worker_instances. DecisionLogic requires this 
 
 ### ❌ Missing required parameters
 **Fix:** Check the worker's `get_parameter_schema()` for parameters with `default=REQUIRED` and provide them in `workers.<instance_name>`.
+
+### ❌ Unknown parameter
+```
+ValueError: 'MacdWorker': Unknown parameter 'fast_periodd' — not in the component schema.
+```
+A config key that is not in `get_parameter_schema()` (and is not a structural/reserved key like
+`periods`, `recompute`, `include_current_bar`) is rejected at pre-flight — a typo no longer slips
+through and gets silently ignored.
+**Fix:** Correct the key to a schema parameter, or add it to `get_parameter_schema()` if it is a real
+parameter. Use a `_`-prefixed key (e.g. `_comment`) for notes — those are always allowed.

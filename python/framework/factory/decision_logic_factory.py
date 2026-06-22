@@ -169,7 +169,7 @@ class DecisionLogicFactory:
 
         warnings = validate_parameters(
             logic_config, schema, self._strict_validation,
-            context_name=logic_class.__name__
+            context_name=logic_class.__name__, reserved_keys=set(),
         )
         for warning in warnings:
             self.logger.warning(f"⚠️ {warning}")

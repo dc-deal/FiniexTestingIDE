@@ -1,83 +1,54 @@
 """
 Sweep-grid validator (#390).
 
-STRUCTURAL fail-fast validation of a sweep grid BEFORE any batch runs: every dotted path must
-resolve to a real parameter of the right component (decision logic / worker). A spec-structure
-error (unknown path / param / worker, empty value list) affects all combinations and is a clear
-typo → abort the whole sweep early.
+STRUCTURAL fail-fast validation of a sweep grid BEFORE any batch runs: every dotted path
+must have a valid shape (`decision_logic_config.<param>` or `workers.<instance>.<param>`)
+and a non-empty list of values. A spec-structure error affects all combinations and is a
+clear typo → abort the whole sweep early.
 
-Value-RANGE / type violations are deliberately NOT checked here: they are a per-combination
-concern (§33 = config error → per-scenario failure, not a whole-batch abort). An out-of-range
-value flows into its combination's run, fails it at setup, and is recorded as an error-flagged
-ledger row that is excluded from the ranking — the other combinations keep running.
+Parameter EXISTENCE and value RANGE are deliberately NOT checked here. Both are now a per-run
+concern: the grid only writes values into the scenario's strategy_config, and the run's
+Phase 0 (ScenarioValidator.validate_scenario_parameters) validates each combination's params
+against the component schemas (type / range / required / unknown). An invalid combination is
+marked invalid there, excluded from execution, and recorded as an error-flagged ledger row
+that is left out of the ranking (#1) — the other combinations keep running (§33).
 """
 
 from typing import Any, Dict, List
 
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 
 
 def validate_sweep_grid(
     grid: Dict[str, List[Any]],
-    strategy_config: Dict[str, Any],
     logger: AbstractLogger,
 ) -> None:
     """
-    Validate the grid's structure against the target components' parameter schemas.
+    Validate the grid's structure (path shape + non-empty value lists).
 
     Args:
         grid: Sweep grid (dotted path → candidate values)
-        strategy_config: The base scenario set's strategy_config (decision + worker types)
-        logger: Logger for the factories
+        logger: Logger (unused here; kept for a uniform validator signature)
 
     Raises:
-        ValueError: On an empty value list, an unknown path, param, or worker instance
+        ValueError: On an empty value list or a malformed dotted path
     """
-    decision_type = strategy_config.get('decision_logic_type', '')
-    worker_instances = strategy_config.get('worker_instances', {})
-    decision_factory = DecisionLogicFactory(logger)
-    worker_factory = WorkerFactory(logger)
-
     for path, values in grid.items():
         if not isinstance(values, list) or not values:
             raise ValueError(f"Grid path '{path}' must map to a non-empty list of values")
-        _check_param_exists(
-            path, decision_type, worker_instances, decision_factory, worker_factory)
+        _check_path_shape(path)
 
 
-def _check_param_exists(
-    path: str,
-    decision_type: str,
-    worker_instances: Dict[str, str],
-    decision_factory: DecisionLogicFactory,
-    worker_factory: WorkerFactory,
-) -> None:
-    """Raise if a dotted grid path does not resolve to a real parameter of its component."""
+def _check_path_shape(path: str) -> None:
+    """Raise if a dotted grid path is not a valid decision/worker parameter path shape."""
     parts = path.split('.')
 
     if parts[0] == 'decision_logic_config':
         if len(parts) != 2:
             raise ValueError(f"Grid path '{path}' must be 'decision_logic_config.<param>'")
-        param = parts[1]
-        component_class, _ = decision_factory.resolve_logic_class(decision_type)
     elif parts[0] == 'workers':
         if len(parts) != 3:
             raise ValueError(f"Grid path '{path}' must be 'workers.<instance>.<param>'")
-        worker_name, param = parts[1], parts[2]
-        worker_type = worker_instances.get(worker_name)
-        if worker_type is None:
-            raise ValueError(
-                f"Grid path '{path}': unknown worker instance '{worker_name}'. "
-                f"Known: {sorted(worker_instances)}")
-        component_class, _ = worker_factory.resolve_worker_class(worker_type)
     else:
         raise ValueError(
             f"Grid path '{path}' must start with 'decision_logic_config.' or 'workers.<instance>.'")
-
-    schema = component_class.get_parameter_schema()
-    if param not in schema:
-        raise ValueError(
-            f"Grid path '{path}': parameter '{param}' not in {component_class.__name__} schema. "
-            f"Known: {sorted(schema)}")

@@ -225,3 +225,106 @@ class TestSetScenarioAccountCurrency:
         assert scenario.account_currency == 'GBP'
         assert scenario.validation_result == []
         logger.warning.assert_not_called()
+
+
+def _clean_strategy_config() -> dict:
+    """A valid CORE/cautious_macd strategy_config (macd + rsi), fresh per call."""
+    return {
+        'decision_logic_type': 'CORE/cautious_macd',
+        'worker_instances': {'macd_main': 'CORE/macd', 'rsi_filter': 'CORE/rsi'},
+        'workers': {
+            'macd_main': {
+                'periods': {'M5': 35},
+                'fast_period': 12, 'slow_period': 26, 'signal_period': 9,
+            },
+            'rsi_filter': {'periods': {'M5': 14}},
+        },
+        'decision_logic_config': {
+            'sl_pips': 100, 'tp_pips': 200, 'min_confidence': 0.3,
+        },
+    }
+
+
+def _param_scenario(name: str, strategy_config: dict) -> MagicMock:
+    """Build a MagicMock SingleScenario carrying a real strategy_config dict."""
+    scenario = MagicMock(spec=SingleScenario)
+    scenario.name = name
+    scenario.strategy_config = strategy_config
+    scenario.validation_result = []
+    return scenario
+
+
+class TestValidateScenarioParameters:
+    """validate_scenario_parameters — strategy params validated against component schemas.
+
+    Resolves the REAL CORE components (cautious_macd / macd / rsi). The check is the
+    run-side home of what the sweep-grid validator no longer does (#390 variant i).
+    """
+
+    def test_clean_params_no_validation_result(self):
+        scenario = _param_scenario('clean', _clean_strategy_config())
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert scenario.validation_result == []
+        logger.error.assert_not_called()
+
+    def test_unknown_decision_param_marks_invalid(self):
+        cfg = _clean_strategy_config()
+        cfg['decision_logic_config']['does_not_exist'] = 1
+        scenario = _param_scenario('bad_decision', cfg)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'does_not_exist' in scenario.validation_result[0].errors[0]
+        logger.error.assert_called()
+
+    def test_out_of_range_decision_param_marks_invalid(self):
+        # sl_pips max is 1000 in the cautious_macd schema
+        cfg = _clean_strategy_config()
+        cfg['decision_logic_config']['sl_pips'] = 999999
+        scenario = _param_scenario('out_of_range', cfg)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'sl_pips' in scenario.validation_result[0].errors[0]
+
+    def test_unknown_worker_param_marks_invalid(self):
+        cfg = _clean_strategy_config()
+        cfg['workers']['macd_main']['fast_period_typo'] = 12
+        scenario = _param_scenario('bad_worker', cfg)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'fast_period_typo' in scenario.validation_result[0].errors[0]
+
+    def test_reserved_worker_keys_pass(self):
+        # recompute / include_current_bar are framework opt-ins, not unknown params
+        cfg = _clean_strategy_config()
+        cfg['workers']['macd_main']['recompute'] = 'bar_close'
+        cfg['workers']['macd_main']['include_current_bar'] = False
+        scenario = _param_scenario('reserved_ok', cfg)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert scenario.validation_result == []
+
+    def test_no_decision_logic_type_skips(self):
+        scenario = _param_scenario('empty', {})
+        logger = MagicMock()
+
+        ScenarioValidator.validate_scenario_parameters([scenario], logger)
+
+        assert scenario.validation_result == []
+        logger.error.assert_not_called()
