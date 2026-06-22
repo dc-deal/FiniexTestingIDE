@@ -11,8 +11,8 @@ also covers the RunUnit record extraction. The live builder uses a real AutoTrad
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
-from python.framework.reporting.run_reports.run_unit import (
+from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
+from python.framework.reporting.builders.run_unit import (
     run_units_from_batch, run_units_from_session)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary

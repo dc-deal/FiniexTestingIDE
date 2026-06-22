@@ -14,7 +14,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
 from python.framework.reporting.console.warnings_summary import WarningsSummary
-from python.framework.reporting.run_reports.warnings_errors_report_builder import (
+from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_batch, build_warnings_errors_report_from_session)
 from python.framework.types.api.report_types import (
     UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
@@ -146,5 +146,8 @@ class TestRender:
         assert '[s1] account_currency normalized' in out
         assert '3 warning(s) in 2 scenario log(s)' in out
 
-    def test_empty_report_renders_nothing(self):
-        assert self._render(WarningsErrorsReport()) == ''
+    def test_empty_report_renders_zero_state(self):
+        # Always rendered now (both pipelines) — a clean zero-state when there are none.
+        out = self._render(WarningsErrorsReport())
+        assert 'WARNINGS & ERRORS' in out
+        assert 'No warnings or errors' in out

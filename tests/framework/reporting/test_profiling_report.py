@@ -15,9 +15,9 @@ from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
-from python.framework.reporting.run_reports.profiling_report_builder import (
+from python.framework.reporting.builders.profiling_report_builder import (
     build_profiling_report_from_batch)
-from python.framework.reporting.run_reports.report_aggregators import aggregate_profiling
+from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
     ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingReport, ProfilingUnitRow,
     WarmupPhaseRow)

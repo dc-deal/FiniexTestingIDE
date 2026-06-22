@@ -7,37 +7,35 @@ the event-stream CSV, the unified report artifacts (#391), the algo diagnostics
 CSV, and the post-session console summary. Report derivation itself lives in
 framework/reporting/*; this only orchestrates the persist + render.
 """
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import io
+import re
+import sys
 
-from python.framework.autotrader.reporting.autotrader_post_session_report import AutotraderPostSessionReport
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.live_session_summary import LiveSessionSummary
+from python.framework.reporting.console.performance_summary import PerformanceSummary
+from python.framework.reporting.console.portfolio_summary import PortfolioSummary
+from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
+from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
+from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.run_reports.broker_report_builder import build_broker_report_from_session
+from python.framework.reporting.builders.broker_report_builder import build_broker_report_from_session
 from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.run_reports.execution_stats_report_builder import build_execution_stats_report
-from python.framework.reporting.io.execution_stats_report_io import (
-    write_execution_stats_csv, write_execution_stats_report)
-from python.framework.reporting.run_reports.order_history_report_builder import build_order_history_report
-from python.framework.reporting.io.order_history_report_io import (
-    write_order_history_csv, write_order_history_report)
-from python.framework.reporting.run_reports.pending_orders_report_builder import build_pending_orders_report
-from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.run_reports.portfolio_report_builder import build_portfolio_report
-from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.report_store import IO_SUBDIR
-from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
-from python.framework.reporting.io.run_summary_io import write_run_summary
-from python.framework.reporting.run_reports.run_unit import run_units_from_session
-from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
-from python.framework.reporting.io.trade_history_report_io import (
-    write_trade_history_csv, write_trade_history_report)
-from python.framework.reporting.run_reports.warnings_errors_report_builder import build_warnings_errors_report_from_session
+from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.reporting.builders.run_unit import run_units_from_session
+from python.framework.reporting.builders.warnings_errors_report_builder import build_warnings_errors_report_from_session
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
-from python.framework.reporting.run_reports.worker_decision_report_builder import build_worker_decision_report
-from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
+from python.framework.reporting.store.run_provenance_builder import build_run_provenance_from_session
+from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -60,6 +58,7 @@ class AutotraderReportCoordinator:
         self,
         result: AutoTraderResult,
         run_dir: Path,
+        run_timestamp: datetime,
         config: AutoTraderConfig,
         decision_logic: Optional[AbstractDecisionLogic],
         summary_logger: ScenarioLogger,
@@ -72,6 +71,7 @@ class AutotraderReportCoordinator:
         Args:
             result: The completed session result to report
             run_dir: The session's run directory
+            run_timestamp: The session start (UTC) — the ledger row's run timestamp
             config: The autotrader profile config (portfolio unit name/symbol)
             decision_logic: The decision logic (algo diagnostics sinks)
             summary_logger: Logger for the post-session summary + console
@@ -81,6 +81,7 @@ class AutotraderReportCoordinator:
         """
         self._result = result
         self._run_dir = run_dir
+        self._run_timestamp = run_timestamp
         self._config = config
         self._decision_logic = decision_logic
         self._summary_logger = summary_logger
@@ -113,41 +114,15 @@ class AutotraderReportCoordinator:
 
         # Report artifacts (JSON + CSV) go into the session's io/ subfolder (#396 housekeeping).
         io_dir = self._run_dir / IO_SUBDIR
-        io_dir.mkdir(parents=True, exist_ok=True)
 
-        report = build_trade_history_report(units)
-        write_trade_history_report(report, io_dir)
-        write_trade_history_csv(report, io_dir)
-
-        order_report = build_order_history_report(units)
-        write_order_history_report(order_report, io_dir)
-        write_order_history_csv(order_report, io_dir)
-
-        # Portfolio headline — the single session unit (= its own currency aggregate).
-        portfolio_report = build_portfolio_report(units)
-        write_portfolio_report(portfolio_report, io_dir)
-
-        # Pending-orders — empty for live (AutoTraderResult carries no pending stats);
-        # written for artifact / API consistency with the sim runs.
-        pending_report = build_pending_orders_report(units)
-        write_pending_orders_report(pending_report, io_dir)
-
-        # Execution-stats headline — the single session unit's order counts (#391).
-        execution_stats_report = build_execution_stats_report(units)
-        write_execution_stats_report(execution_stats_report, io_dir)
-        write_execution_stats_csv(execution_stats_report, io_dir)
-
-        # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
-        run_summary = build_run_summary(portfolio_report, report, execution_stats_report)
-        write_run_summary(run_summary, io_dir)
-
-        # Worker/decision — per-unit worker + decision performance (unified, #398).
-        worker_decision_report = build_worker_decision_report(units)
-        write_worker_decision_report(worker_decision_report, io_dir)
+        # DERIVE + PERSIST the 7 units-derived sections shared with sim (#403): trade / order /
+        # portfolio (single session = its own currency aggregate) / pending (empty for live) /
+        # execution-stats / run-summary / worker-decision. The models feed the unified console.
+        unified = SharedReportCoordinator.derive_and_persist(units, io_dir)
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
-        # the compact post-session summary keeps reading the session buffers directly (same
-        # structured source, avoids double-rendering the emergency cause).
+        # the closing block keeps reading the session buffers directly (same structured source,
+        # avoids double-rendering the emergency cause, §35).
         warnings_errors_report = build_warnings_errors_report_from_session(
             result, name, self._config.symbol)
         write_warnings_errors_report(warnings_errors_report, io_dir)
@@ -161,14 +136,47 @@ class AutotraderReportCoordinator:
                 self._broker_config, self._config.symbol)
             write_broker_report(broker_report, io_dir)
 
+        # Run-results ledger (#390) — append the session to the persistent cross-run store the
+        # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
+        # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
+        # (sim/live parity). A live session is never swept; an emergency → status='error' row.
+        provenance = build_run_provenance_from_session(
+            self._config, self._run_dir, self._run_timestamp, warnings_errors_report)
+        append_run_to_ledger(unified.run_summary, provenance)
+
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
             flush_decision_diagnostics(self._decision_logic, self._run_dir)
 
-        # Post-session summary — operational view + the #389 analytics line from the
-        # model (#393); the big per-trade table stays sim-only / API for live.
-        post_session_report = AutotraderPostSessionReport(
-            summary_logger=self._summary_logger,
-            global_logger=self._global_logger,
+        # === PRESENT — the unified end-of-run console (#403 Phase 2): the shared sections in
+        # sim order (trade / portfolio / broker / worker performance), then the live session
+        # summary as the closing block. Live is one unit → the per-currency aggregates are
+        # skipped (redundant); the same ordered renderer the sim coordinator uses. ===
+        renderer = ConsoleRenderer()
+        threshold = AppConfigManager().get_console_logging_config_object().scenario_detail_threshold
+
+        console = RunConsoleRenderer(
+            unit_count=unified.run_summary.unit_count,
+            threshold=threshold,
+            portfolio_summary=PortfolioSummary(
+                unified.portfolio, unified.pending_orders, unified.execution_stats, None),
+            trade_history_summary=TradeHistorySummary(unified.trade_history, unified.order_history),
+            broker_summary=BrokerSummary(broker_report) if broker_report is not None else None,
+            performance_summary=PerformanceSummary(unified.worker_decision),
+            warnings_summary=WarningsSummary(warnings_errors_report),
+            closing_block=LiveSessionSummary(result, unified.trade_history, self._run_dir),
         )
-        post_session_report.print_report(result, report, broker_report)
+
+        # Render once (live always full detail); capture, print to console (with colors), and
+        # log the ANSI-stripped block to the summary file.
+        old_stdout = sys.stdout
+        sys.stdout = capture = io.StringIO()
+        console.render_all(renderer, summary_detail=True)
+        sys.stdout = old_stdout
+        full_output = capture.getvalue()
+
+        print(full_output)
+        self._summary_logger.info(re.sub(r'\033\[[0-9;]+m', '', full_output))
+        self._global_logger.info(
+            f"📋 Session summary written — {result.ticks_processed} ticks, "
+            f"{len(result.warning_messages)} warnings, {len(result.error_messages)} errors")

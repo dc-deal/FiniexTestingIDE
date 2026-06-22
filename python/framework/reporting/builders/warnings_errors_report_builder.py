@@ -50,8 +50,11 @@ def build_warnings_errors_report_from_session(
         WarningsErrorsReport — live has no validation channel: warnings are the session WARNING
         buffer (Tier 2), errors the session ERROR buffer + emergency_reason (the villain)
     """
-    # Tier-2 (minor) — the session WARNING buffer
-    warnings = [WarningRow(tier='minor', scope=name, message=m) for m in result.warning_messages]
+    # Tier-2 (minor) — the session WARNING buffer. Strip the logger prefix
+    # ('[  4s] WARNING | msg' → 'msg') so the model carries the clean fact, not the log line.
+    warnings = [
+        WarningRow(tier='minor', scope=name, message=(m.split(' | ', 1)[-1] if ' | ' in m else m))
+        for m in result.warning_messages]
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
     errors = []

@@ -10,8 +10,8 @@ The per-currency roll-up is derived from the rows via the shared `aggregate_port
 
 from typing import List
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_portfolio_by_currency
-from python.framework.reporting.run_reports.run_unit import RunUnit
+from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import PortfolioReport, PortfolioUnitRow
 
 

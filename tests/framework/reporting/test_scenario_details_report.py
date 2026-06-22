@@ -9,7 +9,7 @@ scenarios (no tick_loop_results) must still appear.
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.scenario_details_report_builder import (
+from python.framework.reporting.builders.scenario_details_report_builder import (
     build_scenario_details_report_from_batch)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_stats_types import (

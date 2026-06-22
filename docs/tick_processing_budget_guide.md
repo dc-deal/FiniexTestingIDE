@@ -195,7 +195,7 @@ SharedDataPreparator (Main Process, Phase 1)
           BatchExecutionSummary
                     │
                     ├── clipping_stats_map → ProfilingSummary, WarningsSummary
-                    └── profiling_data.ticks_total → ExecutiveSummary (dual tick count)
+                    └── profiling_data.ticks_total → SimExecutiveSummary (dual tick count)
 ```
 
 - Flagging in main process → all ticks cross pickle boundary (with `is_clipped` flag)

@@ -12,8 +12,8 @@ import re
 from contextlib import redirect_stdout
 
 from python.framework.reporting.console.performance_summary import PerformanceSummary
-from python.framework.reporting.run_reports.run_unit import RunUnit
-from python.framework.reporting.run_reports.worker_decision_report_builder import (
+from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report)
 from python.framework.types.api.report_types import (
     WorkerDecisionReport, WorkerDecisionUnitRow, WorkerStatRow)

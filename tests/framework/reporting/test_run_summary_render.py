@@ -1,7 +1,7 @@
 """
 Run-Summary Console Headline Tests (#393 — Executive → RunSummary).
 
-ExecutiveSummary._render_run_summary is a thin presenter over the RunSummary model: it reads
+SimExecutiveSummary._render_run_summary is a thin presenter over the RunSummary model: it reads
 the per-currency KPIs + global order counts and renders the model-fed headline, never
 re-deriving. Tested by feeding a hand-built model and asserting the rendered text — the
 other executive sub-sections (timing, resources) are not exercised here.
@@ -10,7 +10,7 @@ other executive sub-sections (timing, resources) are not exercised here.
 import io
 from contextlib import redirect_stdout
 
-from python.framework.reporting.console.executive_summary import ExecutiveSummary
+from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, ProfilingReport, RunMetaReport, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, WarningsErrorsReport)
@@ -34,7 +34,7 @@ def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> Ru
 
 def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
-    executive = ExecutiveSummary(
+    executive = SimExecutiveSummary(
         app_config=None, run_summary=summary,
         run_meta_report=RunMetaReport(), profiling_report=ProfilingReport(units=[]),
         scenario_details_report=ScenarioDetailsReport(units=[]),

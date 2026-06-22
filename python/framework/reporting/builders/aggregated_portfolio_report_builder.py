@@ -11,7 +11,7 @@ by unit name. For a mixed batch (margin + spot in one currency) the group is als
 
 from typing import Dict, List
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_full_portfolio
+from python.framework.reporting.builders.report_aggregators import aggregate_full_portfolio
 from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency, AggregatedPortfolioReport, ExecutionStatsReport,
     PendingOrdersReport, PortfolioReport, PortfolioUnitRow)

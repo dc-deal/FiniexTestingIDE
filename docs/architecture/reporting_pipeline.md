@@ -31,21 +31,43 @@ see *Pipeline in detail* below.
 | Layer | Unit | Role |
 |---|---|---|
 | Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
-| Run units | `framework/reporting/run_reports/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
-| Postprocessor | `framework/reporting/run_reports/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
-| Aggregators | `framework/reporting/run_reports/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
-| Run summary | `framework/reporting/run_reports/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
+| Run units | `framework/reporting/builders/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
+| Postprocessor | `framework/reporting/builders/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
+| Aggregators | `framework/reporting/builders/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
+| Run summary | `framework/reporting/builders/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
+| Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(units, io_dir)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 7 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger |
 | IO | `framework/reporting/io/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,run_meta,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio,block_splitting}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/io/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` / `get_aggregated_portfolio` |
-| Ledger | `framework/reporting/io/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `data/run_results/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over (provenance via `run_provenance_builder.py`). See [Parameter Optimization System](parameter_optimization_system.md) |
-| Console | `framework/reporting/console/*_summary.py` (+ `executive_summary` / `execution_header_summary` / `block_splitting_disposition`) | the **PRESENT** sub-presenters, orchestrated by `BatchReportCoordinator` (the former `BatchSummary`, folded into the coordinator) |
-| Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
-| Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
+| Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `data/run_results/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
+| Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → live omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (live) |
+| Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`; delegates the 7 shared sections to `SharedReportCoordinator`, derives + writes its sim-only sections, renders the console via `RunConsoleRenderer` (Executive Summary closing), and appends to the ledger |
+| Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`; same shared core, writes its live-specific sections, renders the **same** `RunConsoleRenderer` (the shared sections in sim order + the live Session Summary closing, #403 Phase 2), and appends to the ledger (5.a) |
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision,profiling}` with section-specific filters |
 
-The `framework/reporting/run_reports/` subfolder holds **only** the unified-report-pipeline units
-(builders + io + store); the other `framework/reporting/*` files are unrelated reporting utilities
-(diagnostics CSV, event-stream CSV, field-study, …).
+The reporting home is organized by pipeline stage: `builders/` (DERIVE — the `build_*_report`
+units + `report_aggregators` + `run_unit` + `run_summary_builder` + `unified_reports`), `io/`
+(PERSIST — the per-section `*_report_io` writers), `store/` (the read-master `report_store` + the
+cross-run `run_results_ledger` + `run_provenance_builder`), and `console/` (PRESENT); the
+`shared_report_coordinator.py` at the top owns the shared DERIVE+PERSIST core (#403). The other
+`framework/reporting/*` files are unrelated reporting utilities (diagnostics CSV, event-stream
+CSV, field-study, …).
+
+## Section map — shared vs pipeline-specific (#403)
+
+What each coordinator owns vs delegates. The DERIVE+PERSIST of the seven units-derived sections is
+shared (`SharedReportCoordinator`); the end-of-run **console order** is shared too
+(`RunConsoleRenderer`), with sim-only slots simply absent on the live side (render-if-present).
+
+| Report section | Built from | Sim | Live | Outcome |
+|---|---|:--:|:--:|---|
+| Trade / order / portfolio / pending / execution-stats / run-summary / worker-decision | `units` | ✓ | ✓ | **SharedReportCoordinator** (7 sections → `UnifiedReports`) |
+| Warnings/errors · Broker | batch / session (differs) | from_batch | from_session | build pipeline-side · **shared writer** |
+| Run meta · scenario details · profiling · aggregated portfolio · block-splitting | batch | ✓ | — | **sim-only** |
+| Run-results ledger append (#390) | run_summary + provenance | ✓ | ✓ | **both** (live via `build_run_provenance_from_session`, 5.a) |
+| events.csv | trade/order history | per-scenario `events/` | single `events.csv` | pipeline-side (different shape) |
+| Diagnostics CSV (#376) | decision sinks | during run | flush at end | pipeline-side |
+| End-of-run console order | report models | rich | enriched (sim order) | **RunConsoleRenderer** (shared order; per-currency aggregates **+ the cross-scenario bottleneck analysis** gated on `unit_count > 1`; the **Warnings & Errors** section is the shared `WarningsSummary` in both, always rendered — clean zero-state when none) |
+| Closing block | run-level | Executive Summary | Live Session Summary | pipeline-specific slot (last) |
 
 ## Pipeline in detail (with RunUnit)
 
@@ -148,16 +170,17 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
 | Broker Configuration | unified | ✅ (`BrokerReport`) | ✅ from the model (sim full table · live compact line) | — |
-| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | live render still reads session buffers (same source) |
+| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); live messages get the logger prefix stripped in the builder |
 | Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397) |
-| Shutdown / Emergency / Session | **autotrader-only** | ⏳ | ✅ inline | migrates later (live post-session); #389 analytics line already model-sourced |
+| Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the live closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (session buffers, §35) + output locations; #389 analytics line model-sourced |
 | **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
+| Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). Live ledger append wired (5.a) |
 
 The **array model** is the unifier: a run is a list of units (sim: N scenarios; live: 1
 session). Where a section carries per-unit meaning (portfolio breakdown) the model keeps the
 units; for flat record lists (trades, orders) every row carries its `symbol` and the list is
 filtered, not grouped. The generic `RunUnit` abstraction that deduplicates the per-source
-extraction is **implemented** (`run_reports/run_unit.py`); every builder maps from it.
+extraction is **implemented** (`builders/run_unit.py`); every builder maps from it.
 
 ## Both pipelines write the same artifacts
 
@@ -177,11 +200,12 @@ reports and persists them into its run directory:
 The `ReportStore` resolves runs at `<logs_root>/{scenario_sets,autotrader}/<owner>/<run_id>/`, so
 the API serves either pipeline's run by `run_id`.
 
-**Cross-run ledger (#390).** Beyond the per-run artifacts, `BatchReportCoordinator` also appends the
-run to the **Run Results Ledger** (`data/run_results/`) via `RunResultsLedger.append()` — the same
-`RunSummary` model plus provenance. This is a separate, accumulating store (one parquet fragment per
-run), the substrate the Parameter Optimization system ranks over. v0 wires the sim pipeline only;
-the live coordinator can append later through the same sink. See
+**Cross-run ledger (#390).** Beyond the per-run artifacts, both coordinators append the run to the
+**Run Results Ledger** (`data/run_results/`) via `RunResultsLedger.append()` — the same `RunSummary`
+model plus provenance. This is a separate, accumulating store (one parquet fragment per run), the
+substrate the Parameter Optimization system ranks over. Both pipelines append (#403 · 5.a): the live
+`AutotraderReportCoordinator` writes its session row through the same sink via
+`build_run_provenance_from_session`, whose `param_hash` is comparable to the backtest. See
 [Parameter Optimization System](parameter_optimization_system.md).
 
 ## Consumers — same data everywhere
@@ -211,7 +235,7 @@ the live coordinator can append later through the same sink. See
 1. **Trade / order / portfolio slices (done)** — models + postprocessors + IO/store + API
    endpoints + persist in both pipelines.
 2. **`RunResult` split (done)** — the per-unit extraction is unified in
-   `run_reports/run_unit.py` (`RunUnit` + `run_units_from_batch` / `run_units_from_session`):
+   `builders/run_unit.py` (`RunUnit` + `run_units_from_batch` / `run_units_from_session`):
    the run is extracted into units once (symbol resolved from the index-synced scenario for
    sim), and every section builder maps from the shared units — no per-source duplication, no
    flat builder variants. The aggregate handling (portfolio per-currency roll-up) is the next
@@ -263,3 +287,13 @@ the live coordinator can append later through the same sink. See
    **On disk:** the persisted report artifacts (JSON + CSV) now live in the run's **`io/`** subfolder
    (`<run_dir>/io/`, the `IO_SUBDIR` constant in `report_store`) — both pipelines write there and
    `ReportStore` reads from there; `events/`, `scenario_logs/` and the run logs stay at the run-dir root.
+8. **Shared coordinator + folder split (#403, structural) — DONE.** The units-derived DERIVE+PERSIST
+   sequence both coordinators copy-pasted (the 7 sections trade / order / portfolio / pending /
+   execution-stats / run-summary / worker-decision) was extracted into one `SharedReportCoordinator.derive_and_persist(units, io_dir)`
+   that returns a `UnifiedReports` DTO; each coordinator delegates the shared core and keeps only its
+   pipeline-specific sections + console + ledger (composition, not a base class). The `framework/reporting/`
+   home was re-split by stage: `run_reports/` → **`builders/`** (DERIVE), `io/` keeps the per-section
+   writers, and a new **`store/`** holds the read-master `report_store` + the cross-run `run_results_ledger`
+   + `run_provenance_builder`. Pure refactor — every `io/` artifact stays byte-identical (sim + live).
+   The live pipeline now also appends to the run-results ledger (5.a): `build_run_provenance_from_session`
+   mirrors the sim provenance, so a live session's `param_hash` is directly comparable to the backtest.

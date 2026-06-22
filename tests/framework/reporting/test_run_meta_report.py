@@ -7,7 +7,7 @@ from `BatchExecutionSummary`. Tested with REAL BatchExecutionSummary / SingleSce
 """
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.run_meta_report_builder import (
+from python.framework.reporting.builders.run_meta_report_builder import (
     build_run_meta_report_from_batch)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario

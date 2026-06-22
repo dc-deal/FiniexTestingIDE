@@ -13,7 +13,7 @@ them via the now non-mutating `ProfilingData.from_dicts` (#398) — same path th
 
 from typing import Dict, Optional
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_profiling
+from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
     ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingReport, ProfilingUnitRow,
     WarmupPhaseRow)

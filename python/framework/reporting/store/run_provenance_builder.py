@@ -1,20 +1,25 @@
 """
 Run-provenance builder (#390) — assembles the ledger's per-run provenance.
 
-Composes `RunProvenance` from the finished batch + scenario set: the `param_hash`
-(fingerprint of the effective strategy_config), git state, component versions
-(resolved from the type strings via the factories), the full config snapshot, and the
-optional sweep tagging. Version resolution is best-effort — provenance must never crash
-the report phase (§33), so a lookup failure degrades to an empty version, not an error.
+Composes `RunProvenance` from a finished run: the `param_hash` (fingerprint of the
+effective strategy_config), git state, component versions (resolved from the type strings
+via the factories), the full config snapshot, and the optional sweep tagging. The sim
+variant reads the batch + scenario set; the live variant (`build_run_provenance_from_session`)
+reads the autotrader profile — its strategy_config has the same shape, so the param_hash is
+directly comparable to the backtest (sim/live parity in the ledger). Version resolution is
+best-effort — provenance must never crash the report phase (§33), so a lookup failure
+degrades to an empty version, not an error.
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.run_results_types import RunProvenance, SweepContext
@@ -81,6 +86,54 @@ def build_run_provenance(
         sweep_params=sweep_context.sweep_params if sweep_context else None,
         sweep_objective=sweep_context.objective if sweep_context else None,
         sweep_maximize=sweep_context.maximize if sweep_context else None,
+    )
+
+
+def build_run_provenance_from_session(
+    config: AutoTraderConfig,
+    run_dir: Path,
+    run_timestamp: datetime,
+    warnings_errors_report: Optional[WarningsErrorsReport] = None,
+) -> RunProvenance:
+    """
+    Build a live session's provenance bundle for the results ledger.
+
+    The live counterpart to build_run_provenance: the profile's strategy_config has the same
+    shape as a sim scenario's, so the param_hash + component versions are directly comparable
+    to the backtest. A live session is never swept (sweep tagging stays None); an emergency
+    (total failure) → ledger status 'error'.
+
+    Args:
+        config: The autotrader profile config (strategy_config + name + symbol + broker)
+        run_dir: The session's run directory (its name is the run_id)
+        run_timestamp: The session start (UTC)
+        warnings_errors_report: The session's warnings/errors report — a total failure
+            (emergency) decides status 'error'; None → 'ok'
+
+    Returns:
+        The provenance bundle
+    """
+    strategy_config = config.strategy_config or {}
+    decision_version, worker_versions = _resolve_versions(strategy_config)
+    git = get_git_info()
+    status, error = _run_status(warnings_errors_report)
+
+    return RunProvenance(
+        param_hash=generate_config_fingerprint(strategy_config),
+        status=status,
+        error=error,
+        run_id=run_dir.name,
+        run_timestamp=run_timestamp,
+        scenario_set_name=config.name or config.symbol,
+        git_commit=git.commit if git else None,
+        git_branch=git.branch if git else None,
+        git_dirty=git.dirty if git else False,
+        decision_logic_type=strategy_config.get('decision_logic_type', ''),
+        decision_version=decision_version,
+        worker_versions=worker_versions,
+        config_snapshot=json.dumps(strategy_config, sort_keys=True),
+        symbols=[config.symbol],
+        data_broker_type=config.broker_type,
     )
 
 

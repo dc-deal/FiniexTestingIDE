@@ -88,8 +88,8 @@ combination gets a unique run directory.
 
 ## The Run Results Ledger (`data/run_results/`)
 
-A persistent, accumulating store — **every** sim run appends to it, not only sweeps — so it doubles as
-a complete run history. It is a flat directory with **one parquet fragment per run**
+A persistent, accumulating store — **every** run appends to it (sim batch + live session, #403 · 5.a),
+not only sweeps — so it doubles as a complete run history. It is a flat directory with **one parquet fragment per run**
 (`<scenario_set>_<run_id>.parquet`); parquet is immutable, so one file per run is the lock-free append.
 Read the whole directory back as one table.
 
@@ -173,11 +173,11 @@ Launch entries: `🎛 Optimization: Cautious MACD Grid` (run) and `🧩 Pytest: 
 
 ## Scope (v0) and follow-ups
 
-- **In:** grid search, the cross-run ledger (sim pipeline), objective ranking, one-factor sensitivity.
+- **In:** grid search, the cross-run ledger (both pipelines — sim batch + live session, #403 · 5.a),
+  objective ranking, one-factor sensitivity.
 - **Out (follow-ups):** smarter search (random / Bayesian / genetic) = **#32** (new generators on the
   same seam); walk-forward / out-of-sample splitting = **#367**; variance / ANOVA parameter importance
-  + worker-contribution = **#31**; composite / weighted objective; the live pipeline appending to the
-  ledger; per-symbol ledger rows for regime analysis.
+  + worker-contribution = **#31**; composite / weighted objective; per-symbol ledger rows for regime analysis.
 
 ## Tests
 

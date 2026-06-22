@@ -6,7 +6,7 @@ Profile Run into per-symbol disposition facts + ratios. Tested with REAL BatchEx
 ProcessResult / BlockBoundaryReport fixtures (the generator-mode lookup is a trivial dict, tested
 via the 'unknown' fallback).
 """
-from python.framework.reporting.run_reports.block_splitting_report_builder import (
+from python.framework.reporting.builders.block_splitting_report_builder import (
     build_block_splitting_report_from_batch)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import (

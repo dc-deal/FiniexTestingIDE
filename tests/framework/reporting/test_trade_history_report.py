@@ -9,8 +9,8 @@ reason / time range), distinct symbols, and the empty case.
 
 from datetime import datetime, timedelta, timezone
 
-from python.framework.reporting.run_reports.run_unit import RunUnit
-from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason, CloseType, EntryType, TradeRecord)
 from python.framework.types.trading_env_types.order_types import OrderDirection

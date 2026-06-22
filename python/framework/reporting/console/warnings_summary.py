@@ -16,7 +16,7 @@ class WarningsSummary(AbstractBatchSummarySection):
     """
     Warnings & errors section, rendered from the unified model.
 
-    Renders only when at least one error or warning is present.
+    Always rendered (both pipelines) — a clean zero-state line when there are none.
     Always displayed regardless of summary_detail flag.
     """
 
@@ -33,7 +33,7 @@ class WarningsSummary(AbstractBatchSummarySection):
 
     def render(self, renderer: ConsoleRenderer) -> None:
         """
-        Render the section. Skips entirely if there are no errors and no warnings.
+        Render the section — always, with a clean zero-state when there are none.
 
         Args:
             renderer: Console renderer for formatting
@@ -53,10 +53,10 @@ class WarningsSummary(AbstractBatchSummarySection):
         for warning in (w for w in self._report.warnings if w.tier == 'minor'):
             blocks.append(renderer.gray(warning.message))
 
-        if not blocks:
-            return
-
         self._render_section_header(renderer)
+        if not blocks:
+            print(renderer.green("✅ No warnings or errors"))
+            return
         for i, block in enumerate(blocks):
             print(block)
             if i < len(blocks) - 1:
