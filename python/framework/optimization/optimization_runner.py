@@ -62,7 +62,9 @@ class OptimizationRunner:
         for index, combo in enumerate(combos):
             label = f"__{sweep_id}_c{index:03d}"
             cfg = apply_overrides(base, combo, label)
-            sweep_context = SweepContext(sweep_id=sweep_id, sweep_params=combo)
+            sweep_context = SweepContext(
+                sweep_id=sweep_id, sweep_params=combo,
+                objective=spec.objective, maximize=spec.maximize)
             vLog.info(f"  [{index + 1}/{len(combos)}] {combo}")
             initialize_batch_and_run(cfg, self._app_config, sweep_context=sweep_context)
 

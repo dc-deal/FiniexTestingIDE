@@ -9,6 +9,7 @@ most). The sensitivity is OFAT — it ignores interactions and makes no signific
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from python.framework.types.api.report_types import RunResultRow
@@ -20,6 +21,62 @@ class ParamSensitivity:
     param: str
     influence: float                # spread of the per-level mean objective (max - min)
     level_means: Dict[str, float]   # level value (as string) → mean objective at that level
+
+
+@dataclass
+class SweepSummary:
+    """One sweep's at-a-glance line (for the sweep list), derived from its ledger rows."""
+    sweep_id: str
+    started: Optional[datetime]      # earliest run start in the sweep (UTC)
+    duration_s: float               # last - first run start (no per-run end in the ledger)
+    run_count: int                  # distinct combinations (run_ids)
+    ok_count: int
+    error_count: int
+    decision_logic_type: str
+    decision_version: str
+    base_config: str                # the swept scenario set (sweep tag stripped)
+    symbols: List[str]
+    objective: str
+    maximize: bool
+
+
+def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
+    """
+    Group ledger rows by sweep and summarize each — for the sweep list view.
+
+    Args:
+        rows: All ledger rows (non-sweep rows, sweep_id is None, are ignored)
+
+    Returns:
+        One SweepSummary per sweep, ordered by sweep_id (timestamp-based → chronological)
+    """
+    groups: Dict[str, List[RunResultRow]] = {}
+    for row in rows:
+        if row.sweep_id:
+            groups.setdefault(row.sweep_id, []).append(row)
+
+    summaries: List[SweepSummary] = []
+    for sweep_id, group in groups.items():
+        stamps = sorted(datetime.fromisoformat(r.run_timestamp) for r in group if r.run_timestamp)
+        run_ids = {r.run_id for r in group}
+        error_ids = {r.run_id for r in group if r.status == 'error'}
+        head = group[0]
+        summaries.append(SweepSummary(
+            sweep_id=sweep_id,
+            started=stamps[0] if stamps else None,
+            duration_s=(stamps[-1] - stamps[0]).total_seconds() if len(stamps) > 1 else 0.0,
+            run_count=len(run_ids),
+            ok_count=len(run_ids) - len(error_ids),
+            error_count=len(error_ids),
+            decision_logic_type=head.decision_logic_type,
+            decision_version=head.decision_version,
+            base_config=head.scenario_set_name.split('__', 1)[0],
+            symbols=head.symbols,
+            objective=head.sweep_objective or '',
+            maximize=head.sweep_maximize if head.sweep_maximize is not None else True,
+        ))
+
+    return sorted(summaries, key=lambda s: s.sweep_id)
 
 
 def rank(

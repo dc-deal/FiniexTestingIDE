@@ -149,13 +149,23 @@ the run directory is later deleted.
 # run a sweep (resolves configs/sweeps/<name>.json or a path)
 python python/cli/optimization_cli.py run cautious_macd_grid.json
 
+# list every recorded sweep as a one-liner (start · duration · runs · algo · objective)
+python python/cli/optimization_cli.py list
+
 # rank + sensitivity for a finished sweep
 python python/cli/optimization_cli.py report sweep_20260621_223000
 python python/cli/optimization_cli.py report sweep_20260621_223000 --objective net_pnl --top 5
 python python/cli/optimization_cli.py report <sweep_id> --objective max_drawdown --minimize
 ```
 
-The same sweep can be re-ranked by a different objective after the fact — the ledger keeps every KPI.
+`report` **defaults to the sweep spec's own objective + direction** (recorded in the ledger as
+`sweep_objective` / `sweep_maximize`), so `report <sweep_id>` ranks by what the spec declared.
+`--objective` / `--minimize` override it; the ledger keeps every KPI, so the same sweep can be
+re-ranked by any objective after the fact.
+
+The report header also prints sweep-level provenance from the ledger columns: base config + symbols +
+broker, the decision logic + worker versions (ComponentMetadata), the git commit, and the sweep span +
+duration (derived from the per-run start timestamps).
 
 Launch entries: `🎛 Optimization: Cautious MACD Grid` (run) and `🧩 Pytest: Parameter Optimization (All)`.
 

@@ -17,6 +17,8 @@ class SweepContext:
     """Sweep tagging threaded into a single combination's batch run."""
     sweep_id: str
     sweep_params: Dict[str, Any]    # the combination's concrete grid point {path: value}
+    objective: str = 'expectancy'   # the spec's ranking objective (recorded so report defaults to it)
+    maximize: bool = True           # the spec's ranking direction
 
 
 @dataclass
@@ -39,3 +41,5 @@ class RunProvenance:
     data_broker_type: str
     sweep_id: Optional[str] = None      # null for non-sweep runs
     sweep_params: Optional[Dict[str, Any]] = None
+    sweep_objective: Optional[str] = None    # the sweep spec's objective (report defaults to it)
+    sweep_maximize: Optional[bool] = None    # the sweep spec's rank direction

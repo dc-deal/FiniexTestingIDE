@@ -9,11 +9,12 @@ ranking/sensitivity calculation lives in optimization_analysis.
 
 import csv
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.optimization.optimization_analysis import rank, sensitivity
+from python.framework.optimization.optimization_analysis import rank, sensitivity, summarize_sweeps
 from python.framework.reporting.io.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
 
@@ -21,10 +22,36 @@ from python.framework.types.api.report_types import RunResultRow
 SWEEP_REPORT_DIR = Path('logs/sweeps')
 
 
+def render_sweep_list() -> None:
+    """Print every recorded sweep as an informative one-liner (most recent last)."""
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    summaries = summarize_sweeps(ledger.read_rows())
+
+    print('\n' + '=' * 80)
+    print(f"🎛 PARAMETER OPTIMIZATION — Sweeps ({len(summaries)})")
+    print('=' * 80)
+    if not summaries:
+        print("No sweeps recorded yet. Run one: optimization_cli.py run <spec>.json")
+        print('=' * 80 + '\n')
+        return
+
+    for s in summaries:
+        started = f"{s.started:%Y-%m-%d %H:%M}" if s.started else '—'
+        duration = '~' + _fmt_duration(s.duration_s)
+        runs = f"{s.run_count} runs ({s.ok_count} ok" \
+               + (f", {s.error_count} err" if s.error_count else '') + ')'
+        objective = f"{s.objective}{'↑' if s.maximize else '↓'}" if s.objective else '—'
+        symbols = ','.join(s.symbols) if s.symbols else '—'
+        print(f"{s.sweep_id}  {started} UTC  {duration:>8}  {runs:<18}  "
+              f"obj={objective:<14}  {s.decision_logic_type} v{s.decision_version}  "
+              f"{s.base_config}·{symbols}")
+    print('=' * 80 + '\n')
+
+
 def render_sweep_report(
     sweep_id: str,
-    objective: str = 'expectancy',
-    maximize: bool = True,
+    objective: Optional[str] = None,
+    maximize: Optional[bool] = None,
     objective_currency: Optional[str] = None,
     top_n: int = 10,
 ) -> None:
@@ -33,8 +60,8 @@ def render_sweep_report(
 
     Args:
         sweep_id: The sweep to report on
-        objective: Ledger KPI field to rank by
-        maximize: Rank direction (False e.g. for max_drawdown)
+        objective: Ledger KPI field to rank by (None = the sweep spec's own objective)
+        maximize: Rank direction (None = the sweep spec's own direction; False e.g. for max_drawdown)
         objective_currency: Restrict to this currency (needed when > 1 currency)
         top_n: How many top combinations to print
     """
@@ -50,11 +77,20 @@ def render_sweep_report(
         print('=' * 80 + '\n')
         return
 
+    # Default objective + direction to what the sweep's spec declared (recorded in the ledger),
+    # so `report <sweep_id>` ranks by the spec, not a hardcoded fallback. Explicit args override.
+    if objective is None:
+        objective = next((r.sweep_objective for r in rows if r.sweep_objective), None) or 'expectancy'
+    if maximize is None:
+        spec_maximize = next((r.sweep_maximize for r in rows if r.sweep_maximize is not None), None)
+        maximize = spec_maximize if spec_maximize is not None else True
+
     error_rows = [r for r in rows if r.status == 'error']
     direction = 'maximize' if maximize else 'minimize'
     print(f"Objective: {objective} ({direction})"
           + (f" | currency: {objective_currency}" if objective_currency else ''))
     print(f"Combinations: {len(rows)} ({len(rows) - len(error_rows)} ok, {len(error_rows)} errored)")
+    _print_header_meta(rows)
 
     ranked = rank(rows, objective, maximize, objective_currency)
     _print_ranking(ranked, objective, top_n)
@@ -64,6 +100,39 @@ def render_sweep_report(
     csv_path = _write_csv(ranked, sweep_id)
     print(f"\n📄 Ranked table → {csv_path}")
     print('=' * 80 + '\n')
+
+
+def _print_header_meta(rows: List[RunResultRow]) -> None:
+    """Print sweep-level provenance from the ledger header columns (config, versions, span)."""
+    r = rows[0]
+    base = r.scenario_set_name.split('__', 1)[0]   # strip the per-combo sweep tag
+    symbols = ', '.join(r.symbols) if r.symbols else '—'
+    workers = ', '.join(f"{n} v{v}" for n, v in sorted(r.worker_versions.items())) or '—'
+    code = (r.git_commit[:7] if r.git_commit else '—') + (' (dirty)' if r.git_dirty else '')
+    print(f"Base config:  {base}  ·  symbols: {symbols}  ·  broker: {r.data_broker_type}")
+    print(f"Decision:     {r.decision_logic_type} v{r.decision_version}")
+    print(f"Workers:      {workers}")
+    print(f"Code:         git {code}")
+
+    # Sweep span from the per-run start timestamps (the ledger has no per-run end), so the
+    # duration is first-start → last-start — the total minus the final run's own runtime.
+    stamps = sorted(datetime.fromisoformat(x.run_timestamp) for x in rows if x.run_timestamp)
+    if stamps:
+        span = (stamps[-1] - stamps[0]).total_seconds()
+        print(f"Sweep:        {len(rows)} runs  ·  {stamps[0]:%Y-%m-%d %H:%M:%S} → "
+              f"{stamps[-1]:%H:%M:%S} UTC  ·  ~{_fmt_duration(span)} (across run starts)")
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Compact h/m/s duration string (e.g. '3m 24s')."""
+    total = int(round(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
 
 
 def _print_ranking(ranked: List[RunResultRow], objective: str, top_n: int) -> None:

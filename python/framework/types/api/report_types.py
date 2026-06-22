@@ -340,6 +340,8 @@ class RunResultRow(BaseModel):
     run_timestamp: str                          # ISO-8601 UTC (stored verbatim)
     sweep_id: str | None = None
     sweep_params: dict[str, Any] | None = None   # the combination's concrete grid point
+    sweep_objective: str | None = None           # the sweep spec's objective (report defaults to it)
+    sweep_maximize: bool | None = None           # the sweep spec's rank direction
     scenario_set_name: str = ''
     git_commit: str | None = None
     git_branch: str | None = None

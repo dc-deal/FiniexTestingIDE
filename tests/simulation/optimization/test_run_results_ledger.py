@@ -91,6 +91,18 @@ def test_read_rows_nullable_fields(tmp_ledger, make_run_summary, make_provenance
     row = tmp_ledger.read_rows()[0]
     assert row.sweep_id is None
     assert row.sweep_params is None
+    assert row.sweep_objective is None
+    assert row.sweep_maximize is None
+
+
+def test_sweep_objective_persisted(tmp_ledger, make_run_summary, make_provenance):
+    """The sweep spec's objective + direction round-trip so report can default to them."""
+    tmp_ledger.append(make_run_summary(net_pnl=1.0), make_provenance(
+        run_id='r1', sweep_id='s', sweep_params={'decision_logic_config.x': 1},
+        sweep_objective='net_pnl', sweep_maximize=False))
+    row = tmp_ledger.read_rows()[0]
+    assert row.sweep_objective == 'net_pnl'
+    assert row.sweep_maximize is False        # False (not None) survives the round-trip
 
 
 def test_explicit_error_writes_error_row(tmp_ledger, make_run_summary, make_provenance):

@@ -25,6 +25,7 @@ from python.framework.types.run_results_types import RunProvenance
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
 LEDGER_COLUMNS: List[str] = [
     'param_hash', 'status', 'error', 'run_id', 'run_timestamp', 'sweep_id', 'sweep_params',
+    'sweep_objective', 'sweep_maximize',
     'scenario_set_name', 'git_commit', 'git_branch', 'git_dirty',
     'decision_logic_type', 'decision_version', 'worker_versions',
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
@@ -145,6 +146,8 @@ class RunResultsLedger:
             'run_timestamp': p.run_timestamp.isoformat(),
             'sweep_id': p.sweep_id,
             'sweep_params': json.dumps(p.sweep_params, sort_keys=True) if p.sweep_params else None,
+            'sweep_objective': p.sweep_objective,
+            'sweep_maximize': p.sweep_maximize,
             'scenario_set_name': p.scenario_set_name,
             'git_commit': p.git_commit,
             'git_branch': p.git_branch,

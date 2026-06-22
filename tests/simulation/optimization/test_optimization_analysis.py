@@ -1,8 +1,10 @@
 """Optimization analysis tests (#390) — ranking + one-factor sensitivity (typed rows)."""
 
+from datetime import datetime, timezone
+
 import pytest
 
-from python.framework.optimization.optimization_analysis import rank, sensitivity
+from python.framework.optimization.optimization_analysis import rank, sensitivity, summarize_sweeps
 
 
 @pytest.fixture
@@ -95,3 +97,49 @@ def test_error_rows_excluded_from_ranking(tmp_ledger, make_run_summary, make_pro
     sens = sensitivity(rows, 'net_pnl')
     # only the two ok levels (x=1, x=2) contribute; x=3 (error) never appears
     assert all(set(s.level_means) == {'1', '2'} for s in sens)
+
+
+def _utc(h, m, s):
+    return datetime(2026, 1, 1, h, m, s, tzinfo=timezone.utc)
+
+
+def test_summarize_sweeps(tmp_ledger, make_run_summary, make_provenance):
+    """summarize_sweeps groups rows per sweep with start/duration, run counts, algo, objective."""
+    # Sweep A: 2 ok runs, 10s apart, objective net_pnl
+    tmp_ledger.append(make_run_summary(net_pnl=1.0), make_provenance(
+        run_id='a0', scenario_set_name='base__sweep_A_c000', sweep_id='sweep_A',
+        sweep_params={'decision_logic_config.x': 1}, sweep_objective='net_pnl',
+        sweep_maximize=True, run_timestamp=_utc(0, 0, 0)))
+    tmp_ledger.append(make_run_summary(net_pnl=2.0), make_provenance(
+        run_id='a1', scenario_set_name='base__sweep_A_c001', sweep_id='sweep_A',
+        sweep_params={'decision_logic_config.x': 2}, sweep_objective='net_pnl',
+        sweep_maximize=True, run_timestamp=_utc(0, 0, 10)))
+    # Sweep B: 1 ok + 1 error, objective expectancy (minimize)
+    tmp_ledger.append(make_run_summary(net_pnl=5.0), make_provenance(
+        run_id='b0', scenario_set_name='base__sweep_B_c000', sweep_id='sweep_B',
+        sweep_params={'decision_logic_config.x': 1}, sweep_objective='expectancy',
+        sweep_maximize=False, run_timestamp=_utc(1, 0, 0)))
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='b1', scenario_set_name='base__sweep_B_c001', sweep_id='sweep_B',
+        sweep_params={'decision_logic_config.x': 9}, status='error', error='x out of range',
+        sweep_objective='expectancy', sweep_maximize=False, run_timestamp=_utc(1, 0, 5)))
+
+    summaries = {s.sweep_id: s for s in summarize_sweeps(tmp_ledger.read_rows())}
+    assert set(summaries) == {'sweep_A', 'sweep_B'}
+
+    a = summaries['sweep_A']
+    assert (a.run_count, a.ok_count, a.error_count) == (2, 2, 0)
+    assert a.duration_s == 10.0
+    assert a.base_config == 'base'                          # per-combo sweep tag stripped
+    assert a.objective == 'net_pnl' and a.maximize is True
+    assert a.decision_logic_type == 'CORE/aggressive_trend'
+
+    b = summaries['sweep_B']
+    assert (b.run_count, b.ok_count, b.error_count) == (2, 1, 1)
+    assert b.maximize is False
+
+
+def test_summarize_sweeps_ignores_non_sweep_runs(tmp_ledger, make_run_summary, make_provenance):
+    """A plain (non-sweep) run is not a sweep → never appears in the sweep list."""
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='plain'))  # no sweep_id
+    assert summarize_sweeps(tmp_ledger.read_rows()) == []

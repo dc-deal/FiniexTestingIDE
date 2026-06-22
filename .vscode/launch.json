@@ -853,6 +853,21 @@
             }
         },
         {
+            "name": "✨ Optimization: List Sweeps",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "args": [
+                "list"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08b_parameter_optimization",
+                "order": 2
+            }
+        },
+        {
             "name": "✨ Optimization: Report (prompt sweep id)",
             "type": "debugpy",
             "request": "launch",
@@ -865,7 +880,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "08b_parameter_optimization",
-                "order": 2
+                "order": 3
             }
         },
         // ====================================================

@@ -79,6 +79,8 @@ def build_run_provenance(
         data_broker_type=','.join(sorted({s.data_broker_type for s in scenarios})),
         sweep_id=sweep_context.sweep_id if sweep_context else None,
         sweep_params=sweep_context.sweep_params if sweep_context else None,
+        sweep_objective=sweep_context.objective if sweep_context else None,
+        sweep_maximize=sweep_context.maximize if sweep_context else None,
     )
 
 

@@ -13,8 +13,9 @@ Usage:
 import argparse
 import sys
 import traceback
+from typing import Optional
 
-from python.framework.optimization.optimization_report import render_sweep_report
+from python.framework.optimization.optimization_report import render_sweep_list, render_sweep_report
 from python.framework.optimization.optimization_runner import OptimizationRunner
 
 
@@ -35,8 +36,8 @@ class OptimizationCli:
     def cmd_report(
         self,
         sweep_id: str,
-        objective: str,
-        minimize: bool,
+        objective: Optional[str],
+        minimize: Optional[bool],
         currency: str,
         top: int,
     ):
@@ -45,18 +46,22 @@ class OptimizationCli:
 
         Args:
             sweep_id: The sweep to report on
-            objective: Ledger KPI column to rank by
-            minimize: Rank ascending instead of descending
+            objective: Ledger KPI column to rank by (None = the sweep spec's objective)
+            minimize: Rank ascending instead of descending (None = the sweep spec's direction)
             currency: Restrict to this account currency (None = single-currency runs)
             top: How many top combinations to print
         """
         render_sweep_report(
             sweep_id,
             objective=objective,
-            maximize=not minimize,
+            maximize=None if minimize is None else not minimize,
             objective_currency=currency,
             top_n=top,
         )
+
+    def cmd_list(self):
+        """List every recorded sweep as a one-liner (start, duration, algo, runs, objective)."""
+        render_sweep_list()
 
 
 def main():
@@ -74,15 +79,22 @@ def main():
     run_parser.add_argument('spec', help='Sweep spec filename or path (e.g. cautious_macd_grid.json)')
 
     # ─────────────────────────────────────────────────────────────────────────
+    # LIST command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser('list', help='List every recorded sweep (one-liner each)')
+
+    # ─────────────────────────────────────────────────────────────────────────
     # REPORT command
     # ─────────────────────────────────────────────────────────────────────────
     report_parser = subparsers.add_parser(
         'report', help='Rank + sensitivity for a sweep from the run-results ledger')
     report_parser.add_argument('sweep_id', help='The sweep id to report on')
     report_parser.add_argument(
-        '--objective', default='expectancy', help='KPI to rank by (default: expectancy)')
+        '--objective', default=None,
+        help="KPI to rank by (default: the sweep spec's own objective)")
     report_parser.add_argument(
-        '--minimize', action='store_true', help='Rank ascending (e.g. for max_drawdown)')
+        '--minimize', action='store_true', default=None,
+        help="Rank ascending (e.g. for max_drawdown); default: the sweep spec's direction")
     report_parser.add_argument(
         '--currency', default=None, help='Restrict to this account currency')
     report_parser.add_argument(
@@ -99,6 +111,8 @@ def main():
     try:
         if args.command == 'run':
             cli.cmd_run(args.spec)
+        elif args.command == 'list':
+            cli.cmd_list()
         elif args.command == 'report':
             cli.cmd_report(
                 args.sweep_id, args.objective, args.minimize, args.currency, args.top)

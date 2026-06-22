@@ -42,14 +42,16 @@ def make_provenance():
     """Factory: a RunProvenance with sensible defaults + overridable status / sweep tagging."""
     def _make(param_hash='hash', run_id='20260101_000000',
               scenario_set_name='set', sweep_id=None, sweep_params=None,
-              status='ok', error=None):
+              status='ok', error=None, sweep_objective=None, sweep_maximize=None,
+              run_timestamp=None):
         return RunProvenance(
             param_hash=param_hash, status=status, error=error, run_id=run_id,
-            run_timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            run_timestamp=run_timestamp or datetime(2026, 1, 1, tzinfo=timezone.utc),
             scenario_set_name=scenario_set_name, git_commit='abc1234',
             git_branch='main', git_dirty=False,
             decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
             worker_versions={'rsi_fast': '1.0.0'}, config_snapshot='{}',
             symbols=['BTCUSD'], data_broker_type='kraken_spot',
-            sweep_id=sweep_id, sweep_params=sweep_params)
+            sweep_id=sweep_id, sweep_params=sweep_params,
+            sweep_objective=sweep_objective, sweep_maximize=sweep_maximize)
     return _make
