@@ -14,7 +14,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
-from python.framework.reporting.io.report_store import IO_SUBDIR
+from python.framework.reporting.store.report_store import IO_SUBDIR
 
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
@@ -115,6 +115,8 @@ class TestAutotraderMockSession:
         assert len(report.units) == 1
         assert report.units[0].symbols[0].symbol == 'BTCUSD'
 
-        # Compact broker line appears in the post-session summary
+        # The broker configuration section appears in the post-session summary (#403 Phase 2:
+        # the live console renders the shared broker table, like sim).
         summary = (run_dir / 'autotrader_summary.log').read_text()
-        assert 'Broker:' in summary
+        assert 'BROKER CONFIGURATION' in summary
+        assert 'Company: Kraken' in summary

@@ -8,8 +8,8 @@ shared aggregator). Pure + fixture-testable.
 
 from typing import List
 
-from python.framework.reporting.run_reports.report_aggregators import aggregate_execution_totals
-from python.framework.reporting.run_reports.run_unit import RunUnit
+from python.framework.reporting.builders.report_aggregators import aggregate_execution_totals
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import ExecutionStatsReport, ExecutionStatsRow
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 

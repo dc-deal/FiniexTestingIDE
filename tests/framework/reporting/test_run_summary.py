@@ -5,7 +5,7 @@ Composes the cross-section KPI model from the section reports (portfolio aggrega
 trade analytics + execution totals) — no re-derivation. Per-currency join + global counts.
 """
 
-from python.framework.reporting.run_reports.run_summary_builder import build_run_summary
+from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioReport,
     PortfolioUnitRow, TradeAnalytics, TradeHistoryReport)

@@ -16,7 +16,7 @@ from contextlib import redirect_stdout
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.console.broker_summary import BrokerSummary
-from python.framework.reporting.run_reports.broker_report_builder import (
+from python.framework.reporting.builders.broker_report_builder import (
     build_broker_report_from_batch, build_broker_report_from_session)
 from python.framework.types.api.report_types import (
     BrokerInfoRow, BrokerReport, BrokerSymbolRow)

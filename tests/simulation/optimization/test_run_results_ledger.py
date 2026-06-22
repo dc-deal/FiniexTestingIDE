@@ -1,6 +1,6 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
-from python.framework.reporting.io.run_results_ledger import LEDGER_COLUMNS
+from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 
 
 def test_append_then_read_roundtrip(tmp_ledger, make_run_summary, make_provenance):

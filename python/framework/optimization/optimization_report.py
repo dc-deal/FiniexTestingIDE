@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.optimization.optimization_analysis import rank, sensitivity, summarize_sweeps
-from python.framework.reporting.io.run_results_ledger import RunResultsLedger
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
 
 # Where the human-facing ranked CSV lands (run output, not the ledger dir).

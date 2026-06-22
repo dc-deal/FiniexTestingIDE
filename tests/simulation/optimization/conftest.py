@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from python.framework.reporting.io.run_results_ledger import RunResultsLedger
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.run_results_types import RunProvenance
 

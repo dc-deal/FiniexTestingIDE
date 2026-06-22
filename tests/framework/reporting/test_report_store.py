@@ -15,7 +15,7 @@ from python.framework.reporting.io.execution_stats_report_io import (
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.report_store import IO_SUBDIR, ReportStore
+from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
 from python.framework.reporting.io.trade_history_report_io import (

@@ -9,9 +9,9 @@ run required), built into RunUnits — the units must tag the unit name correctl
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.run_reports.run_unit import (
+from python.framework.reporting.builders.run_unit import (
     run_units_from_batch, run_units_from_session)
-from python.framework.reporting.run_reports.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (

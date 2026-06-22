@@ -1,6 +1,8 @@
 """
-FiniexTestingIDE - Executive Summary
-One-screen overview of batch execution results
+FiniexTestingIDE - Sim Executive Summary
+One-screen overview of batch execution results — the sim pipeline's closing block of the unified
+end-of-run console (the counterpart to LiveSessionSummary). The user-facing heading stays
+"🎯 EXECUTIVE SUMMARY".
 
 Provides comprehensive summary:
 - Execution results (success rate, timing with warmup/tickrun split)
@@ -24,7 +26,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 
-class ExecutiveSummary(AbstractBatchSummarySection):
+class SimExecutiveSummary(AbstractBatchSummarySection):
     """
     Generates executive summary for batch execution.
 

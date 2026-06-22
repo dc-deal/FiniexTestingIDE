@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_results_types import RunProvenance
 
@@ -197,6 +198,25 @@ class RunResultsLedger:
             if column not in row:       # all KPI / order-count columns → 0
                 row[column] = 0
         return row
+
+
+def append_run_to_ledger(
+        run_summary: RunSummary, provenance: Optional[RunProvenance]) -> None:
+    """
+    Append a finished run to the persistent run-results ledger (#390).
+
+    The shared tail both pipelines use: resolves the ledger directory from app config and
+    appends the run's RunSummary + provenance. No-ops when there is no provenance (an empty
+    sim batch yields none). The provenance is built pipeline-side (from_batch / from_session).
+
+    Args:
+        run_summary: The run's cross-section KPI summary
+        provenance: The run's provenance bundle (None → skip)
+    """
+    if provenance is None:
+        return
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    ledger.append(run_summary, provenance)
 
 
 def _none_if_missing(value: Any) -> Any:

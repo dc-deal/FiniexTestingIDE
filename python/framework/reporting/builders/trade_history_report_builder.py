@@ -13,9 +13,9 @@ here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 from datetime import datetime
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.report_aggregators import (
+from python.framework.reporting.builders.report_aggregators import (
     aggregate_trade_analytics, aggregate_trade_scenario_totals)
-from python.framework.reporting.run_reports.run_unit import RunUnit
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     ExecutionRow, TradeHistoryReport, TradeHistoryRow)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord

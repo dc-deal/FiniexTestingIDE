@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from python.framework.exceptions.api_errors import ApiException
-from python.framework.reporting.io.report_store import ReportStore
+from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
     PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,

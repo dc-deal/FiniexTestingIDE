@@ -78,6 +78,7 @@ class AutotraderMain:
         self._tick_loop_started = False
         self._emergency_reason: Optional[str] = None
         self._session_start: Optional[float] = None
+        self._run_timestamp: Optional[datetime] = None
 
         # Tick communication (Threading model 8.a)
         self._tick_queue: queue.Queue = queue.Queue()
@@ -139,6 +140,7 @@ class AutotraderMain:
         """
         self._session_start = time.monotonic()
         run_timestamp = datetime.now(timezone.utc)
+        self._run_timestamp = run_timestamp
 
         # === LOGGERS ===
         self._global_logger, self._session_logger, self._summary_logger, self._run_dir = (
@@ -554,6 +556,7 @@ class AutotraderMain:
         AutotraderReportCoordinator(
             result=result,
             run_dir=self._run_dir,
+            run_timestamp=self._run_timestamp,
             config=self._config,
             decision_logic=self._decision_logic,
             summary_logger=self._summary_logger,

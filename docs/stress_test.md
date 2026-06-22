@@ -106,11 +106,11 @@ Active stress tests are prominently displayed in batch reports to prevent confus
 
 **BatchSummary (top banner):** Red warning banner at the very top of the report output, before any results. Shows active stress test types with parameters.
 
-**ExecutiveSummary (detailed warning):** Grouped by config signature — scenarios sharing the same stress test config are listed together. Scenarios with overridden configs appear as separate groups.
+**SimExecutiveSummary (detailed warning):** Grouped by config signature — scenarios sharing the same stress test config are listed together. Scenarios with overridden configs appear as separate groups.
 
 Both renderers derive stress test status from `SingleScenario.stress_test_config` via `StressTestConfig.from_dict()`. New stress test types are picked up automatically once added to `StressTestConfig.has_any_enabled()`.
 
-Key files: `framework/batch/batch_report_coordinator.py`, `framework/reporting/console/executive_summary.py`
+Key files: `framework/batch/batch_report_coordinator.py`, `framework/reporting/console/sim_executive_summary.py`
 
 ## Determinism
 

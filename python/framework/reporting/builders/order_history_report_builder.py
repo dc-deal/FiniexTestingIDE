@@ -9,7 +9,7 @@ status) live here so console, CSV, and API share one filter path.
 
 from typing import List, Optional
 
-from python.framework.reporting.run_reports.run_unit import RunUnit
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
 from python.framework.types.trading_env_types.order_types import OrderResult
 

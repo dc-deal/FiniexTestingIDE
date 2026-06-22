@@ -29,6 +29,26 @@ os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 
 import pytest
 
+from python.configuration.app_config_manager import AppConfigManager
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_run_results_ledger(tmp_path_factory):
+    """
+    Redirect the run-results ledger to a throwaway dir for the whole test session.
+
+    End-to-end runs (the AutoTrader integration sessions, any full report coordinator) append
+    to the ledger via AppConfigManager().get_run_results_path(); without this the real
+    data/run_results/ would collect test fragments. Tests must never write production data
+    (§34) — the optimization unit tests isolate via their own tmp_ledger; this covers the
+    coordinator-driven writes globally.
+    """
+    ledger_dir = tmp_path_factory.mktemp('run_results_ledger')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_run_results_path', lambda self: str(ledger_dir))
+    yield
+    mp.undo()
+
 
 def pytest_collection_modifyitems(items):
     """Auto-apply pipeline domain marks based on test file path."""
