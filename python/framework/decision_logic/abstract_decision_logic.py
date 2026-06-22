@@ -196,6 +196,10 @@ class AbstractDecisionLogic(ABC):
         """
         Validate config against parameter schema (no instance needed).
 
+        Rejects unknown config keys — decision_logic_config is pure schema parameters
+        (no structural keys), so any non-schema key is a typo that would otherwise be
+        silently ignored at runtime.
+
         Called in Phase 0 (static) and Phase 6 (factory).
 
         Args:
@@ -205,11 +209,9 @@ class AbstractDecisionLogic(ABC):
         Returns:
             List of warning messages
         """
-        schema = cls.get_parameter_schema()
-        if not schema:
-            return []
         return validate_parameters(
-            config, schema, strict, context_name=cls.__name__
+            config, cls.get_parameter_schema(), strict,
+            context_name=cls.__name__, reserved_keys=set(),
         )
 
     def execute_decision(

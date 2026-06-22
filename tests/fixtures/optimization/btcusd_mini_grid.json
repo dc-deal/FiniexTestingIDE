@@ -1,0 +1,9 @@
+{
+  "base_scenario_set": "tests/fixtures/optimization/btcusd_mini_set.json",
+  "objective": "net_pnl",
+  "maximize": true,
+  "grid": {
+    "decision_logic_config.min_confidence": [0.3, 0.5],
+    "decision_logic_config.bollinger_extremes": [0.2, 0.3]
+  }
+}

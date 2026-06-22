@@ -6,10 +6,11 @@ ENTRY POINT: Initializes logger with auto-init via bootstrap_logger
 """
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
+from python.framework.types.run_results_types import SweepContext
 from python.scenario.generator.profile_loader import ProfileLoader
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
@@ -129,7 +130,22 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
         )
 
 
-def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_config_loader: AppConfigManager):
+def initialize_batch_and_run(
+    scenario_config_data: LoadedScenarioConfig,
+    app_config_loader: AppConfigManager,
+    sweep_context: SweepContext = None,
+) -> Optional[str]:
+    """
+    Build the scenario set, run the batch, and generate its report.
+
+    Args:
+        scenario_config_data: The loaded (possibly override-applied) scenario config
+        app_config_loader: Application configuration
+        sweep_context: Optional sweep tagging when run as a Parameter Optimization combination
+
+    Returns:
+        The run id (run directory name), or None if the run failed
+    """
     try:
         # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(scenario_config_data, app_config_loader)
@@ -155,9 +171,12 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
         report_coordinator = BatchReportCoordinator(
             batch_execution_summary=batch_execution_summary,
             scenario_set=scenario_set,
-            app_config=app_config_loader
+            app_config=app_config_loader,
+            sweep_context=sweep_context
         )
         report_coordinator.generate_and_log()
+
+        return scenario_set.logger.get_log_dir().name
 
     except FileNotFoundError as e:
         vLog.config_error(
@@ -170,3 +189,5 @@ def initialize_batch_and_run(scenario_config_data: LoadedScenarioConfig, app_con
             f"Unexpected error during strategy test",
             exception=e
         )
+
+    return None

@@ -37,6 +37,7 @@ see *Pipeline in detail* below.
 | Run summary | `framework/reporting/run_reports/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
 | IO | `framework/reporting/io/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,run_meta,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio,block_splitting}_report_io.py` | write the artifact(s); read back + filter (the API path) |
 | Store | `framework/reporting/io/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| Ledger | `framework/reporting/io/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `data/run_results/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over (provenance via `run_provenance_builder.py`). See [Parameter Optimization System](parameter_optimization_system.md) |
 | Console | `framework/reporting/console/*_summary.py` (+ `executive_summary` / `execution_header_summary` / `block_splitting_disposition`) | the **PRESENT** sub-presenters, orchestrated by `BatchReportCoordinator` (the former `BatchSummary`, folded into the coordinator) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`, derives + writes the artifacts + renders the console |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`, writes the same artifacts + renders the post-session console |
@@ -175,6 +176,13 @@ reports and persists them into its run directory:
 
 The `ReportStore` resolves runs at `<logs_root>/{scenario_sets,autotrader}/<owner>/<run_id>/`, so
 the API serves either pipeline's run by `run_id`.
+
+**Cross-run ledger (#390).** Beyond the per-run artifacts, `BatchReportCoordinator` also appends the
+run to the **Run Results Ledger** (`data/run_results/`) via `RunResultsLedger.append()` — the same
+`RunSummary` model plus provenance. This is a separate, accumulating store (one parquet fragment per
+run), the substrate the Parameter Optimization system ranks over. v0 wires the sim pipeline only;
+the live coordinator can append later through the same sink. See
+[Parameter Optimization System](parameter_optimization_system.md).
 
 ## Consumers — same data everywhere
 

@@ -331,6 +331,14 @@ class BatchOrchestrator:
             logger=self._logger,
             broker_scenario_map=_broker_scenario_map,
         )
+
+        # 6. Validate strategy parameters against component schemas
+        #    (type / range / required / unknown keys — a typo'd param is otherwise
+        #    silently ignored at runtime)
+        ScenarioValidator.validate_scenario_parameters(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger,
+        )
         warmup_phases.append(WarmupPhaseEntry('Config Validation', time.time() - _phase_t))
 
         # ========================================================================

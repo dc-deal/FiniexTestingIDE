@@ -1,0 +1,19 @@
+{
+  "base_scenario_set": "cautious_macd_sandbox.json",
+  "objective": "net_pnl",
+  "maximize": true,
+  "grid": {
+    "decision_logic_config.sl_pips": [
+      100,
+      150,
+      200,
+      250
+    ],
+    "decision_logic_config.tp_pips": [
+      200,
+      300,
+      400,
+      500
+    ]
+  }
+}

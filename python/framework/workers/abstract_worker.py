@@ -4,7 +4,7 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_types import TradingContext
@@ -346,6 +346,10 @@ class AbstractWorker(ABC):
         """
         Validate config against parameter schema (no instance needed).
 
+        Rejects unknown config keys — a key that is neither a schema parameter nor a
+        reserved/structural key (recompute, include_current_bar, periods, …) is a typo
+        that would otherwise be silently ignored at runtime.
+
         Called in Phase 0 (static) and Phase 6 (factory).
 
         Args:
@@ -355,12 +359,26 @@ class AbstractWorker(ABC):
         Returns:
             List of warning messages
         """
-        schema = cls.get_parameter_schema()
-        if not schema:
-            return []
         return validate_parameters(
-            config, schema, strict, context_name=cls.__name__
+            config, cls.get_parameter_schema(), strict,
+            context_name=cls.__name__, reserved_keys=cls._reserved_config_keys(),
         )
+
+    @classmethod
+    def _reserved_config_keys(cls) -> Set[str]:
+        """
+        Non-schema config keys the framework accepts on a worker.
+
+        Covers the per-instance framework opt-ins (recompute, include_current_bar),
+        the factory-injected worker_type, and the type-specific structural fields
+        (e.g. 'periods' for INDICATOR) — none of which appear in get_parameter_schema().
+
+        Returns:
+            Set of reserved config keys that are not unknown parameters
+        """
+        reserved = {'recompute', 'include_current_bar', 'worker_type'}
+        reserved.update(cls.REQUIRED_CONFIG_FIELDS.get(cls.get_worker_type(), []))
+        return reserved
 
     @classmethod
     def validate_config(cls, config: Dict[str, Any]) -> None:

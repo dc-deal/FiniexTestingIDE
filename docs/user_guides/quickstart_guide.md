@@ -177,6 +177,11 @@ Workers return results via `WorkerResult(outputs={...})`. Decision Logics access
 - `true` (default): Abort on boundary violations
 - `false`: Warning only (experimental mode)
 
+The schema is also the parameter **contract**: a config key that is not in `get_parameter_schema()`
+(and is not a structural/reserved key) is rejected as an **unknown parameter** at pre-flight (Phase 0)
+— a typo like `min_confidenceX` fails the run instead of being silently ignored. Keys starting with
+`_` (e.g. `_comment`) are treated as config comments and always allowed.
+
 > **Note:** `periods` is validated separately by `validate_config()` (structural validation).
 > `get_parameter_schema()` covers algorithm parameters only (deviation, thresholds, etc.).
 

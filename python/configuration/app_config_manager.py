@@ -318,6 +318,15 @@ class AppConfigManager:
         """
         return self._app_config.paths.data_processed
 
+    def get_run_results_path(self) -> str:
+        """
+        Get the persistent run-results ledger directory from config.
+
+        Returns:
+            Path string for the run-results ledger directory
+        """
+        return self._app_config.paths.run_results
+
     def get_scenario_sets_path(self) -> str:
         """
         Get scenario sets config path from config.

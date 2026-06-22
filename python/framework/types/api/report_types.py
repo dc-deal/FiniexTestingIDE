@@ -7,6 +7,8 @@ surface. Pydantic (not @dataclass) because the API serializes it directly — sa
 exception as api_types.py.
 """
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -322,6 +324,52 @@ class RunSummary(BaseModel):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+
+
+class RunResultRow(BaseModel):
+    """
+    One run-results ledger row (#390), typed. The parsed projection of the parquet `LEDGER_COLUMNS`:
+    the JSON columns (`worker_versions`, `symbols`, `sweep_params`) are parsed back to structured types
+    so the optimization analysis + the (future) API read typed objects, not string-keyed DataFrame cells.
+    """
+    # Identity + provenance
+    param_hash: str
+    status: str = 'ok'                           # 'ok' | 'error' (error = no usable data, excluded from ranking)
+    error: str | None = None                     # failure reason when status == 'error'
+    run_id: str
+    run_timestamp: str                          # ISO-8601 UTC (stored verbatim)
+    sweep_id: str | None = None
+    sweep_params: dict[str, Any] | None = None   # the combination's concrete grid point
+    sweep_objective: str | None = None           # the sweep spec's objective (report defaults to it)
+    sweep_maximize: bool | None = None           # the sweep spec's rank direction
+    scenario_set_name: str = ''
+    git_commit: str | None = None
+    git_branch: str | None = None
+    git_dirty: bool = False
+    decision_logic_type: str = ''
+    decision_version: str = ''
+    worker_versions: dict[str, str] = {}
+    config_snapshot: str = ''                    # full resolved strategy_config (JSON string)
+    symbols: list[str] = []
+    data_broker_type: str = ''
+    currency: str = ''
+    # KPIs (the rankable objective fields)
+    net_pnl: float = 0.0
+    expectancy: float = 0.0
+    profit_factor: float = 0.0
+    win_rate: float = 0.0
+    max_drawdown: float = 0.0
+    total_fees: float = 0.0
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    avg_win_r: float = 0.0
+    avg_loss_r: float = 0.0
+    r_trade_count: int = 0
+    orders_sent: int = 0
+    orders_executed: int = 0
+    orders_rejected: int = 0
+    sl_tp_triggered: int = 0
 
 
 class RunMetaReport(BaseModel):

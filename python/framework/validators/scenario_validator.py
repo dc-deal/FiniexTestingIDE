@@ -13,8 +13,10 @@ Usage:
     ScenarioValidator.validate_account_currencies(scenarios, logger, broker_scenario_map)
 """
 
-from typing import Dict, List
+from typing import Any, Dict, List
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -436,3 +438,99 @@ class ScenarioValidator:
         """
         for scenario in scenarios:
             ScenarioValidator.validate_account_currency(scenario, logger, broker_scenario_map)
+
+    @staticmethod
+    def validate_scenario_parameters(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger,
+    ) -> None:
+        """
+        Validate each scenario's strategy parameters against the component schemas.
+
+        Resolves the decision-logic class and every configured worker class (class
+        resolution only — no instantiation) and validates their config against
+        get_parameter_schema(): type, range, required, AND unknown keys. A typo'd
+        parameter (e.g. 'min_confidenceX') is otherwise silently ignored at runtime,
+        so this gate is the only place it surfaces.
+
+        A class-resolution failure (unknown type, missing file) is left to the
+        requirements collector / factory, which report it with full context — so this
+        gate only flags genuine parameter errors, never produces a false exclusion.
+
+        Side Effects:
+        - Sets validation_result(is_valid=False) on scenarios with a bad parameter
+        - Does NOT raise — marks scenarios as invalid instead
+
+        Args:
+            scenarios: List of scenarios to validate
+            logger: Logger for the factories and error messages
+        """
+        decision_factory = DecisionLogicFactory(logger)
+        worker_factory = WorkerFactory(logger)
+
+        for scenario in scenarios:
+            strategy = scenario.strategy_config or {}
+            if not strategy.get('decision_logic_type', ''):
+                continue
+
+            errors = ScenarioValidator._collect_parameter_errors(
+                strategy, decision_factory, worker_factory)
+            if errors:
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=errors,
+                    warnings=[],
+                ))
+                for error in errors:
+                    logger.error(f"❌ {scenario.name}: {error}")
+
+    @staticmethod
+    def _collect_parameter_errors(
+        strategy: Dict[str, Any],
+        decision_factory: DecisionLogicFactory,
+        worker_factory: WorkerFactory,
+    ) -> List[str]:
+        """
+        Validate decision + worker params against their schemas; collect error messages.
+
+        Args:
+            strategy: The scenario's strategy_config (decision + worker types + configs)
+            decision_factory: Factory for resolving the decision-logic class
+            worker_factory: Factory for resolving worker classes
+
+        Returns:
+            List of parameter-error messages (empty if all params valid)
+        """
+        errors: List[str] = []
+        logic_type = strategy.get('decision_logic_type', '')
+        logic_config = strategy.get('decision_logic_config', {})
+        worker_instances = strategy.get('worker_instances', {})
+        workers_config = strategy.get('workers', {})
+
+        # --- Decision logic params ---
+        try:
+            logic_class, logic_source = decision_factory.resolve_logic_class(logic_type)
+        except Exception:
+            return errors  # resolution failures reported by requirements/factory
+
+        try:
+            logic_class.validate_parameter_schema(logic_config, strict=True)
+        except ValueError as e:
+            errors.append(str(e))
+
+        # --- Worker params (USER refs resolve against the logic's source dir) ---
+        worker_base_path = logic_source.parent if logic_source else None
+        for instance_name, worker_type in worker_instances.items():
+            try:
+                worker_class, _ = worker_factory.resolve_worker_class(
+                    worker_type, base_path=worker_base_path)
+            except Exception:
+                continue  # resolution failures reported by requirements/factory
+            try:
+                worker_class.validate_parameter_schema(
+                    workers_config.get(instance_name, {}), strict=True)
+            except ValueError as e:
+                errors.append(str(e))
+
+        return errors

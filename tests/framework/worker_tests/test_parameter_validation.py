@@ -263,3 +263,46 @@ class TestContextName:
                 {'fast_period': "bad"}, sample_schema,
                 strict=True, context_name="MacdWorker"
             )
+
+
+# ============================================
+# Unknown-Key Rejection (reserved_keys)
+# ============================================
+
+class TestUnknownKeyRejection:
+    """Unknown-key check is opt-in via reserved_keys (None = skip, set = enforce)."""
+
+    def test_unknown_skipped_when_reserved_none(self, sample_schema):
+        """reserved_keys=None (default) → unknown keys are NOT checked."""
+        config = {'fast_period': 12, 'typo_param': 1}
+        assert validate_parameters(config, sample_schema, strict=True) == []
+
+    def test_unknown_raises_when_enforced(self, sample_schema):
+        """reserved_keys given → an unknown key raises in strict mode."""
+        config = {'fast_period': 12, 'typo_param': 1}
+        with pytest.raises(ValueError, match="Unknown parameter 'typo_param'"):
+            validate_parameters(config, sample_schema, strict=True, reserved_keys=set())
+
+    def test_unknown_warns_non_strict(self, sample_schema):
+        """An unknown key warns (not raises) in non-strict mode."""
+        config = {'fast_period': 12, 'typo_param': 1}
+        warnings = validate_parameters(
+            config, sample_schema, strict=False, reserved_keys=set())
+        assert len(warnings) == 1 and "Unknown parameter 'typo_param'" in warnings[0]
+
+    def test_reserved_key_allowed(self, sample_schema):
+        """A key named in reserved_keys is accepted (e.g. a structural field)."""
+        config = {'fast_period': 12, 'periods': {'M5': 14}}
+        assert validate_parameters(
+            config, sample_schema, strict=True, reserved_keys={'periods'}) == []
+
+    def test_underscore_key_allowed(self, sample_schema):
+        """Keys starting with '_' are the config comment convention — always allowed."""
+        config = {'fast_period': 12, '_comment': 'tuning note'}
+        assert validate_parameters(
+            config, sample_schema, strict=True, reserved_keys=set()) == []
+
+    def test_empty_schema_with_reserved_checks_unknown(self):
+        """Empty schema + reserved_keys still rejects an unknown key (no early-out)."""
+        with pytest.raises(ValueError, match="Unknown parameter 'x'"):
+            validate_parameters({'x': 1}, {}, strict=True, reserved_keys=set())
