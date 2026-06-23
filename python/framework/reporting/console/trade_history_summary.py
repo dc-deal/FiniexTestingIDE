@@ -185,9 +185,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         shared_counts: Dict[str, int]
     ) -> None:
         """Print single trade row plus per-execution sub-lines (#330)."""
-        # Trade-event side (the close operation), colored by position direction.
-        side_text = (row.exit_side.upper().ljust(5) if row.exit_side
-                     else ('LONG ' if row.direction == 'long' else 'SHORT'))
+        # Position direction (LONG/SHORT); the close-transaction side is in the sub-lines.
+        side_text = 'LONG ' if row.direction == 'long' else 'SHORT'
         dir_str = renderer.green(side_text) if row.direction == 'long' else renderer.red(side_text)
 
         entry_type_str = _ENTRY_TYPE_GLYPH.get(row.entry_type, "?")
