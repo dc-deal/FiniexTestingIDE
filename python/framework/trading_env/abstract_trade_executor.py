@@ -42,6 +42,7 @@ from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
     create_spread_fee_from_tick
 )
+from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -129,6 +130,7 @@ class AbstractTradeExecutor(ABC):
             trade_history_max=trade_history_max,
             spot_mode=spot_mode,
             initial_balances=initial_balances,
+            clock_fn=self.get_current_time,
         )
 
         # Current market prices
@@ -744,7 +746,7 @@ class AbstractTradeExecutor(ABC):
             status=OrderStatus.EXECUTED,
             executed_price=entry_price,
             executed_lots=pending_order.lots,
-            execution_time=datetime.now(timezone.utc),
+            execution_time=self.get_current_time(),
             commission=0.0,
             position_id=position.position_id,
             action=OrderAction.OPEN,
@@ -914,7 +916,7 @@ class AbstractTradeExecutor(ABC):
             status=OrderStatus.EXECUTED,
             executed_price=close_price,
             executed_lots=executed_lots,
-            execution_time=datetime.now(timezone.utc),
+            execution_time=self.get_current_time(),
             commission=0.0,
             position_id=pending_order.pending_order_id,
             action=OrderAction.CLOSE,
@@ -1227,7 +1229,7 @@ class AbstractTradeExecutor(ABC):
             RuntimeError: If called before the loop injected a time
         """
         if self._clock_time is None:
-            raise RuntimeError(
+            raise ClockNotInjectedError(
                 'get_current_time() called before the tick loop injected a time'
             )
         return self._clock_time
@@ -1360,7 +1362,7 @@ class AbstractTradeExecutor(ABC):
             result = OrderResult(
                 order_id=pending.pending_order_id,
                 status=OrderStatus.EXPIRED,
-                execution_time=datetime.now(timezone.utc),
+                execution_time=self.get_current_time(),
                 action=OrderAction.OPEN,
                 symbol=pending.symbol,
                 metadata={
@@ -1374,7 +1376,7 @@ class AbstractTradeExecutor(ABC):
             result = OrderResult(
                 order_id=pending.pending_order_id,
                 status=OrderStatus.EXPIRED,
-                execution_time=datetime.now(timezone.utc),
+                execution_time=self.get_current_time(),
                 action=OrderAction.OPEN,
                 symbol=pending.symbol,
                 metadata={
@@ -1599,7 +1601,7 @@ class AbstractTradeExecutor(ABC):
             price=fill_price,
             fee=fee_cost,
             fee_currency=symbol_spec.quote_currency,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=self.get_current_time(),
             side=trade_side,
             is_maker=is_maker,
         )

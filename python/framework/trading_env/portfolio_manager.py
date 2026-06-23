@@ -5,9 +5,10 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 
 from collections import deque
 from dataclasses import replace
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union
+from datetime import datetime
+from typing import Callable, Dict, List, Optional, Union
 
+from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.trading_fees import MakerTakerFee
@@ -59,6 +60,7 @@ class PortfolioManager:
         trade_history_max: int = 5000,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        clock_fn: Optional[Callable[[], datetime]] = None,
     ):
         """
         Initialize portfolio manager.
@@ -77,6 +79,11 @@ class PortfolioManager:
         self._logger = logger
         self.account_currency = account_currency
         self.broker_config = broker_config
+        # Canonical clock — the executor's get_current_time (advanced by BOTH event
+        # sources: tick + heartbeat/ghost), the single time source for event
+        # timestamps (#365 / §9). None in direct unit-test construction → _clock_now
+        # falls back to wall-clock.
+        self._clock_fn = clock_fn
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
@@ -197,6 +204,27 @@ class PortfolioManager:
         self._position_counter += 1
         return f"pos_{symbol.lower()}_{self._position_counter}"
 
+    def _clock_now(self) -> datetime:
+        """
+        Canonical event time for position records — the executor's injected clock
+        (get_current_time): the tick timestamp on a tick pass, the heartbeat/ghost
+        time on a between-tick resolution. Never wall-clock, never the stale last
+        tick (#365 / §9 — both event sources advance this clock). Raises
+        ClockNotInjectedError if no clock_fn was injected — event timestamps must
+        always come from the canonical source, never a silent wall-clock fallback;
+        direct-construction tests must inject clock_fn.
+
+        Returns:
+            Timezone-aware UTC datetime — the canonical current time
+        """
+        if self._clock_fn is None:
+            raise ClockNotInjectedError(
+                'PortfolioManager event time requested before a clock was injected '
+                '(clock_fn). Event timestamps must come from the canonical clock, '
+                'never a wall-clock fallback.'
+            )
+        return self._clock_fn()
+
     def _record_fee_cost(self, fee: AbstractTradingFee) -> None:
         """
         Categorize a single trading fee into the cost-tracking breakdown.
@@ -261,7 +289,7 @@ class PortfolioManager:
             lots=lots,
             original_lots=lots,
             entry_price=entry_price,
-            entry_time=datetime.now(timezone.utc),
+            entry_time=self._clock_now(),
             stop_loss=stop_loss,
             take_profit=take_profit,
             entry_type=entry_type,
@@ -381,7 +409,7 @@ class PortfolioManager:
 
         # Mark position as closed
         position.status = PositionStatus.CLOSED
-        position.close_time = datetime.now(timezone.utc)
+        position.close_time = self._clock_now()
         position.close_price = exit_price
         position.exit_tick_value = exit_tick_value
         position.exit_tick_index = exit_tick_index
@@ -498,7 +526,7 @@ class PortfolioManager:
             entry_bid=position.entry_bid,
             entry_ask=position.entry_ask,
             exit_price=exit_price,
-            exit_time=datetime.now(timezone.utc),
+            exit_time=self._clock_now(),
             exit_tick_value=exit_tick_value,
             entry_tick_index=position.entry_tick_index,
             exit_tick_index=exit_tick_index,

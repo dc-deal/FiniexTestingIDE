@@ -1008,7 +1008,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             direction=request.direction,
             lots=request.lots,
             entry_price=request.price,
-            entry_time=datetime.now(timezone.utc),
+            entry_time=self.get_current_time(),
             order_kwargs=order_kwargs,
             submission=self._current_submission(),
         )
@@ -1101,7 +1101,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             status=OrderStatus.PENDING,
             position_id=None,
             executed_lots=close_lots,
-            execution_time=datetime.now(timezone.utc),
+            execution_time=self.get_current_time(),
             action=OrderAction.CLOSE,
             symbol=position.symbol,
             direction=position.direction,

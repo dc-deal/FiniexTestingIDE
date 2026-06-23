@@ -591,7 +591,7 @@ class TradeSimulator(AbstractTradeExecutor):
             status=OrderStatus.PENDING,
             executed_price=None,
             executed_lots=lots if lots else position.lots,
-            execution_time=datetime.now(timezone.utc),
+            execution_time=self.get_current_time(),
             commission=0.0,
             position_id=position_id,
             action=OrderAction.CLOSE,
