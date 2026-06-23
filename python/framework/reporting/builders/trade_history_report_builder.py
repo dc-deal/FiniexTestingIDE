@@ -96,6 +96,7 @@ def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
         total_fees=trade.total_fees,
         net_pnl=trade.net_pnl,
         currency=trade.account_currency,
+        swap_cost=trade.swap_cost,
         mae_price=trade.mae_price,
         mfe_price=trade.mfe_price,
         mae_pnl=trade.mae_pnl,

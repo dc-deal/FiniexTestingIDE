@@ -32,6 +32,19 @@ class ProfileDefaultsConfig(BaseModel):
     atr_percentile_threshold: int = 10
 
 
+class SwapRolloverConfig(BaseModel):
+    """
+    Daily swap / overnight-funding rollover anchor for a market.
+
+    The local wall-clock time at which the broker books the daily swap, plus the
+    IANA timezone it is expressed in. Resolved per date (DST-aware) via zoneinfo.
+    Present for markets that charge overnight financing (Forex); absent for spot
+    markets without swap (crypto).
+    """
+    local_time: str = '17:00'
+    timezone: str = 'America/New_York'
+
+
 class MarketRulesConfig(BaseModel):
     """Market rules entry as loaded from JSON."""
     weekend_closure: bool
@@ -39,6 +52,7 @@ class MarketRulesConfig(BaseModel):
     primary_activity_metric: str
     inter_tick_gap_threshold_s: float = 300.0
     generator_profile_defaults: Optional[ProfileDefaultsConfig] = None
+    swap_rollover: Optional[SwapRolloverConfig] = None
 
 
 class BrokerTransportConfig(BaseModel):

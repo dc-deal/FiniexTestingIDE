@@ -5,13 +5,14 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 
 from collections import deque
 from dataclasses import replace
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union
+from datetime import datetime
+from typing import Callable, Dict, List, Optional, Union
 
+from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
-from python.framework.trading_env.trading_fees import MakerTakerFee
-from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
+from python.framework.types.trading_env_types.broker_types import FeeType, SwapMode, SymbolSpecification
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
@@ -23,6 +24,9 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Acc
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
+from python.framework.types.config_types.market_config_types import SwapRolloverConfig
+from python.framework.utils.market_calendar import MarketCalendar
+from python.framework.utils.time_utils import mt5_weekday_to_python
 
 
 class _UnsetType:
@@ -59,6 +63,8 @@ class PortfolioManager:
         trade_history_max: int = 5000,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        clock_fn: Optional[Callable[[], datetime]] = None,
+        swap_rollover: Optional[SwapRolloverConfig] = None,
     ):
         """
         Initialize portfolio manager.
@@ -77,6 +83,11 @@ class PortfolioManager:
         self._logger = logger
         self.account_currency = account_currency
         self.broker_config = broker_config
+        # Canonical clock — the executor's get_current_time (advanced by BOTH event
+        # sources: tick + heartbeat/ghost), the single time source for event
+        # timestamps (#365 / §9). None in direct unit-test construction → _clock_now
+        # raises (no wall-clock fallback); such tests must inject clock_fn.
+        self._clock_fn = clock_fn
         self.leverage = leverage
         self.margin_call_level = margin_call_level
         self.stop_out_level = stop_out_level
@@ -89,6 +100,10 @@ class PortfolioManager:
             else {account_currency: initial_balance}
         )
         self._balances: Dict[str, float] = dict(self._initial_balances)
+
+        # Swap / overnight-funding accrual config (#365) — injected by the executor's
+        # MarketClock (the single resolver). None for spot/crypto or unknown broker → no accrual.
+        self._swap_rollover: Optional[SwapRolloverConfig] = swap_rollover
 
         # Account state
         self.realized_pnl = 0.0
@@ -197,6 +212,27 @@ class PortfolioManager:
         self._position_counter += 1
         return f"pos_{symbol.lower()}_{self._position_counter}"
 
+    def _clock_now(self) -> datetime:
+        """
+        Canonical event time for position records — the executor's injected clock
+        (get_current_time): the tick timestamp on a tick pass, the heartbeat/ghost
+        time on a between-tick resolution. Never wall-clock, never the stale last
+        tick (#365 / §9 — both event sources advance this clock). Raises
+        ClockNotInjectedError if no clock_fn was injected — event timestamps must
+        always come from the canonical source, never a silent wall-clock fallback;
+        direct-construction tests must inject clock_fn.
+
+        Returns:
+            Timezone-aware UTC datetime — the canonical current time
+        """
+        if self._clock_fn is None:
+            raise ClockNotInjectedError(
+                'PortfolioManager event time requested before a clock was injected '
+                '(clock_fn). Event timestamps must come from the canonical clock, '
+                'never a wall-clock fallback.'
+            )
+        return self._clock_fn()
+
     def _record_fee_cost(self, fee: AbstractTradingFee) -> None:
         """
         Categorize a single trading fee into the cost-tracking breakdown.
@@ -261,7 +297,7 @@ class PortfolioManager:
             lots=lots,
             original_lots=lots,
             entry_price=entry_price,
-            entry_time=datetime.now(timezone.utc),
+            entry_time=self._clock_now(),
             stop_loss=stop_loss,
             take_profit=take_profit,
             entry_type=entry_type,
@@ -381,7 +417,7 @@ class PortfolioManager:
 
         # Mark position as closed
         position.status = PositionStatus.CLOSED
-        position.close_time = datetime.now(timezone.utc)
+        position.close_time = self._clock_now()
         position.close_price = exit_price
         position.exit_tick_value = exit_tick_value
         position.exit_tick_index = exit_tick_index
@@ -498,7 +534,7 @@ class PortfolioManager:
             entry_bid=position.entry_bid,
             entry_ask=position.entry_ask,
             exit_price=exit_price,
-            exit_time=datetime.now(timezone.utc),
+            exit_time=self._clock_now(),
             exit_tick_value=exit_tick_value,
             entry_tick_index=position.entry_tick_index,
             exit_tick_index=exit_tick_index,
@@ -811,6 +847,64 @@ class PortfolioManager:
                 f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})"
             )
 
+    def _accrue_all_swaps(self) -> None:
+        """
+        Accrue overnight swap for every open position up to the canonical clock (#365).
+
+        Runs on every position refresh (cheap when no rollover was crossed) so closes and
+        heartbeat resolutions accrue up to their event time too. No-op for spot markets,
+        markets without a swap rollover (crypto), or when there are no open positions.
+        """
+        if self._spot_mode or self._swap_rollover is None or not self.open_positions:
+            return
+
+        now = self._clock_now()
+        for position in list(self.open_positions.values()):
+            self._accrue_swap(position, now)
+
+    def _accrue_swap(self, position: Position, now: datetime) -> None:
+        """
+        Accrue swap for one position from its last-accrued instant up to now.
+
+        Adds one signed SwapFee per broker rollover crossed (triple on the configured
+        weekday), using swap_long / swap_short and the deterministic entry_tick_value anchor.
+
+        Args:
+            position: Open position to accrue swap on
+            now: Canonical current time (the upper accrual bound)
+        """
+        if now <= position.swap_accrued_until:
+            return
+
+        spec = self.broker_config.get_symbol_specification(position.symbol)
+        if spec.swap_mode != SwapMode.POINTS:
+            position.swap_accrued_until = now
+            return
+
+        triple_weekday_py = mt5_weekday_to_python(spec.swap_rollover3days)
+        rollovers = MarketCalendar.iter_swap_rollovers(
+            position.swap_accrued_until,
+            now,
+            self._swap_rollover.local_time,
+            self._swap_rollover.timezone,
+            triple_weekday_py,
+        )
+
+        rate = (spec.swap_long if position.direction == OrderDirection.LONG
+                else spec.swap_short)
+        for rollover_utc, multiplier in rollovers:
+            fee = SwapFee(
+                swap_rate_points=rate,
+                days_held=multiplier,
+                tick_value=position.entry_tick_value,
+                lots=position.lots,
+                timestamp=rollover_utc,
+            )
+            position.add_fee(fee)
+            self._record_fee_cost(fee)
+
+        position.swap_accrued_until = now
+
     def _ensure_positions_updated(self) -> None:
         """
         Ensure positions are updated with latest prices (LAZY EVALUATION).
@@ -819,6 +913,10 @@ class PortfolioManager:
         - Only updates if _positions_dirty = True
         - Builds symbol specs on-demand (not every tick!)
         """
+        # Accrue overnight swap up to the canonical clock (#365) — NOT gated by the dirty
+        # flag, so closes + heartbeat resolutions accrue up to their event time too.
+        self._accrue_all_swaps()
+
         if not self._positions_dirty:
             return
 

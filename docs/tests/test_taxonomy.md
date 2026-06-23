@@ -57,6 +57,7 @@ tests/
 │   ├── order_precision/   unit — order price → digits normalization (#332)
 │   ├── event_channel/     integration — decision event channel dual-world parity (#348)
 │   ├── optimization/      unit — parameter optimization: grid expand, override, ledger, ranking, sensitivity, grid validation (#390)
+│   ├── swap_cost/         unit — overnight swap accrual: debit/credit/triple, spot=0, determinism (#365)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
@@ -77,6 +78,7 @@ tests/
 │   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
+│   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── user_namespace/    unit — USER worker/decision discovery

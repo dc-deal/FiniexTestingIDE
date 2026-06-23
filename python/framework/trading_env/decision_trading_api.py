@@ -30,7 +30,7 @@ FUTURE NOTES:
   Example: DecisionTradingApi(LiveTradeExecutor(broker_config, ...), required_types)
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 
 from .abstract_trade_executor import AbstractTradeExecutor
@@ -542,6 +542,53 @@ class DecisionTradingApi:
         if symbol:
             return self._executor.broker.get_symbol_leverage(symbol)
         return self._executor.broker.get_max_leverage()
+
+    # ============================================
+    # Market Awareness (#365) — thin forwarders to the executor's MarketClock
+    # (rollover / weekend awareness; the logic lives in MarketClock).
+    # ============================================
+
+    def get_time_to_next_rollover(self) -> Optional[timedelta]:
+        """
+        Time from the current clock to the next swap rollover.
+
+        Returns:
+            timedelta to the next broker rollover, or None for markets without swap
+        """
+        return self._executor.get_market_clock().get_time_to_next_rollover()
+
+    def is_next_rollover_triple(self, symbol: str) -> bool:
+        """
+        Whether the next swap rollover books triple swap (the broker's triple-swap weekday).
+
+        Args:
+            symbol: Symbol whose triple-swap weekday is read
+
+        Returns:
+            True if the next rollover is the triple-swap day; False otherwise
+        """
+        return self._executor.get_market_clock().is_next_rollover_triple(symbol)
+
+    def get_time_to_market_close(self) -> Optional[timedelta]:
+        """
+        Time from the current clock to the next weekend market close.
+
+        Returns:
+            timedelta to the next Friday close, or None for 24/7 markets (crypto)
+        """
+        return self._executor.get_market_clock().get_time_to_market_close()
+
+    def is_weekend_ahead(self, within: timedelta) -> bool:
+        """
+        Whether a weekend market close falls within `within` from the current clock.
+
+        Args:
+            within: Look-ahead window
+
+        Returns:
+            True if the next weekend close is within the window; False for 24/7 markets
+        """
+        return self._executor.get_market_clock().is_weekend_ahead(within)
 
     # ============================================
     # Session Control

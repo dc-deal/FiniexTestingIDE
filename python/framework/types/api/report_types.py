@@ -40,6 +40,7 @@ class TradeHistoryRow(BaseModel):
     total_fees: float
     net_pnl: float
     currency: str = ''      # account currency (#393 — for console P&L formatting)
+    swap_cost: float = 0.0  # signed overnight swap for this trade (+ debit, − credit; #365)
     # Trade analytics (#389) — excursion + risk-normalized result (defaulted: additive columns)
     mae_price: float = 0.0      # most adverse price reached while open
     mfe_price: float = 0.0      # most favorable price reached while open
@@ -96,6 +97,7 @@ class TradeScenarioTotals(BaseModel):
     gross_pnl: float
     net_pnl: float
     total_fees: float
+    total_swap: float = 0.0  # Σ signed swap over the scenario (#365)
 
 
 class TradeHistoryReport(BaseModel):

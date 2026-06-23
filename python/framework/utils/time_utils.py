@@ -3,7 +3,9 @@ Time utility functions for readable duration formatting
 """
 
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
 from dateutil import parser
 
 # Typed weekday abbreviations constant
@@ -185,3 +187,44 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def mt5_weekday_to_python(mt5_weekday: int) -> int:
+    """
+    Convert an MT5 weekday index to Python's datetime.weekday() convention.
+
+    MT5 uses Sunday=0 .. Saturday=6 (e.g. the SYMBOL_SWAP_ROLLOVER3DAYS property);
+    Python's datetime.weekday() uses Monday=0 .. Sunday=6. The same number means a
+    different day, so an MT5 index must be converted before any weekday comparison.
+
+    Args:
+        mt5_weekday: Weekday index in MT5 convention (0=Sunday .. 6=Saturday)
+
+    Returns:
+        Weekday index in Python convention (0=Monday .. 6=Sunday)
+    """
+    return (mt5_weekday - 1) % 7
+
+
+def local_time_to_utc(day: date, local_hhmm: str, tz_name: str) -> datetime:
+    """
+    Resolve a wall-clock local time on a given calendar day to a UTC instant.
+
+    DST-aware: the same local time maps to a different UTC instant depending on
+    the date (e.g. 17:00 America/New_York = 22:00 UTC in winter, 21:00 UTC in
+    summer). Uses the stdlib zoneinfo database (tzdata pinned in requirements).
+
+    Args:
+        day: Calendar day the local time falls on
+        local_hhmm: Local wall-clock time as 'HH:MM'
+        tz_name: IANA timezone name (e.g. 'America/New_York')
+
+    Returns:
+        Timezone-aware UTC datetime for that local time on that day
+    """
+    parts = local_hhmm.split(':')
+    hour, minute = int(parts[0]), int(parts[1])
+    local_dt = datetime(
+        day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(tz_name)
+    )
+    return local_dt.astimezone(timezone.utc)

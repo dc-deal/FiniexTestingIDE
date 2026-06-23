@@ -29,7 +29,6 @@ Delays are in milliseconds, fill detection uses tick timestamps
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -199,7 +198,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             direction=request.direction,
             lots=request.lots,
             entry_price=entry_price,
-            entry_time=datetime.now(timezone.utc),
+            entry_time=tick.timestamp,
             order_kwargs=order_kwargs,
             submission=SubmissionMetadata(
                 tick_mid_price=tick.mid,

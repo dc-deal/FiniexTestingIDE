@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_types import WeekendClosureWindow
+from python.framework.utils.time_utils import local_time_to_utc
 
 
 class MarketCalendar:
@@ -159,6 +160,109 @@ class MarketCalendar:
             current -= timedelta(days=1)
 
         return current
+
+    @staticmethod
+    def iter_swap_rollovers(
+        start: datetime,
+        end: datetime,
+        rollover_local: str,
+        rollover_tz: str,
+        triple_weekday_py: int
+    ) -> List[Tuple[datetime, int]]:
+        """
+        Enumerate broker swap-rollover crossings in the half-open window (start, end].
+
+        Each crossing is the UTC instant of the broker's daily rollover — the local
+        rollover wall-clock time resolved per date (DST-aware) — on a trading day.
+        Weekend days carry no rollover (Forex is closed); the weekend's financing is
+        folded into the triple-swap weekday, which yields a multiplier of 3 instead
+        of 1. Holiday-aware rollover (holidays shifting the value date) is deferred
+        to #370 — this uses the weekend-only model.
+
+        Args:
+            start: Exclusive lower bound (last already-accrued instant, UTC)
+            end: Inclusive upper bound (current clock time, UTC)
+            rollover_local: Local rollover wall-clock time as 'HH:MM'
+            rollover_tz: IANA timezone of the rollover (e.g. 'America/New_York')
+            triple_weekday_py: Python weekday (0=Mon .. 6=Sun) carrying triple swap
+
+        Returns:
+            Chronological list of (rollover_utc, multiplier) tuples; multiplier is
+            3 on the triple weekday, else 1.
+        """
+        if start >= end:
+            return []
+
+        rollovers: List[Tuple[datetime, int]] = []
+        # Scan local calendar days around the window. The local rollover time maps
+        # to a UTC instant on (around) the same date — pad one day each side so a
+        # timezone offset near a UTC date boundary cannot drop a crossing.
+        current = (start - timedelta(days=1)).date()
+        last = (end + timedelta(days=1)).date()
+
+        while current <= last:
+            # Only trading days carry a rollover (Mon-Fri); Sat/Sun are closed and
+            # their financing is booked on the triple-swap weekday.
+            if current.weekday() <= 4:
+                rollover_utc = local_time_to_utc(current, rollover_local, rollover_tz)
+                if start < rollover_utc <= end:
+                    multiplier = 3 if current.weekday() == triple_weekday_py else 1
+                    rollovers.append((rollover_utc, multiplier))
+            current += timedelta(days=1)
+
+        return rollovers
+
+    @staticmethod
+    def next_swap_rollover(
+        after: datetime,
+        rollover_local: str,
+        rollover_tz: str,
+        triple_weekday_py: int
+    ) -> Tuple[datetime, int]:
+        """
+        The next broker swap-rollover crossing strictly after `after`.
+
+        Scans forward to the next trading-day rollover (weekend days carry none). The
+        multiplier depends only on the weekday — pass any value when just the instant
+        is needed.
+
+        Args:
+            after: Lower bound (exclusive), UTC
+            rollover_local: Local rollover wall-clock time as 'HH:MM'
+            rollover_tz: IANA timezone of the rollover
+            triple_weekday_py: Python weekday (0=Mon .. 6=Sun) carrying triple swap
+
+        Returns:
+            (rollover_utc, multiplier) — multiplier is 3 on the triple weekday, else 1
+        """
+        current = after.date()
+        for _ in range(8):
+            if current.weekday() <= 4:
+                rollover_utc = local_time_to_utc(current, rollover_local, rollover_tz)
+                if rollover_utc > after:
+                    multiplier = 3 if current.weekday() == triple_weekday_py else 1
+                    return rollover_utc, multiplier
+            current += timedelta(days=1)
+        raise ValueError(f'No swap rollover found within 8 days of {after}')
+
+    @staticmethod
+    def next_market_close(after: datetime) -> datetime:
+        """
+        The next weekend market close (Friday close) strictly after `after`.
+
+        Uses the configured weekend-closure Friday-close hour (UTC).
+
+        Args:
+            after: Reference instant, UTC
+
+        Returns:
+            The next Friday-close instant (UTC)
+        """
+        fri_hour = MarketCalendar.WEEKEND_CLOSURE.friday_start_hour_utc
+        close = MarketCalendar._get_next_friday_close(after, fri_hour)
+        if close <= after:
+            close = close + timedelta(days=7)
+        return close
 
     # =========================================================================
     # EXTENDED WEEKEND ANALYSIS

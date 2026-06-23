@@ -47,6 +47,7 @@
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + live — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
 | [Parameter Optimization System](architecture/parameter_optimization_system.md) | Grid sweep over strategy params + run-results ledger (parquet) + objective ranking + one-factor sensitivity; sweep spec, dotted-path overrides, pluggable generator seam (#390) |
+| [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
 | [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/live channels (#395) |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
@@ -112,6 +113,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Event Channel](tests/simulation/event_channel_tests.md) | Decision event channel dual-world parity (#348) |
 | [Order Precision](tests/simulation/order_precision_tests.md) | Order price → digits normalization (#332) |
 | [Parameter Optimization](tests/simulation/parameter_optimization_tests.md) | Grid expand, override, ledger, ranking, sensitivity, grid validation (#390) |
+| [Swap Cost Accrual](tests/simulation/swap_cost_tests.md) | Overnight swap accrual: debit/credit/triple, spot=0, determinism (#365) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
 | [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |
@@ -122,6 +124,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Config Tests (Cascade + Merge Utility)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
+| [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |

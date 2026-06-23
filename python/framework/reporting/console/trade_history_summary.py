@@ -171,11 +171,11 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"{'Entry Price':>12} | {'Exit Price':>12} | "
             f"{'SL':>12} | {'TP':>12} | "
             f"{'Entry Tick':>10} | {'Exit Tick':>10} | {'Duration':>8} | "
-            f"{'Gross P&L':>10} | {'Fees':>8} | {'Net P&L':>10} | "
+            f"{'Gross P&L':>10} | {'Fees':>8} | {'Swap':>8} | {'Net P&L':>10} | "
             f"{'MAE':>7} | {'MFE':>7} | {'R':>6} | {'Close Reason':>14}"
         )
         print(renderer.gray(header))
-        print(renderer.gray("   " + "-" * 200))
+        print(renderer.gray("   " + "-" * 211))
 
     def _print_trade_row(
         self,
@@ -185,9 +185,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         shared_counts: Dict[str, int]
     ) -> None:
         """Print single trade row plus per-execution sub-lines (#330)."""
-        # Trade-event side (the close operation), colored by position direction.
-        side_text = (row.exit_side.upper().ljust(5) if row.exit_side
-                     else ('LONG ' if row.direction == 'long' else 'SHORT'))
+        # Position direction (LONG/SHORT); the close-transaction side is in the sub-lines.
+        side_text = 'LONG ' if row.direction == 'long' else 'SHORT'
         dir_str = renderer.green(side_text) if row.direction == 'long' else renderer.red(side_text)
 
         entry_type_str = _ENTRY_TYPE_GLYPH.get(row.entry_type, "?")
@@ -206,7 +205,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"{row.entry_price:>12.5f} | {row.exit_price:>12.5f} | "
             f"{sl_str} | {tp_str} | "
             f"{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {duration:>8} | "
-            f"{gross_str:>10} | {row.total_fees:>8.2f} | {net_str:>10} | "
+            f"{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | "
             f"{row.mae_pips:>7.1f} | {row.mfe_pips:>7.1f} | {r_str} | {reason_str:>14}"
         )
 
@@ -245,14 +244,14 @@ class TradeHistorySummary(AbstractBatchSummarySection):
     def _print_table_footer(
         self, totals: TradeScenarioTotals, renderer: ConsoleRenderer) -> None:
         """Print trade table footer with the per-scenario totals (from the model aggregate)."""
-        print(renderer.gray("   " + "-" * 200))
+        print(renderer.gray("   " + "-" * 211))
         gross_str = self._format_value(totals.gross_pnl, renderer)
         net_str = self._format_value(totals.net_pnl, renderer)
         total_row = (
             f"   {'':>3} | {'TOTAL':^5} | {' ':1} | {'':>5} | "
             f"{'':>12} | {'':>12} | {'':>12} | {'':>12} | "
             f"{'':>10} | {'':>10} | {'':>8} | "
-            f"{gross_str:>10} | {totals.total_fees:>8.2f} | {net_str:>10} | "
+            f"{gross_str:>10} | {totals.total_fees:>8.2f} | {totals.total_swap:>8.2f} | {net_str:>10} | "
             f"{'':>7} | {'':>7} | {'':>6} | {totals.currency} |"
         )
         print(renderer.bold(total_row))
