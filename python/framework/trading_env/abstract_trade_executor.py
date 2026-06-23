@@ -46,6 +46,7 @@ from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.market_clock import MarketClock
 from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
@@ -117,6 +118,11 @@ class AbstractTradeExecutor(ABC):
         self.account_currency = account_currency
         self._spot_mode = spot_mode
 
+        # Market clock — swap-rollover + weekend awareness over the canonical clock (#365).
+        # Single resolver of the rollover config: shared with the portfolio accrual below
+        # and exposed for the DecisionTradingApi (which only forwards to it).
+        self._market_clock = MarketClock(self.get_current_time, broker_config)
+
         # Create portfolio manager with broker specifications
         broker_spec = self.broker.get_broker_specification()
         self.portfolio = PortfolioManager(
@@ -131,6 +137,7 @@ class AbstractTradeExecutor(ABC):
             spot_mode=spot_mode,
             initial_balances=initial_balances,
             clock_fn=self.get_current_time,
+            swap_rollover=self._market_clock.get_swap_rollover(),
         )
 
         # Current market prices
@@ -1215,6 +1222,10 @@ class AbstractTradeExecutor(ABC):
             now: Timezone-aware UTC datetime for the current pass
         """
         self._clock_time = now
+
+    def get_market_clock(self) -> MarketClock:
+        """Market clock for rollover / weekend awareness (#365)."""
+        return self._market_clock
 
     def get_current_time(self) -> datetime:
         """

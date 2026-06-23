@@ -1722,6 +1722,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Market Calendar / Swap Rollover (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/market_calendar/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 26
+            }
+        },
+        {
             "name": "🧩 Pytest: Market Compatibility (All)",
             "type": "debugpy",
             "request": "launch",
@@ -1988,6 +2005,23 @@
             "module": "pytest",
             "args": [
                 "tests/simulation/spot_trading/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42
+            }
+        },
+        {
+            "name": "🧩 Pytest: Swap Cost Accrual (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/swap_cost/",
                 "-v",
                 "--tb=short"
             ],

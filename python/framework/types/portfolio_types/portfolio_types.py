@@ -97,10 +97,18 @@ class Position:
     mae_price: float = 0.0  # current_price at the worst excursion (seeded to entry)
     mfe_price: float = 0.0  # current_price at the best excursion (seeded to entry)
 
+    # === Swap accrual (#365) — last rollover instant already charged ===
+    # Seeded to entry_time in __post_init__; advanced as overnight swap accrues.
+    swap_accrued_until: Optional[datetime] = None
+
     def __post_init__(self):
         # Seed excursion prices at entry → "no move" reports as 0 distance (#389).
         self.mae_price = self.entry_price
         self.mfe_price = self.entry_price
+
+        # Swap accrual starts at the position's open instant (#365).
+        if self.swap_accrued_until is None:
+            self.swap_accrued_until = self.entry_time
 
     def update_current_price(self, bid: float, ask: float, tick_value: float, digits: int) -> None:
         """

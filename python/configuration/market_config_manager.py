@@ -14,6 +14,7 @@ from python.framework.types.config_types.market_config_types import (
     MarketRulesConfig,
     MarketType,
     ProfileDefaultsConfig,
+    SwapRolloverConfig,
     TradingModel,
 )
 
@@ -154,6 +155,21 @@ class MarketConfigManager:
         """
         entry = self.get_broker_entry(broker_type)
         return entry.trading_model
+
+    def get_swap_rollover(self, broker_type: str) -> Optional[SwapRolloverConfig]:
+        """
+        Get the swap / overnight-rollover anchor for a broker's market.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            SwapRolloverConfig (local rollover time + timezone) for markets that
+            charge overnight financing (Forex), or None for markets without swap
+            (e.g. crypto spot).
+        """
+        market_type = self.get_market_type(broker_type)
+        return self.get_market_rules(market_type).swap_rollover
 
     def get_config_mode(self, broker_type: str) -> ConfigMode:
         """

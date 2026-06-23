@@ -117,25 +117,26 @@ class SpreadFee(AbstractTradingFee):
 @dataclass
 class SwapFee(AbstractTradingFee):
     """
-    Swap Fee - Overnight interest for holding positions.
+    Swap Fee - Overnight financing for holding a position across a broker rollover.
 
-    PREPARED - Calculation deferred to Post-V1.
+    One SwapFee represents ONE accrued rollover crossing (charged at the rollover
+    instant, #365). Signed: a debit (you pay) is a positive cost, a credit (you
+    receive) is a negative cost — overriding the always-positive base contract,
+    since swap can be a credit (positive carry). The sign matches the portfolio's
+    net P&L = gross - total_fees: a positive cost reduces P&L, a negative cost
+    (credit) raises it.
 
-    Accumulates daily at broker rollover time (usually 00:00 server time).
-    Can be positive (credit) or negative (debit) depending on interest differential.
+    Calculation (points mode):
+        cost = -(swap_rate_points * days_held * tick_value * lots)
 
-    Future Implementation:
-        - Check if position held overnight
-        - Apply swap_long or swap_short from broker config
-        - Accumulate daily until position closed
-        - Triple swap on Wednesdays (rollover for weekend)
+    where days_held is the swap-day multiplier of this crossing (1 normal night, 3
+    on the triple-swap weekday). swap_rate_points is the broker's swap_long (long
+    position) or swap_short (short). tick_value is the position's entry_tick_value
+    (a deterministic, eval-timing-independent anchor).
 
-    Example (EURUSD from JSON):
-        swap_long: -8.75 points (you pay)
-        swap_short: 4.34 points (you receive)
-
-        Long position held 3 nights:
-        cost = -8.75 * 3 * tick_value * lots = -22.31 EUR (debit)
+    Example (EURUSD, USD account, 1.0 lot, tick_value 1.0):
+        swap_long  = -7.85 (you pay)     -> cost = -(-7.85 * 1 * 1.0 * 1.0) = +7.85 (debit)
+        swap_short = +3.80 (you receive) -> cost = -( +3.80 * 1 * 1.0 * 1.0) = -3.80 (credit)
     """
 
     # Swap configuration
@@ -154,18 +155,18 @@ class SwapFee(AbstractTradingFee):
         timestamp: Optional[datetime] = None
     ):
         """
-        Initialize swap fee (calculation deferred).
+        Initialize swap fee for one accrued rollover crossing.
 
         Args:
-            swap_rate_points: Swap rate from broker config
-            days_held: Number of overnight holds
-            tick_value: Value per tick per lot
+            swap_rate_points: Broker swap rate in points (swap_long or swap_short)
+            days_held: Swap-day multiplier for this crossing (1, or 3 on triple day)
+            tick_value: Value per point per lot (entry_tick_value anchor)
             lots: Position size
-            timestamp: Fee timestamp
+            timestamp: Rollover instant the swap is booked at
         """
         super().__init__(
             fee_type=FeeType.SWAP,
-            status=FeeStatus.DEFERRED,  # Applied at position close
+            status=FeeStatus.APPLIED,  # Charged at the rollover instant
             timestamp=timestamp or datetime.now(timezone.utc)
         )
 
@@ -174,28 +175,27 @@ class SwapFee(AbstractTradingFee):
         self.tick_value = tick_value
         self.lots = lots
 
-        # Defer calculation until needed
-        self.cost = 0.0
+        # Calculate cost immediately (signed)
+        self.cost = self.calculate_cost()
 
         self.metadata = {
             'swap_rate_points': swap_rate_points,
             'days_held': days_held,
-            'implementation_status': 'deferred_post_v1'
+            'is_triple': days_held >= 3
         }
 
     def calculate_cost(self, **kwargs) -> float:
         """
-        Calculate swap cost (deferred).
+        Calculate signed swap cost for this rollover crossing.
 
-        Post-V1 Implementation:
-            cost = swap_rate_points * days_held * tick_value * lots
+        Formula (points mode):
+            cost = -(swap_rate_points * days_held * tick_value * lots)
 
         Returns:
-            0.0 (deferred to Post-V1)
+            Signed cost in account currency — positive = debit (reduces P&L),
+            negative = credit (raises P&L). See class docstring for the convention.
         """
-        # TODO: Implement swap calculation Post-V1
-        # cost = self.swap_rate_points * self.days_held * self.tick_value * self.lots
-        return 0.0
+        return -(self.swap_rate_points * self.days_held * self.tick_value * self.lots)
 
 
 @dataclass

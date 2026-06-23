@@ -84,6 +84,7 @@ def aggregate_trade_scenario_totals(rows: List[TradeHistoryRow]) -> List[TradeSc
             gross_pnl=sum(r.gross_pnl for r in group),
             net_pnl=sum(r.net_pnl for r in group),
             total_fees=sum(r.total_fees for r in group),
+            total_swap=sum(r.swap_cost for r in group),
         )
         for name, group in groups.items()
     ]
