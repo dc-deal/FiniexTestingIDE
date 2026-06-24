@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from python.framework.validators.scenario_validator import ScenarioValidator
-from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.broker_types import BrokerType, SwapMode
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 
 
@@ -121,6 +121,85 @@ class TestValidateScenarioSymbols:
         logger = MagicMock()
 
         ScenarioValidator.validate_scenario_symbols([scenario], logger, broker_map)
+
+        assert len(scenario.validation_result) == 0
+        logger.error.assert_not_called()
+
+
+class TestValidateSwapModes:
+    """validate_swap_modes — swap_mode must be modeled by the engine (points / none)."""
+
+    def _make_scenario(self, name: str, symbol: str, broker_type: BrokerType) -> MagicMock:
+        scenario = MagicMock(spec=SingleScenario)
+        scenario.name = name
+        scenario.symbol = symbol
+        scenario.broker_type = broker_type
+        scenario.validation_result = []
+        return scenario
+
+    def _make_broker_map(self, broker_type: BrokerType, symbol: str, swap_mode: SwapMode) -> dict:
+        spec = MagicMock()
+        spec.swap_mode = swap_mode
+        broker_config = MagicMock()
+        def get_symbol_spec(s):
+            if s == symbol:
+                return spec
+            raise ValueError(f"Symbol '{s}' not found")
+        broker_config.get_symbol_specification.side_effect = get_symbol_spec
+
+        broker_info = MagicMock(spec=BrokerScenarioInfo)
+        broker_info.broker_config = broker_config
+        return {broker_type: broker_info}
+
+    def test_points_mode_passes(self):
+        scenario = self._make_scenario('points', 'GBPUSD', BrokerType.MT5_FOREX)
+        broker_map = self._make_broker_map(BrokerType.MT5_FOREX, 'GBPUSD', SwapMode.POINTS)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_swap_modes([scenario], logger, broker_map)
+
+        assert len(scenario.validation_result) == 0
+        logger.error.assert_not_called()
+
+    def test_none_mode_passes(self):
+        # Swap-free / spot symbol — NONE is supported (correctly books nothing)
+        scenario = self._make_scenario('none', 'BTCUSD', BrokerType.KRAKEN_SPOT)
+        broker_map = self._make_broker_map(BrokerType.KRAKEN_SPOT, 'BTCUSD', SwapMode.NONE)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_swap_modes([scenario], logger, broker_map)
+
+        assert len(scenario.validation_result) == 0
+
+    def test_percentage_mode_marks_invalid(self):
+        scenario = self._make_scenario('pct', 'XAUUSD', BrokerType.MT5_FOREX)
+        broker_map = self._make_broker_map(BrokerType.MT5_FOREX, 'XAUUSD', SwapMode.PERCENTAGE)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_swap_modes([scenario], logger, broker_map)
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'percentage' in scenario.validation_result[0].errors[0]
+        logger.error.assert_called_once()
+
+    def test_unknown_mode_marks_invalid(self):
+        # An unparseable config string mapped to UNKNOWN by the adapter — also rejected
+        scenario = self._make_scenario('unknown', 'EURUSD', BrokerType.MT5_FOREX)
+        broker_map = self._make_broker_map(BrokerType.MT5_FOREX, 'EURUSD', SwapMode.UNKNOWN)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_swap_modes([scenario], logger, broker_map)
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+
+    def test_broker_not_in_map_skips_scenario(self):
+        scenario = self._make_scenario('x', 'BTCUSD', BrokerType.BINANCE_FUTURES)
+        broker_map = self._make_broker_map(BrokerType.KRAKEN_SPOT, 'BTCUSD', SwapMode.POINTS)
+        logger = MagicMock()
+
+        ScenarioValidator.validate_swap_modes([scenario], logger, broker_map)
 
         assert len(scenario.validation_result) == 0
         logger.error.assert_not_called()

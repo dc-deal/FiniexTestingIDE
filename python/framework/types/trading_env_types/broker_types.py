@@ -24,6 +24,12 @@ class SwapMode(Enum):
     INTEREST_OPEN = "interest_open"        # Interest at position open
     PERCENTAGE = "percentage"      # Percentage of position value
     NONE = "none"                  # No swap (Crypto spot)
+    UNKNOWN = "unknown"            # Unparseable config string — never silently treated as POINTS
+
+    @property
+    def is_implemented(self) -> bool:
+        """True if the swap engine models this mode (POINTS computes, NONE = no swap)."""
+        return self in (SwapMode.POINTS, SwapMode.NONE)
 
 
 class MarginMode(Enum):

@@ -162,6 +162,55 @@ class ScenarioValidator:
                 )
 
     @staticmethod
+    def validate_swap_modes(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger,
+        broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo],
+    ) -> None:
+        """
+        Validate each scenario's symbol uses a swap_mode the engine models.
+
+        The swap engine computes only POINTS (NONE = no swap); any other mode — or an
+        unparseable config string mapped to UNKNOWN — would silently accrue wrong or
+        zero overnight financing. An unmodeled mode marks the scenario invalid (it is
+        then excluded); it does NOT abort the batch (§33).
+
+        Side Effects:
+        - Sets validation_result(is_valid=False) on scenarios with an unmodeled swap_mode
+        - Does NOT raise — marks scenarios as invalid instead
+
+        Args:
+            scenarios: List of scenarios to validate
+            logger: Logger for error messages
+            broker_scenario_map: Map from BrokerType to BrokerScenarioInfo
+        """
+        for scenario in scenarios:
+            broker_info = broker_scenario_map.get(scenario.broker_type)
+            if not broker_info:
+                continue
+            try:
+                spec = broker_info.broker_config.get_symbol_specification(scenario.symbol)
+            except ValueError:
+                continue  # missing symbol — validate_scenario_symbols handles it
+            if spec.swap_mode.is_implemented:
+                continue
+            validation_result = ValidationResult(
+                is_valid=False,
+                scenario_name=scenario.name,
+                errors=[
+                    f"Symbol '{scenario.symbol}' uses swap_mode "
+                    f"'{spec.swap_mode.value}' which the swap engine does not model. "
+                    f"Supported modes: 'points', 'none'."
+                ],
+                warnings=[]
+            )
+            scenario.validation_result.append(validation_result)
+            logger.error(
+                f"❌ {scenario.name}: swap_mode '{spec.swap_mode.value}' not modeled "
+                f"(supported: points, none)"
+            )
+
+    @staticmethod
     def set_scenario_account_currency(
         logger: ScenarioLogger,
         scenarios: List[SingleScenario],
