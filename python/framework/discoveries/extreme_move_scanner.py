@@ -27,6 +27,7 @@ from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
+from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
 
@@ -92,11 +93,10 @@ class ExtremeMoveScanner:
 
         return self._symbol_specs.get(symbol)
 
-    def _get_pip_size(self, spec: SymbolSpecification) -> float:
-        """Calculate pip size from symbol specification."""
-        if spec.digits == 5 or spec.digits == 3:
-            return spec.tick_size * 10
-        return spec.tick_size
+    def _get_pip_size(self, spec: SymbolSpecification, broker_type: str) -> float:
+        """Calculate pip size from symbol specification (market-aware; info-only display)."""
+        return derive_pip_size(
+            spec.tick_size, spec.digits, self._market_config.get_pip_mode(broker_type))
 
     def _load_and_prepare_bars(
         self,
@@ -165,7 +165,7 @@ class ExtremeMoveScanner:
             raise ValueError(
                 f"No symbol specification found for {broker_type}/{symbol}")
 
-        pip_size = self._get_pip_size(spec)
+        pip_size = self._get_pip_size(spec, broker_type)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
 
         avg_atr = float(df['atr'].mean())

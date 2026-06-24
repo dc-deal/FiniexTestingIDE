@@ -24,11 +24,13 @@ _CONFIG_STATIC_AND_DYNAMIC = {
             'weekend_closure': True,
             'session_bucketing': True,
             'primary_activity_metric': 'tick_count',
+            'pip_mode': 'fractional_pip',
         },
         'crypto': {
             'weekend_closure': False,
             'session_bucketing': False,
             'primary_activity_metric': 'volume',
+            'pip_mode': 'tick',
         },
     },
     'brokers': [
@@ -77,6 +79,7 @@ class TestConfigModeParsing:
                     'weekend_closure': True,
                     'session_bucketing': True,
                     'primary_activity_metric': 'tick_count',
+                    'pip_mode': 'fractional_pip',
                 },
             },
             'brokers': [

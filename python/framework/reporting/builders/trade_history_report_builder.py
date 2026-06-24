@@ -73,7 +73,7 @@ def _assemble(
 
 def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
     """Map one closed TradeRecord to a renderable row (the full #393 projection)."""
-    pip = _pip_size(trade.digits)
+    pip = trade.pip_size if trade.pip_size > 0 else 1.0
     mae_dist = abs(trade.entry_price - trade.mae_price) if trade.mae_price > 0 else 0.0
     mfe_dist = abs(trade.mfe_price - trade.entry_price) if trade.mfe_price > 0 else 0.0
     r_multiple = (trade.net_pnl / trade.initial_risk) if trade.initial_risk else None
@@ -101,8 +101,9 @@ def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
         mfe_price=trade.mfe_price,
         mae_pnl=trade.mae_pnl,
         mfe_pnl=trade.mfe_pnl,
-        mae_pips=mae_dist / pip,
-        mfe_pips=mfe_dist / pip,
+        mae_distance=mae_dist / pip,
+        mfe_distance=mfe_dist / pip,
+        price_unit=trade.price_unit,
         r_multiple=r_multiple,
         scenario_name=scenario_name,
         entry_tick_index=trade.entry_tick_index,
@@ -151,9 +152,3 @@ def _execution_rows(broker_trades: Optional[List[BrokerTrade]]) -> List[Executio
     ]
 
 
-def _pip_size(digits: int) -> float:
-    """
-    Forex-convention pip = 10^-(digits-1) (5-digit FX → 0.0001, 3-digit JPY → 0.01).
-    Approximation only — crypto has no pip concept; the exact per-symbol pip_size is #167.
-    """
-    return 10.0 ** -(digits - 1)

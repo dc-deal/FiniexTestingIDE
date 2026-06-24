@@ -724,7 +724,10 @@ class AbstractTradeExecutor(ABC):
                 fee_cost=(entry_fee.cost if entry_fee else 0.0),
             )
 
-        # Open position in portfolio
+        # Open position in portfolio. pip_size + report unit label are stamped from
+        # the adapter here at the source (#167) → carried to the TradeRecord at close,
+        # so every report surface shows MAE/MFE in the correct unit without re-deriving.
+        adapter = self.broker.adapter
         position = self.portfolio.open_position(
             order_id=pending_order.pending_order_id,
             symbol=pending_order.symbol,
@@ -745,6 +748,8 @@ class AbstractTradeExecutor(ABC):
             broker_ref=pending_order.broker_ref,
             entry_trades=list(pending_order.fills.trades),
             entry_submission=pending_order.submission,
+            pip_size=adapter.get_pip_size(pending_order.symbol),
+            price_unit=adapter.get_pip_mode().unit_label,
         )
 
         # Create order result for history

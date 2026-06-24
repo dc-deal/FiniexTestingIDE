@@ -86,6 +86,13 @@ class Position:
     contract_size: int = 100000
     gross_pnl: float = 0.0
 
+    # === Pip Unit (#167) — authoritative pip size + report unit label ===
+    # Stamped from the adapter at open; copied to TradeRecord at close so every
+    # report surface (console / CSV / API) shows MAE/MFE in the correct unit
+    # (pip on Forex, tick on crypto) without re-deriving downstream.
+    pip_size: float = 0.0
+    price_unit: str = ''
+
     # === Tick Index (for backtesting analysis) ===
     entry_tick_index: int = 0
     exit_tick_index: int = 0

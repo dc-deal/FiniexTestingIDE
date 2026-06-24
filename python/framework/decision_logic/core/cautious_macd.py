@@ -65,7 +65,8 @@ class CautiousMacd(AbstractDecisionLogic):
     - stop_distance_pips: STOP trigger distance from current price (default: 15)
     - sl_pips: Stop loss distance from estimated entry (default: 20)
     - tp_pips: Take profit distance from estimated entry (default: 40)
-    - pip_size: Pip size for the traded instrument (default: 0.0001)
+    - pip_size: Pip size for the traded instrument (default: auto-derived from the
+      broker via the trading context, #167; set explicitly to override)
     - break_even_trigger_pips: Break-even after X pips profit (default: 15)
     - min_histogram: Minimum histogram absolute value for valid crossover (default: 0.00005)
     - min_confidence: Minimum signal confidence to act (0.0 = disabled, default: 0.0)
@@ -97,7 +98,12 @@ class CautiousMacd(AbstractDecisionLogic):
         self.stop_distance_pips = self.params.get('stop_distance_pips')
         self.sl_pips = self.params.get('sl_pips')
         self.tp_pips = self.params.get('tp_pips')
+        # pip_size: explicit config wins; otherwise auto-derive from the broker's
+        # authoritative pip size via the trading context (#167). The *_pips params
+        # below are denominated in this unit.
         self.pip_size = self.params.get('pip_size')
+        if self.pip_size is None and self.trading_context is not None:
+            self.pip_size = self.trading_context.pip_size
         self.break_even_trigger_pips = self.params.get(
             'break_even_trigger_pips')
         self.min_histogram = self.params.get('min_histogram')
@@ -156,8 +162,9 @@ class CautiousMacd(AbstractDecisionLogic):
                 description="Take profit distance from estimated entry in pips"
             ),
             'pip_size': InputParamDef(
-                param_type=float, default=0.0001, min_val=0.000001, max_val=1.0,
-                description="Pip size for the traded instrument (0.01 for JPY pairs)"
+                param_type=float, default=None, min_val=0.000001, max_val=1.0,
+                description="Pip size for the traded instrument (auto-derived from the "
+                "broker if unset, #167; 0.01 for JPY pairs)"
             ),
             'break_even_trigger_pips': InputParamDef(
                 param_type=float, default=15, min_val=0, max_val=1000,

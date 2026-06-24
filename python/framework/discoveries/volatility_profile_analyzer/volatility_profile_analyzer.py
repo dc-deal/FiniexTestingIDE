@@ -30,6 +30,7 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
 
@@ -101,7 +102,8 @@ class VolatilityProfileAnalyzer:
     def _calculate_pips_per_day(
         self,
         symbol: str,
-        avg_absolute_atr: float
+        avg_absolute_atr: float,
+        broker_type: str
     ) -> Optional[float]:
         """
         Calculate average pips per day from ATR.
@@ -109,6 +111,7 @@ class VolatilityProfileAnalyzer:
         Args:
             symbol: Trading symbol
             avg_absolute_atr: Average absolute ATR value
+            broker_type: Broker type identifier (resolves the market's pip mode)
 
         Returns:
             Pips per day or None if symbol spec not found
@@ -118,12 +121,9 @@ class VolatilityProfileAnalyzer:
 
         spec = self._market_symbol_specs[symbol]
 
-        # Pip size: for 5-digit broker, pip = tick_size * 10
-        # For 3-digit (JPY pairs), pip = tick_size * 10
-        if spec.digits == 5 or spec.digits == 3:
-            pip_size = spec.tick_size * 10
-        else:
-            pip_size = spec.tick_size
+        # Pip size (market-aware; info-only display) via the shared derivation (#167).
+        pip_size = derive_pip_size(
+            spec.tick_size, spec.digits, self._market_config.get_pip_mode(broker_type))
 
         if pip_size <= 0:
             return None
@@ -228,7 +228,7 @@ class VolatilityProfileAnalyzer:
 
         # Calculate pips per day (if symbol spec available)
         avg_pips_per_day = self._calculate_pips_per_day(
-            symbol, avg_absolute_atr)
+            symbol, avg_absolute_atr, broker_type)
 
         return SymbolVolatilityProfile(
             symbol=symbol,

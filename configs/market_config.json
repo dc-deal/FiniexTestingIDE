@@ -6,6 +6,7 @@
             "weekend_closure": true,
             "session_bucketing": true,
             "primary_activity_metric": "tick_count",
+            "pip_mode": "fractional_pip",
             "inter_tick_gap_threshold_s": 300,
             "generator_profile_defaults": {
                 "min_block_hours": 2,
@@ -21,6 +22,7 @@
             "weekend_closure": false,
             "session_bucketing": false,
             "primary_activity_metric": "volume",
+            "pip_mode": "tick",
             "inter_tick_gap_threshold_s": 600,
             "generator_profile_defaults": {
                 "min_block_hours": 4,
@@ -33,6 +35,8 @@
         {
             "broker_type": "mt5",
             "market_type": "forex",
+            "trading_model": "margin",
+            "config_mode": "static",
             "broker_config_path": "configs/brokers/mt5/mt5_broker_config.json"
         },
         {

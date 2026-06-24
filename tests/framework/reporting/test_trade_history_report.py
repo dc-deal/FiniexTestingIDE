@@ -37,6 +37,8 @@ def _trade(
     mfe_price: float = 0.0,
     mae_pnl: float = 0.0,
     mfe_pnl: float = 0.0,
+    pip_size: float = 0.0001,
+    price_unit: str = 'pip',
 ) -> TradeRecord:
     """Build a fixture closed trade with sensible defaults for the audit fields."""
     entry_time = _T0 + timedelta(minutes=entry_offset_min)
@@ -54,6 +56,7 @@ def _trade(
         initial_risk=initial_risk,
         mae_price=mae_price, mfe_price=mfe_price, mae_pnl=mae_pnl, mfe_pnl=mfe_pnl,
         close_reason=close_reason, entry_type=EntryType.MARKET,
+        pip_size=pip_size, price_unit=price_unit,
     )
 
 
@@ -143,12 +146,22 @@ class TestAnalytics:
         # no initial_risk (trade had no stop loss) → R undefined
         assert build_trade_history_report(_units([_trade()])).trades[0].r_multiple is None
 
-    def test_pips_forex_convention(self):
-        # entry 1.1000, digits 5 → pip = 1e-4; |Δprice| / pip
+    def test_distance_forex_pip_unit(self):
+        # Forex: authoritative pip_size 1e-4 stamped at source → distance in pips (#167)
         row = build_trade_history_report(
             _units([_trade(mae_price=1.0990, mfe_price=1.1030)])).trades[0]
-        assert round(row.mae_pips, 1) == 10.0      # |1.1000 - 1.0990| / 1e-4
-        assert round(row.mfe_pips, 1) == 30.0      # |1.1030 - 1.1000| / 1e-4
+        assert round(row.mae_distance, 1) == 10.0   # |1.1000 - 1.0990| / 1e-4
+        assert round(row.mfe_distance, 1) == 30.0   # |1.1030 - 1.1000| / 1e-4
+        assert row.price_unit == 'pip'
+
+    def test_distance_crypto_tick_unit(self):
+        # Crypto: pip_size = tick (0.1 for BTCUSD) → distance in ticks, labeled 'tick' (#167)
+        row = build_trade_history_report(_units([_trade(
+            symbol='BTCUSD', mae_price=1.0980, mfe_price=1.1050,
+            pip_size=0.1, price_unit='tick')])).trades[0]
+        assert round(row.mae_distance, 2) == 0.02   # |1.1000 - 1.0980| / 0.1
+        assert round(row.mfe_distance, 2) == 0.05   # |1.1050 - 1.1000| / 0.1
+        assert row.price_unit == 'tick'
 
     def test_aggregate(self):
         trades = [
