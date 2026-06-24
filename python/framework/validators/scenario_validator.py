@@ -13,7 +13,7 @@ Usage:
     ScenarioValidator.validate_account_currencies(scenarios, logger, broker_scenario_map)
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
@@ -319,6 +319,32 @@ class ScenarioValidator:
                     f"❌ {scenario.name}: No end_date and no max_ticks — "
                     f"at least one boundary is required"
                 )
+
+    @staticmethod
+    def check_parameter_constancy(
+        scenarios: List[SingleScenario],
+    ) -> Tuple[bool, List[str]]:
+        """
+        Check the cascade-resolved strategy_config is constant across windows (#367).
+
+        A robustness comparison (IS/OOS, multi-window distribution) is only fair if the
+        parameters are held CONSTANT across the windows — otherwise a performance difference
+        may stem from a silent parameter drift, not the market window. This compares the full
+        resolved strategy_config (the existing `is_mixed_*` flags only compare the logic-type
+        string / worker count, not the parameters). Pure — no side effects; the advisory is
+        emitted by the PostRunValidator, the fact is consumed by the robustness report.
+
+        Args:
+            scenarios: The robustness run's scenarios (compared against the first)
+
+        Returns:
+            Tuple of (is_constant, drifting_window_names) — names whose params differ from the first
+        """
+        if len(scenarios) < 2:
+            return True, []
+        reference = scenarios[0].strategy_config
+        drifting = [s.name for s in scenarios[1:] if s.strategy_config != reference]
+        return (len(drifting) == 0, drifting)
 
     @staticmethod
     def validate_scenario_names(

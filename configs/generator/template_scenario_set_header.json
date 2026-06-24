@@ -24,8 +24,8 @@
                 }
             },
             "decision_logic_config": {
-                "rsi_oversold": 30,
-                "rsi_overbought": 70,
+                "rsi_buy_threshold": 35,
+                "rsi_sell_threshold": 65,
                 "min_confidence": 0.6
             }
         },

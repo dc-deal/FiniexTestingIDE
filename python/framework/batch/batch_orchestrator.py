@@ -500,6 +500,8 @@ class BatchOrchestrator:
             batch_pickle_sample_mb=batch_pickle_sample_mb,
             # debugger attached / DEBUG_MODE → serial run, timings not representative
             debug_execution=is_debug_execution(),
+            # set-wide robustness mode (#367) — read by robustness builder + PostRunValidator
+            robustness_config=self._scenario_set.get_robustness_config(),
         )
 
         self._logger.verbose(summary.process_result_list)

@@ -20,6 +20,7 @@ from python.framework.reporting.console.execution_header_summary import Executio
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
+from python.framework.reporting.console.robustness_summary import RobustnessSummary
 from python.framework.reporting.console.scenario_details_summary import ScenarioDetailsSummary
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
@@ -51,6 +52,7 @@ class RunConsoleRenderer:
         worker_decision_breakdown: Optional[WorkerDecisionBreakdownSummary] = None,
         warnings_summary: Optional[WarningsSummary] = None,
         block_splitting_disposition: Optional[BlockSplittingDisposition] = None,
+        robustness_summary: Optional[RobustnessSummary] = None,
         closing_block: Optional[ClosingBlock] = None,
     ):
         """
@@ -72,6 +74,7 @@ class RunConsoleRenderer:
         self._worker_decision_breakdown = worker_decision_breakdown
         self._warnings_summary = warnings_summary
         self._block_splitting_disposition = block_splitting_disposition
+        self._robustness_summary = robustness_summary
         self._closing_block = closing_block
 
     def render_all(self, renderer: ConsoleRenderer, summary_detail: bool) -> None:
@@ -152,6 +155,10 @@ class RunConsoleRenderer:
         # so render() no-ops; rendered from the model, #391)
         if self._block_splitting_disposition:
             self._block_splitting_disposition.render(renderer)
+
+        # Robustness validation (sim-only, #367 — render() no-ops when robustness is off)
+        if self._robustness_summary:
+            self._robustness_summary.render(renderer)
 
         # Closing block (sim → Executive Summary, live → Session Summary)
         if self._closing_block:

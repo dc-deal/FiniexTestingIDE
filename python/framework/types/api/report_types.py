@@ -760,3 +760,78 @@ class AggregatedPortfolioReport(BaseModel):
     live keeps the lean `PortfolioReport.aggregates`).
     """
     currencies: list[AggregatedPortfolioCurrency] = []
+
+
+# ============================================================================
+# Robustness — Multi-Window + IS/OOS validation (#367, sim-only)
+# ============================================================================
+
+class RobustnessWindowRow(BaseModel):
+    """One window's robustness metric + its IS/OOS role and (Profile Run) regime/session."""
+    name: str
+    role: str                   # 'in_sample' | 'out_of_sample' | 'unassigned'
+    regime: str = ''            # Profile Runs only (from the source block)
+    session: str = ''           # Profile Runs only
+    currency: str = ''
+    metric_value: float = 0.0   # the configured primary metric (expectancy or net_pnl)
+    net_pnl: float = 0.0        # secondary, non-aggregated reference
+    expectancy: float = 0.0
+    total_trades: int = 0
+    profitable: bool = False
+
+
+class RobustnessDistribution(BaseModel):
+    """Distribution of the primary metric across all windows (the Stage-2 powerful form)."""
+    window_count: int = 0
+    pct_profitable: float = 0.0
+    mean: float = 0.0
+    median: float = 0.0
+    std: float = 0.0
+    best_value: float = 0.0
+    best_window: str = ''
+    worst_value: float = 0.0
+    worst_window: str = ''
+    # std / |mean| — stability across windows (lower = more consistent); 0 when mean is 0.
+    coefficient_of_variation: float = 0.0
+
+
+class RobustnessRoleAggregate(BaseModel):
+    """Aggregate of the primary metric over one role's windows (IS or OOS)."""
+    role: str
+    window_count: int = 0
+    mean_metric: float = 0.0
+    median_metric: float = 0.0
+    pct_profitable: float = 0.0
+
+
+class RobustnessRegimeRow(BaseModel):
+    """Per-regime breakdown of the primary metric (Profile Runs only)."""
+    regime: str
+    window_count: int = 0
+    mean_metric: float = 0.0
+    pct_profitable: float = 0.0
+
+
+class RobustnessReport(BaseModel):
+    """
+    Multi-window robustness + IS/OOS validation (#367, sim-only). PURE FACTS — the
+    ROBUST/OVERFIT verdict is a decision and lives in `PostRunValidator`, not in this model.
+    The renderer applies only a display class; the verdict warning fires from the validator.
+    """
+    enabled: bool = False
+    metric: str = 'expectancy'              # the primary metric name
+    windows: list[RobustnessWindowRow] = []
+    distribution: RobustnessDistribution | None = None
+    in_sample: RobustnessRoleAggregate | None = None
+    out_of_sample: RobustnessRoleAggregate | None = None
+    # OOS mean / IS mean — degradation measure; None when IS mean ≤ 0 (degradation undefined).
+    walk_forward_efficiency: float | None = None
+    params_constant: bool = True            # all windows share the resolved strategy_config
+    drifting_windows: list[str] = []        # windows whose params differ from the first
+    disposition_pct: float = 0.0            # block-splitting distortion (trust-gate input)
+    regime_breakdown: list[RobustnessRegimeRow] = []
+    # Config thresholds carried for a self-describing render (display class) + API consistency.
+    overfit_wfe_threshold: float = 0.5
+    robust_wfe_threshold: float = 0.8
+    disposition_trust_pct: float = 25.0
+    min_windows: int = 3

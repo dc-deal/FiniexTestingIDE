@@ -21,6 +21,9 @@ from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
     TradeSimulatorDefaults,
 )
+from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
+from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
+from python.scenario.generator.role_assignment import assign_roles_time_ordered
 vLog = get_global_logger()
 
 
@@ -134,6 +137,9 @@ class ScenarioConfigLoader:
         check_unknown_keys('global.trade_simulator_config',  global_trade_simulator, _KNOWN_TRADE_SIM_KEYS)
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
         check_unknown_keys('global.stress_test_config',      global_stress_test,    _KNOWN_STRESS_TEST_KEYS)
+
+        # Set-wide robustness mode (#367) — top-level block, Pydantic-validated (extra='forbid').
+        robustness = RobustnessConfig(**config.get('robustness', {}))
 
         # Get warn_on_override flag from app_config
         app_config = AppConfigManager()
@@ -259,6 +265,8 @@ class ScenarioConfigLoader:
                 stress_test_config=scenario_stress_test if scenario_stress_test else None,
                 # Add order_guard_config to SingleScenario
                 order_guard_config=scenario_order_guard if scenario_order_guard else None,
+                # Per-window IS/OOS label (#367); Pydantic-style enum validation on the value.
+                role=RobustnessRole(scenario_data.get('role', RobustnessRole.UNASSIGNED.value)),
             )
             scenarios.append(scenario)
             current_scenario_index += 1
@@ -273,7 +281,8 @@ class ScenarioConfigLoader:
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
-            config_path=config_path
+            config_path=config_path,
+            robustness=robustness,
         )
 
     def load_from_profiles(
@@ -318,6 +327,9 @@ class ScenarioConfigLoader:
         check_unknown_keys('global.order_guard',             global_order_guard,    _KNOWN_ORDER_GUARD_KEYS)
         check_unknown_keys('global.stress_test_config',      global_stress_test,    _KNOWN_STRESS_TEST_KEYS)
 
+        # Set-wide robustness mode (#367) — from the template's top-level block.
+        robustness = RobustnessConfig(**config.get('robustness', {}))
+
         # App-level defaults for 3-tier cascade
         app_config = AppConfigManager()
         app_trade_simulator_defaults = app_config.get_trade_simulator_defaults()
@@ -343,7 +355,17 @@ class ScenarioConfigLoader:
             meta = profile.profile_meta
             mode_short = 'vol' if meta.generator_mode == 'volatility_split' else 'cont'
 
-            for block in profile.blocks:
+            # Resolve the quote currency once per profile (authoritative, broker config) — every
+            # scenario gets the symbol's quote balance so a profile run validates out of the box.
+            quote_currency = resolve_quote_currency(meta.symbol, meta.broker_type)
+
+            # Time-ordered IS/OOS roles per profile (per-symbol fair split); unassigned off-mode.
+            roles = (
+                assign_roles_time_ordered(len(profile.blocks), robustness.oos_split)
+                if robustness.enabled else None
+            )
+
+            for local_index, block in enumerate(profile.blocks):
                 name = f"{meta.symbol}_{mode_short}_{block.block_index:02d}"
 
                 scenario = SingleScenario(
@@ -357,10 +379,17 @@ class ScenarioConfigLoader:
                     max_ticks=None,
                     strategy_config=copy.deepcopy(global_strategy),
                     execution_config=copy.deepcopy(global_execution),
-                    trade_simulator_config=copy.deepcopy(merged_trade_simulator) if merged_trade_simulator else None,
+                    # Seed the symbol's quote-currency balance so a profile run validates out of
+                    # the box (per scenario — a multi-symbol profile run mixes quote currencies).
+                    trade_simulator_config=ensure_quote_balance(
+                        copy.deepcopy(merged_trade_simulator), quote_currency),
                     stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
                     order_guard_config=copy.deepcopy(global_order_guard) if global_order_guard else None,
                     is_profile_run=True,
+                    role=roles[local_index] if roles else RobustnessRole.UNASSIGNED,
+                    # Regime/session carried from the source block → the robustness regime breakdown (#367).
+                    regime=block.regime_at_split.value,
+                    session=block.session.value,
                 )
                 scenarios.append(scenario)
                 global_index += 1
@@ -380,4 +409,5 @@ class ScenarioConfigLoader:
             scenarios=scenarios,
             config_path=config_path,
             generator_profiles=profiles,
+            robustness=robustness,
         )

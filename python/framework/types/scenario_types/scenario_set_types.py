@@ -19,6 +19,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
@@ -63,6 +64,14 @@ class SingleScenario:
     order_guard_config: Optional[Dict[str, Any]] = None
 
     account_currency: str = ''
+
+    # === ROBUSTNESS (#367) ===
+    # Per-window IS/OOS label (manual config or generator-assigned). Default unassigned.
+    role: RobustnessRole = RobustnessRole.UNASSIGNED
+    # Volatility regime + trading session of the window — only populated for Profile Runs
+    # (copied from the source ProfileBlock); empty for manual / blocks scenarios.
+    regime: str = ''
+    session: str = ''
 
     # === VALIDATION TRACKING ===
     # never init validation_result — its only purpose is to be filled
@@ -136,6 +145,8 @@ class LoadedScenarioConfig:
     config_path: Path
     generator_profiles: Optional[List[GeneratorProfile]] = None
     generator_profile_paths: Optional[List[Path]] = None
+    # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
+    robustness: Optional[RobustnessConfig] = None
 
 
 class ScenarioSet:
@@ -149,6 +160,7 @@ class ScenarioSet:
         self.app_config = app_config
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
+        self._robustness = scenario_config.robustness or RobustnessConfig()
 
         # ScenarioSet creates its own loggers
         self._run_timestamp = datetime.now(
@@ -235,6 +247,15 @@ class ScenarioSet:
             List of GeneratorProfile objects, or None for normal runs
         """
         return self._generator_profiles
+
+    def get_robustness_config(self) -> RobustnessConfig:
+        """
+        Get the set-wide robustness config (#367).
+
+        Returns:
+            RobustnessConfig (a disabled default when the set has no robustness block)
+        """
+        return self._robustness
 
 
 @dataclass

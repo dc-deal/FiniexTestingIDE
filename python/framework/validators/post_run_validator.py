@@ -13,6 +13,7 @@ reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 
 from typing import Optional
 
+from python.framework.reporting.builders.robustness_report_builder import build_robustness_report_from_batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_performance_types import (
@@ -52,6 +53,7 @@ class PostRunValidator:
         self._check_bottlenecks()
         self._check_multi_currency()
         self._check_time_divergence()
+        self._check_robustness()
 
     def _add(self, check: str, message: str) -> None:
         """Append a run-scoped advisory warning (is_valid=True) to the batch-level channel."""
@@ -276,6 +278,45 @@ class PostRunValidator:
                     f"Time divergence: {currency} group scenarios span {span_days} days — aggregated "
                     f"P&L is statistical only, not portfolio-representative (market conditions / "
                     f"volatility / rates differ)."))
+
+    def _check_robustness(self) -> None:
+        """Robustness verdict (#367) — OVERFIT / param-drift / low-N advisories, gated on trust."""
+        config = self._batch.robustness_config
+        if not config.enabled:
+            return
+        report = build_robustness_report_from_batch(self._batch)
+        if report.distribution is None:
+            return
+
+        # Parameter drift always invalidates the comparison (fair-test prerequisite).
+        if not report.params_constant:
+            self._add('robustness_param_drift', (
+                f"ROBUSTNESS: parameters differ across {len(report.drifting_windows)} window(s) "
+                f"({', '.join(report.drifting_windows)}) — the IS/OOS comparison + distribution "
+                f"are not a fair test (hold the strategy constant across windows)."))
+
+        # Too few windows → the distribution is statistically weak.
+        if report.distribution.window_count < config.min_windows:
+            self._add('robustness_low_windows', (
+                f"ROBUSTNESS: only {report.distribution.window_count} window(s) "
+                f"(< {config.min_windows}) — the distribution is statistically weak; add more "
+                f"windows before trusting it."))
+
+        # Trust gate: block-splitting distortion makes the per-window numbers artifacts.
+        if report.disposition_pct > config.disposition_trust_pct:
+            self._add('robustness_low_trust', (
+                f"ROBUSTNESS: verdict suppressed — block-splitting distortion "
+                f"{report.disposition_pct:.1f}% exceeds {config.disposition_trust_pct:.0f}%; the "
+                f"per-window numbers are artifacts (use continuous mode / larger blocks)."))
+            return  # numbers unreliable → no OVERFIT/ROBUST verdict
+
+        # The degradation verdict — only OVERFIT fires a warning (ROBUST is good news, no advisory).
+        wfe = report.walk_forward_efficiency
+        if wfe is not None and wfe < config.overfit_wfe_threshold:
+            self._add('robustness_overfit', (
+                f"ROBUSTNESS: OVERFIT — Walk-Forward Efficiency {wfe:.2f} (OOS/IS) below "
+                f"{config.overfit_wfe_threshold:.2f}; out-of-sample performance degrades sharply "
+                f"from in-sample (likely curve-fit to the IS windows)."))
 
     def _profiling(self, result: ProcessResult) -> Optional[ProfilingData]:
         """Build typed ProfilingData for a scenario, or None when no profiling data exists."""

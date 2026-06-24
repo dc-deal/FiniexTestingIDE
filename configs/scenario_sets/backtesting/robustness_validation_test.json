@@ -1,0 +1,99 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "robustness_validation_test",
+  "created": "2026-06-24T00:00:00.000000",
+  "description": "Robustness Validation (#367) - multi-window IS/OOS over one constant strategy (5 windows, 3 IS / 2 OOS)",
+  "robustness": {
+    "enabled": true,
+    "metric": "net_pnl",
+    "oos_split": 0.4
+  },
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/simple_consensus",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "bollinger_main": "CORE/bollinger",
+        "obv_volume": "CORE/obv"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "bollinger_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2
+        },
+        "obv_volume": {
+          "periods": {
+            "M5": 20
+          }
+        }
+      },
+      "decision_logic_config": {
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "bollinger_lower_threshold": 0.3,
+        "bollinger_upper_threshold": 0.7,
+        "min_confidence": 0.5,
+        "lot_size": 0.1,
+        "min_free_margin": 1000,
+        "obv_filter_enabled": true,
+        "obv_block_opposite_trend": true,
+        "obv_confidence_boost": 0.1
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "ethusd_w1",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T10:00:00+00:00",
+      "end_date": "2026-02-10T12:00:00+00:00",
+      "role": "in_sample"
+    },
+    {
+      "name": "ethusd_w2",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T12:00:00+00:00",
+      "end_date": "2026-02-10T14:00:00+00:00",
+      "role": "in_sample"
+    },
+    {
+      "name": "ethusd_w3",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T14:00:00+00:00",
+      "end_date": "2026-02-10T16:00:00+00:00",
+      "role": "in_sample"
+    },
+    {
+      "name": "ethusd_w4",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T16:00:00+00:00",
+      "end_date": "2026-02-10T18:00:00+00:00",
+      "role": "out_of_sample"
+    },
+    {
+      "name": "ethusd_w5",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T18:00:00+00:00",
+      "end_date": "2026-02-10T20:00:00+00:00",
+      "role": "out_of_sample"
+    }
+  ]
+}

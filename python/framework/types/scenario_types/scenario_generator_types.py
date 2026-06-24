@@ -125,13 +125,16 @@ class ScenarioCandidate:
     # Scoring
     score: float = 0.0
 
-    def to_scenario_dict(self, name: str, max_ticks: Optional[int] = None) -> Dict:
+    def to_scenario_dict(
+        self, name: str, max_ticks: Optional[int] = None, role: Optional[str] = None
+    ) -> Dict:
         """
         Convert to scenario dictionary for config output.
 
         Args:
             name: Scenario name
             max_ticks: Optional tick limit (None = time-based only, no tick limit)
+            role: Optional robustness IS/OOS role (#367); omitted from the dict when None
 
         Returns:
             Scenario dictionary compatible with ScenarioConfigSaver
@@ -143,7 +146,10 @@ class ScenarioCandidate:
         if effective_max_ticks == 0:
             effective_max_ticks = None
 
-        return {
+        # Cascade-capable keys (strategy/execution/trade_simulator) are NOT emitted per
+        # scenario — they live set-wide in `global` only. For a robustness run this keeps the
+        # strategy constant by construction; everywhere it removes dead empty containers (§19).
+        scenario: Dict = {
             'name': name,
             'symbol': self.symbol,
             'data_broker_type': self.broker_type,
@@ -152,10 +158,10 @@ class ScenarioCandidate:
             'max_ticks': effective_max_ticks,  # None → null in JSON
             'data_mode': 'realistic',
             'enabled': True,
-            'strategy_config': {},
-            'execution_config': {},
-            'trade_simulator_config': {}
         }
+        if role is not None:
+            scenario['role'] = role
+        return scenario
 
 
 @dataclass

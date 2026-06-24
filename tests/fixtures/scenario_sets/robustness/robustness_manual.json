@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "robustness_manual_fixture",
+  "robustness": {
+    "enabled": true,
+    "metric": "net_pnl",
+    "oos_split": 0.5
+  },
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/simple_consensus"
+    }
+  },
+  "scenarios": [
+    {
+      "name": "w_is",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T10:00:00+00:00",
+      "end_date": "2026-02-10T12:00:00+00:00",
+      "role": "in_sample"
+    },
+    {
+      "name": "w_oos",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T12:00:00+00:00",
+      "end_date": "2026-02-10T14:00:00+00:00",
+      "role": "out_of_sample"
+    }
+  ]
+}
