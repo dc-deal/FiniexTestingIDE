@@ -35,6 +35,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
@@ -187,6 +188,18 @@ class AutotraderMain:
                 [type(self._decision_logic)]
                 + [type(worker) for worker in self._worker_orchestrator.workers.values()]
             )
+
+            # === SWAP-MODE VALIDATION (#407) ===
+            # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
+            # config declares any other mode — or an unparseable string mapped to UNKNOWN —
+            # would silently accrue wrong/zero overnight financing → fail fast at startup
+            # (§35). Single session: abort (nothing to exclude, unlike the sim batch which
+            # marks the one offending scenario invalid).
+            _swap_spec = self._executor.broker.adapter.get_symbol_specification(
+                self._config.symbol)
+            if not _swap_spec.swap_mode.is_implemented:
+                raise SwapModeNotImplementedError(
+                    self._config.symbol, _swap_spec.swap_mode)
 
             # === COMPONENT METADATA ADVISORY (#118 Stage 0) ===
             # Version line + soft (non-blocking) market-fit warning.

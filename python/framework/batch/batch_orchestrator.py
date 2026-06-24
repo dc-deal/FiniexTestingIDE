@@ -318,6 +318,13 @@ class BatchOrchestrator:
             broker_scenario_map=_broker_scenario_map,
         )
 
+        # 3b. Validate each symbol's swap_mode is modeled by the swap engine (#407)
+        ScenarioValidator.validate_swap_modes(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger,
+            broker_scenario_map=_broker_scenario_map,
+        )
+
         # 4. Validate account_currency compatibility with symbols
         ScenarioValidator.validate_account_currencies(
             scenarios=self._scenario_set.get_valid_scenarios(),

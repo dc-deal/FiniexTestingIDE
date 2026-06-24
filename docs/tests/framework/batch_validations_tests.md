@@ -37,6 +37,19 @@ Phase 0 step that checks each scenario's symbol against the authoritative broker
 | `test_unknown_symbol_marks_scenario_invalid` | Symbol absent → `ValidationResult(is_valid=False)` appended, error logged |
 | `test_broker_not_in_map_skips_scenario` | Broker type not in map → silent skip (upstream error handles it) |
 
+#### `TestValidateSwapModes`
+
+Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does not model
+(`points` / `none` are supported; the rest fail per-scenario, §33 — the batch is not aborted).
+
+| Test | Description |
+|------|-------------|
+| `test_points_mode_passes` | `swap_mode=points` → no `validation_result` appended |
+| `test_none_mode_passes` | `swap_mode=none` (swap-free / spot) → passes (books nothing) |
+| `test_percentage_mode_marks_invalid` | `swap_mode=percentage` → `ValidationResult(is_valid=False)`, error names the mode |
+| `test_unknown_mode_marks_invalid` | `UNKNOWN` (unparseable string mapped by the adapter) → invalid |
+| `test_broker_not_in_map_skips_scenario` | Broker type not in map → silent skip |
+
 ### `test_broker_data_preparator.py`
 
 #### `TestGetValidBrokerScenarioMap`

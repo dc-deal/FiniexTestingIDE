@@ -135,6 +135,23 @@ Per-symbol rates + triple weekday come from the **broker** config (raw MT5 expor
 `swap_mode`, `swap_long`, `swap_short`, `swap_rollover3days` (MT5 weekday: Sun=0 → converted
 to Python Mon=0 via `time_utils.mt5_weekday_to_python`).
 
+### Swap-free accounts (`swap_mode = none`)
+
+Some brokers offer **swap-free** (a.k.a. **Islamic**) accounts: overnight positions accrue no
+swap, because Islamic finance prohibits interest (*riba*). The broker usually recovers the cost
+another way — a wider spread or a flat per-night holding / administration fee after a grace period
+— rather than the interest-differential swap.
+
+In the model this is `swap_mode = none`: the accrual gate (`!= POINTS`) takes the early return, so
+`swap_long` / `swap_short` / the rollover config are present in the config but **never applied** —
+swap is exactly 0, however long the position is held. `none` is a *supported* mode (the #407
+validator accepts it), in contrast to `interest_*` / `percentage`, which are rejected before the run.
+
+> Caveat: the model books literally zero for `none`. A real swap-free account's compensating
+> holding / admin fee is **not** modeled here — so for multi-night holds a `none` backtest reads
+> slightly optimistic if the broker charges one. A dedicated holding-fee model would be a separate
+> cost (future).
+
 ### Algo awareness (opt-in)
 
 `DecisionTradingApi` (forwarding to `MarketClock`) lets an opt-in strategy look ahead:
@@ -171,7 +188,10 @@ deterministic (config + calendar) — safe for the algo to read at runtime.
 ## Limitations (v0)
 
 - **Sim/backtest only.** Live MT5 broker-reported swap reconciliation → #209.
-- **`POINTS` swap mode only** (the MT5 model); interest/percentage modes are not yet computed.
+- **`POINTS` swap mode only** (the MT5 model); `NONE` is the swap-free case. `interest_*` /
+  `percentage` modes are **not silently skipped** — a symbol declaring one is rejected before the
+  run (sim: the scenario is marked invalid and excluded; live: startup abort), so no run ever
+  mis-reports financing. Validation: #407. Implementing the remaining modes: #408.
 - **Weekend-only calendar** — holiday-aware swap (extra value-date days around holidays) waits
   on the full holiday calendar (#370).
 - **`entry_tick_value` anchor** — exact per-rollover rate conversion deferred to #209 calibration.

@@ -351,7 +351,8 @@ class Mt5Adapter(AbstractAdapter):
         try:
             swap_mode = SwapMode(swap_mode_str)
         except ValueError:
-            swap_mode = SwapMode.POINTS  # Default fallback
+            swap_mode = SwapMode.UNKNOWN  # never silently treated as POINTS — the
+            # swap-mode validator rejects it (sim) / aborts startup (live)
 
         return SymbolSpecification(
             # Identity

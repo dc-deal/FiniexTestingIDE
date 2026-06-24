@@ -29,7 +29,11 @@
         "min_confidence": 0.6
       }
     },
-    "trade_simulator_config": {},
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    },
     "execution_config": {},
     "stress_test_config": {
       "reject_open_order": {
