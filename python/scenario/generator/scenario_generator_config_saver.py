@@ -17,7 +17,7 @@ from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
 )
-from python.scenario.generator.balance_defaults import ensure_quote_balance
+from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
 from python.scenario.generator.role_assignment import assign_roles_time_ordered
 from python.framework.logging.bootstrap_logger import get_global_logger
 
@@ -75,10 +75,14 @@ class ScenarioGeneratorConfigSaver:
 
         # Always provide a balance in the symbol's quote currency, so the generated set passes
         # validation and runs out of the box (cascade-capable keys are no longer emitted per
-        # scenario, so the balance must live set-wide in global).
+        # scenario, so the balance must live set-wide in global). The quote is resolved
+        # authoritatively from the broker config (#265) — broker_type comes from the candidates.
         global_config = config.setdefault('global', {})
-        global_config['trade_simulator_config'] = ensure_quote_balance(
-            global_config.get('trade_simulator_config'), result.symbol)
+        if result.scenarios:
+            quote_currency = resolve_quote_currency(
+                result.symbol, result.scenarios[0].broker_type)
+            global_config['trade_simulator_config'] = ensure_quote_balance(
+                global_config.get('trade_simulator_config'), quote_currency)
 
         # Robustness mode (#367): write the set-wide block (positioned ABOVE `global`, since it
         # is a set-wide mode, not a cascade default) + assign time-ordered IS/OOS roles.

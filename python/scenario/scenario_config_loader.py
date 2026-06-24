@@ -22,7 +22,7 @@ from python.framework.types.config_types.backtesting_config_types import (
     TradeSimulatorDefaults,
 )
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
-from python.scenario.generator.balance_defaults import ensure_quote_balance
+from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
 from python.scenario.generator.role_assignment import assign_roles_time_ordered
 vLog = get_global_logger()
 
@@ -355,6 +355,10 @@ class ScenarioConfigLoader:
             meta = profile.profile_meta
             mode_short = 'vol' if meta.generator_mode == 'volatility_split' else 'cont'
 
+            # Resolve the quote currency once per profile (authoritative, broker config) — every
+            # scenario gets the symbol's quote balance so a profile run validates out of the box.
+            quote_currency = resolve_quote_currency(meta.symbol, meta.broker_type)
+
             # Time-ordered IS/OOS roles per profile (per-symbol fair split); unassigned off-mode.
             roles = (
                 assign_roles_time_ordered(len(profile.blocks), robustness.oos_split)
@@ -378,7 +382,7 @@ class ScenarioConfigLoader:
                     # Seed the symbol's quote-currency balance so a profile run validates out of
                     # the box (per scenario — a multi-symbol profile run mixes quote currencies).
                     trade_simulator_config=ensure_quote_balance(
-                        copy.deepcopy(merged_trade_simulator), meta.symbol),
+                        copy.deepcopy(merged_trade_simulator), quote_currency),
                     stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
                     order_guard_config=copy.deepcopy(global_order_guard) if global_order_guard else None,
                     is_profile_run=True,
