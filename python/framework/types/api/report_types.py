@@ -46,8 +46,11 @@ class TradeHistoryRow(BaseModel):
     mfe_price: float = 0.0      # most favorable price reached while open
     mae_pnl: float = 0.0        # gross P&L at the worst excursion
     mfe_pnl: float = 0.0        # gross P&L at the best excursion
-    mae_pips: float = 0.0       # MAE distance in pips (forex convention; #167 for exact pip_size)
-    mfe_pips: float = 0.0       # MFE distance in pips (forex convention)
+    # MAE/MFE distance in the symbol's price unit (#167) — exact per-symbol pip_size
+    # stamped at the source; price_unit labels it ('pip' on Forex, 'tick' on crypto).
+    mae_distance: float = 0.0
+    mfe_distance: float = 0.0
+    price_unit: str = ''
     r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
     # Full projection (#393) — lets the console audit table render purely from the model
     scenario_name: str = ''     # owning run unit (sim: scenario; live: session) → grouping

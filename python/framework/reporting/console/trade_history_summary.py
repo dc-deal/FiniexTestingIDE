@@ -137,7 +137,10 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             for ex in r.entry_executions:
                 shared_counts[ex.trade_id] = shared_counts.get(ex.trade_id, 0) + 1
 
-        self._print_table_header(renderer)
+        # MAE/MFE column unit is constant per scenario (one symbol) — taken from the
+        # source-stamped row (#167), never re-derived here.
+        unit = (sorted_rows[0].price_unit if sorted_rows else '') or 'pip'
+        self._print_table_header(renderer, unit)
         for idx, row in enumerate(sorted_rows, 1):
             self._print_trade_row(idx, row, renderer, shared_counts)
         self._print_table_footer(totals, renderer)
@@ -164,18 +167,18 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             row = f"   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message}"
             print(renderer.yellow(row))
 
-    def _print_table_header(self, renderer: ConsoleRenderer) -> None:
-        """Print trade table header."""
+    def _print_table_header(self, renderer: ConsoleRenderer, unit: str) -> None:
+        """Print trade table header. unit labels the MAE/MFE columns ('pip' / 'tick', #167)."""
         header = (
             f"   {'#':>3} | {'Side':^5} | {'ET':>2} | {'Lots':>5} | "
             f"{'Entry Price':>12} | {'Exit Price':>12} | "
             f"{'SL':>12} | {'TP':>12} | "
             f"{'Entry Tick':>10} | {'Exit Tick':>10} | {'Duration':>8} | "
             f"{'Gross P&L':>10} | {'Fees':>8} | {'Swap':>8} | {'Net P&L':>10} | "
-            f"{'MAE':>7} | {'MFE':>7} | {'R':>6} | {'Close Reason':>14}"
+            f"{f'MAE({unit})':>9} | {f'MFE({unit})':>9} | {'R':>6} | {'Close Reason':>14}"
         )
         print(renderer.gray(header))
-        print(renderer.gray("   " + "-" * 211))
+        print(renderer.gray("   " + "-" * 215))
 
     def _print_trade_row(
         self,
@@ -206,7 +209,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"{sl_str} | {tp_str} | "
             f"{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {duration:>8} | "
             f"{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | "
-            f"{row.mae_pips:>7.1f} | {row.mfe_pips:>7.1f} | {r_str} | {reason_str:>14}"
+            f"{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}"
         )
 
         # Per-execution sub-lines (#330) — from the model's ExecutionRows.

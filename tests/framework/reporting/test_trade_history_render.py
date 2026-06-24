@@ -23,7 +23,7 @@ def _row() -> TradeHistoryRow:
         entry_price=1.1000, entry_time='2025-10-13T08:00:00+00:00',
         exit_price=1.1020, exit_time='2025-10-13T08:30:00+00:00', duration_s=1800.0,
         close_reason='tp_triggered', gross_pnl=20.8, total_fees=0.8, net_pnl=20.0,
-        currency='USD', mae_pips=3.5, mfe_pips=22.0, r_multiple=2.0,
+        currency='USD', mae_distance=3.5, mfe_distance=22.0, price_unit='pip', r_multiple=2.0,
         scenario_name='AUDUSD_cont_00', entry_tick_index=10, exit_tick_index=99,
         entry_type='market', entry_side='buy', exit_side='sell',
         entry_executions=[ExecutionRow(

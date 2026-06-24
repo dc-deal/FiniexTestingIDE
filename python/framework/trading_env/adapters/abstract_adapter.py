@@ -10,9 +10,12 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
+from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.types.config_types.market_config_types import PipMode
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.utils.trading_math.pip_math import derive_pip_size
 from python.framework.types.live_types.live_execution_types import BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
@@ -68,6 +71,9 @@ class AbstractAdapter(ABC):
         # #351 — optional API performance monitor, injected by AutoTraderMain for
         # live adapters. None → no recording (zero overhead).
         self._api_monitor: Optional[ApiPerfMonitor] = None
+
+        # #167 — pip-derivation mode resolved once per adapter (constant per market).
+        self._pip_mode: Optional[PipMode] = None
 
     def set_api_monitor(self, monitor: ApiPerfMonitor) -> None:
         """
@@ -947,6 +953,51 @@ class AbstractAdapter(ABC):
             BrokerSpecification with all static broker properties
         """
         pass
+
+    # ============================================
+    # Pip Size — Authoritative Per-Symbol Price Unit (#167)
+    # ============================================
+
+    def _resolve_pip_mode(self) -> PipMode:
+        """
+        Resolve (and cache) this broker's pip-derivation mode from market config.
+
+        Constant per broker/market, so resolved once on first use. Lives at the
+        adapter (the source), never re-derived in a report renderer.
+
+        Returns:
+            PipMode for this adapter's market type
+        """
+        if self._pip_mode is None:
+            self._pip_mode = MarketConfigManager().get_pip_mode(
+                self.get_broker_type().value)
+        return self._pip_mode
+
+    def get_pip_size(self, symbol: str) -> float:
+        """
+        Authoritative pip size for a symbol, derived from its tick_size + digits and
+        the market's pip mode. Decision logics read this for pip-denominated parameters
+        instead of hand-setting one per scenario.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Pip size in price space (e.g. 0.0001 EURUSD, 0.01 USDJPY, 0.1 BTCUSD)
+        """
+        spec = self.get_symbol_specification(symbol)
+        return derive_pip_size(spec.tick_size, spec.digits, self._resolve_pip_mode())
+
+    def get_pip_mode(self) -> PipMode:
+        """
+        This broker's pip-derivation mode (carries the report unit label via
+        `unit_label`). Stamped onto trade records at the source so every report
+        surface shows the correct unit (pip / tick) without re-deriving.
+
+        Returns:
+            PipMode for this adapter's market type
+        """
+        return self._resolve_pip_mode()
 
     # ============================================
     # Required: Margin & Leverage

@@ -150,3 +150,10 @@ class TradeRecord:
     # (BUY) and exit_price - exit_submission.tick_mid_price (direction-aware sign).
     entry_submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
     exit_submission: SubmissionMetadata = field(default_factory=SubmissionMetadata)
+
+    # === Pip Unit (#167) — authoritative pip size + report unit label ===
+    # Stamped from the adapter at the source (position open → copied here at close),
+    # so every report surface (console / CSV / API) shows MAE/MFE in the correct unit
+    # (pip on Forex, tick on crypto) without a renderer ever re-deriving it.
+    pip_size: float = 0.0
+    price_unit: str = ''

@@ -194,6 +194,7 @@ MarketType controls:
 - Activity metric (Forex: tick_count, Crypto: trade_volume)
 - Gap detection rules
 - Generator profile defaults (`generator_profile_defaults`): block size limits and ATR thresholds per market type
+- Pip size derivation (`pip_mode`): how a per-symbol pip price unit is derived (see below)
 
 ### Generator Profile Defaults
 
@@ -219,6 +220,38 @@ Each market type defines default parameters for the Generator Profile System:
 ```
 
 Crypto uses larger blocks (72h vs 24h) and a higher ATR percentile threshold (P15 vs P10) because 24/7 markets have less pronounced volatility minima than session-based Forex markets. These defaults override `generator_config.json` when present. The `split_algorithm` (always `atr_minima`) remains global in `generator_config.json`.
+
+### Pip Size Derivation (`pip_mode`)
+
+A decision logic configured in pip-denominated parameters (stop distance, SL, TP) needs an
+authoritative per-symbol **pip size** so one bot config runs across instruments without manual
+overrides. The single source is `tick_size` + `digits` from `symbols`, interpreted by the
+market's `pip_mode` (a required field on each `market_rules` entry):
+
+```json
+"market_rules": {
+    "forex":  { "pip_mode": "fractional_pip" },
+    "crypto": { "pip_mode": "tick" }
+}
+```
+
+| `pip_mode` | Rule | Examples |
+|---|---|---|
+| `fractional_pip` | Forex pip convention. A fractional-pip ("pipette") broker quotes one extra digit (5-digit, or 3-digit JPY) → `pip = tick_size * 10`; a whole-pip broker (4-/2-digit) → `pip = tick_size`. | EURUSD `0.0001`, USDJPY `0.01` |
+| `tick` | No pip concept (crypto / others) — the broker tick **is** the price unit. | BTCUSD `0.1`, ETHUSD `0.01`, ADAUSD `0.000001` |
+
+Why market-aware: a "pip" is a Forex convention (the 4th decimal, 2nd for JPY); crypto has no pip,
+so its tick is the natural unit. A digits-only or uniform `tick * 10` shortcut silently mis-scales
+crypto by 10× (and `tick * 10` is float-dirty for tiny ticks). The derivation lives once in
+`framework/utils/trading_math/pip_math.py` (`derive_pip_size`); the adapter exposes it as
+`get_pip_size(symbol)`.
+
+**How a decision logic accesses it:** the adapter's `get_pip_size(symbol)` fills
+`TradingContext.pip_size` at scenario startup (both pipelines). A decision logic reads
+`self.trading_context.pip_size` when its own `pip_size` parameter is left unset; an explicit
+`pip_size` in the config always wins (non-standard instruments). The same authoritative value is
+stamped on each `TradeRecord` at the source, so the run report shows MAE/MFE in the correct unit
+(`pip` on Forex, `tick` on crypto) without any renderer re-deriving it.
 
 ---
 

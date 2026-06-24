@@ -213,15 +213,15 @@ def setup_pipeline(
     )
 
     # === Phase 5: TradingContext ===
-    volume_min = broker_config.adapter.get_symbol_specification(
-        config.symbol
-    ).volume_min
+    adapter = broker_config.adapter
+    volume_min = adapter.get_symbol_specification(config.symbol).volume_min
     trading_context = TradingContext(
         broker_type=BrokerType(config.broker_type),
         market_type=market_type,
         symbol=config.symbol,
         volume_min=volume_min,
         trading_model=trading_model,
+        pip_size=adapter.get_pip_size(config.symbol),
     )
 
     # === Phase 6: Workers ===

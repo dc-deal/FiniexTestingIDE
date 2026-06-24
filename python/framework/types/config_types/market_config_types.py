@@ -19,6 +19,24 @@ class TradingModel(Enum):
     SPOT = 'spot'
 
 
+class PipMode(Enum):
+    """
+    How a market's 'pip' price unit is derived from the broker tick / digits.
+
+    FRACTIONAL_PIP — Forex convention: a pip is the 4th decimal (2nd for JPY).
+        Fractional-pip ('pipette') brokers quote one extra digit (5-digit / 3-digit
+        JPY), so pip = tick * 10; whole-pip brokers (4-/2-digit) use pip = tick.
+    TICK — no pip concept (crypto / others): the broker tick IS the price unit.
+    """
+    FRACTIONAL_PIP = 'fractional_pip'
+    TICK = 'tick'
+
+    @property
+    def unit_label(self) -> str:
+        """Human report unit label for this mode ('pip' / 'tick')."""
+        return 'pip' if self is PipMode.FRACTIONAL_PIP else 'tick'
+
+
 class ConfigMode(Enum):
     """Broker config source — static file vs API-fetched runtime cache."""
     STATIC = 'static'
@@ -50,6 +68,7 @@ class MarketRulesConfig(BaseModel):
     weekend_closure: bool
     session_bucketing: bool
     primary_activity_metric: str
+    pip_mode: PipMode
     inter_tick_gap_threshold_s: float = 300.0
     generator_profile_defaults: Optional[ProfileDefaultsConfig] = None
     swap_rollover: Optional[SwapRolloverConfig] = None

@@ -123,9 +123,12 @@ class TradingContext:
         broker_type: Broker identifier (e.g., 'mt5', 'kraken_spot')
         market_type: Market classification (FOREX, CRYPTO, STOCKS, etc.)
         symbol: Trading symbol for this scenario
+        pip_size: Authoritative pip size for the symbol (#167) — decision logics read
+            this for pip-denominated parameters instead of hand-setting one per scenario
     """
     broker_type: str  # BrokerType as string for serialization
     market_type: MarketType
     symbol: str
     volume_min: float = 0.0  # Broker minimum lot size from SymbolSpecification
     trading_model: TradingModel = TradingModel.MARGIN
+    pip_size: float = 0.0  # Derived from adapter.get_pip_size(symbol) at startup

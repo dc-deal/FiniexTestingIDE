@@ -275,6 +275,8 @@ class PortfolioManager:
         broker_ref: Optional[str] = None,
         entry_trades: Optional[List[BrokerTrade]] = None,
         entry_submission: Optional[SubmissionMetadata] = None,
+        pip_size: float = 0.0,
+        price_unit: str = '',
     ) -> Position:
         """
         Open new position.
@@ -285,6 +287,8 @@ class PortfolioManager:
             broker_ref: External broker reference from PendingOrder (#330)
             entry_trades: Per-execution BrokerTrade list from PendingOrder.trades (#330)
             entry_submission: Submission-moment snapshot from PendingOrder (#340/#345)
+            pip_size: Authoritative pip size for the symbol (#167)
+            price_unit: Report unit label for pip_size ('pip' / 'tick', #167)
         """
         # order_id becomes position id.
         position_id = order_id
@@ -312,6 +316,8 @@ class PortfolioManager:
             broker_ref=broker_ref,
             entry_trades=list(entry_trades) if entry_trades else [],
             entry_submission=entry_submission if entry_submission else SubmissionMetadata(),
+            pip_size=pip_size,
+            price_unit=price_unit,
         )
 
         # Attach entry fee
@@ -563,6 +569,8 @@ class PortfolioManager:
             exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
             entry_submission=position.entry_submission,
             exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
+            pip_size=position.pip_size,
+            price_unit=position.price_unit,
         )
 
         # Append to trade history (with limit warning)
@@ -674,6 +682,8 @@ class PortfolioManager:
             exit_side=direction_to_side(position.direction, OrderAction.CLOSE),
             entry_submission=position.entry_submission,
             exit_submission=exit_submission if exit_submission else SubmissionMetadata(),
+            pip_size=position.pip_size,
+            price_unit=position.price_unit,
         )
 
     # ============================================

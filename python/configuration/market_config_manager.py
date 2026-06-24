@@ -6,13 +6,13 @@ Provides lookup methods for market types and broker mappings
 from typing import Dict, List, Optional
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.market_config_types import (
     BrokerEntryConfig,
     ConfigMode,
     MarketConfigModel,
     MarketRulesConfig,
     MarketType,
+    PipMode,
     ProfileDefaultsConfig,
     SwapRolloverConfig,
     TradingModel,
@@ -46,7 +46,7 @@ class MarketConfigManager:
         for broker in parsed.brokers:
             self._broker_lookup[broker.broker_type] = broker
 
-    def get_market_type(self, broker_type: BrokerType) -> MarketType:
+    def get_market_type(self, broker_type: str) -> MarketType:
         """
         Get market type for a broker type.
 
@@ -170,6 +170,24 @@ class MarketConfigManager:
         """
         market_type = self.get_market_type(broker_type)
         return self.get_market_rules(market_type).swap_rollover
+
+    def get_pip_mode(self, broker_type: str) -> PipMode:
+        """
+        Get the pip-derivation mode for a broker's market.
+
+        The market-type-level decision how a 'pip' price unit is derived from the
+        broker tick / digits: FRACTIONAL_PIP (Forex pipette convention) or TICK
+        (crypto / others, no pip concept → the tick is the unit). A required field on
+        every market_rules entry, so an unconfigured market fails fast at config load.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            PipMode for the broker's market type
+        """
+        market_type = self.get_market_type(broker_type)
+        return self.get_market_rules(market_type).pip_mode
 
     def get_config_mode(self, broker_type: str) -> ConfigMode:
         """

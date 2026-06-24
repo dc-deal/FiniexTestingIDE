@@ -243,8 +243,11 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
 3. **Trade analytics (#389, done)** — MAE/MFE **tracked** on the Position each tick (runtime,
    shared layer) + `initial_risk` stamped at close; R-multiple / expectancy **derived** in the
    postprocessor. Surfaced as per-row columns (`mae_*`/`mfe_*`/`r_multiple`) + a `TradeAnalytics`
-   aggregate on `TradeHistoryReport`. Console display follows with #393. Pips are a forex-convention
-   approximation (`10^-(digits-1)`); exact per-symbol `pip_size` is #167.
+   aggregate on `TradeHistoryReport`. Console display follows with #393. The MAE/MFE distance is
+   now **exact (#167, done)**: the authoritative per-symbol `pip_size` + report unit label
+   (`price_unit`) are stamped on the `TradeRecord` at the source (position open), so the row's
+   `mae_distance` / `mfe_distance` render in the correct unit (`pip` on Forex, `tick` on crypto) on
+   every surface — the builder no longer approximates with `10^-(digits-1)`.
 4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
 5. The remaining report sections (block-splitting / the executive's detailed portfolio block)
