@@ -30,6 +30,9 @@ from python.framework.reporting.io.broker_report_io import write_broker_report
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.builders.profiling_report_builder import build_profiling_report_from_batch
 from python.framework.reporting.io.profiling_report_io import write_profiling_report
+from python.framework.reporting.builders.robustness_report_builder import build_robustness_report_from_batch
+from python.framework.reporting.io.robustness_report_io import write_robustness_report
+from python.framework.reporting.console.robustness_summary import RobustnessSummary
 from python.framework.reporting.builders.run_meta_report_builder import build_run_meta_report_from_batch
 from python.framework.reporting.io.run_meta_report_io import write_run_meta_report
 from python.framework.reporting.builders.run_unit import run_units_from_batch
@@ -129,6 +132,8 @@ class BatchReportCoordinator:
         # Block-splitting disposition — Profile Runs only (empty otherwise; sim-only).
         block_splitting_report = build_block_splitting_report_from_batch(
             self._batch_execution_summary, self._scenario_set.get_generator_profiles() or [])
+        # Robustness validation — multi-window + IS/OOS (empty unless robustness enabled; sim-only, #367).
+        robustness_report = build_robustness_report_from_batch(self._batch_execution_summary)
 
         # === PRESENT — build the section sub-presenters from the models and render them
         # through the shared ordered renderer (#403 Phase 2; the section order lives in one
@@ -152,6 +157,7 @@ class BatchReportCoordinator:
                 profiling_report=profiling_report, worker_decision_report=worker_decision_report),
             warnings_summary=WarningsSummary(warnings_errors_report),
             block_splitting_disposition=BlockSplittingDisposition(block_splitting_report),
+            robustness_summary=RobustnessSummary(robustness_report),
             closing_block=SimExecutiveSummary(
                 self._app_config, run_summary, run_meta_report, profiling_report,
                 scenario_details_report, warnings_errors_report, aggregated_portfolio_report,
@@ -211,6 +217,9 @@ class BatchReportCoordinator:
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
             write_block_splitting_report(block_splitting_report, io_dir)
+        # Robustness artifact only when robustness mode is enabled (#367).
+        if robustness_report.enabled:
+            write_robustness_report(robustness_report, io_dir)
 
         # === Run-results ledger (#390) — append the run to the persistent cross-run store the
         # Parameter Optimization system ranks over. The run's status/error (a total failure, e.g.

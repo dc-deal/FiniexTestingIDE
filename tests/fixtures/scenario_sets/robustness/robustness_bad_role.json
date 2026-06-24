@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "robustness_bad_role_fixture",
+  "robustness": {
+    "enabled": true
+  },
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/simple_consensus"
+    }
+  },
+  "scenarios": [
+    {
+      "name": "w_bad",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T10:00:00+00:00",
+      "end_date": "2026-02-10T12:00:00+00:00",
+      "role": "training"
+    }
+  ]
+}

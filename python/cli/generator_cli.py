@@ -21,6 +21,7 @@ from python.framework.types.market_types.market_volatility_profile_types import 
     TradingSession,
     VolatilityRegime,
 )
+from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationResult,
     GenerationStrategy,
@@ -58,7 +59,8 @@ class GeneratorCli:
         start: Optional[str] = None,
         end: Optional[str] = None,
         output: Optional[str] = None,
-        max_ticks: Optional[int] = None
+        max_ticks: Optional[int] = None,
+        oos_split: Optional[float] = None
     ) -> None:
         """
         Generate scenario configurations.
@@ -72,6 +74,8 @@ class GeneratorCli:
             end: End date filter (ISO format)
             output: Output filename
             max_ticks: Max ticks per scenario
+            oos_split: Trailing Out-of-Sample fraction (#367) — when set, enables robustness
+                mode: writes the set-wide robustness block + time-ordered IS/OOS roles
         """
         # Parse date filters
         start_dt: Optional[datetime] = None
@@ -103,11 +107,18 @@ class GeneratorCli:
                 symbol, scenarios, config
             )
 
-            # Save config
-            output_file = output or self._generate_output_name(symbols)
+            # Robustness mode (#367): --oos-split turns the block set into an IS/OOS set.
+            robustness = (
+                RobustnessConfig(enabled=True, oos_split=oos_split)
+                if oos_split is not None else None
+            )
+
+            # Save config (robustness sets are named with a _robustness marker)
+            output_file = output or self._generate_output_name(
+                symbols, robustness=robustness is not None)
 
             saver = ScenarioGeneratorConfigSaver()
-            config_path = saver.save_config(result, output_file)
+            config_path = saver.save_config(result, output_file, robustness)
 
             # Print summary
             self._print_generation_summary(result, config_path)
@@ -356,12 +367,13 @@ class GeneratorCli:
             config_used=config
         )
 
-    def _generate_output_name(self, symbols: List[str]) -> str:
+    def _generate_output_name(self, symbols: List[str], robustness: bool = False) -> str:
         """
         Generate output filename from symbols.
 
         Args:
             symbols: List of symbols
+            robustness: When True, mark the file as a robustness (IS/OOS) set (#367)
 
         Returns:
             Filename string
@@ -371,8 +383,9 @@ class GeneratorCli:
         else:
             symbol_part = f"multi_{len(symbols)}"
 
+        suffix = 'blocks_robustness' if robustness else 'blocks'
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
-        return f"{symbol_part}_blocks_{timestamp}.json"
+        return f"{symbol_part}_{suffix}_{timestamp}.json"
 
     def _print_generation_summary(self, result: GenerationResult, config_path: Path) -> None:
         """
@@ -476,6 +489,13 @@ def main():
         default=None,
         help='Max ticks per scenario'
     )
+    generate_parser.add_argument(
+        '--oos-split',
+        type=float,
+        default=None,
+        help='Robustness mode (#367): trailing Out-of-Sample fraction (e.g. 0.3). '
+             'When set, writes the set-wide robustness block + time-ordered IS/OOS roles'
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # GENERATE-PROFILE command
@@ -577,7 +597,8 @@ def main():
             start=args.start,
             end=args.end,
             output=args.output,
-            max_ticks=args.max_ticks
+            max_ticks=args.max_ticks,
+            oos_split=args.oos_split
         )
     elif args.command == 'generate-profile':
         cli.cmd_generate_profile(

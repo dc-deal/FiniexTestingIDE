@@ -8,6 +8,7 @@
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
+| [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
 
 ## User Algo Workspace
 
@@ -114,6 +115,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Precision](tests/simulation/order_precision_tests.md) | Order price → digits normalization (#332) |
 | [Parameter Optimization](tests/simulation/parameter_optimization_tests.md) | Grid expand, override, ledger, ranking, sensitivity, grid validation (#390) |
 | [Swap Cost Accrual](tests/simulation/swap_cost_tests.md) | Overnight swap accrual: debit/credit/triple, spot=0, determinism (#365) |
+| [Robustness Validation](tests/simulation/robustness_tests.md) | Multi-window + IS/OOS: roles, distribution, WFE, constancy guard, verdict (#367) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
 | [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |

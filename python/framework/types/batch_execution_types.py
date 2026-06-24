@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -35,7 +36,8 @@ class BatchExecutionSummary:
         batch_pickle_time: float = 0.0,
         batch_pickle_sample_mb: float = 0.0,
         debug_execution: bool = False,
-        batch_validation_result: Optional[List[ValidationResult]] = None
+        batch_validation_result: Optional[List[ValidationResult]] = None,
+        robustness_config: Optional[RobustnessConfig] = None
     ):
         self._batch_execution_time = batch_execution_time
         self._batch_warmup_time = batch_warmup_time
@@ -53,6 +55,8 @@ class BatchExecutionSummary:
         # Run-scoped (batch-global) validation results — the home for warnings that are not
         # per-scenario (e.g. debug-mode). Filled by post-run validators, never by the report.
         self._batch_validation_result: List[ValidationResult] = batch_validation_result or []
+        # Set-wide robustness mode (#367) — read by the robustness builder + PostRunValidator.
+        self._robustness_config: RobustnessConfig = robustness_config or RobustnessConfig()
 
     @property
     def batch_execution_time(self) -> float:
@@ -97,6 +101,10 @@ class BatchExecutionSummary:
     @property
     def batch_validation_result(self) -> List[ValidationResult]:
         return self._batch_validation_result
+
+    @property
+    def robustness_config(self) -> RobustnessConfig:
+        return self._robustness_config
 
     def add_batch_validation_result(self, result: ValidationResult) -> None:
         """

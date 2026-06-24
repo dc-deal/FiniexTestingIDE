@@ -90,7 +90,7 @@ The system operates in two strictly separated modes — **never mixed**:
 | **Purpose** | Serious P&L analysis, reproducible | Tests, prototyping, quick iteration |
 | **Blocks** | Pre-computed by generator, immutable | Direct from ScenarioSet JSON |
 | **max_ticks** | Not available | Available (essential for test suites) |
-| **Parameter cascade** | Yes, within scenarios | Yes |
+| **Strategy parameters** | Constant by construction (one `global` strategy, no per-block override) | Per-scenario override possible (cascade) |
 | **Correctness Metric** | Yes (metadata present) | No |
 | **enabled field** | No (all or nothing) | Yes (per-scenario toggle) |
 
@@ -301,3 +301,46 @@ Splitting at low-volatility points (ATR minima) minimizes force-close damage reg
 - Low volatility → small future price movement → low opportunity cost
 
 This is strategy-independent — it's a market property, not a strategy property.
+
+---
+
+## Robustness & IS/OOS Validation (#367)
+
+The generator is the producer half of robustness validation: it cuts the data into windows and
+labels them In-Sample / Out-of-Sample. The reporting half — the multi-window distribution + the
+IS/OOS comparison + the OVERFIT/ROBUST verdict — is documented in the
+[Robustness Validation guide](../user_guides/robustness_validation_guide.md). This section covers
+only what the generator contributes.
+
+### Role assignment (time-ordered)
+
+`--oos-split <fraction>` on `generate-blocks` (or the `robustness` block on a profile-run template)
+turns a block set into a robustness set. Roles are assigned **time-ordered**: the first windows are
+`in_sample`, the trailing `oos_split` fraction is `out_of_sample` — never train on the future. The
+single policy lives in `assign_roles_time_ordered` and is shared by both producer paths (the blocks
+saver and `load_from_profiles`), so the split is identical regardless of mode.
+
+```bash
+python python/cli/generator_cli.py generate-blocks kraken_spot ETHUSD \
+  --block-size 6 --count 10 --oos-split 0.3
+```
+
+The emitted set carries a top-level `robustness` block and a `role` per scenario. Cascade-capable
+keys (`strategy_config` / `execution_config` / `trade_simulator_config`) are **not** written per
+scenario — they live in `global` only, so the strategy is constant by construction (the fair-test
+prerequisite). This is the same model the Profile Run already follows.
+
+### Regime / session passthrough
+
+A Profile Run additionally carries each window's volatility **regime** and **session** (from the
+source `ProfileBlock`) onto the scenario, which feeds the robustness report's per-regime breakdown
+("where does the strategy work?"). Blocks-mode and manual sets have no regime data, so that
+breakdown is empty for them.
+
+### The disposition is the trust gate
+
+The Post-Run Correctness Metric (above) is the prerequisite for trusting a robustness verdict: when
+block-splitting distortion is high, the per-window numbers are artifacts, so the robustness verdict
+is suppressed (`disposition_trust_pct`). The two reports answer different questions — disposition:
+"are the per-window numbers trustworthy?"; robustness: "given trustworthy numbers, is performance
+consistent?".

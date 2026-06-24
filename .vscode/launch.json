@@ -1162,6 +1162,29 @@
                 "order": 12
             }
         },
+        {
+            "name": "⚡ Generator - Robustness Set (kraken_spot/ETHUSD, IS/OOS)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/generator_cli.py",
+            "args": [
+                "generate-blocks",
+                "kraken_spot",
+                "ETHUSD",
+                "--block-size",
+                "6",
+                "--count",
+                "10",
+                "--oos-split",
+                "0.3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "09_scenario_generation",
+                "order": 12
+            }
+        },
         // --- Profile Runs (multi-profile from directory) ---
         {
             "name": "🔬 Profile Run: All continuous/ - Folder",
@@ -1914,6 +1937,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Robustness (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/robustness/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 37
+            }
+        },
+        {
             "name": "🧩 Pytest: Safety Circuit Breaker (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2478,6 +2518,22 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 67
+            }
+        },
+        {
+            "name": "🧪 Simulation: Robustness (IS/OOS)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/robustness_validation_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 68
             }
         },
         {

@@ -58,6 +58,7 @@ tests/
 │   ├── event_channel/     integration — decision event channel dual-world parity (#348)
 │   ├── optimization/      unit — parameter optimization: grid expand, override, ledger, ranking, sensitivity, grid validation (#390)
 │   ├── swap_cost/         unit — overnight swap accrual: debit/credit/triple, spot=0, determinism (#365)
+│   ├── robustness/        unit — multi-window + IS/OOS validation: roles, distribution, WFE, constancy, verdict (#367)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
