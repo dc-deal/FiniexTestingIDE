@@ -11,7 +11,6 @@ Architecture:
 - Separation of concerns: Static config vs. dynamic market data
 """
 
-import warnings
 from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
@@ -156,42 +155,3 @@ class BrokerSpecification:
     expert_allowed: bool     # Can run expert advisors (EAs)?
     hedging_allowed: bool    # Can open opposite positions on same symbol?
     limit_orders: int        # Max number of pending orders (0 = unlimited)
-
-
-# ============================================
-# Helper Functions
-# ============================================
-
-def extract_currencies_from_symbol(symbol: str) -> tuple[str, str, str]:
-    """
-    DEPRECATED: Use base_currency/quote_currency from broker config instead.
-
-    This function only works for 6-character Forex symbols (EURUSD, GBPUSD).
-    Does NOT work for crypto symbols with varying lengths (BTCUSD, DASHUSD).
-
-    Kept for backwards compatibility. Will be removed in future version.
-
-    Args:
-        symbol: Trading symbol (e.g., "GBPUSD")
-
-    Returns:
-        (base_currency, quote_currency, margin_currency)
-    """
-    warnings.warn(
-        "extract_currencies_from_symbol() is deprecated. "
-        "Use base_currency/quote_currency from broker config instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-
-    if len(symbol) != 6:
-        raise ValueError(
-            f"Cannot extract currencies from symbol '{symbol}': "
-            f"Expected 6 characters (e.g., GBPUSD, EURUSD)"
-        )
-
-    base = symbol[:3].upper()
-    quote = symbol[3:6].upper()
-    margin = base  # Forex convention: margin in base currency
-
-    return base, quote, margin

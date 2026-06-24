@@ -33,6 +33,8 @@
         {
             "broker_type": "mt5",
             "market_type": "forex",
+            "trading_model": "margin",
+            "config_mode": "static",
             "broker_config_path": "configs/brokers/mt5/mt5_broker_config.json"
         },
         {

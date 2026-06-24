@@ -36,8 +36,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SymbolSpecification,
     BrokerSpecification,
     SwapMode,
-    MarginMode,
-    extract_currencies_from_symbol
+    MarginMode
 )
 
 
