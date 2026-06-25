@@ -89,6 +89,13 @@ class RobustnessSummary(AbstractBatchSummarySection):
     def _wfe_line(self, renderer: ConsoleRenderer) -> str:
         """The Walk-Forward Efficiency line with its display class (presentation only)."""
         report = self._report
+        # A bucket below min_windows makes the WFE rest on too few windows → inconclusive
+        # (mirrors the validator's verdict suppression).
+        is_n = report.in_sample.window_count if report.in_sample else 0
+        oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
+        if is_n < report.min_windows or oos_n < report.min_windows:
+            return renderer.yellow(
+                f"WFE: inconclusive — IS={is_n}/OOS={oos_n} (< {report.min_windows} windows)")
         wfe = report.walk_forward_efficiency
         if wfe is None:
             return renderer.gray('WFE: n/a (IS not profitable — degradation undefined)')

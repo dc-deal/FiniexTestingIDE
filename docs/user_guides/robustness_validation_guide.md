@@ -117,6 +117,15 @@ would be built on sand. When the disposition exceeds `disposition_trust_pct`, th
 **suppressed** with a caveat — fix the distortion first (continuous mode / larger blocks; see the
 [Generator & Block Splitting Architecture](../generator/generator_block_splitting_architecture.md)).
 
+## Per-bucket sufficiency
+
+The Walk-Forward Efficiency rests on BOTH the in-sample and the out-of-sample mean. The overall
+`min_windows` check can pass while a single bucket — usually OOS — is decimated (excluded or
+crashed scenarios). When the IS *or* the OOS bucket holds fewer than `min_windows`, the verdict is
+**suppressed** ("inconclusive — IS=n/OOS=m") rather than declaring OVERFIT/ROBUST on a handful of
+windows. Recover the missing windows (fix excluded scenarios, lower parallelism if they were
+killed) or widen the set, then re-run.
+
 ## The constancy guard
 
 A fair comparison requires identical parameters across the windows. The guard compares the
