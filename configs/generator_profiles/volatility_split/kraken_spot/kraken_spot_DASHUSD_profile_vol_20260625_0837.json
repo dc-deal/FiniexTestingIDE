@@ -1,0 +1,202 @@
+{
+  "profile_meta": {
+    "symbol": "DASHUSD",
+    "broker_type": "kraken_spot",
+    "generator_mode": "volatility_split",
+    "generated_at": "2026-06-25T08:37:28.507489+00:00",
+    "total_coverage_hours": 451.23333333333335,
+    "block_count": 15,
+    "discovery_fingerprints": {
+      "volatility_profile": "b298b18560eab25b550a62279884865a889e4e2742813650d97f5f9cd1b1dbff",
+      "data_coverage": "c2a3e1311c98e5df7763a3d640881dd66d78a84425d3598e82fa0a83e85a3c55",
+      "extreme_moves": "558c483a2c3d9c325135f533d4e779060ef83983a29e915fb32241eac6c0d561"
+    },
+    "split_config": {
+      "min_block_hours": 4,
+      "max_block_hours": 72,
+      "atr_percentile_threshold": 15,
+      "split_algorithm": "atr_minima"
+    }
+  },
+  "blocks": [
+    {
+      "block_index": 0,
+      "start_time": "2026-02-01T00:00:00+00:00",
+      "end_time": "2026-02-02T23:00:00+00:00",
+      "block_duration_hours": 47.0,
+      "split_reason": "region_start",
+      "atr_at_split": 1.88957,
+      "regime_at_split": "very_high",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 8219,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 1,
+      "start_time": "2026-02-02T23:00:00+00:00",
+      "end_time": "2026-02-03T12:00:00+00:00",
+      "block_duration_hours": 13.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.699931,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 1840,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 2,
+      "start_time": "2026-02-03T12:00:00+00:00",
+      "end_time": "2026-02-04T10:00:00+00:00",
+      "block_duration_hours": 22.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.790632,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 5756,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 3,
+      "start_time": "2026-02-04T10:00:00+00:00",
+      "end_time": "2026-02-07T09:00:00+00:00",
+      "block_duration_hours": 71.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.917087,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 20636,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 4,
+      "start_time": "2026-02-07T09:00:00+00:00",
+      "end_time": "2026-02-08T04:00:00+00:00",
+      "block_duration_hours": 19.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 1.000104,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 2699,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 5,
+      "start_time": "2026-02-08T04:00:00+00:00",
+      "end_time": "2026-02-09T23:00:00+00:00",
+      "block_duration_hours": 43.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.519041,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 6597,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 6,
+      "start_time": "2026-02-09T23:00:00+00:00",
+      "end_time": "2026-02-12T04:00:00+00:00",
+      "block_duration_hours": 53.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.538843,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 6168,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 7,
+      "start_time": "2026-02-12T04:00:00+00:00",
+      "end_time": "2026-02-13T11:25:00+00:00",
+      "block_duration_hours": 31.42,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.497084,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 3052,
+      "distance_to_next_block_hours": 0.67
+    },
+    {
+      "block_index": 8,
+      "start_time": "2026-02-13T12:05:00+00:00",
+      "end_time": "2026-02-16T10:00:00+00:00",
+      "block_duration_hours": 69.92,
+      "split_reason": "region_start",
+      "atr_at_split": 0.518184,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 13686,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 9,
+      "start_time": "2026-02-16T10:00:00+00:00",
+      "end_time": "2026-02-17T16:17:00+00:00",
+      "block_duration_hours": 30.28,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.568525,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 2968,
+      "distance_to_next_block_hours": 1.25
+    },
+    {
+      "block_index": 10,
+      "start_time": "2026-02-17T17:32:00+00:00",
+      "end_time": "2026-02-17T18:11:00+00:00",
+      "block_duration_hours": 0.65,
+      "split_reason": "single_region",
+      "atr_at_split": 1.485045,
+      "regime_at_split": "high",
+      "session": "new_york",
+      "estimated_ticks": 53,
+      "distance_to_next_block_hours": 0.75
+    },
+    {
+      "block_index": 11,
+      "start_time": "2026-02-17T18:56:00+00:00",
+      "end_time": "2026-02-17T22:03:00+00:00",
+      "block_duration_hours": 3.12,
+      "split_reason": "single_region",
+      "atr_at_split": 1.462682,
+      "regime_at_split": "high",
+      "session": "new_york",
+      "estimated_ticks": 81,
+      "distance_to_next_block_hours": 0.58
+    },
+    {
+      "block_index": 12,
+      "start_time": "2026-02-17T22:38:00+00:00",
+      "end_time": "2026-02-18T07:01:00+00:00",
+      "block_duration_hours": 8.38,
+      "split_reason": "single_region",
+      "atr_at_split": 0.756333,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 455,
+      "distance_to_next_block_hours": 0.57
+    },
+    {
+      "block_index": 13,
+      "start_time": "2026-02-18T07:35:00+00:00",
+      "end_time": "2026-02-18T11:14:00+00:00",
+      "block_duration_hours": 3.65,
+      "split_reason": "single_region",
+      "atr_at_split": 0.567604,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 240,
+      "distance_to_next_block_hours": 0.95
+    },
+    {
+      "block_index": 14,
+      "start_time": "2026-02-18T12:11:00+00:00",
+      "end_time": "2026-02-20T00:00:00+00:00",
+      "block_duration_hours": 35.82,
+      "split_reason": "single_region",
+      "atr_at_split": 0.790855,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 2946
+    }
+  ]
+}

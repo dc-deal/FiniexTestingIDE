@@ -10,26 +10,26 @@ from typing import List
 
 from python.framework.types.api.report_types import BlockSplittingReport, BlockSplittingSymbolRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.scenario_types.window_set_types import WindowSet
 
 
 def build_block_splitting_report_from_batch(
     batch: BatchExecutionSummary,
-    generator_profiles: List[GeneratorProfile],
+    generator_profiles: List[WindowSet],
 ) -> BlockSplittingReport:
     """
-    Build the block-splitting disposition report from the batch + generator profiles.
+    Build the block-splitting disposition report from the batch + generator window sets.
 
     Args:
         batch: The finished batch execution summary (carries the boundary reports)
-        generator_profiles: Generator profiles — the symbol → generator-mode lookup
+        generator_profiles: Generator window sets — the symbol → generator-mode lookup
 
     Returns:
         BlockSplittingReport with per-symbol rows + the cross-symbol aggregate
     """
     profile_mode = {
-        p.profile_meta.symbol: p.profile_meta.generator_mode
-        for p in generator_profiles
+        ws.symbol: ws.mode
+        for ws in generator_profiles
     }
 
     rows_by_symbol = {}

@@ -10,6 +10,61 @@ This document covers the block splitting analysis, the Generator Profile system,
 
 ---
 
+## Generator Architecture (Module Map)
+
+The generator is structured as **one window producer, pluggable split strategies, one materializer,
+one serializer** — the established model (vectorbt `Splitter`, scikit-learn `TimeSeriesSplit`). A
+**split is a labeled time range**; the collection of windows for one symbol is a `WindowSet`, the
+single model every path produces and consumes.
+
+```
+generator_cli ─▶ GenerationCoordinator ─▶ SplitterFactory ─▶ AbstractSplitter
+  (args only)       (orchestration)        (strategy→class)    ├─ BlocksSplit
+                                                               ├─ VolatilitySplit
+                                                               ├─ ContinuousSplit
+                                                               └─ WalkForwardSplit (stub, #32)
+                                                                  (all use ContinuousRegionExtractor)
+                                           split() ─▶ WindowSet  ◀── the model (single truth)
+                                                         │
+                           WRITE: WindowSetSerializer ───┤── READ: ProfileLoader
+                             set-JSON | profile-JSON     │     profile-JSON → WindowSet
+                                                         ▼
+                                             WindowMaterializer
+                                        WindowSet → runnable scenarios
+                                 (roles #367 · quote-balance #265 · regime/session · naming)
+```
+
+| Unit | Role |
+|---|---|
+| `GenerationStrategy` | enum: `blocks · volatility_split · continuous · walk_forward` |
+| `AbstractSplitter` + concretes | one symbol's coverage → `WindowSet` (parameter-agnostic) |
+| `ContinuousRegionExtractor` | shared gap-aware region extraction (used by all splitters) |
+| `SplitterFactory` | strategy → splitter class (generator-domain, not `framework/factory/` — layering) |
+| `WindowSet` / `GeneratedWindow` | the window model (pure data; no role, no strategy params) |
+| `WindowMaterializer` | `WindowSet` → scenarios; the single home for roles + quote-balance + regime/session + naming |
+| `WindowSetSerializer` | present-layer: `WindowSet` → set-JSON / profile-JSON (the swappable output stage) |
+| `ProfileLoader` | profile-JSON → `WindowSet` (the read side) |
+| `GenerationCoordinator` | orchestration; keeps the CLI to parameter reception (§13) |
+
+**Parameter-agnostic invariant:** a `WindowSet` describes only data / time / role — never strategy
+parameters. It is produced once and reused by every parameter combination of a sweep. This is what
+keeps the data axis (windows) cleanly separable from the parameter axis (the parameter optimizer, #32).
+
+### Extension points / Future
+
+- **Walk-forward optimization (#32 Phase 4)** is the cross product of the data axis (a fold-producing
+  splitter) and the parameter axis (the sweep). `WalkForwardSplit` is the registered structural slot —
+  `split()` raises `NotImplementedError` today; the rolling-fold algorithm lands with #32, building on
+  the #367 IS/OOS role + degradation/WFE math. The `AbstractSplitter` contract is intentionally shaped
+  so folds become a localized addition, not a model rework.
+- **Output beyond JSON (present-layer):** `WindowSetSerializer` is the swappable output stage. JSON
+  today; a shared result Store / DB / RAM backend (the #21 memory-aware-runtime direction, FiniexViewer
+  API) would change only this stage — the model and the materializer stay untouched. This converges
+  with the reporting pipeline's PERSIST/PRESENT stage; a unified artifact-IO layer (Repository + Codec
+  over the domain models) is the longer-term target, extracted once 2–3 producers share the need.
+
+---
+
 ## Block Splitting — Impact Analysis
 
 When the generator splits a full time range into blocks, each block runs in complete subprocess isolation (`ProcessPoolExecutor`). This resets all algorithm state at every block boundary.
@@ -96,7 +151,7 @@ The system operates in two strictly separated modes — **never mixed**:
 
 ### Profile Format
 
-JSON files in `configs/generator_profiles/`, organized by mode into subdirectories (`volatility_split/`, `continuous/`). Human-readable but must not be manually edited (documented convention, not enforced via hash).
+JSON files in `configs/generator_profiles/`, organized by **split mode then broker type** — `<mode>/<broker_type>/` (e.g. `continuous/mt5/`, `volatility_split/kraken_spot/`). Human-readable but must not be manually edited (documented convention, not enforced via hash).
 
 ```json
 {
@@ -157,15 +212,18 @@ python python/cli/generator_cli.py generate-all-profiles \
 
 # Run with a single profile
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
-  --generator-profile configs/generator_profiles/volatility_split/mt5_EURUSD_profile_vol_20260322_1219.json
+  --generator-profile configs/generator_profiles/volatility_split/mt5/mt5_EURUSD_profile_vol_20260322_1219.json
 
 # Run with multiple profiles (merged into one batch)
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
   --generator-profile profiles/mt5_EURUSD_profile_vol.json profiles/mt5_GBPUSD_profile_vol.json
 
-# Run all profiles in a directory (auto-discovers *.json files)
+# Run all profiles in a directory (auto-discovers *.json files, recursively)
+# A mode dir runs every broker beneath it; a broker dir runs just that broker.
 python python/cli/strategy_runner_cli.py run my_scenario_set.json \
-  --generator-profile configs/generator_profiles/volatility_split
+  --generator-profile configs/generator_profiles/volatility_split        # all brokers
+python python/cli/strategy_runner_cli.py run my_scenario_set.json \
+  --generator-profile configs/generator_profiles/volatility_split/mt5    # just mt5
 ```
 
 ### Profile Config Resolution
@@ -192,9 +250,9 @@ Profile Run is activated via the `--generator-profile` CLI flag on the `run` com
 
 **Multi-Profile Runs:** Multiple profile files or directories can be passed. If a directory is given, all `*.json` files inside are auto-discovered. All profiles are merged into a single batch with globally unique `scenario_index` values. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count.
 
-**Profile directories:**
-- `configs/generator_profiles/volatility_split/` — ATR-minima split profiles
-- `configs/generator_profiles/continuous/` — continuous (one block per region) profiles
+**Profile directories** (`<mode>/<broker_type>/`):
+- `configs/generator_profiles/volatility_split/<broker_type>/` — ATR-minima split profiles
+- `configs/generator_profiles/continuous/<broker_type>/` — continuous (one block per region) profiles
 
 ### Generator Modes
 
@@ -207,7 +265,7 @@ The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profil
 
 ### Gap Handling
 
-Both generators (BlocksGenerator and ProfileGenerator) treat all gap types the same way for block construction: **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
+All splitters treat all gap types the same way for block construction (via the shared `ContinuousRegionExtractor`): **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
 
 Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
 
@@ -215,7 +273,7 @@ The `GapCategory` classification (weekend, holiday, short, moderate, large) exis
 
 **Gap boundary splitting (forex only):** When a raw gap exceeds the maximum expected weekend duration (80h), the Data Coverage Report splits it at market boundaries (Friday 20:00 UTC close, Sunday 22:00 UTC open). Each sub-gap is classified independently. This prevents data loss spanning multiple weeks from being masked as a single "weekend" closure. Gaps ≤ 80h pass through unchanged — the existing weekend pattern matching handles normal closures correctly. This splitting only affects classification in the Coverage Report; block generation and P&L calculation are not impacted.
 
-The ProfileGenerator's ATR-minima algorithm skips over gap periods (no volatility data available) when searching for split points, rather than inserting artificial forced splits into empty time ranges.
+The volatility-split ATR-minima algorithm skips over gap periods (no volatility data available) when searching for split points, rather than inserting artificial forced splits into empty time ranges.
 
 ### Discovery Fingerprints
 
@@ -317,8 +375,8 @@ only what the generator contributes.
 `--oos-split <fraction>` on `generate-blocks` (or the `robustness` block on a profile-run template)
 turns a block set into a robustness set. Roles are assigned **time-ordered**: the first windows are
 `in_sample`, the trailing `oos_split` fraction is `out_of_sample` — never train on the future. The
-single policy lives in `assign_roles_time_ordered` and is shared by both producer paths (the blocks
-saver and `load_from_profiles`), so the split is identical regardless of mode.
+single policy lives in `assign_roles_time_ordered`, called from the `WindowMaterializer` (the one home
+for role assignment, used by both producer paths), so the split is identical regardless of mode.
 
 ```bash
 python python/cli/generator_cli.py generate-blocks kraken_spot ETHUSD \
@@ -333,7 +391,7 @@ prerequisite). This is the same model the Profile Run already follows.
 ### Regime / session passthrough
 
 A Profile Run additionally carries each window's volatility **regime** and **session** (from the
-source `ProfileBlock`) onto the scenario, which feeds the robustness report's per-regime breakdown
+source `GeneratedWindow`) onto the scenario, which feeds the robustness report's per-regime breakdown
 ("where does the strategy work?"). Blocks-mode and manual sets have no regime data, so that
 breakdown is empty for them.
 

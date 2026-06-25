@@ -1,0 +1,190 @@
+{
+  "profile_meta": {
+    "symbol": "SOLUSD",
+    "broker_type": "kraken_spot",
+    "generator_mode": "volatility_split",
+    "generated_at": "2026-06-25T08:37:29.313980+00:00",
+    "total_coverage_hours": 453.3666666666667,
+    "block_count": 14,
+    "discovery_fingerprints": {
+      "volatility_profile": "b298b18560eab25b550a62279884865a889e4e2742813650d97f5f9cd1b1dbff",
+      "data_coverage": "c2a3e1311c98e5df7763a3d640881dd66d78a84425d3598e82fa0a83e85a3c55",
+      "extreme_moves": "558c483a2c3d9c325135f533d4e779060ef83983a29e915fb32241eac6c0d561"
+    },
+    "split_config": {
+      "min_block_hours": 4,
+      "max_block_hours": 72,
+      "atr_percentile_threshold": 15,
+      "split_algorithm": "atr_minima"
+    }
+  },
+  "blocks": [
+    {
+      "block_index": 0,
+      "start_time": "2026-02-01T00:00:00+00:00",
+      "end_time": "2026-02-02T23:00:00+00:00",
+      "block_duration_hours": 47.0,
+      "split_reason": "region_start",
+      "atr_at_split": 1.973858,
+      "regime_at_split": "very_high",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 67551,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 1,
+      "start_time": "2026-02-02T23:00:00+00:00",
+      "end_time": "2026-02-03T11:00:00+00:00",
+      "block_duration_hours": 12.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.878078,
+      "regime_at_split": "medium",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 11784,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 2,
+      "start_time": "2026-02-03T11:00:00+00:00",
+      "end_time": "2026-02-04T10:00:00+00:00",
+      "block_duration_hours": 23.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.934282,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 37538,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 3,
+      "start_time": "2026-02-04T10:00:00+00:00",
+      "end_time": "2026-02-07T10:00:00+00:00",
+      "block_duration_hours": 72.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 1.008237,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 182678,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 4,
+      "start_time": "2026-02-07T10:00:00+00:00",
+      "end_time": "2026-02-08T06:00:00+00:00",
+      "block_duration_hours": 20.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 1.10769,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 17600,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 5,
+      "start_time": "2026-02-08T06:00:00+00:00",
+      "end_time": "2026-02-10T10:00:00+00:00",
+      "block_duration_hours": 52.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.621619,
+      "regime_at_split": "low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 41210,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 6,
+      "start_time": "2026-02-10T10:00:00+00:00",
+      "end_time": "2026-02-12T08:00:00+00:00",
+      "block_duration_hours": 46.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.702365,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 42591,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 7,
+      "start_time": "2026-02-12T08:00:00+00:00",
+      "end_time": "2026-02-14T05:00:00+00:00",
+      "block_duration_hours": 45.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.59678,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 34312,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 8,
+      "start_time": "2026-02-14T05:00:00+00:00",
+      "end_time": "2026-02-14T10:00:00+00:00",
+      "block_duration_hours": 5.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.407168,
+      "regime_at_split": "very_low",
+      "session": "sydney_tokyo",
+      "estimated_ticks": 2421,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 9,
+      "start_time": "2026-02-14T10:00:00+00:00",
+      "end_time": "2026-02-16T10:00:00+00:00",
+      "block_duration_hours": 48.0,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.602164,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 35230,
+      "distance_to_next_block_hours": 0.0
+    },
+    {
+      "block_index": 10,
+      "start_time": "2026-02-16T10:00:00+00:00",
+      "end_time": "2026-02-17T16:17:00+00:00",
+      "block_duration_hours": 30.28,
+      "split_reason": "atr_minima",
+      "atr_at_split": 0.624374,
+      "regime_at_split": "low",
+      "session": "london",
+      "estimated_ticks": 19633,
+      "distance_to_next_block_hours": 1.17
+    },
+    {
+      "block_index": 11,
+      "start_time": "2026-02-17T17:27:00+00:00",
+      "end_time": "2026-02-17T18:18:00+00:00",
+      "block_duration_hours": 0.85,
+      "split_reason": "single_region",
+      "atr_at_split": 1.847072,
+      "regime_at_split": "very_high",
+      "session": "new_york",
+      "estimated_ticks": 601,
+      "distance_to_next_block_hours": 0.6
+    },
+    {
+      "block_index": 12,
+      "start_time": "2026-02-17T18:54:00+00:00",
+      "end_time": "2026-02-18T11:16:00+00:00",
+      "block_duration_hours": 16.37,
+      "split_reason": "single_region",
+      "atr_at_split": 1.627748,
+      "regime_at_split": "high",
+      "session": "new_york",
+      "estimated_ticks": 7419,
+      "distance_to_next_block_hours": 0.87
+    },
+    {
+      "block_index": 13,
+      "start_time": "2026-02-18T12:08:00+00:00",
+      "end_time": "2026-02-20T00:00:00+00:00",
+      "block_duration_hours": 35.87,
+      "split_reason": "single_region",
+      "atr_at_split": 1.116161,
+      "regime_at_split": "medium",
+      "session": "london",
+      "estimated_ticks": 25564
+    }
+  ]
+}

@@ -1,18 +1,15 @@
 """
 Scenario Generator Types
 ========================
-Type definitions for scenario generation strategies and results.
+Type definitions for scenario generation strategies and their config.
+
+The generated windows themselves live in window_set_types.py (GeneratedWindow / WindowSet) —
+this module holds the strategy enum and the per-strategy split configuration.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from enum import StrEnum
-
-from python.framework.types.market_types.market_volatility_profile_types import (
-    TradingSession,
-    VolatilityRegime,
-)
 
 
 # =============================================================================
@@ -20,8 +17,11 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 # =============================================================================
 
 class GenerationStrategy(StrEnum):
-    """Scenario generation strategies."""
+    """Scenario generation strategies (resolved to a Splitter by SplitterFactory)."""
     BLOCKS = 'blocks'
+    VOLATILITY_SPLIT = 'volatility_split'
+    CONTINUOUS = 'continuous'
+    WALK_FORWARD = 'walk_forward'
 
 
 # =============================================================================
@@ -93,92 +93,3 @@ class GeneratorConfig:
             ),
             profile=ProfileStrategyConfig.from_dict(profile_data) if profile_data else None,
         )
-
-
-# =============================================================================
-# SCENARIO SELECTION
-# =============================================================================
-
-@dataclass
-class ScenarioCandidate:
-    """
-    A candidate time period for scenario generation.
-
-    Selected by the generator based on analysis results.
-    """
-    symbol: str
-    start_time: datetime
-    end_time: datetime
-
-    # Data source identifier
-    broker_type: str  # e.g., 'mt5', 'kraken_spot'
-
-    # Selection criteria
-    regime: VolatilityRegime
-    session: TradingSession
-
-    # Metrics
-    estimated_ticks: int
-    atr: float
-    tick_density: float
-
-    # Scoring
-    score: float = 0.0
-
-    def to_scenario_dict(
-        self, name: str, max_ticks: Optional[int] = None, role: Optional[str] = None
-    ) -> Dict:
-        """
-        Convert to scenario dictionary for config output.
-
-        Args:
-            name: Scenario name
-            max_ticks: Optional tick limit (None = time-based only, no tick limit)
-            role: Optional robustness IS/OOS role (#367); omitted from the dict when None
-
-        Returns:
-            Scenario dictionary compatible with ScenarioConfigSaver
-        """
-        # Determine max_ticks: None means time-based (no tick limit)
-        # Explicit None is preserved, otherwise use estimated_ticks as fallback
-        effective_max_ticks = max_ticks if max_ticks is not None else self.estimated_ticks
-        # But if estimated_ticks is 0, that means time-based → use None
-        if effective_max_ticks == 0:
-            effective_max_ticks = None
-
-        # Cascade-capable keys (strategy/execution/trade_simulator) are NOT emitted per
-        # scenario — they live set-wide in `global` only. For a robustness run this keeps the
-        # strategy constant by construction; everywhere it removes dead empty containers (§19).
-        scenario: Dict = {
-            'name': name,
-            'symbol': self.symbol,
-            'data_broker_type': self.broker_type,
-            'start_date': self.start_time.isoformat(),
-            'end_date': self.end_time.isoformat(),
-            'max_ticks': effective_max_ticks,  # None → null in JSON
-            'data_mode': 'realistic',
-            'enabled': True,
-        }
-        if role is not None:
-            scenario['role'] = role
-        return scenario
-
-
-@dataclass
-class GenerationResult:
-    """
-    Result of scenario generation.
-    """
-    symbol: str
-    strategy: GenerationStrategy
-    scenarios: List[ScenarioCandidate]
-
-    # Statistics
-    total_estimated_ticks: int
-    avg_ticks_per_scenario: float
-    regime_coverage: Dict[VolatilityRegime, int]
-    session_coverage: Dict[TradingSession, int]
-
-    # Metadata
-    generated_at: datetime
-    config_used: GeneratorConfig

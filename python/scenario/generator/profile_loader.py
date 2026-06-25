@@ -1,24 +1,25 @@
 """
 Profile Loader
 ================
-Loads GeneratorProfile artifacts from JSON files
+Loads profile artifacts from JSON files into WindowSets
 and validates discovery fingerprints for freshness.
 """
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.scenario.generator.window_set_serializer import WindowSetSerializer
 
 vLog = get_global_logger()
 
 
 class ProfileLoader:
-    """Loads and validates GeneratorProfile artifacts."""
+    """Loads and validates profile artifacts into WindowSets."""
 
     def __init__(self, logger: AbstractLogger = None):
         """
@@ -29,15 +30,15 @@ class ProfileLoader:
         """
         self._logger = logger or vLog
 
-    def load_profile(self, profile_path: str) -> GeneratorProfile:
+    def load_profile(self, profile_path: str) -> WindowSet:
         """
-        Load a GeneratorProfile from JSON file.
+        Load a profile artifact from JSON file into a WindowSet.
 
         Args:
             profile_path: Path to profile JSON file
 
         Returns:
-            GeneratorProfile instance
+            WindowSet instance
         """
         path = Path(profile_path)
         if not path.exists():
@@ -46,26 +47,26 @@ class ProfileLoader:
         with open(path, 'r') as f:
             data = json.load(f)
 
-        profile = GeneratorProfile.from_dict(data)
+        window_set = WindowSetSerializer.from_profile_dict(data)
 
         self._logger.info(
-            f"Loaded profile: {profile.profile_meta.symbol} "
-            f"({profile.profile_meta.block_count} blocks, "
-            f"{profile.profile_meta.generator_mode} mode)"
+            f"Loaded profile: {window_set.symbol} "
+            f"({window_set.block_count} blocks, "
+            f"{window_set.mode} mode)"
         )
 
-        return profile
+        return window_set
 
     def validate_fingerprints(
         self,
-        profile: GeneratorProfile,
+        window_set: WindowSet,
         cache_manager: Optional[DiscoveryCacheManager] = None
     ) -> List[str]:
         """
         Validate discovery fingerprints against current cache state.
 
         Args:
-            profile: GeneratorProfile to validate
+            window_set: WindowSet to validate
             cache_manager: Discovery cache manager (created if None)
 
         Returns:
@@ -74,14 +75,13 @@ class ProfileLoader:
         if cache_manager is None:
             cache_manager = DiscoveryCacheManager(logger=self._logger)
 
-        meta = profile.profile_meta
         current_fingerprints = cache_manager.get_fingerprints(
-            meta.broker_type, meta.symbol
+            window_set.broker_type, window_set.symbol
         )
 
         warnings = []
 
-        for cache_name, stored_fp in meta.discovery_fingerprints.items():
+        for cache_name, stored_fp in window_set.discovery_fingerprints.items():
             current_fp = current_fingerprints.get(cache_name)
 
             if current_fp is None:

@@ -1,10 +1,10 @@
 {
   "profile_meta": {
-    "symbol": "GBPUSD",
+    "symbol": "USDCHF",
     "broker_type": "mt5",
     "generator_mode": "continuous",
-    "generated_at": "2026-04-04T20:07:48.320179+00:00",
-    "total_coverage_hours": 213.94,
+    "generated_at": "2026-06-25T08:37:06.382964+00:00",
+    "total_coverage_hours": 213.93333333333334,
     "block_count": 2,
     "discovery_fingerprints": {
       "volatility_profile": "b298b18560eab25b550a62279884865a889e4e2742813650d97f5f9cd1b1dbff",
@@ -25,10 +25,10 @@
       "end_time": "2025-10-15T15:37:00+00:00",
       "block_duration_hours": 63.62,
       "split_reason": "continuous_region",
-      "atr_at_split": 0.97561,
-      "regime_at_split": "high",
+      "atr_at_split": 0.957471,
+      "regime_at_split": "medium",
       "session": "sydney_tokyo",
-      "estimated_ticks": 323143,
+      "estimated_ticks": 160047,
       "distance_to_next_block_hours": 2.07
     },
     {
@@ -37,10 +37,10 @@
       "end_time": "2025-10-22T00:00:00+00:00",
       "block_duration_hours": 150.32,
       "split_reason": "continuous_region",
-      "atr_at_split": 0.929389,
+      "atr_at_split": 1.001489,
       "regime_at_split": "medium",
       "session": "new_york",
-      "estimated_ticks": 424182
+      "estimated_ticks": 251816
     }
   ]
 }
