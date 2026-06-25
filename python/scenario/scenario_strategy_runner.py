@@ -79,34 +79,34 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
 
     Args:
         scenario_set_json: Scenario set config (for global strategy/execution config)
-        profile_paths: List of paths to GeneratorProfile JSON files
+        profile_paths: List of paths to profile artifact JSON files
     """
     try:
         vLog.info("🚀 Starting [BatchOrchestrator] Profile Run")
 
         app_config_loader = AppConfigManager()
 
-        # Load all profiles
+        # Load all profiles into WindowSets
         loader = ProfileLoader()
-        profiles = []
+        window_sets = []
         for path in profile_paths:
-            profile = loader.load_profile(path)
+            window_set = loader.load_profile(path)
 
             # Validate fingerprints per profile
-            fingerprint_warnings = loader.validate_fingerprints(profile)
+            fingerprint_warnings = loader.validate_fingerprints(window_set)
             if fingerprint_warnings:
                 vLog.warning(
-                    f"⚠️ Profile {profile.profile_meta.symbol} has "
+                    f"⚠️ Profile {window_set.symbol} has "
                     f"{len(fingerprint_warnings)} fingerprint warning(s) — "
                     f"discovery configs may have changed since generation"
                 )
 
-            profiles.append(profile)
+            window_sets.append(window_set)
 
-        # Create merged scenarios from all profiles + global config
+        # Create merged scenarios from all window sets + global config
         scenario_config_loader = ScenarioConfigLoader()
         scenario_config_data = scenario_config_loader.load_from_profiles(
-            profiles, scenario_set_json
+            window_sets, scenario_set_json
         )
 
         # Attach profile source paths for log archival
@@ -114,10 +114,10 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
             Path(p) for p in profile_paths
         ]
 
-        total_blocks = sum(p.profile_meta.block_count for p in profiles)
-        symbols = sorted(set(p.profile_meta.symbol for p in profiles))
+        total_blocks = sum(ws.block_count for ws in window_sets)
+        symbols = sorted(set(ws.symbol for ws in window_sets))
         vLog.info(
-            f"📂 Profile Run: {len(profiles)} profile(s), "
+            f"📂 Profile Run: {len(window_sets)} profile(s), "
             f"{total_blocks} blocks, symbols: {', '.join(symbols)}"
         )
 

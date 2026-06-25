@@ -18,7 +18,7 @@ from python.framework.logging.system_info_writer import write_system_version_par
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.validation_types import ValidationResult
-from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
@@ -69,7 +69,7 @@ class SingleScenario:
     # Per-window IS/OOS label (manual config or generator-assigned). Default unassigned.
     role: RobustnessRole = RobustnessRole.UNASSIGNED
     # Volatility regime + trading session of the window — only populated for Profile Runs
-    # (copied from the source ProfileBlock); empty for manual / blocks scenarios.
+    # (copied from the source GeneratedWindow); empty for manual / blocks scenarios.
     regime: str = ''
     session: str = ''
 
@@ -82,7 +82,7 @@ class SingleScenario:
     # === DATA SOURCE METADATA (populated during data loading) ===
     data_format_versions: List[str] = field(default_factory=list)
 
-    # === PROFILE RUN METADATA (populated from GeneratorProfile) ===
+    # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False
 
     def __post_init__(self):
@@ -143,7 +143,7 @@ class LoadedScenarioConfig:
     scenario_set_name: str
     scenarios: List[SingleScenario]
     config_path: Path
-    generator_profiles: Optional[List[GeneratorProfile]] = None
+    generator_profiles: Optional[List[WindowSet]] = None
     generator_profile_paths: Optional[List[Path]] = None
     # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
     robustness: Optional[RobustnessConfig] = None
@@ -239,12 +239,12 @@ class ScenarioSet:
         """Get all scenarios that passed validation."""
         return self._scenarios
 
-    def get_generator_profiles(self) -> Optional[List[GeneratorProfile]]:
+    def get_generator_profiles(self) -> Optional[List[WindowSet]]:
         """
-        Get generator profiles for Profile Runs.
+        Get generator window sets for Profile Runs.
 
         Returns:
-            List of GeneratorProfile objects, or None for normal runs
+            List of WindowSet objects, or None for normal runs
         """
         return self._generator_profiles
 

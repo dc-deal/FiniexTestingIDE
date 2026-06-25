@@ -20,7 +20,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
     ProfilingReport, RunMetaReport, RunSummary, ScenarioDetailsReport, WarningsErrorsOutcome,
     WarningsErrorsReport)
-from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
@@ -45,7 +45,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         scenario_details_report: ScenarioDetailsReport,
         warnings_errors_report: WarningsErrorsReport,
         aggregated_report: AggregatedPortfolioReport,
-        generator_profiles: Optional[List[GeneratorProfile]] = None
+        generator_profiles: Optional[List[WindowSet]] = None
     ):
         """
         Initialize executive summary.
@@ -199,7 +199,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         # Source line (Profile Run vs Scenario Set)
         if self._generator_profiles:
-            modes = sorted(set(p.profile_meta.generator_mode for p in self._generator_profiles))
+            modes = sorted(set(ws.mode for ws in self._generator_profiles))
             mode_str = ', '.join(modes)
             print(f"Source:             Profile Run ({len(self._generator_profiles)} profile(s), {mode_str})")
         else:

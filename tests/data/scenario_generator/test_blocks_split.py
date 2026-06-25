@@ -1,10 +1,10 @@
 """
-BlocksGenerator Tests
-======================
-Unit tests for chronological block generation.
+BlocksSplit Tests
+=================
+Unit tests for chronological block splitting + the shared continuous-region extraction.
 
-Tests cover: region extraction, constrained/extended block generation,
-session filtering, data quality warnings, and count limiting.
+Tests cover: region extraction (ContinuousRegionExtractor), constrained/extended block
+generation, data quality warnings, and count limiting.
 """
 
 import pytest
@@ -16,28 +16,30 @@ from python.framework.types.market_types.market_volatility_profile_types import 
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
-    GeneratorConfig,
+    BlocksStrategyConfig,
 )
-from python.scenario.generator.blocks_generator import BlocksGenerator
+from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
+from python.scenario.generator.splitters.blocks_split import BlocksSplit
+from python.scenario.generator.splitters.continuous_region_extractor import ContinuousRegionExtractor
 
 from conftest import utc, make_gap, mock_coverage_report
 
 
 # =============================================================================
-# REGION EXTRACTION
+# REGION EXTRACTION (ContinuousRegionExtractor)
 # =============================================================================
 
 class TestExtractContinuousRegions:
-    """Tests for _extract_continuous_regions()."""
+    """Tests for ContinuousRegionExtractor.extract()."""
 
-    def test_no_gaps_single_region(self, generator_config: GeneratorConfig):
+    def test_no_gaps_single_region(self):
         """No gaps → single region spanning full data range."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 5)
         report = mock_coverage_report(start, end, gaps=[])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 1
         assert regions[0]['start'] == start
@@ -45,9 +47,9 @@ class TestExtractContinuousRegions:
         assert regions[0]['following_gap'] is None
         assert regions[0]['preceding_gap'] is None
 
-    def test_small_gaps_ignored(self, generator_config: GeneratorConfig):
+    def test_small_gaps_ignored(self):
         """SMALL gaps don't split regions."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 5)
         small_gap = make_gap(
@@ -55,15 +57,15 @@ class TestExtractContinuousRegions:
         )
         report = mock_coverage_report(start, end, gaps=[small_gap])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 1
         assert regions[0]['start'] == start
         assert regions[0]['end'] == end
 
-    def test_weekend_gap_does_not_split_region(self, generator_config: GeneratorConfig):
+    def test_weekend_gap_does_not_split_region(self):
         """WEEKEND gap is allowed — blocks span across it (professional platform behavior)."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 8)
         weekend_gap = make_gap(
@@ -71,16 +73,16 @@ class TestExtractContinuousRegions:
         )
         report = mock_coverage_report(start, end, gaps=[weekend_gap])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 1
         assert regions[0]['start'] == start
         assert regions[0]['end'] == end
         assert regions[0]['following_gap'] is None
 
-    def test_moderate_gap_splits_region(self, generator_config: GeneratorConfig):
+    def test_moderate_gap_splits_region(self):
         """MODERATE gap splits data into two regions."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 3)
         mod_gap = make_gap(
@@ -88,7 +90,7 @@ class TestExtractContinuousRegions:
         )
         report = mock_coverage_report(start, end, gaps=[mod_gap])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 2
         assert regions[0]['end'] == utc(2025, 10, 1, 20)
@@ -96,9 +98,9 @@ class TestExtractContinuousRegions:
         assert regions[1]['start'] == utc(2025, 10, 2, 4)
         assert regions[1]['preceding_gap'] == mod_gap
 
-    def test_large_gap_splits_region(self, generator_config: GeneratorConfig):
+    def test_large_gap_splits_region(self):
         """LARGE gap splits data."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 5)
         large_gap = make_gap(
@@ -106,13 +108,13 @@ class TestExtractContinuousRegions:
         )
         report = mock_coverage_report(start, end, gaps=[large_gap])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 2
 
-    def test_multiple_gaps_multiple_regions(self, generator_config: GeneratorConfig):
+    def test_multiple_gaps_multiple_regions(self):
         """Only non-allowed gaps split regions; weekend gaps are allowed."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 15)
         gaps = [
@@ -122,40 +124,53 @@ class TestExtractContinuousRegions:
         ]
         report = mock_coverage_report(start, end, gaps=gaps)
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         # Only MODERATE gap splits — 2 WEEKEND gaps are allowed
         assert len(regions) == 2
 
-    def test_gap_at_data_start(self, generator_config: GeneratorConfig):
+    def test_gap_at_data_start(self):
         """Gap starting at data start → region starts after gap."""
-        gen = BlocksGenerator(generator_config)
+        extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 5)
         gap = make_gap(start, utc(2025, 10, 2), GapCategory.LARGE)
         report = mock_coverage_report(start, end, gaps=[gap])
 
-        regions = gen._extract_continuous_regions(report)
+        regions = extractor.extract(report)
 
         assert len(regions) == 1
         assert regions[0]['start'] == utc(2025, 10, 2)
         assert regions[0]['preceding_gap'] == gap
 
+    def test_clip_to_range(self):
+        """Regions are clipped to the requested time range."""
+        extractor = ContinuousRegionExtractor()
+        start = utc(2025, 10, 1)
+        end = utc(2025, 10, 10)
+        report = mock_coverage_report(start, end, gaps=[])
+
+        regions = extractor.extract(report, utc(2025, 10, 3), utc(2025, 10, 6))
+
+        assert len(regions) == 1
+        assert regions[0]['start'] == utc(2025, 10, 3)
+        assert regions[0]['end'] == utc(2025, 10, 6)
+
 
 # =============================================================================
-# CONSTRAINED BLOCKS — NO SESSIONS
+# CONSTRAINED BLOCKS
 # =============================================================================
 
-class TestConstrainedBlocksNoSessions:
-    """Tests for _generate_constrained_blocks() without session filter."""
+class TestConstrainedBlocks:
+    """Tests for block generation within a continuous region."""
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_generates_full_blocks(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Generates correct number of full blocks from continuous data."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         # 12h data = 3 full blocks of 4h
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 12)  # 12h total
@@ -163,23 +178,23 @@ class TestConstrainedBlocksNoSessions:
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 3
-        for s in scenarios:
-            duration_h = (s.end_time - s.start_time).total_seconds() / 3600
-            assert duration_h == 4.0
-            assert s.symbol == 'USDJPY'
-            assert s.broker_type == 'mt5'
-            assert s.estimated_ticks == 0
+        assert result.symbol == 'USDJPY'
+        assert result.broker_type == 'mt5'
+        assert result.strategy == GenerationStrategy.BLOCKS
+        assert len(result.windows) == 3
+        for w in result.windows:
+            assert w.block_duration_hours == 4.0
+            assert w.estimated_ticks == 0
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_short_last_block_above_minimum(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Last block shorter than target but ≥ min_block_hours → generated."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         # 6h data = 1 full block (4h) + 2h remainder (≥ 1h min)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 6)
@@ -187,19 +202,18 @@ class TestConstrainedBlocksNoSessions:
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 2
-        last_duration = (scenarios[-1].end_time - scenarios[-1].start_time).total_seconds() / 3600
-        assert last_duration == 2.0
+        assert len(result.windows) == 2
+        assert result.windows[-1].block_duration_hours == 2.0
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_remainder_below_minimum_skipped(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Remainder < min_block_hours → skipped, not generated."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         # 4.5h data = 1 full block (4h) + 0.5h remainder (< 1h min)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 4) + timedelta(minutes=30)
@@ -207,17 +221,17 @@ class TestConstrainedBlocksNoSessions:
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 1
+        assert len(result.windows) == 1
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_region_below_minimum_block_hours(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Region shorter than min_block_hours → no blocks generated."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         # 0.5h data < 1h min_block_hours → no blocks
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1) + timedelta(minutes=30)
@@ -225,27 +239,45 @@ class TestConstrainedBlocksNoSessions:
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 0
+        assert len(result.windows) == 0
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_blocks_are_consecutive(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Blocks follow each other without gaps."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 12)  # 12h = 3 blocks of 4h
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
+        windows = result.windows
 
-        for i in range(len(scenarios) - 1):
-            assert scenarios[i].end_time == scenarios[i + 1].start_time
+        for i in range(len(windows) - 1):
+            assert windows[i].end_time == windows[i + 1].start_time
+
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_block_index_is_zero_based_sequence(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
+    ):
+        """Windows carry a 0-based sequential block_index."""
+        splitter = BlocksSplit(blocks_config)
+        start = utc(2025, 10, 1)
+        end = utc(2025, 10, 1, 12)
+        report = mock_coverage_report(start, end)
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
+
+        assert [w.block_index for w in result.windows] == [0, 1, 2]
 
 
 # =============================================================================
@@ -255,39 +287,39 @@ class TestConstrainedBlocksNoSessions:
 class TestCountLimiting:
     """Tests for count_max parameter."""
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_count_max_truncates(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """count_max < generated blocks → truncates to count_max."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 12)  # 3 blocks possible (12h / 4h)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=2)
+        result = splitter.split('mt5', 'USDJPY', count_max=2)
 
-        assert len(scenarios) == 2
+        assert len(result.windows) == 2
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_count_max_above_generated(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """count_max > generated blocks → all blocks returned."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 12)  # 3 blocks possible (12h / 4h)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=10)
+        result = splitter.split('mt5', 'USDJPY', count_max=10)
 
-        assert len(scenarios) == 3
+        assert len(result.windows) == 3
 
 
 # =============================================================================
@@ -297,37 +329,37 @@ class TestCountLimiting:
 class TestDataQualityWarnings:
     """Tests for data-start and post-gap warnings."""
 
-    @patch('python.scenario.generator.blocks_generator.vLog')
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.vLog')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_data_start_warning(
-        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, blocks_config: BlocksStrategyConfig
     ):
         """First block at data begin → data-start warning logged."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 8)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 2
+        assert len(result.windows) == 2
         # First block starts at data begin
-        assert scenarios[0].start_time == start
+        assert result.windows[0].start_time == start
         # Warning about data-start was logged
         warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
         assert any('data begin' in w for w in warning_calls)
 
-    @patch('python.scenario.generator.blocks_generator.vLog')
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.vLog')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_post_gap_warning(
-        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, blocks_config: BlocksStrategyConfig
     ):
         """Block after MODERATE gap → post-gap warning logged."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 2, 12)
         # MODERATE gap splits into two regions
@@ -338,32 +370,31 @@ class TestDataQualityWarnings:
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
         # Should have blocks from both regions
-        assert len(scenarios) > 0
+        assert len(result.windows) > 0
         # Post-gap warning for second region was logged
         warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
         assert any('MODERATE' in w and 'gap' in w for w in warning_calls)
 
-    @patch('python.scenario.generator.blocks_generator.vLog')
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.vLog')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_no_warning_mid_region(
-        self, mock_dcr_cls, mock_tim_cls, mock_vlog, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, mock_vlog, blocks_config: BlocksStrategyConfig
     ):
-        """Blocks within continuous region (not first, no preceding gap) → no data quality warnings."""
-        gen = BlocksGenerator(generator_config)
-        # Data starts before our start_filter, so first region has preceding data
+        """Blocks within continuous region (not first, no preceding gap) → no post-gap warnings."""
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 12)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+        result = splitter.split('mt5', 'USDJPY', count_max=None)
 
-        assert len(scenarios) == 3
+        assert len(result.windows) == 3
         # Data-start warning IS expected here (single region, start == data start)
         # but NO post-gap warning (no preceding gap)
         warning_calls = [str(c) for c in mock_vlog.warning.call_args_list]
@@ -377,13 +408,13 @@ class TestDataQualityWarnings:
 class TestNoContinuousRegions:
     """Tests for edge case: no usable data."""
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
     def test_gap_covers_all_data_raises(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
         """Gap covering entire data range → ValueError."""
-        gen = BlocksGenerator(generator_config)
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 3)
         # Gap covers entire range
@@ -393,36 +424,36 @@ class TestNoContinuousRegions:
         mock_tim_cls.return_value = MagicMock()
 
         with pytest.raises(ValueError, match='No continuous data regions found'):
-            gen.generate('mt5', 'USDJPY', block_hours=4, count_max=None)
+            splitter.split('mt5', 'USDJPY', count_max=None)
 
 
 # =============================================================================
-# SCENARIO CANDIDATE PROPERTIES
+# WINDOW PROPERTIES
 # =============================================================================
 
-class TestScenarioCandidateProperties:
-    """Tests for correct ScenarioCandidate field values."""
+class TestWindowProperties:
+    """Tests for correct GeneratedWindow field values."""
 
-    @patch('python.scenario.generator.blocks_generator.TickIndexManager')
-    @patch('python.scenario.generator.blocks_generator.DataCoverageReport')
-    def test_candidate_fields(
-        self, mock_dcr_cls, mock_tim_cls, generator_config: GeneratorConfig
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_window_fields(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
     ):
-        """Blocks candidates have correct default field values."""
-        gen = BlocksGenerator(generator_config)
+        """Blocks windows have correct default field values."""
+        splitter = BlocksSplit(blocks_config)
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 1, 10)
         report = mock_coverage_report(start, end)
         mock_dcr_cls.return_value = report
         mock_tim_cls.return_value = MagicMock()
 
-        scenarios = gen.generate('mt5', 'USDJPY', block_hours=4, count_max=1)
+        result = splitter.split('mt5', 'USDJPY', count_max=1)
 
-        assert len(scenarios) == 1
-        s = scenarios[0]
-        assert s.symbol == 'USDJPY'
-        assert s.broker_type == 'mt5'
-        assert s.estimated_ticks == 0
-        assert s.regime == VolatilityRegime.MEDIUM
-        assert s.atr == 0.0
-        assert s.tick_density == 0.0
+        assert result.symbol == 'USDJPY'
+        assert result.broker_type == 'mt5'
+        assert len(result.windows) == 1
+        w = result.windows[0]
+        assert w.estimated_ticks == 0
+        assert w.regime == VolatilityRegime.MEDIUM
+        assert w.atr == 0.0
+        assert w.tick_density == 0.0

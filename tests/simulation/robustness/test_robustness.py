@@ -20,10 +20,7 @@ from python.framework.types.config_types.robustness_config_types import (
 from python.framework.types.process_data_types import (
     BlockBoundaryReport, ProcessResult, ProcessTickLoopResult)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.scenario_types.scenario_generator_types import ScenarioCandidate
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.market_types.market_volatility_profile_types import (
-    TradingSession, VolatilityRegime)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.validators.post_run_validator import PostRunValidator
 from python.framework.validators.scenario_validator import ScenarioValidator
@@ -116,27 +113,9 @@ class TestAssignRoles:
         assert roles[0] == RobustnessRole.IN_SAMPLE and roles[-1] == RobustnessRole.OUT_OF_SAMPLE
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Generator to_scenario_dict — cleanliness + role
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TestToScenarioDict:
-    def _candidate(self):
-        return ScenarioCandidate(
-            symbol='ETHUSD', start_time=_DT, end_time=_DT, broker_type='kraken_spot',
-            regime=VolatilityRegime.MEDIUM, session=TradingSession.LONDON,
-            estimated_ticks=0, atr=0.0, tick_density=0.0)
-
-    def test_no_empty_cascade_containers(self):
-        d = self._candidate().to_scenario_dict('w1', None)
-        for key in ('strategy_config', 'execution_config', 'trade_simulator_config'):
-            assert key not in d
-
-    def test_role_omitted_when_none(self):
-        assert 'role' not in self._candidate().to_scenario_dict('w1', None)
-
-    def test_role_present_when_set(self):
-        assert self._candidate().to_scenario_dict('w1', None, 'in_sample')['role'] == 'in_sample'
+# Note: the generator window → scenario-dict cleanliness (no cascade keys, role handling)
+# moved to WindowMaterializer and is covered by
+# tests/data/scenario_generator/test_window_materializer.py (#411).
 
 
 # ─────────────────────────────────────────────────────────────────────────────

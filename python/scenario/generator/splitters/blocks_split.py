@@ -1,6 +1,6 @@
 """
-Blocks Strategy Generator
-==========================
+Blocks Split Strategy
+=====================
 Generates chronological time blocks with gap-aware region splitting.
 
 Features:
@@ -8,7 +8,7 @@ Features:
 - Detailed gap-aware warnings with color coding
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -21,52 +21,59 @@ from python.framework.types.market_types.market_volatility_profile_types import 
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
-    GeneratorConfig,
-    ScenarioCandidate,
+    BlocksStrategyConfig,
+    GenerationStrategy,
 )
+from python.framework.types.scenario_types.window_set_types import GeneratedWindow, WindowSet
+from python.scenario.generator.splitters.abstract_splitter import AbstractSplitter
+from python.scenario.generator.splitters.continuous_region_extractor import ContinuousRegionExtractor
 from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
 
 
-class BlocksGenerator:
+class BlocksSplit(AbstractSplitter):
     """
-    Chronological blocks generator.
+    Chronological blocks splitter.
 
     Generates time-based blocks with intelligent handling of:
     - Data gaps (weekend, moderate, large)
     - Data quality warnings (data-start, post-gap)
     """
 
-    def __init__(self, config: GeneratorConfig):
+    def __init__(self, config: BlocksStrategyConfig):
         """
-        Initialize blocks generator.
+        Initialize blocks splitter.
 
         Args:
-            data_dir: Path to processed data directory
-            config: Generator configuration
+            config: Blocks strategy configuration (block size + minimum)
         """
         self._config = config
+        self._region_extractor = ContinuousRegionExtractor()
 
-    def generate(
+    def split(
         self,
         broker_type: str,
         symbol: str,
-        block_hours: int,
-        count_max: Optional[int]
-    ) -> List[ScenarioCandidate]:
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        count_max: Optional[int] = None,
+    ) -> WindowSet:
         """
         Generate chronological blocks from continuous data regions.
 
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
-            block_hours: Target hours per block
+            start_time: Unused (blocks span the full coverage)
+            end_time: Unused (blocks span the full coverage)
             count_max: Optional limit on number of blocks
 
         Returns:
-            List of scenario candidates with max_ticks=None
+            WindowSet with chronological windows (max_ticks resolved at materialization)
         """
+        block_hours = self._config.default_block_hours
+
         tick_index = TickIndexManager()
         tick_index.build_index()
 
@@ -75,8 +82,7 @@ class BlocksGenerator:
         data_coverage_report.analyze()
 
         # Extract continuous regions with gap information
-        continuous_regions = self._extract_continuous_regions(
-            data_coverage_report)
+        continuous_regions = self._region_extractor.extract(data_coverage_report)
 
         if not continuous_regions:
             raise ValueError(
@@ -86,9 +92,9 @@ class BlocksGenerator:
         self._log_coverage_info(continuous_regions, data_coverage_report)
 
         # Generate blocks from continuous regions
-        scenarios = []
+        windows = []
         generation_warnings = []
-        min_block_hours = self._config.blocks.min_block_hours
+        min_block_hours = self._config.min_block_hours
         block_duration = timedelta(hours=block_hours)
 
         block_counter = 0
@@ -106,16 +112,16 @@ class BlocksGenerator:
                 f"({region_duration.total_seconds()/3600:.1f}h)"
             )
 
-            scenarios_from_region = self._generate_blocks(
-                symbol, broker_type, region, scenario_start,
+            windows_from_region = self._generate_blocks(
+                region, scenario_start,
                 block_duration, min_block_hours, block_hours, block_counter
             )
 
             # Data-start warning: first block starts at data begin
             if (region['preceding_gap'] is None
                     and region['start'] == data_coverage_report.start_time
-                    and scenarios_from_region):
-                first = scenarios_from_region[0]
+                    and windows_from_region):
+                first = windows_from_region[0]
                 msg = (
                     f"Block #{block_counter + 1:02d} starts at data begin "
                     f"({first.start_time.strftime('%Y-%m-%d %H:%M')} UTC) — "
@@ -126,7 +132,7 @@ class BlocksGenerator:
                 vLog.warning(f"⚠️ {msg}")
 
             # Post-gap warning: block follows an interrupting gap
-            if region['preceding_gap'] is not None and scenarios_from_region:
+            if region['preceding_gap'] is not None and windows_from_region:
                 gap = region['preceding_gap']
                 gap_name = gap.category.value.upper()
                 msg = (
@@ -139,23 +145,23 @@ class BlocksGenerator:
                 generation_warnings.append(msg)
                 vLog.warning(f"⚠️ {msg}")
 
-            scenarios.extend(scenarios_from_region)
-            block_counter += len(scenarios_from_region)
+            windows.extend(windows_from_region)
+            block_counter += len(windows_from_region)
 
         # Debug: log each generated block
-        for i, s in enumerate(scenarios, 1):
+        for i, w in enumerate(windows, 1):
             vLog.debug(
-                f"Block #{i:02d}: {s.start_time.strftime('%Y-%m-%d %H:%M')} → "
-                f"{s.end_time.strftime('%Y-%m-%d %H:%M')} "
-                f"({(s.end_time - s.start_time).total_seconds()/3600:.1f}h) [{s.session.value}]"
+                f"Block #{i:02d}: {w.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{w.end_time.strftime('%Y-%m-%d %H:%M')} "
+                f"({w.block_duration_hours:.1f}h) [{w.session.value}]"
             )
 
         # Track total before truncation
-        total_generated = len(scenarios)
+        total_generated = len(windows)
 
         # Apply count_max limit if specified
         if count_max and total_generated > count_max:
-            scenarios = scenarios[:count_max]
+            windows = windows[:count_max]
             vLog.info(
                 f"Limited to {count_max} blocks (from {total_generated})")
         elif count_max and total_generated < count_max:
@@ -165,16 +171,27 @@ class BlocksGenerator:
             )
 
         # Log final error if data ends with short block
-        if scenarios:
-            self._check_final_block(scenarios, block_hours)
+        if windows:
+            self._check_final_block(windows, block_hours)
+
+        # Renumber block_index to the final 0-based position
+        for i, w in enumerate(windows):
+            w.block_index = i
 
         # Generation summary
         self._print_generation_summary(
-            symbol, broker_type, block_hours, continuous_regions, scenarios,
+            symbol, broker_type, block_hours, continuous_regions, windows,
             generation_warnings, total_generated
         )
 
-        return scenarios
+        return WindowSet(
+            symbol=symbol,
+            broker_type=broker_type,
+            strategy=GenerationStrategy.BLOCKS,
+            windows=windows,
+            generated_at=datetime.now(timezone.utc),
+            mode=GenerationStrategy.BLOCKS.value,
+        )
 
     # =========================================================================
     # BLOCK GENERATION
@@ -182,21 +199,17 @@ class BlocksGenerator:
 
     def _generate_blocks(
         self,
-        symbol: str,
-        broker_type: str,
         region: Dict,
         scenario_start: datetime,
         block_duration: timedelta,
         min_block_hours: int,
         block_hours: int,
         block_counter: int
-    ) -> List[ScenarioCandidate]:
+    ) -> List[GeneratedWindow]:
         """
         Generate continuous chronological blocks within a data region.
 
         Args:
-            symbol: Trading symbol
-            broker_type: Broker type identifier
             region: Region dict with start/end/following_gap
             scenario_start: Start time for block generation
             block_duration: Target block duration
@@ -205,9 +218,9 @@ class BlocksGenerator:
             block_counter: Current block counter
 
         Returns:
-            List of scenario candidates
+            List of generated windows
         """
-        scenarios = []
+        windows = []
         region_end = region['end']
         current_start = scenario_start
         local_counter = block_counter
@@ -242,108 +255,20 @@ class BlocksGenerator:
             start_hour = current_start.hour
             session = TradingSession(get_session_from_utc_hour(start_hour))
 
-            scenarios.append(ScenarioCandidate(
-                symbol=symbol,
+            windows.append(GeneratedWindow(
+                block_index=0,
                 start_time=current_start,
                 end_time=block_end,
-                broker_type=broker_type,
                 regime=VolatilityRegime.MEDIUM,
                 session=session,
                 estimated_ticks=0,
                 atr=0.0,
-                tick_density=0.0
+                tick_density=0.0,
             ))
 
             current_start = block_end
 
-        return scenarios
-
-    # =========================================================================
-    # COVERAGE AND GAP HANDLING
-    # =========================================================================
-
-    def _extract_continuous_regions(
-        self,
-        data_coverage_report: DataCoverageReport
-    ) -> List[Dict]:
-        """
-        Extract continuous data regions from coverage report.
-
-        Splits timeline at gaps that are NOT in allowed_gap_categories.
-        Allowed gaps (e.g. weekend, holiday, seamless, short) are treated
-        as continuous — blocks may span across them.
-
-        Args:
-            data_coverage_report: Coverage report with gap analysis
-
-        Returns:
-            List of region dicts with 'start', 'end', 'following_gap', 'preceding_gap'
-        """
-        regions = []
-
-        # Get allowed categories from config — split only at non-allowed gaps
-        allowed_strings = AppConfigManager().get_allowed_gap_categories()
-        allowed_categories = {
-            GapCategory(cat_str) for cat_str in allowed_strings
-            if cat_str in [c.value for c in GapCategory]
-        }
-
-        # Filter for interrupting gaps: those NOT in allowed categories
-        interrupting_gaps = [
-            g for g in data_coverage_report.gaps
-            if g.category not in allowed_categories
-        ]
-
-        if not interrupting_gaps:
-            # No interrupting gaps - single continuous region
-            return [{
-                'start': data_coverage_report.start_time,
-                'end': data_coverage_report.end_time,
-                'following_gap': None,
-                'preceding_gap': None
-            }]
-
-        # Sort gaps by start time
-        interrupting_gaps = sorted(
-            interrupting_gaps, key=lambda g: g.gap_start)
-
-        # Build regions between gaps
-        current_start = data_coverage_report.start_time
-        preceding_gap = None
-
-        for gap in interrupting_gaps:
-            if gap.gap_start <= current_start:
-                # Gap before or at current position
-                current_start = gap.gap_end
-                preceding_gap = gap
-                continue
-
-            # End current region at gap start
-            region_end = gap.gap_start
-
-            if region_end > current_start:
-                regions.append({
-                    'start': current_start,
-                    'end': region_end,
-                    'following_gap': gap,  # Store gap info for warnings
-                    'preceding_gap': preceding_gap
-                })
-
-            # Start new region after gap
-            preceding_gap = gap
-            current_start = gap.gap_end
-
-        # Add final region (no following gap)
-        final_end = data_coverage_report.end_time
-        if final_end > current_start:
-            regions.append({
-                'start': current_start,
-                'end': final_end,
-                'following_gap': None,
-                'preceding_gap': preceding_gap
-            })
-
-        return regions
+        return windows
 
     # =========================================================================
     # HELPER METHODS
@@ -417,23 +342,22 @@ class BlocksGenerator:
 
     def _check_final_block(
         self,
-        scenarios: List[ScenarioCandidate],
+        windows: List[GeneratedWindow],
         block_hours: int
     ) -> None:
         """
         Check if final block is shorter than target and log error.
 
         Args:
-            scenarios: Generated scenarios
+            windows: Generated windows
             block_hours: Target block hours
         """
-        last_block = scenarios[-1]
-        last_duration_hours = (
-            last_block.end_time - last_block.start_time).total_seconds() / 3600
+        last_block = windows[-1]
+        last_duration_hours = last_block.block_duration_hours
 
         if last_duration_hours < block_hours:
             vLog.error(
-                f"🔴 Block #{len(scenarios):02d}: Data ends with short block {last_duration_hours:.1f}h < {block_hours}h\n"
+                f"🔴 Block #{len(windows):02d}: Data ends with short block {last_duration_hours:.1f}h < {block_hours}h\n"
                 f"   Time: {last_block.start_time.strftime('%Y-%m-%d %H:%M')} → {last_block.end_time.strftime('%Y-%m-%d %H:%M')} UTC ({last_block.start_time.strftime('%a')})\n"
                 f"   Reason: End of available data"
             )
@@ -444,7 +368,7 @@ class BlocksGenerator:
         broker_type: str,
         block_hours: int,
         regions: List[Dict],
-        scenarios: List[ScenarioCandidate],
+        windows: List[GeneratedWindow],
         warnings: List[str],
         total_generated: int
     ) -> None:
@@ -456,7 +380,7 @@ class BlocksGenerator:
             broker_type: Broker type identifier
             block_hours: Target block size
             regions: Continuous data regions
-            scenarios: Generated scenarios
+            windows: Generated windows
             warnings: Collected generation warnings
             total_generated: Total blocks before count_max truncation
         """
@@ -472,19 +396,16 @@ class BlocksGenerator:
         print(f"  Block size:  {block_hours}h")
         print(
             f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
-        if total_generated > len(scenarios):
+        if total_generated > len(windows):
             print(
-                f"  Blocks:      {len(scenarios)} (of {total_generated} available)")
+                f"  Blocks:      {len(windows)} (of {total_generated} available)")
         else:
-            print(f"  Blocks:      {len(scenarios)}")
+            print(f"  Blocks:      {len(windows)}")
 
-        if scenarios:
-            first_start = min(s.start_time for s in scenarios)
-            last_end = max(s.end_time for s in scenarios)
-            total_hours = sum(
-                (s.end_time - s.start_time).total_seconds() / 3600
-                for s in scenarios
-            )
+        if windows:
+            first_start = min(w.start_time for w in windows)
+            last_end = max(w.end_time for w in windows)
+            total_hours = sum(w.block_duration_hours for w in windows)
             print(
                 f"  Time range:  {first_start.strftime('%Y-%m-%d')} → "
                 f"{last_end.strftime('%Y-%m-%d')}"

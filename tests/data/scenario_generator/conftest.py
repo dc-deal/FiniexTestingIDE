@@ -179,3 +179,12 @@ def generator_config() -> GeneratorConfig:
             min_block_hours=1
         ),
     )
+
+
+@pytest.fixture
+def blocks_config() -> BlocksStrategyConfig:
+    """Blocks strategy config with short durations for fast tests (4h blocks, 1h min)."""
+    return BlocksStrategyConfig(
+        default_block_hours=4,
+        min_block_hours=1
+    )

@@ -3,14 +3,13 @@ FiniexTestingIDE - Scenario Config System
 Config Loader (FIXED: Deep copy prevents config mutation)
 """
 
-import copy  # CRITICAL: For deep copying nested structures
 import json
 from pathlib import Path
 from typing import List, Dict, Any
 
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_types.generator_profile_types import GeneratorProfile
+from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.time_utils import parse_datetime
@@ -22,8 +21,7 @@ from python.framework.types.config_types.backtesting_config_types import (
     TradeSimulatorDefaults,
 )
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
-from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
-from python.scenario.generator.role_assignment import assign_roles_time_ordered
+from python.scenario.generator.window_materializer import WindowMaterializer
 vLog = get_global_logger()
 
 
@@ -287,19 +285,19 @@ class ScenarioConfigLoader:
 
     def load_from_profiles(
         self,
-        profiles: List[GeneratorProfile],
+        window_sets: List[WindowSet],
         scenario_set_json: str
     ) -> LoadedScenarioConfig:
         """
-        Create LoadedScenarioConfig from one or more GeneratorProfiles.
+        Create LoadedScenarioConfig from one or more WindowSets.
 
         Loads global config (strategy, execution, trade_simulator) from
-        the scenario set JSON, then creates one SingleScenario per profile
-        block across all profiles with globally unique scenario indices
-        and unique scenario names.
+        the scenario set JSON, then creates one SingleScenario per window
+        across all sets with globally unique scenario indices and unique
+        scenario names (the per-window plumbing lives in WindowMaterializer).
 
         Args:
-            profiles: List of GeneratorProfiles with block definitions
+            window_sets: List of WindowSets with window definitions
             scenario_set_json: Scenario set config filename for global config
 
         Returns:
@@ -350,64 +348,36 @@ class ScenarioConfigLoader:
 
         scenarios: List[SingleScenario] = []
         global_index = 0
+        materializer = WindowMaterializer()
 
-        for profile in profiles:
-            meta = profile.profile_meta
-            mode_short = 'vol' if meta.generator_mode == 'volatility_split' else 'cont'
-
-            # Resolve the quote currency once per profile (authoritative, broker config) — every
-            # scenario gets the symbol's quote balance so a profile run validates out of the box.
-            quote_currency = resolve_quote_currency(meta.symbol, meta.broker_type)
-
-            # Time-ordered IS/OOS roles per profile (per-symbol fair split); unassigned off-mode.
-            roles = (
-                assign_roles_time_ordered(len(profile.blocks), robustness.oos_split)
-                if robustness.enabled else None
+        for window_set in window_sets:
+            set_scenarios = materializer.to_single_scenarios(
+                window_set,
+                global_strategy=global_strategy,
+                global_execution=global_execution,
+                merged_trade_simulator=merged_trade_simulator,
+                global_stress=global_stress_test,
+                global_order_guard=global_order_guard,
+                robustness=robustness,
+                start_index=global_index,
             )
-
-            for local_index, block in enumerate(profile.blocks):
-                name = f"{meta.symbol}_{mode_short}_{block.block_index:02d}"
-
-                scenario = SingleScenario(
-                    name=name,
-                    scenario_index=global_index,
-                    symbol=meta.symbol,
-                    data_broker_type=meta.broker_type,
-                    start_date=block.start_time,
-                    end_date=block.end_time,
-                    data_mode='realistic',
-                    max_ticks=None,
-                    strategy_config=copy.deepcopy(global_strategy),
-                    execution_config=copy.deepcopy(global_execution),
-                    # Seed the symbol's quote-currency balance so a profile run validates out of
-                    # the box (per scenario — a multi-symbol profile run mixes quote currencies).
-                    trade_simulator_config=ensure_quote_balance(
-                        copy.deepcopy(merged_trade_simulator), quote_currency),
-                    stress_test_config=copy.deepcopy(global_stress_test) if global_stress_test else None,
-                    order_guard_config=copy.deepcopy(global_order_guard) if global_order_guard else None,
-                    is_profile_run=True,
-                    role=roles[local_index] if roles else RobustnessRole.UNASSIGNED,
-                    # Regime/session carried from the source block → the robustness regime breakdown (#367).
-                    regime=block.regime_at_split.value,
-                    session=block.session.value,
-                )
-                scenarios.append(scenario)
-                global_index += 1
+            scenarios.extend(set_scenarios)
+            global_index += len(set_scenarios)
 
             vLog.info(
-                f"✅ Loaded {meta.block_count} blocks from profile "
-                f"({mode_short}, {meta.symbol})"
+                f"✅ Loaded {window_set.block_count} blocks from profile "
+                f"({window_set.mode}, {window_set.symbol})"
             )
 
         vLog.info(
             f"✅ Created {len(scenarios)} scenarios from "
-            f"{len(profiles)} profile(s)"
+            f"{len(window_sets)} profile(s)"
         )
 
         return LoadedScenarioConfig(
             scenario_set_name=scenario_set_name,
             scenarios=scenarios,
             config_path=config_path,
-            generator_profiles=profiles,
+            generator_profiles=window_sets,
             robustness=robustness,
         )

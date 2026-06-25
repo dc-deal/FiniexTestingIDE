@@ -77,7 +77,9 @@ class StrategyRunnerCli:
         for entry in inputs:
             path = Path(entry)
             if path.is_dir():
-                json_files = sorted(path.glob('*.json'))
+                # Recursive — profiles are stored under <mode>/<broker_type>/, so a directory
+                # at any level (mode, broker, or flat) discovers all profiles beneath it.
+                json_files = sorted(path.rglob('*.json'))
                 if not json_files:
                     raise FileNotFoundError(
                         f"No JSON profile files found in directory: {path}"
