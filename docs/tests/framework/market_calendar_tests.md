@@ -19,6 +19,10 @@ overnight-swap accrual (#365) relies on: `MarketCalendar` rollover helpers,
 | `test_next_rollover_triple` | next rollover on the triple weekday → multiplier 3 |
 | `test_next_rollover_skips_weekend` | Fri post-close → next is Monday |
 | `test_next_market_close_is_friday` | next weekend close is the upcoming Friday |
+| `test_next_market_open_saturday_snaps_to_monday` | Saturday → next open is Monday 00:00 |
+| `test_next_market_open_sunday_snaps_to_monday` | Sunday → next open is Monday 00:00 |
+| `test_next_market_open_already_open_unchanged` | a weekday instant is returned unchanged |
+| `test_next_market_open_skips_holiday` | a holiday weekday skips to the next open day |
 
 ## test_market_clock.py (6 tests) — `MarketClock` awareness
 

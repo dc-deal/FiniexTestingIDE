@@ -4,8 +4,9 @@
 
 Tests for the scenario generator: the splitter layer (`BlocksSplit` / `VolatilitySplit` /
 `ContinuousSplit` / `WalkForwardSplit` behind `SplitterFactory`), the shared region extraction
-(`ContinuousRegionExtractor`), and the `WindowMaterializer` (windows → runnable scenarios). All tests
-run against mocked data — no file I/O, no external data dependencies.
+(`ContinuousRegionExtractor`), the `WindowMaterializer` (windows → runnable scenarios), and the
+`WindowSetSerializer` (one-or-many windows → a merged scenario set). All tests run against mocked
+data — no file I/O, no external data dependencies.
 
 **Location:** `tests/data/scenario_generator/`
 
@@ -70,6 +71,14 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 - Gap covering all data → ValueError
 - Window field values (estimated_ticks=0, regime=MEDIUM, atr=0.0)
 
+### Start / End Clipping
+- `start_time` / `end_time` clip the blocks to the requested range (not the full coverage)
+- No range given → blocks span the full data coverage (unchanged default)
+
+### Gap-Aware Block Start
+- A block boundary landing in a weekend/holiday snaps forward to the next market open
+  (`MarketCalendar.next_market_open`, §37) → no window starts on a weekend day
+
 ---
 
 ## test_splitters.py
@@ -103,6 +112,19 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 - Each scenario gets the symbol's authoritative quote-currency balance (#265)
 - Regime / session carried from the source window; `is_profile_run=True`
 - `scenario_index` continuous from `start_index`; roles assigned when enabled
+
+---
+
+## test_window_set_serializer.py
+
+The scenario-set assembler (`_build_scenario_set_config`) — multiple `WindowSet`s merged into one
+runnable set. Tests the pure dict assembly (no file write); quote-currency resolution is patched.
+
+- Multi-symbol merge → every symbol's scenarios present, names unique (symbol-prefixed)
+- Robustness: IS/OOS roles assigned **per symbol** (each symbol's own trailing fraction is OOS —
+  no cross-symbol future leak); top-level `robustness` block written
+- No robustness → no `role` keys, no `robustness` block
+- Quote-currency balance seeded into set-wide `global`, unioned across symbols (#265)
 
 ---
 
