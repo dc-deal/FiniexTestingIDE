@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "trend_channel_reference_stop_breakout_test",
+  "created": "2026-06-26T00:00:00.000000",
+  "description": "Didactic reference set (#118) — CORE/trend_channel_reference in STOP-breakout mode on mt5 EURUSD. Teaching example, NOT a profitable strategy: drives resting STOP entries + SL/TP + trailing + partial close so the STOP order path is exercised by a `🧪` run.",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/trend_channel_reference",
+      "worker_instances": {
+        "h1_trend": "CORE/ma_trend",
+        "m15_channel": "CORE/bollinger"
+      },
+      "workers": {
+        "h1_trend": {
+          "periods": {
+            "H1": 50
+          },
+          "ma_type": "ema",
+          "neutral_band": 0.05,
+          "recompute": "bar_close",
+          "include_current_bar": false
+        },
+        "m15_channel": {
+          "periods": {
+            "M15": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "entry_mode": "stop_breakout",
+        "entry_band_pos": 0.15,
+        "breakout_offset_mult": 0.25,
+        "sl_mult": 1.0,
+        "tp_mult": 2.0,
+        "trail_mult": 1.0,
+        "partial_rr": 1.0,
+        "partial_fraction": 0.5,
+        "max_positions": 2,
+        "lot_size": 0.1,
+        "min_free_margin": 1000
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "EURUSD_breakout_w1",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-05T00:00:00+00:00",
+      "end_date": "2026-01-16T20:00:00+00:00",
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "EURUSD_breakout_w2",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-02-02T00:00:00+00:00",
+      "end_date": "2026-02-13T20:00:00+00:00",
+      "data_mode": "realistic",
+      "enabled": true
+    }
+  ]
+}

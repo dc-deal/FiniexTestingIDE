@@ -1,0 +1,460 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "trend_channel_reference_robustness_test",
+  "created": "2026-06-26T08:42:19.692415+00:00",
+  "description": "Didactic reference robustness set (#118 case study) \u2014 CORE/trend_channel_reference on mt5 EURUSD+GBPUSD, 36 windows (IS/OOS 0.3). Teaching example, NOT a profitable strategy: exercises the full order surface (resting LIMIT entries, SL/TP, trailing stop, partial close, multi-position) under multi-window IS/OOS validation.",
+  "robustness": {
+    "enabled": true,
+    "metric": "expectancy",
+    "oos_split": 0.3,
+    "min_windows": 3,
+    "overfit_wfe_threshold": 0.5,
+    "robust_wfe_threshold": 0.8,
+    "disposition_trust_pct": 25.0
+  },
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/trend_channel_reference",
+      "worker_instances": {
+        "h1_trend": "CORE/ma_trend",
+        "m15_channel": "CORE/bollinger"
+      },
+      "workers": {
+        "h1_trend": {
+          "periods": {
+            "H1": 50
+          },
+          "ma_type": "ema",
+          "neutral_band": 0.05,
+          "recompute": "bar_close",
+          "include_current_bar": false
+        },
+        "m15_channel": {
+          "periods": {
+            "M15": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "entry_mode": "limit_pullback",
+        "entry_band_pos": 0.15,
+        "breakout_offset_mult": 0.25,
+        "sl_mult": 1.0,
+        "tp_mult": 2.0,
+        "trail_mult": 1.0,
+        "partial_rr": 1.0,
+        "partial_fraction": 0.5,
+        "max_positions": 2,
+        "lot_size": 0.1,
+        "min_free_margin": 1000
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000.0
+      }
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "EURUSD_blocks_01",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-03T00:00:00+00:00",
+      "end_date": "2025-11-12T15:40:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_02",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-13T21:16:00+00:00",
+      "end_date": "2025-11-18T01:57:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_03",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-18T20:52:00+00:00",
+      "end_date": "2025-11-28T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_04",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-28T20:52:00+00:00",
+      "end_date": "2025-12-08T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_05",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-08T20:52:00+00:00",
+      "end_date": "2025-12-18T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_06",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-18T20:52:00+00:00",
+      "end_date": "2025-12-28T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_07",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-29T00:00:00+00:00",
+      "end_date": "2026-01-08T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_08",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T00:00:00+00:00",
+      "end_date": "2026-01-18T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_09",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-19T00:00:00+00:00",
+      "end_date": "2026-01-29T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_10",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-29T00:00:00+00:00",
+      "end_date": "2026-02-08T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_11",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-02-09T00:00:00+00:00",
+      "end_date": "2026-02-19T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_12",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-02-19T00:00:00+00:00",
+      "end_date": "2026-03-01T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_13",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-02T00:00:00+00:00",
+      "end_date": "2026-03-12T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "EURUSD_blocks_14",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-12T00:00:00+00:00",
+      "end_date": "2026-03-22T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "EURUSD_blocks_15",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-23T00:00:00+00:00",
+      "end_date": "2026-04-02T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "EURUSD_blocks_16",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-02T00:00:00+00:00",
+      "end_date": "2026-04-12T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "EURUSD_blocks_17",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-13T00:00:00+00:00",
+      "end_date": "2026-04-23T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "EURUSD_blocks_18",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-23T00:00:00+00:00",
+      "end_date": "2026-04-30T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_01",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-03T00:00:00+00:00",
+      "end_date": "2025-11-12T15:40:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_02",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-13T21:16:00+00:00",
+      "end_date": "2025-11-18T01:57:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_03",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-18T20:52:00+00:00",
+      "end_date": "2025-11-28T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_04",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-11-28T20:52:00+00:00",
+      "end_date": "2025-12-08T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_05",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-08T20:52:00+00:00",
+      "end_date": "2025-12-18T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_06",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-18T20:52:00+00:00",
+      "end_date": "2025-12-28T20:52:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_07",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2025-12-29T00:00:00+00:00",
+      "end_date": "2026-01-08T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_08",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-08T00:00:00+00:00",
+      "end_date": "2026-01-18T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_09",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-19T00:00:00+00:00",
+      "end_date": "2026-01-29T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_10",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-29T00:00:00+00:00",
+      "end_date": "2026-02-08T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_11",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-02-09T00:00:00+00:00",
+      "end_date": "2026-02-19T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_12",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-02-19T00:00:00+00:00",
+      "end_date": "2026-03-01T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_13",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-02T00:00:00+00:00",
+      "end_date": "2026-03-12T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "in_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_14",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-12T00:00:00+00:00",
+      "end_date": "2026-03-22T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_15",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-23T00:00:00+00:00",
+      "end_date": "2026-04-02T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_16",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-02T00:00:00+00:00",
+      "end_date": "2026-04-12T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_17",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-13T00:00:00+00:00",
+      "end_date": "2026-04-23T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    },
+    {
+      "name": "GBPUSD_blocks_18",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-04-23T00:00:00+00:00",
+      "end_date": "2026-04-30T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true,
+      "role": "out_of_sample"
+    }
+  ]
+}
