@@ -42,7 +42,7 @@ can use the same workers but with completely different strategies.
 """
 
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
@@ -347,6 +347,22 @@ class AggressiveTrend(AbstractDecisionLogic):
         return {
             "rsi_fast": "CORE/rsi",
             "bollinger_main": "CORE/bollinger"
+        }
+
+    def get_required_worker_signals(self) -> Dict[str, Set[str]]:
+        """
+        Declare the worker outputs this strategy reads (optional-output gating).
+
+        Only the RSI value and the Bollinger band position drive the decision —
+        the Bollinger slope / width / raw-position are not read, so the worker
+        skips them (the slope's extra moving average in particular).
+
+        Returns:
+            Dict[instance_name, consumed output keys]
+        """
+        return {
+            "rsi_fast": {"rsi_value"},
+            "bollinger_main": {"position"},
         }
 
     def compute_tick(

@@ -189,6 +189,37 @@ its own window.
 
 ---
 
+## Computing Only What's Consumed — `get_required_worker_signals()`
+
+A decision logic may declare which worker outputs it actually reads, so a worker skips computing
+expensive optional signals that nothing consumes:
+
+```python
+def get_required_worker_signals(self) -> Dict[str, Set[str]]:
+    return {'rsi_fast': {'rsi_value'}, 'bollinger_main': {'position'}}
+```
+
+- **Opt-in, bit-identical default.** No declaration (the default empty map) = every worker computes
+  all its outputs, so existing strategies are unchanged. Declare only when profiling shows an unused
+  output costs real per-tick time.
+- **⚠️ The default is safe but NOT free — a latent Performance-GAU.** With no declaration a rich
+  worker recomputes *every* optional output *every* tick, even the ones nobody reads (e.g. Bollinger's
+  `slope` = a second moving average). On a hot decision that is silent per-tick waste. It was exactly
+  this — `aggressive_trend` computing an unread Bollinger slope every tick — that caused the ~14% V1.4
+  throughput regression. **For a hot decision on a rich worker, always declare the signals you
+  actually read.**
+- **A worker skips only its *optional* outputs.** The always-on core (e.g. a Bollinger's bands +
+  position) is computed unconditionally; the worker gates the rest via `self.wants_output(key)`.
+  Example: Bollinger's `slope` costs a second moving average — it is skipped unless a consumer
+  declares `'slope'`.
+- **Loud on misdeclaration.** Reading a `get_signal(key)` you did not declare raises `KeyError`
+  (the key was never computed) rather than returning a stale value — so declare every key you read.
+
+This is the framework-side answer to the same "compute only what's needed" principle as the bar
+window above: the consumer declares the *outputs* it reads, the worker the *bars* it reads.
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one

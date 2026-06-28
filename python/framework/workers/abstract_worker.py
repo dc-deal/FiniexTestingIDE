@@ -86,6 +86,10 @@ class AbstractWorker(ABC):
         # (config 'compute_basis' override → the worker's declaration).
         self._compute_basis: Optional[ComputeBasis] = None
 
+        # Consumed-output set, injected by the orchestrator from the decision
+        # logic's declaration. None = no declaration = compute every output.
+        self._requested_outputs: Optional[Set[str]] = None
+
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
@@ -168,6 +172,35 @@ class AbstractWorker(ABC):
                 ComputeBasis(configured) if configured
                 else self.get_default_compute_basis())
         return self._compute_basis
+
+    def set_requested_outputs(self, keys: Set[str]) -> None:
+        """
+        Declare which output keys a consumer reads — gates optional-output work.
+
+        Injected by the orchestrator from the decision logic's
+        get_required_worker_signals(). Once set, the worker may skip computing
+        outputs not in this set (its always-on core stays unconditional).
+
+        Args:
+            keys: Output keys the consumer reads from this worker instance
+        """
+        self._requested_outputs = set(keys)
+
+    def wants_output(self, key: str) -> bool:
+        """
+        Whether an optional output should be computed for this instance.
+
+        True when no consumer declaration was injected (compute all — the
+        default that keeps existing strategies bit-identical) or the key is in
+        the declared set.
+
+        Args:
+            key: Output key to test
+
+        Returns:
+            True if the output should be computed
+        """
+        return self._requested_outputs is None or key in self._requested_outputs
 
     def effective_bars(
         self,

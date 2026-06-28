@@ -205,26 +205,31 @@ class BollingerWorker(AbstractWorker):
         current_price = tick.mid
         position_raw = Normalizer.rescale(current_price, lower, upper)
         position = Normalizer.clamp(position_raw)
-
-        # Midline slope, normalized by band width (needs period+1 closes)
         band_width = upper - lower
-        slope = 0.0
-        if len(all_closes) >= period + 1:
-            prev_window = all_closes[-(period + 1):-1]
-            mid_prev = moving_average(prev_window, period, self.ma_type)
-            slope = Normalizer.normalize(middle - mid_prev, band_width)
 
-        # Band width relative to the midline
-        width_pct = Normalizer.normalize(band_width, middle)
-
-        return WorkerResult(outputs={
+        # Always-on core (cheap, shared math)
+        outputs = {
             'upper': float(upper),
             'middle': float(middle),
             'lower': float(lower),
             'position': float(position),
-            'position_raw': float(position_raw),
-            'slope': float(slope),
-            'width_pct': float(width_pct),
             'std_dev': float(std_dev),
             'bars_used': len(close_prices),
-        })
+        }
+
+        # Optional outputs — computed only when a consumer reads them.
+        if self.wants_output('position_raw'):
+            outputs['position_raw'] = float(position_raw)
+        if self.wants_output('width_pct'):
+            # Band width relative to the midline
+            outputs['width_pct'] = float(Normalizer.normalize(band_width, middle))
+        # Midline slope: the expensive optional (a 2nd moving_average, needs period+1 closes)
+        if self.wants_output('slope'):
+            slope = 0.0
+            if len(all_closes) >= period + 1:
+                prev_window = all_closes[-(period + 1):-1]
+                mid_prev = moving_average(prev_window, period, self.ma_type)
+                slope = Normalizer.normalize(middle - mid_prev, band_width)
+            outputs['slope'] = float(slope)
+
+        return WorkerResult(outputs=outputs)
