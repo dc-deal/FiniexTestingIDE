@@ -14,6 +14,26 @@ After data preparation completes, Phase 2 executes validated scenarios using Pyt
 - **Parallel ThreadPool:** GIL-limited concurrency (debugger-friendly)
 - **Parallel ProcessPool:** True parallelism (production performance)
 
+### Mountable Preparation (#417)
+
+`BatchOrchestrator.run()` is split into three explicit pieces so a prepared data snapshot can be
+reused across runs that change only parameters:
+
+1. **Parameter validation** — `ScenarioValidator.validate_scenario_parameters`, a standalone step run
+   *before* the load (fail-fast: an invalid parameter never triggers the expensive data load). The only
+   check that re-runs per run.
+2. **`prepare_mount() -> MountPackage`** — the data-identity half (data-identity validators + Phases 1–5:
+   index, availability, requirements, load, quality). Produces a self-contained `MountPackage`.
+3. **`execute(mount, scenarios) -> BatchExecutionSummary`** — the strategy half (Phase 6 + 7). Pure: no
+   parameter validation inside, so repeated `execute()` over one mount is byte-identical.
+
+The `MountPackage` is keyed by a `DataIdentityKey` per scenario (broker · symbol · window · warmup · tick
+budget — everything *except* `strategy_config`), so the same loaded data serves any run with a matching
+identity: **#418** holds the mount resident, **#419** reuses it across a sweep. `execute()` carries an
+identity guard (`MountIdentityMismatchError`) that rejects a mount fed scenarios with a different data
+identity. The single-call `run()` composes the three pieces for the unchanged cold path. Types:
+`python/framework/types/mount_package_types.py`.
+
 ---
 
 ## Phase 2: Execution Coordination

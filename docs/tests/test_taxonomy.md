@@ -44,6 +44,7 @@ live_adapters                                            ✓
 tests/
 ├── simulation/
 │   ├── baseline/          integration — deterministic trade sequence, P&L, order flow
+│   ├── core/              integration — prepare/execute seam (#417): split equivalence, mount reuse/determinism, data identity
 │   ├── margin_validation/ integration — margin check, rejection, zero-balance
 │   ├── multi_position/    integration — concurrent positions, close sequences
 │   ├── partial_close/     integration — partial close mechanics

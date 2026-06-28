@@ -11,8 +11,10 @@ list-of-configs + external optimizer. All rank over one flat metrics object per 
 is the `RunSummary` from the [reporting pipeline](reporting_pipeline.md).
 
 > A sweep is **N batches** — the execution pipeline is unchanged (see
-> [Process Execution Architecture](process_execution_architecture.md)). Only the orchestration on top
-> and the cross-run ledger are new.
+> [Process Execution Guide](../process_execution_guide.md)). Only the orchestration on top
+> and the cross-run ledger are new. Today each batch reloads its ticks; the mountable prepare/execute
+> seam (#417) lets a sweep prepare the data once and reuse it across all combinations (#419), since the
+> data identity is constant across a grid that varies only `strategy_config`.
 
 ---
 

@@ -115,13 +115,14 @@ RECOMMENDATION:
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
 import time
+from typing import List
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.framework.validators.post_run_validator import PostRunValidator
 from multiprocessing import Manager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -133,6 +134,8 @@ from python.framework.utils.runtime_env_utils import is_debug_execution
 from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
+from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
+from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 
 
 class BatchOrchestrator:
@@ -249,45 +252,76 @@ class BatchOrchestrator:
 
     def run(self) -> BatchExecutionSummary:
         """
-        Execute all scenarios with coordinated phases.
+        Execute all scenarios cold-path: validate parameters (fail-fast) → prepare the data
+        mount → execute against it.
 
-        WORKFLOW:
-        Phase 1: Index & Coverage Setup (Serial)
-        Phase 2: Availability Validation (Serial)
-        Phase 3: Requirements Collection (Serial)
-        Phase 4: Data Loading (Serial)
-        Phase 5: Quality Validation (Serial)
-        Phase 6: Execution (Parallel/Sequential)
-        Phase 7: Summary & Reporting
+        The phase body is split into prepare_mount() (the data-identity-dependent half:
+        validation + load) and execute() (the strategy-dependent half: run + summary), so a
+        prepared MountPackage can be reused across runs that share the same data identity —
+        #418 holds it resident, #419 reuses it across a sweep. run() composes the two for the
+        unchanged single-call path.
 
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
         """
-        scenario_count = len(self._scenarios)
-        force_sequential = scenario_count == 1
-
-        if force_sequential:
-            self._logger.info(
-                "⚠️ Sequential execution forced - only one scenario in set."
-            )
-
         self._logger.info(
             f"🚀 Starting batch execution "
-            f"({scenario_count} scenarios, "
+            f"({len(self._scenarios)} scenarios, "
             f"run_timestamp={self.logger_start_time_format})"
         )
 
-        start_time = time.time()
-        warmup_phases = []
         self._live_stats_coordinator.broadcast_status(
             ScenarioStatus.INITIALIZED)
 
-        # Start live display
+        # Start live display (cold path owns the display lifecycle; #419 manages warm reuse).
         if self._display:
             self._display.start()
 
+        # Parameter validation runs BEFORE the mount (fail-fast): an invalid parameter must
+        # never trigger the expensive data load. It is the only check that re-runs per run, so
+        # it stays a standalone step — prepare_mount stays data-only and execute() stays pure.
+        ScenarioValidator.validate_scenario_parameters(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger,
+        )
+
+        mount = self.prepare_mount()
+        summary = self.execute(
+            mount, self._scenario_set.get_all_scenarios())
+
         # ========================================================================
-        # PHASE 0: CONFIG VALIDATION
+        # CLEANUP
+        # ========================================================================
+        if self._display and self._display._running:
+            self._display.stop()
+        if self._manager:
+            try:
+                self._manager.shutdown()
+            except:
+                pass
+
+        self.flush_all_logs(summary)
+
+        return summary
+
+    def prepare_mount(self) -> MountPackage:
+        """
+        Prepare the reusable data mount: data-identity validation + data load + packaging.
+
+        The data-identity-dependent half of a batch (Phase 0 data validators + Phases 1–5).
+        Produces a self-contained MountPackage keyed by the data identity, so it can be held
+        resident (#418) and fed a new parameter set via execute(mount, scenarios) (#419)
+        without reloading. Parameter validation is intentionally NOT here — it is the per-run
+        check owned by the caller (run() / the sweep runner).
+
+        Returns:
+            MountPackage with the loaded per-scenario data and the data identity that keys it
+        """
+        start_time = time.time()
+        warmup_phases = []
+
+        # ========================================================================
+        # PHASE 0: DATA-IDENTITY VALIDATION
         # ========================================================================
         self._logger.info("🔍 Phase 0: Validating configuration...")
         _phase_t = time.time()
@@ -339,13 +373,6 @@ class BatchOrchestrator:
             broker_scenario_map=_broker_scenario_map,
         )
 
-        # 6. Validate strategy parameters against component schemas
-        #    (type / range / required / unknown keys — a typo'd param is otherwise
-        #    silently ignored at runtime)
-        ScenarioValidator.validate_scenario_parameters(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-        )
         warmup_phases.append(WarmupPhaseEntry('Config Validation', time.time() - _phase_t))
 
         # ========================================================================
@@ -427,6 +454,7 @@ class BatchOrchestrator:
         warmup_phases.append(WarmupPhaseEntry('Quality Validation', time.time() - _phase_t))
 
         # Calculate total invalid scenarios
+        scenario_count = len(self._scenarios)
         total_invalid = len(self._scenario_set.get_failed_scenarios())
         valid_scenario_count = len(self._scenario_set.get_valid_scenarios())
 
@@ -435,43 +463,84 @@ class BatchOrchestrator:
             f"invalid scenario(s) ({total_invalid} filtered out)"
         )
 
+        # Data identity — fingerprint each loaded scenario's data (broker / symbol / window /
+        # warmup / tick budget, NOT strategy_config). The key #418/#419 reuse a mount on and the
+        # execute() guard checks each fed scenario against.
+        data_identity = {}
+        for scenario in self._scenario_set.get_valid_scenarios():
+            if scenario.scenario_index in scenario_packages:
+                data_identity[scenario.scenario_index] = DataIdentityKey.from_scenario(
+                    scenario, requirements_map.bar_requirements)
+
+        batch_warmup_time = time.time() - start_time
+
+        return MountPackage(
+            scenario_packages=scenario_packages,
+            clipping_stats_map=clipping_stats_map,
+            broker_configs=_broker_configs,
+            broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
+                self._scenario_set.get_valid_scenarios()
+            ),
+            requirements_map=requirements_map,
+            warmup_phases=warmup_phases,
+            batch_warmup_time=batch_warmup_time,
+            data_identity=data_identity,
+        )
+
+    def execute(
+        self,
+        mount: MountPackage,
+        scenarios: List[SingleScenario]
+    ) -> BatchExecutionSummary:
+        """
+        Execute scenarios against a prepared mount and build the run summary.
+
+        The strategy-dependent half (Phase 6 + 7). Consumes a MountPackage (the loaded data)
+        plus the per-run scenarios (the parameter package). No parameter validation here, so
+        repeated execute() over one mount is byte-identical (#368). An identity guard rejects a
+        scenarios set whose data identity does not match the mount — the #419/#418 safety
+        contract (in the cold path the scenarios built the mount, so it never fires there).
+
+        Args:
+            mount: The prepared data mount (from prepare_mount)
+            scenarios: The per-run scenarios to execute (carry the parameter set)
+
+        Returns:
+            BatchExecutionSummary with aggregated results from all scenarios
+        """
+        self._assert_mount_identity(mount, scenarios)
+
+        scenario_count = len(scenarios)
+        if scenario_count == 1:
+            self._logger.info(
+                "⚠️ Sequential execution forced - only one scenario in set."
+            )
+
         # ========================================================================
         # PHASE 6: EXECUTION
         # ========================================================================
         self._logger.info("🚀 Phase 6: Executing scenarios...")
 
-        batch_warmup_time = time.time() - start_time
         batch_tickrun_start = time.time()
 
         # Execute scenarios
         if self._parallel_scenarios and scenario_count > 1:
             results, batch_pickle_time, batch_pickle_sample_mb = self._execution_coordinator.execute_parallel(
-                scenarios=self._scenario_set.get_all_scenarios(),
-                scenario_packages=scenario_packages,  # Dict of packages
+                scenarios=scenarios,
+                scenario_packages=mount.scenario_packages,  # Dict of packages
                 live_queue=self._live_queue
             )
 
         else:
             results, batch_pickle_time, batch_pickle_sample_mb = self._execution_coordinator.execute_sequential(
-                scenarios=self._scenario_set.get_all_scenarios(),
-                scenario_packages=scenario_packages,  # Dict of packages
+                scenarios=scenarios,
+                scenario_packages=mount.scenario_packages,  # Dict of packages
                 live_queue=self._live_queue
             )
 
         # calc execution time
         batch_tickrun_time = time.time() - batch_tickrun_start
-        batch_execution_time = time.time() - start_time
-
-        # ========================================================================
-        # CLEANUP
-        # ========================================================================
-        if self._display and self._display._running:
-            self._display.stop()
-        if self._manager:
-            try:
-                self._manager.shutdown()
-            except:
-                pass
+        batch_execution_time = mount.batch_warmup_time + batch_tickrun_time
 
         # ========================================================================
         # PHASE 7: SUMMARY & REPORTING
@@ -482,19 +551,17 @@ class BatchOrchestrator:
             # results of scenario
             process_result_list=results,
             # scenarios always stay in index synchronisity with results.
-            single_scenario_list=self._scenarios,
+            single_scenario_list=scenarios,
             # stats for batch execution
             batch_execution_time=batch_execution_time,
-            batch_warmup_time=batch_warmup_time,
+            batch_warmup_time=mount.batch_warmup_time,
             batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
-            broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
-                self._scenario_set.get_valid_scenarios()
-            ),
+            broker_scenario_map=mount.broker_scenario_map,
             # clipping stats from tick processing budget (main process, not subprocess)
-            clipping_stats_map=clipping_stats_map,
+            clipping_stats_map=mount.clipping_stats_map,
             # per-phase warmup timing breakdown
-            warmup_phases=warmup_phases,
+            warmup_phases=mount.warmup_phases,
             # main-process serialization time (submit loop) + sample size
             batch_pickle_time=batch_pickle_time,
             batch_pickle_sample_mb=batch_pickle_sample_mb,
@@ -518,13 +585,42 @@ class BatchOrchestrator:
         if failed_results:
             self._logger.error(BatchExecutionError(failed_results).get_failure_summary())
 
-        self.flush_all_logs(summary)
-
         self._logger.info(
             f"✅ Batch execution completed in {batch_execution_time:.2f}s"
         )
 
         return summary
+
+    def _assert_mount_identity(
+        self,
+        mount: MountPackage,
+        scenarios: List[SingleScenario]
+    ) -> None:
+        """
+        Guard: each executed scenario's data identity must match the mount it runs against.
+
+        The mount holds data for a specific (broker / symbol / window / warmup / budget)
+        identity; feeding it scenarios with a different identity would run the wrong data.
+        In the cold path the scenarios built the mount → always matches; the guard backstops
+        the #419/#418 reuse path.
+
+        Args:
+            mount: The prepared data mount
+            scenarios: The scenarios about to execute against it
+        """
+        for scenario in scenarios:
+            index = scenario.scenario_index
+            if index not in mount.scenario_packages:
+                continue  # invalid / no data — not part of the mount
+
+            expected = mount.data_identity.get(index)
+            actual = DataIdentityKey.from_scenario(
+                scenario, mount.requirements_map.bar_requirements)
+            if expected != actual:
+                raise MountIdentityMismatchError(
+                    f"Scenario '{scenario.name}' (index {index}) data identity does not "
+                    f"match the mount (expected {expected}, got {actual})"
+                )
 
     def flush_all_logs(self, batch_execution_summary: BatchExecutionSummary = None):
         """
